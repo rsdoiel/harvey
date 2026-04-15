@@ -4,10 +4,28 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
-// Command describes a slash command and its handler.
+/** Command describes a slash command available in the Harvey REPL.
+ *
+ * Fields:
+ *   Usage       (string)   — short usage synopsis shown by /help.
+ *   Description (string)   — one-line description shown by /help.
+ *   Handler     (func)     — called when the command is dispatched; nil for
+ *                            commands handled directly in the REPL (exit, quit).
+ *
+ * Example:
+ *   cmd := &Command{
+ *       Usage:       "/greet NAME",
+ *       Description: "Print a greeting",
+ *       Handler: func(a *Agent, args []string, out io.Writer) error {
+ *           fmt.Fprintln(out, "Hello,", args[0])
+ *           return nil
+ *       },
+ *   }
+ */
 type Command struct {
 	Usage       string
 	Description string
@@ -15,7 +33,11 @@ type Command struct {
 	Handler func(a *Agent, args []string, out io.Writer) error
 }
 
-// registerCommands wires the built-in slash commands onto the agent.
+/** registerCommands wires the built-in slash commands onto the agent.
+ *
+ * Example:
+ *   agent.registerCommands()
+ */
 func (a *Agent) registerCommands() {
 	a.commands = map[string]*Command{
 		"help": {
@@ -25,7 +47,7 @@ func (a *Agent) registerCommands() {
 		},
 		"status": {
 			Usage:       "/status",
-			Description: "Show current connection and session status",
+			Description: "Show current connection, workspace, and session status",
 			Handler:     cmdStatus,
 		},
 		"clear": {
@@ -43,6 +65,16 @@ func (a *Agent) registerCommands() {
 			Description: "Manage the publicai.co connection",
 			Handler:     cmdPublicAI,
 		},
+		"kb": {
+			Usage:       "/kb <status|project|observe|concept> [args...]",
+			Description: "Manage the workspace knowledge base",
+			Handler:     cmdKB,
+		},
+		"files": {
+			Usage:       "/files [PATH]",
+			Description: "List files in the workspace (or a sub-directory)",
+			Handler:     cmdFiles,
+		},
 		"exit": {
 			Usage:       "/exit",
 			Description: "Exit Harvey",
@@ -56,7 +88,20 @@ func (a *Agent) registerCommands() {
 	}
 }
 
-// dispatch parses a slash command and runs it. Returns (shouldExit, error).
+/** dispatch parses a slash command line and runs its handler. Returns
+ * (shouldExit, error).
+ *
+ * Parameters:
+ *   input (string)   — the raw slash-command line typed by the user.
+ *   out   (io.Writer) — destination for command output.
+ *
+ * Returns:
+ *   bool  — true if the agent should exit after this command.
+ *   error — any error returned by the handler.
+ *
+ * Example:
+ *   exit, err := agent.dispatch("/kb status", os.Stdout)
+ */
 func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 	parts := strings.Fields(strings.TrimPrefix(input, "/"))
 	if len(parts) == 0 {
@@ -79,10 +124,12 @@ func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 	return false, nil
 }
 
+// ─── Built-in handlers ───────────────────────────────────────────────────────
+
 func cmdHelp(a *Agent, _ []string, out io.Writer) error {
 	fmt.Fprintln(out)
 	for _, cmd := range a.commands {
-		fmt.Fprintf(out, "  %-45s %s\n", cmd.Usage, cmd.Description)
+		fmt.Fprintf(out, "  %-50s %s\n", cmd.Usage, cmd.Description)
 	}
 	fmt.Fprintln(out)
 	return nil
@@ -90,11 +137,19 @@ func cmdHelp(a *Agent, _ []string, out io.Writer) error {
 
 func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 	if a.Client == nil {
-		fmt.Fprintln(out, "Backend:  none")
+		fmt.Fprintln(out, "Backend:   none")
 	} else {
-		fmt.Fprintf(out, "Backend:  %s\n", a.Client.Name())
+		fmt.Fprintf(out, "Backend:   %s\n", a.Client.Name())
 	}
-	fmt.Fprintf(out, "History:  %d messages\n", len(a.History))
+	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
+	if a.Workspace != nil {
+		fmt.Fprintf(out, "Workspace: %s\n", a.Workspace.Root)
+	}
+	if a.KB != nil {
+		fmt.Fprintln(out, "KB:        open (.harvey/knowledge.db)")
+	} else {
+		fmt.Fprintln(out, "KB:        not open")
+	}
 	return nil
 }
 
@@ -192,5 +247,198 @@ func cmdPublicAI(a *Agent, args []string, out io.Writer) error {
 	default:
 		fmt.Fprintf(out, "Unknown publicai subcommand: %s\n", args[0])
 	}
+	return nil
+}
+
+// ─── /kb ─────────────────────────────────────────────────────────────────────
+
+func cmdKB(a *Agent, args []string, out io.Writer) error {
+	if a.KB == nil {
+		fmt.Fprintln(out, "Knowledge base is not open. This should not happen — please restart Harvey.")
+		return nil
+	}
+	if len(args) == 0 {
+		return kbStatus(a, out)
+	}
+	switch strings.ToLower(args[0]) {
+	case "status":
+		return kbStatus(a, out)
+	case "project":
+		return kbProject(a, args[1:], out)
+	case "observe":
+		return kbObserve(a, args[1:], out)
+	case "concept":
+		return kbConcept(a, args[1:], out)
+	default:
+		fmt.Fprintf(out, "Unknown kb subcommand: %s\n", args[0])
+		fmt.Fprintln(out, "Usage: /kb <status|project|observe|concept> [args...]")
+	}
+	return nil
+}
+
+func kbStatus(a *Agent, out io.Writer) error {
+	fmt.Fprintln(out)
+	s, err := a.KB.Summary()
+	if err != nil {
+		return err
+	}
+	fmt.Fprint(out, s)
+	return nil
+}
+
+// kbProject handles /kb project <list|add NAME [DESC]|use ID>
+func kbProject(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /kb project <list|add NAME [DESC]|use ID>")
+		return nil
+	}
+	switch strings.ToLower(args[0]) {
+	case "list":
+		projects, err := a.KB.Projects()
+		if err != nil {
+			return err
+		}
+		if len(projects) == 0 {
+			fmt.Fprintln(out, "  (no projects)")
+			return nil
+		}
+		for _, p := range projects {
+			active := ""
+			if a.Config.CurrentProjectID == p.ID {
+				active = " *"
+			}
+			fmt.Fprintf(out, "  [%d]%s %s  (%s)\n", p.ID, active, p.Name, p.Status)
+			if p.Description != "" {
+				fmt.Fprintf(out, "      %s\n", p.Description)
+			}
+		}
+	case "add":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /kb project add NAME [DESCRIPTION]")
+			return nil
+		}
+		name := args[1]
+		desc := strings.Join(args[2:], " ")
+		id, err := a.KB.AddProject(name, desc)
+		if err != nil {
+			return err
+		}
+		a.Config.CurrentProjectID = id
+		fmt.Fprintf(out, "Project %q added (id=%d) and set as current.\n", name, id)
+	case "use":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /kb project use ID")
+			return nil
+		}
+		id, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			fmt.Fprintf(out, "Invalid project ID: %s\n", args[1])
+			return nil
+		}
+		a.Config.CurrentProjectID = id
+		fmt.Fprintf(out, "Current project set to id=%d.\n", id)
+	default:
+		fmt.Fprintf(out, "Unknown project subcommand: %s\n", args[0])
+	}
+	return nil
+}
+
+// kbObserve handles /kb observe KIND BODY...
+// KIND defaults to "note" if omitted or invalid.
+func kbObserve(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /kb observe [KIND] TEXT")
+		fmt.Fprintf(out, "Kinds: %s  (default: note)\n", strings.Join(ValidObservationKinds, ", "))
+		return nil
+	}
+	if a.Config.CurrentProjectID == 0 {
+		fmt.Fprintln(out, "No current project. Use /kb project add NAME or /kb project use ID first.")
+		return nil
+	}
+
+	kind := "note"
+	bodyArgs := args
+	if isValidKind(strings.ToLower(args[0])) {
+		kind = strings.ToLower(args[0])
+		bodyArgs = args[1:]
+	}
+	if len(bodyArgs) == 0 {
+		fmt.Fprintln(out, "Observation text is required.")
+		return nil
+	}
+	body := strings.Join(bodyArgs, " ")
+	id, err := a.KB.AddObservation(a.Config.CurrentProjectID, kind, body)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Observation recorded (id=%d, kind=%s).\n", id, kind)
+	return nil
+}
+
+// kbConcept handles /kb concept <list|add NAME [DESC]>
+func kbConcept(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /kb concept <list|add NAME [DESCRIPTION]>")
+		return nil
+	}
+	switch strings.ToLower(args[0]) {
+	case "list":
+		concepts, err := a.KB.Concepts()
+		if err != nil {
+			return err
+		}
+		if len(concepts) == 0 {
+			fmt.Fprintln(out, "  (no concepts)")
+			return nil
+		}
+		for _, c := range concepts {
+			fmt.Fprintf(out, "  [%d] %s", c.ID, c.Name)
+			if c.Description != "" {
+				fmt.Fprintf(out, " — %s", c.Description)
+			}
+			fmt.Fprintln(out)
+		}
+	case "add":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /kb concept add NAME [DESCRIPTION]")
+			return nil
+		}
+		name := args[1]
+		desc := strings.Join(args[2:], " ")
+		id, err := a.KB.AddConcept(name, desc)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Concept %q added (id=%d).\n", name, id)
+	default:
+		fmt.Fprintf(out, "Unknown concept subcommand: %s\n", args[0])
+	}
+	return nil
+}
+
+// ─── /files ──────────────────────────────────────────────────────────────────
+
+func cmdFiles(a *Agent, args []string, out io.Writer) error {
+	if a.Workspace == nil {
+		fmt.Fprintln(out, "No workspace initialised.")
+		return nil
+	}
+	path := "."
+	if len(args) > 0 {
+		path = args[0]
+	}
+	entries, err := a.Workspace.ListDir(path)
+	if err != nil {
+		return fmt.Errorf("files: %w", err)
+	}
+	fmt.Fprintf(out, "\n  %s/\n", path)
+	for _, e := range entries {
+		suffix := ""
+		if e.IsDir() {
+			suffix = "/"
+		}
+		fmt.Fprintf(out, "    %s%s\n", e.Name(), suffix)
+	}
+	fmt.Fprintln(out)
 	return nil
 }

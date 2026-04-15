@@ -36,8 +36,22 @@ func (a *Agent) prompt() string {
 	return "harvey > "
 }
 
-// Run prints the startup banner, runs the backend selection sequence,
-// then starts the interactive REPL. It reads from os.Stdin.
+/** Run prints the startup banner, initialises the workspace and knowledge base,
+ * runs the backend selection sequence, then starts the interactive REPL. It
+ * reads from os.Stdin and writes to out.
+ *
+ * Parameters:
+ *   out (io.Writer) — destination for all REPL output.
+ *
+ * Returns:
+ *   error — only on fatal startup errors; normal exit returns nil.
+ *
+ * Example:
+ *   agent := NewAgent(DefaultConfig(), ws)
+ *   if err := agent.Run(os.Stdout); err != nil {
+ *       log.Fatal(err)
+ *   }
+ */
 func (a *Agent) Run(out io.Writer) error {
 	a.registerCommands()
 	reader := bufio.NewReader(os.Stdin)
@@ -46,6 +60,14 @@ func (a *Agent) Run(out io.Writer) error {
 	fmt.Fprintln(out, cyan(bold(sep)))
 	fmt.Fprintf(out, "  %s  %s\n", bold("Harvey"), dim(Version))
 	fmt.Fprintln(out, cyan(bold(sep)))
+
+	// Workspace
+	if err := a.initWorkspace(out); err != nil {
+		return err
+	}
+
+	// Knowledge base
+	a.initKnowledgeBase(out)
 
 	// System prompt
 	if a.Config.SystemPrompt != "" {
@@ -113,7 +135,7 @@ func (a *Agent) Run(out io.Writer) error {
 			a.History = a.History[:len(a.History)-1]
 			continue
 		}
-		fmt.Fprintln(out, "\n")
+		fmt.Fprintln(out)
 		a.AddMessage("assistant", buf.String())
 	}
 
@@ -121,7 +143,42 @@ func (a *Agent) Run(out io.Writer) error {
 	return nil
 }
 
-// selectBackend runs the interactive startup sequence to choose a backend.
+// initWorkspace resolves and announces the workspace root. It is a fatal error
+// if the workspace cannot be created.
+func (a *Agent) initWorkspace(out io.Writer) error {
+	ws, err := NewWorkspace(a.Config.WorkDir)
+	if err != nil {
+		return fmt.Errorf("workspace init: %w", err)
+	}
+	a.Workspace = ws
+	fmt.Fprintf(out, green("✓")+" Workspace: %s\n", ws.Root)
+	return nil
+}
+
+// initKnowledgeBase opens (or creates) the SQLite knowledge base. Failures are
+// non-fatal: the user is warned but Harvey continues without a KB.
+func (a *Agent) initKnowledgeBase(out io.Writer) {
+	kb, err := OpenKnowledgeBase(a.Workspace)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" Knowledge base unavailable: %v\n", err)
+		return
+	}
+	a.KB = kb
+	fmt.Fprintln(out, green("✓")+" Knowledge base: .harvey/knowledge.db")
+}
+
+/** selectBackend runs the interactive startup sequence to choose a backend.
+ *
+ * Parameters:
+ *   reader (*bufio.Reader) — reads user input.
+ *   out    (io.Writer)     — destination for prompt and status messages.
+ *
+ * Returns:
+ *   error — on unexpected read failures.
+ *
+ * Example:
+ *   err := agent.selectBackend(reader, os.Stdout)
+ */
 func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 	fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.OllamaURL)
 
@@ -159,8 +216,19 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 	return nil
 }
 
-// pickOllamaModel selects a model from the running Ollama server. If only one
-// model is installed it is selected automatically; otherwise the user chooses.
+/** pickOllamaModel selects a model from the running Ollama server. If only one
+ * model is installed it is selected automatically; otherwise the user chooses.
+ *
+ * Parameters:
+ *   reader (*bufio.Reader) — reads the user's model selection.
+ *   out    (io.Writer)     — destination for the model list prompt.
+ *
+ * Returns:
+ *   error — on unexpected failures listing models.
+ *
+ * Example:
+ *   err := agent.pickOllamaModel(reader, os.Stdout)
+ */
 func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer) error {
 	models, err := NewOllamaClient(a.Config.OllamaURL, "").Models(context.Background())
 	if err != nil || len(models) == 0 {
@@ -189,8 +257,23 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer) error {
 	return nil
 }
 
-// askYesNo prints prompt, reads a line, and returns true for "y"/"yes".
-// defaultYes controls what an empty (Enter) response means.
+/** askYesNo prints prompt, reads a line, and returns true for "y"/"yes".
+ * defaultYes controls what an empty (Enter) response means.
+ *
+ * Parameters:
+ *   reader     (*bufio.Reader) — source for the user's answer.
+ *   out        (io.Writer)     — destination for the prompt string.
+ *   prompt     (string)        — text to print before reading.
+ *   defaultYes (bool)          — return value when the user presses Enter.
+ *
+ * Returns:
+ *   bool — true if the user answered yes (or pressed Enter with defaultYes=true).
+ *
+ * Example:
+ *   if askYesNo(out, reader, "Continue? [Y/n] ", true) {
+ *       // proceed
+ *   }
+ */
 func askYesNo(reader *bufio.Reader, out io.Writer, prompt string, defaultYes bool) bool {
 	fmt.Fprint(out, prompt)
 	line, _ := reader.ReadString('\n')
