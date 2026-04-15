@@ -193,21 +193,17 @@ func (kb *KnowledgeBase) Close() error {
  *   id, err := kb.AddProject("harvey", "Terminal coding agent backed by Ollama")
  */
 func (kb *KnowledgeBase) AddProject(name, description string) (int64, error) {
-	res, err := kb.db.Exec(
+	var id int64
+	err := kb.db.QueryRow(
 		`INSERT INTO projects (name, description) VALUES (?, ?)
 		 ON CONFLICT(name) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
 		 RETURNING id`,
 		name, description,
-	)
+	).Scan(&id)
 	if err != nil {
-		// Fallback: look up existing row.
-		var id int64
-		if e2 := kb.db.QueryRow(`SELECT id FROM projects WHERE name = ?`, name).Scan(&id); e2 == nil {
-			return id, nil
-		}
 		return 0, fmt.Errorf("knowledge: add project: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 /** Projects returns all projects ordered by creation date.
@@ -451,24 +447,42 @@ func (kb *KnowledgeBase) Summary() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
 
-	var b strings.Builder
+	// Drain all project rows before closing — a second Query inside
+	// recentObservations would deadlock with MaxOpenConns(1) if rows is
+	// still open.
+	type projectRow struct {
+		id       int64
+		name     string
+		status   string
+		desc     string
+		concepts string
+	}
+	var projects []projectRow
 	for rows.Next() {
-		var id int64
-		var name, status, desc, concepts string
-		if err := rows.Scan(&id, &name, &status, &desc, &concepts); err != nil {
+		var p projectRow
+		if err := rows.Scan(&p.id, &p.name, &p.status, &p.desc, &p.concepts); err != nil {
+			rows.Close()
 			return "", err
 		}
-		fmt.Fprintf(&b, "  [%d] %s  (%s)\n", id, name, status)
-		if desc != "" {
-			fmt.Fprintf(&b, "      %s\n", desc)
+		projects = append(projects, p)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return "", err
+	}
+	rows.Close()
+
+	var b strings.Builder
+	for _, p := range projects {
+		fmt.Fprintf(&b, "  [%d] %s  (%s)\n", p.id, p.name, p.status)
+		if p.desc != "" {
+			fmt.Fprintf(&b, "      %s\n", p.desc)
 		}
-		if concepts != "" {
-			fmt.Fprintf(&b, "      concepts: %s\n", concepts)
+		if p.concepts != "" {
+			fmt.Fprintf(&b, "      concepts: %s\n", p.concepts)
 		}
-		// Recent observations
-		obs, err := kb.recentObservations(id, 3)
+		obs, err := kb.recentObservations(p.id, 3)
 		if err != nil {
 			return "", err
 		}
@@ -480,7 +494,7 @@ func (kb *KnowledgeBase) Summary() (string, error) {
 	if b.Len() == 0 {
 		b.WriteString("  (no projects — use /kb project add <name> to create one)\n")
 	}
-	return b.String(), rows.Err()
+	return b.String(), nil
 }
 
 // recentObservations returns the n most recent observations for a project.

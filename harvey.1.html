@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>harvey</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>harvey <a href="#options">OPTIONS</a></p>
+<h1 id="description">DESCRIPTION</h1>
+<p>harvey is a terminal agent for local large language models and
+optionally for publicai.co. It was inspired by Claude Code but focused
+on working with large language models in small computer environments
+like a Raspberry Pi computer running Raspberry Pi OS. While the
+inspiration was to run an agent locally with Ollama it can also be run
+on larger computers like Linux, macOS and Windows systems you find on
+desktop and laptop computers. It should compile it for most systems
+where Ollama is avialable and Go is supported (exmample *BSD).</p>
+<p>harvey looks for HARVEY.md in the current directory and uses it as a
+system prompt. It then connects to a local Ollama server or publicai.co
+and starts an interactive chat session.</p>
+<p>All file I/O is constrained to the workspace directory (–workdir or
+“.”). A knowledge base is stored at <workdir>/.harvey/knowledge.db and
+is created automatically on first run.</p>
+<p>Type /help inside the session for available slash commands.</p>
+<h1 id="options">OPTIONS</h1>
+<dl>
+<dt>-h, –help</dt>
+<dd>
+display this help message
+</dd>
+<dt>-v, –version</dt>
+<dd>
+display version information
+</dd>
+<dt>-l, –license</dt>
+<dd>
+display license information
+</dd>
+<dt>-m, –model</dt>
+<dd>
+MODEL Ollama model to use on startup
+</dd>
+<dt>–ollama URL</dt>
+<dd>
+Ollama base URL (default: http://localhost:11434) -w, –workdir DIR
+</dd>
+<dd>
+workspace directory (default: current directory)
+</dd>
+</dl>
+<h1 id="environment">ENVIRONMENT</h1>
+<p>PUBLICAI_API_KEY API key for publicai.co</p>
+</section>
+</body>
+</html>

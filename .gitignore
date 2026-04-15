@@ -5,6 +5,8 @@
 *.bak
 .env
 *.env
+*.log
+.harvey
 bin
 testout
 dist

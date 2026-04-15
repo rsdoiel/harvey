@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // PublicAIClient implements LLMClient for publicai.co.
@@ -55,8 +56,9 @@ type publicAIChunk struct {
 	} `json:"choices"`
 }
 
-// Chat sends messages to publicai.co and streams the SSE response to out.
-func (p *PublicAIClient) Chat(ctx context.Context, messages []Message, out io.Writer) error {
+// Chat sends messages to publicai.co, streams the SSE response to out, and
+// returns elapsed time. Token counts are not available from the SSE stream.
+func (p *PublicAIClient) Chat(ctx context.Context, messages []Message, out io.Writer) (ChatStats, error) {
 	req := publicAIChatReq{Model: p.model, Stream: true}
 	for _, m := range messages {
 		req.Messages = append(req.Messages, struct {
@@ -66,23 +68,24 @@ func (p *PublicAIClient) Chat(ctx context.Context, messages []Message, out io.Wr
 	}
 	body, err := json.Marshal(req)
 	if err != nil {
-		return err
+		return ChatStats{}, err
 	}
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return ChatStats{}, err
 	}
 	hreq.Header.Set("Content-Type", "application/json")
 	hreq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
+	start := time.Now()
 	resp, err := p.http.Do(hreq)
 	if err != nil {
-		return err
+		return ChatStats{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("publicai: HTTP %d: %s", resp.StatusCode, b)
+		return ChatStats{}, fmt.Errorf("publicai: HTTP %d: %s", resp.StatusCode, b)
 	}
 
 	sc := bufio.NewScanner(resp.Body)
@@ -103,5 +106,5 @@ func (p *PublicAIClient) Chat(ctx context.Context, messages []Message, out io.Wr
 			fmt.Fprint(out, c.Delta.Content)
 		}
 	}
-	return sc.Err()
+	return ChatStats{Elapsed: time.Since(start)}, sc.Err()
 }

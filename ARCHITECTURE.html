@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-architecture">Harvey Architecture</h1>
+<p>Harvey is a terminal-based coding agent written in Go. It connects to
+a local <a href="https://ollama.com">Ollama</a> server (or optionally <a
+href="https://publicai.co">publicai.co</a>) and provides an interactive
+REPL for code-focused conversations. The design philosophy is: keep the
+LLM backend swappable, constrain all file I/O to a sandboxed workspace,
+and accumulate context through explicit slash commands rather than
+implicit background crawling.</p>
+<hr />
+<h2 id="component-map">Component map</h2>
+<pre><code>cmd/harvey/main.go          CLI entry point; parses flags; calls agent.Run()
+harvey.go                   Core types: Agent, LLMClient, Message, ChatStats,
+                              ExpandDynamicSections
+config.go                   Config struct, DefaultConfig(), LoadHarveyMD()
+terminal.go                 REPL loop (Run), startup sequence, backend selection
+commands.go                 All slash-command handlers and dispatch
+workspace.go                Sandboxed file I/O (Workspace)
+knowledge.go                SQLite knowledge base (KnowledgeBase)
+ollama.go                   OllamaClient — streams /api/chat SSE
+publicai.go                 PublicAIClient — streams /v1/chat/completions SSE
+spinner.go                  Animated spinner with Edward Lear messages + timer
+recorder.go                 Markdown session recorder</code></pre>
+<hr />
+<h2 id="core-types">Core types</h2>
+<h3 id="agent-harvey.go">Agent (<code>harvey.go</code>)</h3>
+<p><code>Agent</code> is the central struct that wires everything
+together for one session:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Client</code></td>
+<td><code>LLMClient</code></td>
+<td>Current backend (Ollama or PublicAI)</td>
+</tr>
+<tr>
+<td><code>Config</code></td>
+<td><code>*Config</code></td>
+<td>Runtime configuration</td>
+</tr>
+<tr>
+<td><code>History</code></td>
+<td><code>[]Message</code></td>
+<td>Full conversation sent to the LLM on every turn</td>
+</tr>
+<tr>
+<td><code>Workspace</code></td>
+<td><code>*Workspace</code></td>
+<td>Sandboxed root for all file operations</td>
+</tr>
+<tr>
+<td><code>KB</code></td>
+<td><code>*KnowledgeBase</code></td>
+<td>SQLite knowledge base (<code>.harvey/knowledge.db</code>)</td>
+</tr>
+<tr>
+<td><code>Recorder</code></td>
+<td><code>*Recorder</code></td>
+<td>Optional Markdown session log</td>
+</tr>
+<tr>
+<td><code>In</code></td>
+<td><code>io.Reader</code></td>
+<td>Interactive prompt source (default <code>os.Stdin</code>; injectable
+for tests)</td>
+</tr>
+<tr>
+<td><code>PinnedContext</code></td>
+<td><code>string</code></td>
+<td>Text that survives <code>/clear</code> and is re-injected after the
+system prompt</td>
+</tr>
+<tr>
+<td><code>commands</code></td>
+<td><code>map[string]*Command</code></td>
+<td>Registered slash commands</td>
+</tr>
+<tr>
+<td><code>statHistory</code></td>
+<td><code>[]ChatStats</code></td>
+<td>Rolling window of up to 5 past turns for duration estimation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="llmclient-interface-harvey.go">LLMClient interface
+(<code>harvey.go</code>)</h3>
+<p>Every backend implements this four-method interface:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> LLMClient <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    Name<span class="op">()</span>   <span class="dt">string</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    Chat<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> messages <span class="op">[]</span>Message<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span>ChatStats<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    Models<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">)</span> <span class="op">([]</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    Close<span class="op">()</span> <span class="dt">error</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>Chat</code> streams tokens to <code>out</code> as they arrive
+and returns <code>ChatStats</code> containing <code>PromptTokens</code>,
+<code>ReplyTokens</code>, <code>Elapsed</code>, and
+<code>TokensPerSec</code> once the response is complete. Backends that
+do not report token counts (currently PublicAI) return zeros for those
+fields; only <code>Elapsed</code> is always populated.</p>
+<h3 id="chatstats-duration-estimation">ChatStats &amp; duration
+estimation</h3>
+<p>After each successful turn the REPL records stats via
+<code>agent.recordStats()</code>, which maintains a rolling window of
+the last 5 turns. Before the next turn,
+<code>agent.estimateDuration()</code> averages
+<code>ReplyTokens / TokensPerSec</code> across all window entries that
+have token data, returning a <code>time.Duration</code> estimate that
+the spinner displays as <code>[Xs / ~Ys]</code>.</p>
+<h3 id="message">Message</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Message <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    Role    <span class="dt">string</span> <span class="st">`json:&quot;role&quot;`</span>    <span class="co">// &quot;system&quot;, &quot;user&quot;, or &quot;assistant&quot;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    Content <span class="dt">string</span> <span class="st">`json:&quot;content&quot;`</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The full <code>History</code> slice is sent on every call to
+<code>Chat</code>; there is no partial or sliding-window trimming beyond
+the explicit <code>/summarize</code> command.</p>
+<hr />
+<h2 id="workspace-sandboxing-workspace.go">Workspace sandboxing
+(<code>workspace.go</code>)</h2>
+<p><code>Workspace</code> resolves the root to an absolute, symlink-free
+path at construction time. Every subsequent operation calls
+<code>AbsPath(rel)</code>, which joins <code>rel</code> under
+<code>Root</code> and then checks that the result still has
+<code>Root</code> as a prefix — rejecting <code>../</code> escapes and
+absolute paths outside the root. The <code>.harvey/</code> subdirectory
+is created automatically and holds <code>knowledge.db</code>.</p>
+<p>All file I/O in command handlers goes through
+<code>ws.ReadFile</code>, <code>ws.WriteFile</code>,
+<code>ws.ListDir</code>, or <code>ws.MkdirAll</code>; direct
+<code>os.*</code> calls are not used for workspace paths.</p>
+<hr />
+<h2 id="conversation-model">Conversation model</h2>
+<h3 id="history-lifecycle">History lifecycle</h3>
+<pre><code>startup
+  └─ system message  ← HARVEY.md (after ExpandDynamicSections)
+  └─ user message    ← [pinned context] if PinnedContext != &quot;&quot;
+
+each turn
+  user types input
+  └─ AddMessage(&quot;user&quot;, input)
+  └─ Client.Chat(History, &amp;buf)  ← full History sent every time
+  └─ AddMessage(&quot;assistant&quot;, buf.String())
+
+/clear
+  └─ History reset to [system message, pinned context message]
+
+/summarize
+  └─ History + summarizePrompt → LLM
+  └─ ClearHistory()             ← re-injects system + pinned
+  └─ AddMessage(&quot;user&quot;, &quot;[Conversation summary]\n\n&quot;+summary)</code></pre>
+<h3 id="pinned-context-pinnedcontext">Pinned context
+(<code>PinnedContext</code>)</h3>
+<p><code>PinnedContext</code> is a free-form string managed by
+<code>/context add|show|clear</code>. <code>add</code> appends
+(newline-separated); there is always at most one
+<code>[pinned context]</code> message in <code>History</code> —
+subsequent <code>add</code> calls update it in-place.
+<code>ClearHistory</code> re-injects it automatically, so it also
+survives <code>/summarize</code>.</p>
+<h3 id="dynamic-system-prompt-expanddynamicsections">Dynamic system
+prompt (<code>ExpandDynamicSections</code>)</h3>
+<p><code>LoadHarveyMD</code> reads <code>HARVEY.md</code> from the
+process working directory. <code>ExpandDynamicSections</code> is then
+called before the system message is injected, replacing these markers
+with live data:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Marker</th>
+<th>Replaced with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;!-- @date --&gt;</code></td>
+<td>Current date (<code>YYYY-MM-DD</code>)</td>
+</tr>
+<tr>
+<td><code>&lt;!-- @files --&gt;</code></td>
+<td>Workspace file tree (hidden dirs excluded)</td>
+</tr>
+<tr>
+<td><code>&lt;!-- @git-status --&gt;</code></td>
+<td><code>git status --short</code>, or
+<code>(not a git repository)</code></td>
+</tr>
+</tbody>
+</table>
+<p>Example <code>HARVEY.md</code> header:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>You are a coding assistant for this Go project.</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>Date: <span class="co">&lt;!-- @date --&gt;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>Workspace:</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @files --&gt;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>Git:</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @git-status --&gt;</span></span></code></pre></div>
+<hr />
+<h2 id="slash-command-system-commands.go">Slash-command system
+(<code>commands.go</code>)</h2>
+<p>Commands are registered in <code>registerCommands()</code> as
+<code>map[string]*Command</code>. Each <code>Command</code> has a
+<code>Handler func(a *Agent, args []string, out io.Writer) error</code>.
+The REPL calls <code>dispatch(input, out)</code> for any line beginning
+with <code>/</code>.</p>
+<h3 id="foundation-commands">Foundation commands</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/help</code></td>
+<td>List all commands</td>
+</tr>
+<tr>
+<td><code>/status</code></td>
+<td>Show backend, history length, workspace, KB, recording state</td>
+</tr>
+<tr>
+<td><code>/clear</code></td>
+<td>Reset history (re-injects system prompt + pinned context)</td>
+</tr>
+<tr>
+<td><code>/exit</code> <code>/quit</code> <code>/bye</code></td>
+<td>End the session</td>
+</tr>
+</tbody>
+</table>
+<h3 id="backend-commands">Backend commands</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/ollama start\|stop\|status\|list\|use MODEL</code></td>
+<td>Control the local Ollama service</td>
+</tr>
+<tr>
+<td><code>/publicai connect\|disconnect\|status</code></td>
+<td>Manage the publicai.co connection</td>
+</tr>
+</tbody>
+</table>
+<h3 id="knowledge-base-commands">Knowledge-base commands</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/kb status</code></td>
+<td>Print project/concept/observation summary</td>
+</tr>
+<tr>
+<td><code>/kb project list\|add NAME [DESC]\|use ID</code></td>
+<td>Manage projects</td>
+</tr>
+<tr>
+<td><code>/kb observe [KIND] TEXT</code></td>
+<td>Record a note, finding, decision, question, or hypothesis</td>
+</tr>
+<tr>
+<td><code>/kb concept list\|add NAME [DESC]</code></td>
+<td>Manage shared concepts</td>
+</tr>
+</tbody>
+</table>
+<h3 id="session-recording">Session recording</h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/record start [FILE]</code></td>
+<td>Begin writing turns to a Markdown file</td>
+</tr>
+<tr>
+<td><code>/record stop</code></td>
+<td>Close the recording</td>
+</tr>
+<tr>
+<td><code>/record status</code></td>
+<td>Show recording path or “not recording”</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tier-1-file-operations">Tier 1 — file operations</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/read FILE [FILE...]</code></td>
+<td>Read workspace files into conversation context</td>
+</tr>
+<tr>
+<td><code>/write PATH</code></td>
+<td>Write last assistant reply (or its first code block) to a file</td>
+</tr>
+<tr>
+<td><code>/run COMMAND [ARGS...]</code></td>
+<td>Run a shell command; inject stdout+stderr into context (8 KB
+cap)</td>
+</tr>
+</tbody>
+</table>
+<p>Context messages injected by these commands use a
+<code>[context: /cmd args]</code> label so the model and user can
+distinguish injected context from typed conversation.</p>
+<h3 id="tier-2-code-assistance">Tier 2 — code assistance</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/search PATTERN [PATH]</code></td>
+<td>Regexp search across workspace files (100-match cap,
+binary-safe)</td>
+</tr>
+<tr>
+<td><code>/git status\|diff\|log\|show\|blame [ARGS...]</code></td>
+<td>Read-only git commands; inject output into context</td>
+</tr>
+<tr>
+<td><code>/apply</code></td>
+<td>Detect fenced blocks tagged with filenames and write them to the
+workspace</td>
+</tr>
+</tbody>
+</table>
+<p><code>/apply</code> uses <code>findTaggedBlocks</code> which
+recognises fence lines like <code>```go harvey/spinner.go</code>
+(language + path) or <code>```README.md</code> (path only). It prompts
+for a single Y/n confirmation before writing any files, reading from
+<code>a.In</code> so the prompt is testable.</p>
+<h3 id="tier-3-session-quality">Tier 3 — session quality</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/summarize</code></td>
+<td>Condense history into a summary via the LLM; replaces full
+history</td>
+</tr>
+<tr>
+<td><code>/context add TEXT...</code></td>
+<td>Append text to pinned context (survives <code>/clear</code>)</td>
+</tr>
+<tr>
+<td><code>/context show</code></td>
+<td>Print current pinned context</td>
+</tr>
+<tr>
+<td><code>/context clear</code></td>
+<td>Remove pinned context from agent and history</td>
+</tr>
+</tbody>
+</table>
+<h3 id="file-utility">File utility</h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/files [PATH]</code></td>
+<td>List workspace directory entries</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="knowledge-base-knowledge.go">Knowledge base
+(<code>knowledge.go</code>)</h2>
+<p>The SQLite database lives at
+<code>&lt;workspace&gt;/.harvey/knowledge.db</code> and is opened with
+<code>MaxOpenConns(1)</code> and WAL mode. The schema has five
+tables:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Table</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>projects</code></td>
+<td>One row per named project with status (<code>active</code>,
+<code>paused</code>, <code>concluded</code>)</td>
+</tr>
+<tr>
+<td><code>observations</code></td>
+<td>Timestamped notes attached to a project; kinds: <code>note</code>,
+<code>finding</code>, <code>decision</code>, <code>question</code>,
+<code>hypothesis</code></td>
+</tr>
+<tr>
+<td><code>concepts</code></td>
+<td>Named terms that can span projects</td>
+</tr>
+<tr>
+<td><code>project_concepts</code></td>
+<td>M:N link between projects and concepts</td>
+</tr>
+<tr>
+<td><code>observation_concepts</code></td>
+<td>M:N link between observations and concepts</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>project_summary</code> view joins projects with their concept
+names for display.</p>
+<p><strong>Important:</strong> <code>Summary()</code> drains all project
+rows into a slice and closes the cursor before calling
+<code>recentObservations</code> for each project, avoiding a deadlock
+that would occur if the outer <code>rows</code> cursor were held open
+while a second query tried to acquire the single allowed connection.</p>
+<hr />
+<h2 id="session-recording-recorder.go">Session recording
+(<code>recorder.go</code>)</h2>
+<p><code>Recorder</code> writes a Markdown file with a header (started
+timestamp, model, workspace) followed by numbered
+<code>### Turn N</code> sections. It is started with
+<code>/record start [FILE]</code> and closed on
+<code>/record stop</code> or clean session exit.
+<code>DefaultSessionPath</code> generates a timestamped filename:
+<code>&lt;workspace&gt;/harvey-session-YYYYMMDD-HHMMSS.md</code>.</p>
+<hr />
+<h2 id="spinner-spinner.go">Spinner (<code>spinner.go</code>)</h2>
+<p>The <code>Spinner</code> runs a background goroutine that:</p>
+<ol type="1">
+<li>Rotates braille animation frames every 100 ms.</li>
+<li>Cycles through 50 Edward Lear–themed waiting messages every 4
+s.</li>
+<li>Displays a live timer via <code>timerLabel(elapsed)</code>:
+<ul>
+<li>No estimate available: <code>[8s]</code></li>
+<li>Estimate available, still under: <code>[8s / ~12s]</code></li>
+<li>Elapsed exceeds estimate: <code>[13s]</code> (estimate dropped to
+avoid showing overrun)</li>
+</ul></li>
+</ol>
+<p><code>newSpinner(out, estimate)</code> accepts a
+<code>time.Duration</code> estimate (0 = none) computed by
+<code>agent.estimateDuration()</code> from the rolling stat history.</p>
+<hr />
+<h2 id="backends">Backends</h2>
+<h3 id="ollamaclient-ollama.go">OllamaClient
+(<code>ollama.go</code>)</h3>
+<p>Posts to <code>/api/chat</code> with <code>stream: true</code>. The
+final chunk with <code>done: true</code> carries
+<code>eval_count</code>, <code>eval_duration</code>,
+<code>prompt_eval_count</code>, and <code>prompt_eval_duration</code>
+(all in nanoseconds). These are parsed into <code>ChatStats</code>;
+<code>TokensPerSec</code> is computed as
+<code>eval_count / (eval_duration / 1e9)</code>.</p>
+<h3 id="publicaiclient-publicai.go">PublicAIClient
+(<code>publicai.go</code>)</h3>
+<p>Posts to <code>/v1/chat/completions</code> (OpenAI-compatible SSE).
+Streams delta content from <code>choices[].delta.content</code>. Token
+counts are not available in the SSE stream; <code>ChatStats</code>
+carries only <code>Elapsed</code>.</p>
+<h3 id="backend-selection-at-startup-terminal.go">Backend selection at
+startup (<code>terminal.go</code>)</h3>
+<ol type="1">
+<li>Probe Ollama at the configured URL.</li>
+<li>If reachable: list models; auto-select if only one, otherwise
+present a menu.</li>
+<li>If unreachable: offer to start <code>ollama serve</code>, then
+retry.</li>
+<li>If Ollama unavailable or declined: offer publicai.co (requires
+<code>PUBLICAI_API_KEY</code> environment variable).</li>
+<li>If nothing selected: Harvey starts without a backend; commands that
+need one (<code>/summarize</code>, chat turns) print a prompt to connect
+first.</li>
+</ol>
+<hr />
+<h2 id="test-coverage">Test coverage</h2>
+<p>Tests live alongside source in six files:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>workspace_test.go</code></td>
+<td>Path sandboxing, escape detection, file I/O</td>
+</tr>
+<tr>
+<td><code>harvey_test.go</code></td>
+<td><code>ChatStats.Format</code>, rolling stats, duration estimation,
+<code>AddMessage</code>, <code>ClearHistory</code></td>
+</tr>
+<tr>
+<td><code>spinner_test.go</code></td>
+<td><code>timerLabel</code> boundary conditions</td>
+</tr>
+<tr>
+<td><code>recorder_test.go</code></td>
+<td>Session file write round-trip, path format</td>
+</tr>
+<tr>
+<td><code>knowledge_test.go</code></td>
+<td>Full KB CRUD, duplicate handling, links, <code>Summary</code></td>
+</tr>
+<tr>
+<td><code>commands_test.go</code></td>
+<td><code>extractCodeBlock</code>, <code>/read</code>,
+<code>/write</code>, <code>/run</code></td>
+</tr>
+<tr>
+<td><code>tier2_test.go</code></td>
+<td>Helpers (<code>isBinary</code>, <code>looksLikePath</code>,
+<code>findTaggedBlocks</code>), <code>/search</code>, <code>/git</code>,
+<code>/apply</code></td>
+</tr>
+<tr>
+<td><code>tier3_test.go</code></td>
+<td>Mock client, <code>/summarize</code>, <code>/context</code>,
+<code>ExpandDynamicSections</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>mockLLMClient</code> in <code>tier3_test.go</code>
+satisfies the <code>LLMClient</code> interface with a configurable reply
+string and optional error, making it available for any future test that
+needs an LLM without a live server.</p>
+<hr />
+<h2 id="roadmap">Roadmap</h2>
+<p>The commands implemented so far map to three tiers of increasing
+capability. The following outlines the thinking behind each tier and
+where the natural next steps lie.</p>
+<h3 id="tier-1-file-operations-implemented">Tier 1 — file operations
+(implemented)</h3>
+<p>The minimum for a coding assistant: Harvey must be able to
+<em>see</em> code and <em>produce</em> files.</p>
+<ul>
+<li><code>/read</code> brings code into context.</li>
+<li><code>/run</code> closes the feedback loop (build errors, test
+output).</li>
+<li><code>/write</code> turns suggestions into actual files without
+copy-pasting.</li>
+</ul>
+<h3 id="tier-2-code-navigation-implemented">Tier 2 — code navigation
+(implemented)</h3>
+<p>Makes the workspace explorable without leaving Harvey.</p>
+<ul>
+<li><code>/search</code> finds symbols and patterns across the whole
+codebase.</li>
+<li><code>/git</code> gives Harvey awareness of what has changed.</li>
+<li><code>/apply</code> auto-dispatches multi-file code suggestions,
+making Harvey feel agentic rather than advisory.</li>
+</ul>
+<h3 id="tier-3-session-quality-implemented">Tier 3 — session quality
+(implemented)</h3>
+<p>Keeps long sessions useful and the system prompt rich.</p>
+<ul>
+<li><code>/summarize</code> prevents context-window exhaustion on long
+refactoring sessions.</li>
+<li><code>/context</code> pins invariants (target platform, coding
+conventions, open constraints) that should frame every response.</li>
+<li>Dynamic HARVEY.md sections give the model a live snapshot of the
+project at startup with no manual maintenance.</li>
+</ul>
+<h3 id="potential-future-directions">Potential future directions</h3>
+<p><strong>Diff/patch workflow</strong> — After <code>/apply</code>, run
+a <code>git diff</code> and offer a one-step undo
+(<code>/unapply</code>). The current write is destructive; a patch-based
+apply would stage changes and let the user review them with
+<code>git diff --staged</code> before committing.</p>
+<p><strong>Multi-file context loading</strong> — <code>/read</code>
+currently requires explicit file names. A
+<code>/context load-dir PATH [GLOB]</code> variant that recursively adds
+all matching files (e.g. <code>*.go</code>) would reduce friction when
+reviewing a package or subsystem.</p>
+<p><strong>Prompt templates</strong> — A <code>/template use NAME</code>
+command backed by a <code>.harvey/templates/</code> directory would let
+teams share structured prompts for common tasks (code review, test
+generation, commit message drafting) without repeating them each
+session.</p>
+<p><strong>Knowledge-base auto-recording</strong> — After each turn,
+Harvey could optionally extract decisions or findings from the assistant
+reply and offer to record them as observations in the KB
+(<code>/kb observe</code> today requires manual invocation).</p>
+<p><strong>Token budget awareness</strong> — The Ollama done-packet
+already returns <code>prompt_eval_count</code>. Harvey could warn when
+the accumulated history is approaching the model’s context window and
+suggest <code>/summarize</code> before the model starts silently
+truncating earlier context.</p>
+<p><strong>Model benchmarking</strong> — Since Harvey tracks
+<code>TokensPerSec</code> per turn, a <code>/bench</code> command could
+run a fixed prompt against each installed Ollama model and display a
+comparison table, helping users pick the right model for
+latency-vs-quality tradeoffs on their hardware.</p>
+<p><strong>Headless / pipe mode</strong> — A non-interactive
+<code>harvey --run SCRIPT</code> mode that reads slash commands from a
+file would enable Harvey to be driven from shell scripts or CI
+workflows, applying the same workspace-sandboxed agent loop without a
+human at the terminal.</p>
+</section>
+</body>
+</html>

@@ -46,8 +46,13 @@ type ollamaChatReq struct {
 }
 
 type ollamaChatResp struct {
-	Message ollamaMsg `json:"message"`
-	Done    bool      `json:"done"`
+	Message            ollamaMsg `json:"message"`
+	Done               bool      `json:"done"`
+	TotalDuration      int64     `json:"total_duration"`       // nanoseconds
+	PromptEvalCount    int       `json:"prompt_eval_count"`    // tokens in prompt
+	PromptEvalDuration int64     `json:"prompt_eval_duration"` // nanoseconds
+	EvalCount          int       `json:"eval_count"`           // tokens generated
+	EvalDuration       int64     `json:"eval_duration"`        // nanoseconds
 }
 
 type ollamaTagsResp struct {
@@ -56,32 +61,35 @@ type ollamaTagsResp struct {
 	} `json:"models"`
 }
 
-// Chat sends messages to Ollama and streams the response tokens to out.
-func (o *OllamaClient) Chat(ctx context.Context, messages []Message, out io.Writer) error {
+// Chat sends messages to Ollama, streams the response tokens to out, and
+// returns timing and token-count stats from the done packet.
+func (o *OllamaClient) Chat(ctx context.Context, messages []Message, out io.Writer) (ChatStats, error) {
 	msgs := make([]ollamaMsg, len(messages))
 	for i, m := range messages {
 		msgs[i] = ollamaMsg{Role: m.Role, Content: m.Content}
 	}
 	body, err := json.Marshal(ollamaChatReq{Model: o.model, Messages: msgs, Stream: true})
 	if err != nil {
-		return err
+		return ChatStats{}, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/chat", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return ChatStats{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	start := time.Now()
 	resp, err := o.http.Do(req)
 	if err != nil {
-		return err
+		return ChatStats{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("ollama: HTTP %d: %s", resp.StatusCode, b)
+		return ChatStats{}, fmt.Errorf("ollama: HTTP %d: %s", resp.StatusCode, b)
 	}
 
+	var stats ChatStats
 	sc := bufio.NewScanner(resp.Body)
 	for sc.Scan() {
 		var chunk ollamaChatResp
@@ -90,10 +98,16 @@ func (o *OllamaClient) Chat(ctx context.Context, messages []Message, out io.Writ
 		}
 		fmt.Fprint(out, chunk.Message.Content)
 		if chunk.Done {
+			stats.PromptTokens = chunk.PromptEvalCount
+			stats.ReplyTokens = chunk.EvalCount
+			if chunk.EvalDuration > 0 {
+				stats.TokensPerSec = float64(chunk.EvalCount) / (float64(chunk.EvalDuration) / 1e9)
+			}
 			break
 		}
 	}
-	return sc.Err()
+	stats.Elapsed = time.Since(start)
+	return stats, sc.Err()
 }
 
 // Models returns the names of models installed on the Ollama server.

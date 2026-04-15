@@ -54,6 +54,14 @@ func (a *Agent) prompt() string {
  */
 func (a *Agent) Run(out io.Writer) error {
 	a.registerCommands()
+	defer func() {
+		if a.Recorder != nil {
+			path := a.Recorder.Path()
+			a.Recorder.Close()
+			a.Recorder = nil
+			fmt.Fprintf(out, dim("  Session saved to %s\n"), path)
+		}
+	}()
 	reader := bufio.NewReader(os.Stdin)
 
 	// Banner
@@ -71,8 +79,9 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// System prompt
 	if a.Config.SystemPrompt != "" {
+		expanded := ExpandDynamicSections(a.Config.SystemPrompt, a.Workspace)
 		fmt.Fprintln(out, green("✓")+" Loaded HARVEY.md as system prompt")
-		a.AddMessage("system", a.Config.SystemPrompt)
+		a.AddMessage("system", expanded)
 	} else {
 		fmt.Fprintln(out, dim("  No HARVEY.md found in current directory"))
 	}
@@ -129,14 +138,25 @@ func (a *Agent) Run(out io.Writer) error {
 
 		var buf strings.Builder
 		ctx := context.Background()
-		if chatErr := a.Client.Chat(ctx, a.History, io.MultiWriter(out, &buf)); chatErr != nil {
-			fmt.Fprintf(out, "\n"+red("Error: ")+"%v\n", chatErr)
+		sp := newSpinner(out, a.estimateDuration())
+		stats, chatErr := a.Client.Chat(ctx, a.History, &buf)
+		sp.stop()
+		if chatErr != nil {
+			fmt.Fprintf(out, red("Error: ")+"%v\n", chatErr)
 			// Remove the failed user message so history stays consistent.
 			a.History = a.History[:len(a.History)-1]
 			continue
 		}
+		fmt.Fprint(out, buf.String())
 		fmt.Fprintln(out)
+		fmt.Fprintln(out, dim("  "+stats.Format()))
+		a.recordStats(stats)
 		a.AddMessage("assistant", buf.String())
+		if a.Recorder != nil {
+			if recErr := a.Recorder.RecordTurn(input, buf.String()); recErr != nil {
+				fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
+			}
+		}
 	}
 
 	fmt.Fprintln(out, dim("Goodbye."))

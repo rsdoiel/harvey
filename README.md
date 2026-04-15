@@ -2,6 +2,8 @@
 
 # harvey
 
+![Harvey](media/harvey.svg)
+
 Harvey is an agent similar to Claude Code but written in Go and designed to use Ollama server to access large language models locally or if configurated access [publicai.co](https://publicai.co) and the Abertus model. It is a terminal based application.
 
 ## Release Notes

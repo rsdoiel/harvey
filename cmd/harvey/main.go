@@ -3,39 +3,17 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	harvey "github.com/rsdoiel/harvey"
 )
 
-const helpText = `{app_name} - a terminal agent for local large language models
-
-USAGE:
-  {app_name} [OPTIONS]
-
-OPTIONS:
-  -h, --help          display this help message
-  -v, --version       display version information
-  -l, --license       display license information
-  -m, --model MODEL   Ollama model to use on startup
-      --ollama URL    Ollama base URL (default: http://localhost:11434)
-  -w, --workdir DIR   workspace directory (default: current directory)
-
-ENVIRONMENT:
-  PUBLICAI_API_KEY    API key for publicai.co
-
-DESCRIPTION:
-  {app_name} looks for HARVEY.md in the current directory and uses it as a
-  system prompt. It then connects to a local Ollama server or publicai.co
-  and starts an interactive chat session.
-
-  All file I/O is constrained to the workspace directory (--workdir or ".").
-  A knowledge base is stored at <workdir>/.harvey/knowledge.db and is created
-  automatically on first run.
-
-  Type /help inside the session for available slash commands.
-`
-
 func main() {
+	appName := filepath.Base(os.Args[0])
+	version, releaseDate, releaseHash := harvey.Version, harvey.ReleaseDate, harvey.ReleaseHash
+	licenseText, fmtHelp, helpText := harvey.LicenseText, harvey.FmtHelp, harvey.HelpText
+	
+
 	cfg := harvey.DefaultConfig()
 
 	for i := 1; i < len(os.Args); i++ {
@@ -49,14 +27,14 @@ func main() {
 			return os.Args[i]
 		}
 		switch arg {
-		case "-h", "--help":
-			fmt.Print(harvey.FmtHelp(helpText, "harvey", harvey.Version, harvey.ReleaseDate, harvey.ReleaseHash))
+		case "-h", "-help", "--help":
+			fmt.Print(fmtHelp(helpText, appName, version, releaseDate, releaseHash))
 			os.Exit(0)
 		case "-v", "--version":
-			fmt.Printf("%s %s (released %s, %s)\n", "harvey", harvey.Version, harvey.ReleaseDate, harvey.ReleaseHash)
+			fmt.Printf("%s %s (released %s, %s)\n", appName, version, releaseDate, releaseHash)
 			os.Exit(0)
 		case "-l", "--license":
-			fmt.Print(harvey.LicenseText)
+			fmt.Print(licenseText)
 			os.Exit(0)
 		case "-m", "--model":
 			cfg.OllamaModel = next()
