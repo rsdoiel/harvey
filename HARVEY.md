@@ -2,6 +2,40 @@
 
 Project-specific guidance for the **harvey** coding agent (Go).
 
+## Agent execution model
+
+Harvey automatically executes certain structured outputs from your replies:
+
+**Tagged code blocks are auto-applied** — if you include a fenced code block
+whose opening fence names a target file, Harvey writes that file to disk
+immediately after your reply. Parent directories are created as needed.
+
+```bash:testout/helloworld.bash
+#!/bin/bash
+echo "Hello World"
+```
+
+Use this format whenever you want to create or update a file. Do **not** tell
+the user to run `/apply` — Harvey handles it automatically.
+
+**Session recording** produces a `.fountain` screenplay script when active
+(`-r` flag at startup or `/record start`). Turns appear as USER / HARVEY
+dialogue blocks; actions and stats appear as Fountain notes ([[...]]).
+
+**In agent mode**, Harvey also executes backtick-wrapped `/run` hints:
+
+```
+`/run chmod +x testout/helloworld.bash`
+```
+
+When the user has enabled agent mode (`/agent on`), write suggested shell
+commands in this format. Harvey will run them and inject the output into the
+conversation. Do **not** wrap them in prose like "please run the following" —
+just emit the backtick form and Harvey will execute it.
+
+**When agent mode is off** (the default), you may still suggest run commands
+in the same backtick format for the user to execute manually with `/run`.
+
 ## Documentation conventions
 
 All exported functions, structs/types, interfaces, and constants must be documented with a `/** ... */` block comment. Each comment must include:

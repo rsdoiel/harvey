@@ -1,6 +1,8 @@
 package harvey
 
 import (
+	"bufio"
+	"context"
 	"strings"
 	"testing"
 )
@@ -289,5 +291,111 @@ func TestCmdRun_truncation(t *testing.T) {
 	content := a.History[0].Content
 	if !strings.Contains(content, "output truncated") {
 		t.Error("expected truncation notice in history message")
+	}
+}
+
+// ─── extractRunSuggestions ────────────────────────────────────────────────────
+
+func TestExtractRunSuggestions_none(t *testing.T) {
+	cmds := extractRunSuggestions("No commands here.")
+	if len(cmds) != 0 {
+		t.Errorf("expected 0 suggestions, got %d", len(cmds))
+	}
+}
+
+func TestExtractRunSuggestions_single(t *testing.T) {
+	cmds := extractRunSuggestions("First, run `/run mkdir testout` to create the directory.")
+	if len(cmds) != 1 {
+		t.Fatalf("expected 1 suggestion, got %d", len(cmds))
+	}
+	if len(cmds[0]) != 2 || cmds[0][0] != "mkdir" || cmds[0][1] != "testout" {
+		t.Errorf("unexpected command: %v", cmds[0])
+	}
+}
+
+func TestExtractRunSuggestions_multiple(t *testing.T) {
+	text := "Run `/run chmod +x testout/hello.bash` then `/run ./testout/hello.bash`."
+	cmds := extractRunSuggestions(text)
+	if len(cmds) != 2 {
+		t.Fatalf("expected 2 suggestions, got %d", len(cmds))
+	}
+	if cmds[0][0] != "chmod" {
+		t.Errorf("first command = %v, want chmod ...", cmds[0])
+	}
+	if cmds[1][0] != "./testout/hello.bash" {
+		t.Errorf("second command = %v, want ./testout/hello.bash", cmds[1])
+	}
+}
+
+// ─── autoExecuteReply ─────────────────────────────────────────────────────────
+
+// newReader wraps s in a bufio.Reader — used to supply "y\n" responses to
+// interactive prompts in tests.
+func newReader(s string) *bufio.Reader {
+	return bufio.NewReader(strings.NewReader(s))
+}
+
+func TestAutoExecuteReply_writesTaggedBlocks(t *testing.T) {
+	a := newTestAgent(t)
+	// Empty input → Enter → default "yes" for the confirmation prompt.
+	reply := "Here is your script:\n\n```bash:testout/hello.bash\n#!/bin/bash\necho hi\n```\n"
+
+	var out strings.Builder
+	a.autoExecuteReply(reply, &out, newReader(""), context.Background())
+
+	data, err := a.Workspace.ReadFile("testout/hello.bash")
+	if err != nil {
+		t.Fatalf("file not created: %v", err)
+	}
+	if !strings.Contains(string(data), "echo hi") {
+		t.Errorf("unexpected file content: %q", data)
+	}
+	if !strings.Contains(out.String(), "✓ wrote") {
+		t.Error("expected write confirmation in output")
+	}
+}
+
+func TestAutoExecuteReply_skipBlock(t *testing.T) {
+	a := newTestAgent(t)
+	reply := "```bash:testout/skip.bash\necho skip\n```\n"
+
+	var out strings.Builder
+	// "n" → skip
+	a.autoExecuteReply(reply, &out, newReader("n\n"), context.Background())
+
+	if _, err := a.Workspace.ReadFile("testout/skip.bash"); err == nil {
+		t.Error("expected file NOT to be created when user chose 'n'")
+	}
+}
+
+func TestAutoExecuteReply_noRunWithoutAgentMode(t *testing.T) {
+	a := newTestAgent(t)
+	a.AgentMode = false
+	reply := "Run `/run echo hello` to test."
+
+	var out strings.Builder
+	a.autoExecuteReply(reply, &out, newReader(""), context.Background())
+
+	// AgentMode off → no history messages from auto-run.
+	if len(a.History) != 0 {
+		t.Errorf("expected no auto-run in default mode, got %d history messages", len(a.History))
+	}
+}
+
+func TestAutoExecuteReply_runsCommandsInAgentMode(t *testing.T) {
+	a := newTestAgent(t)
+	a.AgentMode = true
+	reply := "Run `/run echo hello` to test."
+
+	var out strings.Builder
+	// "y" → confirm run
+	a.autoExecuteReply(reply, &out, newReader("y\n"), context.Background())
+
+	// AgentMode on → cmdRunCtx injected output into history.
+	if len(a.History) != 1 {
+		t.Fatalf("expected 1 history message from auto-run, got %d", len(a.History))
+	}
+	if !strings.Contains(a.History[0].Content, "hello") {
+		t.Error("expected command output in history")
 	}
 }

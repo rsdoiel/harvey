@@ -1,141 +1,396 @@
 package harvey
 
+// recorder.go — writes Harvey sessions as Fountain screenplay source files.
+//
+// The fountain module (github.com/rsdoiel/fountain) provides Element and its
+// type constants as the structural vocabulary. Because Element.String() is a
+// display renderer (adds indentation/word-wrap for print), we use our own
+// fountainSrc() helper to emit raw Fountain source syntax that can be round-
+// tripped by fountain.ParseFile().
+//
+// Scene structure
+// ──────────────
+//   INT. HARVEY AND {USER} TALKING {TIMESTAMP}   ← one per chat turn
+//
+//       Harvey and {USER} are in chat mode. …    ← action block (state)
+//
+//       {USER}
+//       (user's input text)
+//
+//       HARVEY
+//       Forwarding to {MODEL}.
+//
+//       {MODEL}
+//       (LLM reply)
+//
+//       [[stats: …]]                              ← Fountain note
+//
+//   INT. AGENT MODE {TIMESTAMP}                  ← one per agent-action group
+//
+//       Harvey proposes to write 2 file(s)…      ← action block (proposal)
+//
+//       HARVEY
+//       Write testout/hello.bash (52 bytes)?
+//
+//       {USER}
+//       (yes)
+//
+//       [[write: testout/hello.bash — ok]]
+
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/rsdoiel/fountain"
 )
 
-/** Recorder writes a Harvey session to a Markdown file for later analysis.
- * Each exchange is appended as a numbered turn with clearly delimited
- * User and Harvey sections.
- *
- * Markdown structure:
- *
- *   # Harvey Session
- *
- *   - **Started:** 2026-04-15 14:23:00
- *   - **Model:** Ollama (llama3:latest)
- *   - **Workspace:** /home/user/project
- *
- *   ---
- *
- *   ### Turn 1
- *
- *   **User**
- *
- *   What is the capital of France?
- *
- *   **Harvey**
- *
- *   The capital of France is Paris.
- *
- *   ---
- *
- * Example:
- *   r, err := NewRecorder("session.md", "Ollama (llama3)", "/home/user/proj")
- *   if err != nil { ... }
- *   defer r.Close()
- *   r.RecordTurn("Hello", "Hi there!")
- */
-type Recorder struct {
-	f    *os.File
-	path string
-	turn int
+// fountainSrc converts an Element to raw Fountain source text (no indentation).
+// This is intentionally different from Element.String(), which is a display
+// renderer and adds screenplay indentation unsuitable for source files.
+func fountainSrc(elem *fountain.Element) string {
+	switch elem.Type {
+	case fountain.TitlePageType:
+		return elem.Name + ": " + elem.Content
+	case fountain.SceneHeadingType:
+		return strings.ToUpper(strings.TrimSpace(elem.Content))
+	case fountain.ActionType:
+		return strings.TrimSpace(elem.Content)
+	case fountain.CharacterType:
+		return strings.ToUpper(strings.TrimSpace(elem.Content))
+	case fountain.ParentheticalType:
+		s := strings.TrimSpace(elem.Content)
+		if !strings.HasPrefix(s, "(") {
+			s = "(" + s + ")"
+		}
+		return s
+	case fountain.DialogueType:
+		return strings.TrimSpace(elem.Content)
+	case fountain.NoteType:
+		return "[[" + strings.TrimSpace(elem.Content) + "]]"
+	case fountain.TransitionType:
+		return strings.TrimSpace(elem.Content)
+	default:
+		return strings.TrimSpace(elem.Content)
+	}
 }
 
-/** NewRecorder creates (or truncates) the file at path, writes the session
- * header, and returns a ready-to-use Recorder.
- *
- * Parameters:
- *   path      (string) — file path for the Markdown session log.
- *   model     (string) — human-readable model/backend identifier.
- *   workspace (string) — absolute path of the Harvey workspace root.
- *
- * Returns:
- *   *Recorder — open recorder; caller must call Close() when done.
- *   error     — if the file cannot be created or the header cannot be written.
- *
- * Example:
- *   r, err := NewRecorder("harvey-session.md", "Ollama (llama3)", "/home/user/proj")
- */
+// Recorder writes a Harvey session to a Fountain screenplay source file,
+// using append-writes so in-progress sessions survive crashes.
+//
+// Three characters appear in the script:
+//   - USER    — the human operator (name from $USER env, ALL CAPS)
+//   - HARVEY  — the agent program
+//   - MODEL   — the LLM backend (model name, ALL CAPS, e.g. GEMMA4)
+//
+// Example:
+//
+//	r, err := NewRecorder("session.fountain", "Ollama (gemma4:latest)", "/home/user/proj")
+//	if err != nil { log.Fatal(err) }
+//	defer r.Close()
+//	r.RecordTurnWithStats("Hi", "Hello!", stats)
+//	r.StartAgentScene("Harvey proposes to write 1 file.")
+//	r.RecordAgentAction("write", "hello.bash", "yes", "ok")
+type Recorder struct {
+	f         *os.File
+	path      string
+	userName  string // from $USER, ALL CAPS
+	modelName string // LLM name, ALL CAPS
+	workspace string
+}
+
+// NewRecorder creates (or truncates) the Fountain file at path, writes the
+// title page and FADE IN:, and returns a ready-to-use Recorder.
+//
+// Parameters:
+//
+//	path      (string) — .fountain file path for the session script.
+//	model     (string) — backend string from Client.Name(), e.g. "Ollama (gemma4:latest)".
+//	workspace (string) — absolute path of the Harvey workspace root.
+//
+// Returns:
+//
+//	*Recorder — open recorder; caller must call Close() when done.
+//	error     — if the file cannot be created or the header cannot be written.
+//
+// Example:
+//
+//	r, err := NewRecorder("harvey-session.fountain", "Ollama (gemma4:latest)", "/home/user/proj")
 func NewRecorder(path, model, workspace string) (*Recorder, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("recorder: cannot create %s: %w", path, err)
 	}
-	r := &Recorder{f: f, path: path}
-	started := time.Now().Format("2006-01-02 15:04:05")
-	_, err = fmt.Fprintf(f,
-		"# Harvey Session\n\n- **Started:** %s\n- **Model:** %s\n- **Workspace:** %s\n\n---\n",
-		started, model, workspace,
-	)
-	if err != nil {
-		f.Close()
-		return nil, fmt.Errorf("recorder: write header: %w", err)
+
+	user := strings.ToUpper(os.Getenv("USER"))
+	if user == "" {
+		user = "OPERATOR"
 	}
+
+	r := &Recorder{
+		f:         f,
+		path:      path,
+		userName:  user,
+		modelName: extractModelName(model),
+		workspace: workspace,
+	}
+
+	// Title page (key: value pairs, no blank lines between them).
+	now := time.Now()
+	for _, elem := range []*fountain.Element{
+		{Type: fountain.TitlePageType, Name: "Title", Content: "Harvey Session"},
+		{Type: fountain.TitlePageType, Name: "Credit", Content: "Recorded by Harvey"},
+		{Type: fountain.TitlePageType, Name: "Author", Content: user},
+		{Type: fountain.TitlePageType, Name: "Date", Content: now.Format("2006-01-02 15:04:05")},
+		{Type: fountain.TitlePageType, Name: "Draft date", Content: now.Format("2006-01-02")},
+	} {
+		fmt.Fprintln(f, fountainSrc(elem))
+	}
+
+	// Blank line ends the title page, then opening transition.
+	fmt.Fprintln(f)
+	r.writeTransition("FADE IN:")
 	return r, nil
 }
 
-/** Path returns the file path this recorder is writing to.
- *
- * Returns:
- *   string — the file path passed to NewRecorder.
- *
- * Example:
- *   fmt.Println(r.Path()) // "/home/user/harvey-session.md"
- */
+// Path returns the file path this recorder is writing to.
+//
+// Returns:
+//
+//	string — the file path passed to NewRecorder.
+//
+// Example:
+//
+//	fmt.Println(r.Path()) // "/home/user/harvey-session.fountain"
 func (r *Recorder) Path() string { return r.path }
 
-/** RecordTurn appends one user/Harvey exchange to the session file as a
- * numbered turn section.
- *
- * Parameters:
- *   userInput    (string) — the user's raw input text.
- *   harveyReply  (string) — the assistant's complete response text.
- *
- * Returns:
- *   error — if the write fails.
- *
- * Example:
- *   err := r.RecordTurn("What is 2+2?", "2 + 2 = 4.")
- */
+// RecordTurn appends a chat turn without stats. See RecordTurnWithStats.
+//
+// Parameters:
+//
+//	userInput   (string) — the user's raw input text.
+//	harveyReply (string) — the LLM's complete response text.
+//
+// Returns:
+//
+//	error — if the write fails.
+//
+// Example:
+//
+//	err := r.RecordTurn("What is 2+2?", "2 + 2 = 4.")
 func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
-	r.turn++
-	_, err := fmt.Fprintf(r.f,
-		"\n### Turn %d\n\n**User**\n\n%s\n\n**Harvey**\n\n%s\n\n---\n",
-		r.turn, userInput, harveyReply,
-	)
-	return err
+	return r.RecordTurnWithStats(userInput, harveyReply, ChatStats{})
 }
 
-/** Close flushes and closes the session file. After Close, the Recorder
- * must not be used.
- *
- * Returns:
- *   error — if the file cannot be closed.
- *
- * Example:
- *   defer r.Close()
- */
+// RecordTurnWithStats appends a full chat turn as a Fountain scene.
+//
+// Scene structure:
+//
+//	INT. HARVEY AND {USER} TALKING {TIMESTAMP}
+//
+//	Harvey and {USER} are in chat mode. Model: {MODEL}. Workspace: {ws}.
+//
+//	{USER}
+//	(user's input)
+//
+//	HARVEY
+//	Forwarding to {MODEL}.
+//
+//	{MODEL}
+//	(LLM reply)
+//
+//	[[stats: …]]
+//
+// Parameters:
+//
+//	userInput   (string)    — the user's raw input text.
+//	harveyReply (string)    — the LLM's complete response text.
+//	stats       (ChatStats) — LLM call stats; omitted as a note when ReplyTokens == 0.
+//
+// Returns:
+//
+//	error — if the write fails.
+//
+// Example:
+//
+//	err := r.RecordTurnWithStats("Hello", "Hi!", stats)
+func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats ChatStats) error {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+
+	r.writeSceneHeading(fmt.Sprintf("INT. HARVEY AND %s TALKING %s", r.userName, ts))
+	r.writeAction(fmt.Sprintf(
+		"Harvey and %s are in chat mode. Model: %s. Workspace: %s.",
+		r.userName, r.modelName, r.workspace,
+	))
+	r.writeDialogue(r.userName, "", userInput)
+	r.writeDialogue("HARVEY", fmt.Sprintf("forwarding to %s", r.modelName), "")
+	r.writeDialogue(r.modelName, "", harveyReply)
+	if stats.ReplyTokens > 0 {
+		r.writeNote("stats: " + stats.Format())
+	}
+	return nil
+}
+
+// StartAgentScene opens a new INT. AGENT MODE scene with an action block
+// describing the proposed actions. Call this before the first RecordAgentAction
+// of a group.
+//
+// Parameters:
+//
+//	description (string) — one-sentence description of what Harvey proposes to do.
+//
+// Returns:
+//
+//	error — if the write fails.
+//
+// Example:
+//
+//	r.StartAgentScene("Harvey proposes to write 2 file(s) to the workspace.")
+func (r *Recorder) StartAgentScene(description string) error {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	r.writeSceneHeading(fmt.Sprintf("INT. AGENT MODE %s", ts))
+	r.writeAction(description)
+	return nil
+}
+
+// RecordAgentAction records one agent action as HARVEY proposing, USER
+// confirming, and a note with the outcome.
+//
+// Parameters:
+//
+//	kind       (string) — "write", "run", etc.
+//	target     (string) — file path or command line.
+//	userChoice (string) — "yes", "no", "all", or "quit".
+//	outcome    (string) — "ok", "skipped", "aborted", or "error: <msg>".
+//
+// Returns:
+//
+//	error — if the write fails.
+//
+// Example:
+//
+//	r.RecordAgentAction("write", "testout/hello.bash", "yes", "ok")
+func (r *Recorder) RecordAgentAction(kind, target, userChoice, outcome string) error {
+	// HARVEY proposes
+	proposal := fmt.Sprintf("%s %s", strings.Title(kind), target) //nolint:staticcheck
+	if kind == "write" {
+		proposal = fmt.Sprintf("Write %s?", target)
+	} else if kind == "run" {
+		proposal = fmt.Sprintf("Run: %s?", target)
+	}
+	r.writeDialogue("HARVEY", "", proposal)
+
+	// USER responds
+	r.writeDialogue(r.userName, userChoice, "")
+
+	// Outcome as a Fountain note
+	r.writeNote(fmt.Sprintf("%s: %s — %s", kind, target, outcome))
+	return nil
+}
+
+// Close writes THE END. and closes the session file.
+// After Close, the Recorder must not be used.
+//
+// Returns:
+//
+//	error — if the file cannot be closed.
+//
+// Example:
+//
+//	defer r.Close()
 func (r *Recorder) Close() error {
+	r.writeTransition("THE END.")
 	return r.f.Close()
 }
 
-/** DefaultSessionPath returns a timestamped default filename for a session
- * log in the given directory.
- *
- * Parameters:
- *   dir (string) — directory in which to place the file.
- *
- * Returns:
- *   string — path of the form "<dir>/harvey-session-YYYYMMDD-HHMMSS.md".
- *
- * Example:
- *   path := DefaultSessionPath("/home/user/project")
- *   // "/home/user/project/harvey-session-20260415-142300.md"
- */
+// DefaultSessionPath returns a timestamped default filename for a session
+// script in the given directory, using the .fountain extension.
+//
+// Parameters:
+//
+//	dir (string) — directory in which to place the file.
+//
+// Returns:
+//
+//	string — path of the form "<dir>/harvey-session-YYYYMMDD-HHMMSS.fountain".
+//
+// Example:
+//
+//	path := DefaultSessionPath("/home/user/project")
+//	// "/home/user/project/harvey-session-20260415-142300.fountain"
 func DefaultSessionPath(dir string) string {
 	ts := time.Now().Format("20060102-150405")
-	return fmt.Sprintf("%s/harvey-session-%s.md", dir, ts)
+	return fmt.Sprintf("%s/harvey-session-%s.fountain", dir, ts)
+}
+
+// ─── private write helpers ────────────────────────────────────────────────────
+
+// writeSceneHeading appends a scene heading preceded by two blank lines.
+func (r *Recorder) writeSceneHeading(content string) {
+	elem := &fountain.Element{Type: fountain.SceneHeadingType, Content: content}
+	fmt.Fprintf(r.f, "\n\n%s\n\n", fountainSrc(elem))
+}
+
+// writeAction appends an action (stage-direction) block followed by a blank line.
+func (r *Recorder) writeAction(content string) {
+	elem := &fountain.Element{Type: fountain.ActionType, Content: content}
+	fmt.Fprintf(r.f, "%s\n\n", fountainSrc(elem))
+}
+
+// writeDialogue appends a CHARACTER / (parenthetical) / dialogue block.
+// parenthetical and text may each be empty — empty strings are omitted.
+func (r *Recorder) writeDialogue(character, parenthetical, text string) {
+	charElem := &fountain.Element{Type: fountain.CharacterType, Content: character}
+	fmt.Fprintln(r.f, fountainSrc(charElem))
+	if parenthetical != "" {
+		paren := &fountain.Element{Type: fountain.ParentheticalType, Content: parenthetical}
+		fmt.Fprintln(r.f, fountainSrc(paren))
+	}
+	if text != "" {
+		diag := &fountain.Element{Type: fountain.DialogueType, Content: text}
+		fmt.Fprintln(r.f, fountainSrc(diag))
+	}
+	fmt.Fprintln(r.f) // blank line ends the dialogue block
+}
+
+// writeNote appends a Fountain note ([[...]]) followed by a blank line.
+func (r *Recorder) writeNote(content string) {
+	elem := &fountain.Element{Type: fountain.NoteType, Content: content}
+	fmt.Fprintf(r.f, "%s\n\n", fountainSrc(elem))
+}
+
+// writeTransition appends a transition line preceded by a blank line.
+func (r *Recorder) writeTransition(content string) {
+	elem := &fountain.Element{Type: fountain.TransitionType, Content: content}
+	fmt.Fprintf(r.f, "\n%s\n", fountainSrc(elem))
+}
+
+// extractModelName extracts a clean ALL-CAPS model identifier from a backend
+// name string returned by Client.Name().
+//
+// Examples:
+//
+//	"Ollama (gemma4:latest)"                 → "GEMMA4"
+//	"Ollama (MichelRosselli/apertus:latest)" → "APERTUS"
+//	"publicai.co (abertus)"                  → "ABERTUS"
+//	"none"                                   → "MODEL"
+func extractModelName(backend string) string {
+	// Extract content inside parentheses, if present.
+	if i := strings.Index(backend, "("); i >= 0 {
+		backend = strings.TrimSuffix(strings.TrimSpace(backend[i+1:]), ")")
+	}
+	// Strip version tag: "gemma4:latest" → "gemma4"
+	if i := strings.Index(backend, ":"); i >= 0 {
+		backend = backend[:i]
+	}
+	// Strip namespace prefix: "MichelRosselli/apertus" → "apertus"
+	if i := strings.LastIndex(backend, "/"); i >= 0 {
+		backend = backend[i+1:]
+	}
+	name := strings.ToUpper(strings.TrimSpace(backend))
+	if name == "" {
+		return "MODEL"
+	}
+	return name
 }

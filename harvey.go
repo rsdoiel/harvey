@@ -113,6 +113,7 @@ type Agent struct {
 	Recorder      *Recorder
 	In            io.Reader  // source for interactive prompts; defaults to os.Stdin
 	PinnedContext string     // persists across /clear; re-injected after system prompt
+	AgentMode     bool       // when true, auto-apply tagged blocks and auto-run extracted commands
 	commands      map[string]*Command
 	statHistory   []ChatStats // rolling window of recent turn stats
 }

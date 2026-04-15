@@ -9,6 +9,18 @@ import (
 // spinnerFrames are the braille animation frames for the spinner.
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
+// learColors is a palette of legible foreground colors cycled across the
+// Edward Lear messages. Bright variants (9x) are chosen so they read
+// clearly on both dark and light terminal backgrounds.
+var learColors = []func(string) string{
+	cyan,
+	yellow,
+	green,
+	magenta,
+	blue,
+	red,
+}
+
 // learMessages are whimsical waiting messages in the style of Edward Lear's
 // Book of Nonsense, displayed while the LLM is thinking.
 var learMessages = []string{
@@ -128,8 +140,12 @@ func (s *Spinner) run() {
 	defer frameTick.Stop()
 	defer msgTick.Stop()
 
+	colorMsg := func(idx int, msg string) string {
+		return learColors[idx%len(learColors)](msg)
+	}
+
 	// Draw initial frame immediately.
-	fmt.Fprintf(s.out, "\r%s %s %s", cyan(spinnerFrames[0]), dim(learMessages[0]), dim(s.timerLabel(0)))
+	fmt.Fprintf(s.out, "\r%s %s %s", cyan(spinnerFrames[0]), colorMsg(0, learMessages[0]), dim(s.timerLabel(0)))
 
 	for {
 		select {
@@ -144,7 +160,7 @@ func (s *Spinner) run() {
 			elapsed := time.Since(start)
 			fmt.Fprintf(s.out, "\r%s %s %s",
 				cyan(spinnerFrames[frameIdx]),
-				dim(learMessages[msgIdx]),
+				colorMsg(msgIdx, learMessages[msgIdx]),
 				dim(s.timerLabel(elapsed)),
 			)
 		}

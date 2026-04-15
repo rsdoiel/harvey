@@ -3,30 +3,36 @@ package harvey
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 )
 
 // ANSI escape codes for terminal styling.
 const (
-	ansiReset  = "\033[0m"
-	ansiBold   = "\033[1m"
-	ansiDim    = "\033[2m"
-	ansiGreen  = "\033[32m"
-	ansiYellow = "\033[33m"
-	ansiCyan   = "\033[36m"
-	ansiRed    = "\033[31m"
+	ansiReset   = "\033[0m"
+	ansiBold    = "\033[1m"
+	ansiDim     = "\033[2m"
+	ansiGreen   = "\033[32m"
+	ansiYellow  = "\033[33m"
+	ansiCyan    = "\033[36m"
+	ansiRed     = "\033[31m"
+	ansiMagenta = "\033[35m"
+	ansiBlue    = "\033[34m"
 	sep        = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 )
 
-func bold(s string) string   { return ansiBold + s + ansiReset }
-func dim(s string) string    { return ansiDim + s + ansiReset }
-func green(s string) string  { return ansiGreen + s + ansiReset }
-func yellow(s string) string { return ansiYellow + s + ansiReset }
-func red(s string) string    { return ansiRed + s + ansiReset }
-func cyan(s string) string   { return ansiCyan + s + ansiReset }
+func bold(s string) string    { return ansiBold + s + ansiReset }
+func dim(s string) string     { return ansiDim + s + ansiReset }
+func green(s string) string   { return ansiGreen + s + ansiReset }
+func yellow(s string) string  { return ansiYellow + s + ansiReset }
+func red(s string) string     { return ansiRed + s + ansiReset }
+func cyan(s string) string    { return ansiCyan + s + ansiReset }
+func magenta(s string) string { return ansiMagenta + s + ansiReset }
+func blue(s string) string    { return ansiBlue + s + ansiReset }
 
 // prompt returns the input prompt string reflecting the current backend state.
 func (a *Agent) prompt() string {
@@ -91,6 +97,24 @@ func (a *Agent) Run(out io.Writer) error {
 		return err
 	}
 
+	// Auto-start recording if configured.
+	if a.Config.AutoRecord {
+		recPath := a.Config.RecordPath
+		if recPath == "" {
+			recPath = DefaultSessionPath(a.Workspace.Root)
+		}
+		model := "none"
+		if a.Client != nil {
+			model = a.Client.Name()
+		}
+		if rec, err := NewRecorder(recPath, model, a.Workspace.Root); err != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Auto-record failed: %v\n", err)
+		} else {
+			a.Recorder = rec
+			fmt.Fprintf(out, green("✓")+" Recording to %s\n", recPath)
+		}
+	}
+
 	// Ready line
 	fmt.Fprintln(out, cyan(bold(sep)))
 	if a.Client != nil {
@@ -136,14 +160,36 @@ func (a *Agent) Run(out io.Writer) error {
 		a.AddMessage("user", input)
 		fmt.Fprintln(out)
 
+		// Build a cancellable context; Ctrl+C cancels the LLM call.
+		chatCtx, cancelChat := context.WithCancel(context.Background())
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt)
+		wasCancelled := false
+		watchDone := make(chan struct{})
+		go func() {
+			defer signal.Stop(sigCh)
+			select {
+			case <-sigCh:
+				wasCancelled = true
+				cancelChat()
+			case <-watchDone:
+			}
+		}()
+
 		var buf strings.Builder
-		ctx := context.Background()
 		sp := newSpinner(out, a.estimateDuration())
-		stats, chatErr := a.Client.Chat(ctx, a.History, &buf)
+		stats, chatErr := a.Client.Chat(chatCtx, a.History, &buf)
 		sp.stop()
+		close(watchDone) // stop the signal-watcher goroutine
+		cancelChat()     // release context resources (idempotent)
+
+		if wasCancelled || errors.Is(chatErr, context.Canceled) {
+			fmt.Fprintln(out, dim("  Cancelled."))
+			a.History = a.History[:len(a.History)-1]
+			continue
+		}
 		if chatErr != nil {
 			fmt.Fprintf(out, red("Error: ")+"%v\n", chatErr)
-			// Remove the failed user message so history stays consistent.
 			a.History = a.History[:len(a.History)-1]
 			continue
 		}
@@ -153,10 +199,11 @@ func (a *Agent) Run(out io.Writer) error {
 		a.recordStats(stats)
 		a.AddMessage("assistant", buf.String())
 		if a.Recorder != nil {
-			if recErr := a.Recorder.RecordTurn(input, buf.String()); recErr != nil {
+			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats); recErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
 			}
 		}
+		a.autoExecuteReply(buf.String(), out, reader, chatCtx)
 	}
 
 	fmt.Fprintln(out, dim("Goodbye."))

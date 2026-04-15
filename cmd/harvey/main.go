@@ -42,6 +42,11 @@ func main() {
 			cfg.OllamaURL = next()
 		case "-w", "--workdir":
 			cfg.WorkDir = next()
+		case "-r", "--record":
+			cfg.AutoRecord = true
+		case "--record-file":
+			cfg.AutoRecord = true
+			cfg.RecordPath = next()
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", arg)
 			os.Exit(1)

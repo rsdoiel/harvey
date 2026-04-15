@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="starting-harvey">Starting Harvey</h1>
+<h2 id="what-is-harvey">What is Harvey?</h2>
+<p>harvey is a terminal agent for local large language models.</p>
+<p>See <a href="harvey.1.html">man page</a></p>
+<p>How it starts:</p>
+<p>harvey looks for HARVEY.md in the current directory and uses it as a
+system prompt. It then connects to a local Ollama server or publicai.co
+and starts an interactive chat session.</p>
+<p>All file I/O is constrained to the workspace directory (–workdir or
+“.”). A knowledge base is stored at <workdir>/.harvey/knowledge.db and
+is created automatically on first run.</p>
+<blockquote>
+<p>Type /help inside the session for available slash commands.</p>
+</blockquote>
+<h2 id="typical-invocations">Typical invocations</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start in the current directory, auto-select Ollama model</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start with a specific model</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">-m</span> codellama:13b</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Point at a workspace that is not the current directory</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">-w</span> ~/projects/myapp</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Use a non-default Ollama endpoint</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--ollama</span> http://192.168.1.10:11434</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Use publicai.co (requires PUBLICAI_API_KEY to be set)</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">PUBLICAI_API_KEY</span><span class="op">=</span>sk-...</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span></code></pre></div>
+<h2 id="startup-sequence">Startup sequence</h2>
+<p>When Harvey starts it:</p>
+<ol type="1">
+<li>Prints the banner and resolves the workspace root.</li>
+<li>Opens (or creates) <code>.harvey/knowledge.db</code> in the
+workspace.</li>
+<li>Reads <code>HARVEY.md</code> from the current directory, expands any
+<a href="#dynamic-markers">dynamic markers</a>, and injects it as the
+system prompt.</li>
+<li>Probes Ollama; if reachable, lists installed models and lets you
+choose.</li>
+<li>If Ollama is unreachable, offers to start <code>ollama serve</code>
+then retries.</li>
+<li>If Ollama is still unavailable, offers to connect to publicai.co
+instead.</li>
+<li>Drops you into the REPL prompt: <code>harvey &gt;</code></li>
+</ol>
+<hr />
+<h2 id="the-harvey.md-system-prompt">The HARVEY.md system prompt</h2>
+<p>Harvey looks for <code>HARVEY.md</code> in the directory where it is
+launched and uses its contents as the LLM system prompt for the whole
+session. This is the primary way to give the model persistent context
+about your project.</p>
+<p>A minimal <code>HARVEY.md</code>:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>You are a coding assistant for a Go project.</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>The codebase uses Go 1.26, targets macOS and Linux.</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>Prefer table-driven tests and avoid third-party testing libraries.</span></code></pre></div>
+<h2 id="dynamic-markers">Dynamic markers</h2>
+<p>Harvey expands the following HTML comment markers before injecting
+the system prompt, inserting live workspace data so the model always has
+an up-to-date picture of the project:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Marker</th>
+<th>Replaced with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;!-- @date --&gt;</code></td>
+<td>Today’s date (<code>YYYY-MM-DD</code>)</td>
+</tr>
+<tr>
+<td><code>&lt;!-- @files --&gt;</code></td>
+<td>Workspace file tree (hidden directories excluded)</td>
+</tr>
+<tr>
+<td><code>&lt;!-- @git-status --&gt;</code></td>
+<td>Output of <code>git status --short</code>, or
+<code>(not a git repository)</code></td>
+</tr>
+</tbody>
+</table>
+<p>Example <code>HARVEY.md</code> with all three markers:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>You are a coding assistant for this Go project.</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>Today: <span class="co">&lt;!-- @date --&gt;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="fu">## Workspace files</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @files --&gt;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="fu">## Current git status</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @git-status --&gt;</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="fu">## Conventions</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>All exported symbols need /** ... */ doc comments.</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use <span class="in">`t.TempDir()`</span> in tests; no global state.</span></code></pre></div>
+<hr />
+<h2 id="session-walkthrough">Session walkthrough</h2>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>$ harvey -m llama3:latest</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  Harvey  0.0.0</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>✓ Workspace: /home/user/myproject</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>✓ Knowledge base: .harvey/knowledge.db</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>✓ Loaded HARVEY.md as system prompt</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  Checking Ollama at http://localhost:11434...</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>  ✓ Ollama is running</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>  Using model: llama3:latest</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>  Connected: Ollama (llama3:latest)</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>  /help for commands · /exit to quit</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>harvey &gt; /read internal/parser/parser.go</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>  ✓ internal/parser/parser.go (3241 bytes)</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>  1 file(s) added to context.</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>harvey &gt; The ParseExpr function panics on empty input. Can you fix it?</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>⠹ The Jumblies have gone to sea in a sieve... <span class="co">[</span><span class="ot">4s / ~11s</span><span class="co">]</span></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>Here is the corrected function:</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a><span class="in">```go internal/parser/parser.go</span></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a><span class="in">func ParseExpr(src string) (Expr, error) {</span></span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a><span class="in">    if src == &quot;&quot; {</span></span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a><span class="in">        return nil, fmt.Errorf(&quot;parseExpr: empty input&quot;)</span></span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a><span class="in">    }</span></span>
+<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a><span class="in">    // ... rest of function</span></span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
+<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a>  26 prompt + 58 reply tokens · 11.2s · 5.2 tok/s</span>
+<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a>harvey &gt; /apply</span>
+<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a>  Found 1 tagged block(s):</span>
+<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a>    internal/parser/parser.go (1847 bytes)</span>
+<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a>  Apply all? <span class="co">[</span><span class="ot">Y/n</span><span class="co">]</span> y</span>
+<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>  ✓ internal/parser/parser.go</span>
+<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a>harvey &gt; /run go test ./internal/parser/...</span>
+<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a>  $ go test ./internal/parser/...</span>
+<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>  312 bytes of output added to context.</span>
+<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a>harvey &gt; All tests pass now. /bye</span>
+<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a>Goodbye.</span></code></pre></div>
+<p>After each assistant response Harvey prints a stats line showing
+prompt tokens, reply tokens, elapsed time, and generation speed. While
+the model is thinking, an animated spinner with an estimated completion
+time keeps the terminal alive.</p>
+<hr />
+<h2 id="slash-commands">Slash commands</h2>
+<p>Type <code>/help</code> at any prompt for a live command list. All
+commands begin with <code>/</code>.</p>
+<h2 id="session-commands">Session commands</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/help</code></td>
+<td>List all available slash commands</td>
+</tr>
+<tr>
+<td><code>/status</code></td>
+<td>Show backend, history length, workspace, KB state, and recording
+status</td>
+</tr>
+<tr>
+<td><code>/clear</code></td>
+<td>Reset conversation history (system prompt and pinned context are
+kept)</td>
+</tr>
+<tr>
+<td><code>/exit</code> <code>/quit</code> <code>/bye</code></td>
+<td>End the session</td>
+</tr>
+</tbody>
+</table>
+<h2 id="backend-commands">Backend commands</h2>
+<p><strong>Ollama</strong></p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/ollama start</code></td>
+<td>Launch <code>ollama serve</code> in the background</td>
+</tr>
+<tr>
+<td><code>/ollama stop</code></td>
+<td>Print a reminder to use your system’s service manager</td>
+</tr>
+<tr>
+<td><code>/ollama status</code></td>
+<td>Check whether Ollama is reachable</td>
+</tr>
+<tr>
+<td><code>/ollama list</code></td>
+<td>List installed models; the current model is marked with
+<code>*</code></td>
+</tr>
+<tr>
+<td><code>/ollama use MODEL</code></td>
+<td>Switch to a different installed model mid-session</td>
+</tr>
+</tbody>
+</table>
+<p><strong>publicai.co</strong></p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/publicai connect</code></td>
+<td>Connect using <code>PUBLICAI_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>/publicai disconnect</code></td>
+<td>Drop the publicai.co connection</td>
+</tr>
+<tr>
+<td><code>/publicai status</code></td>
+<td>Show whether publicai.co is connected</td>
+</tr>
+</tbody>
+</table>
+<h2 id="file-operations">File operations</h2>
+<p>These commands move information between the workspace and the
+conversation.</p>
+<h3 id="read-file-file..."><code>/read FILE [FILE...]</code></h3>
+<p>Reads one or more workspace files and injects their contents as a
+labelled user context message. Supports multiple files in a single
+call.</p>
+<pre><code>harvey &gt; /read cmd/harvey/main.go harvey/commands.go
+  ✓ cmd/harvey/main.go (2104 bytes)
+  ✓ harvey/commands.go (28341 bytes)
+  2 file(s) added to context.</code></pre>
+<h3 id="write-path"><code>/write PATH</code></h3>
+<p>Writes the last assistant reply to a workspace file. If the reply
+contains a fenced code block, the first such block is extracted and
+written; otherwise the full reply text is written.</p>
+<pre><code>harvey &gt; /write harvey/spinner.go
+  ✓ Wrote first code block to harvey/spinner.go (4201 bytes)</code></pre>
+<h3 id="run-command-args..."><code>/run COMMAND [ARGS...]</code></h3>
+<p>Runs a shell command in the workspace root, captures combined stdout
+and stderr (up to 8 000 bytes), and injects the output as context. Exit
+codes are noted in the context message.</p>
+<pre><code>harvey &gt; /run go test ./...
+  $ go test ./...
+  847 bytes of output added to context.
+
+harvey &gt; /run make build
+  $ make build
+  1203 bytes of output added to context (exit 1).</code></pre>
+<h2 id="code-assistance">Code assistance</h2>
+<h3 id="search-pattern-path"><code>/search PATTERN [PATH]</code></h3>
+<p>Searches workspace files for a regular expression. Results are capped
+at 100 matching lines. Binary files and hidden directories
+(<code>.git</code>, <code>.harvey</code>, etc.) are skipped
+automatically. An optional second argument scopes the search to a
+subdirectory.</p>
+<pre><code>harvey &gt; /search &quot;func.*Handler&quot;
+  12 match(es) for &quot;func.*Handler&quot; added to context.
+
+harvey &gt; /search TODO internal/
+  3 match(es) for &quot;TODO&quot; added to context.</code></pre>
+<h3
+id="git-subcommand-args..."><code>/git SUBCOMMAND [ARGS...]</code></h3>
+<p>Runs a read-only git command (<code>status</code>, <code>diff</code>,
+<code>log</code>, <code>show</code>, <code>blame</code>) in the
+workspace root and injects the output into context. Additional arguments
+are passed through.</p>
+<pre><code>harvey &gt; /git status
+harvey &gt; /git diff HEAD~1
+harvey &gt; /git log --oneline -10
+harvey &gt; /git blame internal/parser/parser.go</code></pre>
+<h3 id="apply"><code>/apply</code></h3>
+<p>Scans the last assistant reply for fenced code blocks whose opening
+fence line includes a file path
+(e.g. <code>```go harvey/spinner.go</code>), lists the files found, asks
+for a single Y/n confirmation, then writes all of them.</p>
+<pre><code>harvey &gt; /apply
+  Found 2 tagged block(s):
+    harvey/spinner.go (4312 bytes)
+    harvey/terminal.go (7891 bytes)
+  Apply all? [Y/n] y
+  ✓ harvey/spinner.go
+  ✓ harvey/terminal.go</code></pre>
+<p>For Harvey to auto-detect a file, tag the fence line with the target
+path:</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="in">```go harvey/spinner.go</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="in">func (s *Spinner) run() {</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="in">    ...</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span></code></pre></div>
+<h2 id="session-quality-tier-3">Session quality (Tier 3)</h2>
+<h3 id="summarize"><code>/summarize</code></h3>
+<p>Asks the connected LLM to condense the current conversation into a
+single paragraph, then replaces the full history with that summary. Use
+this when a long session is approaching the model’s context window.</p>
+<pre><code>harvey &gt; /summarize
+  History condensed to 312 chars.</code></pre>
+<p>The summary is stored as a <code>[Conversation summary]</code> user
+message. The system prompt and any pinned context are preserved.</p>
+<h3 id="context-addshowclear"><code>/context add|show|clear</code></h3>
+<p>Manages <em>pinned context</em> — text that is automatically
+re-injected into the conversation history after every
+<code>/clear</code> or <code>/summarize</code>, keeping persistent facts
+in front of the model throughout the session.</p>
+<pre><code>harvey &gt; /context add Target platform: macOS arm64. Prefer stdlib over third-party.
+  Pinned context updated (57 chars).
+
+harvey &gt; /context add The project uses semantic versioning via codemeta.json.
+  Pinned context updated (106 chars).
+
+harvey &gt; /context show
+  Pinned context (106 chars):
+
+  Target platform: macOS arm64. Prefer stdlib over third-party.
+  The project uses semantic versioning via codemeta.json.
+
+harvey &gt; /context clear
+  Pinned context cleared.</code></pre>
+<p>Multiple <code>/context add</code> calls append to the existing
+pinned context, separated by newlines. To replace it entirely,
+<code>/context clear</code> then <code>/context add</code>.</p>
+<h2 id="knowledge-base-commands">Knowledge base commands</h2>
+<p>Harvey maintains a SQLite knowledge base at
+<code>.harvey/knowledge.db</code> in the workspace. It is independent of
+conversation history and persists across sessions.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/kb status</code></td>
+<td>Show all projects with recent observations</td>
+</tr>
+<tr>
+<td><code>/kb project list</code></td>
+<td>List projects with ID and status</td>
+</tr>
+<tr>
+<td><code>/kb project add NAME [DESC]</code></td>
+<td>Create a project and set it as current</td>
+</tr>
+<tr>
+<td><code>/kb project use ID</code></td>
+<td>Set the active project by ID</td>
+</tr>
+<tr>
+<td><code>/kb observe [KIND] TEXT</code></td>
+<td>Record an observation against the active project</td>
+</tr>
+<tr>
+<td><code>/kb concept list</code></td>
+<td>List all concepts</td>
+</tr>
+<tr>
+<td><code>/kb concept add NAME [DESC]</code></td>
+<td>Add a named concept</td>
+</tr>
+</tbody>
+</table>
+<p>Observation kinds: <code>note</code>, <code>finding</code>,
+<code>decision</code>, <code>question</code>,
+<code>hypothesis</code>.</p>
+<pre><code>harvey &gt; /kb project add harvey &quot;Terminal coding agent&quot;
+Project &quot;harvey&quot; added (id=1) and set as current.
+
+harvey &gt; /kb observe finding WAL mode doubled write throughput in the knowledge base
+Observation recorded (id=1, kind=finding).
+
+harvey &gt; /kb observe decision Use bufio.Scanner for all interactive prompt reading
+Observation recorded (id=2, kind=decision).
+
+harvey &gt; /kb status
+  [1] harvey  (active)
+      Terminal coding agent
+      [finding] WAL mode doubled write throughput in the knowledge base
+      [decision] Use bufio.Scanner for all interactive prompt reading</code></pre>
+<h2 id="recording-commands">Recording commands</h2>
+<p>Harvey can write a Markdown transcript of the session to a file.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/record start [FILE]</code></td>
+<td>Begin recording; FILE defaults to a timestamped path in the
+workspace</td>
+</tr>
+<tr>
+<td><code>/record stop</code></td>
+<td>Close the recording file</td>
+</tr>
+<tr>
+<td><code>/record status</code></td>
+<td>Show the current recording path or “not recording”</td>
+</tr>
+</tbody>
+</table>
+<pre><code>harvey &gt; /record start
+Recording started: /home/user/myproject/harvey-session-20260415-142300.md
+
+harvey &gt; /record stop
+Recording stopped. Session saved to .../harvey-session-20260415-142300.md</code></pre>
+<p>The session file uses Markdown with <code>### Turn N</code> sections,
+making it easy to review, search, or commit to the project repository as
+a decision log.</p>
+<h2 id="file-browser">File browser</h2>
+<pre><code>harvey &gt; /files
+harvey &gt; /files internal/parser</code></pre>
+<p>Lists files in the workspace root or a subdirectory. Useful for
+discovering paths before using <code>/read</code> or
+<code>/write</code>.</p>
+<hr />
+<h2 id="typical-workflows">Typical workflows</h2>
+<h3 id="review-and-patch-a-failing-test">Review and patch a failing
+test</h3>
+<pre><code>harvey &gt; /run go test ./...
+harvey &gt; /read internal/parser/parser_test.go internal/parser/parser.go
+harvey &gt; The TestParseExpr test is failing on empty input. Please fix parser.go.
+harvey &gt; /apply
+harvey &gt; /run go test ./internal/parser/...</code></pre>
+<h3 id="explore-an-unfamiliar-codebase">Explore an unfamiliar
+codebase</h3>
+<pre><code>harvey &gt; /files
+harvey &gt; /search &quot;type.*interface&quot;
+harvey &gt; /read harvey/harvey.go
+harvey &gt; Can you summarize the LLMClient interface and explain how the two backends differ?</code></pre>
+<h3 id="draft-a-commit-message">Draft a commit message</h3>
+<pre><code>harvey &gt; /git diff HEAD
+harvey &gt; /git status
+harvey &gt; Please write a conventional commit message for these changes.
+harvey &gt; /write .git/COMMIT_EDITMSG</code></pre>
+<h3 id="keep-context-focused-on-a-long-refactor">Keep context focused on
+a long refactor</h3>
+<pre><code>harvey &gt; /context add We are migrating from the old auth middleware to the new JWT-based one.
+harvey &gt; /context add All session tokens must be stored as httpOnly cookies, not localStorage.
+harvey &gt; /read internal/auth/middleware.go
+harvey &gt; ...several turns of back and forth...
+harvey &gt; /summarize
+harvey &gt; /read internal/auth/jwt.go
+harvey &gt; Continue the migration — here is the JWT helper...</code></pre>
+<h3 id="record-architectural-decisions">Record architectural
+decisions</h3>
+<pre><code>harvey &gt; /kb project add myapp &quot;Main web application&quot;
+harvey &gt; ...discussion about database choice...
+harvey &gt; /kb observe decision Use SQLite with WAL mode; Postgres is overkill for this deployment
+harvey &gt; /kb observe question How do we handle schema migrations across versions?
+harvey &gt; /kb status</code></pre>
+</section>
+</body>
+</html>

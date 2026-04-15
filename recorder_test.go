@@ -9,9 +9,9 @@ import (
 
 func TestRecorder_roundtrip(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "session.md")
+	path := filepath.Join(dir, "session.fountain")
 
-	r, err := NewRecorder(path, "Ollama (llama3)", dir)
+	r, err := NewRecorder(path, "Ollama (llama3:latest)", dir)
 	if err != nil {
 		t.Fatalf("NewRecorder: %v", err)
 	}
@@ -36,18 +36,75 @@ func TestRecorder_roundtrip(t *testing.T) {
 	content := string(data)
 
 	checks := []string{
-		"# Harvey Session",
-		"Ollama (llama3)",
-		"Turn 1",
+		"Title: Harvey Session",
+		"FADE IN:",
+		"INT. HARVEY AND",
+		"TALKING",
+		// model name extracted and uppercased
+		"LLAMA3",
+		// LLM relay dialogue — HARVEY speaks a parenthetical
+		"HARVEY",
+		"(forwarding to LLAMA3)",
+		// user input and reply appear as dialogue
 		"What is 2+2?",
 		"2 + 2 = 4.",
-		"Turn 2",
 		"And 3+3?",
 		"3 + 3 = 6.",
+		"THE END.",
 	}
 	for _, want := range checks {
 		if !strings.Contains(content, want) {
-			t.Errorf("session file missing %q", want)
+			t.Errorf("session file missing %q\n---\n%s", want, content)
+		}
+	}
+}
+
+func TestRecorder_withStats(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "test", dir)
+
+	stats := ChatStats{PromptTokens: 10, ReplyTokens: 20, Elapsed: 1000000000, TokensPerSec: 20}
+	if err := r.RecordTurnWithStats("Hi", "Hello!", stats); err != nil {
+		t.Fatalf("RecordTurnWithStats: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "[[stats:") {
+		t.Error("expected stats note in fountain output")
+	}
+}
+
+func TestRecorder_agentScene(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (gemma4:latest)", dir)
+
+	if err := r.StartAgentScene("Harvey proposes to write 1 file."); err != nil {
+		t.Fatalf("StartAgentScene: %v", err)
+	}
+	if err := r.RecordAgentAction("write", "testout/hello.bash", "yes", "ok"); err != nil {
+		t.Fatalf("RecordAgentAction: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	checks := []string{
+		"INT. AGENT MODE",
+		"Harvey proposes to write 1 file.",
+		"HARVEY",
+		"testout/hello.bash",
+		"(yes)",
+		"[[write:",
+		"ok",
+		"THE END.",
+	}
+	for _, want := range checks {
+		if !strings.Contains(content, want) {
+			t.Errorf("agent scene missing %q\n---\n%s", want, content)
 		}
 	}
 }
@@ -59,13 +116,12 @@ func TestDefaultSessionPath(t *testing.T) {
 	if !strings.HasPrefix(path, dir+"/harvey-session-") {
 		t.Errorf("unexpected prefix in %q", path)
 	}
-	if !strings.HasSuffix(path, ".md") {
-		t.Errorf("expected .md suffix in %q", path)
+	if !strings.HasSuffix(path, ".fountain") {
+		t.Errorf("expected .fountain suffix in %q", path)
 	}
 	// Timestamp portion: YYYYMMDD-HHMMSS (15 chars)
 	base := filepath.Base(path)
-	// "harvey-session-YYYYMMDD-HHMMSS.md" → prefix len = len("harvey-session-") = 15
-	ts := strings.TrimPrefix(strings.TrimSuffix(base, ".md"), "harvey-session-")
+	ts := strings.TrimPrefix(strings.TrimSuffix(base, ".fountain"), "harvey-session-")
 	if len(ts) != 15 {
 		t.Errorf("timestamp %q: expected 15 chars (YYYYMMDD-HHMMSS)", ts)
 	}

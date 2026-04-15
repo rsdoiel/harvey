@@ -14,6 +14,7 @@ import (
 	"strings"
 )
 
+
 /** Command describes a slash command available in the Harvey REPL.
  *
  * Fields:
@@ -125,6 +126,11 @@ func (a *Agent) registerCommands() {
 			Usage:       "/record <start [FILE]|stop|status>",
 			Description: "Record session exchanges to a Markdown file",
 			Handler:     cmdRecord,
+		},
+		"agent": {
+			Usage:       "/agent <on|off|status>",
+			Description: "Toggle agent mode: auto-apply files and auto-run suggested commands",
+			Handler:     cmdAgent,
 		},
 		"exit": {
 			Usage:       "/exit",
@@ -908,8 +914,12 @@ type taggedBlock struct {
 
 // findTaggedBlocks scans text for fenced code blocks whose opening fence line
 // includes a token that looks like a file path, and returns each as a
-// taggedBlock. The path token may be preceded by a language hint
-// (e.g. "```go harvey/spinner.go").
+// taggedBlock. Two formats are supported:
+//
+//   - Space-separated:  ```go harvey/spinner.go
+//   - Colon-separated:  ```bash:testout/hello.bash
+//
+// In both cases the language hint is stripped and only the path is stored.
 func findTaggedBlocks(text string) []taggedBlock {
 	var blocks []taggedBlock
 	lines := strings.Split(text, "\n")
@@ -918,13 +928,7 @@ func findTaggedBlocks(text string) []taggedBlock {
 		if cur == nil {
 			if strings.HasPrefix(line, "```") {
 				fence := strings.TrimSpace(strings.TrimPrefix(line, "```"))
-				path := ""
-				for _, tok := range strings.Fields(fence) {
-					if looksLikePath(tok) {
-						path = tok
-						break
-					}
-				}
+				path := fencePathToken(fence)
 				if path != "" {
 					cur = &taggedBlock{path: path}
 				}
@@ -939,6 +943,30 @@ func findTaggedBlocks(text string) []taggedBlock {
 		}
 	}
 	return blocks
+}
+
+// fencePathToken extracts a file path from a fenced-code-block opening line's
+// content (the text after the triple backtick). It handles two conventions:
+//
+//   - "lang path"  (space-separated, e.g. "go harvey/spinner.go")
+//   - "lang:path"  (colon-separated, e.g. "bash:testout/hello.bash")
+//
+// Returns the path token, or "" if none is found.
+func fencePathToken(fence string) string {
+	// Colon-separated: treat everything after the first colon as the path.
+	if idx := strings.IndexByte(fence, ':'); idx >= 0 {
+		candidate := fence[idx+1:]
+		if looksLikePath(candidate) {
+			return candidate
+		}
+	}
+	// Space-separated: find the first token that looks like a path.
+	for _, tok := range strings.Fields(fence) {
+		if looksLikePath(tok) {
+			return tok
+		}
+	}
+	return ""
 }
 
 // looksLikePath reports whether s looks like a file path rather than a
@@ -1122,4 +1150,282 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintln(out, "Usage: /context <show|add TEXT...|clear>")
 	}
 	return nil
+}
+
+// ─── /agent ──────────────────────────────────────────────────────────────────
+
+func cmdAgent(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 || strings.ToLower(args[0]) == "status" {
+		if a.AgentMode {
+			fmt.Fprintln(out, "  Agent mode: on  (tagged files are auto-applied; /run hints are auto-executed)")
+		} else {
+			fmt.Fprintln(out, "  Agent mode: off  (tagged files are auto-applied; /run hints require manual /run)")
+		}
+		return nil
+	}
+	switch strings.ToLower(args[0]) {
+	case "on":
+		a.AgentMode = true
+		fmt.Fprintln(out, "  Agent mode on. Tagged files will be auto-applied; backtick /run hints will be auto-executed.")
+	case "off":
+		a.AgentMode = false
+		fmt.Fprintln(out, "  Agent mode off. Tagged files still auto-applied; use /run for commands.")
+	default:
+		fmt.Fprintf(out, "Unknown agent subcommand: %s\n", args[0])
+		fmt.Fprintln(out, "Usage: /agent <on|off|status>")
+	}
+	return nil
+}
+
+// ─── auto-execute ─────────────────────────────────────────────────────────────
+
+// extractRunSuggestions scans text for backtick-wrapped /run commands that the
+// LLM suggests the user should run (e.g. "`/run mkdir testout`") and returns
+// each as a slice of arguments (the command and its arguments, without "run").
+//
+// Example:
+//
+//	cmds := extractRunSuggestions("Try `/run mkdir testout` first.")
+//	// cmds == [["mkdir", "testout"]]
+func extractRunSuggestions(text string) [][]string {
+	re := regexp.MustCompile("`/run ([^`]+)`")
+	matches := re.FindAllStringSubmatch(text, -1)
+	var cmds [][]string
+	for _, m := range matches {
+		parts := strings.Fields(m[1])
+		if len(parts) > 0 {
+			cmds = append(cmds, parts)
+		}
+	}
+	return cmds
+}
+
+// actionChoice represents the user's decision at an action confirmation prompt.
+type actionChoice int
+
+const (
+	actionYes  actionChoice = iota // execute this action
+	actionNo                       // skip this action
+	actionAll                      // execute this and all remaining actions without prompting
+	actionQuit                     // skip this and all remaining actions
+)
+
+// promptAction displays a box-drawing preview of a proposed action and reads
+// the user's choice. Returns actionYes for empty input (Enter = yes).
+//
+// Parameters:
+//
+//	r       (*bufio.Reader) — reads the user's single-key response.
+//	out     (io.Writer)     — destination for the preview box.
+//	header  (string)        — short label shown in the box title (e.g. "Write: path/to/file").
+//	preview (string)        — content preview shown inside the box; empty = no body.
+//
+// Returns:
+//
+//	actionChoice — the user's decision.
+func promptAction(r *bufio.Reader, out io.Writer, header, preview string) actionChoice {
+	const boxWidth = 56
+	const maxPreviewLines = 8
+
+	// Top border
+	title := "  ┌─ " + header + " "
+	pad := boxWidth - len(title) + 2
+	if pad < 1 {
+		pad = 1
+	}
+	fmt.Fprint(out, title+strings.Repeat("─", pad)+"┐\n")
+
+	// Preview lines
+	if preview != "" {
+		lines := strings.Split(strings.TrimRight(preview, "\n"), "\n")
+		for i, line := range lines {
+			if i >= maxPreviewLines {
+				fmt.Fprintf(out, "  │  %s… (%d more lines)\n", "", len(lines)-maxPreviewLines)
+				break
+			}
+			fmt.Fprintf(out, "  │  %s\n", line)
+		}
+	}
+
+	// Bottom border + prompt
+	fmt.Fprintf(out, "  └%s┘\n", strings.Repeat("─", boxWidth-1))
+	fmt.Fprint(out, "  [y]es  [n]o  [A]ll  [q]uit > ")
+
+	line, _ := r.ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "n", "no":
+		return actionNo
+	case "a", "all":
+		return actionAll
+	case "q", "quit":
+		return actionQuit
+	default: // "", "y", "yes" — Enter defaults to yes
+		return actionYes
+	}
+}
+
+// cmdRunCtx is like cmdRun but uses a context so the spawned process can be
+// cancelled (e.g. via Ctrl+C). Output is injected into conversation context.
+func cmdRunCtx(a *Agent, ctx context.Context, args []string, out io.Writer) error {
+	if a.Workspace == nil {
+		fmt.Fprintln(out, "No workspace initialised.")
+		return nil
+	}
+	if len(args) == 0 {
+		return nil
+	}
+
+	cmdLine := strings.Join(args, " ")
+	fmt.Fprintf(out, "  $ %s\n", cmdLine)
+
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd.Dir = a.Workspace.Root
+	raw, _ := cmd.CombinedOutput()
+
+	truncated := false
+	output := raw
+	if len(output) > maxRunOutput {
+		output = output[:maxRunOutput]
+		truncated = true
+	}
+
+	exitNote := ""
+	if cmd.ProcessState != nil && cmd.ProcessState.ExitCode() != 0 {
+		exitNote = fmt.Sprintf(" (exit %d)", cmd.ProcessState.ExitCode())
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("[context: /run %s%s]\n\n```\n", cmdLine, exitNote))
+	sb.Write(output)
+	if truncated {
+		sb.WriteString("\n... (output truncated)")
+	}
+	sb.WriteString("\n```\n")
+
+	a.AddMessage("user", sb.String())
+	fmt.Fprintf(out, "  %d bytes of output added to context%s.\n", len(output), exitNote)
+	return nil
+}
+
+/** autoExecuteReply scans reply for actionable content, previews each action
+ * with an interactive confirmation prompt, executes confirmed actions, and
+ * records the full proposal/choice/outcome flow to the Recorder (if active).
+ *
+ *   1. Tagged code blocks (e.g. ```bash:path/to/file) are always presented for
+ *      confirmation and then written. Parent directories are created as needed.
+ *
+ *   2. When AgentMode is true, backtick-wrapped /run suggestions from the LLM
+ *      (e.g. "`/run mkdir testout`") are also presented and executed.
+ *
+ * Parameters:
+ *   reply  (string)          — the raw assistant reply text.
+ *   out    (io.Writer)       — destination for status messages.
+ *   reader (*bufio.Reader)   — reads confirmation keystrokes from the user.
+ *   ctx    (context.Context) — used to cancel long-running commands.
+ *
+ * Example:
+ *   agent.autoExecuteReply(replyText, os.Stdout, reader, ctx)
+ */
+func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Reader, ctx context.Context) {
+	if a.Workspace == nil {
+		return
+	}
+
+	blocks := findTaggedBlocks(reply)
+	var suggestions [][]string
+	if a.AgentMode {
+		suggestions = extractRunSuggestions(reply)
+	}
+
+	// Open an agent scene in the recording if there is anything to act on.
+	if len(blocks)+len(suggestions) > 0 && a.Recorder != nil {
+		var parts []string
+		if len(blocks) > 0 {
+			parts = append(parts, fmt.Sprintf("write %d file(s)", len(blocks)))
+		}
+		if len(suggestions) > 0 {
+			parts = append(parts, fmt.Sprintf("run %d command(s)", len(suggestions)))
+		}
+		desc := fmt.Sprintf("Harvey proposes to %s.", strings.Join(parts, " and "))
+		_ = a.Recorder.StartAgentScene(desc)
+	}
+
+	applyAll := false
+
+	// 1. Tagged code blocks — always offer to apply.
+	for _, b := range blocks {
+		choice := actionYes
+		if !applyAll {
+			choice = promptAction(reader, out, "Write: "+b.path, b.content)
+		}
+		switch choice {
+		case actionNo:
+			fmt.Fprintf(out, "  skipped %s\n", b.path)
+			a.logAction("write", b.path, choice, "skipped")
+			continue
+		case actionQuit:
+			fmt.Fprintln(out, "  aborted remaining actions.")
+			a.logAction("write", b.path, choice, "aborted")
+			return
+		case actionAll:
+			applyAll = true
+		}
+		if err := a.Workspace.WriteFile(b.path, []byte(b.content), 0o644); err != nil {
+			fmt.Fprintf(out, "  ✗ %s: %v\n", b.path, err)
+			a.logAction("write", b.path, choice, "error: "+err.Error())
+		} else {
+			fmt.Fprintf(out, "  ✓ wrote %s (%d bytes)\n", b.path, len(b.content))
+			a.logAction("write", b.path, choice, "ok")
+		}
+	}
+
+	// 2. Agent mode: /run suggestions.
+	for _, args := range suggestions {
+		cmdLine := strings.Join(args, " ")
+		choice := actionYes
+		if !applyAll {
+			choice = promptAction(reader, out, "Run: "+cmdLine, "")
+		}
+		switch choice {
+		case actionNo:
+			fmt.Fprintf(out, "  skipped: %s\n", cmdLine)
+			a.logAction("run", cmdLine, choice, "skipped")
+			continue
+		case actionQuit:
+			fmt.Fprintln(out, "  aborted remaining actions.")
+			a.logAction("run", cmdLine, choice, "aborted")
+			return
+		case actionAll:
+			applyAll = true
+		}
+		var runOut strings.Builder
+		if err := cmdRunCtx(a, ctx, args, &runOut); err != nil {
+			fmt.Fprint(out, runOut.String())
+			a.logAction("run", cmdLine, choice, "error: "+err.Error())
+		} else {
+			fmt.Fprint(out, runOut.String())
+			a.logAction("run", cmdLine, choice, "ok")
+		}
+	}
+}
+
+// choiceStr converts an actionChoice to the string recorded in the script.
+func choiceStr(c actionChoice) string {
+	switch c {
+	case actionNo:
+		return "no"
+	case actionAll:
+		return "all"
+	case actionQuit:
+		return "quit"
+	default:
+		return "yes"
+	}
+}
+
+// logAction records one agent action to the Recorder if one is active.
+func (a *Agent) logAction(kind, target string, choice actionChoice, outcome string) {
+	if a.Recorder != nil {
+		_ = a.Recorder.RecordAgentAction(kind, target, choiceStr(choice), outcome)
+	}
 }
