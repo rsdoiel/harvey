@@ -8,7 +8,7 @@ PROJECT = harvey
 
 GIT_GROUP = Laboratory
 
-PROGRAMS = <PROGRAM_LISTS_GOES_HERE>
+PROGRAMS = harvey
 
 RELEASE_DATE = $(shell date +%Y-%m-%d)
 

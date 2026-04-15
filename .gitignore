@@ -3,6 +3,8 @@
 *.swp
 *.tmp
 *.bak
+.env
+*.env
 bin
 testout
 dist
