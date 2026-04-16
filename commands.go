@@ -14,7 +14,6 @@ import (
 	"strings"
 )
 
-
 /** Command describes a slash command available in the Harvey REPL.
  *
  * Fields:

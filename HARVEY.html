@@ -21,6 +21,34 @@
 <h1 id="harvey.md">HARVEY.md</h1>
 <p>Project-specific guidance for the <strong>harvey</strong> coding
 agent (Go).</p>
+<h2 id="agent-execution-model">Agent execution model</h2>
+<p>Harvey automatically executes certain structured outputs from your
+replies:</p>
+<p><strong>Tagged code blocks are auto-applied</strong> — if you include
+a fenced code block whose opening fence names a target file, Harvey
+writes that file to disk immediately after your reply. Parent
+directories are created as needed.</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash:testout/helloworld.bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/bin/bash</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;Hello World&quot;</span></span></code></pre></div>
+<p>Use this format whenever you want to create or update a file. Do
+<strong>not</strong> tell the user to run <code>/apply</code> — Harvey
+handles it automatically.</p>
+<p><strong>Session recording</strong> produces a <code>.fountain</code>
+screenplay script when active (<code>-r</code> flag at startup or
+<code>/record start</code>). Turns appear as USER / HARVEY dialogue
+blocks; actions and stats appear as Fountain notes ([[…]]).</p>
+<p><strong>In agent mode</strong>, Harvey also executes backtick-wrapped
+<code>/run</code> hints:</p>
+<pre><code>`/run chmod +x testout/helloworld.bash`</code></pre>
+<p>When the user has enabled agent mode (<code>/agent on</code>), write
+suggested shell commands in this format. Harvey will run them and inject
+the output into the conversation. Do <strong>not</strong> wrap them in
+prose like “please run the following” — just emit the backtick form and
+Harvey will execute it.</p>
+<p><strong>When agent mode is off</strong> (the default), you may still
+suggest run commands in the same backtick format for the user to execute
+manually with <code>/run</code>.</p>
 <h2 id="documentation-conventions">Documentation conventions</h2>
 <p>All exported functions, structs/types, interfaces, and constants must
 be documented with a <code>/** ... */</code> block comment. Each comment
@@ -31,44 +59,44 @@ must include:</p>
 <li>Return values — type and meaning</li>
 <li>An embedded usage example</li>
 </ul>
-<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">/** Greet returns a greeting string for the given name.</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"> * Parameters:</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"> *   name (string) — the person to greet</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co"> * Returns:</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"> *   string — a greeting message</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="co"> * Example:</span></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"> *   msg := Greet(&quot;Alice&quot;)</span></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="co"> *   fmt.Println(msg) // &quot;Hello, Alice!&quot;</span></span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="co"> */</span></span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> Greet<span class="op">(</span>name <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">&quot;Hello, &quot;</span> <span class="op">+</span> name <span class="op">+</span> <span class="st">&quot;!&quot;</span></span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">/** Greet returns a greeting string for the given name.</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co"> * Parameters:</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"> *   name (string) — the person to greet</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co"> * Returns:</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"> *   string — a greeting message</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co"> * Example:</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co"> *   msg := Greet(&quot;Alice&quot;)</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co"> *   fmt.Println(msg) // &quot;Hello, Alice!&quot;</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="co"> */</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> Greet<span class="op">(</span>name <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">&quot;Hello, &quot;</span> <span class="op">+</span> name <span class="op">+</span> <span class="st">&quot;!&quot;</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p>Apply to every exported symbol — functions, structs, interfaces, type
 aliases, and constants. Do not omit the example section even for simple
 symbols.</p>
 <h2 id="build-test">Build &amp; test</h2>
 <p>All commands should be run from inside <code>harvey/</code>.</p>
-<div class="sourceCode" id="cb2"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build all programs</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> build</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run tests</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a single program</span></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build <span class="at">-o</span> bin/<span class="op">&lt;</span>name<span class="op">&gt;</span> cmd/<span class="op">&lt;</span>name<span class="op">&gt;</span>/<span class="pp">*</span>.go</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate version.go from codemeta.json</span></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="ex">cmt</span> codemeta.json version.go</span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Build website (HTML from Markdown via pandoc)</span></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> website</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Clean build artifacts</span></span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> clean</span></code></pre></div>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build all programs</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> build</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run tests</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a single program</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build <span class="at">-o</span> bin/<span class="op">&lt;</span>name<span class="op">&gt;</span> cmd/<span class="op">&lt;</span>name<span class="op">&gt;</span>/<span class="pp">*</span>.go</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate version.go from codemeta.json</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="ex">cmt</span> codemeta.json version.go</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Build website (HTML from Markdown via pandoc)</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> website</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Clean build artifacts</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> clean</span></code></pre></div>
 <h2 id="key-conventions">Key conventions</h2>
 <ul>
 <li><strong><code>version.go</code></strong> is generated by

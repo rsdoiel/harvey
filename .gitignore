@@ -6,6 +6,8 @@
 .env
 *.env
 *.log
+*.zip
+*.base64.*
 .harvey
 bin
 testout

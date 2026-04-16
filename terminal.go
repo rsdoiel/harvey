@@ -22,7 +22,7 @@ const (
 	ansiRed     = "\033[31m"
 	ansiMagenta = "\033[35m"
 	ansiBlue    = "\033[34m"
-	sep        = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	sep         = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 )
 
 func bold(s string) string    { return ansiBold + s + ansiReset }

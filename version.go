@@ -5,15 +5,15 @@ import (
 )
 
 const (
-    // Version number of release
-    Version = "0.0.0"
+	// Version number of release
+	Version = "0.0.0"
 
-    // ReleaseDate, the date version.go was generated
-    ReleaseDate = "2026-04-16"
+	// ReleaseDate, the date version.go was generated
+	ReleaseDate = "2026-04-16"
 
-    // ReleaseHash, the Git hash when version.go was generated
-    ReleaseHash = "4a8cad6"
-    LicenseText = `
+	// ReleaseHash, the Git hash when version.go was generated
+	ReleaseHash = "8d0b75a"
+	LicenseText = `
 harvey is a agent used with local large language models
 Copyright (C) 2026 R. S. Doiel
 
@@ -35,9 +35,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // FmtHelp lets you process a text block with simple curly brace markup.
 func FmtHelp(src string, appName string, version string, releaseDate string, releaseHash string) string {
-	m := map[string]string {
-		"{app_name}": appName,
-		"{version}": version,
+	m := map[string]string{
+		"{app_name}":     appName,
+		"{version}":      version,
 		"{release_date}": releaseDate,
 		"{release_hash}": releaseHash,
 	}
@@ -48,4 +48,3 @@ func FmtHelp(src string, appName string, version string, releaseDate string, rel
 	}
 	return src
 }
-

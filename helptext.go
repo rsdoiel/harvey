@@ -58,7 +58,4 @@ Type /help inside the session for available slash commands.
 PUBLICAI_API_KEY    API key for publicai.co
 
 `
-
-
 )
-
