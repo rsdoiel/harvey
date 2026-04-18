@@ -81,6 +81,9 @@ type Config struct {
 	PublicAIModel    string // model name (default: abertus)
 	AutoRecord       bool   // start a Fountain session recording automatically at startup
 	RecordPath       string // file path for auto-recording; empty = auto-generated timestamped name
+	ContinuePath     string // Fountain file to load as pre-history when starting the REPL
+	ReplayPath       string // Fountain file to replay instead of entering the REPL
+	ReplayOutputPath string // output path for replay recording; empty = auto-generated
 }
 
 /** DefaultConfig returns a Config populated with sensible defaults. WorkDir

@@ -67,6 +67,12 @@ func main() {
 				os.Exit(1)
 			}
 			cfg.ResumeSessionID = id
+		case "--continue":
+			cfg.ContinuePath = next()
+		case "--replay":
+			cfg.ReplayPath = next()
+		case "--replay-output":
+			cfg.ReplayOutputPath = next()
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", arg)
 			os.Exit(1)

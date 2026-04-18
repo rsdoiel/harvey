@@ -129,6 +129,31 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 	}
 
+	// Replay mode — run turns from a Fountain file and return without entering REPL.
+	if a.Config.ReplayPath != "" {
+		outPath := a.Config.ReplayOutputPath
+		if outPath == "" {
+			outPath = DefaultSessionPath(a.Workspace.Root)
+		}
+		replayCtx, replayCancel := context.WithCancel(context.Background())
+		defer replayCancel()
+		fmt.Fprintln(out, cyan(bold(sep)))
+		fmt.Fprintf(out, "  Replay mode: %s\n", a.Config.ReplayPath)
+		fmt.Fprintln(out, cyan(bold(sep)))
+		fmt.Fprintln(out)
+		return a.ReplayFromFountain(replayCtx, a.Config.ReplayPath, outPath, out)
+	}
+
+	// Continue from Fountain — pre-load history before entering REPL.
+	if a.Config.ContinuePath != "" {
+		n, contErr := a.ContinueFromFountain(a.Config.ContinuePath)
+		if contErr != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Continue failed: %v\n", contErr)
+		} else {
+			fmt.Fprintf(out, green("✓")+" Loaded %d turns from %s\n", n, a.Config.ContinuePath)
+		}
+	}
+
 	// Ready line
 	fmt.Fprintln(out, cyan(bold(sep)))
 	if a.Client != nil {

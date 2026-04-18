@@ -143,8 +143,8 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdAgent,
 		},
 		"session": {
-			Usage:       "/session <list|load ID|new|name LABEL|status>",
-			Description: "Manage conversation sessions",
+			Usage:       "/session <list|load ID|new|name LABEL|status|continue FILE|replay FILE [OUTPUT]>",
+			Description: "Manage sessions and replay Fountain recordings",
 			Handler:     cmdSession,
 		},
 		"skill": {
@@ -1209,14 +1209,18 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
 
 // ─── /session ────────────────────────────────────────────────────────────────
 
-/** cmdSession manages Harvey's persistent conversation sessions.
+/** cmdSession manages Harvey's persistent conversation sessions and Fountain
+ * recording playback.
  *
  * Subcommands:
- *   list         — list all sessions, most-recent first.
- *   load ID      — restore history from session ID into the current conversation.
- *   new          — clear history and start a fresh session row.
- *   name LABEL   — assign a human-readable label to the current session.
- *   status       — show the current session ID and name.
+ *   list              — list all sessions, most-recent first.
+ *   load ID           — restore history from session ID into the current conversation.
+ *   new               — clear history and start a fresh session row.
+ *   name LABEL        — assign a human-readable label to the current session.
+ *   status            — show the current session ID and name.
+ *   continue FILE     — load chat history from a Fountain file and continue in REPL.
+ *   replay FILE [OUT] — re-send turns from a Fountain file to the current backend
+ *                       and record fresh responses to OUT (default: auto-named).
  *
  * Parameters:
  *   a    (*Agent)    — the running agent.
@@ -1224,14 +1228,49 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
  *   out  (io.Writer) — destination for command output.
  *
  * Returns:
- *   error — on database failure.
+ *   error — on database or I/O failure.
  *
  * Example:
  *   /session list
- *   /session load 3
- *   /session name "fixing spinner bug"
+ *   /session continue old-session.fountain
+ *   /session replay old-session.fountain new-session.fountain
  */
 func cmdSession(a *Agent, args []string, out io.Writer) error {
+	// continue and replay don't require the session manager.
+	if len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "continue":
+			if len(args) < 2 {
+				fmt.Fprintln(out, "Usage: /session continue FILE")
+				return nil
+			}
+			n, err := a.ContinueFromFountain(args[1])
+			if err != nil {
+				fmt.Fprintf(out, "  ✗ %v\n", err)
+				return nil
+			}
+			fmt.Fprintf(out, green("✓")+" Loaded %d turns from %s\n", n, args[1])
+			return nil
+		case "replay":
+			if len(args) < 2 {
+				fmt.Fprintln(out, "Usage: /session replay FILE [OUTPUT]")
+				return nil
+			}
+			src := args[1]
+			outPath := ""
+			if len(args) >= 3 {
+				outPath = args[2]
+			} else {
+				outPath = DefaultSessionPath(a.Workspace.Root)
+			}
+			if a.Client == nil {
+				fmt.Fprintln(out, "  No backend connected. Use /ollama start or /publicai connect.")
+				return nil
+			}
+			return a.ReplayFromFountain(context.Background(), src, outPath, out)
+		}
+	}
+
 	if a.SM == nil {
 		fmt.Fprintln(out, "Session manager is not available.")
 		return nil
@@ -1264,7 +1303,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		return sessionName(a, label, out)
 	default:
 		fmt.Fprintf(out, "Unknown session subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /session <list|load ID|new|name LABEL|status>")
+		fmt.Fprintln(out, "Usage: /session <list|load ID|new|name LABEL|status|continue FILE|replay FILE [OUTPUT]>")
 	}
 	return nil
 }
