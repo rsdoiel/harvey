@@ -34,7 +34,7 @@ func main() {
 				i++
 				switch os.Args[i] {
 				case "skills", "skill":
-					fmt.Print(harvey.SkillsHelpText)
+					fmt.Print(fmtHelp(harvey.SkillsHelpText, appName, version, releaseDate, releaseHash))
 				default:
 					fmt.Fprintf(os.Stderr, "Unknown help topic %q. Available topics: skills\n", os.Args[i])
 					os.Exit(1)

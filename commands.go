@@ -212,7 +212,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 	if len(args) > 0 {
 		switch strings.ToLower(args[0]) {
 		case "skills", "skill":
-			fmt.Fprint(out, SkillsHelpText)
+			fmt.Fprint(out, FmtHelp(SkillsHelpText, "", "", "", ""))
 			return nil
 		default:
 			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: skills\n\n", args[0])
