@@ -32,8 +32,10 @@ func NewPublicAIClient(baseURL, apiKey, model string) *PublicAIClient {
 	}
 }
 
-func (p *PublicAIClient) Name() string { return "publicai.co (" + p.model + ")" }
-func (p *PublicAIClient) Close() error { return nil }
+func (p *PublicAIClient) Name() string      { return "publicai.co (" + p.model + ")" }
+func (p *PublicAIClient) Model() string     { return p.model }
+func (p *PublicAIClient) SetModel(m string) { p.model = m }
+func (p *PublicAIClient) Close() error      { return nil }
 
 func (p *PublicAIClient) Models(_ context.Context) ([]string, error) {
 	return []string{p.model}, nil

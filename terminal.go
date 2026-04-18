@@ -83,6 +83,12 @@ func (a *Agent) Run(out io.Writer) error {
 	// Knowledge base
 	a.initKnowledgeBase(out)
 
+	// Session manager (non-fatal)
+	a.initSessionManager(out)
+	if a.SM != nil {
+		defer a.SM.Close()
+	}
+
 	// System prompt
 	if a.Config.SystemPrompt != "" {
 		expanded := ExpandDynamicSections(a.Config.SystemPrompt, a.Workspace)
@@ -92,9 +98,17 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintln(out, dim("  No HARVEY.md found in current directory"))
 	}
 
+	// Skills — scan and inject catalog into system prompt
+	a.loadSkills(out)
+
 	// Backend selection
 	if err := a.selectBackend(reader, out); err != nil {
 		return err
+	}
+
+	// Session resume or create (after backend is known so we can store the model name)
+	if a.SM != nil {
+		a.initSession(reader, out)
 	}
 
 	// Auto-start recording if configured.
@@ -198,6 +212,15 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintln(out, dim("  "+stats.Format()))
 		a.recordStats(stats)
 		a.AddMessage("assistant", buf.String())
+		if a.SM != nil && a.SessionID != 0 {
+			model := ""
+			if a.Client != nil {
+				model = a.Client.Name()
+			}
+			if saveErr := a.SM.Save(a.SessionID, model, a.History); saveErr != nil {
+				fmt.Fprintf(out, yellow("  ✗")+" Session save error: %v\n", saveErr)
+			}
+		}
 		if a.Recorder != nil {
 			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats); recErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
@@ -322,6 +345,156 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer) error {
 	a.Client = NewOllamaClient(a.Config.OllamaURL, chosen)
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen))
 	return nil
+}
+
+// initSessionManager opens (or creates) the session database. Failures are
+// non-fatal: the user is warned but Harvey continues without session persistence.
+func (a *Agent) initSessionManager(out io.Writer) {
+	sm, err := OpenSessionManager(a.Workspace)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" Session manager unavailable: %v\n", err)
+		return
+	}
+	a.SM = sm
+	fmt.Fprintln(out, green("✓")+" Sessions: .harvey/sessions.db")
+}
+
+// initSession either resumes an existing session (prompted or via --session ID)
+// or creates a new one. It is called after the backend is selected so the model
+// name can be recorded in the new session row.
+func (a *Agent) initSession(reader *bufio.Reader, out io.Writer) {
+	// Capture the current system prompt that was just added to history.
+	currentSysPrompt := ""
+	for _, m := range a.History {
+		if m.Role == "system" {
+			currentSysPrompt = m.Content
+			break
+		}
+	}
+
+	var session *Session
+	if a.Config.ResumeSessionID > 0 {
+		s, err := a.SM.Load(a.Config.ResumeSessionID)
+		if err != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Could not load session %d: %v\n", a.Config.ResumeSessionID, err)
+		} else if s == nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Session %d not found, starting new.\n", a.Config.ResumeSessionID)
+		} else {
+			session = s
+		}
+	} else {
+		last, err := a.SM.LoadLast()
+		if err != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Could not check last session: %v\n", err)
+		} else if last != nil {
+			label := last.Name
+			if label == "" {
+				label = fmt.Sprintf("#%d", last.ID)
+			}
+			turns := 0
+			for _, m := range last.History {
+				if m.Role == "user" {
+					turns++
+				}
+			}
+			prompt := fmt.Sprintf("  Resume session %s (%d turns, %s)? [Y/n] ",
+				label, turns, last.LastActive.Format("2006-01-02 15:04"))
+			if askYesNo(reader, out, prompt, true) {
+				session = last
+			}
+		}
+	}
+
+	if session != nil {
+		// Restore history, keeping the freshly expanded system prompt active.
+		a.History = session.History
+		if currentSysPrompt != "" {
+			replaced := false
+			for i, m := range a.History {
+				if m.Role == "system" {
+					a.History[i].Content = currentSysPrompt
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				a.History = append([]Message{{Role: "system", Content: currentSysPrompt}}, a.History...)
+			}
+		}
+		a.SessionID = session.ID
+		label := session.Name
+		if label == "" {
+			label = fmt.Sprintf("#%d", session.ID)
+		}
+		fmt.Fprintf(out, green("✓")+" Resumed session %s (%d messages)\n", label, len(a.History))
+		return
+	}
+
+	// Create a fresh session.
+	model := ""
+	if a.Client != nil {
+		model = a.Client.Name()
+	}
+	id, err := a.SM.Create(a.Workspace.Root, model, a.History)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" Could not create session: %v\n", err)
+		return
+	}
+	a.SessionID = id
+	fmt.Fprintf(out, green("✓")+" New session #%d\n", id)
+}
+
+// loadSkills scans the standard skill directories, stores the catalog on the
+// agent, and appends the XML catalog block to the system prompt so the model
+// knows what skills are available. It also updates Config.SystemPrompt so
+// that /clear re-injects the catalog after resetting history. Non-fatal:
+// if no skills are found the function returns silently.
+func (a *Agent) loadSkills(out io.Writer) {
+	cat := ScanSkills(a.Workspace.Root)
+	if len(cat) == 0 {
+		return
+	}
+	a.Skills = cat
+	block := CatalogSystemPromptBlock(cat)
+
+	// Persist in Config so ClearHistory() keeps the catalog across /clear.
+	if a.Config.SystemPrompt != "" {
+		a.Config.SystemPrompt += "\n\n" + block
+	} else {
+		a.Config.SystemPrompt = block
+	}
+
+	// Update the system message already in History (added before this call).
+	injected := false
+	for i, m := range a.History {
+		if m.Role == "system" {
+			a.History[i].Content += "\n\n" + block
+			injected = true
+			break
+		}
+	}
+	if !injected {
+		a.History = append([]Message{{Role: "system", Content: block}}, a.History...)
+	}
+
+	proj, user := 0, 0
+	for _, s := range cat {
+		if s.Source == SkillSourceProject {
+			proj++
+		} else {
+			user++
+		}
+	}
+	detail := ""
+	switch {
+	case proj > 0 && user > 0:
+		detail = fmt.Sprintf(" (%d project, %d user)", proj, user)
+	case proj > 0:
+		detail = " (project)"
+	default:
+		detail = " (user)"
+	}
+	fmt.Fprintf(out, green("✓")+" Skills: %d skill(s) available%s\n", len(cat), detail)
 }
 
 /** askYesNo prints prompt, reads a line, and returns true for "y"/"yes".

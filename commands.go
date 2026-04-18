@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -116,6 +117,16 @@ func (a *Agent) registerCommands() {
 			Description: "Ask the LLM to summarize history and replace it with the summary",
 			Handler:     cmdSummarize,
 		},
+		"compact": {
+			Usage:       "/compact",
+			Description: "Alias for /summarize — condense conversation history",
+			Handler:     cmdSummarize,
+		},
+		"model": {
+			Usage:       "/model [NAME | ollama://NAME | publicai.co://NAME]",
+			Description: "List available models, or switch to a named model",
+			Handler:     cmdModel,
+		},
 		"context": {
 			Usage:       "/context <show|add TEXT...|clear>",
 			Description: "Manage pinned context that survives /clear",
@@ -130,6 +141,16 @@ func (a *Agent) registerCommands() {
 			Usage:       "/agent <on|off|status>",
 			Description: "Toggle agent mode: auto-apply files and auto-run suggested commands",
 			Handler:     cmdAgent,
+		},
+		"session": {
+			Usage:       "/session <list|load ID|new|name LABEL|status>",
+			Description: "Manage conversation sessions",
+			Handler:     cmdSession,
+		},
+		"skill": {
+			Usage:       "/skill <list|load NAME|info NAME|status>",
+			Description: "List or load Agent Skills from the skill catalog",
+			Handler:     cmdSkill,
 		},
 		"exit": {
 			Usage:       "/exit",
@@ -187,7 +208,16 @@ func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 
 // ─── Built-in handlers ───────────────────────────────────────────────────────
 
-func cmdHelp(a *Agent, _ []string, out io.Writer) error {
+func cmdHelp(a *Agent, args []string, out io.Writer) error {
+	if len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "skills", "skill":
+			fmt.Fprint(out, SkillsHelpText)
+			return nil
+		default:
+			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: skills\n\n", args[0])
+		}
+	}
 	fmt.Fprintln(out)
 	for _, cmd := range a.commands {
 		fmt.Fprintf(out, "  %-50s %s\n", cmd.Usage, cmd.Description)
@@ -211,6 +241,18 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 	} else {
 		fmt.Fprintln(out, "KB:        not open")
 	}
+	if a.SM != nil && a.SessionID != 0 {
+		s, err := a.SM.Load(a.SessionID)
+		if err == nil && s != nil {
+			name := s.Name
+			if name == "" {
+				name = "(unnamed)"
+			}
+			fmt.Fprintf(out, "Session:   #%d %s\n", s.ID, name)
+		}
+	} else {
+		fmt.Fprintln(out, "Session:   none")
+	}
 	if a.Recorder != nil {
 		fmt.Fprintf(out, "Recording: %s\n", a.Recorder.Path())
 	} else {
@@ -221,6 +263,20 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 
 func cmdClear(a *Agent, _ []string, out io.Writer) error {
 	a.ClearHistory()
+	if a.SM != nil {
+		model := ""
+		if a.Client != nil {
+			model = a.Client.Name()
+		}
+		id, err := a.SM.Create(a.Workspace.Root, model, a.History)
+		if err != nil {
+			fmt.Fprintf(out, "  Warning: could not create new session: %v\n", err)
+		} else {
+			a.SessionID = id
+			fmt.Fprintf(out, "Conversation history cleared. New session #%d started.\n", id)
+			return nil
+		}
+	}
 	fmt.Fprintln(out, "Conversation history cleared.")
 	return nil
 }
@@ -1147,6 +1203,512 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
 	default:
 		fmt.Fprintf(out, "Unknown context subcommand: %s\n", args[0])
 		fmt.Fprintln(out, "Usage: /context <show|add TEXT...|clear>")
+	}
+	return nil
+}
+
+// ─── /session ────────────────────────────────────────────────────────────────
+
+/** cmdSession manages Harvey's persistent conversation sessions.
+ *
+ * Subcommands:
+ *   list         — list all sessions, most-recent first.
+ *   load ID      — restore history from session ID into the current conversation.
+ *   new          — clear history and start a fresh session row.
+ *   name LABEL   — assign a human-readable label to the current session.
+ *   status       — show the current session ID and name.
+ *
+ * Parameters:
+ *   a    (*Agent)    — the running agent.
+ *   args ([]string)  — subcommand and its arguments.
+ *   out  (io.Writer) — destination for command output.
+ *
+ * Returns:
+ *   error — on database failure.
+ *
+ * Example:
+ *   /session list
+ *   /session load 3
+ *   /session name "fixing spinner bug"
+ */
+func cmdSession(a *Agent, args []string, out io.Writer) error {
+	if a.SM == nil {
+		fmt.Fprintln(out, "Session manager is not available.")
+		return nil
+	}
+	if len(args) == 0 || strings.ToLower(args[0]) == "status" {
+		return sessionStatus(a, out)
+	}
+	switch strings.ToLower(args[0]) {
+	case "list":
+		return sessionList(a, out)
+	case "load":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /session load ID")
+			return nil
+		}
+		id, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			fmt.Fprintf(out, "Invalid session ID: %s\n", args[1])
+			return nil
+		}
+		return sessionLoad(a, id, out)
+	case "new":
+		return sessionNew(a, out)
+	case "name":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /session name LABEL")
+			return nil
+		}
+		label := strings.Join(args[1:], " ")
+		return sessionName(a, label, out)
+	default:
+		fmt.Fprintf(out, "Unknown session subcommand: %s\n", args[0])
+		fmt.Fprintln(out, "Usage: /session <list|load ID|new|name LABEL|status>")
+	}
+	return nil
+}
+
+func sessionStatus(a *Agent, out io.Writer) error {
+	if a.SessionID == 0 {
+		fmt.Fprintln(out, "  No active session.")
+		return nil
+	}
+	s, err := a.SM.Load(a.SessionID)
+	if err != nil {
+		return err
+	}
+	if s == nil {
+		fmt.Fprintln(out, "  No active session.")
+		return nil
+	}
+	name := s.Name
+	if name == "" {
+		name = "(unnamed)"
+	}
+	turns := 0
+	for _, m := range s.History {
+		if m.Role == "user" {
+			turns++
+		}
+	}
+	fmt.Fprintf(out, "  Session #%d  %s\n", s.ID, name)
+	fmt.Fprintf(out, "  Model:      %s\n", s.Model)
+	fmt.Fprintf(out, "  Turns:      %d\n", turns)
+	fmt.Fprintf(out, "  Created:    %s\n", s.CreatedAt.Format("2006-01-02 15:04"))
+	fmt.Fprintf(out, "  Last saved: %s\n", s.LastActive.Format("2006-01-02 15:04"))
+	return nil
+}
+
+func sessionList(a *Agent, out io.Writer) error {
+	sessions, err := a.SM.List()
+	if err != nil {
+		return err
+	}
+	if len(sessions) == 0 {
+		fmt.Fprintln(out, "  (no sessions)")
+		return nil
+	}
+	fmt.Fprintln(out)
+	for _, s := range sessions {
+		active := "  "
+		if s.ID == a.SessionID {
+			active = "* "
+		}
+		name := s.Name
+		if name == "" {
+			name = "(unnamed)"
+		}
+		fmt.Fprintf(out, "  %s[%d] %-28s  %s  %s\n",
+			active, s.ID, name, s.Model, s.LastActive.Format("2006-01-02 15:04"))
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
+func sessionLoad(a *Agent, id int64, out io.Writer) error {
+	s, err := a.SM.Load(id)
+	if err != nil {
+		return err
+	}
+	if s == nil {
+		fmt.Fprintf(out, "  Session %d not found.\n", id)
+		return nil
+	}
+	// Keep the current system prompt fresh.
+	currentSys := ""
+	for _, m := range a.History {
+		if m.Role == "system" {
+			currentSys = m.Content
+			break
+		}
+	}
+	a.History = s.History
+	if currentSys != "" {
+		replaced := false
+		for i, m := range a.History {
+			if m.Role == "system" {
+				a.History[i].Content = currentSys
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			a.History = append([]Message{{Role: "system", Content: currentSys}}, a.History...)
+		}
+	}
+	a.SessionID = s.ID
+	name := s.Name
+	if name == "" {
+		name = fmt.Sprintf("#%d", s.ID)
+	}
+	fmt.Fprintf(out, "  Loaded session %s (%d messages).\n", name, len(a.History))
+	return nil
+}
+
+func sessionNew(a *Agent, out io.Writer) error {
+	a.ClearHistory()
+	model := ""
+	if a.Client != nil {
+		model = a.Client.Name()
+	}
+	workspace := ""
+	if a.Workspace != nil {
+		workspace = a.Workspace.Root
+	}
+	id, err := a.SM.Create(workspace, model, a.History)
+	if err != nil {
+		return err
+	}
+	a.SessionID = id
+	fmt.Fprintf(out, "  History cleared. New session #%d started.\n", id)
+	return nil
+}
+
+func sessionName(a *Agent, label string, out io.Writer) error {
+	if a.SessionID == 0 {
+		fmt.Fprintln(out, "  No active session to rename.")
+		return nil
+	}
+	if err := a.SM.Rename(a.SessionID, label); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "  Session #%d named %q.\n", a.SessionID, label)
+	return nil
+}
+
+// ─── /skill ──────────────────────────────────────────────────────────────────
+
+/** cmdSkill lists or loads Agent Skills from the catalog discovered at startup.
+ *
+ * Subcommands:
+ *   list           — list all available skills with name and description.
+ *   load NAME      — inject the full skill body into the conversation as context.
+ *   info NAME      — show path, source, license, and compatibility for a skill.
+ *   status         — show total skill count broken down by scope.
+ *
+ * Parameters:
+ *   a    (*Agent)    — the running agent.
+ *   args ([]string)  — subcommand and its arguments.
+ *   out  (io.Writer) — destination for output.
+ *
+ * Returns:
+ *   error — always nil (errors are reported inline).
+ *
+ * Example:
+ *   /skill list
+ *   /skill load go-review
+ *   /skill info go-review
+ */
+func cmdSkill(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 || strings.ToLower(args[0]) == "list" {
+		return skillList(a, out)
+	}
+	switch strings.ToLower(args[0]) {
+	case "load":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /skill load NAME")
+			return nil
+		}
+		return skillLoad(a, args[1], out)
+	case "info":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /skill info NAME")
+			return nil
+		}
+		return skillInfo(a, args[1], out)
+	case "status":
+		return skillStatus(a, out)
+	default:
+		fmt.Fprintf(out, "Unknown skill subcommand: %s\n", args[0])
+		fmt.Fprintln(out, "Usage: /skill <list|load NAME|info NAME|status>")
+	}
+	return nil
+}
+
+func skillList(a *Agent, out io.Writer) error {
+	if len(a.Skills) == 0 {
+		fmt.Fprintln(out, "  No skills discovered. See /help skills for setup instructions.")
+		return nil
+	}
+	names := make([]string, 0, len(a.Skills))
+	for n := range a.Skills {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	fmt.Fprintln(out)
+	for _, n := range names {
+		s := a.Skills[n]
+		fmt.Fprintf(out, "  %-28s [%s]\n", n, s.Source)
+		fmt.Fprintf(out, "    %s\n", s.Description)
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
+func skillLoad(a *Agent, name string, out io.Writer) error {
+	if len(a.Skills) == 0 {
+		fmt.Fprintln(out, "  No skills available. See /help skills for setup instructions.")
+		return nil
+	}
+	skill, ok := a.Skills[name]
+	if !ok {
+		fmt.Fprintf(out, "  Skill %q not found. Use /skill list to see available skills.\n", name)
+		return nil
+	}
+	if skill.Body == "" {
+		fmt.Fprintf(out, "  Skill %q has no body content.\n", name)
+		return nil
+	}
+	a.AddMessage("user", fmt.Sprintf("[skill: %s]\n\n%s", name, skill.Body))
+	if a.Recorder != nil {
+		_ = a.Recorder.RecordSkillLoad(name, skill.Description, skill.Body)
+	}
+	fmt.Fprintf(out, "  ✓ Skill %q loaded into context (%d chars).\n", name, len(skill.Body))
+	return nil
+}
+
+func skillInfo(a *Agent, name string, out io.Writer) error {
+	if len(a.Skills) == 0 {
+		fmt.Fprintln(out, "  No skills available.")
+		return nil
+	}
+	skill, ok := a.Skills[name]
+	if !ok {
+		fmt.Fprintf(out, "  Skill %q not found. Use /skill list to see available skills.\n", name)
+		return nil
+	}
+	fmt.Fprintf(out, "  Name:          %s\n", skill.Name)
+	fmt.Fprintf(out, "  Description:   %s\n", skill.Description)
+	fmt.Fprintf(out, "  Source:        %s\n", skill.Source)
+	fmt.Fprintf(out, "  Path:          %s\n", skill.Path)
+	if skill.License != "" {
+		fmt.Fprintf(out, "  License:       %s\n", skill.License)
+	}
+	if skill.Compatibility != "" {
+		fmt.Fprintf(out, "  Compatibility: %s\n", skill.Compatibility)
+	}
+	if len(skill.Metadata) > 0 {
+		keys := make([]string, 0, len(skill.Metadata))
+		for k := range skill.Metadata {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		fmt.Fprintln(out, "  Metadata:")
+		for _, k := range keys {
+			fmt.Fprintf(out, "    %s: %s\n", k, skill.Metadata[k])
+		}
+	}
+	return nil
+}
+
+func skillStatus(a *Agent, out io.Writer) error {
+	if len(a.Skills) == 0 {
+		fmt.Fprintln(out, "  No skills discovered. See /help skills for setup instructions.")
+		return nil
+	}
+	proj, user := 0, 0
+	for _, s := range a.Skills {
+		if s.Source == SkillSourceProject {
+			proj++
+		} else {
+			user++
+		}
+	}
+	fmt.Fprintf(out, "  Total: %d skill(s)\n", len(a.Skills))
+	if proj > 0 {
+		fmt.Fprintf(out, "    Project scope: %d\n", proj)
+	}
+	if user > 0 {
+		fmt.Fprintf(out, "    User scope:    %d\n", user)
+	}
+	return nil
+}
+
+// ─── /model ──────────────────────────────────────────────────────────────────
+
+/** cmdModel lists available models from all reachable backends, or switches
+ * the active model when a name is supplied.
+ *
+ * Usage:
+ *   /model                     — list all models from every connected backend.
+ *   /model NAME                — switch to NAME; error if ambiguous across backends.
+ *   /model ollama://NAME       — switch Ollama to NAME.
+ *   /model publicai.co://NAME  — switch publicai.co to NAME.
+ *
+ * Parameters:
+ *   a    (*Agent)    — the running agent.
+ *   args ([]string)  — optional model name with optional backend prefix.
+ *   out  (io.Writer) — destination for output.
+ *
+ * Returns:
+ *   error — on backend communication failure.
+ *
+ * Example:
+ *   /model
+ *   /model mistral:latest
+ *   /model ollama://mistral:latest
+ */
+func cmdModel(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		return modelList(a, out)
+	}
+	return modelSwitch(a, args[0], out)
+}
+
+// modelList prints all models from every reachable backend, grouped by backend.
+// The currently active model is marked with *.
+func modelList(a *Agent, out io.Writer) error {
+	ctx := context.Background()
+	found := false
+
+	// Ollama
+	if ProbeOllama(a.Config.OllamaURL) {
+		models, err := NewOllamaClient(a.Config.OllamaURL, "").Models(ctx)
+		if err == nil {
+			found = true
+			activeModel := ""
+			if oc, ok := a.Client.(*OllamaClient); ok {
+				activeModel = oc.Model()
+			}
+			fmt.Fprintln(out, "  Ollama:")
+			if len(models) == 0 {
+				fmt.Fprintln(out, "    (no models installed — run: ollama pull <model>)")
+			}
+			for _, m := range models {
+				marker := "  "
+				if m == activeModel {
+					marker = "* "
+				}
+				fmt.Fprintf(out, "    %s%s\n", marker, m)
+			}
+		}
+	}
+
+	// publicai.co
+	if a.Config.PublicAIKey != "" {
+		pc := NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, a.Config.PublicAIModel)
+		models, err := pc.Models(ctx)
+		if err == nil {
+			found = true
+			activeModel := ""
+			if ac, ok := a.Client.(*PublicAIClient); ok {
+				activeModel = ac.Model()
+			}
+			fmt.Fprintln(out, "  publicai.co:")
+			for _, m := range models {
+				marker := "  "
+				if m == activeModel {
+					marker = "* "
+				}
+				fmt.Fprintf(out, "    %s%s\n", marker, m)
+			}
+		}
+	}
+
+	if !found {
+		fmt.Fprintln(out, "  No backends available. Start Ollama or set PUBLICAI_API_KEY and use /publicai connect.")
+	}
+	return nil
+}
+
+// modelSwitch changes the active model. The name may carry a backend prefix
+// ("ollama://" or "publicai.co://") to force a specific backend. Without a
+// prefix the model name is matched against all reachable backends; if the name
+// is found in exactly one backend that backend is activated, otherwise the user
+// is prompted to use a prefix.
+func modelSwitch(a *Agent, name string, out io.Writer) error {
+	ctx := context.Background()
+
+	const ollamaPrefix    = "ollama://"
+	const publicaiPrefix  = "publicai.co://"
+
+	switch {
+	case strings.HasPrefix(name, ollamaPrefix):
+		model := strings.TrimPrefix(name, ollamaPrefix)
+		if !ProbeOllama(a.Config.OllamaURL) {
+			fmt.Fprintln(out, "  Ollama is not running. Use /ollama start first.")
+			return nil
+		}
+		a.Config.OllamaModel = model
+		a.Client = NewOllamaClient(a.Config.OllamaURL, model)
+		fmt.Fprintf(out, "  Switched to Ollama model: %s\n", model)
+
+	case strings.HasPrefix(name, publicaiPrefix):
+		model := strings.TrimPrefix(name, publicaiPrefix)
+		if a.Config.PublicAIKey == "" {
+			fmt.Fprintln(out, "  PUBLICAI_API_KEY is not set.")
+			return nil
+		}
+		a.Config.PublicAIModel = model
+		a.Client = NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, model)
+		fmt.Fprintf(out, "  Switched to publicai.co model: %s\n", model)
+
+	default:
+		// No prefix — search all backends.
+		var inOllama, inPublicAI bool
+
+		if ProbeOllama(a.Config.OllamaURL) {
+			models, err := NewOllamaClient(a.Config.OllamaURL, "").Models(ctx)
+			if err == nil {
+				for _, m := range models {
+					if m == name {
+						inOllama = true
+						break
+					}
+				}
+			}
+		}
+		if a.Config.PublicAIKey != "" {
+			pc := NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, a.Config.PublicAIModel)
+			models, err := pc.Models(ctx)
+			if err == nil {
+				for _, m := range models {
+					if m == name {
+						inPublicAI = true
+						break
+					}
+				}
+			}
+		}
+
+		switch {
+		case inOllama && inPublicAI:
+			fmt.Fprintf(out, "  %q exists in both backends. Use a prefix to disambiguate:\n", name)
+			fmt.Fprintf(out, "    /model ollama://%s\n", name)
+			fmt.Fprintf(out, "    /model publicai.co://%s\n", name)
+		case inOllama:
+			a.Config.OllamaModel = name
+			a.Client = NewOllamaClient(a.Config.OllamaURL, name)
+			fmt.Fprintf(out, "  Switched to Ollama model: %s\n", name)
+		case inPublicAI:
+			a.Config.PublicAIModel = name
+			a.Client = NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, name)
+			fmt.Fprintf(out, "  Switched to publicai.co model: %s\n", name)
+		default:
+			fmt.Fprintf(out, "  Model %q not found in any available backend.\n", name)
+			fmt.Fprintln(out, "  Use /model to list available models.")
+		}
 	}
 	return nil
 }

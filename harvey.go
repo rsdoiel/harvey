@@ -99,6 +99,11 @@ const maxStatHistory = 5
  * backend, conversation history, workspace, knowledge base, and registered
  * slash commands.
  *
+ * Fields:
+ *   SM        (*SessionManager) — persists conversation turns to SQLite; nil if unavailable.
+ *   SessionID (int64)           — row ID of the active session in sessions.db; 0 if none.
+ *   Skills    (SkillCatalog)    — skills discovered at startup; nil until loadSkills runs.
+ *
  * Example:
  *   cfg := DefaultConfig()
  *   ws, _ := NewWorkspace(".")
@@ -110,6 +115,9 @@ type Agent struct {
 	History       []Message
 	Workspace     *Workspace
 	KB            *KnowledgeBase
+	SM            *SessionManager // session persistence; nil if unavailable
+	SessionID     int64           // active session row ID; 0 = no session
+	Skills        SkillCatalog    // skills discovered at startup; nil until loadSkills runs
 	Recorder      *Recorder
 	In            io.Reader // source for interactive prompts; defaults to os.Stdin
 	PinnedContext string    // persists across /clear; re-injected after system prompt

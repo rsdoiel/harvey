@@ -42,9 +42,9 @@ func TestRecorder_roundtrip(t *testing.T) {
 		"TALKING",
 		// model name extracted and uppercased
 		"LLAMA3",
-		// LLM relay dialogue — HARVEY speaks a parenthetical
+		// LLM relay dialogue — HARVEY speaks the forwarding line
 		"HARVEY",
-		"(forwarding to LLAMA3)",
+		"Forwarding to LLAMA3.",
 		// user input and reply appear as dialogue
 		"What is 2+2?",
 		"2 + 2 = 4.",
@@ -97,7 +97,7 @@ func TestRecorder_agentScene(t *testing.T) {
 		"Harvey proposes to write 1 file.",
 		"HARVEY",
 		"testout/hello.bash",
-		"(yes)",
+		"yes",
 		"[[write:",
 		"ok",
 		"THE END.",
@@ -105,6 +105,34 @@ func TestRecorder_agentScene(t *testing.T) {
 	for _, want := range checks {
 		if !strings.Contains(content, want) {
 			t.Errorf("agent scene missing %q\n---\n%s", want, content)
+		}
+	}
+}
+
+func TestRecorder_skillLoad(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3:latest)", dir)
+
+	body := "# Go Review\n\nCheck for correctness and style."
+	if err := r.RecordSkillLoad("go-review", "Review Go source code for quality issues.", body); err != nil {
+		t.Fatalf("RecordSkillLoad: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	checks := []string{
+		"INT. SKILL GO-REVIEW",
+		"Harvey executes the go-review skill.",
+		"Review Go source code for quality issues.",
+		"GO-REVIEW",
+		"# Go Review",
+	}
+	for _, want := range checks {
+		if !strings.Contains(content, want) {
+			t.Errorf("skill scene missing %q\n---\n%s", want, content)
 		}
 	}
 }

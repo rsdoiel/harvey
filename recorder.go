@@ -15,25 +15,26 @@ package harvey
 //       Harvey and {USER} are in chat mode. …    ← action block (state)
 //
 //       {USER}
-//       (user's input text)
+//       user's input text
 //
 //       HARVEY
 //       Forwarding to {MODEL}.
 //
 //       {MODEL}
-//       (LLM reply)
+//       LLM reply text
 //
 //       [[stats: …]]                              ← Fountain note
 //
 //   INT. AGENT MODE {TIMESTAMP}                  ← one per agent-action group
 //
-//       Harvey proposes to write 2 file(s)…      ← action block (proposal)
+//       HARVEY
+//       Harvey proposes to write 2 file(s)…      ← dialogue (Harvey speaking)
 //
 //       HARVEY
-//       Write testout/hello.bash (52 bytes)?
+//       Write testout/hello.bash?
 //
 //       {USER}
-//       (yes)
+//       yes
 //
 //       [[write: testout/hello.bash — ok]]
 
@@ -224,7 +225,7 @@ func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats Chat
 		r.userName, r.modelName, r.workspace,
 	))
 	r.writeDialogue(r.userName, "", userInput)
-	r.writeDialogue("HARVEY", fmt.Sprintf("forwarding to %s", r.modelName), "")
+	r.writeDialogue("HARVEY", "", fmt.Sprintf("Forwarding to %s.", r.modelName))
 	r.writeDialogue(r.modelName, "", harveyReply)
 	if stats.ReplyTokens > 0 {
 		r.writeNote("stats: " + stats.Format())
@@ -250,7 +251,7 @@ func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats Chat
 func (r *Recorder) StartAgentScene(description string) error {
 	ts := time.Now().Format("2006-01-02 15:04:05")
 	r.writeSceneHeading(fmt.Sprintf("INT. AGENT MODE %s", ts))
-	r.writeAction(description)
+	r.writeDialogue("HARVEY", "", description)
 	return nil
 }
 
@@ -282,10 +283,63 @@ func (r *Recorder) RecordAgentAction(kind, target, userChoice, outcome string) e
 	r.writeDialogue("HARVEY", "", proposal)
 
 	// USER responds
-	r.writeDialogue(r.userName, userChoice, "")
+	r.writeDialogue(r.userName, "", userChoice)
 
 	// Outcome as a Fountain note
 	r.writeNote(fmt.Sprintf("%s: %s — %s", kind, target, outcome))
+	return nil
+}
+
+// RecordSkillLoad appends a skill-activation scene to the recording.
+//
+// Scene structure:
+//
+//	INT. SKILL {NAME} {TIMESTAMP}
+//
+//	Harvey executes the {name} skill.      ← action (Harvey's action)
+//
+//	{description}                          ← action (what the skill does)
+//
+//	{NAME}
+//	{body}                                 ← dialogue (skill's output/instructions)
+//
+// The skill name is uppercased to form the Fountain character name, e.g.
+// "go-review" → "GO-REVIEW". The description is rendered as a stage-direction
+// action block so it reads as the skill taking action. The body is the skill's
+// dialogue — what it delivers to Harvey.
+//
+// Parameters:
+//
+//	name        (string) — skill identifier, e.g. "go-review".
+//	description (string) — one-line description from the skill's frontmatter.
+//	body        (string) — full markdown body of the SKILL.md file.
+//
+// Returns:
+//
+//	error — if the write fails.
+//
+// Example:
+//
+//	r.RecordSkillLoad("go-review", "Review Go source code for quality issues.", body)
+func (r *Recorder) RecordSkillLoad(name, description, body string) error {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	skillChar := strings.ToUpper(name)
+
+	r.writeSceneHeading(fmt.Sprintf("INT. SKILL %s %s", skillChar, ts))
+
+	// Harvey's action: executing the skill.
+	r.writeAction(fmt.Sprintf("Harvey executes the %s skill.", name))
+
+	// Skill's action: what the skill does, as a stage direction.
+	if description != "" {
+		r.writeAction(description)
+	}
+
+	// Skill's dialogue: the instructions/output it delivers.
+	if body != "" {
+		r.writeDialogue(skillChar, "", body)
+	}
+
 	return nil
 }
 

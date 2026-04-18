@@ -1,6 +1,6 @@
-%harvey(1) user manual | version 0.0.0 ec7f9f2
+%harvey(1) user manual | version 0.0.0 e9644ef
 % R. S. Doiel
-% 2026-04-17
+% 2026-04-18
 
 # NAME
 
@@ -49,6 +49,15 @@ Type /help inside the session for available slash commands.
 : Ollama base URL (default: http://localhost:11434)
 -w, --workdir DIR
 : workspace directory (default: current directory)
+
+-r, --record
+: start a Fountain recording automatically at startup
+
+--record-file FILE
+: path for the auto-recording file (implies --record)
+
+-s, --session ID
+: resume a specific session by ID on startup; omit to be prompted
 
 # ENVIRONMENT
 
