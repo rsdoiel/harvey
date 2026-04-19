@@ -42,11 +42,11 @@ CREATE TABLE IF NOT EXISTS sessions (
  *   }
  */
 type Session struct {
-	ID        int64
-	Name      string
-	Workspace string
-	Model     string
-	History   []Message
+	ID         int64
+	Name       string
+	Workspace  string
+	Model      string
+	History    []Message
 	CreatedAt  time.Time
 	LastActive time.Time
 }

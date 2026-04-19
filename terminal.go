@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 )
 
@@ -60,6 +61,16 @@ func (a *Agent) prompt() string {
  */
 func (a *Agent) Run(out io.Writer) error {
 	a.registerCommands()
+	if err := LoadOllamaEnv(); err != nil {
+		fmt.Fprintf(out, dim("  Warning: ollama env: %v\n"), err)
+	} else {
+		fmt.Fprintf(out, green("✓")+" Ollama env: OLLAMA_MODELS=%s\n", os.Getenv("OLLAMA_MODELS"))
+	}
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			a.Config.OllamaContextLength = n
+		}
+	}
 	defer func() {
 		if a.Recorder != nil {
 			path := a.Recorder.Path()
@@ -105,6 +116,9 @@ func (a *Agent) Run(out io.Writer) error {
 	if err := a.selectBackend(reader, out); err != nil {
 		return err
 	}
+
+	// Multi-model router (requires backend to be known first).
+	a.initRouter(out)
 
 	// Session resume or create (after backend is known so we can store the model name)
 	if a.SM != nil {
@@ -197,6 +211,63 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 
 		a.AddMessage("user", input)
+
+		// Token-count warning — runs only when the backend is Ollama.
+		if oc, ok := a.Client.(*OllamaClient); ok {
+			histText := HistoryText(a.History)
+			n, exact := CountTokens(context.Background(), oc.baseURL, oc.model, histText)
+			limit := a.Config.OllamaContextLength
+			qualifier := "~"
+			if exact {
+				qualifier = ""
+			}
+			if limit > 0 {
+				pct := n * 100 / limit
+				switch {
+				case pct >= 100:
+					fmt.Fprintf(out, red("  ✗ Context full: %s%d / %d tokens (%d%%) — reply may be truncated\n"), qualifier, n, limit, pct)
+				case pct >= 80:
+					fmt.Fprintf(out, yellow("  ⚠ Context %d%% full: %s%d / %d tokens\n"), pct, qualifier, n, limit)
+				}
+			}
+		}
+		// Multi-model routing: classify the prompt and either use the fast
+		// model's direct answer or swap to the full model before the main call.
+		if a.Router != nil {
+			fmt.Fprint(out, dim("  routing..."))
+			fastAnswer, routeTo, routeErr := a.Router.Classify(context.Background(), a.History)
+			fmt.Fprint(out, "\r          \r") // clear the "routing..." line
+			if routeErr != nil {
+				fmt.Fprintf(out, yellow("  ⚠ Router error: %v — using current model\n"), routeErr)
+			} else if routeTo != "" {
+				if oc, ok := a.Client.(*OllamaClient); ok && oc.Model() != routeTo {
+					fmt.Fprintf(out, dim("  → routing to %s\n"), routeTo)
+					a.Client = NewOllamaClient(a.Config.OllamaURL, routeTo)
+				}
+			} else if fastAnswer != "" {
+				// Fast model answered directly — display and skip the main Chat call.
+				fmt.Fprintln(out)
+				fmt.Fprint(out, fastAnswer)
+				fmt.Fprintln(out)
+				a.AddMessage("assistant", fastAnswer)
+				if a.SM != nil && a.SessionID != 0 {
+					model := ""
+					if a.Client != nil {
+						model = a.Client.Name()
+					}
+					if saveErr := a.SM.Save(a.SessionID, model, a.History); saveErr != nil {
+						fmt.Fprintf(out, yellow("  ✗")+" Session save error: %v\n", saveErr)
+					}
+				}
+				if a.Recorder != nil {
+					if recErr := a.Recorder.RecordTurnWithStats(input, fastAnswer, ChatStats{}); recErr != nil {
+						fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
+					}
+				}
+				a.autoExecuteReply(fastAnswer, out, reader, context.Background())
+				continue
+			}
+		}
 		fmt.Fprintln(out)
 
 		// Build a cancellable context; Ctrl+C cancels the LLM call.
@@ -294,11 +365,37 @@ func (a *Agent) initKnowledgeBase(out io.Writer) {
  * Example:
  *   err := agent.selectBackend(reader, os.Stdout)
  */
+// initRouter enables multi-model routing when Config.Router is set.
+// It probes the fast model's context window via ShowModel so the router
+// can trim history correctly. Failures are non-fatal.
+func (a *Agent) initRouter(out io.Writer) {
+	if a.Config.Router == nil {
+		return
+	}
+	rc := a.Config.Router
+	if rc.FastModel == "" || rc.FullModel == "" {
+		fmt.Fprintln(out, yellow("  ⚠ Router config incomplete — fast and full model names required"))
+		return
+	}
+	r, err := NewRouter(*rc, a.Config.OllamaURL)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ⚠ Router init failed: %v\n"), err)
+		return
+	}
+	a.Router = r
+	fmt.Fprintf(out, green("✓")+" Router: %s → %s  (ctx budget: %d tokens)\n",
+		rc.FastModel, rc.FullModel, r.smallCtxLen/4)
+}
+
 func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 	fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.OllamaURL)
 
 	if ProbeOllama(a.Config.OllamaURL) {
 		fmt.Fprintln(out, green("  ✓")+" Ollama is running")
+		if m := os.Getenv("OLLAMA_MODELS"); m != "" {
+			fmt.Fprintf(out, dim("  ⚠ Ollama was already running — OLLAMA_MODELS=%s may not be in effect.\n"), m)
+			fmt.Fprintln(out, dim("    Stop Ollama, then restart Harvey to apply ollama.env settings."))
+		}
 		return a.pickOllamaModel(reader, out)
 	}
 

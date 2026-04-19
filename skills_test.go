@@ -360,9 +360,9 @@ func TestCatalogSystemPromptBlock_shape(t *testing.T) {
 
 func TestCatalogSystemPromptBlock_sorted(t *testing.T) {
 	cat := SkillCatalog{
-		"zebra":  {Name: "zebra", Description: "Z skill.", Path: "/z/SKILL.md"},
-		"apple":  {Name: "apple", Description: "A skill.", Path: "/a/SKILL.md"},
-		"mango":  {Name: "mango", Description: "M skill.", Path: "/m/SKILL.md"},
+		"zebra": {Name: "zebra", Description: "Z skill.", Path: "/z/SKILL.md"},
+		"apple": {Name: "apple", Description: "A skill.", Path: "/a/SKILL.md"},
+		"mango": {Name: "mango", Description: "M skill.", Path: "/m/SKILL.md"},
 	}
 	block := CatalogSystemPromptBlock(cat)
 	// "apple" must appear before "mango", which must appear before "zebra".

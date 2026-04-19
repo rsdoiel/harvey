@@ -63,8 +63,8 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdClear,
 		},
 		"ollama": {
-			Usage:       "/ollama <start|stop|status|list|use MODEL>",
-			Description: "Control the local Ollama service",
+			Usage:       "/ollama <start|stop|status|list|ps|pull MODEL|show MODEL|logs|use MODEL|env>",
+			Description: "Control the local Ollama service and manage models",
 			Handler:     cmdOllama,
 		},
 		"publicai": {
@@ -152,6 +152,16 @@ func (a *Agent) registerCommands() {
 			Description: "List or load Agent Skills from the skill catalog",
 			Handler:     cmdSkill,
 		},
+		"inspect": {
+			Usage:       "/inspect [MODEL]",
+			Description: "Show capability details for installed Ollama models; useful for multi-model routing",
+			Handler:     cmdInspect,
+		},
+		"route": {
+			Usage:       "/route <on FAST FULL | off | status>",
+			Description: "Configure multi-model routing between a fast and a full Ollama model",
+			Handler:     cmdRoute,
+		},
 		"exit": {
 			Usage:       "/exit",
 			Description: "Exit Harvey",
@@ -233,6 +243,24 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintf(out, "Backend:   %s\n", a.Client.Name())
 	}
 	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
+	if oc, ok := a.Client.(*OllamaClient); ok && len(a.History) > 0 {
+		n, exact := CountTokens(context.Background(), oc.baseURL, oc.model, HistoryText(a.History))
+		qualifier := "~"
+		if exact {
+			qualifier = ""
+		}
+		limit := a.Config.OllamaContextLength
+		if limit > 0 {
+			fmt.Fprintf(out, "Tokens:    %s%d / %d\n", qualifier, n, limit)
+		} else {
+			fmt.Fprintf(out, "Tokens:    %s%d\n", qualifier, n)
+		}
+	}
+	if a.Router != nil {
+		fmt.Fprintf(out, "Router:    %s → %s\n", a.Router.FastModel(), a.Router.FullModel())
+	} else {
+		fmt.Fprintln(out, "Router:    off")
+	}
 	if a.Workspace != nil {
 		fmt.Fprintf(out, "Workspace: %s\n", a.Workspace.Root)
 	}
@@ -281,9 +309,144 @@ func cmdClear(a *Agent, _ []string, out io.Writer) error {
 	return nil
 }
 
+func cmdRoute(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /route <on FAST FULL | off | status>")
+		return nil
+	}
+	switch strings.ToLower(args[0]) {
+	case "on":
+		if len(args) < 3 {
+			fmt.Fprintln(out, "Usage: /route on FAST_MODEL FULL_MODEL")
+			return nil
+		}
+		cfg := RouterConfig{FastModel: args[1], FullModel: args[2]}
+		r, err := NewRouter(cfg, a.Config.OllamaURL)
+		if err != nil {
+			return err
+		}
+		a.Router = r
+		a.Config.Router = &cfg
+		fmt.Fprintf(out, "Router enabled: %s → %s  (fast ctx budget: %d tokens)\n",
+			cfg.FastModel, cfg.FullModel, r.smallCtxLen/4)
+	case "off":
+		a.Router = nil
+		a.Config.Router = nil
+		fmt.Fprintln(out, "Router disabled.")
+	case "status":
+		if a.Router == nil {
+			fmt.Fprintln(out, "Router:    off")
+			return nil
+		}
+		fmt.Fprintf(out, "Router:    on\n")
+		fmt.Fprintf(out, "  fast:    %s\n", a.Router.FastModel())
+		fmt.Fprintf(out, "  full:    %s\n", a.Router.FullModel())
+		fmt.Fprintf(out, "  budget:  %d tokens (25%% of fast model context)\n", a.Router.smallCtxLen/4)
+	default:
+		fmt.Fprintf(out, "Unknown route subcommand: %s\n", args[0])
+	}
+	return nil
+}
+
+func cmdInspect(a *Agent, args []string, out io.Writer) error {
+	oc, ok := a.Client.(*OllamaClient)
+	if !ok {
+		fmt.Fprintln(out, "Inspect requires an Ollama backend. Use /ollama start first.")
+		return nil
+	}
+	ctx := context.Background()
+
+	if len(args) > 0 {
+		// Detail view for a single named model.
+		detail, err := oc.ShowModel(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		state := ""
+		if detail.Running {
+			state = " [loaded]"
+		}
+		fmt.Fprintf(out, "Model:        %s%s\n", detail.Name, state)
+		fmt.Fprintf(out, "Family:       %s\n", detail.Family)
+		fmt.Fprintf(out, "Parameters:   %s\n", detail.ParameterSize)
+		fmt.Fprintf(out, "Quantization: %s\n", detail.Quantization)
+		if detail.ContextLength > 0 {
+			fmt.Fprintf(out, "Context:      %d tokens\n", detail.ContextLength)
+		}
+		if detail.SizeBytes > 0 {
+			fmt.Fprintf(out, "Disk size:    %s\n", formatBytes(detail.SizeBytes))
+		}
+		if detail.RawParameters != "" {
+			fmt.Fprintln(out, "\nModelfile parameters:")
+			for _, line := range strings.Split(strings.TrimSpace(detail.RawParameters), "\n") {
+				fmt.Fprintf(out, "  %s\n", line)
+			}
+		}
+		return nil
+	}
+
+	// Summary table for all installed models.
+	summaries, err := oc.ModelSummaries(ctx)
+	if err != nil {
+		return err
+	}
+	if len(summaries) == 0 {
+		fmt.Fprintln(out, "No models installed. Pull one with: /ollama pull <model>")
+		return nil
+	}
+
+	const colFmt = "%-36s %-10s %-8s %-10s %-10s %6s\n"
+	fmt.Fprintf(out, colFmt, "NAME", "FAMILY", "PARAMS", "QUANT", "SIZE", "STATE")
+	fmt.Fprintf(out, colFmt,
+		strings.Repeat("─", 36),
+		strings.Repeat("─", 10),
+		strings.Repeat("─", 8),
+		strings.Repeat("─", 10),
+		strings.Repeat("─", 10),
+		strings.Repeat("─", 6),
+	)
+	for _, s := range summaries {
+		state := ""
+		if s.Running {
+			state = "loaded"
+		}
+		fmt.Fprintf(out, colFmt,
+			truncate(s.Name, 36),
+			truncate(s.Family, 10),
+			truncate(s.ParameterSize, 8),
+			truncate(s.Quantization, 10),
+			formatBytes(s.SizeBytes),
+			state,
+		)
+	}
+	fmt.Fprintf(out, "\nRun /inspect MODEL for context window size and Modelfile parameters.\n")
+	return nil
+}
+
+// formatBytes converts a byte count to a human-readable string (GB / MB / KB).
+func formatBytes(b int64) string {
+	switch {
+	case b >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(b)/float64(1<<30))
+	case b >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(1<<20))
+	default:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(1<<10))
+	}
+}
+
+// truncate shortens s to at most n runes, appending "…" if clipped.
+func truncate(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n-1]) + "…"
+}
+
 func cmdOllama(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /ollama <start|stop|status|list|use MODEL>")
+		fmt.Fprintln(out, "Usage: /ollama <start|stop|status|list|ps|pull MODEL|show MODEL|logs|use MODEL>")
 		return nil
 	}
 	switch strings.ToLower(args[0]) {
@@ -311,7 +474,7 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 			return err
 		}
 		if len(models) == 0 {
-			fmt.Fprintln(out, "No models installed. Run: ollama pull <model>")
+			fmt.Fprintln(out, "No models installed. Run: /ollama pull <model>")
 			return nil
 		}
 		for _, m := range models {
@@ -320,6 +483,63 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 				marker = "* "
 			}
 			fmt.Fprintf(out, "%s%s\n", marker, m)
+		}
+	case "ps":
+		cmd := exec.Command("ollama", "ps")
+		cmd.Stdout = out
+		cmd.Stderr = out
+		return cmd.Run()
+	case "pull":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /ollama pull MODEL")
+			return nil
+		}
+		cmd := exec.Command("ollama", "pull", args[1])
+		cmd.Stdout = out
+		cmd.Stderr = out
+		return cmd.Run()
+	case "show":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /ollama show MODEL")
+			return nil
+		}
+		cmd := exec.Command("ollama", "show", args[1])
+		cmd.Stdout = out
+		cmd.Stderr = out
+		return cmd.Run()
+	case "logs":
+		// Try the native ollama logs subcommand first; fall back to journalctl.
+		cmd := exec.Command("ollama", "logs")
+		cmd.Stdout = out
+		cmd.Stderr = out
+		if err := cmd.Run(); err != nil {
+			jcmd := exec.Command("journalctl", "-u", "ollama", "--no-pager", "-n", "100")
+			jcmd.Stdout = out
+			jcmd.Stderr = out
+			return jcmd.Run()
+		}
+		return nil
+	case "env":
+		// Show the Ollama-related environment variables currently in effect.
+		vars := []string{
+			"OLLAMA_HOST",
+			"OLLAMA_MODELS",
+			"OLLAMA_KEEP_ALIVE",
+			"OLLAMA_NUM_THREAD",
+			"OLLAMA_NUM_PARALLEL",
+			"OLLAMA_MAX_LOADED_MODELS",
+			"OLLAMA_CONTEXT_LENGTH",
+			"OLLAMA_MAX_QUEUE",
+			"OLLAMA_FLASH_ATTENTION",
+			"OLLAMA_DEBUG",
+		}
+		fmt.Fprintln(out, "Ollama environment (Harvey process):")
+		for _, k := range vars {
+			v := os.Getenv(k)
+			if v == "" {
+				v = dim("(not set)")
+			}
+			fmt.Fprintf(out, "  %-28s %s\n", k, v)
 		}
 	case "use":
 		if len(args) < 2 {
@@ -1679,8 +1899,8 @@ func modelList(a *Agent, out io.Writer) error {
 func modelSwitch(a *Agent, name string, out io.Writer) error {
 	ctx := context.Background()
 
-	const ollamaPrefix    = "ollama://"
-	const publicaiPrefix  = "publicai.co://"
+	const ollamaPrefix = "ollama://"
+	const publicaiPrefix = "publicai.co://"
 
 	switch {
 	case strings.HasPrefix(name, ollamaPrefix):

@@ -122,6 +122,7 @@ type Agent struct {
 	In            io.Reader // source for interactive prompts; defaults to os.Stdin
 	PinnedContext string    // persists across /clear; re-injected after system prompt
 	AgentMode     bool      // when true, auto-apply tagged blocks and auto-run extracted commands
+	Router        *Router   // multi-model router; nil when routing is disabled
 	commands      map[string]*Command
 	statHistory   []ChatStats // rolling window of recent turn stats
 }

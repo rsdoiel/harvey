@@ -70,20 +70,22 @@ this format — the operator can run them manually with /run.
  *   cfg.WorkDir = "/home/user/myproject"
  */
 type Config struct {
-	WorkDir          string // workspace root; all file I/O is constrained to this tree
-	CurrentProjectID int64  // ID of the active knowledge-base project (0 = none)
-	ResumeSessionID  int64  // session to resume at startup; 0 = prompt the user
-	SystemPrompt     string // contents of HARVEY.md, injected as the system prompt
-	OllamaURL        string // Ollama base URL (default: http://localhost:11434)
-	OllamaModel      string // currently selected Ollama model
-	PublicAIURL      string // publicai.co base URL (default: https://api.publicai.co/v1)
-	PublicAIKey      string // API key read from PUBLICAI_API_KEY
-	PublicAIModel    string // model name (default: abertus)
-	AutoRecord       bool   // start a Fountain session recording automatically at startup
-	RecordPath       string // file path for auto-recording; empty = auto-generated timestamped name
-	ContinuePath     string // Fountain file to load as pre-history when starting the REPL
-	ReplayPath       string // Fountain file to replay instead of entering the REPL
-	ReplayOutputPath string // output path for replay recording; empty = auto-generated
+	WorkDir             string        // workspace root; all file I/O is constrained to this tree
+	CurrentProjectID    int64         // ID of the active knowledge-base project (0 = none)
+	ResumeSessionID     int64         // session to resume at startup; 0 = prompt the user
+	SystemPrompt        string        // contents of HARVEY.md, injected as the system prompt
+	OllamaURL           string        // Ollama base URL (default: http://localhost:11434)
+	OllamaModel         string        // currently selected Ollama model
+	OllamaContextLength int           // context window size in tokens; 0 = unknown
+	Router              *RouterConfig // multi-model routing config; nil = routing disabled
+	PublicAIURL         string        // publicai.co base URL (default: https://api.publicai.co/v1)
+	PublicAIKey         string        // API key read from PUBLICAI_API_KEY
+	PublicAIModel       string        // model name (default: abertus)
+	AutoRecord          bool          // start a Fountain session recording automatically at startup
+	RecordPath          string        // file path for auto-recording; empty = auto-generated timestamped name
+	ContinuePath        string        // Fountain file to load as pre-history when starting the REPL
+	ReplayPath          string        // Fountain file to replay instead of entering the REPL
+	ReplayOutputPath    string        // output path for replay recording; empty = auto-generated
 }
 
 /** DefaultConfig returns a Config populated with sensible defaults. WorkDir
