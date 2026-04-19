@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<p>I want you to integrate the SessionManager into the Harvey agent. All
+the relevant code is in this workspace. Here is exactly what needs to
+happen:</p>
+<hr />
+<h2 id="harvey.go-extend-the-agent-struct">1. harvey.go — extend the
+Agent struct</h2>
+<p>Add two fields to the Agent struct (around line 107):</p>
+<pre><code>Sessions   *SessionManager
+SessionID  int64</code></pre>
+<hr />
+<h2 id="terminal.go-open-sessions-on-startup">2. terminal.go — open
+sessions on startup</h2>
+<p>Add a new method initSessions alongside initKnowledgeBase (around
+line 227):</p>
+<pre><code>func (a *Agent) initSessions(out io.Writer) {
+    sm, err := OpenSessionManager(a.Workspace)
+    if err != nil {
+        fmt.Fprintf(out, &quot;  ✗ Sessions unavailable: %v\n&quot;, err)
+        return
+    }
+    a.Sessions = sm
+    fmt.Fprintln(out, &quot;✓ Sessions: .harvey/sessions.db&quot;)
+}</code></pre>
+<p>Call it in Run() immediately after a.initKnowledgeBase(out) (around
+line 84).</p>
+<p>Also defer cleanup in Run() alongside the existing Recorder
+defer:</p>
+<pre><code>defer func() {
+    if a.Sessions != nil {
+        a.Sessions.Close()
+    }
+}()</code></pre>
+<hr />
+<h2
+id="terminal.go-resume-or-start-a-session-after-backend-selection">3.
+terminal.go — resume or start a session after backend selection</h2>
+<p>After the selectBackend call in Run() succeeds (around line 98), add
+this block. It loads the last session and offers to resume it; if the
+user declines (or no session exists), it creates a fresh one.</p>
+<pre><code>if a.Sessions != nil {
+    last, err := a.Sessions.LoadLast()
+    if err != nil {
+        fmt.Fprintf(out, yellow(&quot;  ✗&quot;)+&quot; Session load error: %v\n&quot;, err)
+    } else if last != nil &amp;&amp; len(last.History) &gt; 0 {
+        turns := 0
+        for _, m := range last.History {
+            if m.Role == &quot;user&quot; {
+                turns++
+            }
+        }
+        label := last.Name
+        if label == &quot;&quot; {
+            label = &quot;(unnamed)&quot;
+        }
+        fmt.Fprintf(out, &quot;\n  Last session: %s — %d turn(s), model: %s, %s\n&quot;,
+            label, turns, last.Model, last.LastActive.Format(&quot;2006-01-02 15:04&quot;))
+        if askYesNo(reader, out, &quot;  Resume last session? [Y/n] &quot;, true) {
+            a.History = last.History
+            a.SessionID = last.ID
+            fmt.Fprintf(out, green(&quot;✓&quot;)+&quot; Session %d resumed (%d messages)\n&quot;,
+                last.ID, len(last.History))
+        }
+    }
+    if a.SessionID == 0 {
+        model := &quot;&quot;
+        if a.Client != nil {
+            model = a.Client.Name()
+        }
+        id, err := a.Sessions.Create(a.Workspace.Root, model, nil)
+        if err != nil {
+            fmt.Fprintf(out, yellow(&quot;  ✗&quot;)+&quot; Could not create session: %v\n&quot;, err)
+        } else {
+            a.SessionID = id
+        }
+    }
+}</code></pre>
+<hr />
+<h2 id="terminal.go-checkpoint-after-each-chat-turn">4. terminal.go —
+checkpoint after each chat turn</h2>
+<p>In the REPL loop, after a.AddMessage(“assistant”, buf.String())
+(around line 200), add a checkpoint save:</p>
+<pre><code>if a.Sessions != nil &amp;&amp; a.SessionID != 0 {
+    model := &quot;&quot;
+    if a.Client != nil {
+        model = a.Client.Name()
+    }
+    if err := a.Sessions.Save(a.SessionID, model, a.History); err != nil {
+        fmt.Fprintf(out, yellow(&quot;  ✗&quot;)+&quot; Session save error: %v\n&quot;, err)
+    }
+}</code></pre>
+<hr />
+<h2 id="commands.go-update-cmdclear-to-start-a-new-session">5.
+commands.go — update cmdClear to start a new session</h2>
+<p>In cmdClear (around line 222), after a.ClearHistory(), add:</p>
+<pre><code>if a.Sessions != nil {
+    model := &quot;&quot;
+    if a.Client != nil {
+        model = a.Client.Name()
+    }
+    id, err := a.Sessions.Create(a.Workspace.Root, model, nil)
+    if err != nil {
+        fmt.Fprintf(out, &quot;  Session create error: %v\n&quot;, err)
+    } else {
+        a.SessionID = id
+    }
+}</code></pre>
+<hr />
+<h2 id="commands.go-update-cmdstatus-to-show-session-info">6.
+commands.go — update cmdStatus to show session info</h2>
+<p>In cmdStatus (around line 199), add after the KB block:</p>
+<pre><code>if a.Sessions != nil &amp;&amp; a.SessionID != 0 {
+    fmt.Fprintf(out, &quot;Session:   id=%d\n&quot;, a.SessionID)
+} else {
+    fmt.Fprintln(out, &quot;Session:   none&quot;)
+}</code></pre>
+<hr />
+<h2 id="commands.go-add-session-command">7. commands.go — add /session
+command</h2>
+<p>Register a new command in registerCommands():</p>
+<pre><code>&quot;session&quot;: {
+    Usage:       &quot;/session &lt;list|resume ID|new|name TEXT&gt;&quot;,
+    Description: &quot;Manage Harvey sessions&quot;,
+    Handler:     cmdSession,
+},</code></pre>
+<p>Implement cmdSession:</p>
+<pre><code>func cmdSession(a *Agent, args []string, out io.Writer) error {
+    if a.Sessions == nil {
+        fmt.Fprintln(out, &quot;Sessions are not available.&quot;)
+        return nil
+    }
+    if len(args) == 0 || strings.ToLower(args[0]) == &quot;list&quot; {
+        sessions, err := a.Sessions.List()
+        if err != nil {
+            return err
+        }
+        if len(sessions) == 0 {
+            fmt.Fprintln(out, &quot;  (no sessions)&quot;)
+            return nil
+        }
+        for _, s := range sessions {
+            active := &quot;&quot;
+            if s.ID == a.SessionID {
+                active = &quot; *&quot;
+            }
+            label := s.Name
+            if label == &quot;&quot; {
+                label = &quot;(unnamed)&quot;
+            }
+            fmt.Fprintf(out, &quot;  [%d]%s %s — %s — %s\n&quot;,
+                s.ID, active, label, s.Model,
+                s.LastActive.Format(&quot;2006-01-02 15:04&quot;))
+        }
+        return nil
+    }
+    switch strings.ToLower(args[0]) {
+    case &quot;resume&quot;:
+        if len(args) &lt; 2 {
+            fmt.Fprintln(out, &quot;Usage: /session resume ID&quot;)
+            return nil
+        }
+        var id int64
+        if _, err := fmt.Sscanf(args[1], &quot;%d&quot;, &amp;id); err != nil {
+            fmt.Fprintf(out, &quot;Invalid session ID: %s\n&quot;, args[1])
+            return nil
+        }
+        s, err := a.Sessions.Load(id)
+        if err != nil {
+            return err
+        }
+        if s == nil {
+            fmt.Fprintf(out, &quot;No session with id=%d\n&quot;, id)
+            return nil
+        }
+        a.History = s.History
+        a.SessionID = s.ID
+        fmt.Fprintf(out, &quot;Session %d resumed (%d messages, model: %s)\n&quot;,
+            s.ID, len(s.History), s.Model)
+    case &quot;new&quot;:
+        model := &quot;&quot;
+        if a.Client != nil {
+            model = a.Client.Name()
+        }
+        id, err := a.Sessions.Create(a.Workspace.Root, model, nil)
+        if err != nil {
+            return err
+        }
+        a.ClearHistory()
+        a.SessionID = id
+        fmt.Fprintf(out, &quot;New session started (id=%d)\n&quot;, id)
+    case &quot;name&quot;:
+        if len(args) &lt; 2 {
+            fmt.Fprintln(out, &quot;Usage: /session name TEXT&quot;)
+            return nil
+        }
+        if a.SessionID == 0 {
+            fmt.Fprintln(out, &quot;No active session.&quot;)
+            return nil
+        }
+        name := strings.Join(args[1:], &quot; &quot;)
+        if err := a.Sessions.Rename(a.SessionID, name); err != nil {
+            return err
+        }
+        fmt.Fprintf(out, &quot;Session %d named %q\n&quot;, a.SessionID, name)
+    default:
+        fmt.Fprintf(out, &quot;Unknown session subcommand: %s\n&quot;, args[0])
+        fmt.Fprintln(out, &quot;Usage: /session &lt;list|resume ID|new|name TEXT&gt;&quot;)
+    }
+    return nil
+}</code></pre>
+<hr />
+<h2 id="verification-steps">Verification steps</h2>
+<p>After making all changes, run:</p>
+<pre><code>go build ./...
+go test ./...</code></pre>
+<p>Both must pass before you report the task complete. Fix any
+compilation errors before moving on. Do not change sessions.go or
+sessions_test.go — those files are already correct.</p>
+</section>
+</body>
+</html>
