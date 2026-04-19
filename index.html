@@ -3,6 +3,26 @@
 <head>
     <title>harvey</title>
     <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
 </head>
 <body>
 <nav>
@@ -20,13 +40,26 @@
 <section>
 <h1 id="harvey">harvey</h1>
 <figure>
-<img src="media/harvey.svg" alt="Harvey" />
+<img src="media/harvey.svg" title="project mascot, a Púca"
+alt="Harvey" />
 <figcaption aria-hidden="true">Harvey</figcaption>
 </figure>
 <p>Harvey is an agent similar to Claude Code but written in Go and
-designed to use Ollama server to access large language models locally or
-if configurated access <a href="https://publicai.co">publicai.co</a> and
-the Abertus model. It is a terminal based application.</p>
+designed to use Ollama server to access large models locally or if
+configurated access <a href="https://publicai.co">publicai.co</a>. It is
+a terminal based application.</p>
+<p>The Harvey name is inspired by the Mary Chase play of the same name.
+My little agent runs on small computers but is available to those who
+choose to see its value. Harvey in the play was a Púca, a mythic Celtic
+spirit who at times was proned to mischief. One those who the Púca chose
+to let seem it would see and even then they had to be willing to see
+it.</p>
+<p>I think the current AI hype cycle will likely end with a bang and a
+crash but the open models will still be there to use. I think they just
+need to run on smaller computers that are more engery friendly and under
+an individual person’s control. A computer program, a language model,
+isn’t human and we should not expect them to be responsible. That’s
+something that requires us humans to do.</p>
 <h2 id="release-notes">Release Notes</h2>
 <ul>
 <li>version: 0.0.0</li>
