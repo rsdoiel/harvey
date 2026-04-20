@@ -100,35 +100,37 @@ func (r *Router) FullModel() string { return r.cfg.FullModel }
 /** Classify sends a trimmed slice of the conversation history to the fast
  * model and interprets its reply. If the reply begins with "ROUTE:full" the
  * full model name is returned in routeTo and answer is empty. Otherwise the
- * reply is a direct answer and routeTo is empty.
+ * reply is a direct answer and routeTo is empty. Stats from the fast model
+ * call are always returned so callers can display timing and token counts.
  *
  * Parameters:
  *   ctx     (context.Context) — controls the HTTP request lifetime.
  *   history ([]Message)       — full conversation history including the latest user message.
  *
  * Returns:
- *   answer  (string) — direct answer from the fast model; empty when routing.
- *   routeTo (string) — model name to re-send to; empty when answered directly.
- *   err     (error)  — non-nil if the fast model call fails.
+ *   answer  (string)    — direct answer from the fast model; empty when routing.
+ *   routeTo (string)    — model name to re-send to; empty when answered directly.
+ *   stats   (ChatStats) — timing and token counts from the fast model call.
+ *   err     (error)     — non-nil if the fast model call fails.
  *
  * Example:
- *   answer, routeTo, err := router.Classify(ctx, agent.History)
+ *   answer, routeTo, stats, err := router.Classify(ctx, agent.History)
  *   if routeTo != "" {
  *       agent.Client = NewOllamaClient(baseURL, routeTo)
  *   }
  */
-func (r *Router) Classify(ctx context.Context, history []Message) (answer, routeTo string, err error) {
+func (r *Router) Classify(ctx context.Context, history []Message) (answer, routeTo string, stats ChatStats, err error) {
 	msgs := r.buildRoutingMessages(history)
 	c := NewOllamaClient(r.baseURL, r.cfg.FastModel)
 	var buf strings.Builder
-	if _, err = c.Chat(ctx, msgs, &buf); err != nil {
-		return "", "", err
+	if stats, err = c.Chat(ctx, msgs, &buf); err != nil {
+		return "", "", stats, err
 	}
 	reply := strings.TrimSpace(buf.String())
 	if strings.HasPrefix(reply, "ROUTE:") {
-		return "", r.cfg.FullModel, nil
+		return "", r.cfg.FullModel, stats, nil
 	}
-	return reply, "", nil
+	return reply, "", stats, nil
 }
 
 // buildRoutingMessages constructs the message slice sent to the fast model.

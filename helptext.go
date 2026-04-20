@@ -166,6 +166,81 @@ the Agent Skills specification (https://agentskills.dev).
 
 `
 
+	RoutingHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+ROUTING
+
+# SYNOPSIS
+
+/route FAST_MODEL FULL_MODEL
+
+# DESCRIPTION
+
+Multi-model routing lets Harvey automatically choose between two Ollama models
+on every turn: a small, fast model for simple requests and a larger, more
+capable model for complex ones. When routing is active, each prompt is first
+classified by the fast model. If the fast model decides the task exceeds its
+capability it replies with "ROUTE:full" and Harvey re-sends the full
+conversation to the full model. Otherwise the fast model's answer is used
+directly, saving the time and resources of a larger model call.
+
+# HOW IT WORKS
+
+For each user prompt Harvey:
+
+  1. Sends a trimmed slice of conversation history to the fast model together
+     with a routing system prompt that instructs it to either answer directly
+     or reply with exactly "ROUTE:full".
+
+  2. If the fast model replies with "ROUTE:full", Harvey switches its active
+     client to the full model and sends the complete history there instead.
+
+  3. If the fast model answers directly, that answer is used as-is — the full
+     model is never called.
+
+After the response a status line is printed showing which model(s) handled
+the turn, token counts, elapsed time, and throughput:
+
+~~~
+  llama3.2:1b → Ollama (llama3.1:8b) · 312 reply + 1840 ctx · 18.4s · 16.9 tok/s
+  llama3.2:1b · 28 reply + 94 ctx · 1.2s · 23.1 tok/s
+~~~
+
+The first line is an escalated turn (fast routed to full). The second is a
+direct answer from the fast model. When routing is disabled there is only one
+model name in the line.
+
+# CONTEXT BUDGET
+
+The fast model receives at most 25% of its context window so there is room for
+its reply without overwhelming a small model. Recent non-system turns are
+included newest-first until the budget is consumed. Older turns and the
+Harvey system prompt are excluded from the routing call.
+
+# WHEN TO USE ROUTING
+
+Routing is most useful when the fast model is small enough to run at many
+tokens-per-second but too limited for complex tasks like code generation or
+architecture decisions. A good pairing on a Raspberry Pi 5 is:
+
+  fast model  llama3.2:1b  — quick classification, conversational answers
+  full model  llama3.1:8b  — code generation, debugging, longer analysis
+
+# SLASH COMMANDS
+
+~~~
+  /route FAST FULL   enable routing between FAST and FULL Ollama models
+                     example: /route llama3.2:1b llama3.1:8b
+  /route off         disable routing and return to the current single model
+  /route status      show the current routing configuration
+~~~
+
+`
+
 	OllamaHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
 % R. S. Doiel
 % {release_date}

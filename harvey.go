@@ -53,6 +53,40 @@ func (s ChatStats) Format() string {
 		elapsed, s.TokensPerSec)
 }
 
+/** FormatWithModels returns a one-line summary that includes the model name(s)
+ * that handled the turn, reply token count, context (prompt) token count,
+ * elapsed time, and throughput. Returns an empty string when there are no
+ * token counts and no model names — used to suppress the stat block when no
+ * meaningful data is available.
+ *
+ * Parameters:
+ *   models ([]string) — ordered list of model names, e.g. ["llama3.2:1b", "Ollama (llama3.1:8b)"].
+ *                       Pass nil or empty for single-model sessions without routing.
+ *
+ * Returns:
+ *   string — formatted stat line, or "" when both models and token counts are absent.
+ *
+ * Example:
+ *   line := stats.FormatWithModels([]string{"llama3.2:1b", "Ollama (llama3.1:8b)"})
+ *   // "llama3.2:1b → Ollama (llama3.1:8b) · 312 reply + 1840 ctx · 18.4s · 16.9 tok/s"
+ */
+func (s ChatStats) FormatWithModels(models []string) string {
+	modelPart := strings.Join(models, " → ")
+	elapsed := s.Elapsed.Round(time.Millisecond)
+	if s.ReplyTokens == 0 {
+		if modelPart == "" {
+			return ""
+		}
+		return modelPart + " · " + elapsed.String()
+	}
+	if modelPart == "" {
+		return fmt.Sprintf("%d reply + %d ctx · %s · %.1f tok/s",
+			s.ReplyTokens, s.PromptTokens, elapsed, s.TokensPerSec)
+	}
+	return fmt.Sprintf("%s · %d reply + %d ctx · %s · %.1f tok/s",
+		modelPart, s.ReplyTokens, s.PromptTokens, elapsed, s.TokensPerSec)
+}
+
 /** Message represents a single chat message exchanged with a backend.
  *
  * Fields:

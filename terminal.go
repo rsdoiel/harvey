@@ -267,24 +267,34 @@ func (a *Agent) Run(out io.Writer) error {
 				}
 			}
 		}
-		// Multi-model routing: classify the prompt and either use the fast
-		// model's direct answer or swap to the full model before the main call.
+		// Multi-model routing: classify the prompt, report the decision as a
+		// permanent step line, then continue with the chosen model.
+		// modelsUsed and routeStep are both carried forward to the recorder.
+		var modelsUsed []string
+		var routeStep string
 		if a.Router != nil {
-			fmt.Fprint(out, dim("  routing..."))
-			fastAnswer, routeTo, routeErr := a.Router.Classify(context.Background(), a.History)
-			fmt.Fprint(out, "\r          \r") // clear the "routing..." line
+			fmt.Fprint(out, dim("  Evaluating..."))
+			fastAnswer, routeTo, routeStats, routeErr := a.Router.Classify(context.Background(), a.History)
+			fmt.Fprint(out, "\r\033[K") // erase the ephemeral evaluation line
 			if routeErr != nil {
 				fmt.Fprintf(out, yellow("  ⚠ Router error: %v — using current model\n"), routeErr)
 			} else if routeTo != "" {
+				// Escalate to full model — print permanent step line then fall through to spinner.
+				routeStep = "Routing to " + routeTo
+				fmt.Fprintf(out, dim("  ✓ %s\n"), routeStep)
 				if oc, ok := a.Client.(*OllamaClient); ok && oc.Model() != routeTo {
-					fmt.Fprintf(out, dim("  → routing to %s\n"), routeTo)
 					a.Client = NewOllamaClient(a.Config.OllamaURL, routeTo)
 				}
+				modelsUsed = []string{a.Router.FastModel(), a.Client.Name()}
 			} else if fastAnswer != "" {
-				// Fast model answered directly — display and skip the main Chat call.
+				// Fast model answered directly — print permanent step line, response, and stat line.
+				routeStep = "Answered by " + a.Router.FastModel()
+				fmt.Fprintf(out, dim("  ✓ %s\n"), routeStep)
 				fmt.Fprintln(out)
 				fmt.Fprint(out, fastAnswer)
 				fmt.Fprintln(out)
+				fmt.Fprintln(out, dim(formatStatLine([]string{a.Router.FastModel()}, routeStats)))
+				a.recordStats(routeStats)
 				a.AddMessage("assistant", fastAnswer)
 				if a.SM != nil && a.SessionID != 0 {
 					model := ""
@@ -296,7 +306,7 @@ func (a *Agent) Run(out io.Writer) error {
 					}
 				}
 				if a.Recorder != nil {
-					if recErr := a.Recorder.RecordTurnWithStats(input, fastAnswer, ChatStats{}); recErr != nil {
+					if recErr := a.Recorder.RecordTurnWithStats(input, fastAnswer, routeStats, []string{a.Router.FastModel()}, routeStep); recErr != nil {
 						fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
 					}
 				}
@@ -304,7 +314,19 @@ func (a *Agent) Run(out io.Writer) error {
 				continue
 			}
 		}
+		if len(modelsUsed) == 0 && a.Client != nil {
+			modelsUsed = []string{a.Client.Name()}
+		}
 		fmt.Fprintln(out)
+
+		// Spinner label: when routing escalated, name the full model and note it is working.
+		spLabel := a.spinnerLabel()
+		if len(modelsUsed) > 1 {
+			spLabel = a.Client.Name() + " · working on it"
+			if a.ActiveSkill != "" {
+				spLabel += " · " + a.ActiveSkill
+			}
+		}
 
 		// Build a cancellable context; Ctrl+C cancels the LLM call.
 		chatCtx, cancelChat := context.WithCancel(context.Background())
@@ -323,7 +345,7 @@ func (a *Agent) Run(out io.Writer) error {
 		}()
 
 		var buf strings.Builder
-		sp := newSpinner(out, a.estimateDuration(), a.spinnerLabel())
+		sp := newSpinner(out, a.estimateDuration(), spLabel)
 		stats, chatErr := a.Client.Chat(chatCtx, a.History, &buf)
 		sp.stop()
 		close(watchDone) // stop the signal-watcher goroutine
@@ -341,7 +363,7 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 		fmt.Fprint(out, buf.String())
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, dim("  "+stats.Format()))
+		fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats)))
 		a.recordStats(stats)
 		a.AddMessage("assistant", buf.String())
 		if a.SM != nil && a.SessionID != 0 {
@@ -354,7 +376,7 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}
 		if a.Recorder != nil {
-			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats); recErr != nil {
+			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, routeStep); recErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
 			}
 		}
@@ -363,6 +385,13 @@ func (a *Agent) Run(out io.Writer) error {
 
 	fmt.Fprintln(out, dim("Goodbye."))
 	return nil
+}
+
+// formatStatLine produces the permanent post-response status line.
+// models lists the model name(s) that handled the turn (e.g. ["fast", "full"]
+// when routing escalated, or a single name otherwise).
+func formatStatLine(models []string, stats ChatStats) string {
+	return "  " + stats.FormatWithModels(models)
 }
 
 // initWorkspace resolves and announces the workspace root. It is a fatal error

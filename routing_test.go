@@ -87,7 +87,7 @@ func TestClassify_DirectAnswer(t *testing.T) {
 	r, _ := NewRouter(RouterConfig{FastModel: "fast:latest", FullModel: "full:latest"}, srv.URL)
 	history := []Message{{Role: "user", Content: "What is the capital of France?"}}
 
-	answer, routeTo, err := r.Classify(context.Background(), history)
+	answer, routeTo, _, err := r.Classify(context.Background(), history)
 	if err != nil {
 		t.Fatalf("Classify: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestClassify_RouteToFull(t *testing.T) {
 	r, _ := NewRouter(RouterConfig{FastModel: "fast:latest", FullModel: "full:latest"}, srv.URL)
 	history := []Message{{Role: "user", Content: "Implement a B-tree in Go with full test coverage."}}
 
-	answer, routeTo, err := r.Classify(context.Background(), history)
+	answer, routeTo, _, err := r.Classify(context.Background(), history)
 	if err != nil {
 		t.Fatalf("Classify: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestClassify_EmptyHistory(t *testing.T) {
 
 	r, _ := NewRouter(RouterConfig{FastModel: "fast:latest", FullModel: "full:latest"}, srv.URL)
 
-	answer, routeTo, err := r.Classify(context.Background(), []Message{})
+	answer, routeTo, _, err := r.Classify(context.Background(), []Message{})
 	if err != nil {
 		t.Fatalf("Classify: %v", err)
 	}

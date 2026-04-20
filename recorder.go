@@ -90,7 +90,7 @@ func fountainSrc(elem *fountain.Element) string {
 //	r, err := NewRecorder("session.fountain", "Ollama (gemma4:latest)", "/home/user/proj")
 //	if err != nil { log.Fatal(err) }
 //	defer r.Close()
-//	r.RecordTurnWithStats("Hi", "Hello!", stats)
+//	r.RecordTurnWithStats("Hi", "Hello!", stats, []string{"Ollama (gemma4:latest)"}, "")
 //	r.StartAgentScene("Harvey proposes to write 1 file.")
 //	r.RecordAgentAction("write", "hello.bash", "yes", "ok")
 type Recorder struct {
@@ -181,7 +181,7 @@ func (r *Recorder) Path() string { return r.path }
 //
 //	err := r.RecordTurn("What is 2+2?", "2 + 2 = 4.")
 func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
-	return r.RecordTurnWithStats(userInput, harveyReply, ChatStats{})
+	return r.RecordTurnWithStats(userInput, harveyReply, ChatStats{}, nil, "")
 }
 
 // RecordTurnWithStats appends a full chat turn as a Fountain scene.
@@ -201,13 +201,18 @@ func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
 //	{MODEL}
 //	(LLM reply)
 //
-//	[[stats: …]]
+//	Routing to llama3.1:8b              ← routeStep action block (omitted when empty)
+//
+//	{models} · {reply} reply + {ctx} ctx · {elapsed} · {tok/s} tok/s
 //
 // Parameters:
 //
 //	userInput   (string)    — the user's raw input text.
 //	harveyReply (string)    — the LLM's complete response text.
-//	stats       (ChatStats) — LLM call stats; omitted as a note when ReplyTokens == 0.
+//	stats       (ChatStats) — LLM call stats; omitted when empty.
+//	models      ([]string)  — ordered model names that handled the turn; nil for single-model sessions.
+//	routeStep   (string)    — routing decision text, e.g. "Routing to llama3.1:8b" or
+//	                          "Answered by llama3.2:1b"; empty when routing is disabled.
 //
 // Returns:
 //
@@ -215,8 +220,8 @@ func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
 //
 // Example:
 //
-//	err := r.RecordTurnWithStats("Hello", "Hi!", stats)
-func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats ChatStats) error {
+//	err := r.RecordTurnWithStats("Hello", "Hi!", stats, []string{"llama3.2:1b", "Ollama (llama3.1:8b)"}, "Routing to llama3.1:8b")
+func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats ChatStats, models []string, routeStep string) error {
 	ts := time.Now().Format("2006-01-02 15:04:05")
 
 	r.writeSceneHeading(fmt.Sprintf("INT. HARVEY AND %s TALKING %s", r.userName, ts))
@@ -227,8 +232,11 @@ func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats Chat
 	r.writeDialogue(r.userName, "", userInput)
 	r.writeDialogue("HARVEY", "", fmt.Sprintf("Forwarding to %s.", r.modelName))
 	r.writeDialogue(r.modelName, "", harveyReply)
-	if stats.ReplyTokens > 0 {
-		r.writeNote("stats: " + stats.Format())
+	if routeStep != "" {
+		r.writeAction(routeStep)
+	}
+	if statText := stats.FormatWithModels(models); statText != "" {
+		r.writeAction(statText)
 	}
 	return nil
 }

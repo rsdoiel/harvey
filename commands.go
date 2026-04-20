@@ -289,8 +289,11 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "ollama":
 			fmt.Fprint(out, FmtHelp(OllamaHelpText, "", "", "", ""))
 			return nil
+		case "routing", "route", "router":
+			fmt.Fprint(out, FmtHelp(RoutingHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: ollama, skills\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: ollama, routing, skills\n\n", args[0])
 		}
 	}
 

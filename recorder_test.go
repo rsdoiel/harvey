@@ -65,14 +65,27 @@ func TestRecorder_withStats(t *testing.T) {
 	r, _ := NewRecorder(path, "test", dir)
 
 	stats := ChatStats{PromptTokens: 10, ReplyTokens: 20, Elapsed: 1000000000, TokensPerSec: 20}
-	if err := r.RecordTurnWithStats("Hi", "Hello!", stats); err != nil {
+	models := []string{"llama3.2:1b", "Ollama (llama3.1:8b)"}
+	if err := r.RecordTurnWithStats("Hi", "Hello!", stats, models, "Routing to llama3.1:8b"); err != nil {
 		t.Fatalf("RecordTurnWithStats: %v", err)
 	}
 	r.Close()
 
 	data, _ := os.ReadFile(path)
-	if !strings.Contains(string(data), "[[stats:") {
-		t.Error("expected stats note in fountain output")
+	content := string(data)
+	checks := []string{
+		"llama3.2:1b → Ollama (llama3.1:8b)",
+		"20 reply + 10 ctx",
+		"20.0 tok/s",
+		"Routing to llama3.1:8b",
+	}
+	for _, want := range checks {
+		if !strings.Contains(content, want) {
+			t.Errorf("expected %q in fountain output\n---\n%s", want, content)
+		}
+	}
+	if strings.Contains(content, "[[stats:") {
+		t.Error("stat line must be an action block, not a Fountain note")
 	}
 }
 
