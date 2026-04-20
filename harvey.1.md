@@ -1,6 +1,6 @@
-%harvey(1) user manual | version 0.0.0 0796642
+%harvey(1) user manual | version 0.0.0 3a8c106
 % R. S. Doiel
-% 2026-04-19
+% 2026-04-20
 
 # NAME
 
@@ -55,6 +55,15 @@ Type /help inside the session for available slash commands.
 
 --record-file FILE
 : path for the auto-recording file (implies --record)
+
+--continue FILE
+: load conversation history from a Fountain recording and open the REPL
+
+--replay FILE
+: re-send every user turn from FILE to the current model and record fresh responses
+
+--replay-output FILE
+: write replay responses to FILE (default: auto-named timestamped file; implies --replay)
 
 -s, --session ID
 : resume a specific session by ID on startup; omit to be prompted

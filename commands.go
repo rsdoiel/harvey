@@ -20,6 +20,7 @@ import (
  * Fields:
  *   Usage       (string)   — short usage synopsis shown by /help.
  *   Description (string)   — one-line description shown by /help.
+ *   UserDefined (bool)     — true for commands generated from compiled skills.
  *   Handler     (func)     — called when the command is dispatched; nil for
  *                            commands handled directly in the REPL (exit, quit).
  *
@@ -36,6 +37,7 @@ import (
 type Command struct {
 	Usage       string
 	Description string
+	UserDefined bool
 	// Handler is nil for commands handled directly in the REPL (exit, quit).
 	Handler func(a *Agent, args []string, out io.Writer) error
 }
@@ -63,7 +65,7 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdClear,
 		},
 		"ollama": {
-			Usage:       "/ollama <start|stop|status|list|ps|pull MODEL|show MODEL|logs|use MODEL|env>",
+			Usage:       "/ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|logs|use MODEL|env>",
 			Description: "Control the local Ollama service and manage models",
 			Handler:     cmdOllama,
 		},
@@ -148,7 +150,7 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdSession,
 		},
 		"skill": {
-			Usage:       "/skill <list|load NAME|info NAME|status>",
+			Usage:       "/skill <list|load NAME|info NAME|status|new|compile NAME|run NAME>",
 			Description: "List or load Agent Skills from the skill catalog",
 			Handler:     cmdSkill,
 		},
@@ -177,6 +179,66 @@ func (a *Agent) registerCommands() {
 			Description: "Exit Harvey",
 			Handler:     nil,
 		},
+	}
+}
+
+/** registerSkillCommands registers each compiled skill in a.Skills as a
+ * slash command, so users can invoke them as /skill-name [ARGS...] directly.
+ * The full argument text after the command name is passed to the script as
+ * HARVEY_PROMPT, so positional parameters map naturally to skill variables.
+ * Built-in commands are never shadowed. Previously registered skill commands
+ * are cleared before re-registering so this method is safe to call repeatedly
+ * after compilation or after the skill catalog is refreshed.
+ *
+ * Parameters:
+ *   (receiver) *Agent — agent whose Skills catalog and commands map are updated.
+ *
+ * Example:
+ *   a.Skills = ScanSkills(a.Workspace.Root)
+ *   a.registerSkillCommands()
+ */
+func (a *Agent) registerSkillCommands() {
+	// Remove previously registered skill commands.
+	for name, cmd := range a.commands {
+		if cmd.UserDefined {
+			delete(a.commands, name)
+		}
+	}
+
+	for _, skill := range a.Skills {
+		s := skill
+		// Never shadow a built-in command.
+		if existing, ok := a.commands[s.Name]; ok && !existing.UserDefined {
+			continue
+		}
+		// Only register skills that have been compiled.
+		if _, err := os.Stat(CompiledBashPath(s.Path)); err != nil {
+			continue
+		}
+
+		// Build usage string: /name [VAR1] [VAR2] ...
+		usage := "/" + s.Name
+		for _, v := range s.Variables {
+			usage += " [" + v.Name + "]"
+		}
+
+		// Trim description to its first line for the help listing.
+		desc := strings.TrimSpace(s.Description)
+		if nl := strings.IndexByte(desc, '\n'); nl >= 0 {
+			desc = strings.TrimSpace(desc[:nl])
+		}
+
+		captured := s
+		a.commands[captured.Name] = &Command{
+			Usage:       usage,
+			Description: desc,
+			UserDefined: true,
+			Handler: func(ag *Agent, args []string, out io.Writer) error {
+				prompt := strings.Join(args, " ")
+				reader := bufio.NewReaderSize(ag.In, 1)
+				return DispatchSkill(context.Background(), ag, captured, prompt, reader, out)
+			},
+		}
 	}
 }
 
@@ -224,13 +286,35 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "skills", "skill":
 			fmt.Fprint(out, FmtHelp(SkillsHelpText, "", "", "", ""))
 			return nil
+		case "ollama":
+			fmt.Fprint(out, FmtHelp(OllamaHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: skills\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: ollama, skills\n\n", args[0])
 		}
 	}
-	fmt.Fprintln(out)
+
+	var builtins, userDefined []*Command
 	for _, cmd := range a.commands {
+		if cmd.UserDefined {
+			userDefined = append(userDefined, cmd)
+		} else {
+			builtins = append(builtins, cmd)
+		}
+	}
+	sort.Slice(builtins, func(i, j int) bool { return builtins[i].Usage < builtins[j].Usage })
+	sort.Slice(userDefined, func(i, j int) bool { return userDefined[i].Usage < userDefined[j].Usage })
+
+	fmt.Fprintln(out)
+	for _, cmd := range builtins {
 		fmt.Fprintf(out, "  %-50s %s\n", cmd.Usage, cmd.Description)
+	}
+	if len(userDefined) > 0 {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "  User-defined commands (compiled skills):")
+		for _, cmd := range userDefined {
+			fmt.Fprintf(out, "  %-50s %s\n", cmd.Usage, cmd.Description)
+		}
 	}
 	fmt.Fprintln(out)
 	return nil
@@ -446,11 +530,12 @@ func truncate(s string, n int) string {
 
 func cmdOllama(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /ollama <start|stop|status|list|ps|pull MODEL|show MODEL|logs|use MODEL>")
+		fmt.Fprintln(out, "Usage: /ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|logs|use MODEL|env>")
 		return nil
 	}
 	switch strings.ToLower(args[0]) {
 	case "start":
+		PrintOllamaEnv(out)
 		fmt.Fprintln(out, "Starting Ollama...")
 		if err := StartOllamaService(); err != nil {
 			return err
@@ -507,6 +592,52 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		cmd.Stdout = out
 		cmd.Stderr = out
 		return cmd.Run()
+	case "create":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /ollama create NAME [-f MODELFILE]")
+			return nil
+		}
+		cmd := exec.Command("ollama", append([]string{"create"}, args[1:]...)...)
+		cmd.Stdout = out
+		cmd.Stderr = out
+		return cmd.Run()
+	case "run":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /ollama run MODEL [PROMPT]")
+			return nil
+		}
+		cmd := exec.Command("ollama", append([]string{"run"}, args[1:]...)...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	case "push":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /ollama push MODEL")
+			return nil
+		}
+		cmd := exec.Command("ollama", "push", args[1])
+		cmd.Stdout = out
+		cmd.Stderr = out
+		return cmd.Run()
+	case "cp":
+		if len(args) < 3 {
+			fmt.Fprintln(out, "Usage: /ollama cp SOURCE DEST")
+			return nil
+		}
+		cmd := exec.Command("ollama", "cp", args[1], args[2])
+		cmd.Stdout = out
+		cmd.Stderr = out
+		return cmd.Run()
+	case "rm":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /ollama rm MODEL [MODEL...]")
+			return nil
+		}
+		cmd := exec.Command("ollama", append([]string{"rm"}, args[1:]...)...)
+		cmd.Stdout = out
+		cmd.Stderr = out
+		return cmd.Run()
 	case "logs":
 		// Try the native ollama logs subcommand first; fall back to journalctl.
 		cmd := exec.Command("ollama", "logs")
@@ -520,27 +651,8 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		}
 		return nil
 	case "env":
-		// Show the Ollama-related environment variables currently in effect.
-		vars := []string{
-			"OLLAMA_HOST",
-			"OLLAMA_MODELS",
-			"OLLAMA_KEEP_ALIVE",
-			"OLLAMA_NUM_THREAD",
-			"OLLAMA_NUM_PARALLEL",
-			"OLLAMA_MAX_LOADED_MODELS",
-			"OLLAMA_CONTEXT_LENGTH",
-			"OLLAMA_MAX_QUEUE",
-			"OLLAMA_FLASH_ATTENTION",
-			"OLLAMA_DEBUG",
-		}
 		fmt.Fprintln(out, "Ollama environment (Harvey process):")
-		for _, k := range vars {
-			v := os.Getenv(k)
-			if v == "" {
-				v = dim("(not set)")
-			}
-			fmt.Fprintf(out, "  %-28s %s\n", k, v)
-		}
+		PrintOllamaEnv(out)
 	case "use":
 		if len(args) < 2 {
 			fmt.Fprintln(out, "Usage: /ollama use MODEL")
@@ -1348,7 +1460,7 @@ func cmdSummarize(a *Agent, args []string, out io.Writer) error {
 
 	fmt.Fprintln(out)
 	var buf strings.Builder
-	sp := newSpinner(out, 0)
+	sp := newSpinner(out, 0, a.spinnerLabel())
 	_, chatErr := a.Client.Chat(context.Background(), request, &buf)
 	sp.stop()
 
@@ -1698,9 +1810,23 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		return skillInfo(a, args[1], out)
 	case "status":
 		return skillStatus(a, out)
+	case "new":
+		return skillNew(a, out)
+	case "compile":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /skill compile NAME")
+			return nil
+		}
+		return skillCompile(a, args[1], out)
+	case "run":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /skill run NAME")
+			return nil
+		}
+		return skillRun(a, args[1], out)
 	default:
 		fmt.Fprintf(out, "Unknown skill subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /skill <list|load NAME|info NAME|status>")
+		fmt.Fprintln(out, "Usage: /skill <list|load NAME|info NAME|status|new|compile NAME|run NAME>")
 	}
 	return nil
 }
@@ -1715,13 +1841,25 @@ func skillList(a *Agent, out io.Writer) error {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+
+	model := "(no model)"
+	if a.Client != nil {
+		model = a.Client.Name()
+	}
+
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "  Current model: %s\n", model)
 	fmt.Fprintln(out)
 	for _, n := range names {
 		s := a.Skills[n]
 		fmt.Fprintf(out, "  %-28s [%s]\n", n, s.Source)
 		fmt.Fprintf(out, "    %s\n", s.Description)
+		if s.Compatibility != "" {
+			fmt.Fprintf(out, "    Compatibility: %s\n", s.Compatibility)
+		}
 	}
 	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  Use /skill load NAME to activate a skill.")
 	return nil
 }
 
@@ -1740,6 +1878,7 @@ func skillLoad(a *Agent, name string, out io.Writer) error {
 		return nil
 	}
 	a.AddMessage("user", fmt.Sprintf("[skill: %s]\n\n%s", name, skill.Body))
+	a.ActiveSkill = name
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordSkillLoad(name, skill.Description, skill.Body)
 	}
@@ -1802,6 +1941,59 @@ func skillStatus(a *Agent, out io.Writer) error {
 		fmt.Fprintf(out, "    User scope:    %d\n", user)
 	}
 	return nil
+}
+
+// skillNew runs the interactive skill wizard via /skill new.
+func skillNew(a *Agent, out io.Writer) error {
+	if a.Client == nil {
+		fmt.Fprintln(out, "  Note: no backend connected — skill will be created but cannot be compiled until a model is available.")
+	}
+	reader := bufio.NewReaderSize(a.In, 1)
+	relPath, err := RunSkillWizard(a.Workspace, reader, out)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, green("✓")+" Skill created: %s\n", relPath)
+	fmt.Fprintln(out, "  Use /skill compile <name> to generate executable scripts.")
+	a.Skills = ScanSkills(a.Workspace.Root)
+	a.registerSkillCommands()
+	return nil
+}
+
+// skillCompile compiles a named skill to compiled.bash and compiled.ps1.
+func skillCompile(a *Agent, name string, out io.Writer) error {
+	if a.Client == nil {
+		fmt.Fprintln(out, "  No backend connected. Use /ollama start or /publicai connect first.")
+		return nil
+	}
+	skill, ok := a.Skills[name]
+	if !ok {
+		fmt.Fprintf(out, "  Skill %q not found. Use /skill list to see available skills.\n", name)
+		return nil
+	}
+	fmt.Fprintf(out, "  Compiling skill %q...\n", name)
+	sp := newSpinner(out, 0, a.spinnerLabel()+" · compiling")
+	err := CompileSkill(context.Background(), a.Client, skill, io.Discard)
+	sp.stop()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, green("✓")+" Compiled: scripts/compiled.bash and scripts/compiled.ps1")
+	a.Skills = ScanSkills(a.Workspace.Root)
+	a.registerSkillCommands()
+	fmt.Fprintf(out, "  Tip: you can now run it as /%s\n", name)
+	return nil
+}
+
+// skillRun dispatches a named skill using DispatchSkill.
+func skillRun(a *Agent, name string, out io.Writer) error {
+	skill, ok := a.Skills[name]
+	if !ok {
+		fmt.Fprintf(out, "  Skill %q not found. Use /skill list to see available skills.\n", name)
+		return nil
+	}
+	reader := bufio.NewReaderSize(a.In, 1)
+	return DispatchSkill(context.Background(), a, skill, "", reader, out)
 }
 
 // ─── /model ──────────────────────────────────────────────────────────────────

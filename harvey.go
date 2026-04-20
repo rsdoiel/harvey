@@ -123,6 +123,7 @@ type Agent struct {
 	PinnedContext string    // persists across /clear; re-injected after system prompt
 	AgentMode     bool      // when true, auto-apply tagged blocks and auto-run extracted commands
 	Router        *Router   // multi-model router; nil when routing is disabled
+	ActiveSkill   string    // name of the most recently loaded skill; "" when none
 	commands      map[string]*Command
 	statHistory   []ChatStats // rolling window of recent turn stats
 }
@@ -179,6 +180,7 @@ func (a *Agent) ClearHistory() {
 	if a.PinnedContext != "" {
 		a.AddMessage("user", "[pinned context]\n\n"+a.PinnedContext)
 	}
+	a.ActiveSkill = ""
 }
 
 /** recordStats appends s to the rolling stat history, discarding the oldest
@@ -262,6 +264,19 @@ func ExpandDynamicSections(content string, ws *Workspace) string {
 		content = strings.ReplaceAll(content, "<!-- @git-status -->", workspaceGitStatus(ws))
 	}
 	return content
+}
+
+// spinnerLabel builds the label string shown between the Lear message and
+// the timer in the spinner: "model" or "model · skill" when a skill is active.
+func (a *Agent) spinnerLabel() string {
+	model := ""
+	if a.Client != nil {
+		model = a.Client.Name()
+	}
+	if a.ActiveSkill != "" {
+		return model + " · " + a.ActiveSkill
+	}
+	return model
 }
 
 // workspaceFileTree returns a newline-separated list of all non-hidden files

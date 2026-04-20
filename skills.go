@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
+
+// validSkillNameRE matches names that are lowercase letters, digits, and hyphens only.
+var validSkillNameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // SkillSource labels the discovery scope that produced a skill entry.
 type SkillSource string
@@ -16,6 +20,23 @@ const (
 	SkillSourceProject SkillSource = "project"
 )
 
+/** SkillVariable holds metadata for one input variable declared in a skill's
+ * SKILL.md frontmatter variables: block.
+ *
+ * Fields:
+ *   Name        (string) — variable name as declared (e.g. "EDIR").
+ *   Description (string) — human-readable description of what the variable controls.
+ *   Example     (string) — example value shown in help text.
+ *
+ * Example:
+ *   v := SkillVariable{Name: "EDIR", Description: "experiment directory", Example: "my_exp"}
+ */
+type SkillVariable struct {
+	Name        string
+	Description string
+	Example     string
+}
+
 /** SkillMeta holds the parsed contents of a single SKILL.md file.
  *
  * Fields:
@@ -24,6 +45,8 @@ const (
  *   License       (string)            — optional license identifier.
  *   Compatibility (string)            — optional environment requirements.
  *   AllowedTools  (string)            — optional space-separated tool allowlist (experimental).
+ *   Trigger       (string)            — optional regex or keywords for auto-dispatch.
+ *   Variables     ([]SkillVariable)   — input variables declared in frontmatter variables: block.
  *   Metadata      (map[string]string) — arbitrary key-value metadata from frontmatter.
  *   Path          (string)            — absolute path to the SKILL.md file.
  *   Body          (string)            — markdown body after the YAML frontmatter.
@@ -39,6 +62,8 @@ type SkillMeta struct {
 	License       string
 	Compatibility string
 	AllowedTools  string
+	Trigger       string
+	Variables     []SkillVariable
 	Metadata      map[string]string
 	Path          string
 	Body          string
@@ -119,6 +144,8 @@ func ParseSkillFile(path string) (*SkillMeta, error) {
 		License:       fields["license"],
 		Compatibility: fields["compatibility"],
 		AllowedTools:  fields["allowed-tools"],
+		Trigger:       fields["trigger"],
+		Variables:     parseVariablesBlock(fm),
 		Metadata:      metadata,
 		Path:          path,
 		Body:          body,
@@ -259,6 +286,36 @@ func CatalogSystemPromptBlock(cat SkillCatalog) string {
 	return sb.String()
 }
 
+/** LooksLikeSkillQuery reports whether the user's input looks like a natural-
+ * language question about available skills so the REPL can intercept it and
+ * answer directly from the catalog rather than passing it to the LLM.
+ *
+ * Parameters:
+ *   s (string) — the raw user input.
+ *
+ * Returns:
+ *   bool — true when the input matches a known skill-query pattern.
+ *
+ * Example:
+ *   if LooksLikeSkillQuery("what skills do you know?") {
+ *       cmdSkill(a, []string{"list"}, out)
+ *   }
+ */
+func LooksLikeSkillQuery(s string) bool {
+	lower := strings.ToLower(s)
+	phrases := []string{
+		"what skills", "which skills", "list skills", "show skills",
+		"what can you do", "skills do you", "skills you know",
+		"available skills", "your skills", "do you have any skills",
+	}
+	for _, p := range phrases {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // ─── internal parsing helpers ────────────────────────────────────────────────
 
 // extractFrontmatter splits a SKILL.md string into its YAML frontmatter block
@@ -283,6 +340,7 @@ func extractFrontmatter(content string) (frontmatter, body string, err error) {
 // frontmatter. It handles:
 //   - simple "key: value" pairs (including unquoted values containing colons)
 //   - single- and double-quoted values
+//   - YAML literal block scalars (key: |) — indented lines are joined with spaces
 //   - a one-level "metadata:" mapping (indented key-value pairs)
 //
 // Returns the top-level fields and any metadata sub-keys.
@@ -291,11 +349,26 @@ func parseSimpleYAML(text string) (fields map[string]string, metadata map[string
 	metadata = make(map[string]string)
 
 	inMetadata := false
+	blockKey := ""
+	var blockLines []string
+
+	flushBlock := func() {
+		if blockKey != "" && len(blockLines) > 0 {
+			fields[blockKey] = strings.Join(blockLines, " ")
+		}
+		blockKey = ""
+		blockLines = nil
+	}
+
 	for _, rawLine := range strings.Split(text, "\n") {
 		isIndented := len(rawLine) > 0 && (rawLine[0] == ' ' || rawLine[0] == '\t')
 		line := strings.TrimRight(rawLine, "\r")
 
 		if isIndented {
+			if blockKey != "" {
+				blockLines = append(blockLines, strings.TrimSpace(line))
+				continue
+			}
 			if inMetadata {
 				k, v := splitYAMLKV(strings.TrimSpace(line))
 				if k != "" {
@@ -305,6 +378,7 @@ func parseSimpleYAML(text string) (fields map[string]string, metadata map[string
 			continue
 		}
 
+		flushBlock()
 		inMetadata = false
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -314,13 +388,89 @@ func parseSimpleYAML(text string) (fields map[string]string, metadata map[string
 		if k == "" {
 			continue
 		}
+		if v == "|" {
+			blockKey = k
+			continue
+		}
 		if k == "metadata" && v == "" {
 			inMetadata = true
 			continue
 		}
 		fields[k] = v
 	}
+	flushBlock()
 	return
+}
+
+/** parseVariablesBlock extracts declared input variables from a SKILL.md
+ * frontmatter string. It finds the "variables:" block and collects each
+ * two-space-indented key as a variable name, reading its "description" and
+ * "example" from four-space-indented sub-keys.
+ *
+ * Parameters:
+ *   frontmatter (string) — raw YAML frontmatter text (between --- delimiters).
+ *
+ * Returns:
+ *   []SkillVariable — declared variables in declaration order; nil if none.
+ *
+ * Example:
+ *   vars := parseVariablesBlock(fm)
+ *   for _, v := range vars { fmt.Println(v.Name, v.Description) }
+ */
+func parseVariablesBlock(frontmatter string) []SkillVariable {
+	var vars []SkillVariable
+	lines := strings.Split(frontmatter, "\n")
+
+	inVars := false
+	var cur *SkillVariable
+
+	for _, rawLine := range lines {
+		line := strings.TrimRight(rawLine, "\r")
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "" {
+			continue
+		}
+
+		// Unindented line: enter or exit the variables: block.
+		if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+			if trimmed == "variables:" {
+				inVars = true
+				continue
+			}
+			if inVars {
+				break
+			}
+			continue
+		}
+
+		if !inVars {
+			continue
+		}
+
+		depth := len(line) - len(strings.TrimLeft(line, " \t"))
+
+		if depth == 2 {
+			// Variable name line: "  VARNAME:"
+			if cur != nil {
+				vars = append(vars, *cur)
+			}
+			cur = &SkillVariable{Name: strings.TrimSuffix(trimmed, ":")}
+		} else if depth >= 4 && cur != nil {
+			// Variable property: "    key: value"
+			k, v := splitYAMLKV(trimmed)
+			switch k {
+			case "description":
+				cur.Description = v
+			case "example":
+				cur.Example = v
+			}
+		}
+	}
+	if cur != nil {
+		vars = append(vars, *cur)
+	}
+	return vars
 }
 
 // splitYAMLKV splits "key: value" on the first colon. Surrounding quotes
@@ -339,6 +489,97 @@ func splitYAMLKV(line string) (key, val string) {
 		val = val[1 : len(val)-1]
 	}
 	return key, val
+}
+
+/** ValidSkillName reports whether name is a valid skill identifier:
+ * lowercase letters, digits, and hyphens only, non-empty.
+ *
+ * Parameters:
+ *   name (string) — candidate skill name.
+ *
+ * Returns:
+ *   bool — true when name matches ^[a-z0-9-]+$.
+ *
+ * Example:
+ *   ValidSkillName("go-review")  // true
+ *   ValidSkillName("My Skill")   // false
+ */
+func ValidSkillName(name string) bool {
+	return validSkillNameRE.MatchString(name)
+}
+
+/** CompiledBashPath returns the absolute path to the compiled bash script
+ * for the skill whose SKILL.md lives at skillPath.
+ *
+ * Parameters:
+ *   skillPath (string) — absolute path to a SKILL.md file.
+ *
+ * Returns:
+ *   string — absolute path to scripts/compiled.bash sibling.
+ *
+ * Example:
+ *   p := CompiledBashPath("/proj/.agents/skills/my-skill/SKILL.md")
+ *   // returns "/proj/.agents/skills/my-skill/scripts/compiled.bash"
+ */
+func CompiledBashPath(skillPath string) string {
+	return filepath.Join(filepath.Dir(skillPath), "scripts", "compiled.bash")
+}
+
+/** CompiledPS1Path returns the absolute path to the compiled PowerShell script
+ * for the skill whose SKILL.md lives at skillPath.
+ *
+ * Parameters:
+ *   skillPath (string) — absolute path to a SKILL.md file.
+ *
+ * Returns:
+ *   string — absolute path to scripts/compiled.ps1 sibling.
+ *
+ * Example:
+ *   p := CompiledPS1Path("/proj/.agents/skills/my-skill/SKILL.md")
+ *   // returns "/proj/.agents/skills/my-skill/scripts/compiled.ps1"
+ */
+func CompiledPS1Path(skillPath string) string {
+	return filepath.Join(filepath.Dir(skillPath), "scripts", "compiled.ps1")
+}
+
+/** IsStale reports whether SKILL.md is newer than the compiled scripts,
+ * meaning the scripts need recompilation.
+ *
+ * Returns (true, nil) when either compiled script does not exist or when
+ * SKILL.md has a later modification time than either script.
+ * Returns (false, nil) when both scripts exist and are at least as new as SKILL.md.
+ * Returns (false, error) when SKILL.md itself cannot be stat'd.
+ *
+ * Parameters:
+ *   skill (*SkillMeta) — skill to check; skill.Path must be set.
+ *
+ * Returns:
+ *   stale (bool)  — true when recompilation is needed.
+ *   err   (error) — non-nil only when SKILL.md itself is unreadable.
+ *
+ * Example:
+ *   stale, err := IsStale(skill)
+ *   if err != nil { log.Fatal(err) }
+ *   if stale { fmt.Println("needs recompile") }
+ */
+func IsStale(skill *SkillMeta) (stale bool, err error) {
+	mdInfo, err := os.Stat(skill.Path)
+	if err != nil {
+		return false, fmt.Errorf("skill stale check: %w", err)
+	}
+	mdMod := mdInfo.ModTime()
+
+	bashInfo, bashErr := os.Stat(CompiledBashPath(skill.Path))
+	ps1Info, ps1Err := os.Stat(CompiledPS1Path(skill.Path))
+
+	if os.IsNotExist(bashErr) || os.IsNotExist(ps1Err) {
+		return true, nil
+	}
+	if bashErr != nil || ps1Err != nil {
+		return true, nil
+	}
+
+	return mdMod.After(bashInfo.ModTime()) || mdMod.After(ps1Info.ModTime()), nil
 }
 
 // xmlEscape replaces &, <, and > with XML entities.

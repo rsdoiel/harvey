@@ -10,6 +10,8 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+
+	"github.com/rsdoiel/termlib"
 )
 
 // ANSI escape codes for terminal styling.
@@ -61,11 +63,6 @@ func (a *Agent) prompt() string {
  */
 func (a *Agent) Run(out io.Writer) error {
 	a.registerCommands()
-	if err := LoadOllamaEnv(); err != nil {
-		fmt.Fprintf(out, dim("  Warning: ollama env: %v\n"), err)
-	} else {
-		fmt.Fprintf(out, green("✓")+" Ollama env: OLLAMA_MODELS=%s\n", os.Getenv("OLLAMA_MODELS"))
-	}
 	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			a.Config.OllamaContextLength = n
@@ -79,7 +76,11 @@ func (a *Agent) Run(out io.Writer) error {
 			fmt.Fprintf(out, dim("  Session saved to %s\n"), path)
 		}
 	}()
-	reader := bufio.NewReader(os.Stdin)
+	// reader is used only for startup yes/no prompts (selectBackend,
+	// initSession). A 1-byte buffer prevents it from consuming bytes that
+	// the LineEditor needs for the REPL loop below.
+	reader := bufio.NewReaderSize(os.Stdin, 1)
+	le := termlib.NewLineEditor(os.Stdin, out)
 
 	// Banner
 	fmt.Fprintln(out, cyan(bold(sep)))
@@ -181,19 +182,21 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// REPL
 	for {
-		fmt.Fprint(out, a.prompt())
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			// EOF (Ctrl+D) — clean exit
-			fmt.Fprintln(out, "\n"+dim("Goodbye."))
+		input, err := le.Prompt(a.prompt())
+		if err == io.EOF || err == termlib.ErrInterrupted {
+			fmt.Fprintln(out, dim("Goodbye."))
 			return nil
 		}
-		input := strings.TrimSpace(line)
+		if err != nil {
+			return err
+		}
+		input = strings.TrimSpace(input)
 		if input == "" {
 			continue
 		}
 
 		if strings.HasPrefix(input, "/") {
+			le.AppendHistory(input)
 			shouldExit, cmdErr := a.dispatch(input, out)
 			if cmdErr != nil {
 				fmt.Fprintf(out, red("Error: ")+"%v\n", cmdErr)
@@ -208,6 +211,39 @@ func (a *Agent) Run(out io.Writer) error {
 		if a.Client == nil {
 			fmt.Fprintln(out, yellow("No backend connected.")+" Use /ollama start or /publicai connect.")
 			continue
+		}
+
+		le.AppendHistory(input)
+
+		// Intercept skill-related questions and answer directly from the
+		// catalog. Small models (e.g. tinyllama) reliably ignore the
+		// <available_skills> system-prompt block, so we handle these
+		// locally rather than letting the LLM hallucinate an answer.
+		if len(a.Skills) > 0 && LooksLikeSkillQuery(input) {
+			fmt.Fprintln(out, dim("  (answered from skill catalog — use /skill load NAME to activate a skill)"))
+			cmdSkill(a, []string{"list"}, out)
+			continue
+		}
+
+		// Auto-dispatch compiled skills whose trigger pattern matches the input.
+		// Iterate sorted names for deterministic first-match semantics.
+		if len(a.Skills) > 0 {
+			triggered := false
+			for _, name := range SortedSkillNames(a.Skills) {
+				skill := a.Skills[name]
+				if MatchesTrigger(skill, input) {
+					fmt.Fprintf(out, dim("  (trigger matched skill %q)\n"), name)
+					triggerReader := bufio.NewReaderSize(a.In, 1)
+					if err := DispatchSkill(context.Background(), a, skill, input, triggerReader, out); err != nil {
+						fmt.Fprintf(out, red("  ✗ skill dispatch error: ")+"%v\n", err)
+					}
+					triggered = true
+					break
+				}
+			}
+			if triggered {
+				continue
+			}
 		}
 
 		a.AddMessage("user", input)
@@ -287,7 +323,7 @@ func (a *Agent) Run(out io.Writer) error {
 		}()
 
 		var buf strings.Builder
-		sp := newSpinner(out, a.estimateDuration())
+		sp := newSpinner(out, a.estimateDuration(), a.spinnerLabel())
 		stats, chatErr := a.Client.Chat(chatCtx, a.History, &buf)
 		sp.stop()
 		close(watchDone) // stop the signal-watcher goroutine
@@ -402,6 +438,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 	fmt.Fprintln(out, yellow("  ✗")+" Ollama is not running")
 
 	if askYesNo(reader, out, "    Start Ollama now? [Y/n] ", true) {
+		PrintOllamaEnv(out)
 		fmt.Fprintln(out, "  Starting Ollama...")
 		if err := StartOllamaService(); err != nil {
 			fmt.Fprintf(out, red("  Failed: ")+"%v\n", err)
@@ -442,6 +479,13 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
  *   err := agent.pickOllamaModel(reader, os.Stdout)
  */
 func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer) error {
+	// If the user specified a model on the command line, use it directly.
+	if a.Config.OllamaModel != "" {
+		a.Client = NewOllamaClient(a.Config.OllamaURL, a.Config.OllamaModel)
+		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.OllamaModel))
+		return nil
+	}
+
 	models, err := NewOllamaClient(a.Config.OllamaURL, "").Models(context.Background())
 	if err != nil || len(models) == 0 {
 		fmt.Fprintln(out, yellow("  ✗")+" No models installed. Run: ollama pull <model>")
@@ -617,6 +661,7 @@ func (a *Agent) loadSkills(out io.Writer) {
 		detail = " (user)"
 	}
 	fmt.Fprintf(out, green("✓")+" Skills: %d skill(s) available%s\n", len(cat), detail)
+	a.registerSkillCommands()
 }
 
 /** askYesNo prints prompt, reads a line, and returns true for "y"/"yes".

@@ -182,7 +182,17 @@ Type `/help` at any prompt for a live command list. All commands begin with `/`.
 | `/ollama stop` | Print a reminder to use your system's service manager |
 | `/ollama status` | Check whether Ollama is reachable |
 | `/ollama list` | List installed models; the current model is marked with `*` |
+| `/ollama ps` | Show which models are currently loaded in memory |
+| `/ollama run MODEL [PROMPT]` | Start an interactive Ollama session (passes through the terminal) |
+| `/ollama pull MODEL` | Download a model from the Ollama registry |
+| `/ollama push MODEL` | Upload a model to the Ollama registry |
+| `/ollama show MODEL` | Display a model's Modelfile and parameters |
+| `/ollama create NAME [-f MODELFILE]` | Create a new model from a Modelfile |
+| `/ollama cp SOURCE DEST` | Copy an installed model to a new name |
+| `/ollama rm MODEL [MODEL...]` | Remove one or more installed models |
 | `/ollama use MODEL` | Switch to a different installed model mid-session |
+| `/ollama logs` | Tail the Ollama service log |
+| `/ollama env` | Show Ollama environment variables as seen by Harvey |
 
 **publicai.co**
 
@@ -370,7 +380,11 @@ harvey > /kb status
 
 ## Recording commands
 
-Harvey can write a Markdown transcript of the session to a file.
+Harvey can record sessions to [Fountain](https://fountain.io) screenplay files.
+Fountain recordings capture every exchange in a structured, human-readable
+format that Harvey can replay or resume later.
+
+### Starting a recording
 
 | Command | Description |
 |---|---|
@@ -380,14 +394,58 @@ Harvey can write a Markdown transcript of the session to a file.
 
 ```
 harvey > /record start
-Recording started: /home/user/myproject/harvey-session-20260415-142300.md
+Recording started: /home/user/myproject/harvey-session-20260415-142300.fountain
 
 harvey > /record stop
-Recording stopped. Session saved to .../harvey-session-20260415-142300.md
+Recording stopped. Session saved to harvey-session-20260415-142300.fountain
 ```
 
-The session file uses Markdown with `### Turn N` sections, making it easy to
-review, search, or commit to the project repository as a decision log.
+You can also start recording automatically at launch:
+
+```bash
+harvey --record                          # auto-named timestamped file
+harvey --record-file mysession.fountain  # explicit path
+```
+
+### Resuming or replaying a Fountain file
+
+There are two ways to use a recorded `.fountain` file in a later session:
+
+**Continue** — loads the Fountain file's conversation history into context and
+drops you into the interactive REPL, so you can pick up exactly where you left
+off:
+
+```bash
+harvey --continue mysession.fountain
+```
+
+Or from inside a running Harvey session:
+
+```
+harvey > /session continue mysession.fountain
+```
+
+**Replay** — re-sends every user turn from the Fountain file to the currently
+connected model and records the fresh responses to a new file. Useful for
+re-running a session against a different model:
+
+```bash
+harvey --replay mysession.fountain
+harvey --replay mysession.fountain --replay-output newresponses.fountain
+```
+
+Or from inside a running Harvey session:
+
+```
+harvey > /session replay mysession.fountain
+harvey > /session replay mysession.fountain newresponses.fountain
+```
+
+| Startup flag | Description |
+|---|---|
+| `--continue FILE` | Load history from FILE and open the REPL |
+| `--replay FILE` | Re-run all turns from FILE against the current model |
+| `--replay-output FILE` | Write replay responses to FILE (default: auto-named) |
 
 ## File browser
 

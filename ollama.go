@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -397,52 +396,33 @@ func ProbeOllama(baseURL string) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-/** LoadOllamaEnv reads ollama.env from the current working directory and applies
- * each KEY=VALUE line as an environment variable. If ollama.env does not exist,
- * it sets OLLAMA_MODELS to the current working directory so Ollama stores its
- * model files locally rather than in the default ~/.ollama location.
+/** PrintOllamaEnv writes the currently active Ollama environment variables to
+ * out, skipping any that are not set. It never modifies the environment.
  *
- * Returns:
- *   error — if the working directory cannot be determined or a variable cannot be set.
+ * Parameters:
+ *   out (io.Writer) — destination for the variable listing.
  *
  * Example:
- *   if err := LoadOllamaEnv(); err != nil {
- *       log.Printf("warning: %v", err)
- *   }
+ *   PrintOllamaEnv(os.Stdout)
  */
-func LoadOllamaEnv() error {
-	data, err := os.ReadFile("ollama.env")
-	if os.IsNotExist(err) {
-		cwd, werr := os.Getwd()
-		if werr != nil {
-			return werr
-		}
-		return os.Setenv("OLLAMA_MODELS", cwd)
+func PrintOllamaEnv(out io.Writer) {
+	vars := []string{
+		"OLLAMA_HOST",
+		"OLLAMA_MODELS",
+		"OLLAMA_KEEP_ALIVE",
+		"OLLAMA_NUM_THREAD",
+		"OLLAMA_NUM_PARALLEL",
+		"OLLAMA_MAX_LOADED_MODELS",
+		"OLLAMA_CONTEXT_LENGTH",
+		"OLLAMA_MAX_QUEUE",
+		"OLLAMA_FLASH_ATTENTION",
+		"OLLAMA_DEBUG",
 	}
-	if err != nil {
-		return err
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		k = strings.TrimSpace(k)
-		v = strings.TrimSpace(v)
-		if k == "OLLAMA_MODELS" {
-			if abs, aerr := filepath.Abs(v); aerr == nil {
-				v = abs
-			}
-		}
-		if err := os.Setenv(k, v); err != nil {
-			return err
+	for _, k := range vars {
+		if v := os.Getenv(k); v != "" {
+			fmt.Fprintf(out, "  %-28s %s\n", k, v)
 		}
 	}
-	return nil
 }
 
 // StartOllamaService launches "ollama serve" as a background process and waits
