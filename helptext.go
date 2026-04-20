@@ -99,10 +99,14 @@ match the parent directory name.
 
 # COMPILED SKILLS
 
-Harvey can ask the LLM to "compile" a SKILL.md into executable scripts
-(compiled.bash for Linux/macOS/BSD, compiled.ps1 for Windows) stored in the
-skill's scripts/ directory. When a compiled skill is triggered, Harvey runs the
-script directly — no LLM round-trip needed — and injects the output into context.
+A compiled skill has executable scripts (compiled.bash for Linux/macOS/BSD,
+compiled.ps1 for Windows) in the skill's scripts/ directory. When a compiled
+skill is invoked, Harvey runs the script directly — no LLM round-trip needed —
+and injects the output into context.
+
+Compiling a skill requires a large capable model (e.g. Claude or Mistral) that
+is not typically available on resource-constrained hardware. Compile skills on
+a capable system and commit the resulting scripts alongside SKILL.md.
 
 Compiled skill directory layout:
 
@@ -121,8 +125,9 @@ HARVEY_* environment variables set before each script run:
   HARVEY_MODEL       the name of the currently active LLM model
   HARVEY_SESSION_ID  the current session ID as a string
 
-Staleness: if SKILL.md is modified after compiling, Harvey detects that the
-scripts are older and prompts to recompile before running.
+Staleness: if SKILL.md is modified after the scripts were compiled, Harvey
+warns you when the skill is invoked and runs the old compiled version.
+Recompile the skill on a capable system to pick up the changes.
 
 TRIGGER field: add an optional trigger field to SKILL.md frontmatter to enable
 automatic skill dispatch when user input matches:
@@ -160,7 +165,6 @@ the Agent Skills specification (https://agentskills.dev).
   /skill info NAME         show path, compatibility, and license
   /skill status            count skills by scope
   /skill new               interactive wizard to create a new skill
-  /skill compile NAME      send SKILL.md to the LLM to generate compiled scripts
   /skill run NAME          run a skill (dispatches compiled scripts if available)
 ~~~
 
@@ -176,68 +180,75 @@ ROUTING
 
 # SYNOPSIS
 
-/route FAST_MODEL FULL_MODEL
+@name prompt text
 
 # DESCRIPTION
 
-Multi-model routing lets Harvey automatically choose between two Ollama models
-on every turn: a small, fast model for simple requests and a larger, more
-capable model for complex ones. When routing is active, each prompt is first
-classified by the fast model. If the fast model decides the task exceeds its
-capability it replies with "ROUTE:full" and Harvey re-sends the full
-conversation to the full model. Otherwise the fast model's answer is used
-directly, saving the time and resources of a larger model call.
+Harvey can dispatch individual prompts to remote LLM endpoints — other Ollama
+instances on a Pi cluster, or the publicai.co cloud API — using @mention
+syntax. Prefix any prompt with @name to send it to the named endpoint instead
+of the local model. The reply is streamed back and lands in the local
+conversation history so future turns retain full context.
 
-# HOW IT WORKS
+Routing is explicitly user-driven: there is no automatic classification.
+You choose which endpoint handles each prompt by using (or omitting) an
+@mention.
 
-For each user prompt Harvey:
+# CONTEXT WINDOW
 
-  1. Sends a trimmed slice of conversation history to the fast model together
-     with a routing system prompt that instructs it to either answer directly
-     or reply with exactly "ROUTE:full".
+When a prompt is dispatched to a remote endpoint, Harvey sends the last
+10 non-system messages from the local history alongside it. System messages
+are excluded. This gives the remote model enough context to be useful without
+sending the entire conversation over the network. The window size is a
+starting point and will be tuned over time.
 
-  2. If the fast model replies with "ROUTE:full", Harvey switches its active
-     client to the full model and sends the complete history there instead.
+# ENDPOINT TYPES
 
-  3. If the fast model answers directly, that answer is used as-is — the full
-     model is never called.
+ollama://host:port
+  A remote Ollama server. Harvey converts this to http://host:port when
+  making API calls. Raw http:// and https:// URLs are also accepted.
 
-After the response a status line is printed showing which model(s) handled
-the turn, token counts, elapsed time, and throughput:
+publicai.co://
+  The publicai.co cloud API. Uses the PUBLICAI_API_KEY environment variable
+  for authentication and the configured PublicAI model (default: abertus).
+
+# EXAMPLE SESSION
 
 ~~~
-  llama3.2:1b → Ollama (llama3.1:8b) · 312 reply + 1840 ctx · 18.4s · 16.9 tok/s
-  llama3.2:1b · 28 reply + 94 ctx · 1.2s · 23.1 tok/s
+  # Register a Pi cluster node
+  /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
+
+  # Register the publicai.co cloud endpoint
+  /route add cloud publicai.co://
+
+  # Enable routing
+  /route on
+
+  # Dispatch a complex task to the cloud
+  @cloud refactor this module to use the repository pattern
+
+  # Run a quick task on a Pi node
+  @pi2 write a unit test for the Parse function
+
+  # Local model handles everything else (no @mention)
+  what does this error mean?
 ~~~
-
-The first line is an escalated turn (fast routed to full). The second is a
-direct answer from the fast model. When routing is disabled there is only one
-model name in the line.
-
-# CONTEXT BUDGET
-
-The fast model receives at most 25% of its context window so there is room for
-its reply without overwhelming a small model. Recent non-system turns are
-included newest-first until the budget is consumed. Older turns and the
-Harvey system prompt are excluded from the routing call.
-
-# WHEN TO USE ROUTING
-
-Routing is most useful when the fast model is small enough to run at many
-tokens-per-second but too limited for complex tasks like code generation or
-architecture decisions. A good pairing on a Raspberry Pi 5 is:
-
-  fast model  llama3.2:1b  — quick classification, conversational answers
-  full model  llama3.1:8b  — code generation, debugging, longer analysis
 
 # SLASH COMMANDS
 
 ~~~
-  /route FAST FULL   enable routing between FAST and FULL Ollama models
-                     example: /route llama3.2:1b llama3.1:8b
-  /route off         disable routing and return to the current single model
-  /route status      show the current routing configuration
+  /route add NAME URL [MODEL]   register a remote endpoint
+                                  @pi2   ollama://192.168.1.12:11434 llama3.1:8b
+                                  @cloud publicai.co://
+  /route rm NAME                remove a registered endpoint
+  /route list                   show all endpoints with reachability status
+  /route on                     enable @mention dispatch (persisted)
+  /route off                    disable @mention dispatch (persisted)
+  /route status                 show routing state and endpoint count
 ~~~
+
+Registered endpoints and the on/off state persist across sessions in
+~/.harvey/routes.json.
 
 `
 

@@ -39,10 +39,10 @@ func TestAgentPreamble_mentionsSlashCommands(t *testing.T) {
 }
 
 // TestAgentPreamble_mentionsAutoExecute verifies the preamble explains the
-// auto-apply and agent-mode auto-run model so the LLM uses tagged blocks.
+// auto-apply model so the LLM uses tagged blocks.
 func TestAgentPreamble_mentionsAutoExecute(t *testing.T) {
 	lower := strings.ToLower(agentPreamble)
-	for _, term := range []string{"auto", "agent mode", "tagged"} {
+	for _, term := range []string{"auto", "tagged"} {
 		if !strings.Contains(lower, term) {
 			t.Errorf("agentPreamble should mention %q to explain auto-execute", term)
 		}

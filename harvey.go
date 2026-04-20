@@ -155,8 +155,7 @@ type Agent struct {
 	Recorder      *Recorder
 	In            io.Reader // source for interactive prompts; defaults to os.Stdin
 	PinnedContext string    // persists across /clear; re-injected after system prompt
-	AgentMode     bool      // when true, auto-apply tagged blocks and auto-run extracted commands
-	Router        *Router   // multi-model router; nil when routing is disabled
+	Routes        *RouteRegistry // registered remote endpoints; nil when routing not configured
 	ActiveSkill   string    // name of the most recently loaded skill; "" when none
 	commands      map[string]*Command
 	statHistory   []ChatStats // rolling window of recent turn stats
@@ -178,9 +177,17 @@ type Agent struct {
  *   agent := NewAgent(DefaultConfig(), ws)
  */
 func NewAgent(cfg *Config, ws *Workspace) *Agent {
+	LoadRouteConfig(cfg)
+	rr := NewRouteRegistry()
+	rr.Enabled = cfg.RoutingEnabled
+	for i := range cfg.Routes {
+		ep := cfg.Routes[i]
+		rr.Add(&ep)
+	}
 	return &Agent{
 		Config:    cfg,
 		Workspace: ws,
+		Routes:    rr,
 		In:        os.Stdin,
 		commands:  make(map[string]*Command),
 	}

@@ -368,34 +368,15 @@ func TestAutoExecuteReply_skipBlock(t *testing.T) {
 	}
 }
 
-func TestAutoExecuteReply_noRunWithoutAgentMode(t *testing.T) {
+func TestAutoExecuteReply_noRunFromSuggestions(t *testing.T) {
 	a := newTestAgent(t)
-	a.AgentMode = false
 	reply := "Run `/run echo hello` to test."
 
 	var out strings.Builder
 	a.autoExecuteReply(reply, &out, newReader(""), context.Background())
 
-	// AgentMode off → no history messages from auto-run.
+	// /run suggestions are never auto-executed — no history messages expected.
 	if len(a.History) != 0 {
-		t.Errorf("expected no auto-run in default mode, got %d history messages", len(a.History))
-	}
-}
-
-func TestAutoExecuteReply_runsCommandsInAgentMode(t *testing.T) {
-	a := newTestAgent(t)
-	a.AgentMode = true
-	reply := "Run `/run echo hello` to test."
-
-	var out strings.Builder
-	// "y" → confirm run
-	a.autoExecuteReply(reply, &out, newReader("y\n"), context.Background())
-
-	// AgentMode on → cmdRunCtx injected output into history.
-	if len(a.History) != 1 {
-		t.Fatalf("expected 1 history message from auto-run, got %d", len(a.History))
-	}
-	if !strings.Contains(a.History[0].Content, "hello") {
-		t.Error("expected command output in history")
+		t.Errorf("expected no auto-run from suggestions, got %d history messages", len(a.History))
 	}
 }

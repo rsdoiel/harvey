@@ -69,11 +69,6 @@ func (a *Agent) registerCommands() {
 			Description: "Control the local Ollama service and manage models",
 			Handler:     cmdOllama,
 		},
-		"publicai": {
-			Usage:       "/publicai <connect|disconnect|status>",
-			Description: "Manage the publicai.co connection",
-			Handler:     cmdPublicAI,
-		},
 		"kb": {
 			Usage:       "/kb <status|project|observe|concept> [args...]",
 			Description: "Manage the workspace knowledge base",
@@ -139,18 +134,13 @@ func (a *Agent) registerCommands() {
 			Description: "Record session exchanges to a Markdown file",
 			Handler:     cmdRecord,
 		},
-		"agent": {
-			Usage:       "/agent <on|off|status>",
-			Description: "Toggle agent mode: auto-apply files and auto-run suggested commands",
-			Handler:     cmdAgent,
-		},
 		"session": {
 			Usage:       "/session <list|load ID|new|name LABEL|status|continue FILE|replay FILE [OUTPUT]>",
 			Description: "Manage sessions and replay Fountain recordings",
 			Handler:     cmdSession,
 		},
 		"skill": {
-			Usage:       "/skill <list|load NAME|info NAME|status|new|compile NAME|run NAME>",
+			Usage:       "/skill <list|load NAME|info NAME|status|new|run NAME>",
 			Description: "List or load Agent Skills from the skill catalog",
 			Handler:     cmdSkill,
 		},
@@ -160,8 +150,8 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdInspect,
 		},
 		"route": {
-			Usage:       "/route <on FAST FULL | off | status>",
-			Description: "Configure multi-model routing between a fast and a full Ollama model",
+			Usage:       "/route <add NAME URL [MODEL] | rm NAME | list | on | off | status>",
+			Description: "Register remote LLM endpoints and dispatch to them with @name in prompts",
 			Handler:     cmdRoute,
 		},
 		"exit": {
@@ -234,6 +224,7 @@ func (a *Agent) registerSkillCommands() {
 			Description: desc,
 			UserDefined: true,
 			Handler: func(ag *Agent, args []string, out io.Writer) error {
+				warnIfSkillStale(captured, out)
 				prompt := strings.Join(args, " ")
 				reader := bufio.NewReaderSize(ag.In, 1)
 				return DispatchSkill(context.Background(), ag, captured, prompt, reader, out)
@@ -343,10 +334,10 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 			fmt.Fprintf(out, "Tokens:    %s%d\n", qualifier, n)
 		}
 	}
-	if a.Router != nil {
-		fmt.Fprintf(out, "Router:    %s → %s\n", a.Router.FastModel(), a.Router.FullModel())
+	if a.Routes != nil && a.Routes.Enabled && len(a.Routes.Endpoints) > 0 {
+		fmt.Fprintf(out, "Routing:   on (%d endpoint(s))\n", len(a.Routes.Endpoints))
 	} else {
-		fmt.Fprintln(out, "Router:    off")
+		fmt.Fprintln(out, "Routing:   off")
 	}
 	if a.Workspace != nil {
 		fmt.Fprintf(out, "Workspace: %s\n", a.Workspace.Root)
@@ -398,41 +389,151 @@ func cmdClear(a *Agent, _ []string, out io.Writer) error {
 
 func cmdRoute(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /route <on FAST FULL | off | status>")
-		return nil
+		return routeStatus(a, out)
 	}
 	switch strings.ToLower(args[0]) {
+	case "add":
+		return routeAdd(a, args[1:], out)
+	case "rm", "remove":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /route rm NAME")
+			return nil
+		}
+		return routeRemove(a, args[1], out)
+	case "list":
+		return routeList(a, out)
 	case "on":
-		if len(args) < 3 {
-			fmt.Fprintln(out, "Usage: /route on FAST_MODEL FULL_MODEL")
-			return nil
-		}
-		cfg := RouterConfig{FastModel: args[1], FullModel: args[2]}
-		r, err := NewRouter(cfg, a.Config.OllamaURL)
-		if err != nil {
-			return err
-		}
-		a.Router = r
-		a.Config.Router = &cfg
-		fmt.Fprintf(out, "Router enabled: %s → %s  (fast ctx budget: %d tokens)\n",
-			cfg.FastModel, cfg.FullModel, r.smallCtxLen/4)
+		return routeOn(a, out)
 	case "off":
-		a.Router = nil
-		a.Config.Router = nil
-		fmt.Fprintln(out, "Router disabled.")
+		return routeOff(a, out)
 	case "status":
-		if a.Router == nil {
-			fmt.Fprintln(out, "Router:    off")
-			return nil
-		}
-		fmt.Fprintf(out, "Router:    on\n")
-		fmt.Fprintf(out, "  fast:    %s\n", a.Router.FastModel())
-		fmt.Fprintf(out, "  full:    %s\n", a.Router.FullModel())
-		fmt.Fprintf(out, "  budget:  %d tokens (25%% of fast model context)\n", a.Router.smallCtxLen/4)
+		return routeStatus(a, out)
 	default:
-		fmt.Fprintf(out, "Unknown route subcommand: %s\n", args[0])
+		fmt.Fprintf(out, "  Unknown route subcommand: %q\n", args[0])
+		fmt.Fprintln(out, "  Usage: /route <add NAME URL [MODEL] | rm NAME | list | on | off | status>")
 	}
 	return nil
+}
+
+func routeAdd(a *Agent, args []string, out io.Writer) error {
+	if len(args) < 2 {
+		fmt.Fprintln(out, "  Usage: /route add NAME URL [MODEL]")
+		fmt.Fprintln(out, "  URL formats:  ollama://host:port   publicai.co://")
+		return nil
+	}
+	name, rawURL := args[0], args[1]
+	model := ""
+	if len(args) >= 3 {
+		model = args[2]
+	}
+	kind, err := inferRouteKind(rawURL)
+	if err != nil {
+		fmt.Fprintf(out, "  %v\n", err)
+		return nil
+	}
+	ep := &RouteEndpoint{Name: name, URL: rawURL, Model: model, Kind: kind}
+	a.Routes.Add(ep)
+	if saveErr := SaveRouteConfig(a.Routes); saveErr != nil {
+		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
+	}
+	fmt.Fprintf(out, "  Added: @%s → %s", name, rawURL)
+	if model != "" {
+		fmt.Fprintf(out, " (%s)", model)
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
+func routeRemove(a *Agent, name string, out io.Writer) error {
+	if a.Routes.Lookup(name) == nil {
+		fmt.Fprintf(out, "  Endpoint %q not found. Use /route list to see registered endpoints.\n", name)
+		return nil
+	}
+	a.Routes.Remove(name)
+	if saveErr := SaveRouteConfig(a.Routes); saveErr != nil {
+		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
+	}
+	fmt.Fprintf(out, "  Removed: @%s\n", name)
+	return nil
+}
+
+func routeList(a *Agent, out io.Writer) error {
+	if len(a.Routes.Endpoints) == 0 {
+		fmt.Fprintln(out, "  No endpoints registered. Use /route add NAME URL [MODEL].")
+		return nil
+	}
+	names := make([]string, 0, len(a.Routes.Endpoints))
+	for n := range a.Routes.Endpoints {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	fmt.Fprintln(out)
+	for _, n := range names {
+		ep := a.Routes.Endpoints[n]
+		reach := probeRouteEndpoint(ep, a.Config)
+		reachStr := green("✓")
+		if !reach {
+			reachStr = yellow("✗")
+		}
+		model := ep.Model
+		if model == "" {
+			model = "(default)"
+		}
+		fmt.Fprintf(out, "  %s  @%-16s  %-10s  %s  [%s]\n", reachStr, n, ep.Kind, ep.URL, model)
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
+func routeOn(a *Agent, out io.Writer) error {
+	a.Routes.Enabled = true
+	a.Config.RoutingEnabled = true
+	if saveErr := SaveRouteConfig(a.Routes); saveErr != nil {
+		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
+	}
+	fmt.Fprintln(out, "  Routing on. Prefix your prompt with @name to dispatch to a registered endpoint.")
+	return nil
+}
+
+func routeOff(a *Agent, out io.Writer) error {
+	a.Routes.Enabled = false
+	a.Config.RoutingEnabled = false
+	if saveErr := SaveRouteConfig(a.Routes); saveErr != nil {
+		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
+	}
+	fmt.Fprintln(out, "  Routing off. @mentions will be rejected until you run /route on.")
+	return nil
+}
+
+func routeStatus(a *Agent, out io.Writer) error {
+	enabled := a.Routes != nil && a.Routes.Enabled
+	if enabled {
+		fmt.Fprintln(out, "  Routing: on")
+	} else {
+		fmt.Fprintln(out, "  Routing: off")
+	}
+	count := 0
+	if a.Routes != nil {
+		count = len(a.Routes.Endpoints)
+	}
+	if count == 0 {
+		fmt.Fprintln(out, "  Endpoints: none registered (use /route add NAME URL [MODEL])")
+	} else {
+		fmt.Fprintf(out, "  Endpoints: %d registered (use /route list for details)\n", count)
+	}
+	return nil
+}
+
+// probeRouteEndpoint returns true when ep appears reachable: for Ollama
+// endpoints it pings the server; for publicai.co it checks for an API key.
+func probeRouteEndpoint(ep *RouteEndpoint, cfg *Config) bool {
+	switch ep.Kind {
+	case KindOllama:
+		return ProbeOllama(ollamaBaseURL(ep.URL))
+	case KindPublicAI:
+		return cfg.PublicAIKey != ""
+	}
+	return false
 }
 
 func cmdInspect(a *Agent, args []string, out io.Writer) error {
@@ -671,38 +772,6 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "Now using Ollama model: %s\n", model)
 	default:
 		fmt.Fprintf(out, "Unknown ollama subcommand: %s\n", args[0])
-	}
-	return nil
-}
-
-func cmdPublicAI(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /publicai <connect|disconnect|status>")
-		return nil
-	}
-	switch strings.ToLower(args[0]) {
-	case "connect":
-		if a.Config.PublicAIKey == "" {
-			fmt.Fprintln(out, "No API key found. Set the PUBLICAI_API_KEY environment variable.")
-			return nil
-		}
-		a.Client = NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, a.Config.PublicAIModel)
-		fmt.Fprintf(out, "Connected to publicai.co (%s).\n", a.Config.PublicAIModel)
-	case "disconnect":
-		if _, ok := a.Client.(*PublicAIClient); ok {
-			a.Client = nil
-			fmt.Fprintln(out, "Disconnected from publicai.co.")
-		} else {
-			fmt.Fprintln(out, "Not currently connected to publicai.co.")
-		}
-	case "status":
-		if _, ok := a.Client.(*PublicAIClient); ok {
-			fmt.Fprintf(out, "Connected to publicai.co (%s).\n", a.Config.PublicAIModel)
-		} else {
-			fmt.Fprintln(out, "Not connected to publicai.co.")
-		}
-	default:
-		fmt.Fprintf(out, "Unknown publicai subcommand: %s\n", args[0])
 	}
 	return nil
 }
@@ -1815,12 +1884,6 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		return skillStatus(a, out)
 	case "new":
 		return skillNew(a, out)
-	case "compile":
-		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /skill compile NAME")
-			return nil
-		}
-		return skillCompile(a, args[1], out)
 	case "run":
 		if len(args) < 2 {
 			fmt.Fprintln(out, "Usage: /skill run NAME")
@@ -1829,7 +1892,7 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		return skillRun(a, args[1], out)
 	default:
 		fmt.Fprintf(out, "Unknown skill subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /skill <list|load NAME|info NAME|status|new|compile NAME|run NAME>")
+		fmt.Fprintln(out, "Usage: /skill <list|load NAME|info NAME|status|new|run NAME>")
 	}
 	return nil
 }
@@ -1948,16 +2011,13 @@ func skillStatus(a *Agent, out io.Writer) error {
 
 // skillNew runs the interactive skill wizard via /skill new.
 func skillNew(a *Agent, out io.Writer) error {
-	if a.Client == nil {
-		fmt.Fprintln(out, "  Note: no backend connected — skill will be created but cannot be compiled until a model is available.")
-	}
 	reader := bufio.NewReaderSize(a.In, 1)
 	relPath, err := RunSkillWizard(a.Workspace, reader, out)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(out, green("✓")+" Skill created: %s\n", relPath)
-	fmt.Fprintln(out, "  Use /skill compile <name> to generate executable scripts.")
+	fmt.Fprintln(out, "  To make it runnable, add compiled.bash / compiled.ps1 under scripts/.")
 	a.Skills = ScanSkills(a.Workspace.Root)
 	a.registerSkillCommands()
 	return nil
@@ -1995,8 +2055,18 @@ func skillRun(a *Agent, name string, out io.Writer) error {
 		fmt.Fprintf(out, "  Skill %q not found. Use /skill list to see available skills.\n", name)
 		return nil
 	}
+	warnIfSkillStale(skill, out)
 	reader := bufio.NewReaderSize(a.In, 1)
 	return DispatchSkill(context.Background(), a, skill, "", reader, out)
+}
+
+// warnIfSkillStale prints a warning when SKILL.md is newer than the compiled scripts.
+func warnIfSkillStale(skill *SkillMeta, out io.Writer) {
+	stale, err := IsStale(skill)
+	if err == nil && stale {
+		fmt.Fprintf(out, "  Warning: %s/SKILL.md has been updated since it was compiled.\n", skill.Name)
+		fmt.Fprintln(out, "  Running the old compiled version. Recompile on a capable system to pick up changes.")
+	}
 }
 
 // ─── /model ──────────────────────────────────────────────────────────────────
@@ -2167,31 +2237,6 @@ func modelSwitch(a *Agent, name string, out io.Writer) error {
 	return nil
 }
 
-// ─── /agent ──────────────────────────────────────────────────────────────────
-
-func cmdAgent(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 || strings.ToLower(args[0]) == "status" {
-		if a.AgentMode {
-			fmt.Fprintln(out, "  Agent mode: on  (tagged files are auto-applied; /run hints are auto-executed)")
-		} else {
-			fmt.Fprintln(out, "  Agent mode: off  (tagged files are auto-applied; /run hints require manual /run)")
-		}
-		return nil
-	}
-	switch strings.ToLower(args[0]) {
-	case "on":
-		a.AgentMode = true
-		fmt.Fprintln(out, "  Agent mode on. Tagged files will be auto-applied; backtick /run hints will be auto-executed.")
-	case "off":
-		a.AgentMode = false
-		fmt.Fprintln(out, "  Agent mode off. Tagged files still auto-applied; use /run for commands.")
-	default:
-		fmt.Fprintf(out, "Unknown agent subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /agent <on|off|status>")
-	}
-	return nil
-}
-
 // ─── auto-execute ─────────────────────────────────────────────────────────────
 
 // extractRunSuggestions scans text for backtick-wrapped /run commands that the
@@ -2322,15 +2367,9 @@ func cmdRunCtx(a *Agent, ctx context.Context, args []string, out io.Writer) erro
 	return nil
 }
 
-/** autoExecuteReply scans reply for actionable content, previews each action
- * with an interactive confirmation prompt, executes confirmed actions, and
- * records the full proposal/choice/outcome flow to the Recorder (if active).
- *
- *   1. Tagged code blocks (e.g. ```bash:path/to/file) are always presented for
- *      confirmation and then written. Parent directories are created as needed.
- *
- *   2. When AgentMode is true, backtick-wrapped /run suggestions from the LLM
- *      (e.g. "`/run mkdir testout`") are also presented and executed.
+/** autoExecuteReply scans reply for tagged code blocks, previews each with an
+ * interactive confirmation prompt, writes confirmed blocks, and records the
+ * full proposal/choice/outcome flow to the Recorder (if active).
  *
  * Parameters:
  *   reply  (string)          — the raw assistant reply text.
@@ -2347,21 +2386,10 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 	}
 
 	blocks := findTaggedBlocks(reply)
-	var suggestions [][]string
-	if a.AgentMode {
-		suggestions = extractRunSuggestions(reply)
-	}
 
 	// Open an agent scene in the recording if there is anything to act on.
-	if len(blocks)+len(suggestions) > 0 && a.Recorder != nil {
-		var parts []string
-		if len(blocks) > 0 {
-			parts = append(parts, fmt.Sprintf("write %d file(s)", len(blocks)))
-		}
-		if len(suggestions) > 0 {
-			parts = append(parts, fmt.Sprintf("run %d command(s)", len(suggestions)))
-		}
-		desc := fmt.Sprintf("Harvey proposes to %s.", strings.Join(parts, " and "))
+	if len(blocks) > 0 && a.Recorder != nil {
+		desc := fmt.Sprintf("Harvey proposes to write %d file(s).", len(blocks))
 		_ = a.Recorder.StartAgentScene(desc)
 	}
 
@@ -2394,34 +2422,6 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 		}
 	}
 
-	// 2. Agent mode: /run suggestions.
-	for _, args := range suggestions {
-		cmdLine := strings.Join(args, " ")
-		choice := actionYes
-		if !applyAll {
-			choice = promptAction(reader, out, "Run: "+cmdLine, "")
-		}
-		switch choice {
-		case actionNo:
-			fmt.Fprintf(out, "  skipped: %s\n", cmdLine)
-			a.logAction("run", cmdLine, choice, "skipped")
-			continue
-		case actionQuit:
-			fmt.Fprintln(out, "  aborted remaining actions.")
-			a.logAction("run", cmdLine, choice, "aborted")
-			return
-		case actionAll:
-			applyAll = true
-		}
-		var runOut strings.Builder
-		if err := cmdRunCtx(a, ctx, args, &runOut); err != nil {
-			fmt.Fprint(out, runOut.String())
-			a.logAction("run", cmdLine, choice, "error: "+err.Error())
-		} else {
-			fmt.Fprint(out, runOut.String())
-			a.logAction("run", cmdLine, choice, "ok")
-		}
-	}
 }
 
 // choiceStr converts an actionChoice to the string recorded in the script.

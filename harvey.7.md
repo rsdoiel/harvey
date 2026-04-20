@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.0 b45c946
+%harvey(7) user manual | version 0.0.0 8467350
 % R. S. Doiel
-% 2026-04-20
+% 2026-04-21
 
 # NAME
 
@@ -94,10 +94,14 @@ match the parent directory name.
 
 # COMPILED SKILLS
 
-Harvey can ask the LLM to "compile" a SKILL.md into executable scripts
-(compiled.bash for Linux/macOS/BSD, compiled.ps1 for Windows) stored in the
-skill's scripts/ directory. When a compiled skill is triggered, Harvey runs the
-script directly — no LLM round-trip needed — and injects the output into context.
+A compiled skill has executable scripts (compiled.bash for Linux/macOS/BSD,
+compiled.ps1 for Windows) in the skill's scripts/ directory. When a compiled
+skill is invoked, Harvey runs the script directly — no LLM round-trip needed —
+and injects the output into context.
+
+Compiling a skill requires a large capable model (e.g. Claude or Mistral) that
+is not typically available on resource-constrained hardware. Compile skills on
+a capable system and commit the resulting scripts alongside SKILL.md.
 
 Compiled skill directory layout:
 
@@ -116,8 +120,9 @@ HARVEY_* environment variables set before each script run:
   HARVEY_MODEL       the name of the currently active LLM model
   HARVEY_SESSION_ID  the current session ID as a string
 
-Staleness: if SKILL.md is modified after compiling, Harvey detects that the
-scripts are older and prompts to recompile before running.
+Staleness: if SKILL.md is modified after the scripts were compiled, Harvey
+warns you when the skill is invoked and runs the old compiled version.
+Recompile the skill on a capable system to pick up the changes.
 
 TRIGGER field: add an optional trigger field to SKILL.md frontmatter to enable
 automatic skill dispatch when user input matches:
@@ -155,7 +160,6 @@ the Agent Skills specification (https://agentskills.dev).
   /skill info NAME         show path, compatibility, and license
   /skill status            count skills by scope
   /skill new               interactive wizard to create a new skill
-  /skill compile NAME      send SKILL.md to the LLM to generate compiled scripts
   /skill run NAME          run a skill (dispatches compiled scripts if available)
 ~~~
 

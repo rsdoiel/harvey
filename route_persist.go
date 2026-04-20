@@ -1,0 +1,113 @@
+package harvey
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// routeConfigFile is the JSON structure written to ~/.harvey/routes.json.
+type routeConfigFile struct {
+	Enabled   bool           `json:"enabled"`
+	Endpoints []RouteEndpoint `json:"endpoints"`
+}
+
+// routeConfigPath returns the path to the persisted route config file.
+func routeConfigPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".harvey", "routes.json")
+}
+
+/** LoadRouteConfig reads ~/.harvey/routes.json and populates cfg.Routes and
+ * cfg.RoutingEnabled. Silently no-ops when the file does not exist or cannot
+ * be parsed, leaving cfg unchanged.
+ *
+ * Parameters:
+ *   cfg (*Config) — config to populate; modified in place.
+ *
+ * Example:
+ *   cfg := DefaultConfig()
+ *   LoadRouteConfig(cfg)
+ */
+func LoadRouteConfig(cfg *Config) {
+	data, err := os.ReadFile(routeConfigPath())
+	if err != nil {
+		return
+	}
+	var f routeConfigFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		return
+	}
+	cfg.Routes = f.Endpoints
+	cfg.RoutingEnabled = f.Enabled
+}
+
+/** SaveRouteConfig persists rr to ~/.harvey/routes.json, creating the
+ * directory if necessary. Endpoints are written in alphabetical name order
+ * for stable diffs.
+ *
+ * Parameters:
+ *   rr (*RouteRegistry) — registry to persist; nil is treated as empty+disabled.
+ *
+ * Returns:
+ *   error — on directory creation or file write failure.
+ *
+ * Example:
+ *   if err := SaveRouteConfig(agent.Routes); err != nil {
+ *       fmt.Println("warning:", err)
+ *   }
+ */
+func SaveRouteConfig(rr *RouteRegistry) error {
+	path := routeConfigPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("save routes: %w", err)
+	}
+
+	f := routeConfigFile{}
+	if rr != nil {
+		f.Enabled = rr.Enabled
+		for _, ep := range rr.Endpoints {
+			f.Endpoints = append(f.Endpoints, *ep)
+		}
+		sort.Slice(f.Endpoints, func(i, j int) bool {
+			return f.Endpoints[i].Name < f.Endpoints[j].Name
+		})
+	}
+
+	data, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		return fmt.Errorf("save routes: %w", err)
+	}
+	return os.WriteFile(path, data, 0o600)
+}
+
+/** inferRouteKind returns the RouteKind implied by rawURL.
+ * Recognised schemes: ollama://, http://, https:// → KindOllama;
+ * publicai.co:// → KindPublicAI.
+ *
+ * Parameters:
+ *   rawURL (string) — URL as typed by the user.
+ *
+ * Returns:
+ *   RouteKind — inferred kind.
+ *   error     — when the URL scheme is unrecognised.
+ *
+ * Example:
+ *   kind, err := inferRouteKind("ollama://192.168.1.12:11434")
+ *   // kind = KindOllama, err = nil
+ */
+func inferRouteKind(rawURL string) (RouteKind, error) {
+	switch {
+	case strings.HasPrefix(rawURL, "ollama://"),
+		strings.HasPrefix(rawURL, "http://"),
+		strings.HasPrefix(rawURL, "https://"):
+		return KindOllama, nil
+	case strings.HasPrefix(rawURL, "publicai.co://"):
+		return KindPublicAI, nil
+	default:
+		return "", fmt.Errorf("unrecognised URL scheme in %q — use ollama://host:port or publicai.co://", rawURL)
+	}
+}

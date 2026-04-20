@@ -2,182 +2,231 @@ package harvey
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"strings"
 )
 
-// routingSystemPrompt is sent as the system message in every routing call.
-// The small model must reply with either a direct answer or exactly "ROUTE:full".
-// Tuned in Session 4.
-const routingSystemPrompt = `You are a routing assistant for a coding agent.
-Read the conversation and the latest user message, then do exactly one of:
+// RecentContextN is the number of recent non-system history messages sent
+// alongside a dispatched prompt. Excludes system messages. Tune over time.
+const RecentContextN = 10
 
-1. Answer directly — for simple, factual, conversational, or short requests
-   that you can handle well as a small model.
+// RouteKind identifies the protocol used to reach a registered endpoint.
+type RouteKind string
 
-2. Reply with exactly "ROUTE:full" and nothing else — for requests that need
-   deep reasoning, long code generation, architecture decisions, complex
-   debugging, or detailed analysis beyond your capability.
+const (
+	KindOllama   RouteKind = "ollama"
+	KindPublicAI RouteKind = "publicai"
+)
 
-Lean toward answering directly. Only route when the task clearly exceeds your
-ability. Do not explain your routing decision.`
-
-/** RouterConfig holds the two Ollama model names used for routing.
+/** RouteEndpoint is a named remote LLM endpoint registered for @mention dispatch.
  *
  * Fields:
- *   FastModel (string) — small, quick model that classifies and answers simple prompts.
- *   FullModel (string) — larger model for complex prompts that the fast model routes away.
+ *   Name  (string)    — identifier used in @mention syntax (e.g. "pi2").
+ *   URL   (string)    — endpoint URL; use "ollama://host:port" or "publicai.co://".
+ *   Model (string)    — default model on this endpoint; empty falls back to Config defaults.
+ *   Kind  (RouteKind) — KindOllama or KindPublicAI.
  *
  * Example:
- *   cfg := RouterConfig{FastModel: "llama3.2:1b", FullModel: "llama3.1:8b"}
+ *   ep := RouteEndpoint{Name: "pi2", URL: "ollama://192.168.1.12:11434", Model: "llama3.1:8b", Kind: KindOllama}
  */
-type RouterConfig struct {
-	FastModel string
-	FullModel string
+type RouteEndpoint struct {
+	Name  string
+	URL   string
+	Model string
+	Kind  RouteKind
 }
 
-/** Router sends each prompt to a small fast model, which either answers
- * directly or emits "ROUTE:full" to signal that the full model should handle it.
- * The trimmed history sent to the fast model is capped at 25% of its context
- * window to leave room for its reply and avoid overwhelming a small model.
+/** RouteRegistry holds all registered endpoints and the routing-enabled flag.
  *
  * Example:
- *   r, err := NewRouter(RouterConfig{FastModel: "llama3.2:1b", FullModel: "llama3.1:8b"}, "http://localhost:11434")
- *   answer, routeTo, err := r.Classify(ctx, history)
+ *   rr := NewRouteRegistry()
+ *   rr.Add(&RouteEndpoint{Name: "pi2", URL: "ollama://192.168.1.12:11434", Kind: KindOllama})
  */
-type Router struct {
-	cfg         RouterConfig
-	baseURL     string
-	smallCtxLen int // context window of the fast model in tokens
+type RouteRegistry struct {
+	Endpoints map[string]*RouteEndpoint
+	Enabled   bool
 }
 
-/** NewRouter creates a Router and probes the fast model's context window via
- * ShowModel. If the probe fails, a conservative default of 4096 tokens is used.
+/** NewRouteRegistry returns an empty registry with routing enabled.
+ *
+ * Returns:
+ *   *RouteRegistry — empty, enabled registry.
+ *
+ * Example:
+ *   rr := NewRouteRegistry()
+ */
+func NewRouteRegistry() *RouteRegistry {
+	return &RouteRegistry{
+		Endpoints: make(map[string]*RouteEndpoint),
+		Enabled:   true,
+	}
+}
+
+/** Add registers ep in the registry, replacing any existing endpoint with the
+ * same name.
  *
  * Parameters:
- *   cfg     (RouterConfig) — fast and full model names.
- *   baseURL (string)       — Ollama server base URL.
- *
- * Returns:
- *   *Router — ready to classify prompts.
- *   error   — currently always nil; reserved for future validation.
+ *   ep (*RouteEndpoint) — endpoint to register.
  *
  * Example:
- *   r, _ := NewRouter(RouterConfig{FastModel: "llama3.2:1b", FullModel: "llama3.1:8b"}, "http://localhost:11434")
+ *   rr.Add(&RouteEndpoint{Name: "pi2", URL: "ollama://192.168.1.12:11434", Kind: KindOllama})
  */
-func NewRouter(cfg RouterConfig, baseURL string) (*Router, error) {
-	r := &Router{
-		cfg:         cfg,
-		baseURL:     baseURL,
-		smallCtxLen: 4096, // conservative fallback
-	}
-	c := NewOllamaClient(baseURL, cfg.FastModel)
-	if detail, err := c.ShowModel(context.Background(), cfg.FastModel); err == nil && detail.ContextLength > 0 {
-		r.smallCtxLen = detail.ContextLength
-	}
-	return r, nil
+func (rr *RouteRegistry) Add(ep *RouteEndpoint) {
+	rr.Endpoints[ep.Name] = ep
 }
 
-/** FastModel returns the configured fast model name.
+/** Remove deletes the endpoint with the given name. No-op if not found.
  *
- * Returns:
- *   string — fast model identifier.
- *
- * Example:
- *   fmt.Println(router.FastModel()) // "llama3.2:1b"
- */
-func (r *Router) FastModel() string { return r.cfg.FastModel }
-
-/** FullModel returns the configured full model name.
- *
- * Returns:
- *   string — full model identifier.
+ * Parameters:
+ *   name (string) — endpoint name to remove.
  *
  * Example:
- *   fmt.Println(router.FullModel()) // "llama3.1:8b"
+ *   rr.Remove("pi2")
  */
-func (r *Router) FullModel() string { return r.cfg.FullModel }
+func (rr *RouteRegistry) Remove(name string) {
+	delete(rr.Endpoints, name)
+}
 
-/** Classify sends a trimmed slice of the conversation history to the fast
- * model and interprets its reply. If the reply begins with "ROUTE:full" the
- * full model name is returned in routeTo and answer is empty. Otherwise the
- * reply is a direct answer and routeTo is empty. Stats from the fast model
- * call are always returned so callers can display timing and token counts.
+/** Lookup returns the endpoint registered under name, or nil if not found.
+ *
+ * Parameters:
+ *   name (string) — endpoint name.
+ *
+ * Returns:
+ *   *RouteEndpoint — registered endpoint; nil if not found.
+ *
+ * Example:
+ *   ep := rr.Lookup("pi2")
+ *   if ep == nil { fmt.Println("not registered") }
+ */
+func (rr *RouteRegistry) Lookup(name string) *RouteEndpoint {
+	return rr.Endpoints[name]
+}
+
+/** ParseAtMention extracts the @name prefix and remaining prompt from input.
+ * Returns ok=false when input does not start with "@" followed by a non-empty
+ * word. Leading and trailing whitespace is trimmed before parsing.
+ *
+ * Parameters:
+ *   input (string) — raw user input, potentially starting with "@name ".
+ *
+ * Returns:
+ *   name   (string) — endpoint name without the "@" sigil.
+ *   prompt (string) — remaining input after the @name token; may be empty.
+ *   ok     (bool)   — false when no @mention is present.
+ *
+ * Example:
+ *   name, prompt, ok := ParseAtMention("@pi2 write a Go parser")
+ *   // name="pi2", prompt="write a Go parser", ok=true
+ *
+ *   _, _, ok = ParseAtMention("just a normal prompt")
+ *   // ok=false
+ */
+func ParseAtMention(input string) (name, prompt string, ok bool) {
+	s := strings.TrimSpace(input)
+	if !strings.HasPrefix(s, "@") {
+		return "", "", false
+	}
+	s = s[1:]
+	idx := strings.IndexByte(s, ' ')
+	if idx < 0 {
+		name = strings.TrimSpace(s)
+		if name == "" {
+			return "", "", false
+		}
+		return name, "", true
+	}
+	name = strings.TrimSpace(s[:idx])
+	prompt = strings.TrimSpace(s[idx+1:])
+	if name == "" {
+		return "", "", false
+	}
+	return name, prompt, true
+}
+
+// recentHistory returns up to n non-system messages from history, preserving
+// chronological order. System messages are always excluded.
+func recentHistory(history []Message, n int) []Message {
+	var nonSystem []Message
+	for _, m := range history {
+		if m.Role != "system" {
+			nonSystem = append(nonSystem, m)
+		}
+	}
+	if len(nonSystem) <= n {
+		return nonSystem
+	}
+	return nonSystem[len(nonSystem)-n:]
+}
+
+/** DispatchToEndpoint sends the recent conversation context plus prompt to ep,
+ * streams the reply to out, and returns the full reply text. The context window
+ * is capped at RecentContextN non-system messages from history.
  *
  * Parameters:
  *   ctx     (context.Context) — controls the HTTP request lifetime.
- *   history ([]Message)       — full conversation history including the latest user message.
+ *   ep      (*RouteEndpoint)  — registered endpoint to send to.
+ *   history ([]Message)       — full local conversation history.
+ *   prompt  (string)          — current user prompt (already stripped of @mention).
+ *   cfg     (*Config)         — used to resolve PublicAI credentials and defaults.
+ *   out     (io.Writer)       — destination for streamed reply tokens.
  *
  * Returns:
- *   answer  (string)    — direct answer from the fast model; empty when routing.
- *   routeTo (string)    — model name to re-send to; empty when answered directly.
- *   stats   (ChatStats) — timing and token counts from the fast model call.
- *   err     (error)     — non-nil if the fast model call fails.
+ *   reply (string) — full reply text.
+ *   err   (error)  — non-nil on transport or API failure.
  *
  * Example:
- *   answer, routeTo, stats, err := router.Classify(ctx, agent.History)
- *   if routeTo != "" {
- *       agent.Client = NewOllamaClient(baseURL, routeTo)
- *   }
+ *   reply, err := DispatchToEndpoint(ctx, ep, agent.History, "write a parser", cfg, os.Stdout)
  */
-func (r *Router) Classify(ctx context.Context, history []Message) (answer, routeTo string, stats ChatStats, err error) {
-	msgs := r.buildRoutingMessages(history)
-	c := NewOllamaClient(r.baseURL, r.cfg.FastModel)
+func DispatchToEndpoint(ctx context.Context, ep *RouteEndpoint, history []Message, prompt string, cfg *Config, out io.Writer) (string, error) {
+	msgs := recentHistory(history, RecentContextN)
+	msgs = append(msgs, Message{Role: "user", Content: prompt})
+
+	client, err := clientForEndpoint(ep, cfg)
+	if err != nil {
+		return "", err
+	}
+
 	var buf strings.Builder
-	if stats, err = c.Chat(ctx, msgs, &buf); err != nil {
-		return "", "", stats, err
+	w := io.MultiWriter(&buf, out)
+	if _, err := client.Chat(ctx, msgs, w); err != nil {
+		return "", fmt.Errorf("route %s: %w", ep.Name, err)
 	}
-	reply := strings.TrimSpace(buf.String())
-	if strings.HasPrefix(reply, "ROUTE:") {
-		return "", r.cfg.FullModel, stats, nil
-	}
-	return reply, "", stats, nil
+	return buf.String(), nil
 }
 
-// buildRoutingMessages constructs the message slice sent to the fast model.
-// It always includes the routing system prompt and the latest user message.
-// Recent non-system history is prepended newest-first until 25% of the fast
-// model's context window is consumed.
-func (r *Router) buildRoutingMessages(history []Message) []Message {
-	system := Message{Role: "system", Content: routingSystemPrompt}
-
-	if len(history) == 0 {
-		return []Message{system}
-	}
-
-	// Budget: 25% of the fast model's context window.
-	budget := r.smallCtxLen / 4
-	budget -= estimateTokens(routingSystemPrompt)
-	if budget < 50 {
-		budget = 50
-	}
-
-	// The latest user message is always included.
-	current := history[len(history)-1]
-	budget -= estimateTokens(current.Content)
-
-	// Walk backwards through the preceding history, skipping system messages.
-	var recent []Message
-	for i := len(history) - 2; i >= 0 && budget > 0; i-- {
-		msg := history[i]
-		if msg.Role == "system" {
-			continue
+// clientForEndpoint constructs the appropriate LLMClient for ep.
+func clientForEndpoint(ep *RouteEndpoint, cfg *Config) (LLMClient, error) {
+	switch ep.Kind {
+	case KindOllama:
+		model := ep.Model
+		if model == "" {
+			model = cfg.OllamaModel
 		}
-		cost := estimateTokens(msg.Content)
-		if cost > budget {
-			break
+		return NewOllamaClient(ollamaBaseURL(ep.URL), model), nil
+	case KindPublicAI:
+		model := ep.Model
+		if model == "" {
+			model = cfg.PublicAIModel
 		}
-		budget -= cost
-		recent = append([]Message{msg}, recent...)
+		return NewPublicAIClient(cfg.PublicAIURL, cfg.PublicAIKey, model), nil
+	default:
+		return nil, fmt.Errorf("route %s: unknown endpoint kind %q", ep.Name, ep.Kind)
 	}
-
-	msgs := []Message{system}
-	msgs = append(msgs, recent...)
-	msgs = append(msgs, current)
-	return msgs
 }
 
-// estimateTokens returns a fast token estimate using the 4-bytes-per-token
-// heuristic. Used during message trimming to avoid HTTP calls.
+// ollamaBaseURL converts an "ollama://host:port" URL to "http://host:port".
+// Raw http:// URLs are returned unchanged, allowing direct registration.
+func ollamaBaseURL(u string) string {
+	if strings.HasPrefix(u, "ollama://") {
+		return "http://" + strings.TrimPrefix(u, "ollama://")
+	}
+	return u
+}
+
+// estimateTokens returns a fast token count estimate using the 4-bytes-per-token
+// heuristic.
 func estimateTokens(s string) int {
 	n := len(s) / 4
 	if n < 1 {

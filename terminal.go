@@ -118,9 +118,6 @@ func (a *Agent) Run(out io.Writer) error {
 		return err
 	}
 
-	// Multi-model router (requires backend to be known first).
-	a.initRouter(out)
-
 	// Session resume or create (after backend is known so we can store the model name)
 	if a.SM != nil {
 		a.initSession(reader, out)
@@ -174,7 +171,7 @@ func (a *Agent) Run(out io.Writer) error {
 	if a.Client != nil {
 		fmt.Fprintf(out, "  Connected: %s\n", green(a.Client.Name()))
 	} else {
-		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /ollama start or /publicai connect"))
+		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /ollama start or /route add cloud publicai.co://"))
 	}
 	fmt.Fprintln(out, dim("  /help for commands · /exit to quit"))
 	fmt.Fprintln(out, cyan(bold(sep)))
@@ -207,9 +204,77 @@ func (a *Agent) Run(out io.Writer) error {
 			continue
 		}
 
+		// @mention dispatch — send prompt to a registered remote endpoint.
+		if name, prompt, ok := ParseAtMention(input); ok {
+			if a.Routes == nil || !a.Routes.Enabled {
+				fmt.Fprintln(out, yellow("  Routing is off.")+" Use /route on to enable @mentions.")
+				continue
+			}
+			ep := a.Routes.Lookup(name)
+			if ep == nil {
+				fmt.Fprintf(out, yellow("  @%s not found.")+" Use /route list to see registered endpoints.\n", name)
+				continue
+			}
+			le.AppendHistory(input)
+			fmt.Fprintf(out, dim("  → dispatching to @%s\n"), name)
+			fmt.Fprintln(out)
+
+			dispCtx, cancelDisp := context.WithCancel(context.Background())
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt)
+			wasCancelled := false
+			watchDone := make(chan struct{})
+			go func() {
+				defer signal.Stop(sigCh)
+				select {
+				case <-sigCh:
+					wasCancelled = true
+					cancelDisp()
+				case <-watchDone:
+				}
+			}()
+
+			sp := newSpinner(out, 0, "@"+name+" · working")
+			reply, dispErr := DispatchToEndpoint(dispCtx, ep, a.History, prompt, a.Config, out)
+			sp.stop()
+			close(watchDone)
+			cancelDisp()
+
+			if wasCancelled || errors.Is(dispErr, context.Canceled) {
+				fmt.Fprintln(out, dim("  Cancelled."))
+				continue
+			}
+			if dispErr != nil {
+				fmt.Fprintf(out, red("Error: ")+"%v\n", dispErr)
+				continue
+			}
+
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, dim("  @"+name))
+			a.AddMessage("user", input)
+			a.AddMessage("assistant", reply)
+
+			if a.SM != nil && a.SessionID != 0 {
+				model := ""
+				if a.Client != nil {
+					model = a.Client.Name()
+				}
+				if saveErr := a.SM.Save(a.SessionID, model, a.History); saveErr != nil {
+					fmt.Fprintf(out, yellow("  ✗")+" Session save error: %v\n", saveErr)
+				}
+			}
+			if a.Recorder != nil {
+				if recErr := a.Recorder.RecordTurn(input, reply); recErr != nil {
+					fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
+				}
+			}
+			a.autoExecuteReply(reply, out, reader, context.Background())
+			continue
+		}
+
 		// Chat
 		if a.Client == nil {
-			fmt.Fprintln(out, yellow("No backend connected.")+" Use /ollama start or /publicai connect.")
+			fmt.Fprintln(out, yellow("No backend connected.")+" Use /ollama start or /route add cloud publicai.co://.")
 			continue
 		}
 
@@ -267,54 +332,8 @@ func (a *Agent) Run(out io.Writer) error {
 				}
 			}
 		}
-		// Multi-model routing: classify the prompt, report the decision as a
-		// permanent step line, then continue with the chosen model.
-		// modelsUsed and routeStep are both carried forward to the recorder.
 		var modelsUsed []string
-		var routeStep string
-		if a.Router != nil {
-			fmt.Fprint(out, dim("  Evaluating..."))
-			fastAnswer, routeTo, routeStats, routeErr := a.Router.Classify(context.Background(), a.History)
-			fmt.Fprint(out, "\r\033[K") // erase the ephemeral evaluation line
-			if routeErr != nil {
-				fmt.Fprintf(out, yellow("  ⚠ Router error: %v — using current model\n"), routeErr)
-			} else if routeTo != "" {
-				// Escalate to full model — print permanent step line then fall through to spinner.
-				routeStep = "Routing to " + routeTo
-				fmt.Fprintf(out, dim("  ✓ %s\n"), routeStep)
-				if oc, ok := a.Client.(*OllamaClient); ok && oc.Model() != routeTo {
-					a.Client = NewOllamaClient(a.Config.OllamaURL, routeTo)
-				}
-				modelsUsed = []string{a.Router.FastModel(), a.Client.Name()}
-			} else if fastAnswer != "" {
-				// Fast model answered directly — print permanent step line, response, and stat line.
-				routeStep = "Answered by " + a.Router.FastModel()
-				fmt.Fprintf(out, dim("  ✓ %s\n"), routeStep)
-				fmt.Fprintln(out)
-				fmt.Fprint(out, fastAnswer)
-				fmt.Fprintln(out)
-				fmt.Fprintln(out, dim(formatStatLine([]string{a.Router.FastModel()}, routeStats)))
-				a.recordStats(routeStats)
-				a.AddMessage("assistant", fastAnswer)
-				if a.SM != nil && a.SessionID != 0 {
-					model := ""
-					if a.Client != nil {
-						model = a.Client.Name()
-					}
-					if saveErr := a.SM.Save(a.SessionID, model, a.History); saveErr != nil {
-						fmt.Fprintf(out, yellow("  ✗")+" Session save error: %v\n", saveErr)
-					}
-				}
-				if a.Recorder != nil {
-					if recErr := a.Recorder.RecordTurnWithStats(input, fastAnswer, routeStats, []string{a.Router.FastModel()}, routeStep); recErr != nil {
-						fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
-					}
-				}
-				a.autoExecuteReply(fastAnswer, out, reader, context.Background())
-				continue
-			}
-		}
-		if len(modelsUsed) == 0 && a.Client != nil {
+		if a.Client != nil {
 			modelsUsed = []string{a.Client.Name()}
 		}
 		fmt.Fprintln(out)
@@ -376,7 +395,7 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}
 		if a.Recorder != nil {
-			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, routeStep); recErr != nil {
+			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, ""); recErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
 			}
 		}
@@ -430,27 +449,6 @@ func (a *Agent) initKnowledgeBase(out io.Writer) {
  * Example:
  *   err := agent.selectBackend(reader, os.Stdout)
  */
-// initRouter enables multi-model routing when Config.Router is set.
-// It probes the fast model's context window via ShowModel so the router
-// can trim history correctly. Failures are non-fatal.
-func (a *Agent) initRouter(out io.Writer) {
-	if a.Config.Router == nil {
-		return
-	}
-	rc := a.Config.Router
-	if rc.FastModel == "" || rc.FullModel == "" {
-		fmt.Fprintln(out, yellow("  ⚠ Router config incomplete — fast and full model names required"))
-		return
-	}
-	r, err := NewRouter(*rc, a.Config.OllamaURL)
-	if err != nil {
-		fmt.Fprintf(out, yellow("  ⚠ Router init failed: %v\n"), err)
-		return
-	}
-	a.Router = r
-	fmt.Fprintf(out, green("✓")+" Router: %s → %s  (ctx budget: %d tokens)\n",
-		rc.FastModel, rc.FullModel, r.smallCtxLen/4)
-}
 
 func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 	fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.OllamaURL)
@@ -481,7 +479,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 	if askYesNo(reader, out, "    Use publicai.co instead? [Y/n] ", true) {
 		if a.Config.PublicAIKey == "" {
 			fmt.Fprintln(out, yellow("  ✗")+" PUBLICAI_API_KEY is not set.")
-			fmt.Fprintln(out, dim("  Set the environment variable and restart, or use /publicai connect later."))
+			fmt.Fprintln(out, dim("  Set PUBLICAI_API_KEY, then use /route add cloud publicai.co:// to register it."))
 		} else {
 			a.Client = NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, a.Config.PublicAIModel)
 			fmt.Fprintf(out, green("  ✓")+" Connected to publicai.co (%s)\n", a.Config.PublicAIModel)
@@ -490,7 +488,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 	}
 
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, dim("  No backend selected. Use /ollama start or /publicai connect once inside."))
+	fmt.Fprintln(out, dim("  No backend selected. Use /ollama start or /route add cloud publicai.co:// once inside."))
 	return nil
 }
 

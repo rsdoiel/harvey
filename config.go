@@ -22,24 +22,19 @@ Always tag code blocks that are meant to be files. Do NOT say "run
 /apply" — Harvey handles it automatically and will confirm with the
 operator before writing.
 
-### Shell commands (agent mode only)
-When the operator has enabled agent mode (/agent on), wrap suggested
-shell commands in backtick /run hints:
+### Shell commands
+When you want to suggest a shell command, wrap it in a backtick /run hint:
 
   ` + "`" + `/run chmod +x testout/hello.bash` + "`" + `
 
-Harvey will confirm the command with the operator and then run it,
-injecting the output into context so you can see the result.
-
-When agent mode is off (the default), you may still suggest commands in
-this format — the operator can run them manually with /run.
+The operator can run it manually with /run.
 
 ## Slash commands (for reference)
 
 | What needs to happen | Command |
 |---|---|
 | Create / write a file | tag your code block (auto-applied) |
-| Run a shell command | ` + "`" + `/run <command>` + "`" + ` hint (auto-run in agent mode) |
+| Run a shell command | ` + "`" + `/run <command>` + "`" + ` |
 | Read a file into context | /read <path> |
 | Search the workspace | /search <pattern> |
 | View git status / diff / log | /git <subcommand> |
@@ -77,7 +72,8 @@ type Config struct {
 	OllamaURL           string        // Ollama base URL (default: http://localhost:11434)
 	OllamaModel         string        // currently selected Ollama model
 	OllamaContextLength int           // context window size in tokens; 0 = unknown
-	Router              *RouterConfig // multi-model routing config; nil = routing disabled
+	Routes              []RouteEndpoint // registered remote endpoints; persisted across sessions
+	RoutingEnabled      bool            // when false, @mentions are rejected with a warning
 	PublicAIURL         string        // publicai.co base URL (default: https://api.publicai.co/v1)
 	PublicAIKey         string        // API key read from PUBLICAI_API_KEY
 	PublicAIModel       string        // model name (default: abertus)
