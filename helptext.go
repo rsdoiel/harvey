@@ -145,15 +145,17 @@ matching trigger wins.
 ~~~
   User scope
     ~/.harvey/skills/          Harvey-native
+    ~/agents/skills/           cross-client (non-hidden)
     ~/.agents/skills/          cross-client (shared with Claude Code, etc.)
 
   Project scope  (relative to --workdir, default ".")
     .harvey/skills/            Harvey-native
+    agents/skills/             cross-client (non-hidden)
     .agents/skills/            cross-client
 ~~~
 
-Skills placed in .agents/skills/ are visible to any agent that follows
-the Agent Skills specification (https://agentskills.dev).
+Skills placed in agents/skills/ or .agents/skills/ are visible to any agent
+that follows the Agent Skills specification (https://agentskills.dev).
 
 
 # SLASH COMMANDS

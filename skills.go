@@ -183,8 +183,10 @@ func ScanSkillDirs(dirs []SkillSearchDir) SkillCatalog {
  *
  * Paths scanned (in precedence order, lowest first):
  *   ~/.harvey/skills/          user, Harvey-native
+ *   ~/agents/skills/           user, cross-client (non-hidden)
  *   ~/.agents/skills/          user, cross-client
  *   <workDir>/.harvey/skills/  project, Harvey-native
+ *   <workDir>/agents/skills/   project, cross-client (non-hidden)
  *   <workDir>/.agents/skills/  project, cross-client
  *
  * Parameters:
@@ -209,11 +211,13 @@ func standardSkillDirs(workDir string) []SkillSearchDir {
 	if home != "" {
 		dirs = append(dirs,
 			SkillSearchDir{filepath.Join(home, ".harvey", "skills"), SkillSourceUser},
+			SkillSearchDir{filepath.Join(home, "agents", "skills"), SkillSourceUser},
 			SkillSearchDir{filepath.Join(home, ".agents", "skills"), SkillSourceUser},
 		)
 	}
 	dirs = append(dirs,
 		SkillSearchDir{filepath.Join(workDir, ".harvey", "skills"), SkillSourceProject},
+		SkillSearchDir{filepath.Join(workDir, "agents", "skills"), SkillSourceProject},
 		SkillSearchDir{filepath.Join(workDir, ".agents", "skills"), SkillSourceProject},
 	)
 	return dirs
