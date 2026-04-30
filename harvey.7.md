@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.0 f94bc8d
+%harvey(7) user manual | version 0.0.0 9ea3b5d
 % R. S. Doiel
-% 2026-04-24
+% 2026-04-31
 
 # NAME
 
@@ -140,15 +140,17 @@ matching trigger wins.
 ~~~
   User scope
     ~/.harvey/skills/          Harvey-native
+    ~/agents/skills/           cross-client (non-hidden)
     ~/.agents/skills/          cross-client (shared with Claude Code, etc.)
 
   Project scope  (relative to --workdir, default ".")
     .harvey/skills/            Harvey-native
+    agents/skills/             cross-client (non-hidden)
     .agents/skills/            cross-client
 ~~~
 
-Skills placed in .agents/skills/ are visible to any agent that follows
-the Agent Skills specification (https://agentskills.dev).
+Skills placed in agents/skills/ or .agents/skills/ are visible to any agent
+that follows the Agent Skills specification (https://agentskills.dev).
 
 
 # SLASH COMMANDS

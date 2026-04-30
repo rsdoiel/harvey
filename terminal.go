@@ -2,11 +2,13 @@ package harvey
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
@@ -200,6 +202,83 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 			if shouldExit {
 				break
+			}
+			continue
+		}
+
+		// "!" prefix — run a shell command, stream output live, inject into context.
+		if strings.HasPrefix(input, "!") {
+			cmdLine := strings.TrimSpace(strings.TrimPrefix(input, "!"))
+			if cmdLine == "" {
+				continue
+			}
+			le.AppendHistory(input)
+			fmt.Fprintf(out, "  $ %s\n", cmdLine)
+
+			var capBuf bytes.Buffer
+			mw := io.MultiWriter(out, &capBuf)
+
+			bashCtx, cancelBash := context.WithCancel(context.Background())
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt)
+			wasCancelled := false
+			watchDone := make(chan struct{})
+			go func() {
+				defer signal.Stop(sigCh)
+				select {
+				case <-sigCh:
+					wasCancelled = true
+					cancelBash()
+				case <-watchDone:
+				}
+			}()
+
+			shCmd := exec.CommandContext(bashCtx, "sh", "-c", cmdLine)
+			if a.Workspace != nil {
+				shCmd.Dir = a.Workspace.Root
+			}
+			shCmd.Stdout = mw
+			shCmd.Stderr = mw
+			runErr := shCmd.Run()
+			close(watchDone)
+			cancelBash()
+
+			fmt.Fprintln(out)
+			if wasCancelled || errors.Is(runErr, context.Canceled) {
+				fmt.Fprintln(out, dim("  Cancelled."))
+				continue
+			}
+
+			exitCode := 0
+			exitNote := ""
+			if shCmd.ProcessState != nil {
+				exitCode = shCmd.ProcessState.ExitCode()
+				if exitCode != 0 {
+					exitNote = fmt.Sprintf(" (exit %d)", exitCode)
+				}
+			}
+
+			output := capBuf.Bytes()
+			truncated := false
+			if len(output) > maxRunOutput {
+				output = output[:maxRunOutput]
+				truncated = true
+			}
+
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("[context: ! %s%s]\n\n```\n", cmdLine, exitNote))
+			sb.Write(output)
+			if truncated {
+				sb.WriteString("\n... (output truncated)")
+			}
+			sb.WriteString("\n```\n")
+			a.AddMessage("user", sb.String())
+			fmt.Fprintf(out, dim("  %d bytes added to context%s.\n"), len(output), exitNote)
+
+			if a.Recorder != nil {
+				if recErr := a.Recorder.RecordShellCommand(cmdLine, string(output), exitCode); recErr != nil {
+					fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
+				}
 			}
 			continue
 		}

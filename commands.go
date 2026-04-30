@@ -300,6 +300,9 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 	sort.Slice(userDefined, func(i, j int) bool { return userDefined[i].Usage < userDefined[j].Usage })
 
 	fmt.Fprintln(out)
+	fmt.Fprintf(out, "  %-50s %s\n", "! COMMAND", "Run a shell command, stream output, inject into context")
+	fmt.Fprintf(out, "  %-50s %s\n", "@NAME PROMPT", "Send prompt to a registered remote endpoint")
+	fmt.Fprintln(out)
 	for _, cmd := range builtins {
 		fmt.Fprintf(out, "  %-50s %s\n", cmd.Usage, cmd.Description)
 	}

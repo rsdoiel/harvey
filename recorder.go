@@ -298,6 +298,44 @@ func (r *Recorder) RecordAgentAction(kind, target, userChoice, outcome string) e
 	return nil
 }
 
+// RecordShellCommand appends a shell-execution scene to the recording.
+//
+// Scene structure:
+//
+//	INT. SHELL {TIMESTAMP}
+//
+//	{USER}
+//	! cmdLine                              ← dialogue (the command the user ran)
+//
+//	SHELL
+//	(output text)                          ← dialogue (combined stdout+stderr)
+//
+//	[[shell: cmdLine — exit N]]            ← Fountain note with exit code
+//
+// Parameters:
+//
+//	cmdLine  (string) — the shell command as typed by the user (without "!").
+//	output   (string) — combined stdout+stderr captured from the command.
+//	exitCode (int)    — process exit code; 0 means success.
+//
+// Returns:
+//
+//	error — if the write fails.
+//
+// Example:
+//
+//	r.RecordShellCommand("git status", "On branch main\n...", 0)
+func (r *Recorder) RecordShellCommand(cmdLine, output string, exitCode int) error {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	r.writeSceneHeading(fmt.Sprintf("INT. SHELL %s", ts))
+	r.writeDialogue(r.userName, "", "! "+cmdLine)
+	if output != "" {
+		r.writeDialogue("SHELL", "", output)
+	}
+	r.writeNote(fmt.Sprintf("shell: %s — exit %d", cmdLine, exitCode))
+	return nil
+}
+
 // RecordSkillLoad appends a skill-activation scene to the recording.
 //
 // Scene structure:
