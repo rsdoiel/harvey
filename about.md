@@ -11,7 +11,7 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.0
+version: 0.0.1-pre1
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
@@ -24,7 +24,7 @@ programming_language:
 About this software
 ===================
 
-## harvey 0.0.0
+## harvey 0.0.1-pre1
 
 concept
 
