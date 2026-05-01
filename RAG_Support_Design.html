@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<p>Below is a <strong>clean planning document (Markdown)</strong> you
+can reuse with another model. It summarizes the architecture decisions,
+tradeoffs, and provides a concrete Go module design (using
+<code>package harvey</code> as requested).</p>
+<hr />
+<h1 id="harvey-rag-integration-plan-hybrid-embedding-model-approach">🧠
+Harvey RAG Integration Plan (Hybrid Embedding Model Approach)</h1>
+<h2 id="goal">🎯 Goal</h2>
+<p>Add <strong>Retrieval-Augmented Generation (RAG)</strong> support to
+Harvey while:</p>
+<ul>
+<li>Leveraging the existing <strong>knowledge base (KB)</strong> as the
+source of truth</li>
+<li>Maintaining <strong>loose coupling</strong> with Ollama</li>
+<li>Avoiding embedding mismatch issues</li>
+<li>Keeping infrastructure simple (SQLite, no vector DB initially)</li>
+</ul>
+<hr />
+<h1 id="core-concept">🧩 Core Concept</h1>
+<h3 id="separation-of-concerns">✅ Separation of concerns</h3>
+<pre><code>Knowledge Base (raw data)
+        ↓
+Embedding Model (e.g. nomic-embed-text)
+        ↓
+RAG Index (SQLite per embedding model)
+        ↓
+Generation Model (granite4, llama3, etc.)</code></pre>
+<hr />
+<h2 id="key-design-decisions">✅ Key Design Decisions</h2>
+<h3 id="use-embedding-modelscoped-rag-databases">1. Use
+<strong>embedding model–scoped RAG databases</strong></h3>
+<p>Instead of per-generation-model:</p>
+<pre><code>❌ granite4.db
+❌ llama3.db</code></pre>
+<p>Use:</p>
+<pre><code>✅ rag_nomic_v1.db
+✅ rag_mxbai_v1.db</code></pre>
+<hr />
+<h3 id="map-generation-model-embedding-model">2. Map generation model →
+embedding model</h3>
+<p>Example:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ModelConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    GenerationModel <span class="dt">string</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    EmbeddingModel  <span class="dt">string</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    RagDBPath       <span class="dt">string</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> ModelRegistry <span class="op">=</span> <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span>ModelConfig<span class="op">{</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;granite4&quot;</span><span class="op">:</span> <span class="op">{</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>        GenerationModel<span class="op">:</span> <span class="st">&quot;granite4&quot;</span><span class="op">,</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>        EmbeddingModel<span class="op">:</span>  <span class="st">&quot;nomic-embed-text&quot;</span><span class="op">,</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>        RagDBPath<span class="op">:</span>       <span class="st">&quot;rag_nomic_v1.db&quot;</span><span class="op">,</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">},</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;llama3&quot;</span><span class="op">:</span> <span class="op">{</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>        GenerationModel<span class="op">:</span> <span class="st">&quot;llama3&quot;</span><span class="op">,</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>        EmbeddingModel<span class="op">:</span>  <span class="st">&quot;nomic-embed-text&quot;</span><span class="op">,</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>        RagDBPath<span class="op">:</span>       <span class="st">&quot;rag_nomic_v1.db&quot;</span><span class="op">,</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">},</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<hr />
+<h3 id="explicit-ingestion-step">3. Explicit ingestion step</h3>
+<pre><code>harvey ingest --embedding-model nomic-embed-text</code></pre>
+<ul>
+<li>Generates embeddings</li>
+<li>Stores them in SQLite</li>
+<li>Can be run offline / batch</li>
+</ul>
+<hr />
+<h3 id="enforce-embedding-consistency">4. Enforce embedding
+consistency</h3>
+<p>Strict runtime check:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> embedder<span class="op">.</span>Name<span class="op">()</span> <span class="op">!=</span> r<span class="op">.</span>embeddingModel <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> errors<span class="op">.</span>New<span class="op">(</span><span class="st">&quot;embedding model mismatch&quot;</span><span class="op">)</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Prevents:</p>
+<ul>
+<li>Silent retrieval failures</li>
+<li>Mixed embedding spaces</li>
+</ul>
+<hr />
+<h1 id="go-module-design-package-harvey">⚙️ Go Module Design
+(<code>package harvey</code>)</h1>
+<h2 id="file-structure">📁 File Structure</h2>
+<pre><code>harvey/
+  rag_support.go
+  rag_support_test.go</code></pre>
+<hr />
+<h1 id="rag_support.go-design-overview">📦 <code>rag_support.go</code>
+(Design Overview)</h1>
+<h2 id="responsibilities">✅ Responsibilities</h2>
+<ul>
+<li>Manage SQLite-based RAG index</li>
+<li>Store embeddings as BLOBs</li>
+<li>Provide ingest + query APIs</li>
+<li>Compute cosine similarity in Go</li>
+</ul>
+<hr />
+<h2 id="interfaces">✅ Interfaces</h2>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Embedder <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    Embed<span class="op">(</span>text <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span><span class="dt">float64</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    Name<span class="op">()</span> <span class="dt">string</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Allows:</p>
+<ul>
+<li>Ollama embedder</li>
+<li>Mock embedder (for tests)</li>
+<li>Future providers</li>
+</ul>
+<hr />
+<h2 id="core-types">✅ Core Types</h2>
+<div class="sourceCode" id="cb9"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> RagStore <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    db             <span class="op">*</span>sql<span class="op">.</span>DB</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    embeddingModel <span class="dt">string</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Chunk <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    ID      <span class="dt">int64</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    Content <span class="dt">string</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<hr />
+<h2 id="sqlite-schema">✅ SQLite Schema</h2>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> <span class="cf">IF</span> <span class="kw">NOT</span> <span class="kw">EXISTS</span> chunks (</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span> <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    content TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    embedding <span class="dt">BLOB</span> <span class="kw">NOT</span> <span class="kw">NULL</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<p>Future extensions:</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>source_id TEXT,</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>chunk_index <span class="dt">INTEGER</span>,</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>tags TEXT</span></code></pre></div>
+<hr />
+<h2 id="initialization">✅ Initialization</h2>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> NewRagStore<span class="op">(</span>dbPath<span class="op">,</span> embeddingModel <span class="dt">string</span><span class="op">)</span> <span class="op">(*</span>RagStore<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p>Uses:</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> _ <span class="st">&quot;github.com/glebarez/go-sqlite&quot;</span></span></code></pre></div>
+<p>Driver:</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>sql<span class="op">.</span>Open<span class="op">(</span><span class="st">&quot;sqlite&quot;</span><span class="op">,</span> dbPath<span class="op">)</span></span></code></pre></div>
+<hr />
+<h2 id="ingest-flow">✅ Ingest Flow</h2>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>RagStore<span class="op">)</span> Ingest<span class="op">(</span>texts <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> embedder Embedder<span class="op">)</span> <span class="dt">error</span></span></code></pre></div>
+<p>Steps:</p>
+<ol type="1">
+<li>Validate embedding model</li>
+<li>Generate embeddings</li>
+<li>Serialize vectors</li>
+<li>Store in SQLite (transaction)</li>
+</ol>
+<hr />
+<h2 id="query-flow">✅ Query Flow</h2>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>RagStore<span class="op">)</span> Query<span class="op">(</span>query <span class="dt">string</span><span class="op">,</span> embedder Embedder<span class="op">,</span> topK <span class="dt">int</span><span class="op">)</span> <span class="op">([]</span>Chunk<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p>Steps:</p>
+<ol type="1">
+<li>Embed query</li>
+<li>Load all stored embeddings</li>
+<li>Compute cosine similarity</li>
+<li>Sort results</li>
+<li>Return top-K chunks</li>
+</ol>
+<hr />
+<h2 id="cosine-similarity">✅ Cosine Similarity</h2>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> cosineSimilarity<span class="op">(</span>a<span class="op">,</span> b <span class="op">[]</span><span class="dt">float64</span><span class="op">)</span> <span class="dt">float64</span></span></code></pre></div>
+<ul>
+<li>Pure Go</li>
+<li>Works for small-medium datasets</li>
+</ul>
+<hr />
+<h2 id="serialization">✅ Serialization</h2>
+<p>Binary format:</p>
+<pre><code>[int32 length][float64...]</code></pre>
+<p>Functions:</p>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>serialize<span class="op">([]</span><span class="dt">float64</span><span class="op">)</span> <span class="op">[]</span><span class="dt">byte</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>deserialize<span class="op">([]</span><span class="dt">byte</span><span class="op">)</span> <span class="op">[]</span><span class="dt">float64</span></span></code></pre></div>
+<hr />
+<h1 id="rag_support_test.go">🧪 <code>rag_support_test.go</code></h1>
+<h2 id="uses-mock-embedder">✅ Uses mock embedder</h2>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> mockEmbedder <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    name <span class="dt">string</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Ensures:</p>
+<ul>
+<li>Deterministic embeddings</li>
+<li>No dependency on Ollama</li>
+</ul>
+<hr />
+<h2 id="test-coverage">✅ Test Coverage</h2>
+<h3 id="ingest-query-works">1. Ingest + query works</h3>
+<ul>
+<li>Inserts multiple documents</li>
+<li>Queries for relevant content</li>
+<li>Verifies correct retrieval</li>
+</ul>
+<hr />
+<h3 id="embedding-mismatch-protection">2. Embedding mismatch
+protection</h3>
+<p>Ensures:</p>
+<ul>
+<li>Cannot ingest with wrong model</li>
+<li>Cannot query with wrong model</li>
+</ul>
+<hr />
+<h1 id="runtime-flow-in-harvey">🔄 Runtime Flow in Harvey</h1>
+<h2 id="query-execution">✅ Query execution</h2>
+<pre><code>User selects model (granite4)
+    ↓
+Lookup ModelConfig
+    ↓
+Get embedding model (nomic-embed-text)
+    ↓
+Load corresponding RAG DB
+    ↓
+Embed query
+    ↓
+Retrieve top-K chunks
+    ↓
+Inject into prompt
+    ↓
+Call Ollama (granite4)</code></pre>
+<hr />
+<h1 id="known-trade-offs">⚠️ Known Trade-offs</h1>
+<h2 id="pros">✅ Pros</h2>
+<ul>
+<li>Simple (no vector DB)</li>
+<li>Deterministic</li>
+<li>Fully local</li>
+<li>Easy to debug</li>
+<li>Loose coupling to Ollama</li>
+</ul>
+<hr />
+<h2 id="cons">⚠️ Cons</h2>
+<ul>
+<li>Linear scan (O(n)) query time</li>
+<li>No ANN indexing</li>
+<li>Duplicate embeddings if multiple models used</li>
+<li>Requires re-ingestion if embedding model changes</li>
+</ul>
+<hr />
+<h1 id="future-enhancements">🚀 Future Enhancements</h1>
+<h2 id="performance">🔧 Performance</h2>
+<ul>
+<li>Replace sort with heap (top-K)</li>
+<li>Add approximate search (later)</li>
+</ul>
+<h2 id="retrieval-quality">🧠 Retrieval quality</h2>
+<ul>
+<li>Add chunking (critical)</li>
+<li>Add metadata filtering</li>
+<li>Add reranking layer</li>
+</ul>
+<h2 id="storage">⚙️ Storage</h2>
+<ul>
+<li>Add vector dimension column</li>
+<li>Add embedding versioning</li>
+<li>Migrate to pgvector or Qdrant if needed</li>
+</ul>
+<hr />
+<h1 id="open-questions">❓ Open Questions</h1>
+<p>These will influence your next steps:</p>
+<ol type="1">
+<li><strong>How large is your knowledge base?</strong>
+<ul>
+<li>&lt;10k chunks → current design is perfect</li>
+<li><blockquote>
+<p>100k → may need indexing soon</p>
+</blockquote></li>
+</ul></li>
+<li><strong>Will users switch models frequently?</strong>
+<ul>
+<li>If yes → shared embedding index is important</li>
+</ul></li>
+<li><strong>Do you already have document chunking?</strong>
+<ul>
+<li>If not, this is the next critical feature</li>
+</ul></li>
+<li><strong>Should ingestion be automatic or manual?</strong>
+<ul>
+<li>CLI-driven vs background processing</li>
+</ul></li>
+<li><strong>Do you want offline-only operation?</strong>
+<ul>
+<li>Affects embedding strategy + caching</li>
+</ul></li>
+</ol>
+<hr />
+<h1 id="tldr">✅ TL;DR</h1>
+<ul>
+<li>Use <strong>embedding-model–scoped SQLite RAG indexes</strong></li>
+<li>Map <strong>generation models → embedding model</strong></li>
+<li>Implement <strong>ingest + query pipeline</strong></li>
+<li>Enforce <strong>embedding consistency strictly</strong></li>
+<li>Start simple; scale later if needed</li>
+</ul>
+<hr />
+<p>If you want, I can next:</p>
+<ul>
+<li>Add a <strong>real Ollama embedder implementation</strong></li>
+<li>Design a <strong>chunking pipeline for your KB</strong></li>
+<li>Or integrate this directly into Harvey’s request lifecycle
+end-to-end</li>
+</ul>
+</section>
+</body>
+</html>
