@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// routeConfigFile is the JSON structure written to ~/.harvey/routes.json.
+// routeConfigFile is the JSON structure written to ~/harvey/routes.json.
 type routeConfigFile struct {
 	Enabled   bool           `json:"enabled"`
 	Endpoints []RouteEndpoint `json:"endpoints"`
@@ -18,10 +18,10 @@ type routeConfigFile struct {
 // routeConfigPath returns the path to the persisted route config file.
 func routeConfigPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".harvey", "routes.json")
+	return filepath.Join(home, "harvey", "routes.json")
 }
 
-/** LoadRouteConfig reads ~/.harvey/routes.json and populates cfg.Routes and
+/** LoadRouteConfig reads ~/harvey/routes.json and populates cfg.Routes and
  * cfg.RoutingEnabled. Silently no-ops when the file does not exist or cannot
  * be parsed, leaving cfg unchanged.
  *
@@ -45,7 +45,7 @@ func LoadRouteConfig(cfg *Config) {
 	cfg.RoutingEnabled = f.Enabled
 }
 
-/** SaveRouteConfig persists rr to ~/.harvey/routes.json, creating the
+/** SaveRouteConfig persists rr to ~/harvey/routes.json, creating the
  * directory if necessary. Endpoints are written in alphabetical name order
  * for stable diffs.
  *

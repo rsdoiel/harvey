@@ -10,7 +10,7 @@ func openTestKB(t *testing.T) *KnowledgeBase {
 	if err != nil {
 		t.Fatalf("NewWorkspace: %v", err)
 	}
-	kb, err := OpenKnowledgeBase(ws)
+	kb, err := OpenKnowledgeBase(ws, "")
 	if err != nil {
 		t.Fatalf("OpenKnowledgeBase: %v", err)
 	}

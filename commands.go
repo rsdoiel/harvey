@@ -70,8 +70,8 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdOllama,
 		},
 		"kb": {
-			Usage:       "/kb <status|project|observe|concept> [args...]",
-			Description: "Manage the workspace knowledge base",
+			Usage:       "/kb <status|search|inject|project|observe|concept> [args...]",
+			Description: "Manage and query the workspace knowledge base",
 			Handler:     cmdKB,
 		},
 		"files": {
@@ -135,8 +135,8 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdRecord,
 		},
 		"session": {
-			Usage:       "/session <list|load ID|new|name LABEL|status|continue FILE|replay FILE [OUTPUT]>",
-			Description: "Manage sessions and replay Fountain recordings",
+			Usage:       "/session <continue FILE|replay FILE [OUTPUT]>",
+			Description: "Continue or replay a .spmd/.fountain session recording",
 			Handler:     cmdSession,
 		},
 		"skill": {
@@ -184,7 +184,7 @@ func (a *Agent) registerCommands() {
  *   (receiver) *Agent — agent whose Skills catalog and commands map are updated.
  *
  * Example:
- *   a.Skills = ScanSkills(a.Workspace.Root)
+ *   a.Skills = ScanSkills(a.Workspace.Root, a.Config.AgentsDir)
  *   a.registerSkillCommands()
  */
 func (a *Agent) registerSkillCommands() {
@@ -346,21 +346,12 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintf(out, "Workspace: %s\n", a.Workspace.Root)
 	}
 	if a.KB != nil {
-		fmt.Fprintln(out, "KB:        open (.harvey/knowledge.db)")
+		fmt.Fprintln(out, "KB:        open (harvey/knowledge.db)")
 	} else {
 		fmt.Fprintln(out, "KB:        not open")
 	}
-	if a.SM != nil && a.SessionID != 0 {
-		s, err := a.SM.Load(a.SessionID)
-		if err == nil && s != nil {
-			name := s.Name
-			if name == "" {
-				name = "(unnamed)"
-			}
-			fmt.Fprintf(out, "Session:   #%d %s\n", s.ID, name)
-		}
-	} else {
-		fmt.Fprintln(out, "Session:   none")
+	if a.SessionsDir != "" {
+		fmt.Fprintf(out, "Sessions:  %s\n", a.SessionsDir)
 	}
 	if a.Recorder != nil {
 		fmt.Fprintf(out, "Recording: %s\n", a.Recorder.Path())
@@ -372,20 +363,6 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 
 func cmdClear(a *Agent, _ []string, out io.Writer) error {
 	a.ClearHistory()
-	if a.SM != nil {
-		model := ""
-		if a.Client != nil {
-			model = a.Client.Name()
-		}
-		id, err := a.SM.Create(a.Workspace.Root, model, a.History)
-		if err != nil {
-			fmt.Fprintf(out, "  Warning: could not create new session: %v\n", err)
-		} else {
-			a.SessionID = id
-			fmt.Fprintf(out, "Conversation history cleared. New session #%d started.\n", id)
-			return nil
-		}
-	}
 	fmt.Fprintln(out, "Conversation history cleared.")
 	return nil
 }
@@ -792,6 +769,10 @@ func cmdKB(a *Agent, args []string, out io.Writer) error {
 	switch strings.ToLower(args[0]) {
 	case "status":
 		return kbStatus(a, out)
+	case "search":
+		return kbSearch(a, args[1:], out)
+	case "inject":
+		return kbInject(a, args[1:], out)
 	case "project":
 		return kbProject(a, args[1:], out)
 	case "observe":
@@ -800,7 +781,7 @@ func cmdKB(a *Agent, args []string, out io.Writer) error {
 		return kbConcept(a, args[1:], out)
 	default:
 		fmt.Fprintf(out, "Unknown kb subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /kb <status|project|observe|concept> [args...]")
+		fmt.Fprintln(out, "Usage: /kb <status|search|inject|project|observe|concept> [args...]")
 	}
 	return nil
 }
@@ -812,6 +793,74 @@ func kbStatus(a *Agent, out io.Writer) error {
 		return err
 	}
 	fmt.Fprint(out, s)
+	return nil
+}
+
+// kbSearch handles /kb search TERM [TERM...] using the FTS5 index.
+func kbSearch(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /kb search TERM [TERM...]")
+		fmt.Fprintln(out, "Tip:   quote phrases (\"WAL mode\"), use * for prefix (docker*)")
+		return nil
+	}
+	term := strings.Join(args, " ")
+	results, err := a.KB.Search(term)
+	if err != nil {
+		return fmt.Errorf("kb search: %w", err)
+	}
+	if len(results) == 0 {
+		fmt.Fprintf(out, "  No results for %q\n", term)
+		return nil
+	}
+	fmt.Fprintln(out)
+	for _, r := range results {
+		switch {
+		case r.Label != "" && r.Snippet != "":
+			fmt.Fprintf(out, "  [%-10s] %s — %s\n", r.Kind, r.Label, r.Snippet)
+		case r.Label != "":
+			fmt.Fprintf(out, "  [%-10s] %s\n", r.Kind, r.Label)
+		default:
+			fmt.Fprintf(out, "  [%-10s] %s\n", r.Kind, r.Snippet)
+		}
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
+// kbInject formats KB content as Markdown and adds it to the conversation as
+// context. With no argument it uses the current project (or all projects when
+// none is set); with a project name it injects only that project.
+func kbInject(a *Agent, args []string, out io.Writer) error {
+	projectID := a.Config.CurrentProjectID
+	label := "all projects"
+
+	if len(args) > 0 {
+		name := strings.Join(args, " ")
+		p, err := a.KB.ProjectByName(name)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			fmt.Fprintf(out, "  Project %q not found. Use /kb project list to see available projects.\n", name)
+			return nil
+		}
+		projectID = p.ID
+		label = fmt.Sprintf("project %q", p.Name)
+	} else if projectID > 0 {
+		label = fmt.Sprintf("current project (id=%d)", projectID)
+	}
+
+	md, err := a.KB.FormatMarkdown(projectID)
+	if err != nil {
+		return err
+	}
+	if md == "" {
+		fmt.Fprintln(out, "  Knowledge base is empty.")
+		return nil
+	}
+
+	a.AddMessage("user", "[knowledge base context]\n\n"+md)
+	fmt.Fprintf(out, green("✓")+" KB context for %s injected (%d bytes).\n", label, len(md))
 	return nil
 }
 
@@ -962,11 +1011,11 @@ func cmdRecord(a *Agent, args []string, out io.Writer) error {
 		if len(args) >= 2 {
 			path = args[1]
 		} else {
-			ws := "."
-			if a.Workspace != nil {
-				ws = a.Workspace.Root
+			sessDir := a.SessionsDir
+			if sessDir == "" {
+				sessDir = "."
 			}
-			path = DefaultSessionPath(ws)
+			path = DefaultSessionPath(sessDir)
 		}
 		model := "none"
 		if a.Client != nil {
@@ -1616,18 +1665,12 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
 
 // ─── /session ────────────────────────────────────────────────────────────────
 
-/** cmdSession manages Harvey's persistent conversation sessions and Fountain
- * recording playback.
+/** cmdSession manages Harvey session recordings.
  *
  * Subcommands:
- *   list              — list all sessions, most-recent first.
- *   load ID           — restore history from session ID into the current conversation.
- *   new               — clear history and start a fresh session row.
- *   name LABEL        — assign a human-readable label to the current session.
- *   status            — show the current session ID and name.
- *   continue FILE     — load chat history from a Fountain file and continue in REPL.
- *   replay FILE [OUT] — re-send turns from a Fountain file to the current backend
- *                       and record fresh responses to OUT (default: auto-named).
+ *   continue FILE     — load chat history from a .spmd/.fountain file and continue in REPL.
+ *   replay FILE [OUT] — re-send turns from a session file to the current backend
+ *                       and record fresh responses to OUT (default: auto-named in sessions dir).
  *
  * Parameters:
  *   a    (*Agent)    — the running agent.
@@ -1635,211 +1678,50 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
  *   out  (io.Writer) — destination for command output.
  *
  * Returns:
- *   error — on database or I/O failure.
+ *   error — on I/O failure.
  *
  * Example:
- *   /session list
- *   /session continue old-session.fountain
- *   /session replay old-session.fountain new-session.fountain
+ *   /session continue harvey/sessions/harvey-session-20260430.spmd
+ *   /session replay old.spmd new.spmd
  */
 func cmdSession(a *Agent, args []string, out io.Writer) error {
-	// continue and replay don't require the session manager.
-	if len(args) > 0 {
-		switch strings.ToLower(args[0]) {
-		case "continue":
-			if len(args) < 2 {
-				fmt.Fprintln(out, "Usage: /session continue FILE")
-				return nil
-			}
-			n, err := a.ContinueFromFountain(args[1])
-			if err != nil {
-				fmt.Fprintf(out, "  ✗ %v\n", err)
-				return nil
-			}
-			fmt.Fprintf(out, green("✓")+" Loaded %d turns from %s\n", n, args[1])
-			return nil
-		case "replay":
-			if len(args) < 2 {
-				fmt.Fprintln(out, "Usage: /session replay FILE [OUTPUT]")
-				return nil
-			}
-			src := args[1]
-			outPath := ""
-			if len(args) >= 3 {
-				outPath = args[2]
-			} else {
-				outPath = DefaultSessionPath(a.Workspace.Root)
-			}
-			if a.Client == nil {
-				fmt.Fprintln(out, "  No backend connected. Use /ollama start or /publicai connect.")
-				return nil
-			}
-			return a.ReplayFromFountain(context.Background(), src, outPath, out)
-		}
-	}
-
-	if a.SM == nil {
-		fmt.Fprintln(out, "Session manager is not available.")
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /session <continue FILE|replay FILE [OUTPUT]>")
 		return nil
-	}
-	if len(args) == 0 || strings.ToLower(args[0]) == "status" {
-		return sessionStatus(a, out)
 	}
 	switch strings.ToLower(args[0]) {
-	case "list":
-		return sessionList(a, out)
-	case "load":
+	case "continue":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /session load ID")
+			fmt.Fprintln(out, "Usage: /session continue FILE")
 			return nil
 		}
-		id, err := strconv.ParseInt(args[1], 10, 64)
+		n, err := a.ContinueFromFountain(args[1])
 		if err != nil {
-			fmt.Fprintf(out, "Invalid session ID: %s\n", args[1])
+			fmt.Fprintf(out, "  ✗ %v\n", err)
 			return nil
 		}
-		return sessionLoad(a, id, out)
-	case "new":
-		return sessionNew(a, out)
-	case "name":
+		fmt.Fprintf(out, green("✓")+" Loaded %d turns from %s\n", n, args[1])
+	case "replay":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /session name LABEL")
+			fmt.Fprintln(out, "Usage: /session replay FILE [OUTPUT]")
 			return nil
 		}
-		label := strings.Join(args[1:], " ")
-		return sessionName(a, label, out)
+		src := args[1]
+		outPath := ""
+		if len(args) >= 3 {
+			outPath = args[2]
+		} else {
+			outPath = DefaultSessionPath(a.SessionsDir)
+		}
+		if a.Client == nil {
+			fmt.Fprintln(out, "  No backend connected. Use /ollama start or /route add cloud publicai.co://.")
+			return nil
+		}
+		return a.ReplayFromFountain(context.Background(), src, outPath, out)
 	default:
 		fmt.Fprintf(out, "Unknown session subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /session <list|load ID|new|name LABEL|status|continue FILE|replay FILE [OUTPUT]>")
+		fmt.Fprintln(out, "Usage: /session <continue FILE|replay FILE [OUTPUT]>")
 	}
-	return nil
-}
-
-func sessionStatus(a *Agent, out io.Writer) error {
-	if a.SessionID == 0 {
-		fmt.Fprintln(out, "  No active session.")
-		return nil
-	}
-	s, err := a.SM.Load(a.SessionID)
-	if err != nil {
-		return err
-	}
-	if s == nil {
-		fmt.Fprintln(out, "  No active session.")
-		return nil
-	}
-	name := s.Name
-	if name == "" {
-		name = "(unnamed)"
-	}
-	turns := 0
-	for _, m := range s.History {
-		if m.Role == "user" {
-			turns++
-		}
-	}
-	fmt.Fprintf(out, "  Session #%d  %s\n", s.ID, name)
-	fmt.Fprintf(out, "  Model:      %s\n", s.Model)
-	fmt.Fprintf(out, "  Turns:      %d\n", turns)
-	fmt.Fprintf(out, "  Created:    %s\n", s.CreatedAt.Format("2006-01-02 15:04"))
-	fmt.Fprintf(out, "  Last saved: %s\n", s.LastActive.Format("2006-01-02 15:04"))
-	return nil
-}
-
-func sessionList(a *Agent, out io.Writer) error {
-	sessions, err := a.SM.List()
-	if err != nil {
-		return err
-	}
-	if len(sessions) == 0 {
-		fmt.Fprintln(out, "  (no sessions)")
-		return nil
-	}
-	fmt.Fprintln(out)
-	for _, s := range sessions {
-		active := "  "
-		if s.ID == a.SessionID {
-			active = "* "
-		}
-		name := s.Name
-		if name == "" {
-			name = "(unnamed)"
-		}
-		fmt.Fprintf(out, "  %s[%d] %-28s  %s  %s\n",
-			active, s.ID, name, s.Model, s.LastActive.Format("2006-01-02 15:04"))
-	}
-	fmt.Fprintln(out)
-	return nil
-}
-
-func sessionLoad(a *Agent, id int64, out io.Writer) error {
-	s, err := a.SM.Load(id)
-	if err != nil {
-		return err
-	}
-	if s == nil {
-		fmt.Fprintf(out, "  Session %d not found.\n", id)
-		return nil
-	}
-	// Keep the current system prompt fresh.
-	currentSys := ""
-	for _, m := range a.History {
-		if m.Role == "system" {
-			currentSys = m.Content
-			break
-		}
-	}
-	a.History = s.History
-	if currentSys != "" {
-		replaced := false
-		for i, m := range a.History {
-			if m.Role == "system" {
-				a.History[i].Content = currentSys
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			a.History = append([]Message{{Role: "system", Content: currentSys}}, a.History...)
-		}
-	}
-	a.SessionID = s.ID
-	name := s.Name
-	if name == "" {
-		name = fmt.Sprintf("#%d", s.ID)
-	}
-	fmt.Fprintf(out, "  Loaded session %s (%d messages).\n", name, len(a.History))
-	return nil
-}
-
-func sessionNew(a *Agent, out io.Writer) error {
-	a.ClearHistory()
-	model := ""
-	if a.Client != nil {
-		model = a.Client.Name()
-	}
-	workspace := ""
-	if a.Workspace != nil {
-		workspace = a.Workspace.Root
-	}
-	id, err := a.SM.Create(workspace, model, a.History)
-	if err != nil {
-		return err
-	}
-	a.SessionID = id
-	fmt.Fprintf(out, "  History cleared. New session #%d started.\n", id)
-	return nil
-}
-
-func sessionName(a *Agent, label string, out io.Writer) error {
-	if a.SessionID == 0 {
-		fmt.Fprintln(out, "  No active session to rename.")
-		return nil
-	}
-	if err := a.SM.Rename(a.SessionID, label); err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "  Session #%d named %q.\n", a.SessionID, label)
 	return nil
 }
 
@@ -2021,7 +1903,7 @@ func skillNew(a *Agent, out io.Writer) error {
 	}
 	fmt.Fprintf(out, green("✓")+" Skill created: %s\n", relPath)
 	fmt.Fprintln(out, "  To make it runnable, add compiled.bash / compiled.ps1 under scripts/.")
-	a.Skills = ScanSkills(a.Workspace.Root)
+	a.Skills = ScanSkills(a.Workspace.Root, a.Config.AgentsDir)
 	a.registerSkillCommands()
 	return nil
 }
@@ -2045,7 +1927,7 @@ func skillCompile(a *Agent, name string, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintln(out, green("✓")+" Compiled: scripts/compiled.bash and scripts/compiled.ps1")
-	a.Skills = ScanSkills(a.Workspace.Root)
+	a.Skills = ScanSkills(a.Workspace.Root, a.Config.AgentsDir)
 	a.registerSkillCommands()
 	fmt.Fprintf(out, "  Tip: you can now run it as /%s\n", name)
 	return nil

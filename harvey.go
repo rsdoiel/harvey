@@ -134,9 +134,8 @@ const maxStatHistory = 5
  * slash commands.
  *
  * Fields:
- *   SM        (*SessionManager) — persists conversation turns to SQLite; nil if unavailable.
- *   SessionID (int64)           — row ID of the active session in sessions.db; 0 if none.
- *   Skills    (SkillCatalog)    — skills discovered at startup; nil until loadSkills runs.
+ *   SessionsDir (string)       — absolute path to the sessions directory resolved at startup.
+ *   Skills      (SkillCatalog) — skills discovered at startup; nil until loadSkills runs.
  *
  * Example:
  *   cfg := DefaultConfig()
@@ -149,14 +148,13 @@ type Agent struct {
 	History       []Message
 	Workspace     *Workspace
 	KB            *KnowledgeBase
-	SM            *SessionManager // session persistence; nil if unavailable
-	SessionID     int64           // active session row ID; 0 = no session
-	Skills        SkillCatalog    // skills discovered at startup; nil until loadSkills runs
+	SessionsDir   string         // absolute path to the sessions directory
+	Skills        SkillCatalog   // skills discovered at startup; nil until loadSkills runs
 	Recorder      *Recorder
-	In            io.Reader // source for interactive prompts; defaults to os.Stdin
-	PinnedContext string    // persists across /clear; re-injected after system prompt
+	In            io.Reader      // source for interactive prompts; defaults to os.Stdin
+	PinnedContext string         // persists across /clear; re-injected after system prompt
 	Routes        *RouteRegistry // registered remote endpoints; nil when routing not configured
-	ActiveSkill   string    // name of the most recently loaded skill; "" when none
+	ActiveSkill   string         // name of the most recently loaded skill; "" when none
 	commands      map[string]*Command
 	statHistory   []ChatStats // rolling window of recent turn stats
 }

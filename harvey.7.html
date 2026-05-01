@@ -74,21 +74,22 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb2-1"><
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  description: One or two sentences on what this skill does and when to use it.</span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  license: Apache-2.0          (optional)</span>
 <span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  compatibility: Requires git  (optional)</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  metadata:                    (optional)</span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    author: you</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    version: &quot;1.0&quot;</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>  ---</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>  # My Skill</span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>  Instructions in plain Markdown. The model reads this entire block</span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>  when the skill is activated.</span></code></pre></div>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  trigger: pdf extract         (optional: keyword list or /regexp/)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  metadata:                    (optional)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    author: you</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    version: &quot;1.0&quot;</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  ---</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>  # My Skill</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>  Instructions in plain Markdown. The model reads this entire block</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>  when the skill is activated.</span></code></pre></div>
 <p>Required frontmatter fields: name, description. The name must be
 lowercase letters, numbers, and hyphens only, and must match the parent
 directory name.</p>
 <h1 id="example-the-bundled-go-review-skill">EXAMPLE — the bundled
 go-review skill</h1>
-<p>Location: .harvey/skills/go-review/SKILL.md</p>
+<p>Location: harvey/skills/go-review/SKILL.md</p>
 <div class="sourceCode" id="cb3"><pre
 class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>  ---</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  name: go-review</span>
@@ -104,24 +105,60 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb3-1"><
 <span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>  Activate it with:   /skill load go-review</span>
 <span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>  Then ask Harvey:    Please review cmd/harvey/main.go</span></code></pre></div>
+<h1 id="compiled-skills">COMPILED SKILLS</h1>
+<p>A compiled skill has executable scripts (compiled.bash for
+Linux/macOS/BSD, compiled.ps1 for Windows) in the skill’s scripts/
+directory. When a compiled skill is invoked, Harvey runs the script
+directly — no LLM round-trip needed — and injects the output into
+context.</p>
+<p>Compiling a skill requires a large capable model (e.g. Claude or
+Mistral) that is not typically available on resource-constrained
+hardware. Compile skills on a capable system and commit the resulting
+scripts alongside SKILL.md.</p>
+<p>Compiled skill directory layout:</p>
+<pre><code>  my-skill/
+  ├── SKILL.md
+  └── scripts/
+      ├── compiled.bash
+      └── compiled.ps1</code></pre>
+<p>HARVEY_* environment variables set before each script run:</p>
+<p>HARVEY_PROMPT the user’s exact prompt text HARVEY_WORKDIR absolute
+path to the workspace root HARVEY_MODEL the name of the currently active
+LLM model HARVEY_SESSION_ID the current session ID as a string</p>
+<p>Staleness: if SKILL.md is modified after the scripts were compiled,
+Harvey warns you when the skill is invoked and runs the old compiled
+version. Recompile the skill on a capable system to pick up the
+changes.</p>
+<p>TRIGGER field: add an optional trigger field to SKILL.md frontmatter
+to enable automatic skill dispatch when user input matches:</p>
+<p>trigger: pdf extract document (keyword mode — any word triggers)
+trigger: / (regexp mode — wrap pattern in slashes)</p>
+<p>When Harvey receives a user prompt matching a trigger, it invokes the
+compiled skill directly instead of sending the prompt to the LLM. First
+alphabetically matching trigger wins.</p>
 <h2
 id="discovery-paths-project-overrides-user-on-name-collision">DISCOVERY
 PATHS (project overrides user on name collision)</h2>
 <pre><code>  User scope
-    ~/.harvey/skills/          Harvey-native
+    ~/harvey/skills/           Harvey-native
+    ~/agents/skills/           cross-client (non-hidden)
     ~/.agents/skills/          cross-client (shared with Claude Code, etc.)
 
   Project scope  (relative to --workdir, default &quot;.&quot;)
-    .harvey/skills/            Harvey-native
+    harvey/skills/             Harvey-native
+    agents/skills/             cross-client (non-hidden)
     .agents/skills/            cross-client</code></pre>
-<p>Skills placed in .agents/skills/ are visible to any agent that
-follows the Agent Skills specification (https://agentskills.dev).</p>
+<p>Skills placed in agents/skills/ or .agents/skills/ are visible to any
+agent that follows the Agent Skills specification
+(https://agentskills.dev).</p>
 <h1 id="slash-commands">SLASH COMMANDS</h1>
 <pre><code>  /skill                   list all discovered skills
   /skill list              same as above
   /skill load NAME         inject the full skill body into context
   /skill info NAME         show path, compatibility, and license
-  /skill status            count skills by scope</code></pre>
+  /skill status            count skills by scope
+  /skill new               interactive wizard to create a new skill
+  /skill run NAME          run a skill (dispatches compiled scripts if available)</code></pre>
 </section>
 </body>
 </html>

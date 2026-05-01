@@ -331,7 +331,7 @@ func TestCatalogSystemPromptBlock_shape(t *testing.T) {
 		"pdf-processing": {
 			Name:        "pdf-processing",
 			Description: "Extract PDF text.",
-			Path:        "/home/user/.harvey/skills/pdf-processing/SKILL.md",
+			Path:        "/home/user/harvey/skills/pdf-processing/SKILL.md",
 		},
 		"code-review": {
 			Name:        "code-review",
@@ -412,14 +412,14 @@ func newSkillAgent(t *testing.T) *Agent {
 			License:       "AGPL-3.0",
 			Compatibility: "Requires a Go codebase",
 			Metadata:      map[string]string{"author": "rsdoiel", "version": "1.0"},
-			Path:          "/proj/.harvey/skills/go-review/SKILL.md",
+			Path:          "/proj/harvey/skills/go-review/SKILL.md",
 			Body:          "# Go Review\n\nCheck for correctness and style.",
 			Source:        SkillSourceProject,
 		},
 		"data-analysis": {
 			Name:        "data-analysis",
 			Description: "Analyse datasets and produce summary reports.",
-			Path:        "/home/user/.harvey/skills/data-analysis/SKILL.md",
+			Path:        "/home/user/harvey/skills/data-analysis/SKILL.md",
 			Body:        "# Data Analysis\n\nStep 1: load the data.",
 			Source:      SkillSourceUser,
 		},
@@ -589,7 +589,7 @@ func TestCmdSkill_unknownSubcommand(t *testing.T) {
 
 func TestLoadSkills_injectsIntoSystemPrompt(t *testing.T) {
 	dir := t.TempDir()
-	skillsDir := filepath.Join(dir, ".harvey", "skills")
+	skillsDir := filepath.Join(dir, "harvey", "skills")
 	writeSkillFile(t, skillsDir, "test-skill",
 		"---\nname: test-skill\ndescription: A test skill for unit testing.\n---\n\n# Test\n\nInstructions here.\n")
 
@@ -644,7 +644,7 @@ func TestLoadSkills_noSkillsIsSilent(t *testing.T) {
 
 func TestLoadSkills_createsSystemMessageWhenNone(t *testing.T) {
 	dir := t.TempDir()
-	skillsDir := filepath.Join(dir, ".harvey", "skills")
+	skillsDir := filepath.Join(dir, "harvey", "skills")
 	writeSkillFile(t, skillsDir, "bare-skill",
 		"---\nname: bare-skill\ndescription: Skill with no prior system prompt.\n---\n")
 

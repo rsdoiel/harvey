@@ -157,12 +157,12 @@ func TestDefaultSessionPath(t *testing.T) {
 	if !strings.HasPrefix(path, dir+"/harvey-session-") {
 		t.Errorf("unexpected prefix in %q", path)
 	}
-	if !strings.HasSuffix(path, ".fountain") {
-		t.Errorf("expected .fountain suffix in %q", path)
+	if !strings.HasSuffix(path, ".spmd") {
+		t.Errorf("expected .spmd suffix in %q", path)
 	}
 	// Timestamp portion: YYYYMMDD-HHMMSS (15 chars)
 	base := filepath.Base(path)
-	ts := strings.TrimPrefix(strings.TrimSuffix(base, ".fountain"), "harvey-session-")
+	ts := strings.TrimPrefix(strings.TrimSuffix(base, ".spmd"), "harvey-session-")
 	if len(ts) != 15 {
 		t.Errorf("timestamp %q: expected 15 chars (YYYYMMDD-HHMMSS)", ts)
 	}

@@ -14,8 +14,9 @@ system prompt. It then connects to a local Ollama server or publicai.co
 and starts an interactive chat session.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
-A knowledge base is stored at <workdir>/.harvey/knowledge.db and is created
-automatically on first run.
+A knowledge base is stored at `<workdir>/harvey/knowledge.db` and is created
+automatically on first run. Session recordings are stored in
+`<workdir>/harvey/sessions/`. Both paths can be overridden in `harvey/harvey.yaml`.
 
 > Type /help inside the session for available slash commands.
 
@@ -44,13 +45,19 @@ harvey
 When Harvey starts it:
 
 1. Prints the banner and resolves the workspace root.
-2. Opens (or creates) `.harvey/knowledge.db` in the workspace.
-3. Reads `HARVEY.md` from the current directory, expands any
+2. Opens (or creates) `harvey/knowledge.db` in the workspace.
+3. Loads `harvey/harvey.yaml` if present (overrides paths for KB, sessions, agents).
+4. Scans `harvey/sessions/` for prior `.spmd` / `.fountain` session files and
+   offers to resume one (default: No). If a session is chosen, the model it
+   used is pre-selected in the next step.
+5. Reads `HARVEY.md` from the current directory, expands any
    [dynamic markers](#dynamic-markers), and injects it as the system prompt.
-4. Probes Ollama; if reachable, lists installed models and lets you choose.
-5. If Ollama is unreachable, offers to start `ollama serve` then retries.
-6. If Ollama is still unavailable, offers to connect to publicai.co instead.
-7. Drops you into the REPL prompt: `harvey > `
+6. Probes Ollama; if reachable, selects the model from the resumed session or
+   lets you choose from the installed list.
+7. If Ollama is unreachable, offers to start `ollama serve` then retries.
+8. If Ollama is still unavailable, offers to connect to publicai.co instead.
+9. Begins recording the session to a new `.spmd` file in `harvey/sessions/`.
+10. Drops you into the REPL prompt: `harvey > `
 
 ---
 
@@ -108,7 +115,7 @@ $ harvey -m llama3:latest
   Harvey  0.0.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ Workspace: /home/user/myproject
-✓ Knowledge base: .harvey/knowledge.db
+✓ Knowledge base: harvey/knowledge.db
 ✓ Loaded HARVEY.md as system prompt
 
   Checking Ollama at http://localhost:11434...
@@ -156,6 +163,41 @@ Goodbye.
 After each assistant response Harvey prints a stats line showing prompt tokens,
 reply tokens, elapsed time, and generation speed. While the model is thinking,
 an animated spinner with an estimated completion time keeps the terminal alive.
+
+---
+
+## Keyboard shortcuts
+
+Harvey's prompt supports readline-style line editing.
+
+### Navigation
+
+| Key | Action |
+|---|---|
+| `←` / `→` | Move cursor one character |
+| `Home` / `Ctrl+A` | Jump to beginning of line |
+| `End` / `Ctrl+E` | Jump to end of line |
+| `↑` / `↓` | Cycle through command history |
+
+### Editing
+
+| Key | Action |
+|---|---|
+| `Backspace` | Delete character before cursor |
+| `Ctrl+D` | Delete character under cursor (or EOF on an empty line) |
+| `Ctrl+K` | Delete from cursor to end of line |
+
+### Actions
+
+| Key | Action |
+|---|---|
+| `Ctrl+C` | Cancel current input and return to prompt |
+| `Ctrl+X` then `Ctrl+E` | Open `$EDITOR` (falling back to `$VISUAL`, then `vi`) to compose a multi-line prompt; the file's content is submitted when the editor exits |
+
+The `Ctrl+X Ctrl+E` shortcut is especially useful for longer prompts — you can
+write, edit, and review the full prompt in your preferred editor before sending
+it. The current line content is pre-loaded into the editor so you can also edit
+a prompt you have already started typing.
 
 ---
 
@@ -345,7 +387,7 @@ by newlines. To replace it entirely, `/context clear` then `/context add`.
 
 ## Knowledge base commands
 
-Harvey maintains a SQLite knowledge base at `.harvey/knowledge.db` in the
+Harvey maintains a SQLite knowledge base at `harvey/knowledge.db` in the
 workspace. It is independent of conversation history and persists across
 sessions.
 

@@ -13,3 +13,5 @@ bin
 testout
 dist
 man
+test_*.db-shm
+test_*.db-wal

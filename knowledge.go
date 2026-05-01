@@ -3,6 +3,7 @@ package harvey
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -62,19 +63,36 @@ PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 `
 
+// ftsSchema creates the FTS5 virtual table used by Search. It is applied
+// separately from the main schema so that a missing FTS5 compile flag does not
+// prevent the knowledge base from opening.
+const ftsSchema = `
+CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
+    body,
+    kind,
+    label       UNINDEXED,
+    descr       UNINDEXED,
+    source_type UNINDEXED,
+    source_id   UNINDEXED,
+    project_id  UNINDEXED
+);
+`
+
 /** KnowledgeBase is a SQLite3-backed store for projects, observations, and
  * concepts within a Harvey workspace. The database file lives at
- * <workspace>/.harvey/knowledge.db and is created automatically on first use.
+ * <workspace>/harvey/knowledge.db (or a path overridden in harvey.yaml) and
+ * is created automatically on first use.
  *
  * Example:
- *   kb, err := OpenKnowledgeBase(ws)
+ *   kb, err := OpenKnowledgeBase(ws, "")
  *   if err != nil {
  *       log.Fatal(err)
  *   }
  *   defer kb.Close()
  */
 type KnowledgeBase struct {
-	db *sql.DB
+	db           *sql.DB
+	ftsAvailable bool // true when the FTS5 virtual table was successfully created
 }
 
 /** Project represents a single project row in the knowledge base.
@@ -125,13 +143,14 @@ type Concept struct {
 	Description string
 }
 
-/** OpenKnowledgeBase opens (or creates) the SQLite knowledge base at
- * <workspace>/.harvey/knowledge.db. The schema is applied on every open so
- * that tables are created on first use and new columns are added to existing
- * databases without manual migration.
+/** OpenKnowledgeBase opens (or creates) the SQLite knowledge base. customPath
+ * overrides the default location (harvey/knowledge.db inside the workspace);
+ * pass an empty string to use the default. The schema is applied on every open
+ * so that tables are created on first use without manual migration.
  *
  * Parameters:
- *   ws (*Workspace) — the Harvey workspace that owns the database file.
+ *   ws         (*Workspace) — the Harvey workspace that owns the database file.
+ *   customPath (string)     — override path; empty = harvey/knowledge.db.
  *
  * Returns:
  *   *KnowledgeBase — ready-to-use knowledge base handle.
@@ -139,16 +158,30 @@ type Concept struct {
  *                    cannot be applied.
  *
  * Example:
- *   kb, err := OpenKnowledgeBase(ws)
+ *   kb, err := OpenKnowledgeBase(ws, "")
  *   if err != nil {
  *       log.Fatal(err)
  *   }
  *   defer kb.Close()
  */
-func OpenKnowledgeBase(ws *Workspace) (*KnowledgeBase, error) {
-	dbPath, err := ws.AbsPath(".harvey/knowledge.db")
-	if err != nil {
-		return nil, err
+func OpenKnowledgeBase(ws *Workspace, customPath string) (*KnowledgeBase, error) {
+	var dbPath string
+	if customPath != "" {
+		if filepath.IsAbs(customPath) {
+			dbPath = customPath
+		} else {
+			var err error
+			dbPath, err = ws.AbsPath(customPath)
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		var err error
+		dbPath, err = ws.AbsPath(harveySubdir + "/knowledge.db")
+		if err != nil {
+			return nil, err
+		}
 	}
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -159,7 +192,12 @@ func OpenKnowledgeBase(ws *Workspace) (*KnowledgeBase, error) {
 		db.Close()
 		return nil, fmt.Errorf("knowledge: apply schema: %w", err)
 	}
-	return &KnowledgeBase{db: db}, nil
+	kb := &KnowledgeBase{db: db}
+	if _, err := db.Exec(ftsSchema); err == nil {
+		kb.ftsAvailable = true
+		_ = kb.rebuildFTSIfNeeded()
+	}
+	return kb, nil
 }
 
 /** Close releases the database connection. It should be deferred immediately
@@ -202,6 +240,14 @@ func (kb *KnowledgeBase) AddProject(name, description string) (int64, error) {
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("knowledge: add project: %w", err)
+	}
+	if kb.ftsAvailable {
+		_, _ = kb.db.Exec(
+			`DELETE FROM kb_fts WHERE source_type = 'project' AND source_id = ?`, id)
+		_, _ = kb.db.Exec(
+			`INSERT INTO kb_fts(body, kind, label, descr, source_type, source_id, project_id)
+			 VALUES (?, 'project', ?, ?, 'project', ?, ?)`,
+			name+" "+description, name, description, id, id)
 	}
 	return id, nil
 }
@@ -273,7 +319,17 @@ func (kb *KnowledgeBase) AddObservation(projectID int64, kind, body string) (int
 	if err != nil {
 		return 0, fmt.Errorf("knowledge: add observation: %w", err)
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if kb.ftsAvailable {
+		_, _ = kb.db.Exec(
+			`INSERT INTO kb_fts(body, kind, label, descr, source_type, source_id, project_id)
+			 VALUES (?, ?, '', '', 'observation', ?, ?)`,
+			body, kind, id, projectID)
+	}
+	return id, nil
 }
 
 /** Observations returns all observations for a project, newest first.
@@ -347,6 +403,14 @@ func (kb *KnowledgeBase) AddConcept(name, description string) (int64, error) {
 	id, err := res.LastInsertId()
 	if err != nil || id == 0 {
 		kb.db.QueryRow(`SELECT id FROM concepts WHERE name = ?`, name).Scan(&id)
+	}
+	if kb.ftsAvailable {
+		_, _ = kb.db.Exec(
+			`DELETE FROM kb_fts WHERE source_type = 'concept' AND source_id = ?`, id)
+		_, _ = kb.db.Exec(
+			`INSERT INTO kb_fts(body, kind, label, descr, source_type, source_id, project_id)
+			 VALUES (?, 'concept', ?, ?, 'concept', ?, 0)`,
+			name+" "+description, name, description, id)
 	}
 	return id, nil
 }
@@ -532,4 +596,279 @@ func isValidKind(kind string) bool {
 		}
 	}
 	return false
+}
+
+// ─── FTS5 helpers ─────────────────────────────────────────────────────────────
+
+// rebuildFTSIfNeeded populates kb_fts from the source tables when the FTS
+// index is empty but the source tables contain data. This handles databases
+// created before FTS5 support was added.
+func (kb *KnowledgeBase) rebuildFTSIfNeeded() error {
+	var ftsCount int
+	if err := kb.db.QueryRow(`SELECT COUNT(*) FROM kb_fts`).Scan(&ftsCount); err != nil {
+		return err
+	}
+	if ftsCount > 0 {
+		return nil
+	}
+	var total int
+	kb.db.QueryRow(`SELECT COUNT(*) FROM observations`).Scan(&total)
+	kb.db.QueryRow(`SELECT COUNT(*) + ? FROM projects`, total).Scan(&total)
+	kb.db.QueryRow(`SELECT COUNT(*) + ? FROM concepts`, total).Scan(&total)
+	if total == 0 {
+		return nil
+	}
+	if _, err := kb.db.Exec(`
+		INSERT INTO kb_fts(body, kind, label, descr, source_type, source_id, project_id)
+		SELECT body, kind, '', '', 'observation', id, project_id FROM observations`); err != nil {
+		return fmt.Errorf("fts rebuild observations: %w", err)
+	}
+	if _, err := kb.db.Exec(`
+		INSERT INTO kb_fts(body, kind, label, descr, source_type, source_id, project_id)
+		SELECT name || ' ' || description, 'project', name, description, 'project', id, id
+		FROM projects`); err != nil {
+		return fmt.Errorf("fts rebuild projects: %w", err)
+	}
+	if _, err := kb.db.Exec(`
+		INSERT INTO kb_fts(body, kind, label, descr, source_type, source_id, project_id)
+		SELECT name || ' ' || description, 'concept', name, description, 'concept', id, 0
+		FROM concepts`); err != nil {
+		return fmt.Errorf("fts rebuild concepts: %w", err)
+	}
+	return nil
+}
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+
+/** KBSearchResult holds one row returned by Search.
+ *
+ * Fields:
+ *   Kind    (string) — observation kind ("note", "finding", etc.) or "project" / "concept".
+ *   Label   (string) — project name for observations; entity name for projects and concepts.
+ *   Snippet (string) — observation body; or description for projects and concepts.
+ *
+ * Example:
+ *   results, _ := kb.Search("WAL mode")
+ *   for _, r := range results {
+ *       fmt.Printf("[%s] %s — %s\n", r.Kind, r.Label, r.Snippet)
+ *   }
+ */
+type KBSearchResult struct {
+	Kind    string
+	Label   string
+	Snippet string
+}
+
+/** Search performs a full-text search across observations, projects, and concepts
+ * using the FTS5 index. Results are ranked by relevance (best match first).
+ * Returns an error wrapping ErrFTSUnavailable when the FTS index is not present.
+ *
+ * The term uses standard FTS5 query syntax: multiple words are ANDed, phrases
+ * can be quoted ("WAL mode"), and prefix search is supported (docker*).
+ *
+ * Parameters:
+ *   term (string) — FTS5 query term.
+ *
+ * Returns:
+ *   []KBSearchResult — ranked results; nil if none found.
+ *   error            — on query failure or when FTS is unavailable.
+ *
+ * Example:
+ *   results, err := kb.Search("docker")
+ *   for _, r := range results {
+ *       fmt.Printf("[%-10s] %s — %s\n", r.Kind, r.Label, r.Snippet)
+ *   }
+ */
+func (kb *KnowledgeBase) Search(term string) ([]KBSearchResult, error) {
+	if !kb.ftsAvailable {
+		return nil, fmt.Errorf("full-text search is not available (FTS5 not compiled in)")
+	}
+	rows, err := kb.db.Query(`
+		SELECT kb_fts.kind,
+		       CASE WHEN kb_fts.source_type = 'observation'
+		            THEN COALESCE(p.name, '') ELSE kb_fts.label END,
+		       CASE WHEN kb_fts.source_type = 'observation'
+		            THEN kb_fts.body ELSE kb_fts.descr END
+		FROM   kb_fts
+		LEFT JOIN projects p ON kb_fts.source_type = 'observation'
+		                     AND p.id = kb_fts.project_id
+		WHERE  kb_fts MATCH ?
+		ORDER  BY bm25(kb_fts)
+		LIMIT  50
+	`, term)
+	if err != nil {
+		return nil, fmt.Errorf("knowledge: search %q: %w", term, err)
+	}
+	defer rows.Close()
+	var out []KBSearchResult
+	for rows.Next() {
+		var r KBSearchResult
+		if err := rows.Scan(&r.Kind, &r.Label, &r.Snippet); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ─── Lookup helpers ───────────────────────────────────────────────────────────
+
+/** ProjectByName returns the project with the given name, or nil if not found.
+ *
+ * Parameters:
+ *   name (string) — exact project name.
+ *
+ * Returns:
+ *   *Project — the matching project, or nil.
+ *   error    — on database failure.
+ *
+ * Example:
+ *   p, err := kb.ProjectByName("harvey")
+ */
+func (kb *KnowledgeBase) ProjectByName(name string) (*Project, error) {
+	var p Project
+	var ts string
+	err := kb.db.QueryRow(
+		`SELECT id, name, description, status, created_at FROM projects WHERE name = ?`, name,
+	).Scan(&p.ID, &p.Name, &p.Description, &p.Status, &ts)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("knowledge: project by name: %w", err)
+	}
+	p.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", ts)
+	return &p, nil
+}
+
+// projectByID returns the project with the given ID, or nil if not found.
+func (kb *KnowledgeBase) projectByID(id int64) (*Project, error) {
+	var p Project
+	var ts string
+	err := kb.db.QueryRow(
+		`SELECT id, name, description, status, created_at FROM projects WHERE id = ?`, id,
+	).Scan(&p.ID, &p.Name, &p.Description, &p.Status, &ts)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("knowledge: project by id: %w", err)
+	}
+	p.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", ts)
+	return &p, nil
+}
+
+/** ProjectConcepts returns all concepts linked to a project, ordered by name.
+ *
+ * Parameters:
+ *   projectID (int64) — ID of the project.
+ *
+ * Returns:
+ *   []Concept — linked concepts; empty (not nil) if none.
+ *   error     — on database failure.
+ *
+ * Example:
+ *   concepts, err := kb.ProjectConcepts(1)
+ */
+func (kb *KnowledgeBase) ProjectConcepts(projectID int64) ([]Concept, error) {
+	rows, err := kb.db.Query(`
+		SELECT c.id, c.name, c.description
+		FROM   concepts c
+		JOIN   project_concepts pc ON pc.concept_id = c.id
+		WHERE  pc.project_id = ?
+		ORDER  BY c.name
+	`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("knowledge: project concepts: %w", err)
+	}
+	defer rows.Close()
+	var out []Concept
+	for rows.Next() {
+		var c Concept
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	if out == nil {
+		out = []Concept{}
+	}
+	return out, rows.Err()
+}
+
+// ─── Markdown export ──────────────────────────────────────────────────────────
+
+/** FormatMarkdown returns the knowledge base contents as Markdown, suitable for
+ * injecting into a conversation as context. When projectID > 0 only that project
+ * is included; when projectID == 0 all projects are included. Each project gets
+ * a ## heading, and observations are listed with their kind in bold.
+ *
+ * Parameters:
+ *   projectID (int64) — project to export; 0 = all projects.
+ *
+ * Returns:
+ *   string — Markdown-formatted knowledge base contents; "" if no data.
+ *   error  — on database failure.
+ *
+ * Example:
+ *   md, err := kb.FormatMarkdown(0) // all projects
+ *   md, err := kb.FormatMarkdown(1) // project id=1 only
+ */
+func (kb *KnowledgeBase) FormatMarkdown(projectID int64) (string, error) {
+	var projects []Project
+	if projectID > 0 {
+		p, err := kb.projectByID(projectID)
+		if err != nil {
+			return "", err
+		}
+		if p == nil {
+			return "", nil
+		}
+		projects = []Project{*p}
+	} else {
+		var err error
+		projects, err = kb.Projects()
+		if err != nil {
+			return "", err
+		}
+	}
+	if len(projects) == 0 {
+		return "", nil
+	}
+
+	var b strings.Builder
+	b.WriteString("# Knowledge Base\n")
+
+	for _, p := range projects {
+		fmt.Fprintf(&b, "\n## Project: %s\n\n", p.Name)
+		if p.Description != "" {
+			fmt.Fprintf(&b, "%s\n\n", p.Description)
+		}
+
+		concepts, err := kb.ProjectConcepts(p.ID)
+		if err != nil {
+			return "", err
+		}
+		if len(concepts) > 0 {
+			names := make([]string, len(concepts))
+			for i, c := range concepts {
+				names[i] = c.Name
+			}
+			fmt.Fprintf(&b, "**Concepts:** %s\n\n", strings.Join(names, ", "))
+		}
+
+		obs, err := kb.Observations(p.ID)
+		if err != nil {
+			return "", err
+		}
+		if len(obs) == 0 {
+			b.WriteString("_No observations recorded._\n")
+		} else {
+			for _, o := range obs {
+				fmt.Fprintf(&b, "**[%s]** %s\n\n", o.Kind, o.Body)
+			}
+		}
+	}
+
+	return b.String(), nil
 }

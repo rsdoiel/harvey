@@ -179,45 +179,50 @@ func ScanSkillDirs(dirs []SkillSearchDir) SkillCatalog {
 
 /** ScanSkills discovers skills from the standard paths relative to workDir
  * and the user home directory. Project-scope skills override user-scope
- * skills when names collide.
+ * skills when names collide. agentsDir overrides the project-level agents
+ * directory name (default "agents"); pass an empty string to use the default.
  *
  * Paths scanned (in precedence order, lowest first):
- *   ~/.harvey/skills/          user, Harvey-native
- *   ~/agents/skills/           user, cross-client (non-hidden)
- *   ~/.agents/skills/          user, cross-client
- *   <workDir>/.harvey/skills/  project, Harvey-native
- *   <workDir>/agents/skills/   project, cross-client (non-hidden)
- *   <workDir>/.agents/skills/  project, cross-client
+ *   ~/harvey/skills/            user, Harvey-native
+ *   ~/agents/skills/            user, cross-client (non-hidden)
+ *   ~/.agents/skills/           user, cross-client
+ *   <workDir>/harvey/skills/    project, Harvey-native
+ *   <workDir>/<agentsDir>/skills/ project, cross-client (non-hidden)
+ *   <workDir>/.agents/skills/   project, cross-client
  *
  * Parameters:
- *   workDir (string) — absolute path to the Harvey workspace root.
+ *   workDir   (string) — absolute path to the Harvey workspace root.
+ *   agentsDir (string) — override for the agents directory name; empty = "agents".
  *
  * Returns:
  *   SkillCatalog — all discovered skills.
  *
  * Example:
- *   cat := ScanSkills("/home/user/myproject")
+ *   cat := ScanSkills("/home/user/myproject", "")
  *   fmt.Println(len(cat), "skills found")
  */
-func ScanSkills(workDir string) SkillCatalog {
-	return ScanSkillDirs(standardSkillDirs(workDir))
+func ScanSkills(workDir, agentsDir string) SkillCatalog {
+	return ScanSkillDirs(standardSkillDirs(workDir, agentsDir))
 }
 
 // standardSkillDirs returns the ordered list of search dirs for ScanSkills.
 // User paths come first so project paths can override them.
-func standardSkillDirs(workDir string) []SkillSearchDir {
+func standardSkillDirs(workDir, agentsDir string) []SkillSearchDir {
+	if agentsDir == "" {
+		agentsDir = "agents"
+	}
 	home, _ := os.UserHomeDir()
 	var dirs []SkillSearchDir
 	if home != "" {
 		dirs = append(dirs,
-			SkillSearchDir{filepath.Join(home, ".harvey", "skills"), SkillSourceUser},
+			SkillSearchDir{filepath.Join(home, "harvey", "skills"), SkillSourceUser},
 			SkillSearchDir{filepath.Join(home, "agents", "skills"), SkillSourceUser},
 			SkillSearchDir{filepath.Join(home, ".agents", "skills"), SkillSourceUser},
 		)
 	}
 	dirs = append(dirs,
-		SkillSearchDir{filepath.Join(workDir, ".harvey", "skills"), SkillSourceProject},
-		SkillSearchDir{filepath.Join(workDir, "agents", "skills"), SkillSourceProject},
+		SkillSearchDir{filepath.Join(workDir, "harvey", "skills"), SkillSourceProject},
+		SkillSearchDir{filepath.Join(workDir, agentsDir, "skills"), SkillSourceProject},
 		SkillSearchDir{filepath.Join(workDir, ".agents", "skills"), SkillSourceProject},
 	)
 	return dirs

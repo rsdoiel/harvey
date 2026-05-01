@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -173,9 +172,6 @@ func runCompiledScript(ctx context.Context, a *Agent, skill *SkillMeta, scriptPa
 		modelName = a.Client.Name()
 	}
 	sessionID := ""
-	if a.SessionID != 0 {
-		sessionID = strconv.FormatInt(a.SessionID, 10)
-	}
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {

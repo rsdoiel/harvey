@@ -78,9 +78,8 @@ func (a *Agent) Run(out io.Writer) error {
 			fmt.Fprintf(out, dim("  Session saved to %s\n"), path)
 		}
 	}()
-	// reader is used only for startup yes/no prompts (selectBackend,
-	// initSession). A 1-byte buffer prevents it from consuming bytes that
-	// the LineEditor needs for the REPL loop below.
+	// reader is used only for startup yes/no prompts. A 1-byte buffer prevents
+	// it from consuming bytes that the LineEditor needs for the REPL loop.
 	reader := bufio.NewReaderSize(os.Stdin, 1)
 	le := termlib.NewLineEditor(os.Stdin, out)
 
@@ -94,13 +93,29 @@ func (a *Agent) Run(out io.Writer) error {
 		return err
 	}
 
+	// harvey/harvey.yaml — apply path overrides before any path-dependent init.
+	if err := LoadHarveyYAML(a.Workspace, a.Config); err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" harvey.yaml: %v\n", err)
+	}
+
 	// Knowledge base
 	a.initKnowledgeBase(out)
 
-	// Session manager (non-fatal)
-	a.initSessionManager(out)
-	if a.SM != nil {
-		defer a.SM.Close()
+	// Sessions directory
+	sessDir, err := ResolveSessionsDir(a.Workspace, a.Config.SessionsDir)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" Sessions dir: %v\n", err)
+	} else {
+		a.SessionsDir = sessDir
+		fmt.Fprintf(out, green("✓")+" Sessions: %s\n", sessDir)
+	}
+
+	// Session resume — offer before backend selection so the chosen session's
+	// model can pre-select the Ollama model below.
+	var resumePath string
+	var sessionModel string
+	if a.Config.ContinuePath == "" { // --continue flag bypasses the picker
+		resumePath, sessionModel = a.pickSession(reader, out, sessDir)
 	}
 
 	// System prompt
@@ -115,21 +130,26 @@ func (a *Agent) Run(out io.Writer) error {
 	// Skills — scan and inject catalog into system prompt
 	a.loadSkills(out)
 
-	// Backend selection
-	if err := a.selectBackend(reader, out); err != nil {
+	// Backend selection — use sessionModel as the preferred model hint.
+	if err := a.selectBackend(reader, out, sessionModel); err != nil {
 		return err
 	}
 
-	// Session resume or create (after backend is known so we can store the model name)
-	if a.SM != nil {
-		a.initSession(reader, out)
+	// Resume history from chosen session file.
+	if resumePath != "" {
+		n, contErr := a.ContinueFromFountain(resumePath)
+		if contErr != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Resume failed: %v\n", contErr)
+		} else {
+			fmt.Fprintf(out, green("✓")+" Resumed %d turns from %s\n", n, resumePath)
+		}
 	}
 
-	// Auto-start recording if configured.
+	// Auto-start recording.
 	if a.Config.AutoRecord {
 		recPath := a.Config.RecordPath
 		if recPath == "" {
-			recPath = DefaultSessionPath(a.Workspace.Root)
+			recPath = DefaultSessionPath(a.SessionsDir)
 		}
 		model := "none"
 		if a.Client != nil {
@@ -143,11 +163,11 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 	}
 
-	// Replay mode — run turns from a Fountain file and return without entering REPL.
+	// Replay mode — run turns from a session file and return without entering REPL.
 	if a.Config.ReplayPath != "" {
 		outPath := a.Config.ReplayOutputPath
 		if outPath == "" {
-			outPath = DefaultSessionPath(a.Workspace.Root)
+			outPath = DefaultSessionPath(a.SessionsDir)
 		}
 		replayCtx, replayCancel := context.WithCancel(context.Background())
 		defer replayCancel()
@@ -158,7 +178,7 @@ func (a *Agent) Run(out io.Writer) error {
 		return a.ReplayFromFountain(replayCtx, a.Config.ReplayPath, outPath, out)
 	}
 
-	// Continue from Fountain — pre-load history before entering REPL.
+	// --continue flag: pre-load history from a named session file.
 	if a.Config.ContinuePath != "" {
 		n, contErr := a.ContinueFromFountain(a.Config.ContinuePath)
 		if contErr != nil {
@@ -333,15 +353,6 @@ func (a *Agent) Run(out io.Writer) error {
 			a.AddMessage("user", input)
 			a.AddMessage("assistant", reply)
 
-			if a.SM != nil && a.SessionID != 0 {
-				model := ""
-				if a.Client != nil {
-					model = a.Client.Name()
-				}
-				if saveErr := a.SM.Save(a.SessionID, model, a.History); saveErr != nil {
-					fmt.Fprintf(out, yellow("  ✗")+" Session save error: %v\n", saveErr)
-				}
-			}
 			if a.Recorder != nil {
 				if recErr := a.Recorder.RecordTurn(input, reply); recErr != nil {
 					fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
@@ -464,15 +475,6 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats)))
 		a.recordStats(stats)
 		a.AddMessage("assistant", buf.String())
-		if a.SM != nil && a.SessionID != 0 {
-			model := ""
-			if a.Client != nil {
-				model = a.Client.Name()
-			}
-			if saveErr := a.SM.Save(a.SessionID, model, a.History); saveErr != nil {
-				fmt.Fprintf(out, yellow("  ✗")+" Session save error: %v\n", saveErr)
-			}
-		}
 		if a.Recorder != nil {
 			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, ""); recErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
@@ -507,29 +509,31 @@ func (a *Agent) initWorkspace(out io.Writer) error {
 // initKnowledgeBase opens (or creates) the SQLite knowledge base. Failures are
 // non-fatal: the user is warned but Harvey continues without a KB.
 func (a *Agent) initKnowledgeBase(out io.Writer) {
-	kb, err := OpenKnowledgeBase(a.Workspace)
+	kb, err := OpenKnowledgeBase(a.Workspace, a.Config.KnowledgeDB)
 	if err != nil {
 		fmt.Fprintf(out, yellow("  ✗")+" Knowledge base unavailable: %v\n", err)
 		return
 	}
 	a.KB = kb
-	fmt.Fprintln(out, green("✓")+" Knowledge base: .harvey/knowledge.db")
+	fmt.Fprintln(out, green("✓")+" Knowledge base: harvey/knowledge.db")
 }
 
 /** selectBackend runs the interactive startup sequence to choose a backend.
+ * preferredModel hints at which Ollama model to pre-select (from a prior session);
+ * pass an empty string when no preference is known.
  *
  * Parameters:
- *   reader (*bufio.Reader) — reads user input.
- *   out    (io.Writer)     — destination for prompt and status messages.
+ *   reader         (*bufio.Reader) — reads user input.
+ *   out            (io.Writer)     — destination for prompt and status messages.
+ *   preferredModel (string)        — ALL-CAPS model name from the resumed session, or "".
  *
  * Returns:
  *   error — on unexpected read failures.
  *
  * Example:
- *   err := agent.selectBackend(reader, os.Stdout)
+ *   err := agent.selectBackend(reader, os.Stdout, "GEMMA4")
  */
-
-func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
+func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredModel string) error {
 	fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.OllamaURL)
 
 	if ProbeOllama(a.Config.OllamaURL) {
@@ -538,7 +542,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 			fmt.Fprintf(out, dim("  ⚠ Ollama was already running — OLLAMA_MODELS=%s may not be in effect.\n"), m)
 			fmt.Fprintln(out, dim("    Stop Ollama, then restart Harvey to apply ollama.env settings."))
 		}
-		return a.pickOllamaModel(reader, out)
+		return a.pickOllamaModel(reader, out, preferredModel)
 	}
 
 	fmt.Fprintln(out, yellow("  ✗")+" Ollama is not running")
@@ -550,7 +554,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 			fmt.Fprintf(out, red("  Failed: ")+"%v\n", err)
 		} else {
 			fmt.Fprintln(out, green("  ✓")+" Ollama started")
-			return a.pickOllamaModel(reader, out)
+			return a.pickOllamaModel(reader, out, preferredModel)
 		}
 	}
 
@@ -571,21 +575,25 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer) error {
 	return nil
 }
 
-/** pickOllamaModel selects a model from the running Ollama server. If only one
- * model is installed it is selected automatically; otherwise the user chooses.
+/** pickOllamaModel selects a model from the running Ollama server.
+ * If preferredModel is non-empty and matches an installed model (case-insensitive
+ * prefix match against the ALL-CAPS form), that model is used automatically.
+ * If preferredModel is not available, the full list is shown with the preferred
+ * name noted. A command-line --model flag always takes precedence.
  *
  * Parameters:
- *   reader (*bufio.Reader) — reads the user's model selection.
- *   out    (io.Writer)     — destination for the model list prompt.
+ *   reader         (*bufio.Reader) — reads the user's model selection.
+ *   out            (io.Writer)     — destination for the model list prompt.
+ *   preferredModel (string)        — ALL-CAPS model name hint; "" for no preference.
  *
  * Returns:
  *   error — on unexpected failures listing models.
  *
  * Example:
- *   err := agent.pickOllamaModel(reader, os.Stdout)
+ *   err := agent.pickOllamaModel(reader, os.Stdout, "GEMMA4")
  */
-func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer) error {
-	// If the user specified a model on the command line, use it directly.
+func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredModel string) error {
+	// Command-line --model flag always wins.
 	if a.Config.OllamaModel != "" {
 		a.Client = NewOllamaClient(a.Config.OllamaURL, a.Config.OllamaModel)
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.OllamaModel))
@@ -598,19 +606,40 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer) error {
 		return nil
 	}
 
+	// If only one model is available, use it regardless of preference.
+	if len(models) == 1 {
+		a.Config.OllamaModel = models[0]
+		a.Client = NewOllamaClient(a.Config.OllamaURL, models[0])
+		fmt.Fprintf(out, "  Using model: %s\n", cyan(models[0]))
+		return nil
+	}
+
+	// Try to match the preferred model against the available list.
+	if preferredModel != "" {
+		for _, m := range models {
+			if strings.EqualFold(extractModelName(m), preferredModel) ||
+				strings.EqualFold(m, preferredModel) {
+				a.Config.OllamaModel = m
+				a.Client = NewOllamaClient(a.Config.OllamaURL, m)
+				fmt.Fprintf(out, "  Using model: %s %s\n", cyan(m), dim("(from session)"))
+				return nil
+			}
+		}
+		// Preferred model not found — fall through to interactive picker with a note.
+		fmt.Fprintf(out, dim("  Session model %q not found; select from available:\n"), preferredModel)
+	}
+
+	fmt.Fprintln(out, "  Available models:")
+	for i, m := range models {
+		fmt.Fprintf(out, "    [%d] %s\n", i+1, m)
+	}
+	fmt.Fprintf(out, "    Select model [1-%d, default=1]: ", len(models))
+	line, _ := reader.ReadString('\n')
 	chosen := models[0]
-	if len(models) > 1 {
-		fmt.Fprintln(out, "  Available models:")
-		for i, m := range models {
-			fmt.Fprintf(out, "    [%d] %s\n", i+1, m)
-		}
-		fmt.Fprintf(out, "    Select model [1-%d, default=1]: ", len(models))
-		line, _ := reader.ReadString('\n')
-		idx := 0
-		fmt.Sscanf(strings.TrimSpace(line), "%d", &idx)
-		if idx >= 1 && idx <= len(models) {
-			chosen = models[idx-1]
-		}
+	idx := 0
+	fmt.Sscanf(strings.TrimSpace(line), "%d", &idx)
+	if idx >= 1 && idx <= len(models) {
+		chosen = models[idx-1]
 	}
 
 	a.Config.OllamaModel = chosen
@@ -619,101 +648,36 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer) error {
 	return nil
 }
 
-// initSessionManager opens (or creates) the session database. Failures are
-// non-fatal: the user is warned but Harvey continues without session persistence.
-func (a *Agent) initSessionManager(out io.Writer) {
-	sm, err := OpenSessionManager(a.Workspace)
-	if err != nil {
-		fmt.Fprintf(out, yellow("  ✗")+" Session manager unavailable: %v\n", err)
-		return
+// pickSession scans sessDir for .spmd and .fountain files and, if any exist,
+// asks the user whether to resume one. Returns the chosen file path and the
+// ALL-CAPS model name extracted from it; both are empty if no session is chosen.
+func (a *Agent) pickSession(reader *bufio.Reader, out io.Writer, sessDir string) (path, model string) {
+	files, err := ListSessionFiles(sessDir)
+	if err != nil || len(files) == 0 {
+		return "", ""
 	}
-	a.SM = sm
-	fmt.Fprintln(out, green("✓")+" Sessions: .harvey/sessions.db")
-}
-
-// initSession either resumes an existing session (prompted or via --session ID)
-// or creates a new one. It is called after the backend is selected so the model
-// name can be recorded in the new session row.
-func (a *Agent) initSession(reader *bufio.Reader, out io.Writer) {
-	// Capture the current system prompt that was just added to history.
-	currentSysPrompt := ""
-	for _, m := range a.History {
-		if m.Role == "system" {
-			currentSysPrompt = m.Content
-			break
-		}
+	if !askYesNo(reader, out, "  Resume a prior session? [y/N] ", false) {
+		return "", ""
 	}
-
-	var session *Session
-	if a.Config.ResumeSessionID > 0 {
-		s, err := a.SM.Load(a.Config.ResumeSessionID)
-		if err != nil {
-			fmt.Fprintf(out, yellow("  ✗")+" Could not load session %d: %v\n", a.Config.ResumeSessionID, err)
-		} else if s == nil {
-			fmt.Fprintf(out, yellow("  ✗")+" Session %d not found, starting new.\n", a.Config.ResumeSessionID)
-		} else {
-			session = s
-		}
-	} else {
-		last, err := a.SM.LoadLast()
-		if err != nil {
-			fmt.Fprintf(out, yellow("  ✗")+" Could not check last session: %v\n", err)
-		} else if last != nil {
-			label := last.Name
-			if label == "" {
-				label = fmt.Sprintf("#%d", last.ID)
-			}
-			turns := 0
-			for _, m := range last.History {
-				if m.Role == "user" {
-					turns++
-				}
-			}
-			prompt := fmt.Sprintf("  Resume session %s (%d turns, %s)? [Y/n] ",
-				label, turns, last.LastActive.Format("2006-01-02 15:04"))
-			if askYesNo(reader, out, prompt, true) {
-				session = last
-			}
-		}
+	fmt.Fprintln(out)
+	limit := len(files)
+	if limit > 20 {
+		limit = 20
 	}
-
-	if session != nil {
-		// Restore history, keeping the freshly expanded system prompt active.
-		a.History = session.History
-		if currentSysPrompt != "" {
-			replaced := false
-			for i, m := range a.History {
-				if m.Role == "system" {
-					a.History[i].Content = currentSysPrompt
-					replaced = true
-					break
-				}
-			}
-			if !replaced {
-				a.History = append([]Message{{Role: "system", Content: currentSysPrompt}}, a.History...)
-			}
-		}
-		a.SessionID = session.ID
-		label := session.Name
-		if label == "" {
-			label = fmt.Sprintf("#%d", session.ID)
-		}
-		fmt.Fprintf(out, green("✓")+" Resumed session %s (%d messages)\n", label, len(a.History))
-		return
+	for i, f := range files[:limit] {
+		fmt.Fprintf(out, "    [%d] %-44s  %s\n", i+1,
+			f.Name, f.ModTime.Format("2006-01-02 15:04"))
 	}
-
-	// Create a fresh session.
-	model := ""
-	if a.Client != nil {
-		model = a.Client.Name()
+	fmt.Fprintf(out, "    Select session [1-%d, 0=none]: ", limit)
+	line, _ := reader.ReadString('\n')
+	idx := 0
+	fmt.Sscanf(strings.TrimSpace(line), "%d", &idx)
+	if idx < 1 || idx > limit {
+		return "", ""
 	}
-	id, err := a.SM.Create(a.Workspace.Root, model, a.History)
-	if err != nil {
-		fmt.Fprintf(out, yellow("  ✗")+" Could not create session: %v\n", err)
-		return
-	}
-	a.SessionID = id
-	fmt.Fprintf(out, green("✓")+" New session #%d\n", id)
+	chosen := files[idx-1]
+	m, _ := ExtractModelFromSession(chosen.Path)
+	return chosen.Path, m
 }
 
 // loadSkills scans the standard skill directories, stores the catalog on the
@@ -722,7 +686,7 @@ func (a *Agent) initSession(reader *bufio.Reader, out io.Writer) {
 // that /clear re-injects the catalog after resetting history. Non-fatal:
 // if no skills are found the function returns silently.
 func (a *Agent) loadSkills(out io.Writer) {
-	cat := ScanSkills(a.Workspace.Root)
+	cat := ScanSkills(a.Workspace.Root, a.Config.AgentsDir)
 	if len(cat) == 0 {
 		return
 	}

@@ -405,7 +405,7 @@ func (r *Recorder) Close() error {
 }
 
 // DefaultSessionPath returns a timestamped default filename for a session
-// script in the given directory, using the .fountain extension.
+// script in the given directory, using the .spmd extension.
 //
 // Parameters:
 //
@@ -413,15 +413,15 @@ func (r *Recorder) Close() error {
 //
 // Returns:
 //
-//	string — path of the form "<dir>/harvey-session-YYYYMMDD-HHMMSS.fountain".
+//	string — path of the form "<dir>/harvey-session-YYYYMMDD-HHMMSS.spmd".
 //
 // Example:
 //
-//	path := DefaultSessionPath("/home/user/project")
-//	// "/home/user/project/harvey-session-20260415-142300.fountain"
+//	path := DefaultSessionPath("/home/user/project/harvey/sessions")
+//	// "/home/user/project/harvey/sessions/harvey-session-20260415-142300.spmd"
 func DefaultSessionPath(dir string) string {
 	ts := time.Now().Format("20060102-150405")
-	return fmt.Sprintf("%s/harvey-session-%s.fountain", dir, ts)
+	return fmt.Sprintf("%s/harvey-session-%s.spmd", dir, ts)
 }
 
 // ─── private write helpers ────────────────────────────────────────────────────

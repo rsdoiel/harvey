@@ -13,7 +13,7 @@ import (
  * symlink-free path at construction time so that later checks cannot be
  * bypassed by symlinks or relative ".." components.
  *
- * Harvey's internal state directory is always at <Root>/.harvey/.
+ * Harvey's internal state directory is always at <Root>/harvey/.
  *
  * Example:
  *   ws, err := NewWorkspace(".")
@@ -57,22 +57,22 @@ func NewWorkspace(dir string) (*Workspace, error) {
 	}
 	ws := &Workspace{Root: real}
 	if err := ws.MkdirAll(harveySubdir); err != nil {
-		return nil, fmt.Errorf("workspace: create .harvey dir: %w", err)
+		return nil, fmt.Errorf("workspace: create harvey dir: %w", err)
 	}
 	return ws, nil
 }
 
 // harveySubdir is the name of Harvey's internal state directory inside Root.
-const harveySubdir = ".harvey"
+const harveySubdir = "harvey"
 
 /** HarveyDir returns the absolute path of Harvey's internal state directory
- * (.harvey/) inside the workspace root.
+ * (harvey/) inside the workspace root.
  *
  * Returns:
- *   string — absolute path to <Root>/.harvey/
+ *   string — absolute path to <Root>/harvey/
  *
  * Example:
- *   fmt.Println(ws.HarveyDir()) // "/home/user/myproject/.harvey"
+ *   fmt.Println(ws.HarveyDir()) // "/home/user/myproject/harvey"
  */
 func (ws *Workspace) HarveyDir() string {
 	return filepath.Join(ws.Root, harveySubdir)

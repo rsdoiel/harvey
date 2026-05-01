@@ -1,4 +1,4 @@
-%harvey(1) user manual | version 0.0.1-pre1 ade9bf7
+%harvey(1) user manual | version 0.0.1-pre1 2958167
 % R. S. Doiel
 % 2026-04-30
 
@@ -26,8 +26,9 @@ system prompt. It then connects to a local Ollama server or publicai.co
 and starts an interactive chat session.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
-A knowledge base is stored at <workdir>/.harvey/knowledge.db and is created
-automatically on first run.
+A knowledge base is stored at <workdir>/harvey/knowledge.db and is created
+automatically on first run. Session recordings (.spmd files) are stored in
+<workdir>/harvey/sessions/. Both paths can be overridden in harvey/harvey.yaml.
 
 Type /help inside the session for available slash commands.
 
@@ -65,10 +66,32 @@ Type /help inside the session for available slash commands.
 --replay-output FILE
 : write replay responses to FILE (default: auto-named timestamped file; implies --replay)
 
--s, --session ID
-: resume a specific session by ID on startup; omit to be prompted
-
 # ENVIRONMENT
 
 PUBLICAI_API_KEY    API key for publicai.co
+
+# LINE EDITING
+
+Harvey's prompt supports readline-style editing. All key bindings apply
+while typing at the "harvey >" prompt.
+
+Navigation:
+
+  Left / Right arrows    move cursor one character
+  Home / Ctrl+A          jump to beginning of line
+  End  / Ctrl+E          jump to end of line
+  Up / Down arrows       cycle through command history
+
+Editing:
+
+  Backspace              delete character before cursor
+  Ctrl+D                 delete character under cursor (EOF on empty line)
+  Ctrl+K                 delete from cursor to end of line
+
+Actions:
+
+  Ctrl+C                 cancel current input and return to prompt
+  Ctrl+X  Ctrl+E         open $EDITOR (then $VISUAL, then vi) to compose
+                         a multi-line prompt; content is submitted when
+                         the editor exits
 

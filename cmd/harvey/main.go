@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	harvey "github.com/rsdoiel/harvey"
 )
@@ -13,7 +12,7 @@ func main() {
 	appName := filepath.Base(os.Args[0])
 	version, releaseDate, releaseHash := harvey.Version, harvey.ReleaseDate, harvey.ReleaseHash
 	licenseText, fmtHelp, helpText := harvey.LicenseText, harvey.FmtHelp, harvey.HelpText
-	
+
 
 	cfg := harvey.DefaultConfig()
 
@@ -62,13 +61,6 @@ func main() {
 		case "--record-file":
 			cfg.AutoRecord = true
 			cfg.RecordPath = next()
-		case "-s", "--session":
-			id, err := strconv.ParseInt(next(), 10, 64)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "--session requires a numeric ID\n")
-				os.Exit(1)
-			}
-			cfg.ResumeSessionID = id
 		case "--continue":
 			cfg.ContinuePath = next()
 		case "--replay":

@@ -26,7 +26,17 @@ About this software
 
 ## harvey 0.0.1-pre1
 
-concept
+2026-04-30 — harvey directory, session overhaul, keyboard shortcuts, KB search & inject
+
+- Renamed state directory from .harvey/ to harvey/ (workspace-local and ~/harvey/ globally)
+- Dropped SQLite sessions.db in favour of Fountain/SPMD session files; sessions now live in harvey/sessions/ and persist as .spmd recordings automatically on every run
+- Session resume prompt now appears before Ollama model selection (default: No); selecting a prior session pre-selects the model recorded in that file
+- Added .spmd as the primary session file extension; .fountain files from other LLM systems are also accepted everywhere Harvey reads sessions
+- Added harvey/harvey.yaml for per-workspace overrides: knowledge_db, sessions_dir, agents_dir, auto_record
+- Added Ctrl+X Ctrl+E chord to the termlib line editor: opens $EDITOR (→ $VISUAL → vi) with the current prompt buffer; saved content is submitted when the editor exits
+- Added FTS5 full-text search to the knowledge base: /kb search TERM ranks results across observations, projects, and concepts using bm25(); supports FTS5 phrase and prefix syntax
+- Added /kb inject [PROJECT-NAME]: formats knowledge base content as Markdown and adds it to the conversation context so the LLM can reason about it
+- Added keyboard-shortcuts section to getting_started.md and LINE EDITING section to --help / man page
 
 ### Authors
 

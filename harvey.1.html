@@ -55,8 +55,10 @@ where Ollama is avialable and Go is supported (exmample *BSD).</p>
 system prompt. It then connects to a local Ollama server or publicai.co
 and starts an interactive chat session.</p>
 <p>All file I/O is constrained to the workspace directory (–workdir or
-“.”). A knowledge base is stored at <workdir>/.harvey/knowledge.db and
-is created automatically on first run.</p>
+“.”). A knowledge base is stored at <workdir>/harvey/knowledge.db and is
+created automatically on first run. Session recordings (.spmd files) are
+stored in <workdir>/harvey/sessions/. Both paths can be overridden in
+harvey/harvey.yaml.</p>
 <p>Type /help inside the session for available slash commands.</p>
 <h1 id="options">OPTIONS</h1>
 <dl>
@@ -91,13 +93,38 @@ start a Fountain recording automatically at startup
 <dd>
 path for the auto-recording file (implies –record)
 </dd>
-<dt>-s, –session ID</dt>
+<dt>–continue FILE</dt>
 <dd>
-resume a specific session by ID on startup; omit to be prompted
+load conversation history from a Fountain recording and open the REPL
+</dd>
+<dt>–replay FILE</dt>
+<dd>
+re-send every user turn from FILE to the current model and record fresh
+responses
+</dd>
+<dt>–replay-output FILE</dt>
+<dd>
+write replay responses to FILE (default: auto-named timestamped file;
+implies –replay)
 </dd>
 </dl>
 <h1 id="environment">ENVIRONMENT</h1>
 <p>PUBLICAI_API_KEY API key for publicai.co</p>
+<h1 id="line-editing">LINE EDITING</h1>
+<p>Harvey’s prompt supports readline-style editing. All key bindings
+apply while typing at the “harvey &gt;” prompt.</p>
+<p>Navigation:</p>
+<p>Left / Right arrows move cursor one character Home / Ctrl+A jump to
+beginning of line End / Ctrl+E jump to end of line Up / Down arrows
+cycle through command history</p>
+<p>Editing:</p>
+<p>Backspace delete character before cursor Ctrl+D delete character
+under cursor (EOF on empty line) Ctrl+K delete from cursor to end of
+line</p>
+<p>Actions:</p>
+<p>Ctrl+C cancel current input and return to prompt Ctrl+X Ctrl+E open
+$EDITOR (then $VISUAL, then vi) to compose a multi-line prompt; content
+is submitted when the editor exits</p>
 </section>
 </body>
 </html>

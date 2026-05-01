@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.1-pre1 ade9bf7
+%harvey(7) user manual | version 0.0.1-pre1 2958167
 % R. S. Doiel
 % 2026-04-30
 
@@ -73,7 +73,7 @@ match the parent directory name.
 
 # EXAMPLE — the bundled go-review skill
 
-  Location: .harvey/skills/go-review/SKILL.md
+  Location: harvey/skills/go-review/SKILL.md
 
 ~~~markdown
   ---
@@ -139,12 +139,12 @@ matching trigger wins.
 
 ~~~
   User scope
-    ~/.harvey/skills/          Harvey-native
+    ~/harvey/skills/           Harvey-native
     ~/agents/skills/           cross-client (non-hidden)
     ~/.agents/skills/          cross-client (shared with Claude Code, etc.)
 
   Project scope  (relative to --workdir, default ".")
-    .harvey/skills/            Harvey-native
+    harvey/skills/             Harvey-native
     agents/skills/             cross-client (non-hidden)
     .agents/skills/            cross-client
 ~~~
