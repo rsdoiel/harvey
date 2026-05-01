@@ -148,6 +148,9 @@ type Agent struct {
 	History       []Message
 	Workspace     *Workspace
 	KB            *KnowledgeBase
+	ModelCache    *ModelCache    // capability cache for installed Ollama models; nil until initModelCache runs
+	Rag           *RagStore      // RAG chunk store; nil when RAG is not configured
+	RagOn         bool           // when true, top-K chunks are injected before each Chat call
 	SessionsDir   string         // absolute path to the sessions directory
 	Skills        SkillCatalog   // skills discovered at startup; nil until loadSkills runs
 	Recorder      *Recorder

@@ -101,6 +101,12 @@ func (a *Agent) Run(out io.Writer) error {
 	// Knowledge base
 	a.initKnowledgeBase(out)
 
+	// Model capability cache
+	a.initModelCache(out)
+
+	// RAG store (optional — only when configured in harvey.yaml)
+	a.initRag(out)
+
 	// Sessions directory
 	sessDir, err := ResolveSessionsDir(a.Workspace, a.Config.SessionsDir)
 	if err != nil {
@@ -401,7 +407,9 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}
 
-		a.AddMessage("user", input)
+		// RAG context injection — prepend relevant chunks before sending.
+		augmented := a.ragAugment(input)
+		a.AddMessage("user", augmented)
 
 		// Token-count warning — runs only when the backend is Ollama.
 		if oc, ok := a.Client.(*OllamaClient); ok {
@@ -516,6 +524,43 @@ func (a *Agent) initKnowledgeBase(out io.Writer) {
 	}
 	a.KB = kb
 	fmt.Fprintln(out, green("✓")+" Knowledge base: harvey/knowledge.db")
+}
+
+// initModelCache opens (or creates) the SQLite model capability cache. Failures
+// are non-fatal: the user is warned but Harvey continues without a cache.
+func (a *Agent) initModelCache(out io.Writer) {
+	mc, err := OpenModelCache(a.Workspace, a.Config.ModelCacheDB)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" Model cache unavailable: %v\n", err)
+		return
+	}
+	a.ModelCache = mc
+	fmt.Fprintln(out, green("✓")+" Model cache: harvey/model_cache.db")
+}
+
+// initRag opens the RAG store when a db_path is configured in harvey.yaml.
+// Failures are non-fatal. RagOn is set to match cfg.RagEnabled.
+func (a *Agent) initRag(out io.Writer) {
+	if a.Config.RagDBPath == "" {
+		return
+	}
+	dbPath, err := a.Workspace.AbsPath(a.Config.RagDBPath)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" RAG store unavailable: %v\n", err)
+		return
+	}
+	store, err := NewRagStore(dbPath, a.Config.RagEmbedModel)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" RAG store unavailable: %v\n", err)
+		return
+	}
+	a.Rag = store
+	a.RagOn = a.Config.RagEnabled
+	status := "off"
+	if a.RagOn {
+		status = "on"
+	}
+	fmt.Fprintf(out, green("✓")+" RAG store: %s [%s]\n", a.Config.RagDBPath, status)
 }
 
 /** selectBackend runs the interactive startup sequence to choose a backend.
@@ -759,4 +804,37 @@ func askYesNo(reader *bufio.Reader, out io.Writer, prompt string, defaultYes boo
 		return defaultYes
 	}
 	return answer == "y" || answer == "yes"
+}
+
+// ragAugment prepends relevant RAG chunks to prompt when RAG is enabled.
+// Returns the original prompt unchanged when RAG is off, unconfigured, or
+// when no chunks are retrieved. Errors are silently swallowed so a RAG
+// failure never blocks the chat turn.
+func (a *Agent) ragAugment(prompt string) string {
+	if !a.RagOn || a.Rag == nil || a.Config.RagEmbedModel == "" {
+		return prompt
+	}
+
+	// Resolve embedding model for the current generation model.
+	embedModel := a.Config.RagEmbedModel
+	if a.Config.RagModelMap != nil {
+		if mapped, ok := a.Config.RagModelMap[a.Config.OllamaModel]; ok && mapped != "" {
+			embedModel = mapped
+		}
+	}
+
+	embedder := NewOllamaEmbedder(a.Config.OllamaURL, embedModel)
+	chunks, err := a.Rag.Query(prompt, embedder, 5)
+	if err != nil || len(chunks) == 0 {
+		return prompt
+	}
+
+	var sb strings.Builder
+	sb.WriteString("### Context (from knowledge base)\n\n")
+	for i, c := range chunks {
+		fmt.Fprintf(&sb, "[%d] %s\n\n", i+1, c.Content)
+	}
+	sb.WriteString("---\n\n")
+	sb.WriteString(prompt)
+	return sb.String()
 }

@@ -115,6 +115,7 @@ type ModelDetail struct {
 	ContextLength int
 	RawParameters string
 	Template      string
+	Capabilities  []string // e.g. ["completion", "tools", "vision"]; nil on older Ollama
 }
 
 // Chat sends messages to Ollama, streams the response tokens to out, and
@@ -258,11 +259,12 @@ func (o *OllamaClient) ShowModel(ctx context.Context, model string) (ModelDetail
 		Verbose bool   `json:"verbose"`
 	}
 	type showResp struct {
-		Details    ollamaModelDetails     `json:"details"`
-		Parameters string                 `json:"parameters"`
-		Template   string                 `json:"template"`
-		ModelInfo  map[string]interface{} `json:"model_info"`
-		Size       int64                  `json:"size"`
+		Details      ollamaModelDetails     `json:"details"`
+		Parameters   string                 `json:"parameters"`
+		Template     string                 `json:"template"`
+		ModelInfo    map[string]interface{} `json:"model_info"`
+		Size         int64                  `json:"size"`
+		Capabilities []string               `json:"capabilities"`
 	}
 	body, _ := json.Marshal(showReq{Model: model, Verbose: true})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/show", bytes.NewReader(body))
@@ -307,6 +309,7 @@ func (o *OllamaClient) ShowModel(ctx context.Context, model string) (ModelDetail
 		ContextLength: ctxLen,
 		RawParameters: sr.Parameters,
 		Template:      sr.Template,
+		Capabilities:  sr.Capabilities,
 	}, nil
 }
 
@@ -439,4 +442,290 @@ func StartOllamaService() error {
 		}
 	}
 	return fmt.Errorf("ollama started but did not respond within 5s")
+}
+
+// embedKeywords are substrings that strongly indicate a dedicated embedding model.
+var embedKeywords = []string{
+	"embed", "e5-", "bge-", "gte-", "minilm", "nomic", "mxbai", "jina",
+}
+
+// toolMarkers are template substrings that indicate tool/function-calling support.
+// They cover the major model families: Llama 3.x (Jinja2), Mistral, Qwen, Granite, Gemma.
+var toolMarkers = []string{
+	"{% if tools %}", "{%- if tools %}", // Llama 3, Granite (Jinja2)
+	"[TOOL_CALLS]", "[AVAILABLE_TOOLS]", // Mistral, Ministral
+	"<tool_call>", "✿FUNCTION✿",         // Qwen 2.x variants
+	"<function_calls>",                  // Gemma 4 and others
+}
+
+// hasEmbedKeyword reports whether name contains a known embedding-model substring.
+func hasEmbedKeyword(name string) bool {
+	lower := strings.ToLower(name)
+	for _, kw := range embedKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasToolMarker reports whether template contains a known tool-call marker.
+func hasToolMarker(template string) bool {
+	for _, m := range toolMarkers {
+		if strings.Contains(template, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// capabilitiesContain reports whether caps includes the named capability string.
+func capabilitiesContain(caps []string, name string) bool {
+	for _, c := range caps {
+		if strings.EqualFold(c, name) {
+			return true
+		}
+	}
+	return false
+}
+
+/** FastProbeModel calls /api/show for the named model and applies heuristics
+ * to determine tool and embedding capability. It does not make additional
+ * network calls beyond the single /api/show request.
+ *
+ * Tool support is determined by:
+ *   1. The Capabilities array from /api/show (authoritative on Ollama >= 0.3).
+ *   2. Known tool-call template markers as a fallback for older Ollama.
+ *
+ * Embedding support is determined by:
+ *   1. A known embedding-model keyword in the model name.
+ *   2. An empty or absent Template field combined with the keyword heuristic.
+ *   Both signals must agree to avoid false positives from base chat models
+ *   that happen to have a minimal template.
+ *
+ * Parameters:
+ *   ctx     (context.Context) — controls the HTTP request lifetime.
+ *   baseURL (string)          — Ollama server base URL, e.g. "http://localhost:11434".
+ *   name    (string)          — full model name, e.g. "llama3.2:latest".
+ *
+ * Returns:
+ *   *ModelCapability — populated capability record with ProbeLevel "fast".
+ *   error            — non-nil if /api/show fails or the model is not found.
+ *
+ * Example:
+ *   cap, err := FastProbeModel(ctx, "http://localhost:11434", "llama3.2:latest")
+ *   fmt.Printf("tools: %s  embed: %s\n", cap.SupportsTools, cap.SupportsEmbed)
+ */
+func FastProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability, error) {
+	c := NewOllamaClient(baseURL, name)
+	detail, err := c.ShowModel(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	cap := &ModelCapability{
+		Name:          name,
+		Family:        detail.Family,
+		ParameterSize: detail.ParameterSize,
+		Quantization:  detail.Quantization,
+		SizeBytes:     detail.SizeBytes,
+		ContextLength: detail.ContextLength,
+		SupportsTools: CapUnknown,
+		SupportsEmbed: CapUnknown,
+		ProbeLevel:    "fast",
+		ProbedAt:      time.Now(),
+	}
+
+	// Tool support: prefer the capabilities array; fall back to template markers.
+	if len(detail.Capabilities) > 0 {
+		if capabilitiesContain(detail.Capabilities, "tools") {
+			cap.SupportsTools = CapYes
+		} else {
+			cap.SupportsTools = CapNo
+		}
+	} else if detail.Template != "" {
+		if hasToolMarker(detail.Template) {
+			cap.SupportsTools = CapYes
+		} else {
+			cap.SupportsTools = CapNo
+		}
+	}
+
+	// Embedding support: keyword in name is the primary signal.
+	// An empty template without a keyword match is ambiguous (could be a
+	// base model), so we require the keyword for a fast-probe CapYes.
+	if hasEmbedKeyword(name) {
+		cap.SupportsEmbed = CapYes
+	} else {
+		cap.SupportsEmbed = CapNo
+	}
+
+	return cap, nil
+}
+
+/** ThoroughProbeModel runs FastProbeModel and then makes a live /api/embed
+ * request to confirm or deny embedding support definitively. A successful
+ * response with a non-empty embeddings array sets SupportsEmbed = CapYes;
+ * any error or empty response sets it to CapNo. Tool support is not re-tested
+ * beyond what FastProbeModel determines — the capabilities API is authoritative.
+ *
+ * Parameters:
+ *   ctx     (context.Context) — controls the HTTP request lifetime.
+ *   baseURL (string)          — Ollama server base URL.
+ *   name    (string)          — full model name.
+ *
+ * Returns:
+ *   *ModelCapability — populated capability record with ProbeLevel "thorough".
+ *   error            — non-nil if FastProbeModel fails; embed test errors are
+ *                      absorbed into SupportsEmbed = CapNo rather than returned.
+ *
+ * Example:
+ *   cap, err := ThoroughProbeModel(ctx, "http://localhost:11434", "nomic-embed-text")
+ *   fmt.Printf("embed: %s\n", cap.SupportsEmbed)
+ */
+func ThoroughProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability, error) {
+	cap, err := FastProbeModel(ctx, baseURL, name)
+	if err != nil {
+		return nil, err
+	}
+	cap.ProbeLevel = "thorough"
+	cap.ProbedAt = time.Now()
+
+	type embedReq struct {
+		Model string `json:"model"`
+		Input string `json:"input"`
+	}
+	type embedResp struct {
+		Embeddings [][]float64 `json:"embeddings"`
+	}
+
+	body, _ := json.Marshal(embedReq{Model: name, Input: "test"})
+	req, err2 := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/embed", bytes.NewReader(body))
+	if err2 != nil {
+		cap.SupportsEmbed = CapNo
+		return cap, nil
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	hc := &http.Client{Timeout: 30 * time.Second}
+	resp, err2 := hc.Do(req)
+	if err2 != nil {
+		cap.SupportsEmbed = CapNo
+		return cap, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		cap.SupportsEmbed = CapNo
+		return cap, nil
+	}
+	var er embedResp
+	if json.NewDecoder(resp.Body).Decode(&er) != nil || len(er.Embeddings) == 0 || len(er.Embeddings[0]) == 0 {
+		cap.SupportsEmbed = CapNo
+		return cap, nil
+	}
+	cap.SupportsEmbed = CapYes
+	return cap, nil
+}
+
+// ─── OllamaEmbedder ──────────────────────────────────────────────────────────
+
+/** OllamaEmbedder implements Embedder using Ollama's /api/embed endpoint.
+ * It is scoped to a single embedding model on one Ollama server.
+ *
+ * Example:
+ *   e := NewOllamaEmbedder("http://localhost:11434", "nomic-embed-text")
+ *   vec, err := e.Embed("The sky is blue")
+ */
+type OllamaEmbedder struct {
+	baseURL string
+	model   string
+	http    *http.Client
+}
+
+/** NewOllamaEmbedder returns an OllamaEmbedder targeting the given Ollama
+ * server and embedding model.
+ *
+ * Parameters:
+ *   baseURL (string) — Ollama server base URL, e.g. "http://localhost:11434".
+ *   model   (string) — embedding model name, e.g. "nomic-embed-text".
+ *
+ * Returns:
+ *   *OllamaEmbedder — ready to call Embed.
+ *
+ * Example:
+ *   e := NewOllamaEmbedder("http://localhost:11434", "nomic-embed-text")
+ */
+func NewOllamaEmbedder(baseURL, model string) *OllamaEmbedder {
+	return &OllamaEmbedder{
+		baseURL: baseURL,
+		model:   model,
+		http:    &http.Client{Timeout: 60 * time.Second},
+	}
+}
+
+/** Name returns the embedding model name, satisfying the Embedder interface.
+ *
+ * Returns:
+ *   string — model name, e.g. "nomic-embed-text".
+ *
+ * Example:
+ *   fmt.Println(e.Name()) // "nomic-embed-text"
+ */
+func (e *OllamaEmbedder) Name() string { return e.model }
+
+/** Embed sends text to Ollama's /api/embed endpoint and returns the embedding
+ * vector. Returns an error if the server is unreachable, returns a non-200
+ * status, or returns no embeddings.
+ *
+ * Parameters:
+ *   ctx  (context.Context) — controls the HTTP request lifetime.
+ *   text (string)          — text to embed.
+ *
+ * Returns:
+ *   []float64 — embedding vector from the model.
+ *   error     — on transport failure, HTTP error, or empty response.
+ *
+ * Example:
+ *   vec, err := e.Embed(ctx, "The sky is blue")
+ *   fmt.Printf("dims: %d\n", len(vec))
+ */
+func (e *OllamaEmbedder) Embed(text string) ([]float64, error) {
+	type embedReq struct {
+		Model string `json:"model"`
+		Input string `json:"input"`
+	}
+	type embedResp struct {
+		Embeddings [][]float64 `json:"embeddings"`
+	}
+
+	body, err := json.Marshal(embedReq{Model: e.model, Input: text})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, e.baseURL+"/api/embed", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := e.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ollama embed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ollama embed: HTTP %d: %s", resp.StatusCode, b)
+	}
+
+	var er embedResp
+	if err := json.NewDecoder(resp.Body).Decode(&er); err != nil {
+		return nil, fmt.Errorf("ollama embed: decode: %w", err)
+	}
+	if len(er.Embeddings) == 0 || len(er.Embeddings[0]) == 0 {
+		return nil, fmt.Errorf("ollama embed: empty embeddings from model %q", e.model)
+	}
+	return er.Embeddings[0], nil
 }

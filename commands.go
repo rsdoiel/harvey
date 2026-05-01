@@ -74,6 +74,11 @@ func (a *Agent) registerCommands() {
 			Description: "Manage and query the workspace knowledge base",
 			Handler:     cmdKB,
 		},
+		"rag": {
+			Usage:       "/rag <setup|ingest PATH|status|query TEXT|on|off>",
+			Description: "Manage the RAG knowledge store for context-augmented generation",
+			Handler:     cmdRag,
+		},
 		"files": {
 			Usage:       "/files [PATH]",
 			Description: "List files in the workspace (or a sub-directory)",
@@ -614,7 +619,7 @@ func truncate(s string, n int) string {
 
 func cmdOllama(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|logs|use MODEL|env>")
+		fmt.Fprintln(out, "Usage: /ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL|--all]|logs|use MODEL|env>")
 		return nil
 	}
 	switch strings.ToLower(args[0]) {
@@ -638,21 +643,15 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintln(out, "Ollama is not running.")
 			return nil
 		}
-		models, err := NewOllamaClient(a.Config.OllamaURL, "").Models(context.Background())
+		summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background())
 		if err != nil {
 			return err
 		}
-		if len(models) == 0 {
+		if len(summaries) == 0 {
 			fmt.Fprintln(out, "No models installed. Run: /ollama pull <model>")
 			return nil
 		}
-		for _, m := range models {
-			marker := "  "
-			if oc, ok := a.Client.(*OllamaClient); ok && oc.Model() == m {
-				marker = "* "
-			}
-			fmt.Fprintf(out, "%s%s\n", marker, m)
-		}
+		ollamaListTable(a, summaries, out)
 	case "ps":
 		cmd := exec.Command("ollama", "ps")
 		cmd.Stdout = out
@@ -663,10 +662,23 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintln(out, "Usage: /ollama pull MODEL")
 			return nil
 		}
-		cmd := exec.Command("ollama", "pull", args[1])
+		model := args[1]
+		cmd := exec.Command("ollama", "pull", model)
 		cmd.Stdout = out
 		cmd.Stderr = out
-		return cmd.Run()
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+		// Fast-probe the newly pulled model and cache the result.
+		if a.ModelCache != nil {
+			ctx := context.Background()
+			cap, err := FastProbeModel(ctx, a.Config.OllamaURL, model)
+			if err == nil {
+				_ = a.ModelCache.Set(cap)
+				fmt.Fprintf(out, "  tools: %s   embed: %s   ctx: %s   [fast probe]\n",
+					cap.SupportsTools, cap.SupportsEmbed, ollamaFormatCtx(cap.ContextLength))
+			}
+		}
 	case "show":
 		if len(args) < 2 {
 			fmt.Fprintln(out, "Usage: /ollama show MODEL")
@@ -718,10 +730,21 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintln(out, "Usage: /ollama rm MODEL [MODEL...]")
 			return nil
 		}
-		cmd := exec.Command("ollama", append([]string{"rm"}, args[1:]...)...)
+		models := args[1:]
+		cmd := exec.Command("ollama", append([]string{"rm"}, models...)...)
 		cmd.Stdout = out
 		cmd.Stderr = out
-		return cmd.Run()
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+		// Remove each successfully deleted model from the cache.
+		if a.ModelCache != nil {
+			for _, m := range models {
+				_ = a.ModelCache.Delete(m)
+			}
+		}
+	case "probe":
+		return ollamaProbe(a, args[1:], out)
 	case "logs":
 		// Try the native ollama logs subcommand first; fall back to journalctl.
 		cmd := exec.Command("ollama", "logs")
@@ -754,6 +777,170 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "Unknown ollama subcommand: %s\n", args[0])
 	}
 	return nil
+}
+
+// ollamaListTable prints the capability table for /ollama list.
+func ollamaListTable(a *Agent, summaries []ModelSummary, out io.Writer) {
+	const nameW = 36
+	fmt.Fprintf(out, "%-*s  %7s  %-8s  %6s  %5s  %5s\n",
+		nameW, "NAME", "SIZE", "FAMILY", "CTX", "TOOLS", "EMBED")
+	fmt.Fprintf(out, "%s  %s  %s  %s  %s  %s\n",
+		strings.Repeat("─", nameW),
+		strings.Repeat("─", 7),
+		strings.Repeat("─", 8),
+		strings.Repeat("─", 6),
+		strings.Repeat("─", 5),
+		strings.Repeat("─", 5),
+	)
+
+	activeName := ""
+	if oc, ok := a.Client.(*OllamaClient); ok {
+		activeName = oc.Model()
+	}
+
+	unknownCount := 0
+	for _, s := range summaries {
+		var cap *ModelCapability
+		if a.ModelCache != nil {
+			cap, _ = a.ModelCache.Get(s.Name)
+		}
+
+		tools := CapUnknown
+		embed := CapUnknown
+		ctx := 0
+		if cap != nil {
+			tools = cap.SupportsTools
+			embed = cap.SupportsEmbed
+			ctx = cap.ContextLength
+		} else {
+			unknownCount++
+		}
+
+		marker := "  "
+		if s.Name == activeName {
+			marker = "* "
+		}
+		displayName := marker + ollamaTruncateName(s.Name, nameW-2)
+
+		fmt.Fprintf(out, "%-*s  %7s  %-8s  %6s  %5s  %5s\n",
+			nameW, displayName,
+			ollamaFormatBytes(s.SizeBytes),
+			ollamaTruncateName(s.Family, 8),
+			ollamaFormatCtx(ctx),
+			tools.String(),
+			embed.String(),
+		)
+	}
+
+	if unknownCount > 0 {
+		fmt.Fprintf(out, "\n  %d model(s) not yet probed — run /ollama probe to fill in capabilities.\n", unknownCount)
+	}
+}
+
+// ollamaProbe handles /ollama probe [MODEL|--all].
+func ollamaProbe(a *Agent, args []string, out io.Writer) error {
+	if !ProbeOllama(a.Config.OllamaURL) {
+		fmt.Fprintln(out, "Ollama is not running.")
+		return nil
+	}
+	if a.ModelCache == nil {
+		fmt.Fprintln(out, "Model cache is not open.")
+		return nil
+	}
+
+	ctx := context.Background()
+	client := NewOllamaClient(a.Config.OllamaURL, "")
+
+	// /ollama probe MODEL — probe a specific model, always refresh.
+	if len(args) == 1 && args[0] != "--all" {
+		model := args[0]
+		fmt.Fprintf(out, "Probing %s...\n", model)
+		cap, err := ThoroughProbeModel(ctx, a.Config.OllamaURL, model)
+		if err != nil {
+			return fmt.Errorf("probe %s: %w", model, err)
+		}
+		if err := a.ModelCache.Set(cap); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "  tools: %s   embed: %s   ctx: %s   [thorough]\n",
+			cap.SupportsTools, cap.SupportsEmbed, ollamaFormatCtx(cap.ContextLength))
+		return nil
+	}
+
+	// /ollama probe or /ollama probe --all — probe all installed models.
+	// Without --all, skip models already in the cache.
+	forceAll := len(args) == 1 && args[0] == "--all"
+
+	summaries, err := client.ModelSummaries(ctx)
+	if err != nil {
+		return err
+	}
+
+	var targets []string
+	for _, s := range summaries {
+		if forceAll {
+			targets = append(targets, s.Name)
+			continue
+		}
+		cap, _ := a.ModelCache.Get(s.Name)
+		if cap == nil || cap.ProbeLevel == "none" {
+			targets = append(targets, s.Name)
+		}
+	}
+
+	if len(targets) == 0 {
+		fmt.Fprintln(out, "All models are already probed. Use /ollama probe --all to refresh.")
+		return nil
+	}
+
+	fmt.Fprintf(out, "Probing %d model(s)...\n", len(targets))
+	for _, name := range targets {
+		cap, err := ThoroughProbeModel(ctx, a.Config.OllamaURL, name)
+		if err != nil {
+			fmt.Fprintf(out, "  %-36s  error: %v\n", ollamaTruncateName(name, 36), err)
+			continue
+		}
+		if err := a.ModelCache.Set(cap); err != nil {
+			fmt.Fprintf(out, "  %-36s  cache write error: %v\n", ollamaTruncateName(name, 36), err)
+			continue
+		}
+		fmt.Fprintf(out, "  %-36s  tools: %s   embed: %s   [thorough]\n",
+			ollamaTruncateName(name, 36), cap.SupportsTools, cap.SupportsEmbed)
+	}
+	fmt.Fprintln(out, "Done.")
+	return nil
+}
+
+// ollamaTruncateName truncates s to at most max runes, appending "…" when cut.
+func ollamaTruncateName(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max-1]) + "…"
+}
+
+// ollamaFormatBytes returns a human-readable size string from a byte count.
+func ollamaFormatBytes(n int64) string {
+	if n == 0 {
+		return "—"
+	}
+	if gb := float64(n) / (1024 * 1024 * 1024); gb >= 1 {
+		return fmt.Sprintf("%.1f GB", gb)
+	}
+	mb := float64(n) / (1024 * 1024)
+	return fmt.Sprintf("%.0f MB", mb)
+}
+
+// ollamaFormatCtx returns a human-readable context-length string.
+func ollamaFormatCtx(tokens int) string {
+	if tokens <= 0 {
+		return "—"
+	}
+	if tokens >= 1024 {
+		return fmt.Sprintf("%dk", tokens/1024)
+	}
+	return fmt.Sprintf("%d", tokens)
 }
 
 // ─── /kb ─────────────────────────────────────────────────────────────────────
@@ -2328,4 +2515,348 @@ func (a *Agent) logAction(kind, target string, choice actionChoice, outcome stri
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordAgentAction(kind, target, choiceStr(choice), outcome)
 	}
+}
+
+// ─── /rag ────────────────────────────────────────────────────────────────────
+
+func cmdRag(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		return ragStatus(a, out)
+	}
+	switch strings.ToLower(args[0]) {
+	case "status":
+		return ragStatus(a, out)
+	case "on":
+		if a.Rag == nil {
+			fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
+			return nil
+		}
+		a.RagOn = true
+		a.Config.RagEnabled = true
+		fmt.Fprintln(out, "RAG context injection: on")
+	case "off":
+		a.RagOn = false
+		a.Config.RagEnabled = false
+		fmt.Fprintln(out, "RAG context injection: off")
+	case "setup":
+		return ragSetup(a, out)
+	case "ingest":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /rag ingest PATH [PATH...]")
+			return nil
+		}
+		return ragIngest(a, args[1:], out)
+	case "query":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /rag query TEXT")
+			return nil
+		}
+		return ragQuery(a, strings.Join(args[1:], " "), out)
+	default:
+		fmt.Fprintf(out, "Unknown rag subcommand: %s\n", args[0])
+	}
+	return nil
+}
+
+// ragStatus prints the current RAG configuration and chunk count.
+func ragStatus(a *Agent, out io.Writer) error {
+	if a.Config.RagDBPath == "" {
+		fmt.Fprintln(out, "RAG is not configured. Run /rag setup to get started.")
+		return nil
+	}
+	enabled := "off"
+	if a.RagOn {
+		enabled = "on"
+	}
+	fmt.Fprintf(out, "RAG status:       %s\n", enabled)
+	fmt.Fprintf(out, "Database:         %s\n", a.Config.RagDBPath)
+	fmt.Fprintf(out, "Embedding model:  %s\n", a.Config.RagEmbedModel)
+	if len(a.Config.RagModelMap) > 0 {
+		fmt.Fprintln(out, "Model map:")
+		for gen, emb := range a.Config.RagModelMap {
+			fmt.Fprintf(out, "  %-36s → %s\n", gen, emb)
+		}
+	}
+	if a.Rag == nil {
+		fmt.Fprintln(out, "(store not open)")
+	}
+	return nil
+}
+
+// ragSetup runs the interactive RAG configuration wizard.
+func ragSetup(a *Agent, out io.Writer) error {
+	ctx := context.Background()
+
+	if !ProbeOllama(a.Config.OllamaURL) {
+		fmt.Fprintln(out, "Ollama is not running. Use /ollama start first.")
+		return nil
+	}
+
+	// Step 0: detect available embedding models via the model cache.
+	var embedModels []string
+	if a.ModelCache != nil {
+		all, err := a.ModelCache.All()
+		if err == nil {
+			for _, c := range all {
+				if c.SupportsEmbed == CapYes {
+					embedModels = append(embedModels, c.Name)
+				}
+			}
+		}
+	}
+
+	// If cache is empty or no embedding models found, fall back to live detection.
+	if len(embedModels) == 0 {
+		summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(ctx)
+		if err == nil {
+			for _, s := range summaries {
+				if hasEmbedKeyword(s.Name) {
+					embedModels = append(embedModels, s.Name)
+				}
+			}
+		}
+	}
+
+	if len(embedModels) == 0 {
+		fmt.Fprintln(out, "No embedding models found on this Ollama server.")
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "Recommended options (run /ollama pull to install):")
+		fmt.Fprintln(out, "  nomic-embed-text   (~274 MB) — best general-purpose")
+		fmt.Fprintln(out, "  all-minilm         (~46 MB)  — lightweight, lower quality")
+		fmt.Fprintln(out, "  bge-m3             (~1.2 GB) — multilingual (good for SEA-LION)")
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "After pulling an embedding model, run /rag setup again.")
+		return nil
+	}
+
+	// Pick preferred embedding model: nomic > mxbai > all-minilm > first available.
+	preferred := embedModels[0]
+	for _, pref := range []string{"nomic-embed-text", "mxbai-embed-large", "all-minilm"} {
+		for _, m := range embedModels {
+			if strings.Contains(strings.ToLower(m), pref) {
+				preferred = m
+				goto foundPref
+			}
+		}
+	}
+foundPref:
+
+	// Build proposed model map: all non-embedding generation models → preferred embedder.
+	genModels, _ := NewOllamaClient(a.Config.OllamaURL, "").Models(ctx)
+	proposed := make(map[string]string)
+	for _, m := range genModels {
+		if !hasEmbedKeyword(m) {
+			embedFor := preferred
+			// Multilingual hint: suggest bge-m3 for models with multilingual signals.
+			lower := strings.ToLower(m)
+			if strings.Contains(lower, "sea") || strings.Contains(lower, "lion") ||
+				strings.Contains(lower, "multilingual") || strings.Contains(lower, "multi") {
+				for _, em := range embedModels {
+					if strings.Contains(strings.ToLower(em), "bge-m3") {
+						embedFor = em
+						break
+					}
+				}
+			}
+			proposed[m] = embedFor
+		}
+	}
+
+	// Derive the db path from the preferred embedding model name.
+	dbName := "rag_" + strings.ReplaceAll(strings.ReplaceAll(preferred, ":", "_"), "/", "_") + ".db"
+	dbPath := filepath.Join(harveySubdir, dbName)
+
+	// Display proposed mapping for human review.
+	fmt.Fprintf(out, "Proposed RAG configuration (embedding model: %s):\n\n", preferred)
+	fmt.Fprintf(out, "  Database: %s\n\n", dbPath)
+	if len(proposed) > 0 {
+		fmt.Fprintf(out, "  %-36s  %s\n", "Generation model", "Embedding model")
+		fmt.Fprintf(out, "  %s  %s\n", strings.Repeat("─", 36), strings.Repeat("─", 24))
+		for gen, emb := range proposed {
+			fmt.Fprintf(out, "  %-36s  %s\n", ollamaTruncateName(gen, 36), emb)
+		}
+	}
+	fmt.Fprintln(out, "")
+	fmt.Fprint(out, "Accept? [Y/n] ")
+
+	scanner := bufio.NewScanner(a.In)
+	scanner.Scan()
+	answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+	if answer != "" && answer != "y" && answer != "yes" {
+		fmt.Fprintln(out, "Setup cancelled.")
+		return nil
+	}
+
+	// Apply and persist.
+	a.Config.RagDBPath = dbPath
+	a.Config.RagEmbedModel = preferred
+	a.Config.RagModelMap = proposed
+	a.Config.RagEnabled = true
+
+	if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		return fmt.Errorf("rag setup: save config: %w", err)
+	}
+
+	// Open the store now so the user can ingest immediately.
+	absDB, err := a.Workspace.AbsPath(dbPath)
+	if err != nil {
+		return err
+	}
+	store, err := NewRagStore(absDB, preferred)
+	if err != nil {
+		return fmt.Errorf("rag setup: open store: %w", err)
+	}
+	a.Rag = store
+	a.RagOn = true
+
+	fmt.Fprintln(out, "RAG configured and enabled.")
+	fmt.Fprintf(out, "Next step: run /rag ingest <file-or-directory> to populate the store.\n")
+	return nil
+}
+
+// ragIngest chunks and embeds each path into the RAG store.
+func ragIngest(a *Agent, paths []string, out io.Writer) error {
+	if a.Rag == nil {
+		fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
+		return nil
+	}
+	embedder := NewOllamaEmbedder(a.Config.OllamaURL, a.Config.RagEmbedModel)
+
+	var total int
+	for _, p := range paths {
+		absPath, err := a.Workspace.AbsPath(p)
+		if err != nil {
+			fmt.Fprintf(out, "  skip %s: %v\n", p, err)
+			continue
+		}
+		info, err := os.Stat(absPath)
+		if err != nil {
+			fmt.Fprintf(out, "  skip %s: %v\n", p, err)
+			continue
+		}
+		if info.IsDir() {
+			n, err := ragIngestDir(a.Rag, embedder, absPath, out)
+			if err != nil {
+				fmt.Fprintf(out, "  error in %s: %v\n", p, err)
+			}
+			total += n
+		} else {
+			n, err := ragIngestFile(a.Rag, embedder, absPath)
+			if err != nil {
+				fmt.Fprintf(out, "  error in %s: %v\n", p, err)
+			} else {
+				fmt.Fprintf(out, "  %s — %d chunk(s)\n", p, n)
+				total += n
+			}
+		}
+	}
+	fmt.Fprintf(out, "Ingested %d chunk(s) total.\n", total)
+	return nil
+}
+
+// ragIngestDir walks a directory and ingests all text files.
+func ragIngestDir(store *RagStore, embedder Embedder, dir string, out io.Writer) (int, error) {
+	var total int
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		switch ext {
+		case ".md", ".txt", ".go", ".ts", ".py", ".yaml", ".yml", ".toml", ".sql":
+			n, err := ragIngestFile(store, embedder, path)
+			if err != nil {
+				fmt.Fprintf(out, "  skip %s: %v\n", path, err)
+			} else {
+				fmt.Fprintf(out, "  %s — %d chunk(s)\n", path, n)
+				total += n
+			}
+		}
+		return nil
+	})
+	return total, err
+}
+
+// ragIngestFile reads a file, splits it into paragraph chunks, and ingests them.
+func ragIngestFile(store *RagStore, embedder Embedder, path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	chunks := ragChunk(string(data))
+	if len(chunks) == 0 {
+		return 0, nil
+	}
+	if err := store.Ingest(chunks, embedder); err != nil {
+		return 0, err
+	}
+	return len(chunks), nil
+}
+
+// ragChunk splits text into paragraph-sized chunks of at most ~500 characters,
+// further splitting oversized paragraphs at sentence boundaries.
+func ragChunk(text string) []string {
+	const maxChunk = 500
+
+	paragraphs := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n")
+	var chunks []string
+	for _, p := range paragraphs {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if len(p) <= maxChunk {
+			chunks = append(chunks, p)
+			continue
+		}
+		// Split long paragraphs at sentence ends.
+		sentences := strings.FieldsFunc(p, func(r rune) bool {
+			return r == '.' || r == '!' || r == '?'
+		})
+		var buf strings.Builder
+		for _, s := range sentences {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			if buf.Len()+len(s)+2 > maxChunk && buf.Len() > 0 {
+				chunks = append(chunks, buf.String())
+				buf.Reset()
+			}
+			if buf.Len() > 0 {
+				buf.WriteString(". ")
+			}
+			buf.WriteString(s)
+		}
+		if buf.Len() > 0 {
+			chunks = append(chunks, buf.String())
+		}
+	}
+	return chunks
+}
+
+// ragQuery runs a manual retrieval test against the RAG store.
+func ragQuery(a *Agent, query string, out io.Writer) error {
+	if a.Rag == nil {
+		fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
+		return nil
+	}
+	embedder := NewOllamaEmbedder(a.Config.OllamaURL, a.Config.RagEmbedModel)
+	chunks, err := a.Rag.Query(query, embedder, 5)
+	if err != nil {
+		return fmt.Errorf("rag query: %w", err)
+	}
+	if len(chunks) == 0 {
+		fmt.Fprintln(out, "No results. The store may be empty — run /rag ingest first.")
+		return nil
+	}
+	fmt.Fprintf(out, "Top %d result(s) for %q:\n\n", len(chunks), query)
+	for i, c := range chunks {
+		preview := c.Content
+		if len([]rune(preview)) > 120 {
+			preview = string([]rune(preview)[:119]) + "…"
+		}
+		fmt.Fprintf(out, "  [%d] %s\n\n", i+1, preview)
+	}
+	return nil
 }
