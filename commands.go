@@ -279,17 +279,41 @@ func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 func cmdHelp(a *Agent, args []string, out io.Writer) error {
 	if len(args) > 0 {
 		switch strings.ToLower(args[0]) {
-		case "skills", "skill":
-			fmt.Fprint(out, FmtHelp(SkillsHelpText, "", "", "", ""))
+		case "apply":
+			fmt.Fprint(out, FmtHelp(ApplyHelpText, "", "", "", ""))
+			return nil
+		case "clear":
+			fmt.Fprint(out, FmtHelp(ClearHelpText, "", "", "", ""))
+			return nil
+		case "context":
+			fmt.Fprint(out, FmtHelp(ContextHelpText, "", "", "", ""))
+			return nil
+		case "editing", "edit", "keybindings", "keys":
+			fmt.Fprint(out, FmtHelp(EditingHelpText, "", "", "", ""))
+			return nil
+		case "kb", "knowledge", "knowledge-base":
+			fmt.Fprint(out, FmtHelp(KBHelpText, "", "", "", ""))
 			return nil
 		case "ollama":
 			fmt.Fprint(out, FmtHelp(OllamaHelpText, "", "", "", ""))
 			return nil
+		case "rag":
+			fmt.Fprint(out, FmtHelp(RagHelpText, "", "", "", ""))
+			return nil
+		case "record", "recording":
+			fmt.Fprint(out, FmtHelp(RecordHelpText, "", "", "", ""))
+			return nil
 		case "routing", "route", "router":
 			fmt.Fprint(out, FmtHelp(RoutingHelpText, "", "", "", ""))
 			return nil
+		case "session", "sessions":
+			fmt.Fprint(out, FmtHelp(SessionHelpText, "", "", "", ""))
+			return nil
+		case "skills", "skill":
+			fmt.Fprint(out, FmtHelp(SkillsHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: ollama, routing, skills\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: apply, clear, context, editing, kb, ollama, rag, record, routing, session, skills\n\n", args[0])
 		}
 	}
 
@@ -351,7 +375,7 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintf(out, "Workspace: %s\n", a.Workspace.Root)
 	}
 	if a.KB != nil {
-		fmt.Fprintln(out, "KB:        open (harvey/knowledge.db)")
+		fmt.Fprintf(out, "KB:        open (%s)\n", a.KB.Path())
 	} else {
 		fmt.Fprintln(out, "KB:        not open")
 	}
@@ -2621,17 +2645,20 @@ func ragSetup(a *Agent, out io.Writer) error {
 		fmt.Fprintln(out, "No embedding models found on this Ollama server.")
 		fmt.Fprintln(out, "")
 		fmt.Fprintln(out, "Recommended options (run /ollama pull to install):")
-		fmt.Fprintln(out, "  nomic-embed-text   (~274 MB) — best general-purpose")
-		fmt.Fprintln(out, "  all-minilm         (~46 MB)  — lightweight, lower quality")
-		fmt.Fprintln(out, "  bge-m3             (~1.2 GB) — multilingual (good for SEA-LION)")
+		fmt.Fprintln(out, "  nomic-embed-text        (~274 MB) — best general-purpose retrieval")
+		fmt.Fprintln(out, "  mxbai-embed-large       (~670 MB) — high quality retrieval")
+		fmt.Fprintln(out, "  qllama/bge-small-en-v1.5 (~46 MB) — small but retrieval-optimized")
+		fmt.Fprintln(out, "  bge-m3                  (~1.2 GB) — multilingual (good for SEA-LION)")
+		fmt.Fprintln(out, "  (avoid all-minilm — it is similarity-tuned, not retrieval-tuned)")
 		fmt.Fprintln(out, "")
 		fmt.Fprintln(out, "After pulling an embedding model, run /rag setup again.")
 		return nil
 	}
 
-	// Pick preferred embedding model: nomic > mxbai > all-minilm > first available.
+	// Pick preferred embedding model in quality order; all are retrieval-optimized
+	// except all-minilm (similarity-only) which is the last resort.
 	preferred := embedModels[0]
-	for _, pref := range []string{"nomic-embed-text", "mxbai-embed-large", "all-minilm"} {
+	for _, pref := range []string{"nomic-embed-text", "mxbai-embed-large", "bge-m3", "bge-", "gte-", "e5-", "jina", "all-minilm"} {
 		for _, m := range embedModels {
 			if strings.Contains(strings.ToLower(m), pref) {
 				preferred = m
@@ -2787,7 +2814,7 @@ func ragIngestFile(store *RagStore, embedder Embedder, path string) (int, error)
 	if len(chunks) == 0 {
 		return 0, nil
 	}
-	if err := store.Ingest(chunks, embedder); err != nil {
+	if err := store.Ingest(path, chunks, embedder); err != nil {
 		return 0, err
 	}
 	return len(chunks), nil
@@ -2856,7 +2883,11 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 		if len([]rune(preview)) > 120 {
 			preview = string([]rune(preview)[:119]) + "…"
 		}
-		fmt.Fprintf(out, "  [%d] %s\n\n", i+1, preview)
+		if c.Source != "" {
+			fmt.Fprintf(out, "  [%d] score=%.3f  source=%s\n      %s\n\n", i+1, c.Score, c.Source, preview)
+		} else {
+			fmt.Fprintf(out, "  [%d] score=%.3f  %s\n\n", i+1, c.Score, preview)
+		}
 	}
 	return nil
 }

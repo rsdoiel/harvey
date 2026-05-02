@@ -331,6 +331,663 @@ Model management:
 
 `
 
+	ApplyHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+APPLY — write tagged code blocks to the workspace
+
+# SYNOPSIS
+
+/apply
+
+# DESCRIPTION
+
+/apply scans the most recent assistant reply for fenced code blocks that
+carry a file path in their opening fence line, then writes each block to
+the named path inside the workspace.
+
+Harvey auto-applies tagged blocks immediately after every assistant reply,
+so you usually do not need to run /apply manually. Use it when:
+
+  - You cancelled the auto-apply prompt and want to apply later.
+  - You resumed a session and want to apply blocks from the loaded history.
+  - You want to re-apply blocks from a previous reply after reviewing them.
+
+# TAGGED BLOCK FORMAT
+
+A code block is "tagged" when its opening fence line includes a file path.
+Two formats are recognised:
+
+~~~
+  Colon-separated (lang:path):
+    ` + "```" + `go:harvey/spinner.go
+    ... code ...
+    ` + "```" + `
+
+  Space-separated (lang path):
+    ` + "```" + `go harvey/spinner.go
+    ... code ...
+    ` + "```" + `
+~~~
+
+The language hint (go, bash, ts, …) is optional but recommended. The path
+must contain a directory separator (/) or end with a recognised extension
+(.go, .ts, .md, .sh, etc.) to be detected as a path rather than a language
+name.
+
+Blocks without a path tag are ignored by /apply.
+
+# CONFIRMATION
+
+/apply lists every tagged block with its target path and byte count, then
+asks before writing:
+
+~~~
+  Found 2 tagged block(s):
+    harvey/spinner.go (1842 bytes)
+    harvey/spinner_test.go (640 bytes)
+  Apply all? [Y/n]
+~~~
+
+Press Enter or type y to write all blocks. Type n to abort without writing
+any files.
+
+# WORKSPACE CONSTRAINT
+
+All paths are resolved relative to the workspace root (--workdir or ".").
+Paths that would escape the workspace (e.g. ../../etc/passwd) are rejected.
+
+`
+
+	ClearHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+CLEAR — reset the conversation history
+
+# SYNOPSIS
+
+/clear
+
+# DESCRIPTION
+
+/clear discards all messages in the current conversation and starts a fresh
+context window. The system prompt (HARVEY.md) is re-injected automatically
+so the model retains its role and workspace awareness.
+
+Use /clear when you want to start a new topic without restarting Harvey.
+The model has no memory of the previous conversation after /clear.
+
+# WHAT SURVIVES /CLEAR
+
+  System prompt   — re-injected from HARVEY.md automatically.
+  Pinned context  — any text set with /context add is re-injected as the
+                    first user message, keeping persistent constraints
+                    visible to the model across topic changes.
+  Recording       — an active /record session keeps running; the cleared
+                    conversation is not written to the session file.
+  RAG             — the RAG store and its on/off state are unaffected.
+  Skills          — the skill catalog remains loaded; /skill load must be
+                    re-run to activate a skill in the new context.
+
+# WHAT /CLEAR DOES NOT DO
+
+  - It does not switch models or disconnect the backend.
+  - It does not delete session files already written to disk.
+  - It does not clear the knowledge base (/kb).
+
+# SEE ALSO
+
+  /context   — manage pinned context that survives /clear
+  /summarize — condense history into a summary instead of discarding it
+
+`
+
+	EditingHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+EDITING — line editing and multi-line input
+
+# SYNOPSIS
+
+Type at the "harvey >" prompt. Use key bindings below to navigate and edit.
+For multi-line input, press Ctrl+X Ctrl+E to open an external editor.
+
+# LINE EDITING
+
+Harvey's prompt supports readline-style single-line editing.
+
+Navigation:
+
+  Left / Right arrows    move cursor one character
+  Home / Ctrl+A          jump to beginning of line
+  End  / Ctrl+E          jump to end of line
+  Up / Down arrows       cycle through prompt history
+
+Editing:
+
+  Backspace              delete character before cursor
+  Ctrl+D                 delete character under cursor; exits on empty line
+  Ctrl+K                 delete from cursor to end of line
+
+Actions:
+
+  Enter                  submit the prompt to the model
+  Ctrl+C                 cancel current input and return to prompt
+
+# MULTI-LINE INPUT WITH $EDITOR
+
+Press Ctrl+X then Ctrl+E to open the current line in your preferred editor.
+Harvey reads the environment variables in this order to find the editor:
+
+  1. $EDITOR
+  2. $VISUAL
+  3. vi  (hard fallback)
+
+Write or paste your multi-line text in the editor, then save and quit.
+Harvey reads the file on exit and submits the full contents as your prompt.
+This is the recommended approach for long prompts, pasted code, or anything
+with embedded newlines.
+
+# TIPS
+
+  - Up/Down arrows recall previous prompts, including multi-line ones
+    that were composed in $EDITOR.
+  - Ctrl+C on an empty line has no effect (Harvey does not exit on ^C).
+    Use /exit, /quit, or /bye to end the session.
+  - If $EDITOR is not set, export it in your shell profile:
+      export EDITOR=nano    # or vim, emacs, hx, micro, etc.
+
+`
+
+	SessionHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+SESSION — continue or replay recorded conversations
+
+# SYNOPSIS
+
+/session continue FILE
+/session replay   FILE [OUTPUT]
+
+# DESCRIPTION
+
+Harvey saves every conversation to a Fountain .spmd file. The /session
+command lets you reload those files in two distinct ways:
+
+  continue  — restore the conversation history and keep chatting.
+  replay    — re-send the original user turns to the current model and
+              record fresh responses.
+
+# CONTINUE
+
+/session continue FILE loads all turns from FILE into the current history
+and returns you to the REPL. The model sees the full prior conversation as
+if it had been running the whole time.
+
+Use continue to:
+
+  - Resume work across Harvey restarts.
+  - Switch to a different model and pick up mid-conversation.
+  - Inspect and then extend a session that was auto-saved.
+
+Harvey also offers to continue the most recently saved session at startup;
+pressing Enter at that prompt is equivalent to /session continue.
+
+# REPLAY
+
+/session replay FILE [OUTPUT] re-runs a session by sending each user turn
+to the currently connected model in sequence. The model's fresh responses
+are recorded to OUTPUT (default: an auto-named file in the sessions
+directory).
+
+Use replay to:
+
+  - Run an old conversation through a new or different model for comparison.
+  - Re-generate responses after changing the system prompt (HARVEY.md).
+  - Benchmark how different models handle the same sequence of prompts.
+
+Replay does not show the original assistant responses — it only shows the
+new ones produced by the current model.
+
+# SESSION FILE FORMAT
+
+Session files use the Fountain screenplay format with a .spmd extension.
+Each exchange is an INT scene with speaker labels (RSDOIEL, HARVEY, model
+name). These files are plain text and human-readable.
+
+Default save location: <workdir>/agents/sessions/
+File naming:          harvey-session-YYYYMMDD-HHMMSS.spmd
+
+# CLI FLAGS
+
+The same operations are available as startup flags:
+
+  harvey --continue FILE         load history then open REPL
+  harvey --replay FILE           replay without entering REPL
+  harvey --replay-output FILE    write replay output to FILE
+
+# SEE ALSO
+
+  /record          — start or stop session recording manually
+  harvey --help    — full CLI flag reference
+
+`
+
+	ContextHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+CONTEXT — manage pinned context that survives /clear
+
+# SYNOPSIS
+
+/context show
+/context add TEXT...
+/context clear
+
+# DESCRIPTION
+
+Pinned context is a block of text that is always present as the first user
+message after the system prompt. It survives /clear so the model keeps
+seeing it no matter how many times you reset the conversation.
+
+Use pinned context for information the model should never lose sight of:
+
+  - A project description or goal that frames every question.
+  - Key constraints ("do not modify files outside harvey/").
+  - A running summary you composed to replace a long conversation.
+  - Environment facts that are not in HARVEY.md.
+
+Pinned context is stored in memory only; it is not persisted to
+harvey/harvey.yaml or session files. It resets when Harvey exits.
+
+# SUBCOMMANDS
+
+/context show
+  Print the current pinned context and its byte count. If no context is
+  set, prints "(pinned context is empty)".
+
+/context add TEXT...
+  Append TEXT to the pinned context. Multiple words are joined with a
+  space. Calling add again appends a newline then the new text so you can
+  build up multi-line context incrementally.
+
+~~~
+  /context add This project targets Raspberry Pi OS (armv7l).
+  /context add Never use cgo; the binary must be statically linked.
+~~~
+
+/context clear
+  Remove the pinned context and delete the pinned-context message from the
+  conversation history. The model will not see it in subsequent turns.
+
+# RELATION TO /CLEAR
+
+/clear resets the conversation history but keeps pinned context. After
+/clear, the system prompt is re-injected, then the pinned context is
+re-injected as the first user message, so the model's next turn starts
+with both.
+
+# SEE ALSO
+
+  /clear       — reset conversation history (pinned context survives)
+  /summarize   — condense history; combine with /context add to preserve
+                 a summary across /clear
+
+`
+
+	KBHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+KB — knowledge base management
+
+# SYNOPSIS
+
+/kb [status]
+/kb search TERM [TERM...]
+/kb inject [PROJECT]
+/kb project <list|add NAME [DESC]|use ID>
+/kb observe [KIND] TEXT
+/kb concept <list|add NAME [DESC]>
+
+# DESCRIPTION
+
+Harvey keeps a SQLite knowledge base at <workdir>/agents/knowledge.db.
+It stores structured notes about experiments and concepts so you can
+search and inject that context into conversations without relying on
+the model's general knowledge.
+
+The knowledge base is independent of the RAG store (/help rag). KB holds
+hand-authored structured records; RAG holds embedded chunks from ingested
+documents. Use both: /kb inject to bring structured records into context,
+and RAG to retrieve relevant document passages automatically.
+
+# CONCEPTS
+
+  Project     — a named container for a body of work. One project can be
+                "active" at a time; /kb observe attaches to the active project.
+
+  Observation — a timestamped note attached to a project. Each observation
+                has a kind:
+
+                  note        — general remark
+                  finding     — empirical result
+                  decision    — a choice made and its rationale
+                  question    — open question to return to
+                  hypothesis  — testable prediction
+
+  Concept     — a named idea or term that can be referenced across multiple
+                projects and observations.
+
+# SUBCOMMANDS
+
+/kb status
+  Show the database path, project count, and observation count.
+
+/kb search TERM [TERM...]
+  Full-text search (FTS5) across all observations and concepts. Supports
+  quoted phrases and prefix wildcards:
+
+~~~
+  /kb search RAG embedding
+  /kb search "context window"
+  /kb search grpc*
+~~~
+
+/kb inject [PROJECT]
+  Format the knowledge base as Markdown and add it to the conversation
+  as a user message. With no argument, injects the active project (or all
+  projects if none is active). With a project name, injects only that project.
+
+~~~
+  /kb inject
+  /kb inject harvey
+~~~
+
+/kb project list
+  List all projects with ID, name, and status. The active project is
+  marked with *.
+
+/kb project add NAME [DESCRIPTION]
+  Create a project and set it as the active project.
+
+~~~
+  /kb project add harvey "terminal coding agent for Ollama"
+~~~
+
+/kb project use ID
+  Set an existing project as the active project by numeric ID.
+
+/kb observe [KIND] TEXT
+  Record an observation against the active project. KIND defaults to
+  "note" if omitted. Valid kinds: note, finding, decision, question,
+  hypothesis.
+
+~~~
+  /kb observe finding RAG threshold of 0.3 eliminates noise on granite3-moe
+  /kb observe decision switched embedding model to nomic-embed-text
+  /kb observe question does bge-m3 outperform nomic on code retrieval?
+~~~
+
+/kb concept list
+  List all concepts with ID and description.
+
+/kb concept add NAME [DESCRIPTION]
+  Add a named concept to the knowledge base.
+
+~~~
+  /kb concept add RAG "retrieval-augmented generation"
+  /kb concept add "context window" "token budget for a single LLM call"
+~~~
+
+# WORKFLOW EXAMPLE
+
+~~~
+  /kb project add myapp "Go CLI for processing audio files"
+  /kb observe decision using ffmpeg via exec.Command, not a Go binding
+  /kb observe finding ffmpeg probe takes ~80 ms per file on Pi 4
+  /kb observe question can we batch probe calls to reduce overhead?
+  /kb concept add ffmpeg "audio/video processing CLI"
+  /kb inject
+~~~
+
+After /kb inject the model sees the full project record as context and can
+answer questions about it, suggest next steps, or help resolve open questions.
+
+`
+
+	RecordHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+RECORD — record session exchanges to a Fountain file
+
+# SYNOPSIS
+
+/record start [FILE]
+/record stop
+/record status
+
+# DESCRIPTION
+
+/record saves each user prompt and assistant reply to a plain-text Fountain
+.spmd file as the conversation progresses. Recording is on by default: Harvey
+starts recording automatically at startup and prints "Recording to …" in the
+startup banner.
+
+Recorded files can be loaded later with /session continue (to resume) or
+/session replay (to re-run against a different model).
+
+# AUTO-RECORD
+
+Harvey records automatically unless auto-record is disabled. The session
+file is created in <workdir>/agents/sessions/ with a timestamped name:
+
+  harvey-session-YYYYMMDD-HHMMSS.spmd
+
+The path is shown in the startup banner. When you exit Harvey the banner
+confirms the file was saved:
+
+  Session saved to agents/sessions/harvey-session-20260501-143200.spmd
+
+# SUBCOMMANDS
+
+/record start [FILE]
+  Begin recording to FILE. If FILE is omitted, Harvey generates a
+  timestamped name in the sessions directory. Returns an error if a
+  recording is already active — use /record stop first.
+
+/record stop
+  Close the current recording file. The path is printed on exit.
+  Harvey continues running; only the recording ends.
+
+/record status
+  Show the path of the active recording, or report that no recording
+  is in progress.
+
+# CLI FLAGS
+
+  harvey --record             auto-record with a generated filename
+  harvey --record-file FILE   auto-record to a specific path
+
+# SEE ALSO
+
+  /session   — continue or replay a recorded session
+  /help session
+
+`
+
+	RagHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+RAG — Retrieval-Augmented Generation
+
+# SYNOPSIS
+
+/rag <setup|ingest PATH|status|query TEXT|on|off>
+
+# DESCRIPTION
+
+RAG lets Harvey find relevant snippets from a local knowledge store and
+inject them into the context window before each prompt is sent to the model.
+This grounds the model's replies in documents you have ingested, reducing
+hallucination and allowing it to answer questions about your own codebase,
+notes, and reference material without needing those files to be manually
+read into context with /read.
+
+When RAG is on, every user prompt is silently augmented with a short block
+of matching text retrieved from the store. Only chunks that score above the
+relevance threshold (0.3 cosine similarity) are injected; if nothing scores
+high enough, the prompt is sent unmodified.
+
+# EMBEDDING MODEL CHOICE
+
+RAG depends on a separate embedding model — a small neural network that
+converts text to vectors. The quality of retrieval depends heavily on the
+embedding model used. The models are ranked here from best to least suitable:
+
+  nomic-embed-text        (~274 MB) best general-purpose retrieval
+  mxbai-embed-large       (~670 MB) high quality, larger
+  bge-small-en-v1.5        (~46 MB) small but retrieval-optimised
+  bge-m3                  (~1.2 GB) multilingual
+  all-minilm-l6-v2         (~46 MB) avoid — similarity-tuned, not retrieval-tuned
+
+The critical distinction: models like all-MiniLM were trained on
+sentence-similarity tasks (NLI, STS), not on document retrieval. On standard
+retrieval benchmarks (MTEB), all-MiniLM-L6-v2 scores around 56% while
+bge-small-en-v1.5 scores around 62% and nomic-embed-text around 68%. Use a
+retrieval-optimised model whenever possible.
+
+The /rag setup wizard detects which embedding models are installed and
+proposes the best available one, preferring nomic-embed-text > mxbai-embed-large
+> bge- > all-minilm. If none are installed, setup prints a list of
+recommended models you can pull with /ollama pull.
+
+Each embedding model gets its own database (e.g. rag_nomic-embed-text.db).
+If you switch embedding models you must run /rag ingest again because
+vector spaces from different models are incompatible.
+
+# WORKFLOW
+
+~~~
+  # Step 1 — choose an embedding model (one-time)
+  /ollama pull nomic-embed-text
+
+  # Step 2 — run the setup wizard (one-time per embedding model)
+  /rag setup
+
+  # Step 3 — ingest the documents you want Harvey to retrieve from
+  /rag ingest harvey/
+  /rag ingest HARVEY.md
+  /rag ingest docs/
+
+  # Step 4 — verify retrieval quality before trusting answers
+  /rag query what license does Harvey use?
+  /rag query how does routing work?
+
+  # RAG is now on automatically — ask questions normally
+  what license does Harvey use?
+~~~
+
+# DIAGNOSING POOR RETRIEVAL
+
+Use /rag query to inspect what the store would return for a given question
+before sending it to the model. The output shows each chunk with its cosine
+similarity score (0.0–1.0) and source file:
+
+~~~
+  /rag query what license does Harvey use?
+
+  Top 5 result(s) for "what license does Harvey use?":
+
+    [1] score=0.712  source=/home/user/harvey/LICENSE
+        GNU AFFERO GENERAL PUBLIC LICENSE...
+
+    [2] score=0.431  source=/home/user/harvey/README.md
+        Harvey is licensed under AGPL-3.0...
+~~~
+
+Scores below 0.3 are dropped from the injected context. If the top scores
+are all low (< 0.3) for a question you expect the store to answer, consider:
+
+  1. Switching to a better embedding model (see Embedding Model Choice above)
+     then re-running /rag setup and /rag ingest.
+  2. Ingesting the missing documents with /rag ingest PATH.
+  3. Rephrasing the question to be closer to the language used in the docs.
+
+# SUBCOMMANDS
+
+/rag setup
+  Interactive wizard. Detects installed embedding models, proposes the best
+  one, shows the proposed generation-model → embedding-model mapping, and
+  asks for confirmation. Creates the database and saves the config to
+  agents/harvey.yaml. Re-run after installing a better embedding model.
+
+/rag ingest PATH [PATH...]
+  Reads each file or directory (recursively), splits text into
+  paragraph-sized chunks (~500 characters each), embeds them using the
+  configured embedding model, and stores the vectors in the RAG database.
+  Re-ingest any file after it changes to keep the store current.
+  Supported text formats: .md, .txt, .go, .ts, and most plain-text files.
+
+/rag query TEXT
+  Retrieves the top 5 matching chunks for TEXT and prints each one with
+  its cosine similarity score and source path. Use this to check retrieval
+  quality before trusting model responses on a topic.
+
+/rag status
+  Shows the database path, embedding model, enabled/disabled state,
+  chunk count, and the generation-model → embedding-model mapping.
+
+/rag on
+  Enable automatic context injection for the current session.
+
+/rag off
+  Disable automatic context injection for the current session.
+  The database and configuration are preserved; /rag on re-enables it.
+
+# CONFIGURATION
+
+RAG configuration is persisted in agents/harvey.yaml alongside the running
+workspace. Example:
+
+~~~yaml
+  rag:
+    db_path: agents/rag_nomic-embed-text.db
+    embedding_model: nomic-embed-text:latest
+    enabled: true
+    model_map:
+      llama3.1:latest: nomic-embed-text:latest
+      granite3.3:2b:   nomic-embed-text:latest
+~~~
+
+The model_map entry lets different generation models share the same embedding
+model. All entries are populated automatically by /rag setup.
+
+`
+
 	HelpText = `%{app_name}(1) user manual | version {version} {release_hash}
 % R. S. Doiel
 % {release_date}

@@ -139,12 +139,12 @@ type harveyYAML struct {
 	RAG          ragYAML `yaml:"rag"`
 }
 
-/** LoadHarveyYAML reads harvey/harvey.yaml from ws and applies any overrides
+/** LoadHarveyYAML reads agents/harvey.yaml from ws and applies any overrides
  * to cfg. Missing fields are left unchanged. The file is optional — its
  * absence is silently ignored.
  *
  * Parameters:
- *   ws  (*Workspace) — workspace whose harvey/ directory is searched.
+ *   ws  (*Workspace) — workspace whose agents/ directory is searched.
  *   cfg (*Config)    — config to update in place.
  *
  * Returns:

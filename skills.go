@@ -215,15 +215,11 @@ func standardSkillDirs(workDir, agentsDir string) []SkillSearchDir {
 	var dirs []SkillSearchDir
 	if home != "" {
 		dirs = append(dirs,
-			SkillSearchDir{filepath.Join(home, "harvey", "skills"), SkillSourceUser},
 			SkillSearchDir{filepath.Join(home, "agents", "skills"), SkillSourceUser},
-			SkillSearchDir{filepath.Join(home, ".agents", "skills"), SkillSourceUser},
 		)
 	}
 	dirs = append(dirs,
-		SkillSearchDir{filepath.Join(workDir, "harvey", "skills"), SkillSourceProject},
 		SkillSearchDir{filepath.Join(workDir, agentsDir, "skills"), SkillSourceProject},
-		SkillSearchDir{filepath.Join(workDir, ".agents", "skills"), SkillSourceProject},
 	)
 	return dirs
 }

@@ -92,8 +92,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
  */
 type KnowledgeBase struct {
 	db           *sql.DB
-	ftsAvailable bool // true when the FTS5 virtual table was successfully created
+	path         string // absolute path to the SQLite file
+	ftsAvailable bool   // true when the FTS5 virtual table was successfully created
 }
+
+// Path returns the absolute path of the open knowledge base file.
+func (kb *KnowledgeBase) Path() string { return kb.path }
 
 /** Project represents a single project row in the knowledge base.
  *
@@ -192,7 +196,7 @@ func OpenKnowledgeBase(ws *Workspace, customPath string) (*KnowledgeBase, error)
 		db.Close()
 		return nil, fmt.Errorf("knowledge: apply schema: %w", err)
 	}
-	kb := &KnowledgeBase{db: db}
+	kb := &KnowledgeBase{db: db, path: dbPath}
 	if _, err := db.Exec(ftsSchema); err == nil {
 		kb.ftsAvailable = true
 		_ = kb.rebuildFTSIfNeeded()

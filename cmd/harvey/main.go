@@ -32,12 +32,30 @@ func main() {
 			if i+1 < len(os.Args) && len(os.Args[i+1]) > 0 && os.Args[i+1][0] != '-' {
 				i++
 				switch os.Args[i] {
-				case "skills", "skill":
-					fmt.Print(fmtHelp(harvey.SkillsHelpText, appName, version, releaseDate, releaseHash))
+				case "apply":
+					fmt.Print(fmtHelp(harvey.ApplyHelpText, appName, version, releaseDate, releaseHash))
+				case "clear":
+					fmt.Print(fmtHelp(harvey.ClearHelpText, appName, version, releaseDate, releaseHash))
+				case "context":
+					fmt.Print(fmtHelp(harvey.ContextHelpText, appName, version, releaseDate, releaseHash))
+				case "editing", "edit", "keybindings", "keys":
+					fmt.Print(fmtHelp(harvey.EditingHelpText, appName, version, releaseDate, releaseHash))
+				case "kb", "knowledge", "knowledge-base":
+					fmt.Print(fmtHelp(harvey.KBHelpText, appName, version, releaseDate, releaseHash))
+				case "ollama":
+					fmt.Print(fmtHelp(harvey.OllamaHelpText, appName, version, releaseDate, releaseHash))
+				case "rag":
+					fmt.Print(fmtHelp(harvey.RagHelpText, appName, version, releaseDate, releaseHash))
+				case "record", "recording":
+					fmt.Print(fmtHelp(harvey.RecordHelpText, appName, version, releaseDate, releaseHash))
 				case "routing", "route":
 					fmt.Print(fmtHelp(harvey.RoutingHelpText, appName, version, releaseDate, releaseHash))
+				case "session", "sessions":
+					fmt.Print(fmtHelp(harvey.SessionHelpText, appName, version, releaseDate, releaseHash))
+				case "skills", "skill":
+					fmt.Print(fmtHelp(harvey.SkillsHelpText, appName, version, releaseDate, releaseHash))
 				default:
-					fmt.Fprintf(os.Stderr, "Unknown help topic %q. Available topics: skills, routing\n", os.Args[i])
+					fmt.Fprintf(os.Stderr, "Unknown help topic %q. Available topics: apply, clear, context, editing, kb, ollama, rag, record, routing, session, skills\n", os.Args[i])
 					os.Exit(1)
 				}
 			} else {

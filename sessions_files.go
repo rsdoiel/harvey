@@ -33,7 +33,7 @@ type SessionFileInfo struct {
  *   error             — on read failure (not on missing dir).
  *
  * Example:
- *   files, err := ListSessionFiles("harvey/sessions")
+ *   files, err := ListSessionFiles("agents/sessions")
  *   for _, f := range files {
  *       fmt.Printf("%s  %s\n", f.ModTime.Format("2006-01-02 15:04"), f.Name)
  *   }
@@ -84,7 +84,7 @@ func ListSessionFiles(dir string) ([]SessionFileInfo, error) {
  *   error  — on parse failure.
  *
  * Example:
- *   model, err := ExtractModelFromSession("harvey/sessions/session.spmd")
+ *   model, err := ExtractModelFromSession("agents/sessions/session.spmd")
  *   // model == "GEMMA4"
  */
 func ExtractModelFromSession(path string) (string, error) {

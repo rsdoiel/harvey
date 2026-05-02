@@ -523,7 +523,7 @@ func (a *Agent) initKnowledgeBase(out io.Writer) {
 		return
 	}
 	a.KB = kb
-	fmt.Fprintln(out, green("✓")+" Knowledge base: harvey/knowledge.db")
+	fmt.Fprintf(out, green("✓")+" Knowledge base: %s\n", kb.Path())
 }
 
 // initModelCache opens (or creates) the SQLite model capability cache. Failures
@@ -535,7 +535,7 @@ func (a *Agent) initModelCache(out io.Writer) {
 		return
 	}
 	a.ModelCache = mc
-	fmt.Fprintln(out, green("✓")+" Model cache: harvey/model_cache.db")
+	fmt.Fprintf(out, green("✓")+" Model cache: %s\n", mc.Path())
 }
 
 // initRag opens the RAG store when a db_path is configured in harvey.yaml.
@@ -810,6 +810,11 @@ func askYesNo(reader *bufio.Reader, out io.Writer, prompt string, defaultYes boo
 // Returns the original prompt unchanged when RAG is off, unconfigured, or
 // when no chunks are retrieved. Errors are silently swallowed so a RAG
 // failure never blocks the chat turn.
+// ragMinScore is the minimum cosine similarity a chunk must have to be injected
+// as context. Chunks scoring below this threshold are discarded so that irrelevant
+// results don't waste the limited context window of small models.
+const ragMinScore = 0.3
+
 func (a *Agent) ragAugment(prompt string) string {
 	if !a.RagOn || a.Rag == nil || a.Config.RagEmbedModel == "" {
 		return prompt
@@ -829,10 +834,26 @@ func (a *Agent) ragAugment(prompt string) string {
 		return prompt
 	}
 
+	// Discard chunks below the relevance threshold; they confuse small models
+	// and waste context tokens without adding useful information.
+	var relevant []Chunk
+	for _, c := range chunks {
+		if c.Score >= ragMinScore {
+			relevant = append(relevant, c)
+		}
+	}
+	if len(relevant) == 0 {
+		return prompt
+	}
+
 	var sb strings.Builder
 	sb.WriteString("### Context (from knowledge base)\n\n")
-	for i, c := range chunks {
-		fmt.Fprintf(&sb, "[%d] %s\n\n", i+1, c.Content)
+	for i, c := range relevant {
+		if c.Source != "" {
+			fmt.Fprintf(&sb, "[%d] (source: %s)\n%s\n\n", i+1, c.Source, c.Content)
+		} else {
+			fmt.Fprintf(&sb, "[%d] %s\n\n", i+1, c.Content)
+		}
 	}
 	sb.WriteString("---\n\n")
 	sb.WriteString(prompt)

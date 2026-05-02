@@ -43,16 +43,20 @@ type RagStore struct {
 /** Chunk is a retrieved text chunk returned by RagStore.Query.
  *
  * Fields:
- *   ID      (int64)  — row ID in the chunks table.
- *   Content (string) — the original ingested text.
+ *   ID      (int64)   — row ID in the chunks table.
+ *   Content (string)  — the original ingested text.
+ *   Score   (float64) — cosine similarity score [0,1]; 0 when not from Query.
+ *   Source  (string)  — source file path set at ingest time; empty when unknown.
  *
  * Example:
  *   chunks, _ := store.Query("sky colour", embedder, 3)
- *   for _, c := range chunks { fmt.Println(c.Content) }
+ *   for _, c := range chunks { fmt.Printf("[%.2f] %s\n", c.Score, c.Content) }
  */
 type Chunk struct {
 	ID      int64
 	Content string
+	Score   float64
+	Source  string
 }
 
 /** NewRagStore opens (or creates) the RAG SQLite database at dbPath and
@@ -87,12 +91,17 @@ func NewRagStore(dbPath, embeddingModel string) (*RagStore, error) {
 	CREATE TABLE IF NOT EXISTS chunks (
 	    id        INTEGER PRIMARY KEY,
 	    content   TEXT NOT NULL,
-	    embedding BLOB NOT NULL
+	    embedding BLOB NOT NULL,
+	    source    TEXT NOT NULL DEFAULT ''
 	);`
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, err
 	}
+
+	// Migration: add source column to databases created before it was introduced.
+	// SQLite returns "duplicate column name" if the column already exists; ignore that.
+	_, _ = db.Exec(`ALTER TABLE chunks ADD COLUMN source TEXT NOT NULL DEFAULT ''`)
 
 	return &RagStore{db: db, embeddingModel: embeddingModel}, nil
 }
@@ -102,6 +111,8 @@ func NewRagStore(dbPath, embeddingModel string) (*RagStore, error) {
  * does not match the store's embedding model.
  *
  * Parameters:
+ *   source   (string)   — file path or identifier recorded alongside each chunk;
+ *                         pass "" when the source is not known.
  *   texts    ([]string) — text strings to embed and store.
  *   embedder (Embedder) — must satisfy embedder.Name() == store's model name.
  *
@@ -109,9 +120,9 @@ func NewRagStore(dbPath, embeddingModel string) (*RagStore, error) {
  *   error — on model mismatch, embedding failure, or database write failure.
  *
  * Example:
- *   err := store.Ingest([]string{"The sky is blue"}, embedder)
+ *   err := store.Ingest("harvey/README.md", []string{"The sky is blue"}, embedder)
  */
-func (r *RagStore) Ingest(texts []string, embedder Embedder) error {
+func (r *RagStore) Ingest(source string, texts []string, embedder Embedder) error {
 	if embedder.Name() != r.embeddingModel {
 		return errors.New("embedding model mismatch")
 	}
@@ -122,7 +133,7 @@ func (r *RagStore) Ingest(texts []string, embedder Embedder) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("INSERT INTO chunks(content, embedding) VALUES (?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO chunks(content, embedding, source) VALUES (?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -137,7 +148,7 @@ func (r *RagStore) Ingest(texts []string, embedder Embedder) error {
 		if err != nil {
 			return err
 		}
-		if _, err = stmt.Exec(text, blob); err != nil {
+		if _, err = stmt.Exec(text, blob, source); err != nil {
 			return err
 		}
 	}
@@ -171,7 +182,7 @@ func (r *RagStore) Query(query string, embedder Embedder, topK int) ([]Chunk, er
 		return nil, err
 	}
 
-	rows, err := r.db.Query("SELECT id, content, embedding FROM chunks")
+	rows, err := r.db.Query("SELECT id, content, embedding, source FROM chunks")
 	if err != nil {
 		return nil, err
 	}
@@ -185,9 +196,9 @@ func (r *RagStore) Query(query string, embedder Embedder, topK int) ([]Chunk, er
 	var results []scored
 	for rows.Next() {
 		var id int64
-		var content string
+		var content, source string
 		var blob []byte
-		if err := rows.Scan(&id, &content, &blob); err != nil {
+		if err := rows.Scan(&id, &content, &blob, &source); err != nil {
 			return nil, err
 		}
 		vec, err := deserialize(blob)
@@ -195,7 +206,7 @@ func (r *RagStore) Query(query string, embedder Embedder, topK int) ([]Chunk, er
 			return nil, err
 		}
 		results = append(results, scored{
-			chunk: Chunk{ID: id, Content: content},
+			chunk: Chunk{ID: id, Content: content, Source: source},
 			score: cosineSimilarity(queryVec, vec),
 		})
 	}
@@ -214,6 +225,7 @@ func (r *RagStore) Query(query string, embedder Embedder, topK int) ([]Chunk, er
 	out := make([]Chunk, topK)
 	for i := range out {
 		out[i] = results[i].chunk
+		out[i].Score = results[i].score
 	}
 	return out, nil
 }

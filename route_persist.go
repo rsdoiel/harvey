@@ -18,7 +18,7 @@ type routeConfigFile struct {
 // routeConfigPath returns the path to the persisted route config file.
 func routeConfigPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "harvey", "routes.json")
+	return filepath.Join(home, "agents", "routes.json")
 }
 
 /** LoadRouteConfig reads ~/harvey/routes.json and populates cfg.Routes and

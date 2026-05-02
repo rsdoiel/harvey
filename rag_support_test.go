@@ -66,7 +66,7 @@ func TestIngestAndQuery(t *testing.T) {
 		},
 	}
 
-	err = store.Ingest([]string{
+	err = store.Ingest("", []string{
 		"The sky is blue",
 		"The sun is bright",
 		"Go is a programming language",
@@ -87,10 +87,50 @@ func TestIngestAndQuery(t *testing.T) {
 	for _, r := range results {
 		if r.Content == "The sky is blue" {
 			found = true
+			if r.Score <= 0 {
+				t.Errorf("expected positive Score for top result, got %f", r.Score)
+			}
 		}
 	}
 	if !found {
 		t.Errorf("expected 'The sky is blue' in top-2 results; got: %v", results)
+	}
+}
+
+// TestIngestWithSource verifies that the source path round-trips through Ingest and Query.
+func TestIngestWithSource(t *testing.T) {
+	dbPath := "test_rag_source.db"
+	defer os.Remove(dbPath)
+
+	store, err := NewRagStore(dbPath, "semantic-mock")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	embedder := &precomputedEmbedder{
+		name: "semantic-mock",
+		vectors: map[string][]float64{
+			"Harvey is licensed under AGPL-3.0": {1.0, 0.0, 0.0, 0.0},
+			"license query":                     {0.9, 0.1, 0.0, 0.0},
+		},
+	}
+
+	if err := store.Ingest("harvey/LICENSE", []string{"Harvey is licensed under AGPL-3.0"}, embedder); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := store.Query("license query", embedder, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected a result")
+	}
+	if results[0].Source != "harvey/LICENSE" {
+		t.Errorf("Source = %q, want %q", results[0].Source, "harvey/LICENSE")
+	}
+	if results[0].Score <= 0 {
+		t.Errorf("expected positive Score, got %f", results[0].Score)
 	}
 }
 
@@ -116,7 +156,7 @@ func TestSemanticRanking(t *testing.T) {
 		},
 	}
 
-	err = store.Ingest([]string{
+	err = store.Ingest("", []string{
 		"The sky is blue",
 		"The sun is bright",
 		"Go is a programming language",
@@ -153,12 +193,12 @@ func TestEmbeddingMismatch(t *testing.T) {
 	embedA := &mockEmbedder{name: "embed-A"}
 	embedB := &mockEmbedder{name: "embed-B"}
 
-	err := store.Ingest([]string{"hello world"}, embedB)
+	err := store.Ingest("", []string{"hello world"}, embedB)
 	if err == nil {
 		t.Error("expected mismatch error when ingesting with wrong embedder")
 	}
 
-	err = store.Ingest([]string{"hello world"}, embedA)
+	err = store.Ingest("", []string{"hello world"}, embedA)
 	if err != nil {
 		t.Fatal(err)
 	}

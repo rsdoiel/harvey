@@ -589,7 +589,7 @@ func TestCmdSkill_unknownSubcommand(t *testing.T) {
 
 func TestLoadSkills_injectsIntoSystemPrompt(t *testing.T) {
 	dir := t.TempDir()
-	skillsDir := filepath.Join(dir, "harvey", "skills")
+	skillsDir := filepath.Join(dir, "agents", "skills")
 	writeSkillFile(t, skillsDir, "test-skill",
 		"---\nname: test-skill\ndescription: A test skill for unit testing.\n---\n\n# Test\n\nInstructions here.\n")
 
@@ -644,7 +644,7 @@ func TestLoadSkills_noSkillsIsSilent(t *testing.T) {
 
 func TestLoadSkills_createsSystemMessageWhenNone(t *testing.T) {
 	dir := t.TempDir()
-	skillsDir := filepath.Join(dir, "harvey", "skills")
+	skillsDir := filepath.Join(dir, "agents", "skills")
 	writeSkillFile(t, skillsDir, "bare-skill",
 		"---\nname: bare-skill\ndescription: Skill with no prior system prompt.\n---\n")
 

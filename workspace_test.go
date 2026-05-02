@@ -16,8 +16,8 @@ func TestWorkspaceNewWorkspace(t *testing.T) {
 		t.Fatal("Root is empty")
 	}
 	// harvey/ sub-directory must be created.
-	if _, err := os.Stat(filepath.Join(ws.Root, "harvey")); err != nil {
-		t.Errorf("harvey dir not created: %v", err)
+	if _, err := os.Stat(filepath.Join(ws.Root, "agents")); err != nil {
+		t.Errorf("agents dir not created: %v", err)
 	}
 }
 

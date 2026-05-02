@@ -63,16 +63,16 @@ func NewWorkspace(dir string) (*Workspace, error) {
 }
 
 // harveySubdir is the name of Harvey's internal state directory inside Root.
-const harveySubdir = "harvey"
+const harveySubdir = "agents"
 
 /** HarveyDir returns the absolute path of Harvey's internal state directory
  * (harvey/) inside the workspace root.
  *
  * Returns:
- *   string — absolute path to <Root>/harvey/
+ *   string — absolute path to <Root>/agents/
  *
  * Example:
- *   fmt.Println(ws.HarveyDir()) // "/home/user/myproject/harvey"
+ *   fmt.Println(ws.HarveyDir()) // "/home/user/myproject/agents"
  */
 func (ws *Workspace) HarveyDir() string {
 	return filepath.Join(ws.Root, harveySubdir)
