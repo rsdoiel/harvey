@@ -1,5 +1,5 @@
 #!/bin/bash
-# generated with CMTools 0.0.0 
+# generated with CMTools 0.0.1b d312e98
 
 #
 # Release script for harvey on GitHub using gh cli.
