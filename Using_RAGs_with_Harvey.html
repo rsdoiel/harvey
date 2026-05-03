@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="a-workflow-for-putting-together-rags">A workflow for putting
+together rags</h1>
+<p>Harvey has support for project orient retrieval augmented
+generalization or RAG. The question then how do you set that up?</p>
+<p>What I’ve been doing is creating a training materials directory then
+storing markdown documents with the information I want considered. It’s
+a little less obvious when the information you want to include is on a
+webpage. Many web sites today have the nasty practice of delivering data
+blobs that JavaScript or WASM used to assemble the page browser side.
+With the on slot of AI bots I expect this web anti pattern to get worse
+rather than better. Instead what I’ve found that works well is using
+Firefox save page as feature. One of the save formats is text files.
+This produces plain text which makes it easier to tokenize when
+ingesting material for the RAG. It’s does take some clicking but I found
+it easier then selecting the text and doing a cut and paste with and
+editor.</p>
+<h2 id="why-is-a-simple-workflow-important">Why is a simple workflow
+important?</h2>
+<p>Balancing the size of the knowledge base and the embeddings is
+important on a small machine like a Pi. The RAG helps make the models
+supporting embeddings feel more complete by yeilding better results when
+recent domain knowledge is available. Take the combo of Deno+TypeScript.
+Most coding models have some exposure to both but Deno has been a fast
+moving target with regular release and improving ergonomics. Taking
+advantage of those changes through prompts is challenging. With a RAG
+documenting the new featuresbl you get better results sooner with less
+prompt churn.</p>
+<h2 id="why-not-just-throw-everything-in-a-single-knowledge-base">Why
+not just throw everything in a single knowledge base?</h2>
+<p>Computers have limits on memory and speed of disk storage access.
+Little computers like a Pi more so. Part of the motivation around Harvey
+is presenting a rich language model environment while staying
+constrained to the resources provided by little computers. Working with
+limitations of the little machine has in my practice let me focus on
+what is relevant to a specific project. I can capture the interaction
+with the language model with Harvey session files, I can capture the
+additional material too in the trading natural. The allows for insight
+into how the code assisted project evolved by providing auditable
+documentation in the process.</p>
+<h2 id="a-coding-project-general-setup">A coding project general
+setup</h2>
+<p>When Harvey helps with a project I first attempt to narrow down the
+model or models I will use. I then collect the domain materials I want
+Harvey to have available. When I startup Harvey I select the model then
+set up a RAG. That’s followed by ingesting the training materials. At
+that point I am ready to assign tasks to Harvey. When Harvey is done the
+fountain session file is be able when I start up Harvey again. If there
+is a discovery during the season then the session file can be ingested
+too.</p>
+<p>One feature in Harvey’s knowledge base implementation is that you can
+search the knowledge base directly. The RAG ingest populates the
+knowledge as it tokenizesbthe embeddings for the language model.</p>
+</section>
+</body>
+</html>
