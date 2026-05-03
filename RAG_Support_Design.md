@@ -1,4 +1,9 @@
-Below is a **clean planning document (Markdown)** you can reuse with another model. It summarizes the architecture decisions, tradeoffs, and provides a concrete Go module design (using `package harvey` as requested).
+**Status (2026-05-02):** Implemented with named-store registry. See ARCHITECTURE.md
+for the current design. The planning decisions below were adopted; the main
+evolution beyond this document is multi-store support (`RagStoreEntry` registry,
+`/rag new NAME`, `/rag switch NAME`, `/rag drop NAME`) so different knowledge
+domains (golang, writing, research, etc.) can coexist as separate SQLite files
+while only the active one is held open in memory.
 
 ***
 

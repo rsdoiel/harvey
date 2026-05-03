@@ -412,9 +412,9 @@ func (a *Agent) Run(out io.Writer) error {
 		a.AddMessage("user", augmented)
 
 		// Token-count warning — runs only when the backend is Ollama.
-		if oc, ok := a.Client.(*OllamaClient); ok {
+		if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
 			histText := HistoryText(a.History)
-			n, exact := CountTokens(context.Background(), oc.baseURL, oc.model, histText)
+			n, exact := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), histText)
 			limit := a.Config.OllamaContextLength
 			qualifier := "~"
 			if exact {
@@ -538,18 +538,19 @@ func (a *Agent) initModelCache(out io.Writer) {
 	fmt.Fprintf(out, green("✓")+" Model cache: %s\n", mc.Path())
 }
 
-// initRag opens the RAG store when a db_path is configured in harvey.yaml.
+// initRag opens the active RAG store when one is configured in harvey.yaml.
 // Failures are non-fatal. RagOn is set to match cfg.RagEnabled.
 func (a *Agent) initRag(out io.Writer) {
-	if a.Config.RagDBPath == "" {
+	entry := a.Config.ActiveRagStore()
+	if entry == nil {
 		return
 	}
-	dbPath, err := a.Workspace.AbsPath(a.Config.RagDBPath)
+	dbPath, err := a.Workspace.AbsPath(entry.DBPath)
 	if err != nil {
 		fmt.Fprintf(out, yellow("  ✗")+" RAG store unavailable: %v\n", err)
 		return
 	}
-	store, err := NewRagStore(dbPath, a.Config.RagEmbedModel)
+	store, err := NewRagStore(dbPath, entry.EmbeddingModel)
 	if err != nil {
 		fmt.Fprintf(out, yellow("  ✗")+" RAG store unavailable: %v\n", err)
 		return
@@ -560,7 +561,7 @@ func (a *Agent) initRag(out io.Writer) {
 	if a.RagOn {
 		status = "on"
 	}
-	fmt.Fprintf(out, green("✓")+" RAG store: %s [%s]\n", a.Config.RagDBPath, status)
+	fmt.Fprintf(out, green("✓")+" RAG store: %s (%s) [%s]\n", entry.Name, entry.DBPath, status)
 }
 
 /** selectBackend runs the interactive startup sequence to choose a backend.
@@ -604,19 +605,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 	}
 
 	fmt.Fprintln(out)
-	if askYesNo(reader, out, "    Use publicai.co instead? [Y/n] ", true) {
-		if a.Config.PublicAIKey == "" {
-			fmt.Fprintln(out, yellow("  ✗")+" PUBLICAI_API_KEY is not set.")
-			fmt.Fprintln(out, dim("  Set PUBLICAI_API_KEY, then use /route add cloud publicai.co:// to register it."))
-		} else {
-			a.Client = NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, a.Config.PublicAIModel)
-			fmt.Fprintf(out, green("  ✓")+" Connected to publicai.co (%s)\n", a.Config.PublicAIModel)
-		}
-		return nil
-	}
-
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, dim("  No backend selected. Use /ollama start or /route add cloud publicai.co:// once inside."))
+	fmt.Fprintln(out, dim("  No backend selected. Use /ollama start once inside."))
 	return nil
 }
 
@@ -640,12 +629,12 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredModel string) error {
 	// Command-line --model flag always wins.
 	if a.Config.OllamaModel != "" {
-		a.Client = NewOllamaClient(a.Config.OllamaURL, a.Config.OllamaModel)
+		a.Client = newOllamaLLMClient(a.Config.OllamaURL, a.Config.OllamaModel)
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.OllamaModel))
 		return nil
 	}
 
-	models, err := NewOllamaClient(a.Config.OllamaURL, "").Models(context.Background())
+	models, err := newOllamaLLMClient(a.Config.OllamaURL, "").Models(context.Background())
 	if err != nil || len(models) == 0 {
 		fmt.Fprintln(out, yellow("  ✗")+" No models installed. Run: ollama pull <model>")
 		return nil
@@ -654,7 +643,7 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 	// If only one model is available, use it regardless of preference.
 	if len(models) == 1 {
 		a.Config.OllamaModel = models[0]
-		a.Client = NewOllamaClient(a.Config.OllamaURL, models[0])
+		a.Client = newOllamaLLMClient(a.Config.OllamaURL, models[0])
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(models[0]))
 		return nil
 	}
@@ -665,7 +654,7 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 			if strings.EqualFold(extractModelName(m), preferredModel) ||
 				strings.EqualFold(m, preferredModel) {
 				a.Config.OllamaModel = m
-				a.Client = NewOllamaClient(a.Config.OllamaURL, m)
+				a.Client = newOllamaLLMClient(a.Config.OllamaURL, m)
 				fmt.Fprintf(out, "  Using model: %s %s\n", cyan(m), dim("(from session)"))
 				return nil
 			}
@@ -688,7 +677,7 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 	}
 
 	a.Config.OllamaModel = chosen
-	a.Client = NewOllamaClient(a.Config.OllamaURL, chosen)
+	a.Client = newOllamaLLMClient(a.Config.OllamaURL, chosen)
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen))
 	return nil
 }
@@ -816,14 +805,18 @@ func askYesNo(reader *bufio.Reader, out io.Writer, prompt string, defaultYes boo
 const ragMinScore = 0.3
 
 func (a *Agent) ragAugment(prompt string) string {
-	if !a.RagOn || a.Rag == nil || a.Config.RagEmbedModel == "" {
+	if !a.RagOn || a.Rag == nil {
+		return prompt
+	}
+	entry := a.Config.ActiveRagStore()
+	if entry == nil || entry.EmbeddingModel == "" {
 		return prompt
 	}
 
 	// Resolve embedding model for the current generation model.
-	embedModel := a.Config.RagEmbedModel
-	if a.Config.RagModelMap != nil {
-		if mapped, ok := a.Config.RagModelMap[a.Config.OllamaModel]; ok && mapped != "" {
+	embedModel := entry.EmbeddingModel
+	if entry.ModelMap != nil {
+		if mapped, ok := entry.ModelMap[a.Config.OllamaModel]; ok && mapped != "" {
 			embedModel = mapped
 		}
 	}

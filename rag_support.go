@@ -278,3 +278,33 @@ func deserialize(data []byte) ([]float64, error) {
 	}
 	return vec, nil
 }
+
+/** Count returns the total number of chunks stored in the database.
+ *
+ * Returns:
+ *   int64 — total chunk count.
+ *   error — on database failure.
+ *
+ * Example:
+ *   n, _ := store.Count()
+ *   fmt.Printf("store has %d chunks\n", n)
+ */
+func (r *RagStore) Count() (int64, error) {
+	var n int64
+	err := r.db.QueryRow("SELECT COUNT(*) FROM chunks").Scan(&n)
+	return n, err
+}
+
+/** Close releases the database connection held by the RagStore.
+ *
+ * Returns:
+ *   error — if the database cannot be closed cleanly.
+ *
+ * Example:
+ *   if err := store.Close(); err != nil {
+ *       log.Println("rag store close:", err)
+ *   }
+ */
+func (r *RagStore) Close() error {
+	return r.db.Close()
+}

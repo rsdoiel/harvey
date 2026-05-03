@@ -313,6 +313,74 @@ stream; `ChatStats` carries only `Elapsed`.
 
 ---
 
+## RAG — Retrieval-Augmented Generation (`rag_support.go`)
+
+RAG augments each user prompt with relevant chunks retrieved from a local
+SQLite store before the prompt is sent to the generation model. The key
+types are:
+
+| Type | Purpose |
+|---|---|
+| `Embedder` | Interface: `Embed(text) ([]float64, error)` + `Name() string` |
+| `RagStore` | SQLite-backed chunk store; enforces single-embedder consistency |
+| `Chunk` | Retrieved result: ID, Content, Score, Source |
+| `RagStoreEntry` | Registry entry: Name, DBPath, EmbeddingModel, ModelMap |
+
+**Embedding model binding.** Each `RagStore` is created with an explicit
+embedding model name. `Ingest` and `Query` both reject an `Embedder` whose
+`Name()` differs from the stored model — mixing vector spaces from different
+models would produce meaningless similarity scores.
+
+**Named store registry.** `Config` holds a `[]RagStoreEntry` registry and a
+`RagActive` string naming the currently selected store. Only the active store
+is opened at runtime; all others remain dormant on disk. Helpers:
+
+- `Config.ActiveRagStore()` — returns the active entry or nil.
+- `Config.RagStoreByName(name)` — lookup by name.
+- `Config.AddOrUpdateRagStore(e)` — upsert into the registry.
+- `Config.RemoveRagStore(name)` — remove from the registry.
+
+**YAML persistence.** `SaveRAGConfig` writes new multi-store format:
+
+```yaml
+rag:
+  enabled: true
+  active: golang
+  stores:
+    - name: golang
+      db_path: agents/rag/golang.db
+      embedding_model: nomic-embed-text
+```
+
+Old single-store format (`db_path` / `embedding_model` at the top of `rag:`)
+is read and automatically migrated to a store named `"default"` on load.
+
+**Retrieval flow.** `Agent.ragAugment(prompt)` is called before every `Chat`
+invocation when `RagOn` is true. It looks up the active store's embedding
+model (resolving via `ModelMap` when the current generation model has a
+specific override), queries the top 5 chunks, discards any below the
+`ragMinScore` threshold (0.3 cosine similarity), and prepends a
+`### Context (from knowledge base)` block to the prompt. The original prompt
+is returned unchanged if RAG is off, the store is nil, or no chunks exceed
+the threshold.
+
+**Database layout.** One table per store:
+
+```sql
+CREATE TABLE chunks (
+    id        INTEGER PRIMARY KEY,
+    content   TEXT    NOT NULL,
+    embedding BLOB    NOT NULL,
+    source    TEXT    NOT NULL DEFAULT ''
+);
+```
+
+Embeddings are stored as `[int32 length][float64...]` in little-endian byte
+order. Cosine similarity is computed in Go at query time (no vector extension
+required in SQLite).
+
+---
+
 ## Test coverage
 
 Tests live alongside source in six files:
@@ -327,6 +395,7 @@ Tests live alongside source in six files:
 | `commands_test.go` | `extractCodeBlock`, `/read`, `/write`, `/run` |
 | `tier2_test.go` | Helpers (`isBinary`, `looksLikePath`, `findTaggedBlocks`), `/search`, `/git`, `/apply` |
 | `tier3_test.go` | Mock client, `/summarize`, `/context`, `ExpandDynamicSections` |
+| `rag_support_test.go` | `RagStore` ingest, query, source round-trip, semantic ranking, mismatch rejection |
 
 The `mockLLMClient` in `tier3_test.go` satisfies the `LLMClient` interface with
 a configurable reply string and optional error, making it available for any

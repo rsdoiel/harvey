@@ -16,7 +16,8 @@ type RouteKind string
 
 const (
 	KindOllama   RouteKind = "ollama"
-	KindPublicAI RouteKind = "publicai"
+	KindLlamafile RouteKind = "llamafile"
+	KindLlamaCpp  RouteKind = "llamacpp"
 )
 
 /** RouteEndpoint is a named remote LLM endpoint registered for @mention dispatch.
@@ -25,7 +26,7 @@ const (
  *   Name  (string)    — identifier used in @mention syntax (e.g. "pi2").
  *   URL   (string)    — endpoint URL; use "ollama://host:port" or "publicai.co://".
  *   Model (string)    — default model on this endpoint; empty falls back to Config defaults.
- *   Kind  (RouteKind) — KindOllama or KindPublicAI.
+ *   Kind  (RouteKind) — KindOllama, KindLlamafile, KindLlamaCpp, etc.
  *
  * Example:
  *   ep := RouteEndpoint{Name: "pi2", URL: "ollama://192.168.1.12:11434", Model: "llama3.1:8b", Kind: KindOllama}
@@ -169,7 +170,7 @@ func recentHistory(history []Message, n int) []Message {
  *   ep      (*RouteEndpoint)  — registered endpoint to send to.
  *   history ([]Message)       — full local conversation history.
  *   prompt  (string)          — current user prompt (already stripped of @mention).
- *   cfg     (*Config)         — used to resolve PublicAI credentials and defaults.
+ *   cfg     (*Config)         — used to resolve model defaults.
  *   out     (io.Writer)       — destination for streamed reply tokens.
  *
  * Returns:
@@ -204,13 +205,7 @@ func clientForEndpoint(ep *RouteEndpoint, cfg *Config) (LLMClient, error) {
 		if model == "" {
 			model = cfg.OllamaModel
 		}
-		return NewOllamaClient(ollamaBaseURL(ep.URL), model), nil
-	case KindPublicAI:
-		model := ep.Model
-		if model == "" {
-			model = cfg.PublicAIModel
-		}
-		return NewPublicAIClient(cfg.PublicAIURL, cfg.PublicAIKey, model), nil
+		return newOllamaLLMClient(ollamaBaseURL(ep.URL), model), nil
 	default:
 		return nil, fmt.Errorf("route %s: unknown endpoint kind %q", ep.Name, ep.Kind)
 	}

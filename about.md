@@ -11,24 +11,24 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.1a
+version: 0.0.1b
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go &gt;&#x3D; 1.26.2
 
 
-
+date_released: 2026-05-02
 ---
 
 About this software
 ===================
 
-## harvey 0.0.1a
+## harvey 0.0.1b
 
 Proof of concept.
 
-— harvey directory, session overhaul, keyboard shortcuts, KB search & inject
+- harvey directory, session overhaul, keyboard shortcuts, KB search & inject
 - Renamed state directory from .harvey/ to harvey/ (workspace-local and ~/harvey/ globally)
 - Dropped SQLite sessions.db in favour of Fountain/SPMD session files; sessions now live in harvey/sessions/ and persist as .spmd recordings automatically on every run
 - Session resume prompt now appears before Ollama model selection (default: No); selecting a prior session pre-selects the model recorded in that file
@@ -39,6 +39,8 @@ Proof of concept.
 - Added /kb inject [PROJECT-NAME]: formats knowledge base content as Markdown and adds it to the conversation context so the LLM can reason about it
 - Added keyboard-shortcuts section to getting_started.md and LINE EDITING section to --help / man page
 - Added RAG support and enhance metadata handling for the models pull from ollama
+- Switch from custom LLMClient to Mozilla's any-llm-go.
+- Dropped support for publicai.co's API (couldn't access it for testing)
 
 ### Authors
 

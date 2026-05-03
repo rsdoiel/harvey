@@ -9,6 +9,7 @@
 *.zip
 *.base64.*
 .harvey
+agents
 bin
 testout
 dist

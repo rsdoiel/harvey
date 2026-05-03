@@ -588,6 +588,96 @@ need one (<code>/summarize</code>, chat turns) print a prompt to connect
 first.</li>
 </ol>
 <hr />
+<h2 id="rag-retrieval-augmented-generation-rag_support.go">RAG —
+Retrieval-Augmented Generation (<code>rag_support.go</code>)</h2>
+<p>RAG augments each user prompt with relevant chunks retrieved from a
+local SQLite store before the prompt is sent to the generation model.
+The key types are:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Embedder</code></td>
+<td>Interface: <code>Embed(text) ([]float64, error)</code> +
+<code>Name() string</code></td>
+</tr>
+<tr>
+<td><code>RagStore</code></td>
+<td>SQLite-backed chunk store; enforces single-embedder consistency</td>
+</tr>
+<tr>
+<td><code>Chunk</code></td>
+<td>Retrieved result: ID, Content, Score, Source</td>
+</tr>
+<tr>
+<td><code>RagStoreEntry</code></td>
+<td>Registry entry: Name, DBPath, EmbeddingModel, ModelMap</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Embedding model binding.</strong> Each <code>RagStore</code>
+is created with an explicit embedding model name. <code>Ingest</code>
+and <code>Query</code> both reject an <code>Embedder</code> whose
+<code>Name()</code> differs from the stored model — mixing vector spaces
+from different models would produce meaningless similarity scores.</p>
+<p><strong>Named store registry.</strong> <code>Config</code> holds a
+<code>[]RagStoreEntry</code> registry and a <code>RagActive</code>
+string naming the currently selected store. Only the active store is
+opened at runtime; all others remain dormant on disk. Helpers:</p>
+<ul>
+<li><code>Config.ActiveRagStore()</code> — returns the active entry or
+nil.</li>
+<li><code>Config.RagStoreByName(name)</code> — lookup by name.</li>
+<li><code>Config.AddOrUpdateRagStore(e)</code> — upsert into the
+registry.</li>
+<li><code>Config.RemoveRagStore(name)</code> — remove from the
+registry.</li>
+</ul>
+<p><strong>YAML persistence.</strong> <code>SaveRAGConfig</code> writes
+new multi-store format:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rag</span><span class="kw">:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">active</span><span class="kw">:</span><span class="at"> golang</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stores</span><span class="kw">:</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> golang</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/golang.db</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span></code></pre></div>
+<p>Old single-store format (<code>db_path</code> /
+<code>embedding_model</code> at the top of <code>rag:</code>) is read
+and automatically migrated to a store named <code>"default"</code> on
+load.</p>
+<p><strong>Retrieval flow.</strong>
+<code>Agent.ragAugment(prompt)</code> is called before every
+<code>Chat</code> invocation when <code>RagOn</code> is true. It looks
+up the active store’s embedding model (resolving via
+<code>ModelMap</code> when the current generation model has a specific
+override), queries the top 5 chunks, discards any below the
+<code>ragMinScore</code> threshold (0.3 cosine similarity), and prepends
+a <code>### Context (from knowledge base)</code> block to the prompt.
+The original prompt is returned unchanged if RAG is off, the store is
+nil, or no chunks exceed the threshold.</p>
+<p><strong>Database layout.</strong> One table per store:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> chunks (</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>        <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    content   TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    embedding <span class="dt">BLOB</span>    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">source</span>    TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<p>Embeddings are stored as <code>[int32 length][float64...]</code> in
+little-endian byte order. Cosine similarity is computed in Go at query
+time (no vector extension required in SQLite).</p>
+<hr />
 <h2 id="test-coverage">Test coverage</h2>
 <p>Tests live alongside source in six files:</p>
 <table>
@@ -638,6 +728,11 @@ first.</li>
 <td><code>tier3_test.go</code></td>
 <td>Mock client, <code>/summarize</code>, <code>/context</code>,
 <code>ExpandDynamicSections</code></td>
+</tr>
+<tr>
+<td><code>rag_support_test.go</code></td>
+<td><code>RagStore</code> ingest, query, source round-trip, semantic
+ranking, mismatch rejection</td>
 </tr>
 </tbody>
 </table>

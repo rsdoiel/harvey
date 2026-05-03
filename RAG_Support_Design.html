@@ -38,10 +38,14 @@ figcaption {
 </ul>
 </nav>
 <section>
-<p>Below is a <strong>clean planning document (Markdown)</strong> you
-can reuse with another model. It summarizes the architecture decisions,
-tradeoffs, and provides a concrete Go module design (using
-<code>package harvey</code> as requested).</p>
+<p><strong>Status (2026-05-02):</strong> Implemented with named-store
+registry. See ARCHITECTURE.md for the current design. The planning
+decisions below were adopted; the main evolution beyond this document is
+multi-store support (<code>RagStoreEntry</code> registry,
+<code>/rag new NAME</code>, <code>/rag switch NAME</code>,
+<code>/rag drop NAME</code>) so different knowledge domains (golang,
+writing, research, etc.) can coexist as separate SQLite files while only
+the active one is held open in memory.</p>
 <hr />
 <h1 id="harvey-rag-integration-plan-hybrid-embedding-model-approach">🧠
 Harvey RAG Integration Plan (Hybrid Embedding Model Approach)</h1>

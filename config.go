@@ -53,6 +53,24 @@ The operator can run it manually with /run.
 
 `
 
+/** RagStoreEntry describes one named RAG knowledge store in the registry.
+ *
+ * Fields:
+ *   Name           (string)            — short identifier used with /rag switch and /rag new.
+ *   DBPath         (string)            — path to the SQLite database, relative to workspace root.
+ *   EmbeddingModel (string)            — Ollama embedding model name bound to this store.
+ *   ModelMap       (map[string]string) — generation model → embedding model overrides.
+ *
+ * Example:
+ *   e := RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"}
+ */
+type RagStoreEntry struct {
+	Name           string
+	DBPath         string
+	EmbeddingModel string
+	ModelMap       map[string]string
+}
+
 /** Config holds Harvey's runtime configuration.
  *
  * Fields:
@@ -63,10 +81,10 @@ The operator can run it manually with /run.
  *   SystemPrompt (string) — contents of HARVEY.md, injected as the system prompt.
  *   OllamaURL    (string) — Ollama base URL (default: http://localhost:11434).
  *   OllamaModel  (string) — currently selected Ollama model.
- *   PublicAIURL  (string) — publicai.co base URL.
- *   PublicAIKey  (string) — API key read from PUBLICAI_API_KEY env var.
- *   PublicAIModel (string) — model name (default: abertus).
  *   AutoRecord   (bool)   — record every session to a .spmd file (default true).
+ *   RagStores    ([]RagStoreEntry) — all registered named RAG stores.
+ *   RagActive    (string)          — name of the currently active store; "" = none.
+ *   RagEnabled   (bool)            — when true, inject top-K chunks before each Chat call.
  *
  * Example:
  *   cfg := DefaultConfig()
@@ -84,19 +102,94 @@ type Config struct {
 	OllamaContextLength int             // context window size in tokens; 0 = unknown
 	Routes              []RouteEndpoint // registered remote endpoints; persisted across sessions
 	RoutingEnabled      bool            // when false, @mentions are rejected with a warning
-	PublicAIURL         string          // publicai.co base URL (default: https://api.publicai.co/v1)
-	PublicAIKey         string          // API key read from PUBLICAI_API_KEY
-	PublicAIModel       string          // model name (default: abertus)
 	AutoRecord          bool            // record every session to a .spmd file automatically
 	RecordPath          string          // file path for auto-recording; empty = auto-generated timestamped name
 	ContinuePath        string          // session file to load as pre-history when starting the REPL
 	ReplayPath          string          // session file to replay instead of entering the REPL
 	ReplayOutputPath    string          // output path for replay recording; empty = auto-generated
-	ModelCacheDB        string            // path to model_cache.db; empty = harvey/model_cache.db
-	RagDBPath           string            // path to the RAG SQLite database; empty = disabled
-	RagEmbedModel       string            // embedding model used to build the RAG database
-	RagModelMap         map[string]string // generation model → embedding model name
-	RagEnabled          bool              // when true, top-K chunks are injected before each Chat call
+	ModelCacheDB        string          // path to model_cache.db; empty = harvey/model_cache.db
+	RagStores           []RagStoreEntry // all registered named RAG stores
+	RagActive           string          // name of the currently active store; "" = none
+	RagEnabled          bool            // when true, inject top-K chunks before each Chat call
+}
+
+/** ActiveRagStore returns a pointer to the active RagStoreEntry, or nil when
+ * no store is configured.
+ *
+ * Returns:
+ *   *RagStoreEntry — the active entry, or nil.
+ *
+ * Example:
+ *   if e := cfg.ActiveRagStore(); e != nil {
+ *       fmt.Println(e.DBPath)
+ *   }
+ */
+func (c *Config) ActiveRagStore() *RagStoreEntry {
+	if c.RagActive == "" {
+		return nil
+	}
+	return c.RagStoreByName(c.RagActive)
+}
+
+/** RagStoreByName returns a pointer to the named store entry, or nil when not
+ * found.
+ *
+ * Parameters:
+ *   name (string) — store name to look up.
+ *
+ * Returns:
+ *   *RagStoreEntry — matching entry, or nil.
+ *
+ * Example:
+ *   if e := cfg.RagStoreByName("golang"); e != nil {
+ *       fmt.Println(e.EmbeddingModel)
+ *   }
+ */
+func (c *Config) RagStoreByName(name string) *RagStoreEntry {
+	for i := range c.RagStores {
+		if c.RagStores[i].Name == name {
+			return &c.RagStores[i]
+		}
+	}
+	return nil
+}
+
+/** AddOrUpdateRagStore inserts e into the registry if its name is new, or
+ * replaces the existing entry if one with the same name already exists.
+ *
+ * Parameters:
+ *   e (RagStoreEntry) — the entry to add or replace.
+ *
+ * Example:
+ *   cfg.AddOrUpdateRagStore(RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db"})
+ */
+func (c *Config) AddOrUpdateRagStore(e RagStoreEntry) {
+	for i := range c.RagStores {
+		if c.RagStores[i].Name == e.Name {
+			c.RagStores[i] = e
+			return
+		}
+	}
+	c.RagStores = append(c.RagStores, e)
+}
+
+/** RemoveRagStore removes the store with the given name from the registry.
+ * It is a no-op when no store with that name exists.
+ *
+ * Parameters:
+ *   name (string) — name of the store to remove.
+ *
+ * Example:
+ *   cfg.RemoveRagStore("research-llm")
+ */
+func (c *Config) RemoveRagStore(name string) {
+	out := c.RagStores[:0]
+	for _, e := range c.RagStores {
+		if e.Name != name {
+			out = append(out, e)
+		}
+	}
+	c.RagStores = out
 }
 
 /** DefaultConfig returns a Config populated with sensible defaults. WorkDir
@@ -114,19 +207,29 @@ func DefaultConfig() *Config {
 	return &Config{
 		WorkDir:       ".",
 		OllamaURL:     "http://localhost:11434",
-		PublicAIURL:   "https://api.publicai.co/v1",
-		PublicAIKey:   os.Getenv("PUBLICAI_API_KEY"),
-		PublicAIModel: "abertus",
-		AutoRecord:    true,
+		AutoRecord: true,
 	}
 }
 
+// ragStoreYAML is the on-disk representation of one entry under rag.stores.
+type ragStoreYAML struct {
+	Name           string            `yaml:"name"`
+	DBPath         string            `yaml:"db_path"`
+	EmbeddingModel string            `yaml:"embedding_model"`
+	ModelMap       map[string]string `yaml:"model_map,omitempty"`
+}
+
 // ragYAML is the on-disk representation of the rag: section in harvey.yaml.
+// The Active/Stores fields are the current format. DBPath, EmbeddingModel,
+// and ModelMap are legacy flat fields from before multi-store support; they
+// are read for backward-compat migration and never written.
 type ragYAML struct {
-	DBPath        string            `yaml:"db_path"`
-	EmbeddingModel string           `yaml:"embedding_model"`
-	ModelMap      map[string]string `yaml:"model_map"`
-	Enabled       bool              `yaml:"enabled"`
+	Active         string          `yaml:"active,omitempty"`
+	Stores         []ragStoreYAML  `yaml:"stores,omitempty"`
+	Enabled        bool            `yaml:"enabled"`
+	DBPath         string          `yaml:"db_path,omitempty"`
+	EmbeddingModel string          `yaml:"embedding_model,omitempty"`
+	ModelMap       map[string]string `yaml:"model_map,omitempty"`
 }
 
 // harveyYAML is the on-disk representation of harvey/harvey.yaml.
@@ -186,14 +289,27 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.ModelCacheDB != "" {
 		cfg.ModelCacheDB = y.ModelCacheDB
 	}
-	if y.RAG.DBPath != "" {
-		cfg.RagDBPath = y.RAG.DBPath
-	}
-	if y.RAG.EmbeddingModel != "" {
-		cfg.RagEmbedModel = y.RAG.EmbeddingModel
-	}
-	if len(y.RAG.ModelMap) > 0 {
-		cfg.RagModelMap = y.RAG.ModelMap
+	if len(y.RAG.Stores) > 0 {
+		// New multi-store format.
+		cfg.RagStores = make([]RagStoreEntry, len(y.RAG.Stores))
+		for i, s := range y.RAG.Stores {
+			cfg.RagStores[i] = RagStoreEntry{
+				Name:           s.Name,
+				DBPath:         s.DBPath,
+				EmbeddingModel: s.EmbeddingModel,
+				ModelMap:       s.ModelMap,
+			}
+		}
+		cfg.RagActive = y.RAG.Active
+	} else if y.RAG.DBPath != "" {
+		// Legacy flat format — migrate to a "default" entry.
+		cfg.RagStores = []RagStoreEntry{{
+			Name:           "default",
+			DBPath:         y.RAG.DBPath,
+			EmbeddingModel: y.RAG.EmbeddingModel,
+			ModelMap:       y.RAG.ModelMap,
+		}}
+		cfg.RagActive = "default"
 	}
 	cfg.RagEnabled = y.RAG.Enabled
 	return nil
@@ -227,11 +343,19 @@ func SaveRAGConfig(ws *Workspace, cfg *Config) error {
 		_ = yaml.Unmarshal(data, &y)
 	}
 
+	stores := make([]ragStoreYAML, len(cfg.RagStores))
+	for i, e := range cfg.RagStores {
+		stores[i] = ragStoreYAML{
+			Name:           e.Name,
+			DBPath:         e.DBPath,
+			EmbeddingModel: e.EmbeddingModel,
+			ModelMap:       e.ModelMap,
+		}
+	}
 	y.RAG = ragYAML{
-		DBPath:        cfg.RagDBPath,
-		EmbeddingModel: cfg.RagEmbedModel,
-		ModelMap:      cfg.RagModelMap,
-		Enabled:       cfg.RagEnabled,
+		Active:  cfg.RagActive,
+		Stores:  stores,
+		Enabled: cfg.RagEnabled,
 	}
 
 	out, err := yaml.Marshal(&y)

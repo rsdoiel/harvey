@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="model-evaluation">Model evaluation</h1>
+<h2 id="single-model-evalations">Single model evalations</h2>
+<p>Current models being evaluated. These are the current canidates for
+use with Harvey running on a local machine.</p>
+<pre class="models"><code>phi4-mini:3.8b
+ibm/granite4.1:3b
+granite-code:3b
+smollm2:1.7b
+abb-decide/apertus-tools:8b-instruct-2509-q4_k_m
+pstdio/microcoder:3b
+mistral-nemo:latest
+llama3.2:latest
+qwen2.5-coder:7b
+mistral:latest
+qwen2.5-coder:latest
+ministral-3:3b
+ministral-3:14b
+granite3-moe:1b
+granite3-moe:3b
+granite3.3:2b
+MeetSolanki/MeetAISmall:latest
+aisingapore/Apertus-SEA-LION-v4-8B-IT:latest
+gemma4:latest</code></pre>
+<p>Embedding models for Retrieval Augementation Generation (RAG)</p>
+<pre class="models"><code>nomic-embed-text-v2-moe:latest
+nomic-embed-text:latest
+mxbai-embed-large:latest
+bge-small-en-v1.5:3b
+bge-m3:567m</code></pre>
+<h3 id="granite-code3b">granite-code:3b</h3>
+<p>This model doesn’t support tools but could be used by a model that
+did support tools or I could figure out how to use it to derive tool
+support for it. It was fast the code reasonable.</p>
+<pre class="harvey"><code>/clear
+/ollama use granite-code:3b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results</p>
+<pre><code>Certainly! Here&#39;s an example implementation of the program in Go:
+```go
+package main
+
+import (
+    &quot;fmt&quot;
+    &quot;os&quot;
+)
+
+func main() {
+    name, err := getName()
+    if err != nil {
+        fmt.Fprintln(os.Stderr, &quot;Error getting name:&quot;, err)
+        return
+    }
+
+    fmt.Println(&quot;Hi there, my name is&quot;, name)
+}
+
+func getName() (string, error) {
+    var name string
+    fmt.Print(&quot;What&#39;s your name? &quot;)
+    _, err := fmt.Scanln(&amp;name)
+    if err != nil {
+        return &quot;&quot;, err
+    }
+
+    return name, nil
+}
+```
+This program uses the `getName` function to get the user&#39;s name from the terminal. The `main` function then displays a greeting message with the user&#39;s name and waits for the user to press Enter before exiting.
+
+ Ollama (granite-code:3b) · 212 reply + 4011 ctx · 36.065s · 14.0 tok/s</code></pre>
+<h3 id="stable-code">stable-code</h3>
+<p>Seems quick in Go, got lots on a similar prompt using Deno
+TypeScript. Might be useful to augment with a RAG in Harvey at some
+point.</p>
+<pre class="harvey"><code>/clear
+/ollama use stable-code
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>response</p>
+<pre class="harvey"><code>
+Here&#39;s a simple Go program that implements the described functionality:
+
+```go
+package main
+
+import (
+    &quot;bufio&quot;
+    &quot;fmt&quot;
+    &quot;os&quot;
+)
+
+func main() {
+    message := &quot;Hi there, what&#39;s your name?&quot;
+    reader := bufio.NewReader(os.Stdin))
+    fmt.Printf(&quot;%s\n&quot;, message))
+    name, err := reader.ReadString(&#39;\n&#39;)).TrimSpace()
+    if err != nil {
+        fmt.Println(&quot;Error: Failed to read name.&quot;, err)
+    } else {
+        repliedMessage := fmt.Sprintf(&quot;Nice to meet you, %s! Let&#39;s continue exploring Go language.&quot;, name))
+        fmt.Printf(&quot;%s\n&quot;, repliedMessage))
+    }
+}
+```
+
+You can run this program using the `go run` command or by saving it in a file and running `go build` followed by `./your_binary_name`.
+  Ollama (stable-code) · 221 reply + 1650 ctx · 1m31.809s · 2.6 tok/s
+harvey &gt;</code></pre>
+<h3 id="codellama13b">codellama:13b</h3>
+<p>Reasonable response on macmini-rd.local. I have concerns about this
+given the very public messy history of Meta’s LLM development.</p>
+<pre class="harvey"><code>/clear
+/ollama use codellama:13b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Result</p>
+<pre class="harvey"><code>harvey &gt; Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.
+
+Sure! Below is a simple Go program that does what you asked for.
+
+```go
+cmd/hello/main.go  ─ space-separated lang path
+
+package main
+
+import (
+    &quot;fmt&quot;
+)
+
+func main() {
+    fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+    var name string
+    fmt.Scanln(&amp;name)
+    fmt.Printf(&quot;Hello, %s!\n&quot;, name)
+}
+```
+
+This program will print a greeting, prompt the user for their name, and then respond with a personalized message.
+  Ollama (qwen2.5-coder:7b) · 103 reply + 991 ctx · 8.567s · 12.6 tok/s
+harvey &gt; /clear
+Conversation history cleared. New session #5 started.
+harvey &gt; /ollama use codellama:13b
+Now using Ollama model: codellama:13b
+harvey &gt; Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.
+
+```go
+package main
+
+import (
+    &quot;bufio&quot;
+    &quot;fmt&quot;
+    &quot;os&quot;
+)
+
+func main() {
+    reader := bufio.NewReader(os.Stdin)
+    fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+    name, _ := reader.ReadString(&#39;\n&#39;)
+    fmt.Printf(&quot;Hello, %s!\n&quot;, name)
+}
+```
+  Ollama (codellama:13b) · 99 reply + 1183 ctx · 38.36s · 6.7 tok/s</code></pre>
+<h3 id="qwen2.5-coder7b">qwen2.5-coder:7b</h3>
+<p>Reasonable quick on macmini-rd.local. Looks correct and wrote a
+file.</p>
+<pre class="harvey"><code>/clear
+/ollama use qwen2.5-coder:7b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results</p>
+<pre class="harvey"><code>harvey &gt; Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.
+
+```go:cmd/hello/main.go
+package main
+
+import (
+    &quot;bufio&quot;
+    &quot;fmt&quot;
+    &quot;os&quot;
+)
+
+func main() {
+    fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+    reader := bufio.NewReader(os.Stdin)
+    name, _ := reader.ReadString(&#39;\n&#39;)
+    fmt.Printf(&quot;Hello, %s&quot;, name)
+}
+```
+  Ollama (qwen2.5-coder:7b) · 70 reply + 991 ctx · 17.855s · 12.3 tok/s
+  ┌─ Write: cmd/hello/main.go ────────────────────────┐
+  │  package main
+  │
+  │  import (
+  │     &quot;bufio&quot;
+  │     &quot;fmt&quot;
+  │     &quot;os&quot;
+  │  )
+  │
+  │  … (6 more lines)
+  └───────────────────────────────────────────────────────┘
+  [y]es  [n]o  [A]ll  [q]uit &gt; a
+  ✓ wrote cmd/hello/main.go (212 bytes)</code></pre>
+<h3 id="deepseek-coder-v2">deepseek-coder-v2</h3>
+<p>Worked reasonably quickly and returned a valid Go program.</p>
+<pre class="harvey"><code>/clear
+/ollama use deepseek-coder-v2
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Response</p>
+<pre class="harvey"><code>harvey &gt; Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.
+
+ ```go:cmd/hello/main.go
+package main
+
+import (
+    &quot;bufio&quot;
+    &quot;fmt&quot;
+    &quot;os&quot;
+)
+
+func main() {
+    reader := bufio.NewReader(os.Stdin)
+    fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+    name, _ := reader.ReadString(&#39;\n&#39;)
+    fmt.Printf(&quot;Hello, %s! Nice to meet you.\n&quot;, name)
+}
+```
+  Ollama (deepseek-coder-v2) · 104 reply + 1104 ctx · 15.48s · 28.0 tok/s</code></pre>
+<h3 id="codestrallatest">codestral:latest</h3>
+<p>Initial impression it is too slow. Killed after nine minutes,
+removed.</p>
+<pre class="harvey"><code>/clear
+/ollama use codestal:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<h3
+id="meetsolankimeetaismalllatest">MeetSolanki/MeetAISmall:latest</h3>
+<pre class="harvey"><code>/clear
+/ollama use MeetSolanki/MeetAISmall:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    ```go
+    package main
+
+    import &quot;fmt&quot;
+
+    func main() {
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        name := &quot;&quot;
+        fmt.Print(&quot;Enter your name: &quot;)
+        fmt.Scanln(&amp;name)
+        fmt.Println(&quot;Hello, &quot; + name + &quot;!&quot;) // Output after user input
+    }
+    ```
+      1003 prompt + 481 reply tokens · 1m18.315s · 6.3 tok/s
+</code></pre>
+<h3 id="sailor21b">sailor2:1b</h3>
+<pre class="harvey"><code>/clear
+/ollama use sailor2:1b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    **Go Program:**
+
+    ```go
+    package main
+
+    import (
+        &quot;fmt&quot;
+    )
+
+    // FountainAnalysis is our existing fountain analysis skill
+    func fountain-analysis() {
+        defer fmt.Println(&quot;Hello, World!&quot;)
+    }
+
+    type Name struct {
+        Name string `json:&quot;name&quot;`
+    }
+
+    func (n *Name) GetName() string {
+        if n.Name == nil {
+            return &quot;Hello World!&quot;
+        }
+        return n.Name
+    }
+
+    func main() {
+        // Define the name to be displayed with fountain-analysis skill
+        name := Name{&quot;Hi there! What&#39;s your name?&quot;}
+
+        // Call the FountainAnalysis function and display the result
+        fountain-analysis()
+        fmt.Println(&quot;Your name:&quot;, name)
+    }
+    ```
+
+    **Explanation:**
+
+    1. **Define `fountain-analysis`**: This struct represents a named stream (Name) that can be triggered by a provided path (`/testout/hello.bash`) when executed.
+    2. **Create the FountainAnalysis Function**: 
+       - `fountain-analysis()` is called with a template `&lt;name&gt;` to inject an example message into context.
+    3. **Define `GetName` Method**: The name of the user&#39;s name is retrieved from the JSON representation (in this case, `&quot;Hi there! What&#39;s your name?&quot;`).
+    4. **Main Function**:
+       - Define and pass the name as a template to `fountain-analysis()`.
+       - Print the result using the `fmt.Println()` function.
+
+    **Note:** Adjust paths and templates for actual file locations if different.
+
+    This script will successfully display &quot;Hi there, what&#39;s your name?&quot; message to the user when triggered by the provided code block. Enjoy!
+      951 prompt + 335 reply tokens · 1m12.406s · 8.6 tok/s
+</code></pre>
+<h3 id="stable-code3b">stable-code:3b</h3>
+<pre class="harvey"><code>/clear
+/ollama use stable-code:3b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    Here&#39;s a simple Go program that implements the described behavior:
+
+    ```go
+    package main
+
+    import (
+        &quot;bufio&quot;
+        &quot;fmt&quot;
+        &quot;os&quot;
+    )
+
+    func main() {
+        message := &quot;Hi there, what&#39;s your name?&quot;
+
+        reader := bufio.NewReader(os.Stdin))
+
+        fmt.Println(message)
+
+        name, _ := reader.ReadString(&#39;\n&#39;)).TrimSpace()
+
+        reply := fmt.Sprintf(&quot;Hello %s! Nice to meet you.&quot;, name))
+
+        fmt.Println(reply))
+    }
+    ```
+
+    This program uses the `bufio` package to read input from the user. It first displays a message asking for the user&#39;s name. Then, it reads the user&#39;s input as a string and trims any leading or trailing whitespace. Finally, it constructs a reply using the user&#39;s name and then prints both the original message and the reply to the console.
+      1127 prompt + 211 reply tokens · 3m35.384s · 3.3 tok/s</code></pre>
+<p>NOTE: Need to check if this is a good canidate for a model to route
+for more complex coding.</p>
+<h3 id="smollm135m">smollm:135m</h3>
+<pre class="harvey"><code>/clear
+/ollama use smollm:135m
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+Here is an example of a Go program that displays &quot;Hi there, what&#39;s your name?&quot; prompt:
+```go/program
+--name
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+hi
+```
+To implement this program, you can follow these steps:
+
+1. Define a Go function that takes in the name and prompts for it using `go/prompt`.
+2. Call the function with the prompt to display &quot;Hi there, what&#39;s your name?&quot;
+3. The function will then call another function that displays &quot;Hello&quot; or &quot;Goodbye&quot;.
+4. The function will also print out a message indicating that the user has not provided their name before.
+5. The program will terminate when it reaches this point and return `None`.
+6. Call the function with the prompt to display &quot;Hi there, what&#39;s your name?&quot; again to display &quot;Hello&quot; or &quot;Goodbye&quot;.
+7. Call the function with the prompt to display &quot;What&#39;s your name?&quot;. This is done by calling the function with the prompt that starts with `hi`, followed by a space and then the user&#39;s name.
+8. The program will terminate when it reaches this point and return `None`.
+9. Call the function again with the prompt to display &quot;Goodbye&quot; or &quot;What&#39;s your name?&quot;. This is done by calling the function with the prompt that starts with `hi`, followed by a space, then the user&#39;s name.
+10. The program will terminate when it reaches this point and return `None`.
+  1046 prompt + 364 reply tokens · 19.533s · 35.4 tok/s
+  ┌─ Write: go/program ───────────────────────────────┐
+  │  --name
+  │  hi
+  │  hi
+  │  hi
+  │  hi
+  │  hi
+  │  hi
+  │  hi
+  │  … (22 more lines)
+  └───────────────────────────────────────────────────────┘
+  [y]es  [n]o  [A]ll  [q]uit &gt; y
+  ✓ wrote go/program (94 bytes)</code></pre>
+<p>NOTE: This is a hulicination, but it did write a file in go/program
+that had all those lines of “hi”. I removed this model form my Ollama
+setup.</p>
+<h3 id="smollm360m">smollm:360m</h3>
+<pre class="harvey"><code>/clear
+/ollama use smollm:360m
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    Here is a simple Go program that demonstrates how to display a greeting message:
+    ```go
+    package main
+
+    import (
+        &quot;fmt&quot;
+        &quot;net/http&quot;
+        &quot;string&quot;
+    )
+
+    func main() {
+        // Create a new HTTP client instance
+        httpClient := http.Client(http.Handle(&quot;http://localhost&quot;).Handle(&quot;/hello&quot;))
+
+        // Send the greeting message to the client
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        response = httpClient.SendAsync(fmt.Sprintf(&quot;%s&quot;, &quot;Hello, %@!\n&quot;), string.Empty)
+        fmt.Println(response)
+    }
+    ```
+    Here&#39;s how it works:
+
+    1. We create a new HTTP client instance using `http.Client` and set the handle to &quot;/hello&quot; for the client that will receive the greeting message.
+    2. We send the greeting message using `fmt.Sprintf()` with the format &quot;%s&quot;, which is a string literal that concatenates the name and &quot;Hello, %@!\n&quot;.
+    3. The client receives the message and sends it back to us using `httpClient.SendAsync()`.
+    4. We use `fmt.Println` to print the response from the client.
+    5. Finally, we return from the program.
+
+    To test this code, you can run it like so:
+    ```go
+    # Start a new HTTP client instance
+    httpClient := http.Client(http.Handle(&quot;/hello&quot;))
+
+    # Send the greeting message to the client
+    response = httpClient.SendAsync(&quot;Hi there, what&#39;s your name?&quot;)
+
+    # Print the response from the client
+    println(response)
+    ```
+    This program will display a &quot;Hello, my name is [name]!&quot; message when it receives a request for an HTTP greeting.
+      1046 prompt + 392 reply tokens · 40.442s · 20.1 tok/s
+</code></pre>
+<p>NOTE: This did return a Go program, oddly a web service. Keeping it
+around for further testing. After testing on another machine, discarding
+it for now.</p>
+<h3 id="smollm1.7b">smollm:1.7b</h3>
+<pre class="harvey"><code>/clear
+/ollama use smollm:1.7b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    Here is a Go program that demonstrates this:
+    ```go
+    package main
+
+    import (
+        &quot;fmt&quot;
+        &quot;fmt&quot;
+        &quot;net/http&quot;
+    )
+
+    func main() {
+        name := fmt.Sprintf(&quot;Hello, what&#39;s your name?&quot;, &quot;John Doe&quot;)
+        http.HandleFunc(&quot;/&quot;, (w http.ResponseWriter, r *http.Request) =&gt; {
+            http.Println(w.Header(), w.Body())
+        })
+
+        http.ListenAndServe(&quot;:80&quot;, nil)
+    }
+    ```
+      1046 prompt + 128 reply tokens · 2m4.536s · 5.4 tok/s</code></pre>
+<p>NOTE: Response was a Go program, like previous model assumes a web
+server for some reason. Keep around for further testing. for now, when
+testing on another machine I get better results but not correct.
+Discarding for now.</p>
+<h3 id="granite3.32b">granite3.3:2b</h3>
+<pre class="harvey"><code>/clear
+/ollama use granite3.3:2b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    ```bash
+    go:cmd/hello/main.go
+    ```
+
+    ```go
+    package main
+
+    import (
+        &quot;bufio&quot;
+        &quot;fmt&quot;
+        &quot;os&quot;
+        &quot;strings&quot;
+    )
+
+    func main() {
+        reader := bufio.NewReader(os.Stdin)
+
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        var name string
+        fmt.Scanln(&amp;name) // Reads a line of input and stores it as a string in &#39;name&#39;.
+
+        greeting := fmt.Sprintf(&quot;Hello, %s!&quot;, name)
+        fmt.Print(greeting)
+    }
+    ```
+      1036 prompt + 131 reply tokens · 2m35.077s · 3.5 tok/s
+</code></pre>
+<p>NOTE: This was relatively quick and a correct response. Worked well
+on my Windows ARM box.</p>
+<h3 id="ibmgranite43b">ibm/granite4:3b</h3>
+<pre class="harvey"><code>/clear
+/ollama use ibm/granite4:3b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+```go:src/main.go
+package main
+
+import (
+    &quot;bufio&quot;
+    &quot;fmt&quot;
+)
+
+func main() {
+    reader := bufio.NewReader(input)
+    fmt.Print(&quot;Hi there, what&#39;s your name? &quot;)
+
+    name, _ := reader.ReadString(&#39;\n&#39;)
+    fmt.Printf(&quot;\r\nHello %s!\r\n&quot;, name)
+}
+```
+  951 prompt + 68 reply tokens · 2m44.781s · 2.8 tok/s
+  ┌─ Write: src/main.go ──────────────────────────────┐
+  │  package main
+  │  
+  │  import (
+  │     &quot;bufio&quot;
+  │     &quot;fmt&quot;
+  │  )
+  │  
+  │  func main() {
+  │  … (6 more lines)
+  └───────────────────────────────────────────────────────┘
+  [y]es  [n]o  [A]ll  [q]uit &gt; y
+  ✓ wrote src/main.go (211 bytes)
+</code></pre>
+<p>NOTE: The model offered to write out the program to the file system
+with an appropriate prompt. It correctly created the file directory and
+file. This is a keeper.</p>
+<h3 id="ibmgranite4350m">ibm/granite4:350m</h3>
+<pre class="harvey"><code>/clear
+/ollama use ibm/granite4:350m
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    ```go
+    package main
+
+    import (
+        &quot;fmt&quot;
+    )
+
+    func greet(name string) string {
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        return fmt.Sprintf(&quot;%s&quot;, name)
+    }
+
+    func main() {
+        name := &quot;User&quot;
+        greeting := greet(name)
+        println(greeting)
+    }
+    ```
+
+    This code defines a simple Go program that prompts the user for their name and then displays a greeting message.
+      951 prompt + 83 reply tokens · 1m14.981s · 8.5 tok/s
+</code></pre>
+<p>NOTE: This code is not quiet correct and probably not worth the
+minute of saved run time. Discarding this model.</p>
+<h3 id="granite3.22b">granite3.2:2b</h3>
+<pre class="harvey"><code>/clear
+/ollama use granite3.2:2b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    ```go
+    package main
+
+    import (
+        &quot;fmt&quot;
+    )
+
+    func main() {
+        name := askForName()
+        fmt.Println(f&quot;Hi there, {name}!&quot;)
+    }
+
+    // askForName prompts the user for their name and returns it.
+    func askForName() string {
+        var name string
+        fmt.Print(&quot;What&#39;s your name? &quot;)
+        fmt.Scan(&amp;name)
+        return name
+    }
+    ```
+
+    To write this program to a file, you would tag it like so:
+
+    ```bash
+    ```go cmd/hello/main.go   # space-separated language path
+    ```
+
+    After tagging the code block in an interactive REPL as described above (without needing to run `/apply`), Harvey will automatically write the contents to `cmd/hello/main.go` for you.
+      1049 prompt + 188 reply tokens · 2m49.45s · 3.5 tok/s
+      ┌─ Write: cmd/hello/main.go ────────────────────────┐
+      └───────────────────────────────────────────────────────┘
+      [y]es  [n]o  [A]ll  [q]uit &gt; y
+      ✓ wrote cmd/hello/main.go (0 bytes)
+</code></pre>
+<p>NOTE: This showed a correct program, it prompt to write out the code
+which was nice but while creating the directory structure failed to
+write the actual file. Discarding.</p>
+<h3 id="granite3-moe1b">granite3-moe:1b</h3>
+<pre class="harvey"><code>/clear
+/ollama use granite3-moe:1b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    Here&#39;s a simple Go program that fulfills your requirements:
+
+    ```go
+    package main
+
+    import (
+        &quot;fmt&quot;
+        &quot;os&quot;
+
+        &quot;github.com/plmtg123456/knowledge-base&quot;
+    )
+
+    func main() {
+        if len(os.Args) &lt; 2 {
+            fmt.Println(&quot;Please provide a name to greet.&quot;)
+            return
+        }
+
+        name := os.Args[1]
+        fmt.Printf(&quot;Hi there, %s! What&#39;s your name?\n&quot;, name)
+    }
+    ```
+
+    You can run this program in your terminal and type in:
+
+    ```
+    $ go run main.go
+    ```
+
+    Then you&#39;ll be prompted to enter a name, and the program will greet you with &quot;Hi there, [your name]! What&#39;s your name?&quot;.
+      1036 prompt + 193 reply tokens · 37.16s · 14.8 tok/s</code></pre>
+<p>NOTE: Wicked quick, sort of what I wanted. Will test further.</p>
+<h3 id="granite3-moe3b">granite3-moe:3b</h3>
+<pre class="harvey"><code>/clear
+/ollama use granite3-moe:3b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    ```bash:testout/hello.bash   ← colon-separated lang:path
+    ```go cmd/hello/main.go     ← space-separated lang path
+
+    ```go
+    package main
+
+    import (
+        &quot;fmt&quot;
+        &quot;os&quot;
+    )
+
+    func main() {
+        // Prompt for the name
+        name := os.Args[1]
+
+        // Display a greeting
+        fmt.Printf(&quot;Hi there, %s!\n&quot;, name)
+    }
+    ```
+
+    To run this program, save it as `hello.go` and then execute the following command in the terminal:
+
+    ```bash
+    go run hello.go &lt;name&gt;
+    ```
+
+    Replace `&lt;name&gt;` with the desired name when prompted.
+      1036 prompt + 158 reply tokens · 1m12.451s · 7.8 tok/s
+      ┌─ Write: testout/hello.bash   ← colon-separated lang:path ─┐
+      └───────────────────────────────────────────────────────┘
+      [y]es  [n]o  [A]ll  [q]uit &gt; y
+      ✓ wrote testout/hello.bash   ← colon-separated lang:path (0 bytes)
+</code></pre>
+<p>NOTE: Interesting output choices. Wrote a zero byte file with the
+name “hello.bash ← colon-separated lang:path”, discarding but I think
+this was interesting considering it’s speed.</p>
+<h3 id="cogito3b">cogito:3b</h3>
+<pre class="harvey"><code>/clear
+/ollama use cogito:3b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    &lt;available_skills&gt;
+      &lt;skill&gt;
+        &lt;name&gt;hello-world&lt;/name&gt;
+        &lt;description&gt;This display a simple hello world message via a skill.&lt;/description&gt;
+        &lt;location&gt;/home/rsdoiel/Laboratory/.agents/skills/hello-world/SKILL.md&lt;/location&gt;
+      &lt;/skill&gt;
+      &lt;skill&gt;
+        &lt;name&gt;fountain-analysis&lt;/name&gt;
+        &lt;description&gt;Read and actively monitor a Harvey Fountain screenplay file, parsing its structure and delivering incremental analysis as new content arrives. Use when the user asks to analyse, watch, tail, or summarise a .fountain session file. Prompts for the filename if not provided in the request.&lt;/description&gt;
+        &lt;location&gt;/home/rsdoiel/Laboratory/.agents/skills/fountain-analysis/SKILL.md&lt;/location&gt;
+      &lt;/skill&gt;
+    &lt;/available_skills&gt;
+
+    ## Auto-execute model
+
+    ### File writes (always active)
+    Whenever you produce a fenced code block tagged with a target path,
+    Harvey writes it to disk immediately after your reply — no /apply needed.
+
+    Tag format (two styles are supported):
+      ```bash:testout/hello.bash   ← colon-separated lang:path
+      ```go cmd/hello/main.go     ← space-separated lang path
+
+    Always tag code blocks that are meant to be files. Do NOT say &quot;run
+    /apply&quot; — Harvey handles it automatically and will confirm with the
+    operator before writing.
+
+    ### Shell commands (agent mode only)
+    When the operator has enabled agent mode (/agent on), wrap suggested
+    shell commands in backtick /run hints:
+
+      `/run chmod +x testout/hello.bash`
+
+    Harvey will confirm the command with the operator and then run it,
+    injecting the output into context so you can see the result.
+
+    When agent mode is off (the default), you may still suggest commands in
+    this format — the operator can run them manually with /run.
+
+    ## Slash commands (for reference)
+
+    | What needs to happen | Command |
+    |---|---|
+    | Create / write a file | tag your code block (auto-applied) |
+    | Run a shell command | `/run &lt;command&gt;` hint (auto-run in agent mode) |
+    | Read a file into context | /read &lt;path&gt; |
+    | Search the workspace | /search &lt;pattern&gt; |
+    | View git status / diff / log | /git &lt;subcommand&gt; |
+
+    ## Rules
+    1. Never show fake command output. If you need execution, emit a
+       backtick `/run ...` hint.
+    2. Never claim a file has been written. Tag the code block; Harvey
+       will write it and confirm the outcome.
+    3. Always tag code blocks meant for files — one block per file.
+
+    &lt;available_skills&gt;
+      &lt;skill&gt;
+        &lt;name&gt;hello-world&lt;/name&gt;
+        &lt;description&gt;This display a simple hello world message via a skill.&lt;/description&gt;
+        &lt;location&gt;/home/rsdoiel/Laboratory/.agents/skills/hello-world/SKILL.md&lt;/location&gt;
+      &lt;/skill&gt;
+      &lt;skill&gt;
+        &lt;name&gt;fountain-analysis&lt;/name&gt;
+        &lt;description&gt;Read and actively monitor a Harvey Fountain screenplay file, parsing its structure and delivering incremental analysis as new content arrives. Use when the user asks to analyse, watch, tail, or summarise a .fountain session file. Prompts for the filename if not provided in the request.&lt;/description&gt;
+        &lt;location&gt;/home/rsdoiel/Laboratory/.agents/skills/fountain-analysis/SKILL.md&lt;/location&gt;
+      &lt;/skill&gt;
+    &lt;/available_skills&gt;
+
+    ```go
+    package main
+
+    import &quot;fmt&quot;
+
+    func main() {
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        fmt.Scanln()
+        var name string
+        fmt.Print(&quot;Your name is: &quot;)
+        fmt.Scanln(&amp;name)
+        fmt.Printf(&quot;Hello %s!\n&quot;, name)
+    }
+    ```
+
+    &lt;available_skills&gt;
+      &lt;skill&gt;
+        &lt;name&gt;hello-world&lt;/name&gt;
+        &lt;description&gt;This display a simple hello world message via a skill.&lt;/description&gt;
+        &lt;location&gt;/home/rsdoiel/Laboratory/.agents/skills/hello-world/SKILL.md&lt;/location&gt;
+      &lt;/skill&gt;
+    &lt;/available_skills&gt;
+
+    &lt;backtick&gt;
+     `/run chmod +x testout/hello.go`
+    ```go
+    package main
+
+    import &quot;fmt&quot;
+
+    func main() {
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        var name string
+        fmt.Print(&quot;Your name is: &quot;)
+        fmt.Scanln(&amp;name)
+        fmt.Printf(&quot;Hello %s!\n&quot;, name)
+    }
+    &lt;/backtick&gt;
+      953 prompt + 935 reply tokens · 7m30.617s · 2.9 tok/s
+</code></pre>
+<p>NOTE: WOW! that was an interesting response, took almost 8 minutes
+but I wonder what it would have done on a really programming prompt.
+Needs further testing. Tried on Windows ARM box, it returned a Bash
+script. Doesn’t seem ready for prime time, descarding.</p>
+<h3 id="ministral-33b">ministral-3:3b</h3>
+<pre class="harvey"><code>/clear
+/ollama use ministral-3:3b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    ```go:cmd/hello/main.go
+    package main
+
+    import (
+        &quot;bufio&quot;
+        &quot;fmt&quot;
+        &quot;os&quot;
+    )
+
+    func main() {
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        reader := bufio.NewReader(os.Stdin)
+        name, _ := reader.ReadString(&#39;\n&#39;)
+        name = name[:len(name)-1] // Remove trailing newline
+        fmt.Printf(&quot;Hello, %s!\n&quot;, name)
+    }
+    ```
+      964 prompt + 94 reply tokens · 3m3.412s · 2.6 tok/s
+      ┌─ Write: cmd/hello/main.go ────────────────────────┐
+      │  package main
+      │  
+      │  import (
+      │     &quot;bufio&quot;
+      │     &quot;fmt&quot;
+      │     &quot;os&quot;
+      │  )
+      │  
+      │  … (7 more lines)
+      └───────────────────────────────────────────────────────┘
+      [y]es  [n]o  [A]ll  [q]uit &gt; a
+      ✓ wrote cmd/hello/main.go (269 bytes)
+</code></pre>
+<p>NOTE: This one is a keeper. It could run on the Pi, gave a correct
+response and wrote the file out correctly following Go conventions.</p>
+<h3 id="ministral-3latest">ministral-3:latest</h3>
+<pre class="harvey"><code>/clear
+/ollama use ministral-3:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    Here&#39;s a simple Go program that does what you asked. I&#39;ll write it to a file for you:
+
+    ```go cmd/hello/main.go
+    package main
+
+    import (
+        &quot;bufio&quot;
+        &quot;fmt&quot;
+        &quot;os&quot;
+    )
+
+    func main() {
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        reader := bufio.NewReader(os.Stdin)
+        name, _ := reader.ReadString(&#39;\n&#39;)
+        fmt.Printf(&quot;Hello, %s!\n&quot;, name)
+    }
+    ```
+
+    This program:
+    1. Prints the greeting message
+    2. Reads user input from stdin
+    3. Prints a personalized response with the entered name
+
+    Would you like me to run it for you to see how it works? (I&#39;d need to enable agent mode first with `/agent on` if you want me to execute it.)
+      964 prompt + 170 reply tokens · 7m26.301s · 1.4 tok/s
+      ┌─ Write: cmd/hello/main.go ────────────────────────┐
+      │  package main
+      │  
+      │  import (
+      │     &quot;bufio&quot;
+      │     &quot;fmt&quot;
+      │     &quot;os&quot;
+      │  )
+      │  
+      │  … (6 more lines)
+      └───────────────────────────────────────────────────────┘
+      [y]es  [n]o  [A]ll  [q]uit &gt; a
+      ✓ wrote cmd/hello/main.go (215 bytes)
+</code></pre>
+<p>NOTE: Took a while, almost eight minutes, but a quality response.
+Might be a good model to delegate complex things to, especially when
+Harvey has access to a Pi cluster.</p>
+<h3 id="ministral-314b">ministral-3:14b</h3>
+<pre class="harvey"><code>/clear
+/ollama use ministral-3:14b
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    Here&#39;s a Go program that prompts for a name and replies with a greeting:
+
+    ```go:greet/main.go
+    package main
+
+    import (
+            &quot;bufio&quot;
+            &quot;fmt&quot;
+            &quot;os&quot;
+    )
+
+    func main() {
+            fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+
+            reader := bufio.NewReader(os.Stdin)
+            name, _ := reader.ReadString(&#39;\n&#39;)
+
+            // Trim the newline character from the input
+            name = strings.TrimSpace(name)
+
+            fmt.Printf(&quot;Nice to meet you, %s!\n&quot;, name)
+    }
+    ```
+
+    I&#39;ll write this to `greet/main.go`. Would you like me to proceed?
+    Ollama (ministral-3:14b) · 133 reply + 936 ctx · 4m39.024s · 3.2 tok/s
+    ┌─ Write: greet/main.go ────────────────────────────┐
+    │  package main
+    │
+    │  import (
+    │     &quot;bufio&quot;
+    │     &quot;fmt&quot;
+    │     &quot;os&quot;
+    │  )
+    │
+    │  … (11 more lines)
+    └───────────────────────────────────────────────────────┘
+    [y]es  [n]o  [A]ll  [q]uit &gt; a
+    ✓ wrote greet/main.go (307 bytes)
+</code></pre>
+<p>NOTE: The processing time has passed eleven minutes, probably too
+large a model for the Pi. Aborted and discarded. This model ran OK on
+the Windows ARM box. Might run on the Pi if I had a GPU attached …</p>
+<h3 id="tinyllamalatest">tinyllama:latest</h3>
+<pre class="harvey"><code>/clear
+/ollama use tinyllama:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    ```go
+    package main
+
+    import (
+        &quot;fmt&quot;
+    )
+
+    func main() {
+        name := askname()
+        
+        fmt.Println(&quot;Hi there, &quot;, name, &quot;!&quot;)
+    }
+
+    // Asks the user for a name and returns it as string
+    func askname() string {
+        return fmt.Sprintf(&quot;What&#39;s your name? &quot;)
+    }
+    ```
+
+    Output:
+    ```
+    Hi there, John!
+    ```
+      1180 prompt + 105 reply tokens · 1m7.43s · 11.0 tok/s
+</code></pre>
+<p>NOTE: Not correct code and doesn’t understand tooling. Discarding. On
+Windows ARM it got code that actually made sense. Still discarding.</p>
+<h3 id="llama3.1latest">llama3.1:latest</h3>
+<pre class="harvey"><code>/clear
+/ollama use llama3.1:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    ```go
+    package main
+
+    import (
+        &quot;fmt&quot;
+        &quot;os&quot;
+    )
+
+    func main() {
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        var name string
+        fmt.Scanln(&amp;name)
+        fmt.Printf(&quot;Hello %s! It&#39;s nice to meet you.\n&quot;, name)
+    }
+    ```
+
+    Let me tag this code block for writing:
+
+    ```go cmd/hello/main.go 
+    ```
+      953 prompt + 80 reply tokens · 5m45.445s · 1.5 tok/s
+      ┌─ Write: cmd/hello/main.go ────────────────────────┐
+      └───────────────────────────────────────────────────────┘
+      [y]es  [n]o  [A]ll  [q]uit &gt;   ✓ wrote cmd/hello/main.go (0 bytes)
+</code></pre>
+<p>NOTE: Code looks correct, wrote zero bytes do to keyboarding error (I
+hit enter before y/A).</p>
+<h3 id="phi3.5latest">phi3.5:latest</h3>
+<pre class="harvey"><code>/clear
+/ollama use phi3.5:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    Here is an example of how you might write this simple interaction in Bash script form:
+
+    ```bash
+    #!/bin/bash
+
+    echo &quot;Hi there, what&#39;s your name?&quot;
+    read user_name
+
+    if [ -z &quot;$user_name&quot; ]; then
+        echo &quot;It seems like something went wrong. Please type your name.&quot;
+    else
+        echo &quot;Nice to meet you, $user_name!&quot;
+    fi
+    ```
+
+    To use this script:
+    1. Save it into a file called `hello_world.sh` for instance purposes with appropriate permissions using the command below (this assumes that Bash is already installed on your system):
+       ```bash
+       chmod +x hello_world.sh
+       ```
+    2. Run it by typing `./hello_world.sh`. It will prompt you to enter a name, and then reply accordingly based on whether or not the input was provided:
+
+    ```
+    Hi there, what&#39;s your name?
+    Alice
+    Nice to meet you, Alice!
+    ```
+    or if something went wrong (you didn’t provide any text):
+
+    ```
+    Hi there, what&#39;s your name?
+    It seems like something went wrong. Please type your name.
+    ```
+    Keep in mind that Bash is not the ideal environment for complex programming tasks or when you need more advanced features such as persistent state management; using an actual scripting language designed around these concepts might be beneficial, especially if this becomes a part of automating workflows regularly.
+      1120 prompt + 324 reply tokens · 6m11.389s · 2.4 tok/s
+</code></pre>
+<p>NOTE: Not sure why it decided to wirte something in Bash. It’m going
+to discard the model.</p>
+<h3 id="gemma2latest">gemma2:latest</h3>
+<pre class="harvey"><code>/clear
+/ollama use gemma2:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>    ```go cmd/hello/main.go
+    package main
+
+    import (
+        &quot;fmt&quot;
+        &quot;bufio&quot;
+        &quot;os&quot;
+    )
+
+    func main() {
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        reader := bufio.NewReader(os.Stdin)
+        name, _ := reader.ReadString(&#39;\n&#39;)
+        fmt.Printf(&quot;Hello %s!\n&quot;, name)
+    }
+    ```
+      1009 prompt + 98 reply tokens · 7m51.028s · 1.5 tok/s
+      ┌─ Write: cmd/hello/main.go ────────────────────────┐
+      │  package main
+      │  
+      │  import (
+      │     &quot;fmt&quot;
+      │     &quot;bufio&quot;
+      │     &quot;os&quot;
+      │  )
+      │  
+      │  … (6 more lines)
+      └───────────────────────────────────────────────────────┘
+      [y]es  [n]o  [A]ll  [q]uit &gt; a
+      ✓ wrote cmd/hello/main.go (214 bytes)
+</code></pre>
+<p>NOTE: Took nearly eight minutes but the answer was correct.
+Keeping.</p>
+<h3 id="phi4-minilatest">phi4-mini:latest</h3>
+<pre class="harvey"><code>/clear
+/ollama use phi4-mini:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    Certainly! Below is an example of how you can create such a simple interactive prompt in Golang using standard input/output:
+
+    ```go
+    package main
+
+    import (
+        &quot;bufio&quot;
+        &quot;fmt&quot;
+        &quot;os&quot;
+    )
+
+    func getName() string {
+        fmt.Println(&quot;Hi there, what&#39;s your name?&quot;)
+        reader := bufio.NewReader(os.Stdin)
+        name, _ := reader.ReadString(&#39;\n&#39;)
+        return strings.TrimSpace(name) // Trim spaces like new lines
+    }
+
+    func main() {
+        var userName string
+
+        userName = getName()
+
+        fmt.Printf(&quot;Nice to meet you %s!\n&quot;, userName)
+
+    }
+    ```
+
+    To run this Go program:
+    1. Save the code in a file named `main.go`.
+    2. Open your terminal and navigate to where you&#39;ve saved `main.go`.
+    3. Compile it by running: `$ go build -o hello main.go`
+    4. Run what was compiled with `.go` extension using its filename, like so: `./hello`
+
+    Remember that this program will run as long it&#39;s executing in a Go environment; otherwise (like writing to disk), you&#39;ll need the appropriate context which is managed outside of our current interactive setting here!
+      948 prompt + 238 reply tokens · 4m10.96s · 2.6 tok/s
+</code></pre>
+<p>NOTE: Code it correct with additional context provided. Nice function
+for the prompt. Four minutes wasn’t too bad. Keeping.</p>
+<h3 id="phi4-mini-reasoninglatest">phi4-mini-reasoning:latest</h3>
+<pre class="harvey"><code>/clear
+/ollama use phi4-mini-reasoning:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code></code></pre>
+<p>NOTE: Stopped at ten minutes, probably too large for the Pi.
+Discarding.</p>
+<h3 id="smallthinkerlatest">smallthinker:latest</h3>
+<pre class="harvey"><code>/clear
+/ollama use smallthinker:latest
+Write a Go program that displays &quot;Hi there, what&#39;s your name?&quot;, prompts for the name and then replies.</code></pre>
+<p>Results from test</p>
+<pre class="plain"><code>
+    To answer this, I need to write a simple Go program that interacts with the user by asking for their name and then responding with a greeting. Let me think about how to approach this step-by-step.
+
+    First, I&#39;ll start by importing the necessary packages. In this case, I only need `fmt` for input and output operations.
+
+    ```go
+    // Package main defines a simple Go program that interacts with the user.
+    package main
+
+    import (
+        &quot;fmt&quot;
+    )
+    ```
+
+    Now, let me think about the structure of the program. I need to prompt the user for their name and then display a greeting message. This means I&#39;ll use `fmt.Print` to print out the greeting and `fmt.Scanln` to read the user&#39;s input.
+
+    Let me break this down into steps:
+    1. Print &quot;Hi there, what&#39;s your name?&quot;
+    2. Read the user&#39;s response
+    3. Print a personalized greeting
+
+    Here&#39;s how I can implement these steps:
+
+    ```go
+    func main() {
+        // Step 1: Prompt the user for their name.
+        fmt.Print(&quot;Hi there, what&#39;s your name? &quot;)
+
+        // Step 2: Read the user&#39;s input.
+        var name string
+        fmt.Scanln(&amp;name)
+    ```
+
+    Now, let me think about how to format and print the greeting message. I need to make sure the program is clear and follows best practices for readability.
+
+    Here&#39;s the final step:
+    1. Print &quot;Hi there, [name]! Nice to meet you.&quot;
+    2. Ensure that the name is properly capitalized in the greeting
+
+    ```go
+        // Step 3: Display a personalized greeting.
+        fmt.Printf(&quot;Hi there, %s! Nice to meet you.\n&quot;, name)
+    }
+    ```
+
+    Wait, let me check if I need to handle any edge cases or validate the input. For simplicity, I&#39;ll assume that the user will provide a valid string for their name.
+
+    Now, let&#39;s put it all together:
+
+    ```go
+    // Package main defines a simple Go program that interacts with the user.
+    package main
+
+    import (
+        &quot;fmt&quot;
+    )
+
+    func main() {
+        // Prompt the user for their name.
+        fmt.Print(&quot;Hi there, what&#39;s your name? &quot;)
+
+        // Read the user&#39;s input.
+        var name string
+        fmt.Scanln(&amp;name)
+
+        // Display a personalized greeting.
+        fmt.Printf(&quot;Hi there, %s! Nice to meet you.\n&quot;, name)
+    }
+    ```
+
+    Fantastic! After all these calculations and steps, I can confidently say that this program will interact with the user by asking for their name and then responding with a greeting.
+
+    Final Answer:
+    ```go
+    // Package main defines a simple Go program that interacts with the user.
+    package main
+
+    import (
+        &quot;fmt&quot;
+    )
+
+    func main() {
+        // Prompt the user for their name.
+        fmt.Print(&quot;Hi there, what&#39;s your name? &quot;)
+
+        // Read the user&#39;s input.
+        var name string
+        fmt.Scanln(&amp;name)
+
+        // Display a personalized greeting.
+        fmt.Printf(&quot;Hi there, %s! Nice to meet you.\n&quot;, name)
+    }
+    ```
+      951 prompt + 627 reply tokens · 5m55.47s · 2.6 tok/s
+</code></pre>
+<p>NOTE: Very interesting result. I could see this being used to either
+process more complex prompts or as a model to deterimine if another
+model is needed. Will need to do testing with being either the router to
+the target of the router.</p>
+<p>The following three models needs to be tested. These are all big
+models so will likely take seven to ten minutes to test each. I expect
+their all too big.</p>
+<ul>
+<li>qwen2.5-coder:latest</li>
+<li>mistral-small:latest</li>
+<li>mistral:latest</li>
+</ul>
+</section>
+</body>
+</html>

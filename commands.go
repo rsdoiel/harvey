@@ -75,8 +75,8 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdKB,
 		},
 		"rag": {
-			Usage:       "/rag <setup|ingest PATH|status|query TEXT|on|off>",
-			Description: "Manage the RAG knowledge store for context-augmented generation",
+			Usage:       "/rag <list|new NAME|switch NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>",
+			Description: "Manage named RAG knowledge stores for context-augmented generation",
 			Handler:     cmdRag,
 		},
 		"files": {
@@ -353,8 +353,8 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintf(out, "Backend:   %s\n", a.Client.Name())
 	}
 	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
-	if oc, ok := a.Client.(*OllamaClient); ok && len(a.History) > 0 {
-		n, exact := CountTokens(context.Background(), oc.baseURL, oc.model, HistoryText(a.History))
+	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" && len(a.History) > 0 {
+		n, exact := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), HistoryText(a.History))
 		qualifier := "~"
 		if exact {
 			qualifier = ""
@@ -533,24 +533,22 @@ func routeStatus(a *Agent, out io.Writer) error {
 	return nil
 }
 
-// probeRouteEndpoint returns true when ep appears reachable: for Ollama
-// endpoints it pings the server; for publicai.co it checks for an API key.
+// probeRouteEndpoint returns true when ep appears reachable.
 func probeRouteEndpoint(ep *RouteEndpoint, cfg *Config) bool {
 	switch ep.Kind {
 	case KindOllama:
 		return ProbeOllama(ollamaBaseURL(ep.URL))
-	case KindPublicAI:
-		return cfg.PublicAIKey != ""
 	}
 	return false
 }
 
 func cmdInspect(a *Agent, args []string, out io.Writer) error {
-	oc, ok := a.Client.(*OllamaClient)
-	if !ok {
+	ac, ok := a.Client.(*AnyLLMClient)
+	if !ok || ac.ProviderName() != "ollama" {
 		fmt.Fprintln(out, "Inspect requires an Ollama backend. Use /ollama start first.")
 		return nil
 	}
+	oc := NewOllamaClient(ac.BackendURL(), "")
 	ctx := context.Background()
 
 	if len(args) > 0 {
@@ -795,7 +793,7 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 			return nil
 		}
 		a.Config.OllamaModel = model
-		a.Client = NewOllamaClient(a.Config.OllamaURL, model)
+		a.Client = newOllamaLLMClient(a.Config.OllamaURL, model)
 		fmt.Fprintf(out, "Now using Ollama model: %s\n", model)
 	default:
 		fmt.Fprintf(out, "Unknown ollama subcommand: %s\n", args[0])
@@ -818,8 +816,8 @@ func ollamaListTable(a *Agent, summaries []ModelSummary, out io.Writer) {
 	)
 
 	activeName := ""
-	if oc, ok := a.Client.(*OllamaClient); ok {
-		activeName = oc.Model()
+	if ac, ok := a.Client.(*AnyLLMClient); ok {
+		activeName = ac.ModelName()
 	}
 
 	unknownCount := 0
@@ -2204,12 +2202,12 @@ func modelList(a *Agent, out io.Writer) error {
 
 	// Ollama
 	if ProbeOllama(a.Config.OllamaURL) {
-		models, err := NewOllamaClient(a.Config.OllamaURL, "").Models(ctx)
+		models, err := newOllamaLLMClient(a.Config.OllamaURL, "").Models(ctx)
 		if err == nil {
 			found = true
 			activeModel := ""
-			if oc, ok := a.Client.(*OllamaClient); ok {
-				activeModel = oc.Model()
+			if ac, ok := a.Client.(*AnyLLMClient); ok {
+				activeModel = ac.ModelName()
 			}
 			fmt.Fprintln(out, "  Ollama:")
 			if len(models) == 0 {
@@ -2225,111 +2223,43 @@ func modelList(a *Agent, out io.Writer) error {
 		}
 	}
 
-	// publicai.co
-	if a.Config.PublicAIKey != "" {
-		pc := NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, a.Config.PublicAIModel)
-		models, err := pc.Models(ctx)
-		if err == nil {
-			found = true
-			activeModel := ""
-			if ac, ok := a.Client.(*PublicAIClient); ok {
-				activeModel = ac.Model()
-			}
-			fmt.Fprintln(out, "  publicai.co:")
-			for _, m := range models {
-				marker := "  "
-				if m == activeModel {
-					marker = "* "
-				}
-				fmt.Fprintf(out, "    %s%s\n", marker, m)
-			}
-		}
-	}
-
 	if !found {
-		fmt.Fprintln(out, "  No backends available. Start Ollama or set PUBLICAI_API_KEY and use /publicai connect.")
+		fmt.Fprintln(out, "  No backends available. Start Ollama or use /route add to register an endpoint.")
 	}
 	return nil
 }
 
-// modelSwitch changes the active model. The name may carry a backend prefix
-// ("ollama://" or "publicai.co://") to force a specific backend. Without a
-// prefix the model name is matched against all reachable backends; if the name
-// is found in exactly one backend that backend is activated, otherwise the user
-// is prompted to use a prefix.
+// modelSwitch changes the active model. An "ollama://" prefix forces the Ollama
+// backend. Without a prefix the model is looked up in Ollama; if found it is
+// activated, otherwise the user is told it was not found.
 func modelSwitch(a *Agent, name string, out io.Writer) error {
 	ctx := context.Background()
 
 	const ollamaPrefix = "ollama://"
-	const publicaiPrefix = "publicai.co://"
 
-	switch {
-	case strings.HasPrefix(name, ollamaPrefix):
-		model := strings.TrimPrefix(name, ollamaPrefix)
-		if !ProbeOllama(a.Config.OllamaURL) {
-			fmt.Fprintln(out, "  Ollama is not running. Use /ollama start first.")
-			return nil
-		}
-		a.Config.OllamaModel = model
-		a.Client = NewOllamaClient(a.Config.OllamaURL, model)
-		fmt.Fprintf(out, "  Switched to Ollama model: %s\n", model)
+	if strings.HasPrefix(name, ollamaPrefix) {
+		name = strings.TrimPrefix(name, ollamaPrefix)
+	}
 
-	case strings.HasPrefix(name, publicaiPrefix):
-		model := strings.TrimPrefix(name, publicaiPrefix)
-		if a.Config.PublicAIKey == "" {
-			fmt.Fprintln(out, "  PUBLICAI_API_KEY is not set.")
-			return nil
-		}
-		a.Config.PublicAIModel = model
-		a.Client = NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, model)
-		fmt.Fprintf(out, "  Switched to publicai.co model: %s\n", model)
+	if !ProbeOllama(a.Config.OllamaURL) {
+		fmt.Fprintln(out, "  Ollama is not running. Use /ollama start first.")
+		return nil
+	}
 
-	default:
-		// No prefix — search all backends.
-		var inOllama, inPublicAI bool
-
-		if ProbeOllama(a.Config.OllamaURL) {
-			models, err := NewOllamaClient(a.Config.OllamaURL, "").Models(ctx)
-			if err == nil {
-				for _, m := range models {
-					if m == name {
-						inOllama = true
-						break
-					}
-				}
-			}
-		}
-		if a.Config.PublicAIKey != "" {
-			pc := NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, a.Config.PublicAIModel)
-			models, err := pc.Models(ctx)
-			if err == nil {
-				for _, m := range models {
-					if m == name {
-						inPublicAI = true
-						break
-					}
-				}
-			}
-		}
-
-		switch {
-		case inOllama && inPublicAI:
-			fmt.Fprintf(out, "  %q exists in both backends. Use a prefix to disambiguate:\n", name)
-			fmt.Fprintf(out, "    /model ollama://%s\n", name)
-			fmt.Fprintf(out, "    /model publicai.co://%s\n", name)
-		case inOllama:
+	models, err := newOllamaLLMClient(a.Config.OllamaURL, "").Models(ctx)
+	if err != nil {
+		return fmt.Errorf("listing models: %w", err)
+	}
+	for _, m := range models {
+		if m == name {
 			a.Config.OllamaModel = name
-			a.Client = NewOllamaClient(a.Config.OllamaURL, name)
-			fmt.Fprintf(out, "  Switched to Ollama model: %s\n", name)
-		case inPublicAI:
-			a.Config.PublicAIModel = name
-			a.Client = NewPublicAIClient(a.Config.PublicAIURL, a.Config.PublicAIKey, name)
-			fmt.Fprintf(out, "  Switched to publicai.co model: %s\n", name)
-		default:
-			fmt.Fprintf(out, "  Model %q not found in any available backend.\n", name)
-			fmt.Fprintln(out, "  Use /model to list available models.")
+			a.Client = newOllamaLLMClient(a.Config.OllamaURL, name)
+			fmt.Fprintf(out, "  Switched to model: %s\n", name)
+			return nil
 		}
 	}
+	fmt.Fprintf(out, "  Model %q not found in Ollama.\n", name)
+	fmt.Fprintln(out, "  Use /model to list available models.")
 	return nil
 }
 
@@ -2550,6 +2480,8 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 	switch strings.ToLower(args[0]) {
 	case "status":
 		return ragStatus(a, out)
+	case "list":
+		return ragList(a, out)
 	case "on":
 		if a.Rag == nil {
 			fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
@@ -2564,6 +2496,24 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintln(out, "RAG context injection: off")
 	case "setup":
 		return ragSetup(a, out)
+	case "new":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /rag new NAME")
+			return nil
+		}
+		return ragWizard(a, args[1], out)
+	case "switch":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /rag switch NAME")
+			return nil
+		}
+		return ragSwitch(a, args[1], out)
+	case "drop":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /rag drop NAME")
+			return nil
+		}
+		return ragDrop(a, args[1], out)
 	case "ingest":
 		if len(args) < 2 {
 			fmt.Fprintln(out, "Usage: /rag ingest PATH [PATH...]")
@@ -2582,33 +2532,140 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 	return nil
 }
 
-// ragStatus prints the current RAG configuration and chunk count.
+// ragStatus prints the active store details and the full store registry.
 func ragStatus(a *Agent, out io.Writer) error {
-	if a.Config.RagDBPath == "" {
-		fmt.Fprintln(out, "RAG is not configured. Run /rag setup to get started.")
-		return nil
-	}
 	enabled := "off"
 	if a.RagOn {
 		enabled = "on"
 	}
-	fmt.Fprintf(out, "RAG status:       %s\n", enabled)
-	fmt.Fprintf(out, "Database:         %s\n", a.Config.RagDBPath)
-	fmt.Fprintf(out, "Embedding model:  %s\n", a.Config.RagEmbedModel)
-	if len(a.Config.RagModelMap) > 0 {
-		fmt.Fprintln(out, "Model map:")
-		for gen, emb := range a.Config.RagModelMap {
-			fmt.Fprintf(out, "  %-36s → %s\n", gen, emb)
+	fmt.Fprintf(out, "RAG context injection: %s\n", enabled)
+
+	entry := a.Config.ActiveRagStore()
+	if entry == nil {
+		fmt.Fprintln(out, "No store configured. Run /rag new NAME or /rag setup to get started.")
+		return nil
+	}
+
+	fmt.Fprintf(out, "Active store:    %s\n", entry.Name)
+	fmt.Fprintf(out, "  Database:      %s\n", entry.DBPath)
+	fmt.Fprintf(out, "  Embed model:   %s\n", entry.EmbeddingModel)
+	if a.Rag != nil {
+		if n, err := a.Rag.Count(); err == nil {
+			fmt.Fprintf(out, "  Chunks:        %d\n", n)
+		}
+	} else {
+		fmt.Fprintln(out, "  (store not open)")
+	}
+	if len(entry.ModelMap) > 0 {
+		fmt.Fprintln(out, "  Model map:")
+		for gen, emb := range entry.ModelMap {
+			fmt.Fprintf(out, "    %-36s → %s\n", gen, emb)
 		}
 	}
-	if a.Rag == nil {
-		fmt.Fprintln(out, "(store not open)")
+
+	if len(a.Config.RagStores) > 1 {
+		fmt.Fprintf(out, "\nAll stores (%d):\n", len(a.Config.RagStores))
+		for _, e := range a.Config.RagStores {
+			marker := "  "
+			if e.Name == a.Config.RagActive {
+				marker = "* "
+			}
+			fmt.Fprintf(out, "  %s%-16s %s  (%s)\n", marker, e.Name, e.DBPath, e.EmbeddingModel)
+		}
 	}
 	return nil
 }
 
-// ragSetup runs the interactive RAG configuration wizard.
+// ragList prints a brief listing of all registered stores.
+func ragList(a *Agent, out io.Writer) error {
+	if len(a.Config.RagStores) == 0 {
+		fmt.Fprintln(out, "No RAG stores registered. Run /rag new NAME to create one.")
+		return nil
+	}
+	fmt.Fprintf(out, "RAG stores (%d):\n", len(a.Config.RagStores))
+	for _, e := range a.Config.RagStores {
+		marker := "  "
+		if e.Name == a.Config.RagActive {
+			marker = "* "
+		}
+		fmt.Fprintf(out, "  %s%-16s %s  (%s)\n", marker, e.Name, e.DBPath, e.EmbeddingModel)
+	}
+	return nil
+}
+
+// ragSwitch closes the current store and opens the named one.
+func ragSwitch(a *Agent, name string, out io.Writer) error {
+	entry := a.Config.RagStoreByName(name)
+	if entry == nil {
+		fmt.Fprintf(out, "Store %q not found. Use /rag list to see available stores.\n", name)
+		return nil
+	}
+	if a.Rag != nil {
+		_ = a.Rag.Close()
+		a.Rag = nil
+	}
+	dbPath, err := a.Workspace.AbsPath(entry.DBPath)
+	if err != nil {
+		return fmt.Errorf("rag switch: %w", err)
+	}
+	store, err := NewRagStore(dbPath, entry.EmbeddingModel)
+	if err != nil {
+		return fmt.Errorf("rag switch: open store: %w", err)
+	}
+	a.Rag = store
+	a.Config.RagActive = name
+	if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		fmt.Fprintf(out, "Warning: could not persist active store: %v\n", err)
+	}
+	fmt.Fprintf(out, "Active store: %s (%s)\n", entry.Name, entry.DBPath)
+	return nil
+}
+
+// ragDrop removes a store from the registry (does not delete the .db file).
+func ragDrop(a *Agent, name string, out io.Writer) error {
+	entry := a.Config.RagStoreByName(name)
+	if entry == nil {
+		fmt.Fprintf(out, "Store %q not found.\n", name)
+		return nil
+	}
+	fmt.Fprintf(out, "Remove store %q from registry? The .db file will NOT be deleted.\n", name)
+	fmt.Fprintf(out, "  Database: %s\n", entry.DBPath)
+	fmt.Fprint(out, "Confirm? [y/N] ")
+	scanner := bufio.NewScanner(a.In)
+	scanner.Scan()
+	if answer := strings.ToLower(strings.TrimSpace(scanner.Text())); answer != "y" && answer != "yes" {
+		fmt.Fprintln(out, "Cancelled.")
+		return nil
+	}
+	if name == a.Config.RagActive {
+		if a.Rag != nil {
+			_ = a.Rag.Close()
+			a.Rag = nil
+		}
+		a.RagOn = false
+		a.Config.RagActive = ""
+	}
+	a.Config.RemoveRagStore(name)
+	if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		fmt.Fprintf(out, "Warning: could not persist registry: %v\n", err)
+	}
+	fmt.Fprintf(out, "Store %q removed. To delete the database: rm %s\n", name, entry.DBPath)
+	return nil
+}
+
+// ragSetup is the backward-compat /rag setup entry point. It re-runs the
+// wizard for the active store, or creates a "default" store when none exists.
 func ragSetup(a *Agent, out io.Writer) error {
+	name := a.Config.RagActive
+	if name == "" {
+		name = "default"
+	}
+	return ragWizard(a, name, out)
+}
+
+// ragWizard runs the interactive setup wizard for a named store, creating or
+// reconfiguring it in the registry.
+func ragWizard(a *Agent, name string, out io.Writer) error {
 	ctx := context.Background()
 
 	if !ProbeOllama(a.Config.OllamaURL) {
@@ -2669,7 +2726,7 @@ func ragSetup(a *Agent, out io.Writer) error {
 foundPref:
 
 	// Build proposed model map: all non-embedding generation models → preferred embedder.
-	genModels, _ := NewOllamaClient(a.Config.OllamaURL, "").Models(ctx)
+	genModels, _ := newOllamaLLMClient(a.Config.OllamaURL, "").Models(ctx)
 	proposed := make(map[string]string)
 	for _, m := range genModels {
 		if !hasEmbedKeyword(m) {
@@ -2689,12 +2746,12 @@ foundPref:
 		}
 	}
 
-	// Derive the db path from the preferred embedding model name.
-	dbName := "rag_" + strings.ReplaceAll(strings.ReplaceAll(preferred, ":", "_"), "/", "_") + ".db"
-	dbPath := filepath.Join(harveySubdir, dbName)
+	// Derive the db path from the store name.
+	ragDir := filepath.Join(harveySubdir, "rag")
+	dbPath := filepath.Join(ragDir, name+".db")
 
 	// Display proposed mapping for human review.
-	fmt.Fprintf(out, "Proposed RAG configuration (embedding model: %s):\n\n", preferred)
+	fmt.Fprintf(out, "Proposed RAG store %q (embedding model: %s):\n\n", name, preferred)
 	fmt.Fprintf(out, "  Database: %s\n\n", dbPath)
 	if len(proposed) > 0 {
 		fmt.Fprintf(out, "  %-36s  %s\n", "Generation model", "Embedding model")
@@ -2714,17 +2771,31 @@ foundPref:
 		return nil
 	}
 
-	// Apply and persist.
-	a.Config.RagDBPath = dbPath
-	a.Config.RagEmbedModel = preferred
-	a.Config.RagModelMap = proposed
+	// Ensure the rag/ subdirectory exists.
+	if err := a.Workspace.MkdirAll(ragDir); err != nil {
+		return fmt.Errorf("rag setup: create directory: %w", err)
+	}
+
+	// Update the registry, set as active, enable.
+	entry := RagStoreEntry{
+		Name:           name,
+		DBPath:         dbPath,
+		EmbeddingModel: preferred,
+		ModelMap:       proposed,
+	}
+	a.Config.AddOrUpdateRagStore(entry)
+	a.Config.RagActive = name
 	a.Config.RagEnabled = true
 
 	if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
 		return fmt.Errorf("rag setup: save config: %w", err)
 	}
 
-	// Open the store now so the user can ingest immediately.
+	// Close any previously open store, then open the new one.
+	if a.Rag != nil {
+		_ = a.Rag.Close()
+		a.Rag = nil
+	}
 	absDB, err := a.Workspace.AbsPath(dbPath)
 	if err != nil {
 		return err
@@ -2736,7 +2807,7 @@ foundPref:
 	a.Rag = store
 	a.RagOn = true
 
-	fmt.Fprintln(out, "RAG configured and enabled.")
+	fmt.Fprintf(out, "RAG store %q configured and enabled.\n", name)
 	fmt.Fprintf(out, "Next step: run /rag ingest <file-or-directory> to populate the store.\n")
 	return nil
 }
@@ -2747,7 +2818,12 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 		fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
 		return nil
 	}
-	embedder := NewOllamaEmbedder(a.Config.OllamaURL, a.Config.RagEmbedModel)
+	entry := a.Config.ActiveRagStore()
+	if entry == nil {
+		fmt.Fprintln(out, "No active RAG store. Run /rag switch NAME to select one.")
+		return nil
+	}
+	embedder := NewOllamaEmbedder(a.Config.OllamaURL, entry.EmbeddingModel)
 
 	var total int
 	for _, p := range paths {
@@ -2868,7 +2944,12 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 		fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
 		return nil
 	}
-	embedder := NewOllamaEmbedder(a.Config.OllamaURL, a.Config.RagEmbedModel)
+	entry := a.Config.ActiveRagStore()
+	if entry == nil {
+		fmt.Fprintln(out, "No active RAG store. Run /rag switch NAME to select one.")
+		return nil
+	}
+	embedder := NewOllamaEmbedder(a.Config.OllamaURL, entry.EmbeddingModel)
 	chunks, err := a.Rag.Query(query, embedder, 5)
 	if err != nil {
 		return fmt.Errorf("rag query: %w", err)

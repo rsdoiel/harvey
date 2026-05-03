@@ -1,7 +1,6 @@
 package harvey
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -14,47 +13,23 @@ import (
 	"time"
 )
 
-// OllamaClient implements LLMClient for a local Ollama server.
+// OllamaClient is a utility type for Ollama-specific operations (model
+// inspection, capability probing) that are not part of the LLMClient
+// interface. For chat and embeddings use newOllamaLLMClient instead.
 type OllamaClient struct {
 	baseURL string
 	model   string
 	http    *http.Client
 }
 
-// NewOllamaClient returns an OllamaClient targeting the given base URL and model.
+// NewOllamaClient returns an OllamaClient for Ollama-specific utility calls
+// (ShowModel, ModelSummaries, probing). Pass model="" when only inspecting.
 func NewOllamaClient(baseURL, model string) *OllamaClient {
 	return &OllamaClient{
 		baseURL: baseURL,
 		model:   model,
-		http:    &http.Client{}, // no global timeout; streaming responses run long
+		http:    &http.Client{},
 	}
-}
-
-func (o *OllamaClient) Name() string      { return "Ollama (" + o.model + ")" }
-func (o *OllamaClient) Model() string     { return o.model }
-func (o *OllamaClient) SetModel(m string) { o.model = m }
-func (o *OllamaClient) Close() error      { return nil }
-
-// ollamaMsg mirrors the message shape Ollama expects and returns.
-type ollamaMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type ollamaChatReq struct {
-	Model    string      `json:"model"`
-	Messages []ollamaMsg `json:"messages"`
-	Stream   bool        `json:"stream"`
-}
-
-type ollamaChatResp struct {
-	Message            ollamaMsg `json:"message"`
-	Done               bool      `json:"done"`
-	TotalDuration      int64     `json:"total_duration"`       // nanoseconds
-	PromptEvalCount    int       `json:"prompt_eval_count"`    // tokens in prompt
-	PromptEvalDuration int64     `json:"prompt_eval_duration"` // nanoseconds
-	EvalCount          int       `json:"eval_count"`           // tokens generated
-	EvalDuration       int64     `json:"eval_duration"`        // nanoseconds
 }
 
 type ollamaModelDetails struct {
@@ -118,67 +93,6 @@ type ModelDetail struct {
 	Capabilities  []string // e.g. ["completion", "tools", "vision"]; nil on older Ollama
 }
 
-// Chat sends messages to Ollama, streams the response tokens to out, and
-// returns timing and token-count stats from the done packet.
-func (o *OllamaClient) Chat(ctx context.Context, messages []Message, out io.Writer) (ChatStats, error) {
-	msgs := make([]ollamaMsg, len(messages))
-	for i, m := range messages {
-		msgs[i] = ollamaMsg{Role: m.Role, Content: m.Content}
-	}
-	body, err := json.Marshal(ollamaChatReq{Model: o.model, Messages: msgs, Stream: true})
-	if err != nil {
-		return ChatStats{}, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/chat", bytes.NewReader(body))
-	if err != nil {
-		return ChatStats{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	start := time.Now()
-	resp, err := o.http.Do(req)
-	if err != nil {
-		return ChatStats{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return ChatStats{}, fmt.Errorf("ollama: HTTP %d: %s", resp.StatusCode, b)
-	}
-
-	var stats ChatStats
-	sc := bufio.NewScanner(resp.Body)
-	for sc.Scan() {
-		var chunk ollamaChatResp
-		if err := json.Unmarshal(sc.Bytes(), &chunk); err != nil {
-			continue
-		}
-		fmt.Fprint(out, chunk.Message.Content)
-		if chunk.Done {
-			stats.PromptTokens = chunk.PromptEvalCount
-			stats.ReplyTokens = chunk.EvalCount
-			if chunk.EvalDuration > 0 {
-				stats.TokensPerSec = float64(chunk.EvalCount) / (float64(chunk.EvalDuration) / 1e9)
-			}
-			break
-		}
-	}
-	stats.Elapsed = time.Since(start)
-	return stats, sc.Err()
-}
-
-// Models returns the names of models installed on the Ollama server.
-func (o *OllamaClient) Models(ctx context.Context) ([]string, error) {
-	summaries, err := o.ModelSummaries(ctx)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, len(summaries))
-	for i, s := range summaries {
-		names[i] = s.Name
-	}
-	return names, nil
-}
 
 /** ModelSummaries returns a ModelSummary for every model installed on the
  * Ollama server. It also marks which models are currently loaded (running)

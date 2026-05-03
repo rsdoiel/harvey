@@ -39,8 +39,41 @@ figcaption {
 </nav>
 <section>
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.1-pre1">harvey 0.0.1-pre1</h2>
-<p>concept</p>
+<h2 id="harvey-0.0.1b">harvey 0.0.1b</h2>
+<p>Proof of concept.</p>
+<ul>
+<li>harvey directory, session overhaul, keyboard shortcuts, KB search
+&amp; inject</li>
+<li>Renamed state directory from .harvey/ to harvey/ (workspace-local
+and ~/harvey/ globally)</li>
+<li>Dropped SQLite sessions.db in favour of Fountain/SPMD session files;
+sessions now live in harvey/sessions/ and persist as .spmd recordings
+automatically on every run</li>
+<li>Session resume prompt now appears before Ollama model selection
+(default: No); selecting a prior session pre-selects the model recorded
+in that file</li>
+<li>Added .spmd as the primary session file extension; .fountain files
+from other LLM systems are also accepted everywhere Harvey reads
+sessions</li>
+<li>Added harvey/harvey.yaml for per-workspace overrides: knowledge_db,
+sessions_dir, agents_dir, auto_record</li>
+<li>Added Ctrl+X Ctrl+E chord to the termlib line editor: opens $EDITOR
+(→ $VISUAL → vi) with the current prompt buffer; saved content is
+submitted when the editor exits</li>
+<li>Added FTS5 full-text search to the knowledge base: /kb search TERM
+ranks results across observations, projects, and concepts using bm25();
+supports FTS5 phrase and prefix syntax</li>
+<li>Added /kb inject [PROJECT-NAME]: formats knowledge base content as
+Markdown and adds it to the conversation context so the LLM can reason
+about it</li>
+<li>Added keyboard-shortcuts section to getting_started.md and LINE
+EDITING section to –help / man page</li>
+<li>Added RAG support and enhance metadata handling for the models pull
+from ollama</li>
+<li>Switch from custom LLMClient to Mozilla’s any-llm-go.</li>
+<li>Dropped support for publicai.co’s API (couldn’t access it for
+testing)</li>
+</ul>
 <h3 id="authors">Authors</h3>
 <ul>
 <li>R. S. Doiel, <a href="https://orcid.org/0000-0003-0900-6903"

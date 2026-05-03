@@ -25,7 +25,9 @@ suggested changes — all sandboxed to a single workspace directory.
    - [Recording](getting_started.md#recording-commands)
 7. [Typical workflows](getting_started.md#typical-workflows)
 8. [Further reading](getting_started.md#further-reading)
-9. [Model evaluation](models.md)
+9. [Models I'm using](models.md)
+10. [Model evaluations](model_testing_plan.md)
+11. [Using RAGS with Harvey](Using_RAGs_with_Harvey.md)
 
 
 ## Further reading

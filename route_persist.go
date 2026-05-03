@@ -85,8 +85,7 @@ func SaveRouteConfig(rr *RouteRegistry) error {
 }
 
 /** inferRouteKind returns the RouteKind implied by rawURL.
- * Recognised schemes: ollama://, http://, https:// → KindOllama;
- * publicai.co:// → KindPublicAI.
+ * Recognised schemes: ollama://, http://, https:// → KindOllama.
  *
  * Parameters:
  *   rawURL (string) — URL as typed by the user.
@@ -105,9 +104,7 @@ func inferRouteKind(rawURL string) (RouteKind, error) {
 		strings.HasPrefix(rawURL, "http://"),
 		strings.HasPrefix(rawURL, "https://"):
 		return KindOllama, nil
-	case strings.HasPrefix(rawURL, "publicai.co://"):
-		return KindPublicAI, nil
 	default:
-		return "", fmt.Errorf("unrecognised URL scheme in %q — use ollama://host:port or publicai.co://", rawURL)
+		return "", fmt.Errorf("unrecognised URL scheme in %q — use ollama://host:port", rawURL)
 	}
 }
