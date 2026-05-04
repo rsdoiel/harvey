@@ -13,4 +13,7 @@
 - [X] Change Harvey's directory from "harvey" to "agents" so that everything is shared with other agent tools.
 - [X] Make sure all commands have a help guide
 - [X] Make sure line editing and $EDITOR configuration have help guides
+- [ ] Explore adding an LSP service suing Go lsp module for intergrating Harvey with an IDE or text editor
+- [ ] Continue Phase 3 & 4 for integrating Go from Mozilla AI GitHub priojects
+
 
