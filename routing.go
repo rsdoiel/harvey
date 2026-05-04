@@ -15,16 +15,24 @@ const RecentContextN = 10
 type RouteKind string
 
 const (
-	KindOllama   RouteKind = "ollama"
+	// Local providers — no API key required.
+	KindOllama    RouteKind = "ollama"
 	KindLlamafile RouteKind = "llamafile"
 	KindLlamaCpp  RouteKind = "llamacpp"
+
+	// Cloud providers — credentials read from environment variables.
+	KindAnthropic RouteKind = "anthropic"
+	KindDeepSeek  RouteKind = "deepseek"
+	KindGemini    RouteKind = "gemini"
+	KindMistral   RouteKind = "mistral"
+	KindOpenAI    RouteKind = "openai"
 )
 
 /** RouteEndpoint is a named remote LLM endpoint registered for @mention dispatch.
  *
  * Fields:
  *   Name  (string)    — identifier used in @mention syntax (e.g. "pi2").
- *   URL   (string)    — endpoint URL; use "ollama://host:port" or "publicai.co://".
+ *   URL   (string)    — endpoint URL; e.g. "ollama://host:port" or "anthropic://".
  *   Model (string)    — default model on this endpoint; empty falls back to Config defaults.
  *   Kind  (RouteKind) — KindOllama, KindLlamafile, KindLlamaCpp, etc.
  *
@@ -199,13 +207,27 @@ func DispatchToEndpoint(ctx context.Context, ep *RouteEndpoint, history []Messag
 
 // clientForEndpoint constructs the appropriate LLMClient for ep.
 func clientForEndpoint(ep *RouteEndpoint, cfg *Config) (LLMClient, error) {
+	model := ep.Model
 	switch ep.Kind {
 	case KindOllama:
-		model := ep.Model
 		if model == "" {
 			model = cfg.OllamaModel
 		}
 		return newOllamaLLMClient(ollamaBaseURL(ep.URL), model), nil
+	case KindLlamafile:
+		return newLlamafileLLMClient(LlamafileAPIURL(ep.URL), model), nil
+	case KindLlamaCpp:
+		return newLlamaCppLLMClient(LlamacppAPIURL(ep.URL), model), nil
+	case KindAnthropic:
+		return newAnthropicLLMClient(model)
+	case KindDeepSeek:
+		return newDeepSeekLLMClient(model)
+	case KindGemini:
+		return newGeminiLLMClient(model)
+	case KindMistral:
+		return newMistralLLMClient(model)
+	case KindOpenAI:
+		return newOpenAILLMClient(model)
 	default:
 		return nil, fmt.Errorf("route %s: unknown endpoint kind %q", ep.Name, ep.Kind)
 	}
@@ -218,6 +240,39 @@ func ollamaBaseURL(u string) string {
 		return "http://" + strings.TrimPrefix(u, "ollama://")
 	}
 	return u
+}
+
+// LlamafileAPIURL converts a "llamafile://host:port" URL to the form
+// "http://host:port/v1" expected by the any-llm-go llamafile provider.
+// Already well-formed http(s):// URLs are left unchanged.
+func LlamafileAPIURL(u string) string {
+	base := u
+	if strings.HasPrefix(u, "llamafile://") {
+		base = "http://" + strings.TrimPrefix(u, "llamafile://")
+	}
+	if !strings.HasSuffix(base, "/v1") {
+		base = strings.TrimRight(base, "/") + "/v1"
+	}
+	return base
+}
+
+// LlamafileHealthURL returns the base URL (without /v1) suitable for health
+// probing a llamafile or llama.cpp server.
+func LlamafileHealthURL(u string) string {
+	base := LlamafileAPIURL(u)
+	return strings.TrimSuffix(base, "/v1")
+}
+
+// LlamacppAPIURL converts a "llamacpp://host:port" URL to "http://host:port/v1".
+func LlamacppAPIURL(u string) string {
+	base := u
+	if strings.HasPrefix(u, "llamacpp://") {
+		base = "http://" + strings.TrimPrefix(u, "llamacpp://")
+	}
+	if !strings.HasSuffix(base, "/v1") {
+		base = strings.TrimRight(base, "/") + "/v1"
+	}
+	return base
 }
 
 // estimateTokens returns a fast token count estimate using the 4-bytes-per-token

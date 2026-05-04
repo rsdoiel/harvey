@@ -125,7 +125,7 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdSummarize,
 		},
 		"model": {
-			Usage:       "/model [NAME | ollama://NAME | publicai.co://NAME]",
+			Usage:       "/model [NAME | ollama://NAME]",
 			Description: "List available models, or switch to a named model",
 			Handler:     cmdModel,
 		},
@@ -427,7 +427,9 @@ func cmdRoute(a *Agent, args []string, out io.Writer) error {
 func routeAdd(a *Agent, args []string, out io.Writer) error {
 	if len(args) < 2 {
 		fmt.Fprintln(out, "  Usage: /route add NAME URL [MODEL]")
-		fmt.Fprintln(out, "  URL formats:  ollama://host:port   publicai.co://")
+		fmt.Fprintln(out, "  Local:  ollama://host:port  llamafile://host:port  llamacpp://host:port")
+		fmt.Fprintln(out, "  Cloud:  anthropic://  deepseek://  gemini://  mistral://  openai://")
+		fmt.Fprintln(out, "  Cloud providers read API keys from environment variables.")
 		return nil
 	}
 	name, rawURL := args[0], args[1]
@@ -435,7 +437,7 @@ func routeAdd(a *Agent, args []string, out io.Writer) error {
 	if len(args) >= 3 {
 		model = args[2]
 	}
-	kind, err := inferRouteKind(rawURL)
+	kind, err := InferRouteKind(rawURL)
 	if err != nil {
 		fmt.Fprintf(out, "  %v\n", err)
 		return nil
@@ -534,10 +536,25 @@ func routeStatus(a *Agent, out io.Writer) error {
 }
 
 // probeRouteEndpoint returns true when ep appears reachable.
+// Local providers are probed via HTTP; cloud providers check for a non-empty API key env var.
 func probeRouteEndpoint(ep *RouteEndpoint, cfg *Config) bool {
 	switch ep.Kind {
 	case KindOllama:
 		return ProbeOllama(ollamaBaseURL(ep.URL))
+	case KindLlamafile:
+		return ProbeEncoderfile(LlamafileHealthURL(ep.URL))
+	case KindLlamaCpp:
+		return ProbeEncoderfile(LlamafileHealthURL(LlamacppAPIURL(ep.URL)))
+	case KindAnthropic:
+		return os.Getenv("ANTHROPIC_API_KEY") != ""
+	case KindDeepSeek:
+		return os.Getenv("DEEPSEEK_API_KEY") != ""
+	case KindGemini:
+		return os.Getenv("GEMINI_API_KEY") != "" || os.Getenv("GOOGLE_API_KEY") != ""
+	case KindMistral:
+		return os.Getenv("MISTRAL_API_KEY") != ""
+	case KindOpenAI:
+		return os.Getenv("OPENAI_API_KEY") != ""
 	}
 	return false
 }
@@ -1772,7 +1789,7 @@ const summarizePrompt = "Please summarize this conversation concisely. Capture t
 // into a single summary message, then replaces the history with that summary.
 func cmdSummarize(a *Agent, args []string, out io.Writer) error {
 	if a.Client == nil {
-		fmt.Fprintln(out, "No backend connected. Use /ollama start or /publicai connect.")
+		fmt.Fprintln(out, "No backend connected. Use /ollama start.")
 		return nil
 	}
 
@@ -1923,7 +1940,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 			outPath = DefaultSessionPath(a.SessionsDir)
 		}
 		if a.Client == nil {
-			fmt.Fprintln(out, "  No backend connected. Use /ollama start or /route add cloud publicai.co://.")
+			fmt.Fprintln(out, "  No backend connected. Use /ollama start.")
 			return nil
 		}
 		return a.ReplayFromFountain(context.Background(), src, outPath, out)
@@ -2120,7 +2137,7 @@ func skillNew(a *Agent, out io.Writer) error {
 // skillCompile compiles a named skill to compiled.bash and compiled.ps1.
 func skillCompile(a *Agent, name string, out io.Writer) error {
 	if a.Client == nil {
-		fmt.Fprintln(out, "  No backend connected. Use /ollama start or /publicai connect first.")
+		fmt.Fprintln(out, "  No backend connected. Use /ollama start first.")
 		return nil
 	}
 	skill, ok := a.Skills[name]
@@ -2169,10 +2186,9 @@ func warnIfSkillStale(skill *SkillMeta, out io.Writer) {
  * the active model when a name is supplied.
  *
  * Usage:
- *   /model                     — list all models from every connected backend.
- *   /model NAME                — switch to NAME; error if ambiguous across backends.
- *   /model ollama://NAME       — switch Ollama to NAME.
- *   /model publicai.co://NAME  — switch publicai.co to NAME.
+ *   /model                — list all available Ollama models.
+ *   /model NAME           — switch to NAME.
+ *   /model ollama://NAME  — switch Ollama to NAME (explicit prefix).
  *
  * Parameters:
  *   a    (*Agent)    — the running agent.
@@ -2498,10 +2514,11 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		return ragSetup(a, out)
 	case "new":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /rag new NAME")
+			fmt.Fprintln(out, "Usage: /rag new NAME [--embedder ollama|encoderfile] [--embedder-url URL]")
 			return nil
 		}
-		return ragWizard(a, args[1], out)
+		kind, url := ParseEmbedderFlags(args[2:])
+		return ragWizard(a, args[1], kind, url, out)
 	case "switch":
 		if len(args) < 2 {
 			fmt.Fprintln(out, "Usage: /rag switch NAME")
@@ -2549,6 +2566,9 @@ func ragStatus(a *Agent, out io.Writer) error {
 	fmt.Fprintf(out, "Active store:    %s\n", entry.Name)
 	fmt.Fprintf(out, "  Database:      %s\n", entry.DBPath)
 	fmt.Fprintf(out, "  Embed model:   %s\n", entry.EmbeddingModel)
+	if entry.EmbedderKind == "encoderfile" {
+		fmt.Fprintf(out, "  Embedder:      encoderfile (%s)\n", entry.EmbedderURL)
+	}
 	if a.Rag != nil {
 		if n, err := a.Rag.Count(); err == nil {
 			fmt.Fprintf(out, "  Chunks:        %d\n", n)
@@ -2660,14 +2680,91 @@ func ragSetup(a *Agent, out io.Writer) error {
 	if name == "" {
 		name = "default"
 	}
-	return ragWizard(a, name, out)
+	return ragWizard(a, name, "", "", out)
+}
+
+/** ParseEmbedderFlags extracts --embedder and --embedder-url values from args.
+ * Unrecognised tokens are silently ignored. Both values default to "".
+ *
+ * Parameters:
+ *   args ([]string) — remaining arguments after the store name.
+ *
+ * Returns:
+ *   kind (string) — embedder kind: "ollama", "encoderfile", or "".
+ *   url  (string) — embedder base URL, or "".
+ *
+ * Example:
+ *   kind, url := ParseEmbedderFlags([]string{"--embedder", "encoderfile", "--embedder-url", "http://localhost:8080"})
+ */
+func ParseEmbedderFlags(args []string) (kind, url string) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--embedder":
+			if i+1 < len(args) {
+				i++
+				kind = args[i]
+			}
+		case "--embedder-url":
+			if i+1 < len(args) {
+				i++
+				url = args[i]
+			}
+		}
+	}
+	return kind, url
 }
 
 // ragWizard runs the interactive setup wizard for a named store, creating or
-// reconfiguring it in the registry.
-func ragWizard(a *Agent, name string, out io.Writer) error {
+// reconfiguring it in the registry. embedderKind and embedderURL select the
+// embedder backend: "" or "ollama" uses Ollama; "encoderfile" uses an
+// Encoderfile binary server at embedderURL.
+func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) error {
 	ctx := context.Background()
+	ragDir := filepath.Join(harveySubdir, "rag")
+	dbPath := filepath.Join(ragDir, name+".db")
 
+	// ── Encoderfile path ───────────────────────────────────────────────────────
+	if embedderKind == "encoderfile" {
+		if embedderURL == "" {
+			fmt.Fprintln(out, "Encoderfile requires --embedder-url, e.g. --embedder-url http://localhost:8080")
+			return nil
+		}
+		if !ProbeEncoderfile(embedderURL) {
+			fmt.Fprintf(out, "Encoderfile server not reachable at %s\n", embedderURL)
+			fmt.Fprintln(out, "Start the server: ./your-model.encoderfile serve")
+			return nil
+		}
+		modelID, err := ProbeEncoderfileModel(embedderURL)
+		if err != nil {
+			return fmt.Errorf("rag wizard: %w", err)
+		}
+		fmt.Fprintf(out, "Proposed RAG store %q (Encoderfile embedder: %s):\n\n", name, modelID)
+		fmt.Fprintf(out, "  Database:      %s\n", dbPath)
+		fmt.Fprintf(out, "  Embedder URL:  %s\n", embedderURL)
+		fmt.Fprintf(out, "  Model ID:      %s\n\n", modelID)
+		fmt.Fprint(out, "Accept? [Y/n] ")
+
+		scanner := bufio.NewScanner(a.In)
+		scanner.Scan()
+		answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+		if answer != "" && answer != "y" && answer != "yes" {
+			fmt.Fprintln(out, "Setup cancelled.")
+			return nil
+		}
+		if err := a.Workspace.MkdirAll(ragDir); err != nil {
+			return fmt.Errorf("rag setup: create directory: %w", err)
+		}
+		entry := RagStoreEntry{
+			Name:           name,
+			DBPath:         dbPath,
+			EmbeddingModel: modelID,
+			EmbedderKind:   "encoderfile",
+			EmbedderURL:    embedderURL,
+		}
+		return ragCommitEntry(a, entry, out)
+	}
+
+	// ── Ollama path ────────────────────────────────────────────────────────────
 	if !ProbeOllama(a.Config.OllamaURL) {
 		fmt.Fprintln(out, "Ollama is not running. Use /ollama start first.")
 		return nil
@@ -2709,6 +2806,7 @@ func ragWizard(a *Agent, name string, out io.Writer) error {
 		fmt.Fprintln(out, "  (avoid all-minilm — it is similarity-tuned, not retrieval-tuned)")
 		fmt.Fprintln(out, "")
 		fmt.Fprintln(out, "After pulling an embedding model, run /rag setup again.")
+		fmt.Fprintln(out, "Or use an Encoderfile binary: /rag new NAME --embedder encoderfile --embedder-url URL")
 		return nil
 	}
 
@@ -2746,10 +2844,6 @@ foundPref:
 		}
 	}
 
-	// Derive the db path from the store name.
-	ragDir := filepath.Join(harveySubdir, "rag")
-	dbPath := filepath.Join(ragDir, name+".db")
-
 	// Display proposed mapping for human review.
 	fmt.Fprintf(out, "Proposed RAG store %q (embedding model: %s):\n\n", name, preferred)
 	fmt.Fprintf(out, "  Database: %s\n\n", dbPath)
@@ -2776,15 +2870,21 @@ foundPref:
 		return fmt.Errorf("rag setup: create directory: %w", err)
 	}
 
-	// Update the registry, set as active, enable.
 	entry := RagStoreEntry{
 		Name:           name,
 		DBPath:         dbPath,
 		EmbeddingModel: preferred,
 		ModelMap:       proposed,
 	}
+	return ragCommitEntry(a, entry, out)
+}
+
+// ragCommitEntry persists entry as the active RAG store, opens its database,
+// and enables RAG injection. It is called by both the Ollama and Encoderfile
+// wizard paths.
+func ragCommitEntry(a *Agent, entry RagStoreEntry, out io.Writer) error {
 	a.Config.AddOrUpdateRagStore(entry)
-	a.Config.RagActive = name
+	a.Config.RagActive = entry.Name
 	a.Config.RagEnabled = true
 
 	if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
@@ -2796,18 +2896,18 @@ foundPref:
 		_ = a.Rag.Close()
 		a.Rag = nil
 	}
-	absDB, err := a.Workspace.AbsPath(dbPath)
+	absDB, err := a.Workspace.AbsPath(entry.DBPath)
 	if err != nil {
 		return err
 	}
-	store, err := NewRagStore(absDB, preferred)
+	store, err := NewRagStore(absDB, entry.EmbeddingModel)
 	if err != nil {
 		return fmt.Errorf("rag setup: open store: %w", err)
 	}
 	a.Rag = store
 	a.RagOn = true
 
-	fmt.Fprintf(out, "RAG store %q configured and enabled.\n", name)
+	fmt.Fprintf(out, "RAG store %q configured and enabled.\n", entry.Name)
 	fmt.Fprintf(out, "Next step: run /rag ingest <file-or-directory> to populate the store.\n")
 	return nil
 }
@@ -2823,7 +2923,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 		fmt.Fprintln(out, "No active RAG store. Run /rag switch NAME to select one.")
 		return nil
 	}
-	embedder := NewOllamaEmbedder(a.Config.OllamaURL, entry.EmbeddingModel)
+	embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)
 
 	var total int
 	for _, p := range paths {
@@ -2949,7 +3049,7 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 		fmt.Fprintln(out, "No active RAG store. Run /rag switch NAME to select one.")
 		return nil
 	}
-	embedder := NewOllamaEmbedder(a.Config.OllamaURL, entry.EmbeddingModel)
+	embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)
 	chunks, err := a.Rag.Query(query, embedder, 5)
 	if err != nil {
 		return fmt.Errorf("rag query: %w", err)

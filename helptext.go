@@ -187,8 +187,8 @@ ROUTING
 # DESCRIPTION
 
 Harvey can dispatch individual prompts to remote LLM endpoints — other Ollama
-instances on a Pi cluster, or the publicai.co cloud API — using @mention
-syntax. Prefix any prompt with @name to send it to the named endpoint instead
+instances on a Pi cluster, Llamafile servers, or cloud providers — using
+@mention syntax. Prefix any prompt with @name to send it to the named endpoint instead
 of the local model. The reply is streamed back and lands in the local
 conversation history so future turns retain full context.
 
@@ -206,13 +206,19 @@ starting point and will be tuned over time.
 
 # ENDPOINT TYPES
 
-ollama://host:port
-  A remote Ollama server. Harvey converts this to http://host:port when
-  making API calls. Raw http:// and https:// URLs are also accepted.
+Local providers (no API key):
 
-publicai.co://
-  The publicai.co cloud API. Uses the PUBLICAI_API_KEY environment variable
-  for authentication and the configured PublicAI model (default: abertus).
+  ollama://host:port    A remote Ollama server (also accepts http:// and https://).
+  llamafile://host:port A Llamafile binary server (OpenAI-compatible, port 8080).
+  llamacpp://host:port  A llama.cpp server (OpenAI-compatible, port 8080).
+
+Cloud providers (API key read from environment):
+
+  anthropic://  Anthropic Claude  (ANTHROPIC_API_KEY)
+  deepseek://   DeepSeek          (DEEPSEEK_API_KEY)
+  gemini://     Google Gemini     (GEMINI_API_KEY or GOOGLE_API_KEY)
+  mistral://    Mistral           (MISTRAL_API_KEY)
+  openai://     OpenAI            (OPENAI_API_KEY)
 
 # EXAMPLE SESSION
 
@@ -220,14 +226,14 @@ publicai.co://
   # Register a Pi cluster node
   /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
 
-  # Register the publicai.co cloud endpoint
-  /route add cloud publicai.co://
+  # Register the Anthropic cloud endpoint
+  /route add claude anthropic:// claude-sonnet-4-20250514
 
   # Enable routing
   /route on
 
   # Dispatch a complex task to the cloud
-  @cloud refactor this module to use the repository pattern
+  @claude refactor this module to use the repository pattern
 
   # Run a quick task on a Pi node
   @pi2 write a unit test for the Parse function
@@ -240,8 +246,8 @@ publicai.co://
 
 ~~~
   /route add NAME URL [MODEL]   register a remote endpoint
-                                  @pi2   ollama://192.168.1.12:11434 llama3.1:8b
-                                  @cloud publicai.co://
+                                  @pi2    ollama://192.168.1.12:11434 llama3.1:8b
+                                  @claude anthropic:// claude-sonnet-4-20250514
   /route rm NAME                remove a registered endpoint
   /route list                   show all endpoints with reachability status
   /route on                     enable @mention dispatch (persisted)
@@ -1067,18 +1073,18 @@ automatically migrated to a store named "default" on first load.
 
 # DESCRIPTION
 
-{app_name} is a terminal agent for local large language models and optionally
-for publicai.co. It was inspired by Claude Code but focused on working with
-large language models in small computer environments like a Raspberry Pi
-computer running Raspberry Pi OS. While the inspiration was to run an
-agent locally with Ollama it can also be run on larger computers like
-Linux, macOS and Windows systems you find on desktop and laptop computers.
-It should compile it for most systems where Ollama is avialable and Go 
-is supported (exmample *BSD).
+{app_name} is a terminal agent for local large language models. It was
+inspired by Claude Code but focused on working with large language models
+in small computer environments like a Raspberry Pi computer running
+Raspberry Pi OS. While the inspiration was to run an agent locally with
+Ollama it can also be run on larger computers like Linux, macOS and Windows
+systems you find on desktop and laptop computers. It should compile for most
+systems where Ollama is available and Go is supported (example: *BSD).
 
 {app_name} looks for HARVEY.md in the current directory and uses it as a
-system prompt. It then connects to a local Ollama server or publicai.co
-and starts an interactive chat session.
+system prompt. It then connects to a local Ollama server and starts an
+interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
+Mistral, OpenAI) can be added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
 A knowledge base is stored at <workdir>/harvey/knowledge.db and is created
@@ -1123,7 +1129,11 @@ Type /help inside the session for available slash commands.
 
 # ENVIRONMENT
 
-PUBLICAI_API_KEY    API key for publicai.co
+ANTHROPIC_API_KEY   API key for Anthropic Claude (optional, for /route add NAME anthropic://)
+DEEPSEEK_API_KEY    API key for DeepSeek (optional, for /route add NAME deepseek://)
+GEMINI_API_KEY      API key for Google Gemini (optional; GOOGLE_API_KEY also accepted)
+MISTRAL_API_KEY     API key for Mistral (optional, for /route add NAME mistral://)
+OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
 
 # LINE EDITING
 

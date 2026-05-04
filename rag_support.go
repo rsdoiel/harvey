@@ -279,6 +279,28 @@ func deserialize(data []byte) ([]float64, error) {
 	return vec, nil
 }
 
+/** NewEmbedderForEntry constructs the correct Embedder for entry based on its
+ * EmbedderKind field. "encoderfile" uses EncoderfileEmbedder; anything else
+ * (including "" and "ollama") uses OllamaEmbedder.
+ *
+ * Parameters:
+ *   entry     (*RagStoreEntry) — store configuration entry.
+ *   ollamaURL (string)         — Ollama base URL, used when kind is "ollama".
+ *
+ * Returns:
+ *   Embedder — the appropriate embedder for this entry.
+ *
+ * Example:
+ *   emb := NewEmbedderForEntry(cfg.ActiveRagStore(), cfg.OllamaURL)
+ *   vec, err := emb.Embed("hello world")
+ */
+func NewEmbedderForEntry(entry *RagStoreEntry, ollamaURL string) Embedder {
+	if entry.EmbedderKind == "encoderfile" {
+		return NewEncoderfileEmbedder(entry.EmbedderURL, entry.EmbeddingModel)
+	}
+	return NewOllamaEmbedder(ollamaURL, entry.EmbeddingModel)
+}
+
 /** Count returns the total number of chunks stored in the database.
  *
  * Returns:

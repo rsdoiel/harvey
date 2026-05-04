@@ -7,7 +7,14 @@ import (
 	"time"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
+	"github.com/mozilla-ai/any-llm-go/providers/anthropic"
+	"github.com/mozilla-ai/any-llm-go/providers/deepseek"
+	"github.com/mozilla-ai/any-llm-go/providers/gemini"
+	"github.com/mozilla-ai/any-llm-go/providers/llamacpp"
+	"github.com/mozilla-ai/any-llm-go/providers/llamafile"
+	"github.com/mozilla-ai/any-llm-go/providers/mistral"
 	"github.com/mozilla-ai/any-llm-go/providers/ollama"
+	"github.com/mozilla-ai/any-llm-go/providers/openai"
 )
 
 /** AnyLLMClient wraps an anyllm.Provider and implements Harvey's LLMClient
@@ -265,8 +272,87 @@ func newOllamaLLMClient(baseURL, model string) *AnyLLMClient {
 	}
 	p, err := ollama.New(opts...)
 	if err != nil {
-		// baseURL failed validation; fall back to Ollama's default.
 		p, _ = ollama.New()
 	}
 	return NewAnyLLMClient(p, model, "ollama", baseURL)
+}
+
+// newLlamafileLLMClient creates an AnyLLMClient backed by a Llamafile server.
+// apiURL must be the full /v1 base URL, e.g. "http://localhost:8080/v1".
+// If empty or invalid, the Llamafile default is used (reads LLAMAFILE_BASE_URL).
+func newLlamafileLLMClient(apiURL, model string) *AnyLLMClient {
+	var opts []anyllm.Option
+	if apiURL != "" {
+		opts = append(opts, anyllm.WithBaseURL(apiURL))
+	}
+	p, err := llamafile.New(opts...)
+	if err != nil {
+		p, _ = llamafile.New()
+	}
+	return NewAnyLLMClient(p, model, "llamafile", apiURL)
+}
+
+// newLlamaCppLLMClient creates an AnyLLMClient backed by a llama.cpp server.
+// apiURL must be the full /v1 base URL, e.g. "http://127.0.0.1:8080/v1".
+// If empty or invalid, the llama.cpp default is used.
+func newLlamaCppLLMClient(apiURL, model string) *AnyLLMClient {
+	var opts []anyllm.Option
+	if apiURL != "" {
+		opts = append(opts, anyllm.WithBaseURL(apiURL))
+	}
+	p, err := llamacpp.New(opts...)
+	if err != nil {
+		p, _ = llamacpp.New()
+	}
+	return NewAnyLLMClient(p, model, "llamacpp", apiURL)
+}
+
+// newAnthropicLLMClient creates an AnyLLMClient backed by Anthropic's API.
+// Reads ANTHROPIC_API_KEY from the environment; returns an error if not set.
+func newAnthropicLLMClient(model string) (*AnyLLMClient, error) {
+	p, err := anthropic.New()
+	if err != nil {
+		return nil, fmt.Errorf("anthropic: %w (set ANTHROPIC_API_KEY)", err)
+	}
+	return NewAnyLLMClient(p, model, "anthropic", ""), nil
+}
+
+// newDeepSeekLLMClient creates an AnyLLMClient backed by DeepSeek's API.
+// Reads DEEPSEEK_API_KEY from the environment; returns an error if not set.
+func newDeepSeekLLMClient(model string) (*AnyLLMClient, error) {
+	p, err := deepseek.New()
+	if err != nil {
+		return nil, fmt.Errorf("deepseek: %w (set DEEPSEEK_API_KEY)", err)
+	}
+	return NewAnyLLMClient(p, model, "deepseek", ""), nil
+}
+
+// newGeminiLLMClient creates an AnyLLMClient backed by Google Gemini's API.
+// Reads GEMINI_API_KEY or GOOGLE_API_KEY from the environment.
+func newGeminiLLMClient(model string) (*AnyLLMClient, error) {
+	p, err := gemini.New()
+	if err != nil {
+		return nil, fmt.Errorf("gemini: %w (set GEMINI_API_KEY or GOOGLE_API_KEY)", err)
+	}
+	return NewAnyLLMClient(p, model, "gemini", ""), nil
+}
+
+// newMistralLLMClient creates an AnyLLMClient backed by Mistral's API.
+// Reads MISTRAL_API_KEY from the environment; returns an error if not set.
+func newMistralLLMClient(model string) (*AnyLLMClient, error) {
+	p, err := mistral.New()
+	if err != nil {
+		return nil, fmt.Errorf("mistral: %w (set MISTRAL_API_KEY)", err)
+	}
+	return NewAnyLLMClient(p, model, "mistral", ""), nil
+}
+
+// newOpenAILLMClient creates an AnyLLMClient backed by OpenAI's API.
+// Reads OPENAI_API_KEY from the environment; returns an error if not set.
+func newOpenAILLMClient(model string) (*AnyLLMClient, error) {
+	p, err := openai.New()
+	if err != nil {
+		return nil, fmt.Errorf("openai: %w (set OPENAI_API_KEY)", err)
+	}
+	return NewAnyLLMClient(p, model, "openai", ""), nil
 }

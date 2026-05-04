@@ -1,4 +1,4 @@
-%harvey(1) user manual | version 0.0.1b df5a5a4
+%harvey(1) user manual | version 0.0.1b 6f586b0
 % R. S. Doiel
 % 2026-05-02
 
@@ -12,18 +12,18 @@ harvey [OPTIONS]
 
 # DESCRIPTION
 
-harvey is a terminal agent for local large language models and optionally
-for publicai.co. It was inspired by Claude Code but focused on working with
-large language models in small computer environments like a Raspberry Pi
-computer running Raspberry Pi OS. While the inspiration was to run an
-agent locally with Ollama it can also be run on larger computers like
-Linux, macOS and Windows systems you find on desktop and laptop computers.
-It should compile it for most systems where Ollama is avialable and Go 
-is supported (exmample *BSD).
+harvey is a terminal agent for local large language models. It was
+inspired by Claude Code but focused on working with large language models
+in small computer environments like a Raspberry Pi computer running
+Raspberry Pi OS. While the inspiration was to run an agent locally with
+Ollama it can also be run on larger computers like Linux, macOS and Windows
+systems you find on desktop and laptop computers. It should compile for most
+systems where Ollama is available and Go is supported (example: *BSD).
 
 harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It then connects to a local Ollama server or publicai.co
-and starts an interactive chat session.
+system prompt. It then connects to a local Ollama server and starts an
+interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
+Mistral, OpenAI) can be added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
 A knowledge base is stored at <workdir>/harvey/knowledge.db and is created
@@ -68,7 +68,11 @@ Type /help inside the session for available slash commands.
 
 # ENVIRONMENT
 
-PUBLICAI_API_KEY    API key for publicai.co
+ANTHROPIC_API_KEY   API key for Anthropic Claude (optional, for /route add NAME anthropic://)
+DEEPSEEK_API_KEY    API key for DeepSeek (optional, for /route add NAME deepseek://)
+GEMINI_API_KEY      API key for Google Gemini (optional; GOOGLE_API_KEY also accepted)
+MISTRAL_API_KEY     API key for Mistral (optional, for /route add NAME mistral://)
+OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
 
 # LINE EDITING
 

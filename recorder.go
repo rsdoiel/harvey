@@ -473,7 +473,7 @@ func (r *Recorder) writeTransition(content string) {
 //
 //	"Ollama (gemma4:latest)"                 → "GEMMA4"
 //	"Ollama (MichelRosselli/apertus:latest)" → "APERTUS"
-//	"publicai.co (abertus)"                  → "ABERTUS"
+//	"anthropic (claude-sonnet-4-20250514)"   → "CLAUDE-SONNET-4-20250514"
 //	"none"                                   → "MODEL"
 func extractModelName(backend string) string {
 	// Extract content inside parentheses, if present.

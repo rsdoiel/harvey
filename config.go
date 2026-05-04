@@ -58,17 +58,23 @@ The operator can run it manually with /run.
  * Fields:
  *   Name           (string)            — short identifier used with /rag switch and /rag new.
  *   DBPath         (string)            — path to the SQLite database, relative to workspace root.
- *   EmbeddingModel (string)            — Ollama embedding model name bound to this store.
+ *   EmbeddingModel (string)            — embedding model name bound to this store.
  *   ModelMap       (map[string]string) — generation model → embedding model overrides.
+ *   EmbedderKind   (string)            — "ollama" (default) or "encoderfile".
+ *   EmbedderURL    (string)            — base URL for the embedder; used when EmbedderKind is "encoderfile".
  *
  * Example:
  *   e := RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"}
+ *   e2 := RagStoreEntry{Name: "docs", DBPath: "agents/rag/docs.db", EmbeddingModel: "nomic-embed-text-v1_5",
+ *                        EmbedderKind: "encoderfile", EmbedderURL: "http://localhost:8080"}
  */
 type RagStoreEntry struct {
 	Name           string
 	DBPath         string
 	EmbeddingModel string
 	ModelMap       map[string]string
+	EmbedderKind   string // "ollama" (default) or "encoderfile"
+	EmbedderURL    string // base URL for the embedder when EmbedderKind == "encoderfile"
 }
 
 /** Config holds Harvey's runtime configuration.
@@ -217,6 +223,8 @@ type ragStoreYAML struct {
 	DBPath         string            `yaml:"db_path"`
 	EmbeddingModel string            `yaml:"embedding_model"`
 	ModelMap       map[string]string `yaml:"model_map,omitempty"`
+	EmbedderKind   string            `yaml:"embedder_kind,omitempty"`
+	EmbedderURL    string            `yaml:"embedder_url,omitempty"`
 }
 
 // ragYAML is the on-disk representation of the rag: section in harvey.yaml.
@@ -298,6 +306,8 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 				DBPath:         s.DBPath,
 				EmbeddingModel: s.EmbeddingModel,
 				ModelMap:       s.ModelMap,
+				EmbedderKind:   s.EmbedderKind,
+				EmbedderURL:    s.EmbedderURL,
 			}
 		}
 		cfg.RagActive = y.RAG.Active
@@ -350,6 +360,8 @@ func SaveRAGConfig(ws *Workspace, cfg *Config) error {
 			DBPath:         e.DBPath,
 			EmbeddingModel: e.EmbeddingModel,
 			ModelMap:       e.ModelMap,
+			EmbedderKind:   e.EmbedderKind,
+			EmbedderURL:    e.EmbedderURL,
 		}
 	}
 	y.RAG = ragYAML{

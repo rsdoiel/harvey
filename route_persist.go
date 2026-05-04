@@ -84,8 +84,19 @@ func SaveRouteConfig(rr *RouteRegistry) error {
 	return os.WriteFile(path, data, 0o600)
 }
 
-/** inferRouteKind returns the RouteKind implied by rawURL.
- * Recognised schemes: ollama://, http://, https:// → KindOllama.
+/** InferRouteKind returns the RouteKind implied by rawURL.
+ *
+ * Local providers (no API key):
+ *   ollama://host:port, http://, https://  → KindOllama
+ *   llamafile://host:port                  → KindLlamafile
+ *   llamacpp://host:port                   → KindLlamaCpp
+ *
+ * Cloud providers (API key from environment):
+ *   anthropic://  → KindAnthropic  (ANTHROPIC_API_KEY)
+ *   deepseek://   → KindDeepSeek   (DEEPSEEK_API_KEY)
+ *   gemini://     → KindGemini     (GEMINI_API_KEY or GOOGLE_API_KEY)
+ *   mistral://    → KindMistral    (MISTRAL_API_KEY)
+ *   openai://     → KindOpenAI     (OPENAI_API_KEY)
  *
  * Parameters:
  *   rawURL (string) — URL as typed by the user.
@@ -95,16 +106,37 @@ func SaveRouteConfig(rr *RouteRegistry) error {
  *   error     — when the URL scheme is unrecognised.
  *
  * Example:
- *   kind, err := inferRouteKind("ollama://192.168.1.12:11434")
+ *   kind, err := InferRouteKind("ollama://192.168.1.12:11434")
  *   // kind = KindOllama, err = nil
+ *   kind, err = InferRouteKind("anthropic://")
+ *   // kind = KindAnthropic, err = nil
  */
-func inferRouteKind(rawURL string) (RouteKind, error) {
+func InferRouteKind(rawURL string) (RouteKind, error) {
 	switch {
 	case strings.HasPrefix(rawURL, "ollama://"),
 		strings.HasPrefix(rawURL, "http://"),
 		strings.HasPrefix(rawURL, "https://"):
 		return KindOllama, nil
+	case strings.HasPrefix(rawURL, "llamafile://"):
+		return KindLlamafile, nil
+	case strings.HasPrefix(rawURL, "llamacpp://"):
+		return KindLlamaCpp, nil
+	case strings.HasPrefix(rawURL, "anthropic://"):
+		return KindAnthropic, nil
+	case strings.HasPrefix(rawURL, "deepseek://"):
+		return KindDeepSeek, nil
+	case strings.HasPrefix(rawURL, "gemini://"):
+		return KindGemini, nil
+	case strings.HasPrefix(rawURL, "mistral://"):
+		return KindMistral, nil
+	case strings.HasPrefix(rawURL, "openai://"):
+		return KindOpenAI, nil
 	default:
-		return "", fmt.Errorf("unrecognised URL scheme in %q — use ollama://host:port", rawURL)
+		return "", fmt.Errorf(
+			"unrecognised URL scheme in %q\n"+
+				"  Local:  ollama://host:port  llamafile://host:port  llamacpp://host:port\n"+
+				"  Cloud:  anthropic://  deepseek://  gemini://  mistral://  openai://",
+			rawURL,
+		)
 	}
 }

@@ -199,7 +199,7 @@ func (a *Agent) Run(out io.Writer) error {
 	if a.Client != nil {
 		fmt.Fprintf(out, "  Connected: %s\n", green(a.Client.Name()))
 	} else {
-		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /ollama start or /route add cloud publicai.co://"))
+		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /ollama start"))
 	}
 	fmt.Fprintln(out, dim("  /help for commands · /exit to quit"))
 	fmt.Fprintln(out, cyan(bold(sep)))
@@ -370,7 +370,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 		// Chat
 		if a.Client == nil {
-			fmt.Fprintln(out, yellow("No backend connected.")+" Use /ollama start or /route add cloud publicai.co://.")
+			fmt.Fprintln(out, yellow("No backend connected.")+" Use /ollama start.")
 			continue
 		}
 
