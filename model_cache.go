@@ -1,3 +1,16 @@
+// Package harvey — model_cache.go provides SQLite-backed caching of Ollama
+// model capability metadata. The cache stores probe results (model family,
+// parameter size, quantization, context length, and capability flags) to avoid
+// re-probing models on every Harvey startup. This significantly speeds up
+// initialization when working with many models.
+//
+// The cache is stored in harvey/model_cache.db and is automatically created
+// on first use. Each entry is scoped to a single model name and tracks when
+// it was last probed and at what level ("fast" heuristic or "thorough" live test).
+//
+// See OpenModelCache for the entry point and FastProbeModel/ThoroughProbeModel
+// in ollama.go for the probing implementations.
+
 package harvey
 
 import (

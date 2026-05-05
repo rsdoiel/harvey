@@ -40,46 +40,44 @@ figcaption {
 <section>
 <h1 id="starting-harvey">Starting Harvey</h1>
 <h2 id="what-is-harvey">What is Harvey?</h2>
-<p>harvey is a terminal agent for local large language models.</p>
+<p>harvey is a terminal agent for local language models.</p>
 <p>See <a href="harvey.1.html">man page</a></p>
 <p>How it starts:</p>
 <p>harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It then connects to a local Ollama server or publicai.co
-and starts an interactive chat session.</p>
-<p>All file I/O is constrained to the workspace directory (–workdir or
-“.”). A knowledge base is stored at
-<code>&lt;workdir&gt;/harvey/knowledge.db</code> and is created
-automatically on first run. Session recordings are stored in
-<code>&lt;workdir&gt;/harvey/sessions/</code>. Both paths can be
-overridden in <code>harvey/harvey.yaml</code>.</p>
+system prompt. It then connects to a local Ollama server and starts an
+interactive chat session.</p>
+<blockquote>
+<p><strong>Note:</strong> Harvey focuses on local models via Ollama
+server. It has limited supoprt for SaaS endpoints (Anthropic, DeepSeek,
+Gemini, Mistral, OpenAI).</p>
+</blockquote>
+<p>All file I/O is constrained to the currenting directory. A knowledge
+base is stored at <code>&lt;workdir&gt;/agents/knowledge.db</code> and
+is created automatically on first run. Session recordings are stored in
+<code>&lt;workdir&gt;/agents/sessions/</code>. Both paths can be
+overridden in <code>agents/harvey.yaml</code>.</p>
 <blockquote>
 <p>Type /help inside the session for available slash commands.</p>
 </blockquote>
 <h2 id="typical-invocations">Typical invocations</h2>
-<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start in the current directory, auto-select Ollama model</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<ol type="1">
+<li>Change to your project directory (example: “$HOME/myproject”)</li>
+<li>Launch Harvey</li>
+</ol>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Change to project directory</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> <span class="va">$HOME</span>/myproject</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start with a specific model</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">-m</span> codellama:13b</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Point at a workspace that is not the current directory</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">-w</span> ~/projects/myapp</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Use a non-default Ollama endpoint</span></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--ollama</span> http://192.168.1.10:11434</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Use publicai.co (requires PUBLICAI_API_KEY to be set)</span></span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">PUBLICAI_API_KEY</span><span class="op">=</span>sk-...</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span></code></pre></div>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start in the current directory, auto-select Ollama model</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span></code></pre></div>
 <h2 id="startup-sequence">Startup sequence</h2>
 <p>When Harvey starts it:</p>
 <ol type="1">
 <li>Prints the banner and resolves the workspace root.</li>
-<li>Opens (or creates) <code>harvey/knowledge.db</code> in the
+<li>Opens (or creates) <code>agents/knowledge.db</code> in the
 workspace.</li>
-<li>Loads <code>harvey/harvey.yaml</code> if present (overrides paths
+<li>Loads <code>agents/harvey.yaml</code> if present (overrides paths
 for KB, sessions, agents).</li>
-<li>Scans <code>harvey/sessions/</code> for prior <code>.spmd</code> /
+<li>Scans <code>agents/sessions/</code> for prior <code>.spmd</code> /
 <code>.fountain</code> session files and offers to resume one (default:
 No). If a session is chosen, the model it used is pre-selected in the
 next step.</li>
@@ -90,13 +88,10 @@ system prompt.</li>
 session or lets you choose from the installed list.</li>
 <li>If Ollama is unreachable, offers to start <code>ollama serve</code>
 then retries.</li>
-<li>If Ollama is still unavailable, offers to connect to publicai.co
-instead.</li>
 <li>Begins recording the session to a new <code>.spmd</code> file in
-<code>harvey/sessions/</code>.</li>
+<code>agents/sessions/</code>.</li>
 <li>Drops you into the REPL prompt: <code>harvey &gt;</code></li>
 </ol>
-<hr />
 <h2 id="the-harvey.md-system-prompt">The HARVEY.md system prompt</h2>
 <p>Harvey looks for <code>HARVEY.md</code> in the directory where it is
 launched and uses its contents as the LLM system prompt for the whole
@@ -152,7 +147,6 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb3-1"><
 <span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="fu">## Conventions</span></span>
 <span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>All exported symbols need /** ... */ doc comments.</span>
 <span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use <span class="in">`t.TempDir()`</span> in tests; no global state.</span></code></pre></div>
-<hr />
 <h2 id="session-walkthrough">Session walkthrough</h2>
 <div class="sourceCode" id="cb4"><pre
 class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>$ harvey -m llama3:latest</span>
@@ -208,7 +202,6 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><
 prompt tokens, reply tokens, elapsed time, and generation speed. While
 the model is thinking, an animated spinner with an estimated completion
 time keeps the terminal alive.</p>
-<hr />
 <h2 id="keyboard-shortcuts">Keyboard shortcuts</h2>
 <p>Harvey’s prompt supports readline-style line editing.</p>
 <h3 id="navigation">Navigation</h3>
@@ -291,7 +284,6 @@ longer prompts — you can write, edit, and review the full prompt in your
 preferred editor before sending it. The current line content is
 pre-loaded into the editor so you can also edit a prompt you have
 already started typing.</p>
-<hr />
 <h2 id="slash-commands">Slash commands</h2>
 <p>Type <code>/help</code> at any prompt for a live command list. All
 commands begin with <code>/</code>.</p>
@@ -406,29 +398,10 @@ terminal)</td>
 </tr>
 </tbody>
 </table>
-<p><strong>publicai.co</strong></p>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>/publicai connect</code></td>
-<td>Connect using <code>PUBLICAI_API_KEY</code></td>
-</tr>
-<tr>
-<td><code>/publicai disconnect</code></td>
-<td>Drop the publicai.co connection</td>
-</tr>
-<tr>
-<td><code>/publicai status</code></td>
-<td>Show whether publicai.co is connected</td>
-</tr>
-</tbody>
-</table>
+<blockquote>
+<p><strong>Note:</strong> publicai.co support has been removed. These
+commands are no longer available.</p>
+</blockquote>
 <h2 id="file-operations">File operations</h2>
 <p>These commands move information between the workspace and the
 conversation.</p>
@@ -461,7 +434,7 @@ harvey &gt; /run make build
 <h3 id="search-pattern-path"><code>/search PATTERN [PATH]</code></h3>
 <p>Searches workspace files for a regular expression. Results are capped
 at 100 matching lines. Binary files and hidden directories
-(<code>.git</code>, <code>.harvey</code>, etc.) are skipped
+(<code>.git</code>, <code>.gitignore</code>, etc.) are skipped
 automatically. An optional second argument scopes the search to a
 subdirectory.</p>
 <pre><code>harvey &gt; /search &quot;func.*Handler&quot;
@@ -499,7 +472,7 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb11-1">
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="in">    ...</span></span>
 <span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
 <span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span></code></pre></div>
-<h2 id="session-quality-tier-3">Session quality (Tier 3)</h2>
+<h2 id="session-quality">Session quality</h2>
 <h3 id="summarize"><code>/summarize</code></h3>
 <p>Asks the connected LLM to condense the current conversation into a
 single paragraph, then replaces the full history with that summary. Use
@@ -532,7 +505,7 @@ pinned context, separated by newlines. To replace it entirely,
 <code>/context clear</code> then <code>/context add</code>.</p>
 <h2 id="knowledge-base-commands">Knowledge base commands</h2>
 <p>Harvey maintains a SQLite knowledge base at
-<code>harvey/knowledge.db</code> in the workspace. It is independent of
+<code>agents/knowledge.db</code> in the workspace. It is independent of
 conversation history and persists across sessions.</p>
 <table>
 <colgroup>
@@ -627,7 +600,7 @@ workspace</td>
 </tbody>
 </table>
 <pre><code>harvey &gt; /record start
-Recording started: /home/user/myproject/harvey-session-20260415-142300.fountain
+Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.fountain
 
 harvey &gt; /record stop
 Recording stopped. Session saved to harvey-session-20260415-142300.fountain</code></pre>
@@ -688,7 +661,6 @@ harvey &gt; /files internal/parser</code></pre>
 <p>Lists files in the workspace root or a subdirectory. Useful for
 discovering paths before using <code>/read</code> or
 <code>/write</code>.</p>
-<hr />
 <h2 id="typical-workflows">Typical workflows</h2>
 <h3 id="review-and-patch-a-failing-test">Review and patch a failing
 test</h3>

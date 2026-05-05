@@ -160,6 +160,7 @@ type Agent struct {
 	ActiveSkill   string         // name of the most recently loaded skill; "" when none
 	commands      map[string]*Command
 	statHistory   []ChatStats // rolling window of recent turn stats
+	AuditBuffer   *AuditBuffer // in-memory audit log ring buffer; nil until initialized
 }
 
 /** NewAgent creates an Agent from cfg and ws with an empty conversation
@@ -178,7 +179,7 @@ type Agent struct {
  *   agent := NewAgent(DefaultConfig(), ws)
  */
 func NewAgent(cfg *Config, ws *Workspace) *Agent {
-	LoadRouteConfig(cfg)
+	LoadRouteConfig(ws, cfg)
 	rr := NewRouteRegistry()
 	rr.Enabled = cfg.RoutingEnabled
 	for i := range cfg.Routes {
@@ -186,11 +187,12 @@ func NewAgent(cfg *Config, ws *Workspace) *Agent {
 		rr.Add(&ep)
 	}
 	return &Agent{
-		Config:    cfg,
-		Workspace: ws,
-		Routes:    rr,
-		In:        os.Stdin,
-		commands:  make(map[string]*Command),
+		Config:      cfg,
+		Workspace:   ws,
+		Routes:      rr,
+		In:          os.Stdin,
+		commands:    make(map[string]*Command),
+		AuditBuffer: NewAuditBuffer(DefaultAuditBufferCapacity),
 	}
 }
 
@@ -223,6 +225,28 @@ func (a *Agent) ClearHistory() {
 		a.AddMessage("user", "[pinned context]\n\n"+a.PinnedContext)
 	}
 	a.ActiveSkill = ""
+}
+
+/** HasPermission checks if the given permission is allowed for a path.
+ * This delegates to the Config's permission system.
+ *
+ * Parameters:
+ *   path (string) — the path to check (relative to workspace root).
+ *   perm (string) — the permission to check (read, write, exec, delete).
+ *
+ * Returns:
+ *   bool — true if the permission is allowed.
+ *
+ * Example:
+ *   if a.HasPermission("src/main.go", PermRead) {
+ *       // read is allowed
+ *   }
+ */
+func (a *Agent) HasPermission(path string, perm string) bool {
+	if a.Config == nil {
+		return true
+	}
+	return a.Config.HasPermission(path, perm)
 }
 
 /** recordStats appends s to the rolling stat history, discarding the oldest
@@ -321,8 +345,23 @@ func (a *Agent) spinnerLabel() string {
 	return model
 }
 
-// workspaceFileTree returns a newline-separated list of all non-hidden files
-// and directories in the workspace, suitable for embedding in a system prompt.
+/** workspaceFileTree generates a tree-like listing of all non-hidden files
+ * and directories in the workspace. This is used to provide the LLM with
+ * an overview of the project structure via the <!-- @files --> dynamic section.
+ *
+ * The output format is a newline-separated list where:
+ *   - Directories are suffixed with "/"
+ *   - Hidden files/directories (starting with ".") are excluded
+ *   - The workspace root "." is excluded
+ *   - Files and directories are sorted by filesystem walk order
+ *
+ * Returns:
+ *   string — A newline-separated file listing, or "(empty workspace)" if no files exist.
+ *
+ * Example:
+ *   tree := workspaceFileTree(ws)
+ *   // Returns: "README.md\nsrc/\nsrc/main.go\ndocs/"
+ */
 func workspaceFileTree(ws *Workspace) string {
 	var lines []string
 	filepath.WalkDir(ws.Root, func(path string, d fs.DirEntry, err error) error {
@@ -352,9 +391,23 @@ func workspaceFileTree(ws *Workspace) string {
 	return strings.Join(lines, "\n")
 }
 
-// workspaceGitStatus runs "git status --short" in the workspace root and
-// returns the output. Returns "(not a git repository)" if git is unavailable
-// or the directory is not tracked by git.
+/** workspaceGitStatus retrieves the git status for the workspace using
+ * "git status --short". This provides the LLM with information about modified,
+ * untracked, and staged files via the <!-- @git-status --> dynamic section.
+ *
+ * The --short flag produces a compact two-column format:
+ *   - First column: status codes (M = modified, A = added, D = deleted, etc.)
+ *   - Second column: file path relative to repository root
+ *
+ * Returns:
+ *   string — Git status output, or one of these messages:
+ *            "(not a git repository)" — if workspace is not a git repo or git is unavailable
+ *            "(nothing to commit, working tree clean)" — if no changes
+ *
+ * Example:
+ *   status := workspaceGitStatus(ws)
+ *   // Returns: " M README.md\n?? new-file.txt"
+ */
 func workspaceGitStatus(ws *Workspace) string {
 	cmd := exec.Command("git", "status", "--short")
 	cmd.Dir = ws.Root

@@ -1,3 +1,17 @@
+// Package harvey — skill_compile.go handles compilation of SKILL.md files
+// into executable scripts. The compilation process sends the skill's markdown
+// body to an LLM with a meta-prompt that instructs it to generate two scripts:
+//
+//   - scripts/compiled.bash — For Linux/macOS/BSD execution
+//   - scripts/compiled.ps1 — For Windows PowerShell execution
+//
+// Both scripts receive context via environment variables (HARVEY_PROMPT,
+// HARVEY_WORKDIR, HARVEY_MODEL, HARVEY_SESSION_ID) and must run non-interactively.
+// The compiled scripts are stored alongside the SKILL.md file and can be executed
+// directly via /skill run or when the skill is auto-triggered.
+//
+// See CompileSkill for the main entry point.
+
 package harvey
 
 import (

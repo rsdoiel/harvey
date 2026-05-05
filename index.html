@@ -38,11 +38,12 @@ figcaption {
 </ul>
 </nav>
 <section>
-<h1 id="harvey">harvey</h1>
+<h1 id="harvey">Harvey</h1>
 <figure>
 <img src="media/harvey.svg" title="project mascot, a Púca"
-alt="Harvey" />
-<figcaption aria-hidden="true">Harvey</figcaption>
+alt="Harvey, a six foot six invisible rabbit" />
+<figcaption aria-hidden="true">Harvey, a six foot six invisible
+rabbit</figcaption>
 </figure>
 <p>Harvey is an agent REPL. It is written in Go and designed to use
 Ollama server to access language models. These can be run locally or
@@ -57,28 +58,38 @@ run on a Raspberry Pi 500+ computer.</p>
 <li>support for SKILL.md (and extending Harvey by using “compiled”
 SKILL.md files)</li>
 <li>RAG support</li>
-<li>innovation session files written in Fountain format making it both
-human readable (like reading a screenplay) and machine consumable</li>
+<li>includes an innovative session file format based on Fountain
+screenplay markup. Session files are both human readable (like reading a
+screenplay) and machine consumable</li>
 <li>friendly with other data processing tools and through shared skills
 with other coding agents</li>
 </ul>
 <p>The name Harvey is inspired by the Mary Chase play of the same name.
 My little agent runs on small computers but is available to those who
 choose to see its value. Harvey in the play was a Púca, a mythic Celtic
-spirit who at times was proned to mischief. The Púca chose who could see
+spirit who at times was prone to mischief. The Púca chose who could see
 it but even then the person doing the seeing had to be willing to see it
 too.</p>
 <h2 id="motivation">Motivation</h2>
 <p>I think the <strong>current AI hype cycle</strong> will likely end
-with a bang and a crash. Since I started workingon Harvey we’ve already
-seen the token cost per task sky rocket. Tokens are now effectively
-being rationed for flat rate plans. Using commercial language model
-systems is unlike to get cheapre with time as the investors insist on
-aggresive cost recovery.</p>
+with a bang and a crash. Since I started working on Harvey we’ve already
+seen the token expenses sky rocket. Many flat rate plans ration tokens.
+Of course if you opt to pay by tokens those services have every reason
+to encourage mode token consumption. That leads me to believe that
+things will not get cheaper. Add to that the investor’s interest in
+aggressive cost recovery and we have a looming problem. You get a
+digital divide of resource availability.</p>
 <p>Where does this leave us? The commercial platforms are just too
-expensive. They have always had other problematic downsides too (example
-engery consumption and data privacy issues). There needs to be an off
-ramp. I think an off ramp is bringing the models back in-house.</p>
+expensive. There are problematic downsides in additional to costs
+(example energy consumption, model biases and data privacy issues).
+There needs to be an off ramp. I think an off ramp is bringing the
+models back in-house. The trouble is that model development has been
+running on an assumption about ever expanding compute resources. That’s
+not sustainable. It doesn’t match the reality today where memory pricing
+has gone through the ceiling and other computing components are rising
+too. The external GPU relied on by medium and large models have never
+been affordable. Time to change course. Time to revisit small models and
+get efficient.</p>
 <p>Harvey is an exploration of the bring things home. This is about
 local control of the model system and running models on hardware that
 doesn’t have a GPU. Harvey enables me to get useful work done with small
@@ -86,53 +97,100 @@ models run via Ollama on my Raspberry Pi 500+ desktop. The Pi is a
 relatively low cost, low power machine. It is enough to run small
 models. If you have more horse power available Harvey will not mind or
 stand in your way.</p>
-<h2 id="where-things-may-be-going">Where things may be going</h2>
-<p>I see language models on a contiumum like computers. In the beginning
+<h2 id="where-i-think-things-are-going">Where I think things are
+going</h2>
+<p>I see language models on a continuum like computers. In the beginning
 computers were large and unaffordable except by governments and the
-largest of corporations. Eventually they became much smaller and much
-cheaper. Right now Large Language models are like the huge mainframes of
-the 1950s and 1960s. Everyone is still thinking in terms of building
-sized computers. The seeds for a different approach already exist.
-Ollama is only one example of that. I think real innovation can happen
-with small models that focus on specific domains and have a direct
-application. We’ve built extremely large general purpose models in part
-because collective the language model community need to see how far we
-could take the concepts. We already seem to be plateau at huge langauge
-models. Time to take a step back and see how small models can be and be
-really helpful. We need a personal level model system. I think the
-pieces are there, they just need to be gathered together in a simpler
-configuration.</p>
-<h2 id="open-models-small-models-and-a-generalized-repl">Open Models,
-Small Models and a generalized REPL</h2>
-<p>There are certain things that have already become providing in the
-current (May 2026) crop of model systems and their tools (example code
-agents). <a href="https://agentskills.io">SKILL.md</a> proposed by
-Anthropic is pretty easy to implement and is downloadable with models
-available today from Ollama.com. The concept of <a
+largest of corporations. They took up floors of buildings for a single
+machine. Eventually they became much smaller and much cheaper. Right now
+Large Language models are like the huge mainframes of the 1950s and
+1960s. Everyone is still thinking in terms of building sized computers.
+The seeds for a different approach already exist. Ollama is only one
+example of that. I think real innovation can happen with small models
+that focus on specific domains and have a direct application. We’ve
+built extremely large general purpose models in part because collective
+the language model community need to see how far we could take the
+concepts. We already seem to be plateau at huge language models. Time to
+take a step back and see how small models can be and be really helpful.
+We need a personal level model system. I think the pieces are there,
+they just need to be gathered together in a simpler configuration.</p>
+<h2 id="open-models-small-models-combined-with-generalized-repls">Open
+Models, Small Models combined with generalized REPLs</h2>
+<p>The language model system space has enought maturity that we can pick
+the features that matter and ignore much of the initial growing pains.
+There is an opportunity ripe for creating tooling around the right
+fitness of use and purpose. The current crop of model systems (May 2026)
+layout base line features which are straight forward to implement.
+Coding agents are centered around concepts like sessions, skills,
+knowledge bases and retrieval augmented generation (RAG). There are
+plenty of papers and blog posts that descibe these features, how they
+work and how to use them.</p>
+<p>The <a href="https://agentskills.io">SKILL.md</a> is a good example.
+It was proposed by Anthropic and adopted by others (example Mistral
+Vibe, OpenClaw). It is also pretty easy to implement using Ollama
+server. The concept of <a
 href="https://en.wikipedia.org/wiki/Retrieval-augmented_generation"
-title="Retrieval-augmented generation">RAG</a>. <a
+title="Retrieval-augmented generation">RAG</a> and <a
 href="https://en.wikipedia.org/wiki/Model_Context_Protocol"
-title="Model Context Protocol">MCP</a> seems to be picking up steam. The
-open source <a href="https://github.com/ollama/ollama">Ollama</a>
-project has offered a way that individuals can play and learn about
-language models on their own since 2023. The only piece I missed from my
-experiments using Claude Code and cli version of CoPilot was a useful
-REPL and that’s what got me started creating Harvey.</p>
-<p>The ecosystem around OpenAI, Anthropic and others isn’t just the
-latest model, it’s everything the makes it easy to use. That’s quite
-allot but not particularly revolutionary. Based decent web services and
-UI is what make using the model easy. That’s easy to replicate locally.
-Harvey has started on that, first as a simple TUI REPL in the terminal
-but soon as a localhost service with a Web UI.</p>
-<p>Useful open models are hear <a
-href="model_testing_plan.html">today</a>. You just need to run them
-easily and run them with things like a knowledge and RAG. We can do this
-on small affordable hardware. Hardware that doesn’t require new data
-centers and power plants to be built. I think smaller models, ones that
-can run at the edge will be the ones that carry weight in the long
-wrong. To explore the idea of small models on small computers I dreamed
-up Harvey. We’ll have to wait to see where that adventure could
-leads.</p>
+title="Model Context Protocol">MCP</a> seems to be picking up steam too.
+These to can be implemented for a resource constrained system. Mozilla
+AI is working on implementing a way to unify many implementation
+elements. An example is their <a
+href="https://www.mozilla.ai/open-tools/choice-first-stack/any-llm">any-llm</a>
+project. <a href="https://github.com/ollama/ollama">Ollama</a> project.
+It lets you build tools that integrate with many language model systems
+available today. Then if you build on Ollama and Hugging Face’s
+offerings and have a foundation to roll your own tool. That’s how Harvey
+started.</p>
+<p>Wait, wait, why Harvey? You should use OpenClaw! OpenClaw is
+interesting but it is very easy to mis-configure. I wasn’t confortable
+with that myself. I felt like OpenClaw opened my computing environment
+up to a whole lot of hurt. I don’t want agents running around my
+personal communication. I don’t want them messing with my editor. I want
+my code agent to stick to a project directory. I want it focused on what
+I am working on. I want a safe tool as convenient as Claude Code, GitHub
+CoPilot or Mistral Vibe. It should be transparent in how in works. It
+should let me work with the models I chose for a specific task. It
+should be human scale and not pit tentacles into everything else. I am
+working with language models on my local machine or my private network.
+Harvey should avoid secrets. How Harvey is configured and it’s operating
+data should be visible to me as a human as well as any other language
+model system I might enlist. Harvey should let me be able to easily
+direct appropriate material to a remote service while keeping everything
+else local and processed with models in my local machine. Harvey came
+about because I don’t see other applications that work with language
+models doing filling that niche.</p>
+<h2 id="what-is-model-what-is-infrastructure">What is model, what is
+infrastructure?</h2>
+<p>Commercial SaaS language model services need to keep you engaged.
+They’ve done a good job of building up the human user interface. When
+you step back and look at actual implementations echo systems like those
+of OpenAI, Anthropic and others are not just the latest frontier model.
+The frontier model is important but it would not be usable without
+traditional web applications and services. That’s telling. The model is
+important but the user interface and the infrastructure under it is
+important too.</p>
+<p>When a human uses a language model system they aren’t asking all
+questions at once and in parallel. They are asking a question, or
+prompting for an activity. In other words there is a scope of activity.
+If the model chosen delivers the answers or orchestrates the actions
+needed does it need to be begger? As long as the interface is
+comfortable for the human then I think a model can be found that is fit
+for purpose and runs on the hardware available. If that premis it true
+then Harvey makes a whole lot of sense. Run the model locally (example
+with Ollama or a Llamafile) and pull the experience together with a
+simple REPL.</p>
+<p>Useful small open models are hear <a
+href="model_testing_plan.html">today</a>. In the hype that focuses on
+bigger and more generalized the small specialized models seem
+undervalued. You can leverage the value if it is easily to run them
+locally with a minimum of extra features like good session management,
+knowledge bases and RAG. Harvey shows this can be done on small
+affordable hardware. Hardware that doesn’t require new data centers and
+power plants to be built. I think smaller models, ones that can run at
+the edge will be the ones that carry weight in the long wrong. To
+explore the idea of small models on small computers I dreamed up Harvey.
+We’ll have to wait to see where that adventure could leads.</p>
 <h2 id="release-notes">Release Notes</h2>
 <ul>
 <li>version: 0.0.1</li>
@@ -160,6 +218,8 @@ Reporting bugs</a></li>
 <li><a href="https://www.gnu.org/licenses/agpl-3.0.txt">LICENSE</a></li>
 <li><a href="INSTALL.html">Installation</a></li>
 <li><a href="about.html">About</a></li>
+<li><a href="DOCUMENTATION.html">Documentation Index</a> — Complete list
+of all Harvey documentation</li>
 </ul>
 </section>
 </body>

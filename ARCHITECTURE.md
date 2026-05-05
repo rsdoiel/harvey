@@ -1,3 +1,4 @@
+
 # Harvey Architecture
 
 Harvey is a terminal-based coding agent written in Go. It connects to a local
@@ -6,8 +7,6 @@ and provides an interactive REPL for code-focused conversations. The design
 philosophy is: keep the LLM backend swappable, constrain all file I/O to a
 sandboxed workspace, and accumulate context through explicit slash commands
 rather than implicit background crawling.
-
----
 
 ## Component map
 
@@ -26,8 +25,6 @@ spinner.go                  Animated spinner with Edward Lear messages + timer
 recorder.go                 Markdown session recorder
 ```
 
----
-
 ## Core types
 
 ### Agent (`harvey.go`)
@@ -40,7 +37,7 @@ recorder.go                 Markdown session recorder
 | `Config` | `*Config` | Runtime configuration |
 | `History` | `[]Message` | Full conversation sent to the LLM on every turn |
 | `Workspace` | `*Workspace` | Sandboxed root for all file operations |
-| `KB` | `*KnowledgeBase` | SQLite knowledge base (`.harvey/knowledge.db`) |
+| `KB` | `*KnowledgeBase` | SQLite knowledge base (`agents/knowledge.db`) |
 | `Recorder` | `*Recorder` | Optional Markdown session log |
 | `In` | `io.Reader` | Interactive prompt source (default `os.Stdin`; injectable for tests) |
 | `PinnedContext` | `string` | Text that survives `/clear` and is re-injected after the system prompt |
@@ -85,21 +82,17 @@ type Message struct {
 The full `History` slice is sent on every call to `Chat`; there is no partial
 or sliding-window trimming beyond the explicit `/summarize` command.
 
----
-
 ## Workspace sandboxing (`workspace.go`)
 
 `Workspace` resolves the root to an absolute, symlink-free path at construction
 time. Every subsequent operation calls `AbsPath(rel)`, which joins `rel` under
 `Root` and then checks that the result still has `Root` as a prefix — rejecting
-`../` escapes and absolute paths outside the root. The `.harvey/` subdirectory
+`../` escapes and absolute paths outside the root. The `agents/` subdirectory
 is created automatically and holds `knowledge.db`.
 
 All file I/O in command handlers goes through `ws.ReadFile`, `ws.WriteFile`,
 `ws.ListDir`, or `ws.MkdirAll`; direct `os.*` calls are not used for
 workspace paths.
-
----
 
 ## Conversation model
 
@@ -155,8 +148,6 @@ Workspace:
 Git:
 <!-- @git-status -->
 ```
-
----
 
 ## Slash-command system (`commands.go`)
 
@@ -236,11 +227,10 @@ It prompts for a single Y/n confirmation before writing any files, reading from
 |---|---|
 | `/files [PATH]` | List workspace directory entries |
 
----
 
 ## Knowledge base (`knowledge.go`)
 
-The SQLite database lives at `<workspace>/.harvey/knowledge.db` and is opened
+The SQLite database lives at `<workspace>/agents/knowledge.db` and is opened
 with `MaxOpenConns(1)` and WAL mode. The schema has five tables:
 
 | Table | Purpose |
@@ -258,8 +248,6 @@ cursor before calling `recentObservations` for each project, avoiding a
 deadlock that would occur if the outer `rows` cursor were held open while a
 second query tried to acquire the single allowed connection.
 
----
-
 ## Session recording (`recorder.go`)
 
 `Recorder` writes a Markdown file with a header (started timestamp, model,
@@ -267,8 +255,6 @@ workspace) followed by numbered `### Turn N` sections. It is started with
 `/record start [FILE]` and closed on `/record stop` or clean session exit.
 `DefaultSessionPath` generates a timestamped filename:
 `<workspace>/harvey-session-YYYYMMDD-HHMMSS.md`.
-
----
 
 ## Spinner (`spinner.go`)
 
@@ -283,8 +269,6 @@ The `Spinner` runs a background goroutine that:
 
 `newSpinner(out, estimate)` accepts a `time.Duration` estimate (0 = none)
 computed by `agent.estimateDuration()` from the rolling stat history.
-
----
 
 ## Backends
 
@@ -310,8 +294,6 @@ stream; `ChatStats` carries only `Elapsed`.
    `PUBLICAI_API_KEY` environment variable).
 5. If nothing selected: Harvey starts without a backend; commands that need one
    (`/summarize`, chat turns) print a prompt to connect first.
-
----
 
 ## RAG — Retrieval-Augmented Generation (`rag_support.go`)
 
@@ -379,8 +361,6 @@ Embeddings are stored as `[int32 length][float64...]` in little-endian byte
 order. Cosine similarity is computed in Go at query time (no vector extension
 required in SQLite).
 
----
-
 ## Test coverage
 
 Tests live alongside source in six files:
@@ -400,8 +380,6 @@ Tests live alongside source in six files:
 The `mockLLMClient` in `tier3_test.go` satisfies the `LLMClient` interface with
 a configurable reply string and optional error, making it available for any
 future test that needs an LLM without a live server.
-
----
 
 ## Roadmap
 
@@ -448,8 +426,8 @@ committing.
 A `/context load-dir PATH [GLOB]` variant that recursively adds all matching
 files (e.g. `*.go`) would reduce friction when reviewing a package or subsystem.
 
-**Prompt templates** — A `/template use NAME` command backed by a
-`.harvey/templates/` directory would let teams share structured prompts for
+**Prompt templates** — A `/template use NAME` command backed by an
+`agents/templates/` directory would let teams share structured prompts for
 common tasks (code review, test generation, commit message drafting) without
 repeating them each session.
 

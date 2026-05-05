@@ -46,7 +46,6 @@ REPL for code-focused conversations. The design philosophy is: keep the
 LLM backend swappable, constrain all file I/O to a sandboxed workspace,
 and accumulate context through explicit slash commands rather than
 implicit background crawling.</p>
-<hr />
 <h2 id="component-map">Component map</h2>
 <pre><code>cmd/harvey/main.go          CLI entry point; parses flags; calls agent.Run()
 harvey.go                   Core types: Agent, LLMClient, Message, ChatStats,
@@ -60,7 +59,6 @@ ollama.go                   OllamaClient — streams /api/chat SSE
 publicai.go                 PublicAIClient — streams /v1/chat/completions SSE
 spinner.go                  Animated spinner with Edward Lear messages + timer
 recorder.go                 Markdown session recorder</code></pre>
-<hr />
 <h2 id="core-types">Core types</h2>
 <h3 id="agent-harvey.go">Agent (<code>harvey.go</code>)</h3>
 <p><code>Agent</code> is the central struct that wires everything
@@ -102,7 +100,7 @@ together for one session:</p>
 <tr>
 <td><code>KB</code></td>
 <td><code>*KnowledgeBase</code></td>
-<td>SQLite knowledge base (<code>.harvey/knowledge.db</code>)</td>
+<td>SQLite knowledge base (<code>agents/knowledge.db</code>)</td>
 </tr>
 <tr>
 <td><code>Recorder</code></td>
@@ -165,7 +163,6 @@ the spinner displays as <code>[Xs / ~Ys]</code>.</p>
 <p>The full <code>History</code> slice is sent on every call to
 <code>Chat</code>; there is no partial or sliding-window trimming beyond
 the explicit <code>/summarize</code> command.</p>
-<hr />
 <h2 id="workspace-sandboxing-workspace.go">Workspace sandboxing
 (<code>workspace.go</code>)</h2>
 <p><code>Workspace</code> resolves the root to an absolute, symlink-free
@@ -173,13 +170,12 @@ path at construction time. Every subsequent operation calls
 <code>AbsPath(rel)</code>, which joins <code>rel</code> under
 <code>Root</code> and then checks that the result still has
 <code>Root</code> as a prefix — rejecting <code>../</code> escapes and
-absolute paths outside the root. The <code>.harvey/</code> subdirectory
+absolute paths outside the root. The <code>agents/</code> subdirectory
 is created automatically and holds <code>knowledge.db</code>.</p>
 <p>All file I/O in command handlers goes through
 <code>ws.ReadFile</code>, <code>ws.WriteFile</code>,
 <code>ws.ListDir</code>, or <code>ws.MkdirAll</code>; direct
 <code>os.*</code> calls are not used for workspace paths.</p>
-<hr />
 <h2 id="conversation-model">Conversation model</h2>
 <h3 id="history-lifecycle">History lifecycle</h3>
 <pre><code>startup
@@ -249,7 +245,6 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb5-1"><
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @files --&gt;</span></span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>Git:</span>
 <span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @git-status --&gt;</span></span></code></pre></div>
-<hr />
 <h2 id="slash-command-system-commands.go">Slash-command system
 (<code>commands.go</code>)</h2>
 <p>Commands are registered in <code>registerCommands()</code> as
@@ -477,11 +472,10 @@ history</td>
 </tr>
 </tbody>
 </table>
-<hr />
 <h2 id="knowledge-base-knowledge.go">Knowledge base
 (<code>knowledge.go</code>)</h2>
 <p>The SQLite database lives at
-<code>&lt;workspace&gt;/.harvey/knowledge.db</code> and is opened with
+<code>&lt;workspace&gt;/agents/knowledge.db</code> and is opened with
 <code>MaxOpenConns(1)</code> and WAL mode. The schema has five
 tables:</p>
 <table>
@@ -528,7 +522,6 @@ rows into a slice and closes the cursor before calling
 <code>recentObservations</code> for each project, avoiding a deadlock
 that would occur if the outer <code>rows</code> cursor were held open
 while a second query tried to acquire the single allowed connection.</p>
-<hr />
 <h2 id="session-recording-recorder.go">Session recording
 (<code>recorder.go</code>)</h2>
 <p><code>Recorder</code> writes a Markdown file with a header (started
@@ -538,7 +531,6 @@ timestamp, model, workspace) followed by numbered
 <code>/record stop</code> or clean session exit.
 <code>DefaultSessionPath</code> generates a timestamped filename:
 <code>&lt;workspace&gt;/harvey-session-YYYYMMDD-HHMMSS.md</code>.</p>
-<hr />
 <h2 id="spinner-spinner.go">Spinner (<code>spinner.go</code>)</h2>
 <p>The <code>Spinner</code> runs a background goroutine that:</p>
 <ol type="1">
@@ -556,7 +548,6 @@ avoid showing overrun)</li>
 <p><code>newSpinner(out, estimate)</code> accepts a
 <code>time.Duration</code> estimate (0 = none) computed by
 <code>agent.estimateDuration()</code> from the rolling stat history.</p>
-<hr />
 <h2 id="backends">Backends</h2>
 <h3 id="ollamaclient-ollama.go">OllamaClient
 (<code>ollama.go</code>)</h3>
@@ -587,7 +578,6 @@ retry.</li>
 need one (<code>/summarize</code>, chat turns) print a prompt to connect
 first.</li>
 </ol>
-<hr />
 <h2 id="rag-retrieval-augmented-generation-rag_support.go">RAG —
 Retrieval-Augmented Generation (<code>rag_support.go</code>)</h2>
 <p>RAG augments each user prompt with relevant chunks retrieved from a
@@ -677,7 +667,6 @@ class="sourceCode sql"><code class="sourceCode sql"><span id="cb7-1"><a href="#c
 <p>Embeddings are stored as <code>[int32 length][float64...]</code> in
 little-endian byte order. Cosine similarity is computed in Go at query
 time (no vector extension required in SQLite).</p>
-<hr />
 <h2 id="test-coverage">Test coverage</h2>
 <p>Tests live alongside source in six files:</p>
 <table>
@@ -740,7 +729,6 @@ ranking, mismatch rejection</td>
 satisfies the <code>LLMClient</code> interface with a configurable reply
 string and optional error, making it available for any future test that
 needs an LLM without a live server.</p>
-<hr />
 <h2 id="roadmap">Roadmap</h2>
 <p>The commands implemented so far map to three tiers of increasing
 capability. The following outlines the thinking behind each tier and
@@ -789,7 +777,7 @@ currently requires explicit file names. A
 all matching files (e.g. <code>*.go</code>) would reduce friction when
 reviewing a package or subsystem.</p>
 <p><strong>Prompt templates</strong> — A <code>/template use NAME</code>
-command backed by a <code>.harvey/templates/</code> directory would let
+command backed by an <code>agents/templates/</code> directory would let
 teams share structured prompts for common tasks (code review, test
 generation, commit message drafting) without repeating them each
 session.</p>

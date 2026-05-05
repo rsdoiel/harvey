@@ -89,7 +89,7 @@ lowercase letters, numbers, and hyphens only, and must match the parent
 directory name.</p>
 <h1 id="example-the-bundled-go-review-skill">EXAMPLE — the bundled
 go-review skill</h1>
-<p>Location: harvey/skills/go-review/SKILL.md</p>
+<p>Location: agents/skills/go-review/SKILL.md</p>
 <div class="sourceCode" id="cb3"><pre
 class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>  ---</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  name: go-review</span>
@@ -139,18 +139,10 @@ alphabetically matching trigger wins.</p>
 <h2
 id="discovery-paths-project-overrides-user-on-name-collision">DISCOVERY
 PATHS (project overrides user on name collision)</h2>
-<pre><code>  User scope
-    ~/harvey/skills/           Harvey-native
-    ~/agents/skills/           cross-client (non-hidden)
-    ~/.agents/skills/          cross-client (shared with Claude Code, etc.)
-
-  Project scope  (relative to --workdir, default &quot;.&quot;)
-    harvey/skills/             Harvey-native
-    agents/skills/             cross-client (non-hidden)
-    .agents/skills/            cross-client</code></pre>
-<p>Skills placed in agents/skills/ or .agents/skills/ are visible to any
-agent that follows the Agent Skills specification
-(https://agentskills.dev).</p>
+<pre><code>  Project scope
+    &lt;workspace&gt;/agents/skills/           Harvey-native (and shared clients)</code></pre>
+<p>Skills placed in agents/skills/ are visible to any agent that follows
+the Agent Skills specification (https://agentskills.dev).</p>
 <h1 id="slash-commands">SLASH COMMANDS</h1>
 <pre><code>  /skill                   list all discovered skills
   /skill list              same as above

@@ -175,7 +175,7 @@ func TestCmdSearch_withMatches(t *testing.T) {
 
 func TestCmdSearch_skipHiddenDirs(t *testing.T) {
 	a := newTestAgent(t)
-	// .harvey/ already exists; write a file with our pattern inside it.
+	// agents/ already exists; write a file with our pattern inside a hidden dir.
 	a.Workspace.WriteFile(".hidden/secret.go", []byte("func secret() {}\n"), 0o644)
 	a.Workspace.WriteFile("visible.go", []byte("func visible() {}\n"), 0o644)
 

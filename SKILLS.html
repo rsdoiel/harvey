@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-skills-system">Harvey Skills System</h1>
+<p><em>Version 1.0 — Complete guide to Agent Skills in Harvey</em></p>
+<h2 id="overview">Overview</h2>
+<p>Harvey implements the <strong><a href="https://agentskills.dev">Agent
+Skills</a></strong> specification, which provides a standardized way to
+define, discover, and execute structured tasks across different AI
+agents. Skills allow you to:</p>
+<ul>
+<li><strong>Extend Harvey’s capabilities</strong> without modifying
+code</li>
+<li><strong>Share tasks</strong> between Harvey, Claude Code, and other
+compatible agents</li>
+<li><strong>Create reusable workflows</strong> for common
+operations</li>
+<li><strong>Document complex procedures</strong> in a machine-executable
+format</li>
+</ul>
+<h3 id="what-is-a-skill">What is a Skill?</h3>
+<p>A <strong>Skill</strong> is a <strong>SKILL.md</strong> file that
+contains: 1. <strong>Metadata</strong> (YAML frontmatter) — name,
+description, variables 2. <strong>Instructions</strong> (Markdown) —
+step-by-step guidance for the LLM 3. <strong>Optional scripts</strong> —
+compiled executables for direct execution</p>
+<p>Skills are discovered automatically by Harvey at startup and can be
+invoked via the <code>/skill</code> command or automatically via
+triggers.</p>
+<h2 id="quick-start">Quick Start</h2>
+<h3 id="list-available-skills">List Available Skills</h3>
+<pre><code>harvey&gt; /skill list
+
+  Current model: llama3:latest
+
+  compile-skill           [user] - Compiles a target SKILL.md into correct compiled.bash and...
+  fountain-analysis       [user] - Read and actively monitor a Harvey Fountain screenplay file...
+  review-knowledge-base    [user] - Queries knowledge_base.db and delivers a structured report...
+  setup-codemeta...       [user] - Generates or updates a codemeta.json file for an experiment...
+  setup-experiment        [user] - Creates a new experiment directory in the Laboratory...
+  setup-knowledge-base    [user] - Creates knowledge_base.db in the current working directory...
+  update-knowledge-base   [user] - Adds or updates records in knowledge_base.db...
+  fetch-pg-corpus         [user] - Downloads the Project Gutenberg catalog and full text...</code></pre>
+<h3 id="load-a-skill">Load a Skill</h3>
+<pre><code>harvey&gt; /skill load fountain-analysis
+
+  ✓ Skill &quot;fountain-analysis&quot; loaded into context (1234 chars).</code></pre>
+<p>The skill’s full instructions are injected into the conversation, and
+the LLM will follow them to complete the task.</p>
+<h3 id="get-skill-info">Get Skill Info</h3>
+<pre><code>harvey&gt; /skill info fountain-analysis
+
+  Name:          fountain-analysis
+  Description:   Read and actively monitor a Harvey Fountain screenplay file...
+  Source:        user
+  Path:          /home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md
+  License:       AGPL-3.0
+  Compatibility: claude-code, harvey</code></pre>
+<h3 id="run-a-compiled-skill">Run a Compiled Skill</h3>
+<pre><code>harvey&gt; /skill run fountain-analysis
+
+  Running skill: fountain-analysis
+  FOUNTAIN_FILE? session.spmd
+  ... (skill executes directly)</code></pre>
+<h2 id="skill-discovery-paths">Skill Discovery Paths</h2>
+<p>Harvey scans for skills in the working directory’s agent
+directory.</p>
+<h3 id="project-scope">Project Scope</h3>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 30%" />
+<col style="width: 35%" />
+<col style="width: 35%" />
+</colgroup>
+<thead>
+<tr>
+<th>Path</th>
+<th>Scope</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;workdir&gt;/agents/skills/</code></td>
+<td>Harvey-native and Cross-client</td>
+<td>Shared with other agents</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong> A skill named <code>review</code> in
+<code>&lt;workdir&gt;/agents/skills/</code>.</p>
+<h2 id="skill.md-format">SKILL.md Format</h2>
+<h3 id="frontmatter-yaml">Frontmatter (YAML)</h3>
+<p>Every SKILL.md file <strong>must</strong> begin with a YAML
+frontmatter block containing at minimum the <code>name</code> and
+<code>description</code> fields.</p>
+<p><strong>Required fields:</strong> - <code>name</code> — Unique
+identifier (lowercase, hyphens only) - <code>description</code> — What
+the skill does and when to use it</p>
+<p><strong>Optional fields:</strong> - <code>license</code> — License
+identifier (e.g., <code>AGPL-3.0</code>) - <code>compatibility</code> —
+Compatible agents (e.g., <code>claude-code, harvey</code>) -
+<code>version</code> — Skill version (string) - <code>trigger</code> —
+Auto-dispatch pattern (keyword or regexp) - <code>allowed-tools</code> —
+Space-separated tool allowlist - <code>variables</code> — Input
+variables block - <code>metadata</code> — Arbitrary key-value pairs</p>
+<p><strong>Example Frontmatter:</strong></p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="pp">---</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> review-code</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="fu">description</span><span class="kw">: </span><span class="ch">|</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  Reviews Go source code for correctness, style, and idiomatic patterns.</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>  Use when the user asks to review, audit, or critique Go code.</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="fu">license</span><span class="kw">:</span><span class="at"> AGPL-3.0</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="fu">compatibility</span><span class="kw">:</span><span class="at"> claude-code, harvey</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="fu">metadata</span><span class="kw">:</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">author</span><span class="kw">:</span><span class="at"> R. S. Doiel</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">version</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;1.0&quot;</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="fu">variables</span><span class="kw">:</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">DIRECTORY</span><span class="kw">:</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">type</span><span class="kw">:</span><span class="at"> string</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">description</span><span class="kw">:</span><span class="at"> Path to directory containing code to review</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">example</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;internal/parser&quot;</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="pp">---</span></span></code></pre></div>
+<h3 id="content-structure">Content Structure</h3>
+<p>After the frontmatter, the skill content is structured Markdown with
+these recommended sections:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu"># Skill Title</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>Brief introduction of what the skill does.</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="fu">## When to use this skill</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>Use when the user asks you to:</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Action 1</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Action 2</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Action 3</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="fu">## Variables</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Variable <span class="pp">|</span> Type <span class="pp">|</span> Description <span class="pp">|</span> Default <span class="pp">|</span> Prompted? <span class="pp">|</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="pp">|----------|------|-------------|---------|-----------|</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> DIRECTORY <span class="pp">|</span> string <span class="pp">|</span> Path to code <span class="pp">|</span> . <span class="pp">|</span> Yes <span class="pp">|</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 1: Setup</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>Instructions for the LLM to follow.</span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a><span class="fu">## Step 2: Execution</span></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>More instructions.</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a><span class="fu">## Error handling</span></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Condition <span class="pp">|</span> Action <span class="pp">|</span></span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a><span class="pp">|-----------|--------|</span></span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> No files found <span class="pp">|</span> Report error <span class="pp">|</span></span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a><span class="fu">## Compiled Script Guidance</span></span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a><span class="at">&gt; This section is for the LLM when generating compiled.bash/compiled.ps1.</span></span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a><span class="at">&gt; Read it carefully before writing any code.</span></span>
+<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a>**Script structure:**</span>
+<span id="cb6-38"><a href="#cb6-38" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use <span class="in">`#!/usr/bin/env bash`</span> and <span class="in">`set -euo pipefail`</span></span>
+<span id="cb6-39"><a href="#cb6-39" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>...</span></code></pre></div>
+<pre><code>
+### Variables Block
+
+The `variables:` block in frontmatter defines input parameters that can be
+passed to the skill:
+
+```yaml
+variables:
+  NAME:
+    type: string
+    description: The name of something
+    example: &quot;myproject&quot;
+  COUNT:
+    type: integer
+    description: Number of items
+    example: &quot;5&quot;
+  ITEMS:
+    type: array
+    description: List of items</code></pre>
+<p><strong>Variable types:</strong> - <code>string</code> — Text input -
+<code>integer</code> — Numeric input - <code>array</code> — List of
+values</p>
+<p>When a skill is invoked, variables can be passed: - Via HARVEY_PROMPT
+environment variable (for compiled skills) - Via command arguments (for
+<code>/skill run</code>) - Via interactive prompting (if not
+provided)</p>
+<h2 id="skill-types">Skill Types</h2>
+<h3 id="type-1-llm-executed-skills">Type 1: LLM-Executed Skills</h3>
+<p>The LLM reads the skill instructions and executes the steps by
+generating appropriate responses. This is the most common type.</p>
+<p><strong>Example:</strong> <code>fountain-analysis</code> — The LLM
+reads the Fountain file and generates an analysis report.</p>
+<p><strong>Workflow:</strong> 1. User invokes:
+<code>/skill load fountain-analysis</code> 2. Skill content injected
+into context 3. LLM reads instructions and follows them 4. LLM generates
+response based on skill guidance</p>
+<h3 id="type-2-compiled-skills">Type 2: Compiled Skills</h3>
+<p>Skills with <code>scripts/compiled.bash</code> and/or
+<code>scripts/compiled.ps1</code> can be executed
+<strong>directly</strong> without LLM intervention. This is faster and
+more deterministic.</p>
+<p><strong>Structure:</strong></p>
+<pre><code>skill-name/
+├── SKILL.md              # Skill definition
+└── scripts/
+    ├── compiled.bash     # Linux/macOS script
+    └── compiled.ps1      # Windows PowerShell script</code></pre>
+<p><strong>When to compile:</strong> - Tasks that are purely procedural
+(no creativity needed) - Tasks that benefit from direct shell execution
+- Tasks that need to run tools not available to the LLM</p>
+<p><strong>Compilation process:</strong> 1. Create the skill with clear
+instructions 2. Use <code>/skill load compile-skill</code> to generate
+scripts 3. Review the generated scripts 4. Commit them alongside
+SKILL.md</p>
+<h3 id="type-3-triggered-skills">Type 3: Triggered Skills</h3>
+<p>Skills with a <code>trigger:</code> field can be
+<strong>auto-dispatched</strong> when user input matches the
+pattern.</p>
+<p><strong>Trigger types:</strong> - <strong>Keyword mode:</strong>
+<code>trigger: pdf extract document</code> — Any word matches -
+<strong>Regexp mode:</strong> <code>trigger: /\bpdf\b/</code> — Pattern
+must match</p>
+<p><strong>Example:</strong></p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">trigger</span><span class="kw">:</span><span class="at"> /\b(run|execute) tests?\b/</span></span></code></pre></div>
+<p>When the user types “run tests” or “execute test”, Harvey
+automatically invokes the skill (if it’s compiled) or loads it into
+context.</p>
+<h2 id="commands-reference">Commands Reference</h2>
+<h3 id="skill-list"><code>/skill list</code></h3>
+<p>List all discovered skills with their name, source, and first line of
+description.</p>
+<p><strong>Output:</strong></p>
+<pre><code>  Current model: llama3:latest
+
+  compile-skill           [user] Compiles a target SKILL.md...
+  fountain-analysis       [user] Read and actively monitor...
+  review-knowledge-base   [user] Queries knowledge_base.db...
+  ...</code></pre>
+<h3 id="skill-load-name"><code>/skill load NAME</code></h3>
+<p>Inject the full skill body into the conversation context. The LLM
+will then follow the skill’s instructions.</p>
+<p><strong>Example:</strong></p>
+<pre><code>harvey&gt; /skill load fountain-analysis
+  ✓ Skill &quot;fountain-analysis&quot; loaded into context (4521 chars).</code></pre>
+<h3 id="skill-info-name"><code>/skill info NAME</code></h3>
+<p>Show detailed metadata about a skill.</p>
+<p><strong>Output:</strong></p>
+<pre><code>  Name:          fountain-analysis
+  Description:   Read and actively monitor a Harvey Fountain...
+  Source:        user
+  Path:          /home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md
+  License:       AGPL-3.0
+  Compatibility: claude-code, harvey
+  Variables:
+    FOUNTAIN_FILE (string, prompted) - Path to file
+    INTERVAL (integer, default 30) - Poll interval
+  Metadata:
+    author: R. S. Doiel
+    version: &quot;2.0&quot;</code></pre>
+<h3 id="skill-status"><code>/skill status</code></h3>
+<p>Show statistics about discovered skills.</p>
+<p><strong>Output:</strong></p>
+<pre><code>  Total: 8 skill(s)
+    Project scope: 0
+    User scope:    8</code></pre>
+<h3 id="skill-new"><code>/skill new</code></h3>
+<p>Run the interactive <strong>skill wizard</strong> to create a new
+skill.</p>
+<p><strong>Workflow:</strong> 1. Prompts for skill name (must be valid
+identifier) 2. Prompts for description 3. Prompts for other metadata 4.
+Creates the skill directory with SKILL.md template 5. Opens SKILL.md in
+$EDITOR for editing</p>
+<p><strong>Example:</strong></p>
+<pre><code>harvey&gt; /skill new
+  Skill name: review-code
+  Description: Reviews Go source code
+  License [AGPL-3.0]: 
+  Compatibility [claude-code, harvey]: 
+  Created: agents/skills/review-code/SKILL.md
+  Open in editor? [Y/n] y</code></pre>
+<h3
+id="skill-run-name-args..."><code>/skill run NAME [ARGS...]</code></h3>
+<p>Run a <strong>compiled skill</strong> directly. The skill’s
+compiled.bash or compiled.ps1 script is executed with HARVEY_PROMPT set
+to the arguments.</p>
+<p><strong>Example:</strong></p>
+<pre><code>harvey&gt; /skill run fountain-analysis session.spmd
+
+  Running skill: fountain-analysis
+  [Output from compiled.bash]</code></pre>
+<p><strong>Note:</strong> This only works for skills with compiled
+scripts. For LLM-executed skills, use <code>/skill load</code>
+instead.</p>
+<h2 id="compiled-scripts">Compiled Scripts</h2>
+<h3 id="environment-variables">Environment Variables</h3>
+<p>When a compiled skill script runs, Harvey sets these environment
+variables:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HARVEY_PROMPT</code></td>
+<td>The user’s prompt/arguments</td>
+<td><code>session.spmd</code></td>
+</tr>
+<tr>
+<td><code>HARVEY_WORKDIR</code></td>
+<td>Absolute workspace root</td>
+<td><code>/home/user/project</code></td>
+</tr>
+<tr>
+<td><code>HARVEY_MODEL</code></td>
+<td>Current model name</td>
+<td><code>llama3:latest</code></td>
+</tr>
+<tr>
+<td><code>HARVEY_SESSION_ID</code></td>
+<td>Current session ID</td>
+<td><code>20260504-143000</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example compiled.bash:</strong></p>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/usr/bin/env bash</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="bu">set</span> <span class="at">-euo</span> pipefail</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Parse arguments from HARVEY_PROMPT</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="bu">read</span> <span class="at">-ra</span> <span class="va">_args</span> <span class="op">&lt;&lt;&lt;</span> <span class="st">&quot;</span><span class="va">${HARVEY_PROMPT</span><span class="op">:-</span><span class="va">}</span><span class="st">&quot;</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="va">FOUNTAIN_FILE</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${_args</span><span class="op">[</span><span class="dv">0</span><span class="op">]:-</span><span class="va">}</span><span class="st">&quot;</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Validate</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">[</span> <span class="ot">-z</span> <span class="st">&quot;</span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span> <span class="bu">]</span><span class="kw">;</span> <span class="cf">then</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    <span class="bu">read</span> <span class="at">-rp</span> <span class="st">&quot;Fountain file path: &quot;</span> <span class="va">FOUNTAIN_FILE</span></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="cf">fi</span></span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Execute</span></span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">[</span> <span class="ot">!</span> <span class="ot">-f</span> <span class="st">&quot;</span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span> <span class="bu">]</span><span class="kw">;</span> <span class="cf">then</span></span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>    <span class="bu">echo</span> <span class="st">&quot;Error: File not found: </span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span> <span class="op">&gt;&amp;</span><span class="dv">2</span></span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>    <span class="bu">exit</span> 1</span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a><span class="cf">fi</span></span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;Analyzing: </span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span></span>
+<span id="cb16-20"><a href="#cb16-20" aria-hidden="true" tabindex="-1"></a><span class="co"># ... rest of script</span></span></code></pre></div>
+<h3 id="script-generation-rules">Script Generation Rules</h3>
+<p>When generating compiled scripts (via compile-skill), follow these
+rules:</p>
+<p><strong>For compiled.bash:</strong> 1. Shebang:
+<code>#!/usr/bin/env bash</code> 2. Safety:
+<code>set -euo pipefail</code> 3. Variable parsing: Use
+<code>read -ra _args &lt;&lt;&lt; "${HARVEY_PROMPT:-}"</code> 4. Safe
+defaults: Always use <code>${VAR:-}</code> or
+<code>${VAR:-default}</code> 5. No functions, no subshells 6. SQLite3:
+Call as command, never redirect into db file 7. Heredocs: Use
+single-quoted delimiter (<code>&lt;&lt;'EOF'</code>) for literal content
+8. Tool checks:
+<code>command -v tool &gt;/dev/null 2&gt;&amp;1 || { echo "error"; exit 1; }</code></p>
+<p><strong>For compiled.ps1:</strong> 1. Error handling:
+<code>$ErrorActionPreference = 'Stop'</code> 2. Variable parsing:
+<code>$promptArgs = ($env:HARVEY_PROMPT ?? '').Trim() -split '\s+', N</code>
+3. PowerShell-only syntax (no bash-isms) 4. Tool checks:
+<code>Get-Command tool -ErrorAction SilentlyContinue</code></p>
+<h2 id="skill-discovery-loading">Skill Discovery &amp; Loading</h2>
+<h3 id="discovery-process">Discovery Process</h3>
+<p>At startup, Harvey:</p>
+<ol type="1">
+<li>Builds list of search directories based on config</li>
+<li>Scans each directory for subdirectories containing
+<code>SKILL.md</code></li>
+<li>Parses each SKILL.md file</li>
+<li>Validates required fields (name, description)</li>
+<li>Builds in-memory catalog indexed by name</li>
+<li>Merges catalog into system prompt (for LLM awareness)</li>
+</ol>
+<p><strong>Timing:</strong> Discovery happens during agent
+initialization, before the first prompt.</p>
+<h3 id="loading-process">Loading Process</h3>
+<p>When you invoke <code>/skill load NAME</code>:</p>
+<ol type="1">
+<li>Harvey looks up the skill in the catalog</li>
+<li>Reads the full SKILL.md file</li>
+<li>Extracts the body (content after frontmatter)</li>
+<li>Injects into conversation as user message:
+<code>[skill: NAME]\n\n&lt;body&gt;</code></li>
+<li>Sets <code>ActiveSkill</code> to NAME for context</li>
+<li>Records in session if recording is active</li>
+</ol>
+<p><strong>Note:</strong> Skills are <strong>not</strong> loaded
+automatically. You must explicitly invoke <code>/skill load</code> or
+have a trigger match.</p>
+<h3 id="staleness-checking">Staleness Checking</h3>
+<p>For compiled skills, Harvey checks if SKILL.md is newer than the
+compiled scripts. If so, it warns:</p>
+<pre><code>  Warning: Skill &quot;name&quot; has been modified since compilation.
+  Recompile with: /skill compile name</code></pre>
+<h2 id="creating-a-new-skill">Creating a New Skill</h2>
+<h3 id="method-1-interactive-wizard-skill-new">Method 1: Interactive
+Wizard (<code>/skill new</code>)</h3>
+<pre><code>harvey&gt; /skill new</code></pre>
+<p>Follow the prompts to create a new skill with the wizard.</p>
+<h3 id="method-2-manual-creation">Method 2: Manual Creation</h3>
+<ol type="1">
+<li><p>Create the skill directory:</p>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> agents/skills/my-skill</span></code></pre></div></li>
+<li><p>Create SKILL.md with proper frontmatter:</p>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="an">name:</span><span class="co"> my-skill</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="an">description:</span><span class="co"> Does something useful</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a><span class="an">license:</span><span class="co"> AGPL-3.0</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="an">compatibility:</span><span class="co"> claude-code, harvey</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a><span class="an">metadata:</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a><span class="co">  author: Your Name</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a><span class="co">  version: &quot;1.0&quot;</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a><span class="fu"># My Skill</span></span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>Instructions for the LLM...</span></code></pre></div></li>
+<li><p>(Optional) Create compiled scripts:</p>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> agents/skills/my-skill/scripts</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="fu">touch</span> agents/skills/my-skill/scripts/compiled.bash</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="fu">touch</span> agents/skills/my-skill/scripts/compiled.ps1</span></code></pre></div></li>
+<li><p>(Optional) Compile the skill:</p>
+<pre><code>harvey&gt; /skill compile my-skill</code></pre></li>
+</ol>
+<h2 id="compiling-a-skill">Compiling a Skill</h2>
+<p>Compile a SKILL.md into executable scripts using the LLM:</p>
+<pre><code>harvey&gt; /skill compile my-skill
+  Compiling skill &quot;my-skill&quot;...
+  ✓ Compiled: scripts/compiled.bash and scripts/compiled.ps1
+  Tip: you can now run it as /skill run my-skill</code></pre>
+<p><strong>What happens:</strong> 1. Harvey uses the current LLM to
+generate scripts 2. Reads the SKILL.md for variable definitions and
+instructions 3. Generates <code>scripts/compiled.bash</code> for
+Linux/macOS/BSD 4. Generates <code>scripts/compiled.ps1</code> for
+Windows 5. Makes both scripts executable (where applicable)</p>
+<p><strong>Note:</strong> Compilation requires a capable model. Small
+local models may not generate good scripts. Use Claude Code or a large
+cloud model for compilation.</p>
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="skill-design">Skill Design</h3>
+<p><strong>Do:</strong> - Make skills <strong>single-purpose</strong>
+and focused - Include <strong>clear examples</strong> in the description
+- Define <strong>variables</strong> for parameterization - Add
+<strong>error handling</strong> guidance - Document
+<strong>preconditions</strong> and <strong>postconditions</strong> - Use
+<strong>tables</strong> for structured data</p>
+<p><strong>Don’t:</strong> - Make skills that modify Harvey’s internals
+- Require specific workspace structures (be flexible) - Include
+hardcoded paths (use variables) - Assume specific tools are available
+(check first)</p>
+<h3 id="naming-skills">Naming Skills</h3>
+<table>
+<thead>
+<tr>
+<th>Good</th>
+<th>Bad</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>review-code</code></td>
+<td><code>code-review</code></td>
+<td>Verb-first is more natural</td>
+</tr>
+<tr>
+<td><code>setup-experiment</code></td>
+<td><code>experiment-setup</code></td>
+<td>Verb-first</td>
+</tr>
+<tr>
+<td><code>fetch-pg-corpus</code></td>
+<td><code>getPGData</code></td>
+<td>Hyphens, lowercase</td>
+</tr>
+<tr>
+<td><code>compile-skill</code></td>
+<td><code>CompileSkill</code></td>
+<td>Lowercase only</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rules:</strong> - Lowercase letters only - Hyphens to
+separate words - No spaces or special characters - Must match the
+directory name</p>
+<h3 id="variable-design">Variable Design</h3>
+<p><strong>Good variables:</strong> - Specific and focused - Clear type
+(string, integer, array) - Descriptive name - Useful example value</p>
+<p><strong>Bad variables:</strong> - Vague names (<code>input</code>,
+<code>data</code>) - Too many variables (&gt; 5) - Complex nested
+structures - No default values</p>
+<h3 id="testing-skills">Testing Skills</h3>
+<p>Test your skill by:</p>
+<ol type="1">
+<li>Loading it: <code>/skill load my-skill</code></li>
+<li>Following the instructions manually</li>
+<li>Verifying the LLM produces correct output</li>
+<li>For compiled skills: <code>/skill run my-skill arg1 arg2</code></li>
+</ol>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="skill-not-found">“Skill not found”</h3>
+<p><strong>Causes:</strong> - Skill directory doesn’t exist - SKILL.md
+is missing or malformed - Skill name doesn’t match directory name -
+Discovery path not scanned</p>
+<p><strong>Fix:</strong></p>
+<pre><code># Check discovery paths
+harvey&gt; /skill status
+
+# Verify skill exists
+ls agents/skills/my-skill/SKILL.md
+
+# Check for YAML errors
+# (malformed frontmatter causes parse failure)</code></pre>
+<h3 id="description-is-required">“Description is required”</h3>
+<p><strong>Cause:</strong> SKILL.md frontmatter is missing the
+<code>description</code> field.</p>
+<p><strong>Fix:</strong> Add a description to the frontmatter:</p>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="pp">---</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> my-skill</span></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="fu">description</span><span class="kw">:</span><span class="at"> Does something useful</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="co">...</span></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span></code></pre></div>
+<h3 id="invalid-skill-name">“Invalid skill name”</h3>
+<p><strong>Cause:</strong> Name contains uppercase letters, spaces, or
+special characters.</p>
+<p><strong>Fix:</strong> Use only lowercase letters, numbers, and
+hyphens:</p>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> my-skill</span><span class="co">  # good</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> My Skill</span><span class="co">  # bad (spaces, uppercase)</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> my_skill</span><span class="co">  # bad (underscore)</span></span></code></pre></div>
+<h3 id="compiled-skill-not-executing">Compiled skill not executing</h3>
+<p><strong>Causes:</strong> - Scripts not compiled yet - Scripts not
+executable - Missing shebang line - Syntax errors in script</p>
+<p><strong>Fix:</strong></p>
+<pre><code># Compile the skill
+harvey&gt; /skill compile my-skill
+
+# Check file permissions
+ls -la agents/skills/my-skill/scripts/
+
+# Make executable (if needed)
+chmod +x agents/skills/my-skill/scripts/compiled.bash</code></pre>
+<h3 id="skill-stale-warning">Skill stale (warning)</h3>
+<p><strong>Cause:</strong> SKILL.md was modified after compilation.</p>
+<p><strong>Fix:</strong></p>
+<pre><code># Recompile
+harvey&gt; /skill compile my-skill</code></pre>
+<h2 id="skill-directory-structure">Skill Directory Structure</h2>
+<p>A complete skill directory:</p>
+<pre><code>my-skill/
+├── SKILL.md                    # Required: Skill definition
+├── LICENSE                     # Optional: License file
+├── README.md                   # Optional: Human-readable docs
+├── references/                 # Optional: Reference material
+│   └── guide.md
+├── assets/                     # Optional: Templates, data files
+│   └── template.txt
+└── scripts/                    # Optional: Compiled scripts
+    ├── compiled.bash          # Linux/macOS/BSD script
+    └── compiled.ps1           # Windows PowerShell script</code></pre>
+<h2 id="cross-agent-compatibility">Cross-Agent Compatibility</h2>
+<p>Harvey skills are compatible with <strong>Claude Code</strong> and
+any other agent that implements the <a
+href="https://agentskills.dev">Agent Skills specification</a>.</p>
+<h3 id="shared-skills-directory">Shared Skills Directory</h3>
+<p>Place skills in <code>&lt;workspace&gt;/agents/skills/</code> to make
+them available to all compatible agents:</p>
+<pre><code>agents/
+└── skills/
+    ├── my-skill/          # Available to Harvey and Claude Code
+    │   └── SKILL.md
+    └── shared-skill/
+        └── SKILL.md</code></pre>
+<h3 id="compatibility-field">Compatibility Field</h3>
+<p>Specify which agents can use the skill:</p>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="fu">compatibility</span><span class="kw">:</span><span class="at"> claude-code, harvey</span></span></code></pre></div>
+<p>Or use a wildcard:</p>
+<div class="sourceCode" id="cb32"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">compatibility</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;*&quot;</span></span></code></pre></div>
+<h2 id="advanced-system-prompt-integration">Advanced: System Prompt
+Integration</h2>
+<p>Skills can be injected into Harvey’s system prompt so the LLM knows
+what skills are available without loading them all. The catalog is
+formatted as:</p>
+<div class="sourceCode" id="cb33"><pre
+class="sourceCode xml"><code class="sourceCode xml"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>&lt;<span class="kw">available_skills</span>&gt;</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>  &lt;<span class="kw">skill</span>&gt;</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">name</span>&gt;fountain-analysis&lt;/<span class="kw">name</span>&gt;</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">description</span>&gt;Read and actively monitor a Harvey Fountain...&lt;/<span class="kw">description</span>&gt;</span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;/home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>  &lt;/<span class="kw">skill</span>&gt;</span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>  &lt;<span class="kw">skill</span>&gt;</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">name</span>&gt;review-knowledge-base&lt;/<span class="kw">name</span>&gt;</span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">description</span>&gt;Queries knowledge_base.db and delivers...&lt;/<span class="kw">description</span>&gt;</span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;/home/user/Laboratory/agents/skills/review-knowledge-base/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>  &lt;/<span class="kw">skill</span>&gt;</span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a>&lt;/<span class="kw">available_skills</span>&gt;</span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a>When a task matches a skill&#39;s description, the user can type:</span>
+<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>  /skill load &lt;<span class="kw">name</span>&gt;</span>
+<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a>to activate it.</span></code></pre></div>
+<p>This helps the LLM suggest appropriate skills to the user.</p>
+<h2 id="reference-built-in-skills">Reference: Built-in Skills</h2>
+<p>Harvey includes these skills out of the box (in
+<code>agents/skills/</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Skill</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>compile-skill</strong></td>
+<td>Compiles SKILL.md into executable scripts</td>
+</tr>
+<tr>
+<td><strong>fountain-analysis</strong></td>
+<td>Reads and analyzes Fountain session files</td>
+</tr>
+<tr>
+<td><strong>review-knowledge-base</strong></td>
+<td>Queries and reports on knowledge_base.db</td>
+</tr>
+<tr>
+<td><strong>setup-codemeta…</strong></td>
+<td>Generates codemeta.json for experiments</td>
+</tr>
+<tr>
+<td><strong>setup-experiment</strong></td>
+<td>Creates new experiment directory + git init</td>
+</tr>
+<tr>
+<td><strong>setup-knowledge-base</strong></td>
+<td>Initializes knowledge_base.db with schema</td>
+</tr>
+<tr>
+<td><strong>update-knowledge-base</strong></td>
+<td>Adds records to knowledge_base.db</td>
+</tr>
+<tr>
+<td><strong>fetch-pg-corpus</strong></td>
+<td>Downloads Project Gutenberg corpus</td>
+</tr>
+</tbody>
+</table>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="https://agentskills.dev">Agent Skills Specification</a> —
+Official spec</li>
+<li><a href="agents/skills/">SKILL.md files in agents/skills/</a> —
+Built-in skills</li>
+<li><a
+href="agents/skills/fountain-analysis/SKILL.html">fountain-analysis
+SKILL.md</a> — Example of comprehensive skill</li>
+<li><a href="ARCHITECTURE.html">ARCHITECTURE.md</a> — Technical details
+on skill implementation</li>
+<li><a href="agents/skills/compile-skill/SKILL.html">compile-skill
+SKILL.md</a> — Skill compilation guide</li>
+</ul>
+</section>
+</body>
+</html>

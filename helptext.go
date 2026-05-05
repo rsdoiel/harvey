@@ -78,7 +78,7 @@ match the parent directory name.
 
 # EXAMPLE — the bundled go-review skill
 
-  Location: harvey/skills/go-review/SKILL.md
+  Location: agents/skills/go-review/SKILL.md
 
 ~~~markdown
   ---
@@ -143,18 +143,11 @@ matching trigger wins.
 ## DISCOVERY PATHS  (project overrides user on name collision)
 
 ~~~
-  User scope
-    ~/harvey/skills/           Harvey-native
-    ~/agents/skills/           cross-client (non-hidden)
-    ~/.agents/skills/          cross-client (shared with Claude Code, etc.)
-
-  Project scope  (relative to --workdir, default ".")
-    harvey/skills/             Harvey-native
-    agents/skills/             cross-client (non-hidden)
-    .agents/skills/            cross-client
+  Project scope
+    <workspace>/agents/skills/           Harvey-native (and shared clients)
 ~~~
 
-Skills placed in agents/skills/ or .agents/skills/ are visible to any agent
+Skills placed in agents/skills/ are visible to any agent
 that follows the Agent Skills specification (https://agentskills.dev).
 
 
@@ -256,7 +249,7 @@ Cloud providers (API key read from environment):
 ~~~
 
 Registered endpoints and the on/off state persist across sessions in
-~/harvey/routes.json.
+`+"`"+`<workspace>/agents/routes.json.`+"`"+`
 
 `
 
@@ -614,12 +607,12 @@ seeing it no matter how many times you reset the conversation.
 Use pinned context for information the model should never lose sight of:
 
   - A project description or goal that frames every question.
-  - Key constraints ("do not modify files outside harvey/").
+  - Key constraints ("do not modify files outside agents/").
   - A running summary you composed to replace a long conversation.
   - Environment facts that are not in HARVEY.md.
 
 Pinned context is stored in memory only; it is not persisted to
-harvey/harvey.yaml or session files. It resets when Harvey exits.
+agents/harvey.yaml or session files. It resets when Harvey exits.
 
 # SUBCOMMANDS
 
@@ -928,7 +921,7 @@ re-ingest the documents.
   /rag new golang
 
   # Step 3 — ingest the documents you want Harvey to retrieve from
-  /rag ingest harvey/
+  /rag ingest agents/
   /rag ingest HARVEY.md
   /rag ingest docs/
 
@@ -968,10 +961,10 @@ similarity score (0.0–1.0) and source file:
 
   Top 5 result(s) for "what license does Harvey use?":
 
-    [1] score=0.712  source=/home/user/harvey/LICENSE
+    [1] score=0.712  source=/home/user/Laboratory/harvey/LICENSE
         GNU AFFERO GENERAL PUBLIC LICENSE...
 
-    [2] score=0.431  source=/home/user/harvey/README.md
+    [2] score=0.431  source=/home/user/Laboratory/harvey/README.md
         Harvey is licensed under AGPL-3.0...
 ~~~
 
@@ -1087,9 +1080,9 @@ interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
 Mistral, OpenAI) can be added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
-A knowledge base is stored at <workdir>/harvey/knowledge.db and is created
+A knowledge base is stored at <workdir>/agents/knowledge.db and is created
 automatically on first run. Session recordings (.spmd files) are stored in
-<workdir>/harvey/sessions/. Both paths can be overridden in harvey/harvey.yaml.
+<workdir>/agents/sessions/. Both paths can be overridden in agents/harvey.yaml.
 
 Type /help inside the session for available slash commands.
 

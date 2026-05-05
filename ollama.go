@@ -1,3 +1,20 @@
+// Package harvey — ollama.go provides Ollama-specific client utilities for
+// model inspection, capability probing, and embedding. This file complements
+// the LLMClient interface (which handles chat/embedding via any-llm-go) with
+// Ollama-specific features:
+//
+//   - ModelSummaries: List all installed models with metadata
+//   - ShowModel: Get detailed info for a single model
+//   - CountTokens: Estimate token count via /api/tokenize
+//   - FastProbeModel/ThoroughProbeModel: Determine model capabilities
+//   - OllamaEmbedder: Embedding via /api/embed endpoint
+//   - ProbeOllama: Check if Ollama server is reachable
+//   - StartOllamaService: Launch ollama serve as background process
+//
+// The OllamaClient type is separate from the LLMClient interface to keep
+// Ollama-specific logic isolated. For chat/embedding operations, use
+// newOllamaLLMClient (in a different file) which implements LLMClient.
+
 package harvey
 
 import (

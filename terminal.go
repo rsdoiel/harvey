@@ -30,6 +30,205 @@ const (
 	sep         = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 )
 
+// sensitiveEnvPrefixes contains environment variable name prefixes that
+// should be EXCLUDED to prevent accidental exposure of sensitive data (e.g., API keys).
+// Variables matching these prefixes will NOT be passed to child processes.
+var sensitiveEnvPrefixes = []string{
+	"ANTHROPIC_API_KEY",
+	"DEEPSEEK_API_KEY",
+	"GEMINI_API_KEY",
+	"GOOGLE_API_KEY",
+	"MISTRAL_API_KEY",
+	"OPENAI_API_KEY",
+}
+
+// safeEnvPrefixes contains environment variable name prefixes that are
+// SAFE to pass to child processes. All other variables are filtered out.
+var safeEnvPrefixes = []string{
+	"PATH",
+	"HOME",
+	"USER",
+	"USERNAME",
+	"SHELL",
+	"TERM",
+	"LANG",
+	"LC_",
+	"PWD",
+	"OLLAMA",
+	"HARVEY",
+}
+
+/** filterEnvironment returns a filtered copy of the environment that only
+ * includes safe variables (those with prefixes in safeEnvPrefixes) and
+ * explicitly excludes sensitive variables (those with prefixes in
+ * sensitiveEnvPrefixes). This prevents sensitive environment variables
+ * (like API keys) from being inherited by child processes spawned via the ! command.
+ *
+ * Parameters:
+ *   env ([]string) — the original environment in "KEY=VALUE" format.
+ *
+ * Returns:
+ *   []string — filtered environment with only safe variables.
+ */
+func filterEnvironment(env []string) []string {
+	var result []string
+	
+	// First, check for sensitive vars and exclude them
+	sensitiveMap := make(map[string]bool)
+	for _, prefix := range sensitiveEnvPrefixes {
+		sensitiveMap[prefix] = true
+	}
+	
+	// Then check for safe vars to include
+	safeMap := make(map[string]bool)
+	for _, prefix := range safeEnvPrefixes {
+		safeMap[prefix] = true
+	}
+	
+	for _, e := range env {
+		// Extract the variable name (before the '=')
+		idx := strings.IndexByte(e, '=')
+		if idx == -1 {
+			continue
+		}
+		varName := e[:idx]
+		
+		// Exclude sensitive variables
+		isSensitive := false
+		for prefix := range sensitiveMap {
+			if varName == prefix {
+				isSensitive = true
+				break
+			}
+		}
+		if isSensitive {
+			continue
+		}
+		
+		// Include only safe variables or those that don't match any pattern
+		isSafe := false
+		for prefix := range safeMap {
+			if varName == prefix || strings.HasPrefix(varName, prefix+"_") {
+				isSafe = true
+				break
+			}
+		}
+		// Also allow variables that start with HARVEY_ or OLLAMA_
+		if strings.HasPrefix(varName, "HARVEY_") || strings.HasPrefix(varName, "OLLAMA_") {
+			isSafe = true
+		}
+		
+		if isSafe {
+			result = append(result, e)
+		}
+	}
+	
+	// Always ensure PATH is set
+	pathFound := false
+	for _, e := range result {
+		if strings.HasPrefix(e, "PATH=") {
+			pathFound = true
+			break
+		}
+	}
+	if !pathFound {
+		if path := os.Getenv("PATH"); path != "" {
+			result = append(result, "PATH="+path)
+		}
+	}
+	
+	return result
+}
+
+/** parseCommandLine splits a command line string into a program name and
+ * arguments, handling quoted strings. This provides basic shell-like parsing
+ * without supporting shell metacharacters (|, >, <, &, ;, etc.) for security.
+ *
+ * Supported features:
+ *   - Single and double quotes
+ *   - Escaped quotes with backslash (\' and \")
+ *   - Basic whitespace splitting
+ *
+ * Not supported (intentionally for security):
+ *   - Pipes (|)
+ *   - Redirects (>, <, >>, 2>, etc.)
+ *   - Command substitution ($(), backticks)
+ *   - Globbing (*)
+ *   - Semicolons (;)
+ *   - Background processes (&)
+ *
+ * Parameters:
+ *   line (string) — the command line to parse.
+ *
+ * Returns:
+ *   program (string) — the command/program name.
+ *   args ([]string)   — the arguments (not including the program).
+ *   error            — if parsing fails (e.g., unclosed quotes).
+ *
+ * Example:
+ *   prog, args, _ := parseCommandLine("grep -r 'hello world' .")
+ *   // prog = "grep", args = ["-r", "hello world", "."]
+ */
+func parseCommandLine(line string) (program string, args []string, err error) {
+	var tokens []string
+	var current strings.Builder
+	inSingleQuote := false
+	inDoubleQuote := false
+	escapeNext := false
+
+	for _, ch := range line {
+		if escapeNext {
+			current.WriteRune(ch)
+			escapeNext = false
+			continue
+		}
+
+		switch ch {
+		case '\\':
+			escapeNext = true
+		case '\'':
+			if inDoubleQuote {
+				current.WriteRune(ch)
+			} else {
+				inSingleQuote = !inSingleQuote
+			}
+		case '"':
+			if inSingleQuote {
+				current.WriteRune(ch)
+			} else {
+				inDoubleQuote = !inDoubleQuote
+			}
+		case ' ', '\t':
+			if !inSingleQuote && !inDoubleQuote {
+				if current.Len() > 0 {
+					tokens = append(tokens, current.String())
+					current.Reset()
+				}
+			} else {
+				current.WriteRune(ch)
+			}
+		default:
+			current.WriteRune(ch)
+		}
+	}
+
+	// Handle the last token
+	if current.Len() > 0 {
+		tokens = append(tokens, current.String())
+	}
+
+	// Check for unclosed quotes
+	if inSingleQuote || inDoubleQuote {
+		return "", nil, fmt.Errorf("unclosed quote in command line")
+	}
+
+	if len(tokens) == 0 {
+		return "", nil, fmt.Errorf("empty command")
+	}
+
+	return tokens[0], tokens[1:], nil
+}
+
 func bold(s string) string    { return ansiBold + s + ansiReset }
 func dim(s string) string     { return ansiDim + s + ansiReset }
 func green(s string) string   { return ansiGreen + s + ansiReset }
@@ -233,6 +432,9 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 
 		// "!" prefix — run a shell command, stream output live, inject into context.
+		// Security: Parses the command line to avoid shell injection via sh -c.
+		// Supports simple commands with quoted arguments but does NOT support
+		// shell metacharacters (|, >, <, &, ;, etc.) for security.
 		if strings.HasPrefix(input, "!") {
 			cmdLine := strings.TrimSpace(strings.TrimPrefix(input, "!"))
 			if cmdLine == "" {
@@ -240,6 +442,30 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 			le.AppendHistory(input)
 			fmt.Fprintf(out, "  $ %s\n", cmdLine)
+
+			// Parse command line into program and arguments
+			// Uses shell-like quoting but does NOT process shell metacharacters
+			program, args, err := parseCommandLine(cmdLine)
+			if err != nil {
+				fmt.Fprintf(out, red("Error parsing command: %v\n"), err)
+				continue
+			}
+
+			// Safe mode check: verify command is in allowlist
+			if a.Config.SafeMode && !a.Config.IsCommandAllowed(program) {
+				if a.AuditBuffer != nil {
+					a.AuditBuffer.Log(ActionCommand, program+" "+strings.Join(args, " "), StatusDenied)
+				}
+				fmt.Fprintf(out, yellow("  Command %q is not allowed in safe mode.\n"), program)
+				fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
+				fmt.Fprintln(out, "  Use /safemode off to disable, or /safemode allow CMD to add it.")
+				continue
+			}
+
+			// Log allowed command execution
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionCommand, program+" "+strings.Join(args, " "), StatusAllowed)
+			}
 
 			var capBuf bytes.Buffer
 			mw := io.MultiWriter(out, &capBuf)
@@ -259,10 +485,12 @@ func (a *Agent) Run(out io.Writer) error {
 				}
 			}()
 
-			shCmd := exec.CommandContext(bashCtx, "sh", "-c", cmdLine)
+			shCmd := exec.CommandContext(bashCtx, program, args...)
 			if a.Workspace != nil {
 				shCmd.Dir = a.Workspace.Root
 			}
+			// Restrict environment to prevent inheriting sensitive variables
+			shCmd.Env = filterEnvironment(os.Environ())
 			shCmd.Stdout = mw
 			shCmd.Stderr = mw
 			runErr := shCmd.Run()

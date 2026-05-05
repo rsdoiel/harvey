@@ -28,7 +28,7 @@ type Workspace struct {
 }
 
 /** NewWorkspace creates a Workspace rooted at dir, resolving the path to an
- * absolute, symlink-free form. The .harvey/ sub-directory is created if it
+ * absolute, symlink-free form. The agents/ sub-directory is created if it
  * does not exist.
  *
  * Parameters:
@@ -37,7 +37,7 @@ type Workspace struct {
  *
  * Returns:
  *   *Workspace — the initialised workspace.
- *   error      — if dir cannot be resolved or .harvey/ cannot be created.
+ *   error      — if dir cannot be resolved or agents/ cannot be created.
  *
  * Example:
  *   ws, err := NewWorkspace(".")
@@ -66,7 +66,7 @@ func NewWorkspace(dir string) (*Workspace, error) {
 const harveySubdir = "agents"
 
 /** HarveyDir returns the absolute path of Harvey's internal state directory
- * (harvey/) inside the workspace root.
+ * (agents/) inside the workspace root.
  *
  * Returns:
  *   string — absolute path to <Root>/agents/
@@ -83,6 +83,9 @@ func (ws *Workspace) HarveyDir() string {
  * would escape the workspace (e.g. via ".." components or absolute paths
  * outside Root).
  *
+ * Security: Uses filepath.Clean to resolve ".." and "." components, then verifies
+ * the cleaned path is a subtree of ws.Root. This prevents path traversal attacks.
+ *
  * Parameters:
  *   rel (string) — relative path to resolve; may use "/" as separator.
  *
@@ -96,11 +99,30 @@ func (ws *Workspace) HarveyDir() string {
  *   _, err = ws.AbsPath("../../etc/passwd") // returns error
  */
 func (ws *Workspace) AbsPath(rel string) (string, error) {
-	// Join cleans ".." components before we do the prefix check.
-	candidate := filepath.Join(ws.Root, rel)
-	if !strings.HasPrefix(candidate+string(filepath.Separator), ws.Root+string(filepath.Separator)) {
+	// Clean the path to resolve ".." and "." components, then join with root
+	candidate := filepath.Clean(filepath.Join(ws.Root, rel))
+	
+	// Ensure the candidate is absolute and starts with the workspace root
+	// Use filepath.Dir to handle the case where candidate equals ws.Root exactly
+	if !filepath.IsAbs(candidate) {
+		return "", fmt.Errorf("workspace: path %q resolves to non-absolute path", rel)
+	}
+	
+	// Normalize both paths for comparison (handles trailing slashes)
+	rootNorm := ws.Root
+	if !strings.HasSuffix(rootNorm, string(filepath.Separator)) {
+		rootNorm = rootNorm + string(filepath.Separator)
+	}
+	
+	candidateNorm := candidate
+	if !strings.HasSuffix(candidateNorm, string(filepath.Separator)) {
+		candidateNorm = candidateNorm + string(filepath.Separator)
+	}
+	
+	if !strings.HasPrefix(candidateNorm, rootNorm) {
 		return "", fmt.Errorf("workspace: path %q escapes workspace root", rel)
 	}
+	
 	return candidate, nil
 }
 

@@ -1,6 +1,6 @@
-%harvey(1) user manual | version 0.0.1b 6f586b0
+%harvey(1) user manual | version 0.0.1c 393e389
 % R. S. Doiel
-% 2026-05-02
+% 2026-05-04
 
 # NAME
 
@@ -26,9 +26,9 @@ interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
 Mistral, OpenAI) can be added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
-A knowledge base is stored at <workdir>/harvey/knowledge.db and is created
+A knowledge base is stored at <workdir>/agents/knowledge.db and is created
 automatically on first run. Session recordings (.spmd files) are stored in
-<workdir>/harvey/sessions/. Both paths can be overridden in harvey/harvey.yaml.
+<workdir>/agents/sessions/. Both paths can be overridden in agents/harvey.yaml.
 
 Type /help inside the session for available slash commands.
 

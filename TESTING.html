@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-testing-guide">Harvey Testing Guide</h1>
+<p><em>Version 1.0 — Complete guide to testing Harvey</em></p>
+<h2 id="overview">Overview</h2>
+<p>Harvey includes a comprehensive test suite to ensure reliability
+across its many features. This guide covers:</p>
+<ul>
+<li><strong>Running tests</strong> — How to execute the test suite</li>
+<li><strong>Test architecture</strong> — How tests are organized and
+structured</li>
+<li><strong>Testing strategies</strong> — Approaches for different types
+of tests</li>
+<li><strong>Writing tests</strong> — How to add new tests for Harvey
+features</li>
+<li><strong>Mocking</strong> — How to test with mocked LLM backends</li>
+<li><strong>Integration testing</strong> — Testing end-to-end
+workflows</li>
+</ul>
+<h2 id="quick-start">Quick Start</h2>
+<h3 id="run-all-tests">Run All Tests</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># From the harvey directory</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> test</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or directly with Go</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> harvey</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span></code></pre></div>
+<h3 id="run-tests-for-a-specific-package">Run Tests for a Specific
+Package</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Test a specific file</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestWorkspace</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Test a specific package</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> ./... <span class="at">-run</span> TestRagStore</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Test with verbose output</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> ./...</span></code></pre></div>
+<h3 id="test-coverage">Test Coverage</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show coverage for all packages</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-cover</span> ./...</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Show coverage with breakdown by function</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-coverprofile</span><span class="op">=</span>coverage.out ./...</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> tool cover <span class="at">-func</span><span class="op">=</span>coverage.out</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate HTML coverage report</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> tool cover <span class="at">-html</span><span class="op">=</span>coverage.out <span class="at">-o</span> coverage.html</span></code></pre></div>
+<h2 id="test-architecture">Test Architecture</h2>
+<h3 id="test-file-organization">Test File Organization</h3>
+<p>Harvey follows Go’s standard testing conventions with
+<code>_test.go</code> files alongside each source file:</p>
+<pre><code>harvey/
+├── workspace.go          # Source file
+├── workspace_test.go     # Tests for workspace.go
+├── rag_support.go       # Source file
+├── rag_support_test.go  # Tests for rag_support.go
+├── recorder.go          # Source file
+├── recorder_test.go     # Tests for recorder.go
+├── commands.go          # Source file
+├── commands_test.go     # Tests for commands.go
+└── ...</code></pre>
+<h3 id="test-categories">Test Categories</h3>
+<p>Harvey tests are organized into several categories based on the
+testing tier system:</p>
+<table>
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 30%" />
+<col style="width: 15%" />
+<col style="width: 11%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>Category</th>
+<th>Directory/Pattern</th>
+<th>Purpose</th>
+<th>Speed</th>
+<th>Dependencies</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unit</td>
+<td><code>*_test.go</code></td>
+<td>Test individual functions</td>
+<td>Fast</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Integration</td>
+<td><code>*_test.go</code></td>
+<td>Test component interactions</td>
+<td>Medium</td>
+<td>Minimal</td>
+</tr>
+<tr>
+<td>Tier 1</td>
+<td><code>tier1_test.go</code></td>
+<td>Core file operations</td>
+<td>Medium</td>
+<td>Workspace</td>
+</tr>
+<tr>
+<td>Tier 2</td>
+<td><code>tier2_test.go</code></td>
+<td>Code assistance features</td>
+<td>Slow</td>
+<td>Ollama</td>
+</tr>
+<tr>
+<td>Tier 3</td>
+<td><code>tier3_test.go</code></td>
+<td>Session quality features</td>
+<td>Slow</td>
+<td>Ollama</td>
+</tr>
+</tbody>
+</table>
+<h3 id="test-file-reference">Test File Reference</h3>
+<table>
+<colgroup>
+<col style="width: 30%" />
+<col style="width: 38%" />
+<col style="width: 30%" />
+</colgroup>
+<thead>
+<tr>
+<th>Test File</th>
+<th>What It Tests</th>
+<th>Key Tests</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>workspace_test.go</code></td>
+<td>Workspace file operations</td>
+<td><code>TestWorkspaceNewWorkspace</code>,
+<code>TestWorkspaceAbsPath_valid</code>,
+<code>TestWorkspaceReadWriteFile</code></td>
+</tr>
+<tr>
+<td><code>rag_support_test.go</code></td>
+<td>RAG store functionality</td>
+<td><code>TestIngestAndQuery</code>, <code>TestEmbeddingMismatch</code>,
+<code>TestCosineSimilarity</code></td>
+</tr>
+<tr>
+<td><code>recorder_test.go</code></td>
+<td>Session recording</td>
+<td><code>TestRecorderCreation</code>, <code>TestRecordTurn</code>,
+<code>TestFountainSyntax</code></td>
+</tr>
+<tr>
+<td><code>knowledge_test.go</code></td>
+<td>Knowledge base operations</td>
+<td><code>TestOpenKnowledgeBase</code>, <code>TestProjectCRUD</code>,
+<code>TestObservationCRUD</code></td>
+</tr>
+<tr>
+<td><code>encoderfile_embedder_test.go</code></td>
+<td>Custom embedder</td>
+<td><code>TestEncoderfileEmbedder_Embed</code>,
+<code>TestProbeEncoderfile</code></td>
+</tr>
+<tr>
+<td><code>routing_test.go</code></td>
+<td><span class="citation" data-cites="mention">@mention</span> routing
+parsing</td>
+<td><code>TestParseAtMention_valid</code>,
+<code>TestParseAtMention_noMention</code></td>
+</tr>
+<tr>
+<td><code>commands_test.go</code></td>
+<td>Command handlers</td>
+<td>Various command-specific tests</td>
+</tr>
+<tr>
+<td><code>tier1_test.go</code></td>
+<td>File operations (read, write, search)</td>
+<td>Tier 1 command tests</td>
+</tr>
+<tr>
+<td><code>tier2_test.go</code></td>
+<td>Code assistance (apply, run)</td>
+<td>Tier 2 command tests</td>
+</tr>
+<tr>
+<td><code>tier3_test.go</code></td>
+<td>Session quality (clear, context)</td>
+<td>Tier 3 command tests</td>
+</tr>
+</tbody>
+</table>
+<h2 id="testing-strategies">Testing Strategies</h2>
+<h3 id="unit-testing">Unit Testing</h3>
+<p>Unit tests verify individual functions in isolation using Go’s
+<code>testing</code> package.</p>
+<p><strong>Example: Testing string manipulation</strong></p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">// In some_file_test.go</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestExtractModelName<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    cases <span class="op">:=</span> <span class="op">[]</span><span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>        input    <span class="dt">string</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>        expected <span class="dt">string</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}{</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span><span class="st">&quot;Ollama (gemma4:latest)&quot;</span><span class="op">,</span> <span class="st">&quot;GEMMA4&quot;</span><span class="op">},</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span><span class="st">&quot;Ollama (MichelRosselli/apertus:latest)&quot;</span><span class="op">,</span> <span class="st">&quot;APERTUS&quot;</span><span class="op">},</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span><span class="st">&quot;anthropic (claude-sonnet-4-20250514)&quot;</span><span class="op">,</span> <span class="st">&quot;CLAUDE-SONNET-4-20250514&quot;</span><span class="op">},</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span><span class="st">&quot;none&quot;</span><span class="op">,</span> <span class="st">&quot;MODEL&quot;</span><span class="op">},</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> c <span class="op">:=</span> <span class="kw">range</span> cases <span class="op">{</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>        got <span class="op">:=</span> extractModelName<span class="op">(</span>c<span class="op">.</span>input<span class="op">)</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> got <span class="op">!=</span> c<span class="op">.</span>expected <span class="op">{</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>            t<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;extractModelName(%q) = %q, want %q&quot;</span><span class="op">,</span> c<span class="op">.</span>input<span class="op">,</span> got<span class="op">,</span> c<span class="op">.</span>expected<span class="op">)</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Key characteristics:</strong> - Fast execution (&lt; 1ms per
+test) - No external dependencies - Deterministic (same result every
+time) - Test pure functions and logic</p>
+<h3 id="integration-testing">Integration Testing</h3>
+<p>Integration tests verify that multiple components work together
+correctly.</p>
+<p><strong>Example: Testing RAG ingest and query</strong></p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co">// From rag_support_test.go</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestIngestAndQuery<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    dbPath <span class="op">:=</span> <span class="st">&quot;test_rag.db&quot;</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> os<span class="op">.</span>Remove<span class="op">(</span>dbPath<span class="op">)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    store<span class="op">,</span> err <span class="op">:=</span> NewRagStore<span class="op">(</span>dbPath<span class="op">,</span> <span class="st">&quot;semantic-mock&quot;</span><span class="op">)</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatal<span class="op">(</span>err<span class="op">)</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    embedder <span class="op">:=</span> <span class="op">&amp;</span>precomputedEmbedder<span class="op">{</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>        name<span class="op">:</span> <span class="st">&quot;semantic-mock&quot;</span><span class="op">,</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>        vectors<span class="op">:</span> <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">][]</span><span class="dt">float64</span><span class="op">{</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;The sky is blue&quot;</span><span class="op">:</span> <span class="op">{</span><span class="fl">1.0</span><span class="op">,</span> <span class="fl">0.1</span><span class="op">,</span> <span class="fl">0.0</span><span class="op">,</span> <span class="fl">0.0</span><span class="op">},</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;What color is the sky?&quot;</span><span class="op">:</span> <span class="op">{</span><span class="fl">0.9</span><span class="op">,</span> <span class="fl">0.1</span><span class="op">,</span> <span class="fl">0.0</span><span class="op">,</span> <span class="fl">0.0</span><span class="op">},</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>        <span class="op">},</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Ingest documents</span></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>    err <span class="op">=</span> store<span class="op">.</span>Ingest<span class="op">(</span><span class="st">&quot;&quot;</span><span class="op">,</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;The sky is blue&quot;</span><span class="op">},</span> embedder<span class="op">)</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatal<span class="op">(</span>err<span class="op">)</span></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Query and verify results</span></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>    results<span class="op">,</span> err <span class="op">:=</span> store<span class="op">.</span>Query<span class="op">(</span><span class="st">&quot;What color is the sky?&quot;</span><span class="op">,</span> embedder<span class="op">,</span> <span class="dv">1</span><span class="op">)</span></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatal<span class="op">(</span>err<span class="op">)</span></span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>results<span class="op">)</span> <span class="op">!=</span> <span class="dv">1</span> <span class="op">{</span></span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;expected 1 result, got %d&quot;</span><span class="op">,</span> <span class="bu">len</span><span class="op">(</span>results<span class="op">))</span></span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> results<span class="op">[</span><span class="dv">0</span><span class="op">].</span>Content <span class="op">!=</span> <span class="st">&quot;The sky is blue&quot;</span> <span class="op">{</span></span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;expected &#39;The sky is blue&#39;, got %q&quot;</span><span class="op">,</span> results<span class="op">[</span><span class="dv">0</span><span class="op">].</span>Content<span class="op">)</span></span>
+<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Key characteristics:</strong> - Tests component interactions
+- May use temporary files/databases - Clean up after themselves (defer
+os.Remove) - Still deterministic</p>
+<h3 id="mocking-external-dependencies">Mocking External
+Dependencies</h3>
+<p>Harvey uses <strong>mock implementations</strong> to test code that
+depends on external services (LLMs, embedders, etc.).</p>
+<h4 id="mock-embedders">Mock Embedders</h4>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">// From rag_support_test.go</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co">// mockEmbedder satisfies the Embedder interface for mismatch-protection tests</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> mockEmbedder <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    name <span class="dt">string</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>m <span class="op">*</span>mockEmbedder<span class="op">)</span> Name<span class="op">()</span> <span class="dt">string</span> <span class="op">{</span> <span class="cf">return</span> m<span class="op">.</span>name <span class="op">}</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>m <span class="op">*</span>mockEmbedder<span class="op">)</span> Embed<span class="op">(</span>text <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span><span class="dt">float64</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    vec <span class="op">:=</span> <span class="bu">make</span><span class="op">([]</span><span class="dt">float64</span><span class="op">,</span> <span class="dv">4</span><span class="op">)</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i<span class="op">,</span> r <span class="op">:=</span> <span class="kw">range</span> text <span class="op">{</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>        vec<span class="op">[</span>i<span class="op">%</span><span class="dv">4</span><span class="op">]</span> <span class="op">+=</span> <span class="dt">float64</span><span class="op">(</span>r<span class="op">)</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> vec<span class="op">,</span> <span class="ot">nil</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a><span class="co">// precomputedEmbedder returns fixed vectors for known inputs</span></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a><span class="co">// Makes cosine-similarity ranking deterministic and semantically intentional</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> precomputedEmbedder <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>    name    <span class="dt">string</span></span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>    vectors <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">][]</span><span class="dt">float64</span></span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>p <span class="op">*</span>precomputedEmbedder<span class="op">)</span> Name<span class="op">()</span> <span class="dt">string</span> <span class="op">{</span> <span class="cf">return</span> p<span class="op">.</span>name <span class="op">}</span></span>
+<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>p <span class="op">*</span>precomputedEmbedder<span class="op">)</span> Embed<span class="op">(</span>text <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span><span class="dt">float64</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a>    v<span class="op">,</span> ok <span class="op">:=</span> p<span class="op">.</span>vectors<span class="op">[</span>text<span class="op">]</span></span>
+<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">!</span>ok <span class="op">{</span></span>
+<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;no vector registered for %q&quot;</span><span class="op">,</span> text<span class="op">)</span></span>
+<span id="cb7-29"><a href="#cb7-29" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb7-30"><a href="#cb7-30" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> v<span class="op">,</span> <span class="ot">nil</span></span>
+<span id="cb7-31"><a href="#cb7-31" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="mock-llm-client">Mock LLM Client</h4>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co">// From tier3_test.go (referenced in ARCHITECTURE.html)</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> mockLLMClient <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    name    <span class="dt">string</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    responses <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    callCount <span class="dt">int</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>m <span class="op">*</span>mockLLMClient<span class="op">)</span> Name<span class="op">()</span> <span class="dt">string</span> <span class="op">{</span> <span class="cf">return</span> m<span class="op">.</span>name <span class="op">}</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>m <span class="op">*</span>mockLLMClient<span class="op">)</span> Chat<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> history <span class="op">[]</span>ChatMessage<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span>ChatStats<span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> m<span class="op">.</span>callCount <span class="op">&gt;=</span> <span class="bu">len</span><span class="op">(</span>m<span class="op">.</span>responses<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> ChatStats<span class="op">{},</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;no more mock responses&quot;</span><span class="op">)</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    response <span class="op">:=</span> m<span class="op">.</span>responses<span class="op">[</span>m<span class="op">.</span>callCount<span class="op">]</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    m<span class="op">.</span>callCount<span class="op">++</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprint<span class="op">(</span>out<span class="op">,</span> response<span class="op">)</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> ChatStats<span class="op">{</span>Model<span class="op">:</span> m<span class="op">.</span>name<span class="op">,</span> Tokens<span class="op">:</span> <span class="dv">10</span><span class="op">,</span> Time<span class="op">:</span> <span class="fl">0.1</span><span class="op">,</span> TokensPerSec<span class="op">:</span> <span class="dv">100</span><span class="op">},</span> <span class="ot">nil</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="tiered-testing">Tiered Testing</h3>
+<p>Harvey uses a <strong>tier system</strong> for commands that have
+different testing requirements:</p>
+<h4 id="tier-1-file-operations">Tier 1: File Operations</h4>
+<p>Commands that perform basic file operations (read, write, search): -
+<code>/read</code> — Read file into context - <code>/search</code> —
+Search workspace - <code>/git</code> — Git operations</p>
+<p><strong>Testing approach:</strong> - Use real file system in
+temporary directories - No LLM required - Fast execution</p>
+<p><strong>Example from tier1_test.go:</strong></p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestReadCommand<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Setup test workspace</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    ws<span class="op">,</span> _ <span class="op">:=</span> NewWorkspace<span class="op">(</span>t<span class="op">.</span>TempDir<span class="op">())</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    ws<span class="op">.</span>WriteFile<span class="op">(</span><span class="st">&quot;test.txt&quot;</span><span class="op">,</span> <span class="op">[]</span><span class="dt">byte</span><span class="op">(</span><span class="st">&quot;hello world&quot;</span><span class="op">),</span> <span class="bn">0o644</span><span class="op">)</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Create agent</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    a <span class="op">:=</span> NewAgent<span class="op">(</span>ws<span class="op">,</span> <span class="op">&amp;</span>Config<span class="op">{</span>OllamaURL<span class="op">:</span> <span class="st">&quot;http://localhost:11434&quot;</span><span class="op">})</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Execute read command</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> buf bytes<span class="op">.</span>Buffer</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    err <span class="op">:=</span> cmdRead<span class="op">(</span>a<span class="op">,</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;test.txt&quot;</span><span class="op">},</span> <span class="op">&amp;</span>buf<span class="op">)</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Verify output</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatalf<span class="op">(</span><span class="st">&quot;cmdRead failed: %v&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">!</span>strings<span class="op">.</span>Contains<span class="op">(</span>buf<span class="op">.</span>String<span class="op">(),</span> <span class="st">&quot;hello world&quot;</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;expected output to contain &#39;hello world&#39;, got: %s&quot;</span><span class="op">,</span> buf<span class="op">.</span>String<span class="op">())</span></span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="tier-2-code-assistance">Tier 2: Code Assistance</h4>
+<p>Commands that modify files or execute code: - <code>/apply</code> —
+Apply tagged code blocks - <code>/run</code> — Run shell commands -
+<code>/edit</code> — Edit files</p>
+<p><strong>Testing approach:</strong> - Use real file system - Mock user
+confirmation for destructive operations - May require Ollama for code
+generation</p>
+<h4 id="tier-3-session-quality">Tier 3: Session Quality</h4>
+<p>Commands that affect conversation state: - <code>/clear</code> —
+Clear conversation history - <code>/context</code> — Manage context -
+<code>/kb</code> — Knowledge base operations</p>
+<p><strong>Testing approach:</strong> - Full agent state setup - Verify
+history modifications - May require Ollama</p>
+<h2 id="running-tests">Running Tests</h2>
+<h3 id="basic-test-commands">Basic Test Commands</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run all tests</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run tests in a specific package</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./harvey</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Run a specific test</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestWorkspaceNewWorkspace</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Run tests matching a pattern</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestRag</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Run tests with race detector</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span> ./...</span></code></pre></div>
+<h3 id="test-with-coverage">Test with Coverage</h3>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show coverage summary</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-cover</span> ./...</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Show coverage for each function</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-coverprofile</span><span class="op">=</span>coverage.out ./...</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> tool cover <span class="at">-func</span><span class="op">=</span>coverage.out</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate HTML report</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> tool cover <span class="at">-html</span><span class="op">=</span>coverage.out <span class="at">-o</span> coverage.html</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Open in browser (macOS)</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="ex">open</span> coverage.html</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Open in browser (Linux)</span></span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a><span class="fu">xdg-open</span> coverage.html</span></code></pre></div>
+<h3 id="test-with-verbose-output">Test with Verbose Output</h3>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show test names as they run</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> ./...</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Show test names and timing</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-test.v</span> ./...</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Run a specific test with verbose output</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestIngestAndQuery</span></code></pre></div>
+<h3 id="test-with-timeout">Test with Timeout</h3>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Set timeout for slow tests</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-timeout</span> 30s ./...</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run with short timeout for quick feedback</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-timeout</span> 5s <span class="at">-run</span> TestWorkspace</span></code></pre></div>
+<h3 id="run-tests-in-parallel">Run Tests in Parallel</h3>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run tests in parallel (where supported)</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-parallel</span> 4 ./...</span></code></pre></div>
+<h3 id="clean-test-artifacts">Clean Test Artifacts</h3>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove test databases</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> clean <span class="at">-testcache</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove temporary files</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span> <span class="at">-f</span> test_<span class="pp">*</span>.db</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span> <span class="at">-rf</span> testout/</span></code></pre></div>
+<h2 id="writing-tests">Writing Tests</h2>
+<h3 id="test-structure-template">Test Structure Template</h3>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">package</span> harvey</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="op">(</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;testing&quot;</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="co">// TestXxx tests [description of what&#39;s being tested]</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestXxx<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Setup test data</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">// </span></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Execute code under test</span></span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>    <span class="co">// </span></span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Verify results</span></span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a><span class="co">// TestXxxError tests error conditions for Xxx</span></span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestXxxError<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test error paths</span></span>
+<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb16-20"><a href="#cb16-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-21"><a href="#cb16-21" aria-hidden="true" tabindex="-1"></a><span class="co">// TestXxxEdgeCases tests edge cases for Xxx</span></span>
+<span id="cb16-22"><a href="#cb16-22" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestXxxEdgeCases<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb16-23"><a href="#cb16-23" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test boundary conditions</span></span>
+<span id="cb16-24"><a href="#cb16-24" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test empty inputs</span></span>
+<span id="cb16-25"><a href="#cb16-25" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test invalid inputs</span></span>
+<span id="cb16-26"><a href="#cb16-26" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="table-driven-tests">Table-Driven Tests</h3>
+<p>Harvey extensively uses <strong>table-driven tests</strong> for
+comprehensive coverage:</p>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestExtractModelName<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    cases <span class="op">:=</span> <span class="op">[]</span><span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>        name     <span class="dt">string</span> <span class="co">// Test case name</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>        input    <span class="dt">string</span> <span class="co">// Input to function</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>        expected <span class="dt">string</span> <span class="co">// Expected output</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}{</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>            name<span class="op">:</span>     <span class="st">&quot;Ollama gemma4&quot;</span><span class="op">,</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>            input<span class="op">:</span>    <span class="st">&quot;Ollama (gemma4:latest)&quot;</span><span class="op">,</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>            expected<span class="op">:</span> <span class="st">&quot;GEMMA4&quot;</span><span class="op">,</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>        <span class="op">},</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>            name<span class="op">:</span>     <span class="st">&quot;Ollama with namespace&quot;</span><span class="op">,</span></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>            input<span class="op">:</span>    <span class="st">&quot;Ollama (MichelRosselli/apertus:latest)&quot;</span><span class="op">,</span></span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>            expected<span class="op">:</span> <span class="st">&quot;APERTUS&quot;</span><span class="op">,</span></span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>        <span class="op">},</span></span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span></span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a>            name<span class="op">:</span>     <span class="st">&quot;Anthropic Claude&quot;</span><span class="op">,</span></span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a>            input<span class="op">:</span>    <span class="st">&quot;anthropic (claude-sonnet-4-20250514)&quot;</span><span class="op">,</span></span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a>            expected<span class="op">:</span> <span class="st">&quot;CLAUDE-SONNET-4-20250514&quot;</span><span class="op">,</span></span>
+<span id="cb17-21"><a href="#cb17-21" aria-hidden="true" tabindex="-1"></a>        <span class="op">},</span></span>
+<span id="cb17-22"><a href="#cb17-22" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span></span>
+<span id="cb17-23"><a href="#cb17-23" aria-hidden="true" tabindex="-1"></a>            name<span class="op">:</span>     <span class="st">&quot;No model&quot;</span><span class="op">,</span></span>
+<span id="cb17-24"><a href="#cb17-24" aria-hidden="true" tabindex="-1"></a>            input<span class="op">:</span>    <span class="st">&quot;none&quot;</span><span class="op">,</span></span>
+<span id="cb17-25"><a href="#cb17-25" aria-hidden="true" tabindex="-1"></a>            expected<span class="op">:</span> <span class="st">&quot;MODEL&quot;</span><span class="op">,</span></span>
+<span id="cb17-26"><a href="#cb17-26" aria-hidden="true" tabindex="-1"></a>        <span class="op">},</span></span>
+<span id="cb17-27"><a href="#cb17-27" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb17-28"><a href="#cb17-28" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb17-29"><a href="#cb17-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> c <span class="op">:=</span> <span class="kw">range</span> cases <span class="op">{</span></span>
+<span id="cb17-30"><a href="#cb17-30" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Run<span class="op">(</span>c<span class="op">.</span>name<span class="op">,</span> <span class="kw">func</span><span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb17-31"><a href="#cb17-31" aria-hidden="true" tabindex="-1"></a>            got <span class="op">:=</span> extractModelName<span class="op">(</span>c<span class="op">.</span>input<span class="op">)</span></span>
+<span id="cb17-32"><a href="#cb17-32" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> got <span class="op">!=</span> c<span class="op">.</span>expected <span class="op">{</span></span>
+<span id="cb17-33"><a href="#cb17-33" aria-hidden="true" tabindex="-1"></a>                t<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;extractModelName(%q) = %q, want %q&quot;</span><span class="op">,</span> c<span class="op">.</span>input<span class="op">,</span> got<span class="op">,</span> c<span class="op">.</span>expected<span class="op">)</span></span>
+<span id="cb17-34"><a href="#cb17-34" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb17-35"><a href="#cb17-35" aria-hidden="true" tabindex="-1"></a>        <span class="op">})</span></span>
+<span id="cb17-36"><a href="#cb17-36" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb17-37"><a href="#cb17-37" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Benefits of table-driven tests:</strong> - Easy to add new
+test cases - Clear separation of test data from test logic - Sub-tests
+are reported individually - Parallelizable by default</p>
+<h3 id="testing-file-operations">Testing File Operations</h3>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestWorkspaceOperations<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Create temporary workspace</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    ws<span class="op">,</span> err <span class="op">:=</span> NewWorkspace<span class="op">(</span>t<span class="op">.</span>TempDir<span class="op">())</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatal<span class="op">(</span>err<span class="op">)</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test file write</span></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    content <span class="op">:=</span> <span class="op">[]</span><span class="dt">byte</span><span class="op">(</span><span class="st">&quot;test content&quot;</span><span class="op">)</span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    err <span class="op">=</span> ws<span class="op">.</span>WriteFile<span class="op">(</span><span class="st">&quot;test.txt&quot;</span><span class="op">,</span> content<span class="op">,</span> <span class="bn">0o644</span><span class="op">)</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatalf<span class="op">(</span><span class="st">&quot;WriteFile failed: %v&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test file read</span></span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>    got<span class="op">,</span> err <span class="op">:=</span> ws<span class="op">.</span>ReadFile<span class="op">(</span><span class="st">&quot;test.txt&quot;</span><span class="op">)</span></span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatalf<span class="op">(</span><span class="st">&quot;ReadFile failed: %v&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="dt">string</span><span class="op">(</span>got<span class="op">)</span> <span class="op">!=</span> <span class="dt">string</span><span class="op">(</span>content<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;ReadFile returned wrong content&quot;</span><span class="op">)</span></span>
+<span id="cb18-22"><a href="#cb18-22" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb18-23"><a href="#cb18-23" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb18-24"><a href="#cb18-24" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test escape prevention</span></span>
+<span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a>    _<span class="op">,</span> err <span class="op">=</span> ws<span class="op">.</span>AbsPath<span class="op">(</span><span class="st">&quot;../../etc/passwd&quot;</span><span class="op">)</span></span>
+<span id="cb18-26"><a href="#cb18-26" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb18-27"><a href="#cb18-27" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Error<span class="op">(</span><span class="st">&quot;Expected error for escape path&quot;</span><span class="op">)</span></span>
+<span id="cb18-28"><a href="#cb18-28" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb18-29"><a href="#cb18-29" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="testing-with-temporary-directories">Testing with Temporary
+Directories</h3>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestWithTempDir<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Create a temporary directory that&#39;s automatically cleaned up</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    tempDir <span class="op">:=</span> t<span class="op">.</span>TempDir<span class="op">()</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Use the temp dir for your test</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>    ws<span class="op">,</span> err <span class="op">:=</span> NewWorkspace<span class="op">(</span>tempDir<span class="op">)</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatal<span class="op">(</span>err<span class="op">)</span></span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Files created in tempDir will be automatically removed</span></span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>    <span class="co">// when the test completes</span></span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="testing-sqlite-operations">Testing SQLite Operations</h3>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestRagStoreOperations<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Create a temporary database</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    dbPath <span class="op">:=</span> filepath<span class="op">.</span>Join<span class="op">(</span>t<span class="op">.</span>TempDir<span class="op">(),</span> <span class="st">&quot;test.db&quot;</span><span class="op">)</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    store<span class="op">,</span> err <span class="op">:=</span> NewRagStore<span class="op">(</span>dbPath<span class="op">,</span> <span class="st">&quot;test-model&quot;</span><span class="op">)</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatal<span class="op">(</span>err<span class="op">)</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> store<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test operations</span></span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>    mock <span class="op">:=</span> <span class="op">&amp;</span>mockEmbedder<span class="op">{</span>name<span class="op">:</span> <span class="st">&quot;test-model&quot;</span><span class="op">}</span></span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>    err <span class="op">=</span> store<span class="op">.</span>Ingest<span class="op">(</span><span class="st">&quot;&quot;</span><span class="op">,</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;test chunk&quot;</span><span class="op">},</span> mock<span class="op">)</span></span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Fatal<span class="op">(</span>err<span class="op">)</span></span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Database file is automatically cleaned up with temp dir</span></span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="testing-error-conditions">Testing Error Conditions</h3>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestErrorConditions<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test embedding model mismatch</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    store<span class="op">,</span> _ <span class="op">:=</span> NewRagStore<span class="op">(</span><span class="st">&quot;test.db&quot;</span><span class="op">,</span> <span class="st">&quot;model-a&quot;</span><span class="op">)</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> store<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>    mock <span class="op">:=</span> <span class="op">&amp;</span>mockEmbedder<span class="op">{</span>name<span class="op">:</span> <span class="st">&quot;model-b&quot;</span><span class="op">}</span> <span class="co">// Different model</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>    err <span class="op">:=</span> store<span class="op">.</span>Ingest<span class="op">(</span><span class="st">&quot;&quot;</span><span class="op">,</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;test&quot;</span><span class="op">},</span> mock<span class="op">)</span></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Error<span class="op">(</span><span class="st">&quot;Expected embedding model mismatch error&quot;</span><span class="op">)</span></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">!</span>strings<span class="op">.</span>Contains<span class="op">(</span>err<span class="op">.</span>Error<span class="op">(),</span> <span class="st">&quot;mismatch&quot;</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;Expected mismatch error, got: %v&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h2 id="testing-specific-features">Testing Specific Features</h2>
+<h3 id="testing-rag">Testing RAG</h3>
+<p>The RAG system has extensive tests in
+<code>rag_support_test.go</code>:</p>
+<p><strong>Key test areas:</strong> - Embedding model consistency
+enforcement - Ingest and query pipeline - Cosine similarity computation
+- Vector serialization/deserialization - Chunk storage and retrieval</p>
+<p><strong>Running RAG tests:</strong></p>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run all RAG tests</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestRag</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run specific RAG test</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestIngestAndQuery</span></code></pre></div>
+<h3 id="testing-knowledge-base">Testing Knowledge Base</h3>
+<p>Knowledge base tests verify SQLite operations:</p>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run knowledge base tests</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestKnowledge</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Test specific operations</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestKnowledgeBase_Projects</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestKnowledgeBase_AddProject</span></code></pre></div>
+<h3 id="testing-session-recording">Testing Session Recording</h3>
+<p>Session recording tests verify Fountain file generation:</p>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run recorder tests</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestRecorder</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Test Fountain syntax output</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestFountainSrc</span></code></pre></div>
+<h3 id="testing-workspace-operations">Testing Workspace Operations</h3>
+<p>Workspace tests verify file sandboxing and operations:</p>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run workspace tests</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestWorkspace</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Test escape prevention</span></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestWorkspace.<span class="pp">*</span>escape</span></code></pre></div>
+<h2 id="continuous-integration">Continuous Integration</h2>
+<h3 id="github-actions-workflow">GitHub Actions Workflow</h3>
+<p>Harvey uses GitHub Actions for CI/CD. The workflow (in
+<code>.github/workflows/</code>) typically includes:</p>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> Go</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="fu">on</span><span class="kw">:</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">push</span><span class="kw">:</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">branches</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">main</span><span class="kw">]</span></span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">pull_request</span><span class="kw">:</span></span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">branches</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">main</span><span class="kw">]</span></span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a><span class="fu">jobs</span><span class="kw">:</span></span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">test</span><span class="kw">:</span></span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">runs-on</span><span class="kw">:</span><span class="at"> ubuntu-latest</span></span>
+<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">steps</span><span class="kw">:</span></span>
+<span id="cb26-13"><a href="#cb26-13" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">uses</span><span class="kw">:</span><span class="at"> actions/checkout@v4</span></span>
+<span id="cb26-14"><a href="#cb26-14" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb26-15"><a href="#cb26-15" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> Set up Go</span></span>
+<span id="cb26-16"><a href="#cb26-16" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">uses</span><span class="kw">:</span><span class="at"> actions/setup-go@v4</span></span>
+<span id="cb26-17"><a href="#cb26-17" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">with</span><span class="kw">:</span></span>
+<span id="cb26-18"><a href="#cb26-18" aria-hidden="true" tabindex="-1"></a><span class="at">          </span><span class="fu">go-version</span><span class="kw">:</span><span class="at"> </span><span class="st">&#39;1.26&#39;</span></span>
+<span id="cb26-19"><a href="#cb26-19" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb26-20"><a href="#cb26-20" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> Run tests</span></span>
+<span id="cb26-21"><a href="#cb26-21" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">run</span><span class="kw">:</span><span class="at"> go test ./...</span></span>
+<span id="cb26-22"><a href="#cb26-22" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb26-23"><a href="#cb26-23" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> Check coverage</span></span>
+<span id="cb26-24"><a href="#cb26-24" aria-hidden="true" tabindex="-1"></a><span class="fu">        run</span><span class="kw">: </span><span class="ch">|</span></span>
+<span id="cb26-25"><a href="#cb26-25" aria-hidden="true" tabindex="-1"></a>          go test -coverprofile=coverage.out ./...</span>
+<span id="cb26-26"><a href="#cb26-26" aria-hidden="true" tabindex="-1"></a>          go tool cover -func=coverage.out</span></code></pre></div>
+<h3 id="running-ci-locally">Running CI Locally</h3>
+<p>To simulate CI environment locally:</p>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run all tests (same as CI)</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run with race detector (CI typically does this)</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span> ./...</span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Check that build works</span></span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build ./cmd/harvey</span></code></pre></div>
+<h2 id="test-data-and-fixtures">Test Data and Fixtures</h2>
+<h3 id="test-data-generation">Test Data Generation</h3>
+<p>Harvey tests generate test data dynamically rather than using
+pre-made fixtures:</p>
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Generate test documents</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> generateTestDocs<span class="op">()</span> <span class="op">[]</span><span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;This is a test document about Harvey&quot;</span><span class="op">,</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Harvey is a terminal-based coding agent&quot;</span><span class="op">,</span></span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;It uses Ollama for local LLM access&quot;</span><span class="op">,</span></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="temporary-files">Temporary Files</h3>
+<p>All test files should use <code>t.TempDir()</code> or explicit
+cleanup:</p>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestWithFiles<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Good: Uses temp dir</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    tempDir <span class="op">:=</span> t<span class="op">.</span>TempDir<span class="op">()</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>    path <span class="op">:=</span> filepath<span class="op">.</span>Join<span class="op">(</span>tempDir<span class="op">,</span> <span class="st">&quot;test.txt&quot;</span><span class="op">)</span></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Good: Explicit cleanup</span></span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>    dbPath <span class="op">:=</span> <span class="st">&quot;test.db&quot;</span></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> os<span class="op">.</span>Remove<span class="op">(</span>dbPath<span class="op">)</span></span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Bad: Leaves files behind</span></span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">// _ = os.Create(&quot;test-file.txt&quot;)</span></span>
+<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h2 id="debugging-tests">Debugging Tests</h2>
+<h3 id="verbose-output">Verbose Output</h3>
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show detailed test output</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestName</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Show even more detail with test.v flag</span></span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-test.v</span> <span class="at">-run</span> TestName</span></code></pre></div>
+<h3 id="running-individual-tests">Running Individual Tests</h3>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run a single test</span></span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a> <span class="ex">sèlect</span> <span class="pp">*</span> from knowledge base where</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Run tests matching a pattern</span></span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestWorkspace</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Run only sub-tests matching a pattern</span></span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-v</span> <span class="at">-run</span> TestWorkspace/AbsPath</span></code></pre></div>
+<h3 id="using-delve-for-debugging">Using delve for Debugging</h3>
+<div class="sourceCode" id="cb32"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install delve</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> install github.com/go-delve/delve/cmd/dlv@latest</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Debug a test</span></span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a><span class="ex">dlv</span> test <span class="at">-run</span> TestName</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Set breakpoints</span></span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a><span class="ex">b</span> harvey.go:123</span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Continue execution</span></span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a><span class="ex">c</span></span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Print variables</span></span>
+<span id="cb32-14"><a href="#cb32-14" aria-hidden="true" tabindex="-1"></a><span class="ex">p</span> variableName</span></code></pre></div>
+<h3 id="adding-debug-output">Adding Debug Output</h3>
+<p>For temporary debug output in tests:</p>
+<div class="sourceCode" id="cb33"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestDebug<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Use t.Log for debug output that only shows on failure</span></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    t<span class="op">.</span>Log<span class="op">(</span><span class="st">&quot;Debug value:&quot;</span><span class="op">,</span> someValue<span class="op">)</span></span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Use t.Logf for formatted debug output</span></span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>    t<span class="op">.</span>Logf<span class="op">(</span><span class="st">&quot;Processing %d items&quot;</span><span class="op">,</span> <span class="bu">len</span><span class="op">(</span>items<span class="op">))</span></span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Use fmt.Println for always-visible output (not recommended in tests)</span></span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// fmt.Println(&quot;DEBUG:&quot;, value) // Don&#39;t commit this</span></span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h2 id="performance-testing">Performance Testing</h2>
+<h3 id="benchmark-tests">Benchmark Tests</h3>
+<p>Harvey includes benchmark tests for performance-critical code:</p>
+<div class="sourceCode" id="cb34"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> BenchmarkCosineSimilarity<span class="op">(</span>b <span class="op">*</span>testing<span class="op">.</span>B<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    vec1 <span class="op">:=</span> <span class="bu">make</span><span class="op">([]</span><span class="dt">float64</span><span class="op">,</span> <span class="dv">768</span><span class="op">)</span> <span class="co">// Typical embedding dimension</span></span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    vec2 <span class="op">:=</span> <span class="bu">make</span><span class="op">([]</span><span class="dt">float64</span><span class="op">,</span> <span class="dv">768</span><span class="op">)</span></span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="op">:=</span> <span class="kw">range</span> vec1 <span class="op">{</span></span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>        vec1<span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> <span class="dt">float64</span><span class="op">(</span>i<span class="op">)</span></span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>        vec2<span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> <span class="dt">float64</span><span class="op">(</span>i <span class="op">*</span> <span class="dv">2</span><span class="op">)</span></span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a>    b<span class="op">.</span>ResetTimer<span class="op">()</span></span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="op">:=</span> <span class="dv">0</span><span class="op">;</span> i <span class="op">&lt;</span> b<span class="op">.</span>N<span class="op">;</span> i<span class="op">++</span> <span class="op">{</span></span>
+<span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a>        cosineSimilarity<span class="op">(</span>vec1<span class="op">,</span> vec2<span class="op">)</span></span>
+<span id="cb34-12"><a href="#cb34-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb34-13"><a href="#cb34-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Running benchmarks:</strong></p>
+<div class="sourceCode" id="cb35"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run all benchmarks</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-bench</span> .</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run specific benchmark</span></span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-bench</span> BenchmarkCosineSimilarity</span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Run with memory profiling</span></span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-bench</span> . <span class="at">-benchmem</span></span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Run with profiling</span></span>
+<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-bench</span> . <span class="at">-cpuprofile</span><span class="op">=</span>cpu.out <span class="at">-memprofile</span><span class="op">=</span>mem.out</span></code></pre></div>
+<h3 id="analyzing-benchmark-results">Analyzing Benchmark Results</h3>
+<div class="sourceCode" id="cb36"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Compare before/after changes</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-bench</span> . <span class="at">-benchtime</span><span class="op">=</span>1s</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate profiling reports</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> tool pprof cpu.out</span></code></pre></div>
+<h2 id="test-coverage-analysis">Test Coverage Analysis</h2>
+<h3 id="identifying-uncovered-code">Identifying Uncovered Code</h3>
+<div class="sourceCode" id="cb37"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate coverage profile</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-coverprofile</span><span class="op">=</span>coverage.out ./...</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Show uncovered lines</span></span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> tool cover <span class="at">-func</span><span class="op">=</span>coverage.out <span class="kw">|</span> <span class="fu">grep</span> <span class="at">-v</span> <span class="st">&quot;100.0%&quot;</span></span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Show coverage for a specific file</span></span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-coverprofile</span><span class="op">=</span>coverage.out <span class="at">-run</span> TestXxx</span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> tool cover <span class="at">-func</span><span class="op">=</span>coverage.out <span class="kw">|</span> <span class="fu">grep</span> <span class="st">&quot;file.go&quot;</span></span></code></pre></div>
+<h3 id="improving-coverage">Improving Coverage</h3>
+<p>To add tests for uncovered code:</p>
+<ol type="1">
+<li>Identify uncovered functions from coverage report</li>
+<li>Add table-driven tests for each function</li>
+<li>Test error paths and edge cases</li>
+<li>Verify coverage improved: <code>go test -cover .</code></li>
+</ol>
+<h2 id="pre-commit-testing">Pre-commit Testing</h2>
+<h3 id="before-committing">Before Committing</h3>
+<div class="sourceCode" id="cb38"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run all tests</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run with race detector</span></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span> ./...</span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Check coverage</span></span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-cover</span> ./...</span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Build to check for compile errors</span></span>
+<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build ./cmd/harvey</span></code></pre></div>
+<h3 id="git-hooks">Git Hooks</h3>
+<p>Add a pre-commit hook to run tests automatically:</p>
+<div class="sourceCode" id="cb39"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="co"># .git/hooks/pre-commit (make executable)</span></span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a><span class="co">#!/bin/sh</span></span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;Running tests...&quot;</span></span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">[</span> <span class="va">$?</span> <span class="ot">-ne</span> 0 <span class="bu">]</span><span class="kw">;</span> <span class="cf">then</span></span>
+<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">echo</span> <span class="st">&quot;Tests failed, commit aborted&quot;</span></span>
+<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">exit</span> 1</span>
+<span id="cb39-9"><a href="#cb39-9" aria-hidden="true" tabindex="-1"></a><span class="cf">fi</span></span>
+<span id="cb39-10"><a href="#cb39-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-11"><a href="#cb39-11" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;Running race detector...&quot;</span></span>
+<span id="cb39-12"><a href="#cb39-12" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span> ./...</span>
+<span id="cb39-13"><a href="#cb39-13" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">[</span> <span class="va">$?</span> <span class="ot">-ne</span> 0 <span class="bu">]</span><span class="kw">;</span> <span class="cf">then</span></span>
+<span id="cb39-14"><a href="#cb39-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">echo</span> <span class="st">&quot;Race detector found issues, commit aborted&quot;</span></span>
+<span id="cb39-15"><a href="#cb39-15" aria-hidden="true" tabindex="-1"></a>    <span class="bu">exit</span> 1</span>
+<span id="cb39-16"><a href="#cb39-16" aria-hidden="true" tabindex="-1"></a><span class="cf">fi</span></span>
+<span id="cb39-17"><a href="#cb39-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-18"><a href="#cb39-18" aria-hidden="true" tabindex="-1"></a><span class="bu">exit</span> 0</span></code></pre></div>
+<h2 id="troubleshooting-tests">Troubleshooting Tests</h2>
+<h3 id="common-test-failures">Common Test Failures</h3>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 42%" />
+<col style="width: 30%" />
+</colgroup>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Likely Cause</th>
+<th>Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>database is locked</code></td>
+<td>SQLite WAL mode contention</td>
+<td>Use <code>MaxOpenConns(1)</code> or sequential tests</td>
+</tr>
+<tr>
+<td><code>file already exists</code></td>
+<td>Test didn’t clean up</td>
+<td>Use <code>t.TempDir()</code> or explicit cleanup</td>
+</tr>
+<tr>
+<td><code>model mismatch</code></td>
+<td>Wrong mock embedder name</td>
+<td>Ensure mock embedder name matches store</td>
+</tr>
+<tr>
+<td><code>permission denied</code></td>
+<td>File permissions</td>
+<td>Check temp dir permissions</td>
+</tr>
+<tr>
+<td><code>context deadline exceeded</code></td>
+<td>Slow test or timeout</td>
+<td>Increase timeout or optimize test</td>
+</tr>
+<tr>
+<td><code>no such table</code></td>
+<td>Database not initialized</td>
+<td>Run schema migration first</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sqlite-locking-issues">SQLite Locking Issues</h3>
+<p>SQLite WAL mode can cause locking issues in parallel tests:</p>
+<div class="sourceCode" id="cb40"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run tests sequentially</span></span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-p</span> 1 ./...</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or fix the code to handle concurrent access</span></span></code></pre></div>
+<p>Harvey uses
+<code>PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;</code> and
+<code>MaxOpenConns(1)</code> to prevent locking issues.</p>
+<h3 id="test-dependencies">Test Dependencies</h3>
+<p>Some tests require external dependencies:</p>
+<table>
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Required For</th>
+<th>Setup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ollama</td>
+<td>Tier 2/3 tests, RAG tests</td>
+<td><code>ollama serve</code></td>
+</tr>
+<tr>
+<td>Embedding models</td>
+<td>RAG tests</td>
+<td><code>ollama pull nomic-embed-text</code></td>
+</tr>
+<tr>
+<td>SQLite</td>
+<td>All tests</td>
+<td>Included in Go SQLite driver</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Skip tests that require dependencies:</strong></p>
+<div class="sourceCode" id="cb41"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestWithOllama<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> os<span class="op">.</span>Getenv<span class="op">(</span><span class="st">&quot;OLLAMA_URL&quot;</span><span class="op">)</span> <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Skip<span class="op">(</span><span class="st">&quot;OLLAMA_URL not set, skipping Ollama-dependent test&quot;</span><span class="op">)</span></span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Test code</span></span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h2 id="contributing-tests">Contributing Tests</h2>
+<h3 id="adding-new-tests">Adding New Tests</h3>
+<ol type="1">
+<li><strong>Create a new test file</strong> alongside the source file
+(e.g., <code>new_feature_test.go</code>)</li>
+<li><strong>Follow existing patterns</strong> from similar test
+files</li>
+<li><strong>Use table-driven tests</strong> for comprehensive
+coverage</li>
+<li><strong>Test edge cases</strong> and error conditions</li>
+<li><strong>Keep tests fast</strong> (&lt; 100ms each where
+possible)</li>
+<li><strong>Clean up after tests</strong> (use <code>t.TempDir()</code>
+or <code>defer</code>)</li>
+</ol>
+<h3 id="example-adding-tests-for-a-new-function">Example: Adding Tests
+for a New Function</h3>
+<div class="sourceCode" id="cb42"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="co">// In source file (harvey.go)</span></span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> NewFeature<span class="op">(</span>input <span class="dt">string</span><span class="op">)</span> <span class="op">(</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> input <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;&quot;</span><span class="op">,</span> errors<span class="op">.</span>New<span class="op">(</span><span class="st">&quot;empty input&quot;</span><span class="op">)</span></span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> strings<span class="op">.</span>ToUpper<span class="op">(</span>input<span class="op">),</span> <span class="ot">nil</span></span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a><span class="co">// In test file (harvey_test.go)</span></span>
+<span id="cb42-10"><a href="#cb42-10" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TestNewFeature<span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb42-11"><a href="#cb42-11" aria-hidden="true" tabindex="-1"></a>    cases <span class="op">:=</span> <span class="op">[]</span><span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb42-12"><a href="#cb42-12" aria-hidden="true" tabindex="-1"></a>        name     <span class="dt">string</span></span>
+<span id="cb42-13"><a href="#cb42-13" aria-hidden="true" tabindex="-1"></a>        input    <span class="dt">string</span></span>
+<span id="cb42-14"><a href="#cb42-14" aria-hidden="true" tabindex="-1"></a>        want    <span class="dt">string</span></span>
+<span id="cb42-15"><a href="#cb42-15" aria-hidden="true" tabindex="-1"></a>        wantErr <span class="dt">bool</span></span>
+<span id="cb42-16"><a href="#cb42-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}{</span></span>
+<span id="cb42-17"><a href="#cb42-17" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span></span>
+<span id="cb42-18"><a href="#cb42-18" aria-hidden="true" tabindex="-1"></a>            name<span class="op">:</span>  <span class="st">&quot;valid input&quot;</span><span class="op">,</span></span>
+<span id="cb42-19"><a href="#cb42-19" aria-hidden="true" tabindex="-1"></a>            input<span class="op">:</span> <span class="st">&quot;hello&quot;</span><span class="op">,</span></span>
+<span id="cb42-20"><a href="#cb42-20" aria-hidden="true" tabindex="-1"></a>            want<span class="op">:</span>  <span class="st">&quot;HELLO&quot;</span><span class="op">,</span></span>
+<span id="cb42-21"><a href="#cb42-21" aria-hidden="true" tabindex="-1"></a>        <span class="op">},</span></span>
+<span id="cb42-22"><a href="#cb42-22" aria-hidden="true" tabindex="-1"></a>        <span class="op">{</span></span>
+<span id="cb42-23"><a href="#cb42-23" aria-hidden="true" tabindex="-1"></a>            name<span class="op">:</span>   <span class="st">&quot;empty input&quot;</span><span class="op">,</span></span>
+<span id="cb42-24"><a href="#cb42-24" aria-hidden="true" tabindex="-1"></a>            input<span class="op">:</span>  <span class="st">&quot;&quot;</span><span class="op">,</span></span>
+<span id="cb42-25"><a href="#cb42-25" aria-hidden="true" tabindex="-1"></a>            wantErr<span class="op">:</span> <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb42-26"><a href="#cb42-26" aria-hidden="true" tabindex="-1"></a>        <span class="op">},</span></span>
+<span id="cb42-27"><a href="#cb42-27" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb42-28"><a href="#cb42-28" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb42-29"><a href="#cb42-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> c <span class="op">:=</span> <span class="kw">range</span> cases <span class="op">{</span></span>
+<span id="cb42-30"><a href="#cb42-30" aria-hidden="true" tabindex="-1"></a>        t<span class="op">.</span>Run<span class="op">(</span>c<span class="op">.</span>name<span class="op">,</span> <span class="kw">func</span><span class="op">(</span>t <span class="op">*</span>testing<span class="op">.</span>T<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb42-31"><a href="#cb42-31" aria-hidden="true" tabindex="-1"></a>            got<span class="op">,</span> err <span class="op">:=</span> NewFeature<span class="op">(</span>c<span class="op">.</span>input<span class="op">)</span></span>
+<span id="cb42-32"><a href="#cb42-32" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="op">(</span>err <span class="op">!=</span> <span class="ot">nil</span><span class="op">)</span> <span class="op">!=</span> c<span class="op">.</span>wantErr <span class="op">{</span></span>
+<span id="cb42-33"><a href="#cb42-33" aria-hidden="true" tabindex="-1"></a>                t<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;NewFeature() error = %v, wantErr %v&quot;</span><span class="op">,</span> err<span class="op">,</span> c<span class="op">.</span>wantErr<span class="op">)</span></span>
+<span id="cb42-34"><a href="#cb42-34" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb42-35"><a href="#cb42-35" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="op">!</span>c<span class="op">.</span>wantErr <span class="op">&amp;&amp;</span> got <span class="op">!=</span> c<span class="op">.</span>want <span class="op">{</span></span>
+<span id="cb42-36"><a href="#cb42-36" aria-hidden="true" tabindex="-1"></a>                t<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;NewFeature() = %v, want %v&quot;</span><span class="op">,</span> got<span class="op">,</span> c<span class="op">.</span>want<span class="op">)</span></span>
+<span id="cb42-37"><a href="#cb42-37" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb42-38"><a href="#cb42-38" aria-hidden="true" tabindex="-1"></a>        <span class="op">})</span></span>
+<span id="cb42-39"><a href="#cb42-39" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb42-40"><a href="#cb42-40" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="test-review-checklist">Test Review Checklist</h3>
+<p>Before submitting a PR with new tests:</p>
+<ul class="task-list">
+<li><label><input type="checkbox" />All new code has corresponding
+tests</label></li>
+<li><label><input type="checkbox" />Tests follow existing patterns and
+conventions</label></li>
+<li><label><input type="checkbox" />Tests pass locally</label></li>
+<li><label><input type="checkbox" />Tests pass with <code>-race</code>
+flag</label></li>
+<li><label><input type="checkbox" />Coverage is maintained or
+improved</label></li>
+<li><label><input type="checkbox" />No test files left in repository
+(use <code>t.TempDir()</code>)</label></li>
+<li><label><input type="checkbox" />Tests are reasonably fast (&lt; 1
+second each)</label></li>
+<li><label><input type="checkbox" />Edge cases and error conditions are
+tested</label></li>
+</ul>
+<h2 id="resources">Resources</h2>
+<h3 id="go-testing-documentation">Go Testing Documentation</h3>
+<ul>
+<li><a href="https://pkg.go.dev/testing">Go Testing Package</a> —
+Official Go testing documentation</li>
+<li><a href="https://go.dev/blog/testing">Go Testing Blog Post</a> — Go
+blog on testing</li>
+<li><a href="https://go.dev/doc/effective_go#testing">Effective Go:
+Testing</a> — Testing section of Effective Go</li>
+<li><a href="https://pkg.go.dev/testing#examples">Go Test Examples</a> —
+Example tests</li>
+</ul>
+<h3 id="harvey-specific-resources">Harvey-Specific Resources</h3>
+<ul>
+<li><a href="ARCHITECTURE.html">ARCHITECTURE.html</a> — Technical
+architecture and test coverage</li>
+<li><a href="CONFIGURATION.html">CONFIGURATION.md</a> — Configuration
+for test environments</li>
+<li><a href="rag_support_test.go">rag_support_test.go</a> — Example of
+comprehensive RAG tests</li>
+<li><a href="workspace_test.go">workspace_test.go</a> — Example of
+workspace tests</li>
+</ul>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="Makefile">Makefile</a> — Build and test commands</li>
+<li><a href="CONTRIBUTING.html">CONTRIBUTING.md</a> — Contribution
+guidelines (if exists)</li>
+<li><a href="CONFIGURATION.html">CONFIGURATION.md</a> — Configuration
+reference</li>
+<li><a href="getting_started.html">getting_started.md</a> — Getting
+started guide</li>
+<li><a href="ARCHITECTURE.html">ARCHITECTURE.html</a> — Technical
+architecture</li>
+</ul>
+<p><em>Documentation generated from test files and Makefile. Version
+1.0.</em></p>
+</section>
+</body>
+</html>

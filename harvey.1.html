@@ -43,22 +43,23 @@ figcaption {
 <h1 id="synopsis">SYNOPSIS</h1>
 <p>harvey <a href="#options">OPTIONS</a></p>
 <h1 id="description">DESCRIPTION</h1>
-<p>harvey is a terminal agent for local large language models and
-optionally for publicai.co. It was inspired by Claude Code but focused
-on working with large language models in small computer environments
-like a Raspberry Pi computer running Raspberry Pi OS. While the
-inspiration was to run an agent locally with Ollama it can also be run
-on larger computers like Linux, macOS and Windows systems you find on
-desktop and laptop computers. It should compile it for most systems
-where Ollama is avialable and Go is supported (exmample *BSD).</p>
+<p>harvey is a terminal agent for local large language models. It was
+inspired by Claude Code but focused on working with large language
+models in small computer environments like a Raspberry Pi computer
+running Raspberry Pi OS. While the inspiration was to run an agent
+locally with Ollama it can also be run on larger computers like Linux,
+macOS and Windows systems you find on desktop and laptop computers. It
+should compile for most systems where Ollama is available and Go is
+supported (example: *BSD).</p>
 <p>harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It then connects to a local Ollama server or publicai.co
-and starts an interactive chat session.</p>
+system prompt. It then connects to a local Ollama server and starts an
+interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
+Mistral, OpenAI) can be added as named routes via /route add.</p>
 <p>All file I/O is constrained to the workspace directory (–workdir or
-“.”). A knowledge base is stored at <workdir>/harvey/knowledge.db and is
+“.”). A knowledge base is stored at <workdir>/agents/knowledge.db and is
 created automatically on first run. Session recordings (.spmd files) are
-stored in <workdir>/harvey/sessions/. Both paths can be overridden in
-harvey/harvey.yaml.</p>
+stored in <workdir>/agents/sessions/. Both paths can be overridden in
+agents/harvey.yaml.</p>
 <p>Type /help inside the session for available slash commands.</p>
 <h1 id="options">OPTIONS</h1>
 <dl>
@@ -109,7 +110,12 @@ implies –replay)
 </dd>
 </dl>
 <h1 id="environment">ENVIRONMENT</h1>
-<p>PUBLICAI_API_KEY API key for publicai.co</p>
+<p>ANTHROPIC_API_KEY API key for Anthropic Claude (optional, for /route
+add NAME anthropic://) DEEPSEEK_API_KEY API key for DeepSeek (optional,
+for /route add NAME deepseek://) GEMINI_API_KEY API key for Google
+Gemini (optional; GOOGLE_API_KEY also accepted) MISTRAL_API_KEY API key
+for Mistral (optional, for /route add NAME mistral://) OPENAI_API_KEY
+API key for OpenAI (optional, for /route add NAME openai://)</p>
 <h1 id="line-editing">LINE EDITING</h1>
 <p>Harvey’s prompt supports readline-style editing. All key bindings
 apply while typing at the “harvey &gt;” prompt.</p>

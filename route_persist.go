@@ -1,3 +1,16 @@
+// Package harvey — route_persist.go handles persistence of remote endpoint
+// routing configuration. The route registry is stored in agents/routes.json
+// inside the workspace and contains all registered remote endpoints and the
+// routing enabled/disabled state. This file provides:
+//
+//   - LoadRouteConfig: Load routes from disk into Config
+//   - SaveRouteConfig: Write routes from RouteRegistry to disk
+//   - InferRouteKind: Determine RouteKind from URL scheme
+//
+// Route endpoints are persisted in alphabetical order for stable diffs.
+// The configuration file is created automatically when the first endpoint
+// is registered via /route add.
+
 package harvey
 
 import (
@@ -9,31 +22,30 @@ import (
 	"strings"
 )
 
-// routeConfigFile is the JSON structure written to ~/harvey/routes.json.
+// routeConfigFile is the JSON structure written to agents/routes.json.
 type routeConfigFile struct {
-	Enabled   bool           `json:"enabled"`
+	Enabled   bool            `json:"enabled"`
 	Endpoints []RouteEndpoint `json:"endpoints"`
 }
 
-// routeConfigPath returns the path to the persisted route config file.
-func routeConfigPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "agents", "routes.json")
-}
-
-/** LoadRouteConfig reads ~/harvey/routes.json and populates cfg.Routes and
- * cfg.RoutingEnabled. Silently no-ops when the file does not exist or cannot
- * be parsed, leaving cfg unchanged.
+/** LoadRouteConfig reads agents/routes.json from the workspace and populates
+ * cfg.Routes and cfg.RoutingEnabled. Silently no-ops when the file does not
+ * exist or cannot be parsed, leaving cfg unchanged.
  *
  * Parameters:
- *   cfg (*Config) — config to populate; modified in place.
+ *   ws  (*Workspace) — workspace whose agents/ directory is searched.
+ *   cfg (*Config)    — config to populate; modified in place.
  *
  * Example:
  *   cfg := DefaultConfig()
- *   LoadRouteConfig(cfg)
+ *   LoadRouteConfig(ws, cfg)
  */
-func LoadRouteConfig(cfg *Config) {
-	data, err := os.ReadFile(routeConfigPath())
+func LoadRouteConfig(ws *Workspace, cfg *Config) {
+	path, err := ws.AbsPath(filepath.Join(harveySubdir, "routes.json"))
+	if err != nil {
+		return
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
@@ -45,23 +57,27 @@ func LoadRouteConfig(cfg *Config) {
 	cfg.RoutingEnabled = f.Enabled
 }
 
-/** SaveRouteConfig persists rr to ~/harvey/routes.json, creating the
- * directory if necessary. Endpoints are written in alphabetical name order
- * for stable diffs.
+/** SaveRouteConfig persists rr to agents/routes.json in the workspace,
+ * creating the directory if necessary. Endpoints are written in alphabetical
+ * name order for stable diffs.
  *
  * Parameters:
+ *   ws (*Workspace)     — workspace whose agents/ directory is written.
  *   rr (*RouteRegistry) — registry to persist; nil is treated as empty+disabled.
  *
  * Returns:
- *   error — on directory creation or file write failure.
+ *   error — on path resolution, directory creation, or file write failure.
  *
  * Example:
- *   if err := SaveRouteConfig(agent.Routes); err != nil {
+ *   if err := SaveRouteConfig(ws, agent.Routes); err != nil {
  *       fmt.Println("warning:", err)
  *   }
  */
-func SaveRouteConfig(rr *RouteRegistry) error {
-	path := routeConfigPath()
+func SaveRouteConfig(ws *Workspace, rr *RouteRegistry) error {
+	path, err := ws.AbsPath(filepath.Join(harveySubdir, "routes.json"))
+	if err != nil {
+		return fmt.Errorf("save routes: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("save routes: %w", err)
 	}

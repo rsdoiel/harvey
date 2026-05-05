@@ -53,7 +53,7 @@ type SkillVariable struct {
  *   Source        (SkillSource)       — "user" or "project" (for precedence tracking).
  *
  * Example:
- *   meta, err := ParseSkillFile("/home/user/.harvey/skills/pdf-processing/SKILL.md")
+ *   meta, err := ParseSkillFile("/home/user/agents/skills/pdf-processing/SKILL.md")
  *   fmt.Println(meta.Name, meta.Description)
  */
 type SkillMeta struct {
@@ -112,7 +112,7 @@ type SkillSearchDir struct {
  *   error      — parse failure; nil on success.
  *
  * Example:
- *   meta, err := ParseSkillFile("/home/user/.harvey/skills/my-skill/SKILL.md")
+ *   meta, err := ParseSkillFile("/home/user/agents/skills/my-skill/SKILL.md")
  *   if err != nil { log.Println("skip:", err) }
  */
 func ParseSkillFile(path string) (*SkillMeta, error) {
@@ -164,8 +164,8 @@ func ParseSkillFile(path string) (*SkillMeta, error) {
  *
  * Example:
  *   dirs := []SkillSearchDir{
- *       {Path: "/home/user/.harvey/skills", Source: SkillSourceUser},
- *       {Path: "/proj/.harvey/skills",      Source: SkillSourceProject},
+ *       {Path: "/home/user/agents/skills", Source: SkillSourceUser},
+ *       {Path: "/proj/agents/skills",      Source: SkillSourceProject},
  *   }
  *   cat := ScanSkillDirs(dirs)
  */
@@ -177,18 +177,12 @@ func ScanSkillDirs(dirs []SkillSearchDir) SkillCatalog {
 	return cat
 }
 
-/** ScanSkills discovers skills from the standard paths relative to workDir
- * and the user home directory. Project-scope skills override user-scope
- * skills when names collide. agentsDir overrides the project-level agents
- * directory name (default "agents"); pass an empty string to use the default.
+/** ScanSkills discovers skills from the workspace agents/skills/ directory.
+ * agentsDir overrides the agents directory name (default "agents"); pass an
+ * empty string to use the default.
  *
- * Paths scanned (in precedence order, lowest first):
- *   ~/harvey/skills/            user, Harvey-native
- *   ~/agents/skills/            user, cross-client (non-hidden)
- *   ~/.agents/skills/           user, cross-client
- *   <workDir>/harvey/skills/    project, Harvey-native
- *   <workDir>/<agentsDir>/skills/ project, cross-client (non-hidden)
- *   <workDir>/.agents/skills/   project, cross-client
+ * Path scanned:
+ *   <workDir>/<agentsDir>/skills/
  *
  * Parameters:
  *   workDir   (string) — absolute path to the Harvey workspace root.
@@ -205,23 +199,14 @@ func ScanSkills(workDir, agentsDir string) SkillCatalog {
 	return ScanSkillDirs(standardSkillDirs(workDir, agentsDir))
 }
 
-// standardSkillDirs returns the ordered list of search dirs for ScanSkills.
-// User paths come first so project paths can override them.
+// standardSkillDirs returns the skill search directory for the workspace.
 func standardSkillDirs(workDir, agentsDir string) []SkillSearchDir {
 	if agentsDir == "" {
 		agentsDir = "agents"
 	}
-	home, _ := os.UserHomeDir()
-	var dirs []SkillSearchDir
-	if home != "" {
-		dirs = append(dirs,
-			SkillSearchDir{filepath.Join(home, "agents", "skills"), SkillSourceUser},
-		)
+	return []SkillSearchDir{
+		{filepath.Join(workDir, agentsDir, "skills"), SkillSourceProject},
 	}
-	dirs = append(dirs,
-		SkillSearchDir{filepath.Join(workDir, agentsDir, "skills"), SkillSourceProject},
-	)
-	return dirs
 }
 
 // scanOneSkillDir scans dir for skill subdirectories (each containing SKILL.md)

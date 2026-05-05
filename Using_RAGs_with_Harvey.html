@@ -38,58 +38,1379 @@ figcaption {
 </ul>
 </nav>
 <section>
-<h1 id="a-workflow-for-putting-together-rags">A workflow for putting
-together rags</h1>
-<p>Harvey has support for project orient retrieval augmented
-generalization or RAG. The question then how do you set that up?</p>
-<p>What I’ve been doing is creating a training materials directory then
-storing markdown documents with the information I want considered. It’s
-a little less obvious when the information you want to include is on a
-webpage. Many web sites today have the nasty practice of delivering data
-blobs that JavaScript or WASM used to assemble the page browser side.
-With the on slot of AI bots I expect this web anti pattern to get worse
-rather than better. Instead what I’ve found that works well is using
-Firefox save page as feature. One of the save formats is text files.
-This produces plain text which makes it easier to tokenize when
-ingesting material for the RAG. It’s does take some clicking but I found
-it easier then selecting the text and doing a cut and paste with and
-editor.</p>
-<h2 id="why-is-a-simple-workflow-important">Why is a simple workflow
-important?</h2>
-<p>Balancing the size of the knowledge base and the embeddings is
-important on a small machine like a Pi. The RAG helps make the models
-supporting embeddings feel more complete by yeilding better results when
-recent domain knowledge is available. Take the combo of Deno+TypeScript.
-Most coding models have some exposure to both but Deno has been a fast
-moving target with regular release and improving ergonomics. Taking
-advantage of those changes through prompts is challenging. With a RAG
-documenting the new featuresbl you get better results sooner with less
-prompt churn.</p>
-<h2 id="why-not-just-throw-everything-in-a-single-knowledge-base">Why
-not just throw everything in a single knowledge base?</h2>
-<p>Computers have limits on memory and speed of disk storage access.
-Little computers like a Pi more so. Part of the motivation around Harvey
-is presenting a rich language model environment while staying
-constrained to the resources provided by little computers. Working with
-limitations of the little machine has in my practice let me focus on
-what is relevant to a specific project. I can capture the interaction
-with the language model with Harvey session files, I can capture the
-additional material too in the trading natural. The allows for insight
-into how the code assisted project evolved by providing auditable
-documentation in the process.</p>
-<h2 id="a-coding-project-general-setup">A coding project general
-setup</h2>
-<p>When Harvey helps with a project I first attempt to narrow down the
-model or models I will use. I then collect the domain materials I want
-Harvey to have available. When I startup Harvey I select the model then
-set up a RAG. That’s followed by ingesting the training materials. At
-that point I am ready to assign tasks to Harvey. When Harvey is done the
-fountain session file is be able when I start up Harvey again. If there
-is a discovery during the season then the session file can be ingested
-too.</p>
-<p>One feature in Harvey’s knowledge base implementation is that you can
-search the knowledge base directly. The RAG ingest populates the
-knowledge as it tokenizesbthe embeddings for the language model.</p>
+<h1 id="using-rags-with-harvey">Using RAGs with Harvey</h1>
+<h2 id="overview">Overview</h2>
+<p><strong>Retrieval-Augmented Generation (RAG)</strong> enhances
+Harvey’s capabilities by grounding model responses in your own
+documents, code, and notes. Instead of relying solely on the model’s
+training data, RAG allows Harvey to retrieve relevant snippets from a
+local knowledge store and inject them into the conversation context.</p>
+<h3 id="what-rag-solves">What RAG Solves</h3>
+<table>
+<colgroup>
+<col style="width: 29%" />
+<col style="width: 41%" />
+<col style="width: 29%" />
+</colgroup>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Without RAG</th>
+<th>With RAG</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model doesn’t know about your codebase</td>
+<td>Manual <code>/read</code> of files, limited context window</td>
+<td>Automatic retrieval of relevant code</td>
+</tr>
+<tr>
+<td>Model hallucinates facts</td>
+<td>No grounding in your documents</td>
+<td>Responses grounded in your ingested docs</td>
+</tr>
+<tr>
+<td>Context window too small</td>
+<td>Must manually select what to include</td>
+<td>Only most relevant chunks are injected</td>
+</tr>
+<tr>
+<td>Outdated model knowledge</td>
+<td>Can’t access information post-training</td>
+<td>Your current documents are always available</td>
+</tr>
+<tr>
+<td>Domain-specific knowledge</td>
+<td>Generic responses</td>
+<td>Domain-expert responses</td>
+</tr>
+</tbody>
+</table>
+<h3 id="key-benefits">Key Benefits</h3>
+<ol type="1">
+<li><strong>Reduced Hallucination</strong> — Model answers are grounded
+in your actual documents</li>
+<li><strong>Larger Effective Context</strong> — Access more content than
+fits in the model’s context window</li>
+<li><strong>Project-Specific Knowledge</strong> — Each project can have
+its own focused knowledge base</li>
+<li><strong>Offline Operation</strong> — Entirely local; no cloud
+dependencies once documents are ingested</li>
+<li><strong>Transparent</strong> — You can inspect exactly what context
+is being injected</li>
+</ol>
+<h2 id="quick-start">Quick Start</h2>
+<h3 id="prerequisites">Prerequisites</h3>
+<ul>
+<li>Harvey installed and working</li>
+<li>Ollama running with at least one LLM model pulled (e.g.,
+<code>llama3.1:8b</code>)</li>
+<li>At least one embedding model installed (recommended:
+<code>nomic-embed-text</code>)</li>
+</ul>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install an embedding model (one-time)</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> pull nomic-embed-text</span></code></pre></div>
+<h3 id="minute-rag-setup">5-Minute RAG Setup</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start Harvey</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 1: Create a named RAG store</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new myproject</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Embedding</span> models installed:</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[1]</span> nomic-embed-text <span class="er">(</span><span class="ex">recommended</span><span class="kw">)</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[2]</span> mxbai-embed-large</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Select</span> embedding model <span class="pp">[</span><span class="ss">1</span><span class="pp">]</span>: 1</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Proposed</span> generation → embedding model mapping:</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="ex">llama3.1:8b</span> → nomic-embed-text</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Create</span> store <span class="st">&#39;myproject&#39;</span> at agents/rag/myproject.db<span class="pp">?</span> <span class="pp">[</span><span class="ss">y/N</span><span class="pp">]</span>: y</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Created</span> RAG store <span class="st">&#39;myproject&#39;</span> with embedding model <span class="st">&#39;nomic-embed-text&#39;</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Active</span> store: myproject</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 2: Ingest your documents</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest README.md</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Ingesting</span> README.md...</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Split</span> into 8 chunks, embedding and storing...</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>  <span class="ex">✓</span> Ingested README.md <span class="er">(</span><span class="ex">8</span> chunks<span class="kw">)</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest docs/</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Ingesting</span> docs/...</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>  <span class="ex">✓</span> Ingested docs/guide.md <span class="er">(</span><span class="ex">12</span> chunks<span class="kw">)</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>  <span class="ex">✓</span> Ingested docs/api.md <span class="er">(</span><span class="ex">5</span> chunks<span class="kw">)</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 3: Verify retrieval quality</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag query <span class="st">&quot;how do I configure Harvey&quot;</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Top</span> 5 result<span class="er">(</span><span class="ex">s</span><span class="kw">)</span> <span class="cf">for</span> <span class="st">&quot;how do I configure Harvey&quot;</span><span class="ex">:</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[1]</span> score=0.872  source=docs/guide.md</span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>        <span class="ex">Configuration</span> is done through harvey.yaml and HARVEY.md...</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[2]</span> score=0.741  source=README.md</span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>        <span class="ex">See</span> docs/guide.md for configuration options...</span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 4: RAG is now active - ask questions!</span></span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> How do I set up a RAG store<span class="pp">?</span></span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>  <span class="ex">[RAG</span> context injected: 3 chunks from myproject]</span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a>  <span class="ex">HARVEY</span></span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Forwarding</span> to LLAMA3.1.</span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>  <span class="ex">LLAMA3.1</span></span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>  <span class="ex">To</span> set up a RAG store, use the <span class="kw">`</span><span class="ex">/rag</span> new NAME<span class="kw">`</span> command...</span></code></pre></div>
+<h2 id="concepts">Concepts</h2>
+<h3 id="architecture-overview">Architecture Overview</h3>
+<pre><code>┌───────────────────────────────────────────────────────────────────────┐
+│                      HARVEY RAG ARCHITECTURE                          │
+├───────────────────────────────────────────────────────────────────────┤
+│                                                                       │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐  │
+│  │  Your Documents │────▶│   RAG Store     │────▶│   LLM Model     │  │
+│  │   (text files)  │     │  (SQLite + DB)  │     │ (generation)    │  │
+│  └─────────────────┘     └─────────────────┘     └─────────────────┘  │
+|         |                       ▲                       |             |
+│         │ Ingest                │ Query                 │ Generate    │
+│         │ (embedding)           │ (similarity)          │ (response)  │
+│         ▼                       |                       ▼             │
+│  ┌─────────────────┐     ┌─────────────────┐                          │
+│  │  Chunking       │     │  Vector Search  │                          │
+│  │  (~500 chars)   │     │  (cosine sim)   │                          │
+│  └─────────────────┘     └─────────────────┘                          │
+│         │                       ▲                                     │
+│         └─ Embedding Model ─────┘                                     |
+│                                                                       │
+└───────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="key-components">Key Components</h3>
+<h4 id="embedding-model">1. Embedding Model</h4>
+<p>A small neural network that converts text to <strong>vector
+embeddings</strong> — numerical representations that capture semantic
+meaning. Unlike the generation model (which produces text), the
+embedding model understands what text <em>means</em>.</p>
+<p><strong>Recommended Embedding Models:</strong></p>
+<table>
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 18%" />
+<col style="width: 28%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Model</th>
+<th>Size</th>
+<th>Quality</th>
+<th>Best For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nomic-embed-text:v1.5</code></td>
+<td>~274 MB</td>
+<td>⭐⭐⭐⭐⭐</td>
+<td>General-purpose retrieval</td>
+</tr>
+<tr>
+<td><code>mxbai-embed-large:335m</code></td>
+<td>~670 MB</td>
+<td>⭐⭐⭐⭐</td>
+<td>High-quality, larger</td>
+</tr>
+<tr>
+<td><code>qllama/bge-small-en-v1.5:latest</code></td>
+<td>~46 MB</td>
+<td>⭐⭐⭐</td>
+<td>Small but retrieval-optimized</td>
+</tr>
+<tr>
+<td><code>bge-m3:567m</code></td>
+<td>~1.2 GB</td>
+<td>⭐⭐⭐⭐</td>
+<td>Multilingual</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why model choice matters:</strong></p>
+<ul>
+<li>Models like <code>all-MiniLM-L6-v2</code> were trained on
+<strong>sentence-similarity</strong> tasks (NLI, STS)</li>
+<li>Retrieval-optimized models like <code>nomic-embed-text</code> were
+trained on <strong>document retrieval</strong> tasks</li>
+<li>On the MTEB benchmark: <code>all-MiniLM-L6-v2</code> scores ~56%,
+<code>nomic-embed-text</code> scores ~68%</li>
+</ul>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install recommended embedding model</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> pull nomic-embed-text:v1.5</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># List installed models</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> list</span></code></pre></div>
+<h4 id="rag-store">2. RAG Store</h4>
+<p>An <strong>SQLite database</strong> that stores: - Text chunks (the
+actual content) - Vector embeddings (the numerical representations) -
+Source metadata (which file each chunk came from)</p>
+<p><strong>Store Characteristics:</strong> -
+<strong>Embedding-model-scoped:</strong> Each store is bound to one
+embedding model - <strong>Isolated:</strong> Stores don’t share data;
+switch between them as needed - <strong>Persistent:</strong>
+Configuration saved in <code>agents/harvey.yaml</code> -
+<strong>Memory-efficient:</strong> Only the active store is kept
+open</p>
+<h4 id="chunks">3. Chunks</h4>
+<p>Documents are split into <strong>paragraph-sized chunks</strong>
+(~500 characters each) before embedding. This ensures: - Embeddings
+represent coherent units of meaning - Individual chunks fit within
+embedding model context limits - Retrieval can find the most relevant
+passage, not just the most relevant document</p>
+<h4 id="vector-similarity-search">4. Vector Similarity Search</h4>
+<p>When you ask a question: 1. Your query is embedded using the same
+embedding model 2. <strong>Cosine similarity</strong> is computed
+between your query vector and every chunk vector 3. Top-K most similar
+chunks (score &gt; 0.3 threshold) are injected into context 4. The model
+generates a response grounded in those chunks</p>
+<p><strong>Cosine Similarity:</strong> Measures the angle between two
+vectors in multi-dimensional space. A score of 1.0 means identical, 0.0
+means unrelated, -1.0 means opposite.</p>
+<h2 id="named-stores">Named Stores</h2>
+<h3 id="why-multiple-stores">Why Multiple Stores?</h3>
+<p>Harvey supports <strong>multiple named RAG stores</strong> for these
+reasons:</p>
+<table>
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 34%" />
+<col style="width: 41%" />
+</colgroup>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Single Store</th>
+<th>Multiple Stores</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Different projects</td>
+<td>All docs mixed together</td>
+<td>Separate stores per project</td>
+</tr>
+<tr>
+<td>Different domains</td>
+<td>One big knowledge base</td>
+<td><code>golang</code>, <code>writing</code>,
+<code>research</code></td>
+</tr>
+<tr>
+<td>Different embedding models</td>
+<td>Limited to one model</td>
+<td>Each store can use a different model</td>
+</tr>
+<tr>
+<td>Resource-constrained hardware</td>
+<td>Large, bloated store</td>
+<td>Small, focused stores fit in RAM</td>
+</tr>
+<tr>
+<td>Team collaboration</td>
+<td>Shared everything</td>
+<td>Share only relevant stores</td>
+</tr>
+</tbody>
+</table>
+<h3 id="store-management-commands">Store Management Commands</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 59%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/rag list</code></td>
+<td>List all registered stores with active marker</td>
+</tr>
+<tr>
+<td><code>/rag new NAME</code></td>
+<td>Interactive wizard to create a named store</td>
+</tr>
+<tr>
+<td><code>/rag switch NAME</code></td>
+<td>Activate a different store</td>
+</tr>
+<tr>
+<td><code>/rag drop NAME</code></td>
+<td>Remove a store from registry (doesn’t delete .db file)</td>
+</tr>
+<tr>
+<td><code>/rag status</code></td>
+<td>Show active store details and all registered stores</td>
+</tr>
+</tbody>
+</table>
+<h3 id="example-multiple-project-stores">Example: Multiple Project
+Stores</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Create stores for different projects</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new harvey-docs</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">...</span> <span class="er">(</span><span class="cf">select</span> nomic<span class="ex">-embed-text</span><span class="kw">)</span> <span class="ex">...</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Created</span> RAG store <span class="st">&#39;harvey-docs&#39;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new my-novel</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  <span class="ex">...</span> <span class="er">(</span><span class="cf">select</span> nomic<span class="ex">-embed-text</span><span class="kw">)</span> <span class="ex">...</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Created</span> RAG store <span class="st">&#39;my-novel&#39;</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest project-specific documents</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag switch harvey-docs</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest harvey/</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest HARVEY.md</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag switch my-novel</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest ~/writing/notes/</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest ~/projects/novel/drafts/</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="co"># Switch between stores as you work</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag switch harvey-docs</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag query <span class="st">&quot;how does RAG work&quot;</span></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag switch my-novel</span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag query <span class="st">&quot;describe the protagonist&quot;</span></span></code></pre></div>
+<h3 id="store-configuration">Store Configuration</h3>
+<p>Stores are configured in <code>agents/harvey.yaml</code>:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rag</span><span class="kw">:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">active</span><span class="kw">:</span><span class="at"> harvey-docs</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stores</span><span class="kw">:</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> harvey-docs</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/harvey-docs.db</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="at">        llama3.1</span><span class="fu">:8b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="at">        granite3.3</span><span class="fu">:2b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> my-novel</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/my-novel.db</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="at">        llama3.1</span><span class="fu">:8b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span></code></pre></div>
+<p><strong>Fields:</strong> - <code>name</code> — Short identifier for
+the store - <code>db_path</code> — Path to the SQLite database (relative
+to workspace root) - <code>embedding_model</code> — Name of the
+embedding model bound to this store - <code>model_map</code> —
+Generation model → embedding model overrides (usually same for all)</p>
+<h2 id="setup">Setup</h2>
+<h3 id="step-1-install-an-embedding-model">Step 1: Install an Embedding
+Model</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Recommended: nomic-embed-text (best retrieval quality)</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> pull nomic-embed-text</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Alternative: mxbai-embed-large (higher quality, larger)</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> pull mxbai-embed-large</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Budget option: bge-small-en-v1.5 (small but good)</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> pull bge-small-en-v1.5</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify installation</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> list</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Should show your embedding model alongside your generation models</span></span></code></pre></div>
+<h3 id="step-2-create-a-rag-store">Step 2: Create a RAG Store</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Interactive wizard</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new my-store</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="co"># The wizard will:</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Detect installed embedding models</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Show the best available options</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Propose a generation → embedding model mapping</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Ask for confirmation</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Example output:</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="co">#   Embedding models installed:</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="co">#     [1] nomic-embed-text (recommended)</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="co">#     [2] mxbai-embed-large</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="co">#   Select embedding model [1]: 1</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a><span class="co">#   Proposed generation → embedding model mapping:</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a><span class="co">#     llama3.1:8b → nomic-embed-text</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a><span class="co">#   Create store &#39;my-store&#39; at agents/rag/my-store.db? [y/N]: y</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a><span class="co">#   Created RAG store &#39;my-store&#39; with embedding model &#39;nomic-embed-text&#39;</span></span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a><span class="co">#   Active store: my-store</span></span></code></pre></div>
+<p><strong>Store Location:</strong> - Default:
+<code>agents/rag/{name}.db</code> - Can be customized:
+<code>/rag new my-store --path custom/path/my-store.db</code></p>
+<h3 id="step-3-ingest-documents">Step 3: Ingest Documents</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest single files</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest README.md</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest LICENSE</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest directories (recursive)</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest docs/</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest src/</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest multiple paths at once</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest README.md docs/ src/</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest from absolute paths</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest ~/projects/myproject/docs/</span></code></pre></div>
+<p><strong>Supported File Types:</strong></p>
+<ul>
+<li><code>.md</code> (Markdown)</li>
+<li><code>.txt</code> (Plain text)</li>
+<li><code>.go</code> (Go source)</li>
+<li><code>.ts</code> (TypeScript)</li>
+<li><code>.js</code> (JavaScript)</li>
+<li><code>.py</code> (Python)</li>
+<li><code>.json</code> (JSON)</li>
+<li>Any plain-text file</li>
+</ul>
+<p><strong>Chunking Behavior:</strong></p>
+<ul>
+<li>Files are split into ~500-character chunks</li>
+<li>Each chunk is embedded separately</li>
+<li>Source file path is preserved for each chunk</li>
+</ul>
+<h3 id="step-4-verify-retrieval">Step 4: Verify Retrieval</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Test retrieval with a query</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag query <span class="st">&quot;what is the license&quot;</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Example output:</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="co">#   Top 5 result(s) for &quot;what is the license&quot;:</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="co">#     [1] score=0.872  source=LICENSE</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="co">#         GNU AFFERO GENERAL PUBLIC LICENSE Version 3...</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="co">#     [2] score=0.741  source=README.md</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="co">#         Harvey is licensed under AGPL-3.0...</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a><span class="co"># If scores are low (&lt; 0.3):</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a><span class="co"># - The query may not match any ingested content</span></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a><span class="co"># - Try rephrasing the query</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="co"># - Ingest more relevant documents</span></span></code></pre></div>
+<h3 id="step-5-enable-rag-automatic">Step 5: Enable RAG (Automatic)</h3>
+<p>RAG is <strong>enabled automatically</strong> when you create or
+switch to a store. To manually control:</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable RAG for current session</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag on</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Disable RAG for current session (database preserved)</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag off</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Check status</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag status</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   RAG: enabled</span></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a><span class="co">#   Active store: my-store (agents/rag/my-store.db)</span></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="co">#   Embedding model: nomic-embed-text</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="co">#   Chunk count: 42</span></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a><span class="co">#   </span></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a><span class="co">#   Registered stores:</span></span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a><span class="co">#     * my-store — agents/rag/my-store.db (nomic-embed-text) — 42 chunks</span></span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a><span class="co">#       old-store — agents/rag/old-store.db (nomic-embed-text) — 156 chunks</span></span></code></pre></div>
+<h2 id="usage-patterns">Usage Patterns</h2>
+<h3 id="pattern-1-project-documentation-rag">Pattern 1: Project
+Documentation RAG</h3>
+<p>Keep your project’s documentation searchable:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Setup</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new myproject-docs</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest README.md CONTRIBUTING.md docs/</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Now ask about your project</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> How do I build this project<span class="pp">?</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="co"># [RAG context injected: 3 chunks from myproject-docs]</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Add new documentation as it&#39;s created</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest new-feature-guide.md</span></code></pre></div>
+<h3 id="pattern-2-codebase-rag">Pattern 2: Codebase RAG</h3>
+<p>Make your entire codebase searchable:</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest all source code</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new codebase</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest src/ internal/ pkg/</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Ask about code structure</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> How does the authentication system work<span class="pp">?</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Find specific functions or patterns</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag query <span class="st">&quot;func.*HandleRequest&quot;</span></span></code></pre></div>
+<h3 id="pattern-3-research-rag">Pattern 3: Research RAG</h3>
+<p>Build a knowledge base for a research project:</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Collect research materials</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new research-llm-security</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest ~/Downloads/paper1.pdf.txt</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Note: Use Firefox &quot;Save Page as... &gt; Text Files&quot; for web pages</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest ~/research/notes/</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Query your research</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> What are the key findings about prompt injection<span class="pp">?</span></span></code></pre></div>
+<h3 id="pattern-4-multi-project-workflow">Pattern 4: Multi-Project
+Workflow</h3>
+<p>Switch between different knowledge domains:</p>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Monday: Working on Harvey</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag switch harvey-docs</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Tuesday: Writing a novel</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag switch my-novel</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Wednesday: Research</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag switch research-llm-security</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Quick switch back</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag switch harvey-docs</span></code></pre></div>
+<h3 id="pattern-5-session-specific-rag">Pattern 5: Session-Specific
+RAG</h3>
+<p>Enable RAG only for specific sessions:</p>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start with RAG off</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--no-rag</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable when needed</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag on</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Disable when done</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag off</span></code></pre></div>
+<h2 id="commands-reference">Commands Reference</h2>
+<h3 id="rag-list"><code>/rag list</code></h3>
+<p>List all registered RAG stores.</p>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag list</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">RAG</span> Stores:</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="ex">*</span> my-store    — agents/rag/my-store.db    <span class="er">(</span><span class="ex">nomic-embed-text,</span> 42 chunks<span class="kw">)</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>      <span class="ex">old-store</span>   — agents/rag/old-store.db   <span class="er">(</span><span class="ex">nomic-embed-text,</span> 156 chunks<span class="kw">)</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>      <span class="ex">research</span>    — agents/rag/research.db    <span class="er">(</span><span class="ex">nomic-embed-text,</span> 89 chunks<span class="kw">)</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>  <span class="ex">*</span> = active store</span></code></pre></div>
+<h3 id="rag-new-name"><code>/rag new NAME</code></h3>
+<p>Create a new named RAG store with interactive setup.</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new research</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Embedding</span> models installed:</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[1]</span> nomic-embed-text <span class="er">(</span><span class="ex">recommended</span><span class="kw">)</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[2]</span> mxbai-embed-large</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[3]</span> bge-small-en-v1.5</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Select</span> embedding model <span class="pp">[</span><span class="ss">1</span><span class="pp">]</span>: 1</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Proposed</span> generation → embedding model mapping:</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    <span class="ex">llama3.1:8b</span> → nomic-embed-text</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    <span class="ex">granite3.3:2b</span> → nomic-embed-text</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Create</span> store <span class="st">&#39;research&#39;</span> at agents/rag/research.db<span class="pp">?</span> <span class="pp">[</span><span class="ss">y/N</span><span class="pp">]</span>: y</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Created</span> RAG store <span class="st">&#39;research&#39;</span> with embedding model <span class="st">&#39;nomic-embed-text&#39;</span></span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Active</span> store: research</span></code></pre></div>
+<p><strong>Options:</strong> - <code>--path PATH</code> — Custom
+database path (default: <code>agents/rag/{NAME}.db</code>) -
+<code>--embedding-model MODEL</code> — Skip selection, use specific
+model</p>
+<h3 id="rag-switch-name"><code>/rag switch NAME</code></h3>
+<p>Activate a different RAG store.</p>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag switch research</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Switched</span> to RAG store <span class="st">&#39;research&#39;</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Embedding</span> model: nomic-embed-text</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Chunk</span> count: 89</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag query <span class="st">&quot;latest findings&quot;</span></span></code></pre></div>
+<h3 id="rag-drop-name"><code>/rag drop NAME</code></h3>
+<p>Remove a store from the registry (does NOT delete the .db file).</p>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag drop old-store</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Remove</span> RAG store <span class="st">&#39;old-store&#39;</span><span class="pp">?</span> <span class="pp">[</span><span class="ss">y/N</span><span class="pp">]</span>: y</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Removed</span> store <span class="st">&#39;old-store&#39;</span> from registry.</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Database</span> file still exists at: agents/rag/old-store.db</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>  <span class="co"># To delete the file manually:</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rm</span> agents/rag/old-store.db</span></code></pre></div>
+<h3 id="rag-setup"><code>/rag setup</code></h3>
+<p>Backward-compatible alias for <code>/rag new</code>. If no store is
+active, creates a store named “default”.</p>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag setup</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">No</span> active store. Create <span class="st">&#39;default&#39;</span> store<span class="pp">?</span> <span class="pp">[</span><span class="ss">y/N</span><span class="pp">]</span>: y</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">...</span> <span class="er">(</span><span class="ex">same</span> as /rag new default<span class="kw">)</span> <span class="ex">...</span></span></code></pre></div>
+<h3
+id="rag-ingest-path-path..."><code>/rag ingest PATH [PATH...]</code></h3>
+<p>Ingest files or directories into the active store.</p>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest single file</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest README.md</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Ingesting</span> README.md...</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Split</span> into 8 chunks</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>  <span class="ex">✓</span> Ingested README.md <span class="er">(</span><span class="ex">8</span> chunks<span class="kw">)</span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest directory (recursive)</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest docs/</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Ingesting</span> docs/</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>  <span class="ex">✓</span> Ingested docs/guide.md <span class="er">(</span><span class="ex">12</span> chunks<span class="kw">)</span></span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>  <span class="ex">✓</span> Ingested docs/api.md <span class="er">(</span><span class="ex">5</span> chunks<span class="kw">)</span></span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>  <span class="ex">✓</span> Ingested docs/examples/test.go <span class="er">(</span><span class="ex">3</span> chunks<span class="kw">)</span></span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest multiple paths</span></span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest README.md docs/ src/</span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a><span class="co"># Ingest with progress</span></span>
+<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest large-directory/</span>
+<span id="cb22-19"><a href="#cb22-19" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Ingesting</span> large-directory/...</span>
+<span id="cb22-20"><a href="#cb22-20" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Processing</span> file 1/156: large-directory/file1.md</span>
+<span id="cb22-21"><a href="#cb22-21" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Processing</span> file 2/156: large-directory/file2.md</span>
+<span id="cb22-22"><a href="#cb22-22" aria-hidden="true" tabindex="-1"></a>  <span class="ex">...</span></span></code></pre></div>
+<p><strong>Ingestion Process:</strong></p>
+<ol type="1">
+<li>Walk the file/directory tree</li>
+<li>Filter for supported file types</li>
+<li>Read file content</li>
+<li>Split into ~500-character chunks</li>
+<li>Generate embeddings for each chunk</li>
+<li>Store chunks + embeddings + source metadata in SQLite</li>
+</ol>
+<p><strong>Supported Formats:</strong> All text-based files. Binary
+files are skipped.</p>
+<h3 id="rag-query-text"><code>/rag query TEXT</code></h3>
+<p>Query the active store and show top matching chunks.</p>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag query <span class="st">&quot;how does the RAG system work&quot;</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Top</span> 5 result<span class="er">(</span><span class="ex">s</span><span class="kw">)</span> <span class="cf">for</span> <span class="st">&quot;how does the RAG system work&quot;</span><span class="ex">:</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[1]</span> score=0.872  source=harvey/RAG_Support_Design.md</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>        <span class="ex">RAG</span> augments each user prompt with relevant chunks retrieved...</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[2]</span> score=0.789  source=harvey/Using_RAGs_with_Harvey.md</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>        <span class="ex">RAG</span> lets Harvey find relevant snippets from a local knowledge...</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[3]</span> score=0.741  source=harvey/ARCHITECTURE.html</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>        <span class="ex">The</span> RAG subsystem provides retrieval-augmented generation...</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[4]</span> score=0.653  source=harvey/helptext.go</span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>        <span class="ex">RAG</span> lets Harvey find relevant snippets from a local knowledge store...</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[5]</span> score=0.432  source=harvey/README.md</span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>        <span class="ex">Harvey</span> supports Retrieval-Augmented Generation <span class="er">(</span><span class="ex">RAG</span><span class="kw">)</span><span class="ex">...</span></span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Threshold:</span> 0.3 <span class="er">(</span><span class="ex">chunks</span> below this score are not injected<span class="kw">)</span></span></code></pre></div>
+<p><strong>Use Cases:</strong> - Verify retrieval quality before
+trusting answers - Debug why RAG isn’t finding what you expect - Explore
+what’s in your store - Test different query phrasings</p>
+<h3 id="rag-status"><code>/rag status</code></h3>
+<p>Show RAG configuration and store statistics.</p>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag status</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">RAG:</span> enabled</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Auto-inject:</span> on</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Active</span> store: my-store</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Database:</span> agents/rag/my-store.db</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Embedding</span> model: nomic-embed-text</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Chunk</span> count: 42</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Registered</span> stores:</span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>    <span class="ex">*</span> my-store    — agents/rag/my-store.db    <span class="er">(</span><span class="ex">nomic-embed-text</span><span class="kw">)</span> <span class="ex">—</span> 42 chunks</span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>      <span class="ex">old-store</span>   — agents/rag/old-store.db   <span class="er">(</span><span class="ex">nomic-embed-text</span><span class="kw">)</span> <span class="ex">—</span> 156 chunks</span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>      <span class="ex">research</span>    — agents/rag/research.db    <span class="er">(</span><span class="ex">nomic-embed-text</span><span class="kw">)</span> <span class="ex">—</span> 89 chunks</span></code></pre></div>
+<h3 id="rag-on"><code>/rag on</code></h3>
+<p>Enable automatic RAG context injection for the current session.</p>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag on</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">RAG</span> auto-injection enabled</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Active</span> store: my-store <span class="er">(</span><span class="ex">42</span> chunks<span class="kw">)</span></span></code></pre></div>
+<h3 id="rag-off"><code>/rag off</code></h3>
+<p>Disable automatic RAG context injection (store remains
+configured).</p>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag off</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">RAG</span> auto-injection disabled</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Use</span> /rag on to re-enable</span></code></pre></div>
+<h2 id="configuration">Configuration</h2>
+<h3 id="yaml-configuration">YAML Configuration</h3>
+<p>RAG configuration is stored in <code>agents/harvey.yaml</code>:</p>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="co"># agents/harvey.yaml</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="fu">rag</span><span class="kw">:</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">              # Global RAG enable/disable</span></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">active</span><span class="kw">:</span><span class="at"> my-store</span><span class="co">           # Currently active store name</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stores</span><span class="kw">:</span><span class="co">                   # All registered stores</span></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> my-store</span></span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/my-store.db</span></span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a><span class="at">        llama3.1</span><span class="fu">:8b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a><span class="at">        granite3.3</span><span class="fu">:2b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> research</span></span>
+<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/research.db</span></span>
+<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a><span class="at">        llama3.1</span><span class="fu">:8b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span></code></pre></div>
+<h3 id="configuration-fields">Configuration Fields</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 17%" />
+<col style="width: 37%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td>Global RAG enable/disable</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>active</code></td>
+<td>string</td>
+<td>Name of active store</td>
+<td><code>""</code></td>
+</tr>
+<tr>
+<td><code>stores</code></td>
+<td>list</td>
+<td>List of store configurations</td>
+<td><code>[]</code></td>
+</tr>
+<tr>
+<td><code>stores[].name</code></td>
+<td>string</td>
+<td>Store identifier</td>
+<td>required</td>
+</tr>
+<tr>
+<td><code>stores[].db_path</code></td>
+<td>string</td>
+<td>SQLite database path</td>
+<td>required</td>
+</tr>
+<tr>
+<td><code>stores[].embedding_model</code></td>
+<td>string</td>
+<td>Embedding model name</td>
+<td>required</td>
+</tr>
+<tr>
+<td><code>stores[].model_map</code></td>
+<td>map</td>
+<td>Generation → embedding model mapping</td>
+<td>auto-populated</td>
+</tr>
+<tr>
+<td><code>stores[].embedder_kind</code></td>
+<td>string</td>
+<td>“ollama” or “encoderfile”</td>
+<td>“ollama”</td>
+</tr>
+<tr>
+<td><code>stores[].embedder_url</code></td>
+<td>string</td>
+<td>Custom embedder URL</td>
+<td><code>""</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="environment-variables">Environment Variables</h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OLLAMA_HOST</code></td>
+<td>Ollama server URL</td>
+<td><code>http://localhost:11434</code></td>
+</tr>
+<tr>
+<td><code>OLLAMA_ORIGIN</code></td>
+<td>Ollama origin header</td>
+<td>Harvey</td>
+</tr>
+</tbody>
+</table>
+<h3 id="command-line-options">Command-Line Options</h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--rag</code></td>
+<td>Enable RAG on startup</td>
+<td>Disabled</td>
+</tr>
+<tr>
+<td><code>--no-rag</code></td>
+<td>Disable RAG on startup</td>
+<td>Enabled if configured</td>
+</tr>
+</tbody>
+</table>
+<h2 id="advanced-topics">Advanced Topics</h2>
+<h3 id="chunking-strategy">Chunking Strategy</h3>
+<p><strong>Why chunking matters:</strong> - Embedding models have
+context length limits (typically 8192 tokens) - Shorter chunks = more
+precise retrieval - Longer chunks = more context per retrieval - Harvey
+uses ~500 characters as a balance</p>
+<p><strong>Chunking Behavior:</strong></p>
+<pre><code>File: README.md (10,000 characters)
+  ↓ Split by paragraphs/blank lines
+  Chunk 1: 0-500 chars
+  Chunk 2: 500-1000 chars
+  ...
+  Chunk 20: 9500-10000 chars
+
+Each chunk is embedded separately with its source file path.</code></pre>
+<h3 id="vector-similarity">Vector Similarity</h3>
+<p><strong>Cosine Similarity Formula:</strong></p>
+<pre><code>similarity(a, b) = (a · b) / (||a|| × ||b||)</code></pre>
+<p>Where: - <code>a · b</code> = dot product of vectors a and b -
+<code>||a||</code> = magnitude (Euclidean norm) of vector a -
+<code>||b||</code> = magnitude of vector b</p>
+<p><strong>Score Interpretation:</strong> | Score Range | Interpretation
+| |————|—————-| | 0.8-1.0 | Very similar / nearly identical meaning | |
+0.6-0.8 | Similar / related concepts | | 0.4-0.6 | Somewhat related | |
+0.3-0.4 | Weakly related | | &lt; 0.3 | Unrelated (filtered out by
+default) |</p>
+<h3 id="threshold-tuning">Threshold Tuning</h3>
+<p>The <strong>relevance threshold</strong> (0.3 by default) determines
+which chunks are injected:</p>
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Currently not configurable via CLI (hardcoded at 0.3)</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Can be changed in code: ragMinScore in harvey.go</span></span></code></pre></div>
+<p><strong>When to adjust the threshold:</strong> - <strong>Increase
+(0.4-0.5):</strong> If RAG is injecting too much irrelevant context -
+<strong>Decrease (0.2-0.25):</strong> If RAG is missing relevant chunks
+- <strong>Default (0.3):</strong> Good balance for most use cases</p>
+<h3 id="top-k-selection">Top-K Selection</h3>
+<p>Harvey injects the <strong>top-K most similar chunks</strong> that
+exceed the threshold:</p>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Currently hardcoded to inject up to 5 chunks</span></span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Can be changed in code: ragTopK in harvey.go</span></span></code></pre></div>
+<p><strong>Context Window Considerations:</strong> - Each injected chunk
+consumes ~500 characters of context - 5 chunks ≈ 2500 characters - Leave
+room for: system prompt, conversation history, user query - Total
+context = prompt + history + RAG chunks + response</p>
+<h3 id="model-mapping">Model Mapping</h3>
+<p>The <code>model_map</code> allows different generation models to use
+different embedding models:</p>
+<div class="sourceCode" id="cb32"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">stores</span><span class="kw">:</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> mixed</span></span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/mixed.db</span></span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a><span class="at">      llama3.1</span><span class="fu">:8b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a><span class="at">      granite3.3</span><span class="fu">:2b</span><span class="kw">:</span><span class="at"> mxbai-embed-large</span><span class="co">  # Different embedding model for granite</span></span></code></pre></div>
+<p><strong>When this is useful:</strong> - You have a generation model
+that works better with a specific embedding model - You’re experimenting
+with different embedding models - You want to optimize for specific use
+cases</p>
+<h3 id="embedding-model-consistency">Embedding Model Consistency</h3>
+<p>Harvey <strong>strictly enforces</strong> embedding model
+consistency:</p>
+<div class="sourceCode" id="cb33"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="co">// In rag_support.go</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> embedder<span class="op">.</span>Name<span class="op">()</span> <span class="op">!=</span> r<span class="op">.</span>embeddingModel <span class="op">{</span></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> errors<span class="op">.</span>New<span class="op">(</span><span class="st">&quot;embedding model mismatch&quot;</span><span class="op">)</span></span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>This prevents: - Silent retrieval failures from mixed embedding
+spaces - Incompatible vector dimensions - Unpredictable similarity
+scores</p>
+<p><strong>Implications:</strong> - You cannot query a store with a
+different embedding model than it was created with - You cannot ingest
+documents using a different embedding model - To change embedding
+models, create a new store and re-ingest</p>
+<h3 id="performance-considerations">Performance Considerations</h3>
+<h4 id="query-time">Query Time</h4>
+<p>Harvey uses a <strong>linear scan</strong> approach: - O(n) time
+complexity where n = number of chunks - Computes cosine similarity
+against every chunk - Sorts and returns top-K results</p>
+<p><strong>Performance Characteristics:</strong> | Chunks | Query Time
+(approximate) | Recommended Use Case | |——–|————————–|———————| | 100 |
+&lt; 10ms | Small projects | | 1,000 | ~50ms | Medium projects | |
+10,000 | ~500ms | Large projects | | 100,000 | ~5s | Very large
+(consider splitting) |</p>
+<p><strong>For large knowledge bases (&gt;10,000 chunks):</strong> -
+Consider splitting into multiple topic-focused stores - Use more
+powerful hardware - Wait for future ANN (Approximate Nearest Neighbor)
+indexing</p>
+<h4 id="memory-usage">Memory Usage</h4>
+<ul>
+<li>Each chunk embedding: ~1-4KB (depending on vector dimension)</li>
+<li>10,000 chunks ≈ 10-40MB</li>
+<li>All embeddings are loaded into memory for each query</li>
+<li>Only the active store’s embeddings are in memory</li>
+</ul>
+<h3 id="database-schema">Database Schema</h3>
+<p>Each RAG store uses this SQLite schema:</p>
+<div class="sourceCode" id="cb34"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> <span class="cf">IF</span> <span class="kw">NOT</span> <span class="kw">EXISTS</span> chunks (</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>        <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    content   TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    embedding <span class="dt">BLOB</span> <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">source</span>    TEXT <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span></span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<p><strong>Fields:</strong> - <code>id</code> — Auto-incrementing
+primary key - <code>content</code> — The text chunk (up to ~500
+characters) - <code>embedding</code> — Binary-serialized vector
+embedding - <code>source</code> — Source file path for this chunk</p>
+<p><strong>Serialization Format:</strong></p>
+<pre><code>[int32 length][float64 vector...]</code></pre>
+<p>Little-endian binary encoding of the vector.</p>
+<h3 id="custom-embedders">Custom Embedders</h3>
+<p>Harvey supports custom embedders via the <code>Embedder</code>
+interface:</p>
+<div class="sourceCode" id="cb36"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Embedder <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    Embed<span class="op">(</span>text <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span><span class="dt">float64</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>    Name<span class="op">()</span> <span class="dt">string</span></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Built-in Embedders:</strong></p>
+<ol type="1">
+<li><strong>OllamaEmbedder</strong> — Uses Ollama’s embedding API</li>
+<li><strong>EncoderfileEmbedder</strong> — Uses a custom HTTP
+endpoint</li>
+</ol>
+<p><strong>Configuration:</strong></p>
+<div class="sourceCode" id="cb37"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="fu">stores</span><span class="kw">:</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> custom</span></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/custom.db</span></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> my-custom-model</span></span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">embedder_kind</span><span class="kw">:</span><span class="at"> encoderfile</span></span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">embedder_url</span><span class="kw">:</span><span class="at"> http://localhost:8080/embed</span></span></code></pre></div>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="common-issues">Common Issues</h3>
+<table>
+<colgroup>
+<col style="width: 29%" />
+<col style="width: 29%" />
+<col style="width: 41%" />
+</colgroup>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Cause</th>
+<th>Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No results from <code>/rag query</code></td>
+<td>Store is empty</td>
+<td>Ingest documents first with <code>/rag ingest</code></td>
+</tr>
+<tr>
+<td>Low similarity scores</td>
+<td>Documents don’t match query</td>
+<td>Rephrase query or ingest more relevant docs</td>
+</tr>
+<tr>
+<td>“Embedding model mismatch”</td>
+<td>Wrong embedding model</td>
+<td>Use the correct embedding model for the store</td>
+</tr>
+<tr>
+<td>RAG not injecting context</td>
+<td>RAG is disabled</td>
+<td>Run <code>/rag on</code> or check configuration</td>
+</tr>
+<tr>
+<td>Slow queries</td>
+<td>Too many chunks</td>
+<td>Split into multiple stores or use more powerful hardware</td>
+</tr>
+<tr>
+<td>Chunks not appearing</td>
+<td>File type not supported</td>
+<td>Use supported text formats (.md, .txt, .go, etc.)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="diagnosing-poor-retrieval">Diagnosing Poor Retrieval</h3>
+<ol type="1">
+<li><p><strong>Check what’s in your store:</strong></p>
+<div class="sourceCode" id="cb38"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag status</span></code></pre></div></li>
+<li><p><strong>Test retrieval directly:</strong></p>
+<div class="sourceCode" id="cb39"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag query <span class="st">&quot;your query here&quot;</span></span></code></pre></div></li>
+<li><p><strong>Check similarity scores:</strong></p>
+<ul>
+<li>Scores &lt; 0.3 are filtered out</li>
+<li>Scores 0.3-0.6 are weakly related</li>
+<li>Scores 0.6-0.8 are similar</li>
+<li>Scores 0.8-1.0 are very similar</li>
+</ul></li>
+<li><p><strong>Try different query phrasings:</strong></p>
+<ul>
+<li>Use keywords from your documents</li>
+<li>Try synonyms</li>
+<li>Be more specific</li>
+</ul></li>
+<li><p><strong>Re-ingest documents:</strong></p>
+<div class="sourceCode" id="cb40"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest README.md</span></code></pre></div></li>
+</ol>
+<h3 id="verifying-ingestion">Verifying Ingestion</h3>
+<div class="sourceCode" id="cb41"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check chunk count</span></span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag status</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Chunk</span> count: 42</span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Query for a specific document</span></span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag query <span class="st">&quot;unique phrase from your document&quot;</span></span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Check database directly</span></span>
+<span id="cb41-9"><a href="#cb41-9" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/rag/my-store.db <span class="st">&quot;SELECT COUNT(*) FROM chunks&quot;</span></span>
+<span id="cb41-10"><a href="#cb41-10" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/rag/my-store.db <span class="st">&quot;SELECT source, COUNT(*) FROM chunks GROUP BY source&quot;</span></span></code></pre></div>
+<h3 id="checking-embedding-model">Checking Embedding Model</h3>
+<div class="sourceCode" id="cb42"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="co"># List installed embedding models</span></span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> list</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Check which model a store is using</span></span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag status</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Recreate store with different model if needed</span></span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new new-store <span class="at">--embedding-model</span> mxbai-embed-large</span>
+<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest docs/</span></code></pre></div>
+<h3 id="database-migration">Database Migration</h3>
+<p>Harvey automatically migrates the schema on open. The
+<code>source</code> column was added after initial release:</p>
+<div class="sourceCode" id="cb43"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Migration runs automatically</span></span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> <span class="kw">source</span> TEXT <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span></span></code></pre></div>
+<p>If migration fails: 1. Backup your database:
+<code>cp agents/rag/my-store.db agents/rag/my-store.db.bak</code> 2.
+Harvey will recreate the table on next ingest</p>
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="organizing-your-knowledge">Organizing Your Knowledge</h3>
+<ol type="1">
+<li><strong>One store per project/domain:</strong>
+<ul>
+<li><code>harvey-docs</code> — Harvey-specific documentation</li>
+<li><code>golang</code> — Go language and standard library</li>
+<li><code>myproject</code> — Your project’s code and docs</li>
+<li><code>research</code> — Research papers and notes</li>
+</ul></li>
+<li><strong>Keep stores focused:</strong>
+<ul>
+<li>Small, topical stores retrieve better than large, general
+stores</li>
+<li>A 5,000-chunk focused store &gt; 50,000-chunk general store</li>
+<li>Easier to maintain and update</li>
+</ul></li>
+<li><strong>Use descriptive names:</strong>
+<ul>
+<li><code>golang-2024</code> instead of <code>store1</code></li>
+<li><code>research-llm-security</code> instead of
+<code>research</code></li>
+<li><code>project-x-docs</code> instead of <code>projectx</code></li>
+</ul></li>
+</ol>
+<h3 id="ingesting-documents">Ingesting Documents</h3>
+<ol type="1">
+<li><strong>Start with essentials:</strong>
+<ul>
+<li>README.md</li>
+<li>Documentation files</li>
+<li>Key source files</li>
+</ul></li>
+<li><strong>Add iteratively:</strong>
+<ul>
+<li>Ingest a few files, test retrieval</li>
+<li>Add more files as needed</li>
+<li>Monitor retrieval quality</li>
+</ul></li>
+<li><strong>Re-ingest after changes:</strong>
+<ul>
+<li>When documents are updated, re-ingest them</li>
+<li>Old chunks remain until replaced</li>
+<li>Consider dropping and recreating stores for major changes</li>
+</ul></li>
+<li><strong>Use supported formats:</strong>
+<ul>
+<li>Prefer Markdown (.md) for structured content</li>
+<li>Use plain text (.txt) for web pages (Firefox “Save as Text”)</li>
+<li>Source code files work well for code search</li>
+</ul></li>
+</ol>
+<h3 id="querying-effectively">Querying Effectively</h3>
+<ol type="1">
+<li><strong>Use specific terms:</strong>
+<ul>
+<li>❌ “how does it work” → Too generic</li>
+<li>✅ “how does the RAG ingestion pipeline work” → Specific</li>
+</ul></li>
+<li><strong>Use keywords from your documents:</strong>
+<ul>
+<li>Match the language used in your ingested content</li>
+<li>Use technical terms and jargon</li>
+</ul></li>
+<li><strong>Ask focused questions:</strong>
+<ul>
+<li>❌ “tell me everything about this project” → Too broad</li>
+<li>✅ “what are the dependencies for the web server module” →
+Focused</li>
+</ul></li>
+<li><strong>Use the knowledge base alongside RAG:</strong>
+<ul>
+<li>Store structured information in KB (projects, observations,
+concepts)</li>
+<li>Use KB for facts, RAG for documents</li>
+<li>They complement each other</li>
+</ul></li>
+</ol>
+<h3 id="resource-management">Resource Management</h3>
+<ol type="1">
+<li><strong>On resource-constrained hardware (Raspberry Pi):</strong>
+<ul>
+<li>Keep stores small (&lt; 5,000 chunks)</li>
+<li>Use smaller embedding models (bge-small-en-v1.5)</li>
+<li>Close stores when not in use</li>
+<li>Switch between stores as needed</li>
+</ul></li>
+<li><strong>On powerful hardware:</strong>
+<ul>
+<li>Can handle larger stores (10,000+ chunks)</li>
+<li>Use higher-quality embedding models (nomic-embed-text,
+mxbai-embed-large)</li>
+<li>Keep multiple stores open simultaneously</li>
+</ul></li>
+<li><strong>Storage considerations:</strong>
+<ul>
+<li>Each chunk ≈ 1-4KB (vector + text + metadata)</li>
+<li>10,000 chunks ≈ 10-40MB per store</li>
+<li>SQLite files grow but compress well</li>
+</ul></li>
+</ol>
+<h3 id="integration-with-workflow">Integration with Workflow</h3>
+<ol type="1">
+<li><strong>At project start:</strong>
+<ul>
+<li>Create a store for the project</li>
+<li>Ingest essential documentation</li>
+<li>Verify retrieval with test queries</li>
+</ul></li>
+<li><strong>During development:</strong>
+<ul>
+<li>Ingest new files as they’re created</li>
+<li>Use RAG for answering questions about the codebase</li>
+<li>Switch stores when changing projects</li>
+</ul></li>
+<li><strong>At project end:</strong>
+<ul>
+<li>Archive the store (move .db file)</li>
+<li>Document what’s in each store</li>
+<li>Consider merging related stores</li>
+</ul></li>
+<li><strong>For research:</strong>
+<ul>
+<li>Create a dedicated research store</li>
+<li>Ingest papers, notes, references</li>
+<li>Use RAG to find relevant information quickly</li>
+</ul></li>
+</ol>
+<h2 id="comparison-rag-vs-knowledge-base">Comparison: RAG vs Knowledge
+Base</h2>
+<p>Harvey provides two complementary systems for managing
+information:</p>
+<table>
+<colgroup>
+<col style="width: 30%" />
+<col style="width: 16%" />
+<col style="width: 53%" />
+</colgroup>
+<thead>
+<tr>
+<th>Feature</th>
+<th>RAG</th>
+<th>Knowledge Base</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Purpose</strong></td>
+<td>Retrieve relevant document snippets</td>
+<td>Store structured project data</td>
+</tr>
+<tr>
+<td><strong>Data Type</strong></td>
+<td>Unstructured text (files)</td>
+<td>Structured entities (projects, observations, concepts)</td>
+</tr>
+<tr>
+<td><strong>Query Type</strong></td>
+<td>Semantic similarity search</td>
+<td>Full-text search (FTS5) + structured queries</td>
+</tr>
+<tr>
+<td><strong>Best For</strong></td>
+<td>Finding information in documents</td>
+<td>Tracking projects, observations, decisions</td>
+</tr>
+<tr>
+<td><strong>Update</strong></td>
+<td>Re-ingest files</td>
+<td>CRUD operations on entities</td>
+</tr>
+<tr>
+<td><strong>Linking</strong></td>
+<td>Automatic (by content similarity)</td>
+<td>Manual (explicit links between entities)</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Raw text chunks</td>
+<td>Formatted summaries, Markdown export</td>
+</tr>
+</tbody>
+</table>
+<h3 id="when-to-use-each">When to Use Each</h3>
+<p><strong>Use RAG when:</strong> - You have documents you want to
+search through - You want semantic search (finding conceptually similar
+content) - You want to ground model responses in specific documents -
+You’re working with large amounts of text</p>
+<p><strong>Use Knowledge Base when:</strong> - You want to track
+projects and their status - You want to record observations, findings,
+decisions - You want to categorize things with concepts/tags - You want
+structured data that you can query and report on</p>
+<p><strong>Use Both Together:</strong></p>
+<div class="sourceCode" id="cb44"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Store project metadata in KB</span></span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /kb project add <span class="st">&quot;My Project&quot;</span> <span class="st">&quot;A test project&quot;</span></span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /kb obs add 1 finding <span class="st">&quot;Discovered issue with RAG retrieval&quot;</span></span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Store project documents in RAG</span></span>
+<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new my-project</span>
+<span id="cb44-7"><a href="#cb44-7" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest docs/ src/</span>
+<span id="cb44-8"><a href="#cb44-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-9"><a href="#cb44-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Now you can:</span></span>
+<span id="cb44-10"><a href="#cb44-10" aria-hidden="true" tabindex="-1"></a><span class="co"># - Query KB for project status and observations</span></span>
+<span id="cb44-11"><a href="#cb44-11" aria-hidden="true" tabindex="-1"></a><span class="co"># - Query RAG for document content</span></span>
+<span id="cb44-12"><a href="#cb44-12" aria-hidden="true" tabindex="-1"></a><span class="co"># - Get comprehensive project understanding</span></span></code></pre></div>
+<h2 id="command-line-usage">Command Line Usage</h2>
+<h3 id="start-harvey-with-rag-pre-configured">Start Harvey with RAG
+Pre-configured</h3>
+<div class="sourceCode" id="cb45"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable RAG with default store</span></span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--rag</span></span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Specify session file to continue</span></span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> previous-session.spmd</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Replay a session with RAG</span></span>
+<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> old-session.spmd <span class="at">--replay-output</span> new-session.spmd</span></code></pre></div>
+<h3 id="scripting-with-rag">Scripting with RAG</h3>
+<div class="sourceCode" id="cb46"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Create a store and ingest documents in a script</span></span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> <span class="op">&lt;&lt; &#39;EOF&#39;</span> <span class="kw">|</span> <span class="ex">harvey</span> <span class="at">--batch</span></span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a><span class="st">/rag new scripted-store</span></span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a><span class="st">/rag ingest /path/to/docs/</span></span>
+<span id="cb46-5"><a href="#cb46-5" aria-hidden="true" tabindex="-1"></a><span class="st">/rag on</span></span>
+<span id="cb46-6"><a href="#cb46-6" aria-hidden="true" tabindex="-1"></a><span class="op">EOF</span></span>
+<span id="cb46-7"><a href="#cb46-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-8"><a href="#cb46-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Or use harvey in non-interactive mode</span></span>
+<span id="cb46-9"><a href="#cb46-9" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--batch</span> <span class="at">-c</span> <span class="st">&quot;/rag new test; /rag ingest README.md; /rag query test&quot;</span></span></code></pre></div>
+<h2 id="reference">Reference</h2>
+<h3 id="related-files">Related Files</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/rag_support.go</code></td>
+<td>Core RAG implementation</td>
+</tr>
+<tr>
+<td><code>harvey/config.go</code></td>
+<td>RAG configuration types</td>
+</tr>
+<tr>
+<td><code>harvey/commands.go</code></td>
+<td>RAG command handlers</td>
+</tr>
+<tr>
+<td><code>harvey/helptext.go</code></td>
+<td>RAG help text</td>
+</tr>
+<tr>
+<td><code>agents/harvey.yaml</code></td>
+<td>RAG store configurations</td>
+</tr>
+</tbody>
+</table>
+<h3 id="related-skills">Related Skills</h3>
+<table>
+<colgroup>
+<col style="width: 35%" />
+<col style="width: 65%" />
+</colgroup>
+<thead>
+<tr>
+<th>Skill</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fountain-analysis</code></td>
+<td>Analyze session files, including RAG usage patterns</td>
+</tr>
+<tr>
+<td><code>review-knowledge-base</code></td>
+<td>Review and analyze knowledge base content</td>
+</tr>
+<tr>
+<td><code>update-knowledge-base</code></td>
+<td>Update knowledge base with session content</td>
+</tr>
+</tbody>
+</table>
+<h3 id="external-resources">External Resources</h3>
+<ul>
+<li><a href="https://ollama.ai/library">Ollama Embedding Models</a> —
+Official model library</li>
+<li><a href="https://fountain.io">Fountain Format</a> — Session file
+format specification</li>
+<li><a href="https://huggingface.co/papers/2212.04355">MTEB
+Benchmark</a> — Massive Text Embedding Benchmark</li>
+<li><a href="https://sqlite.org">SQLite</a> — Database engine used for
+RAG stores</li>
+</ul>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="CONFIGURATION.html">CONFIGURATION.md</a> — Configuration
+file reference</li>
+<li><a href="KNOWLEDGE_BASE.html">KNOWLEDGE_BASE.md</a> — Knowledge base
+documentation</li>
+<li><a href="SESSIONS.html">SESSIONS.md</a> — Session recording and
+Fountain format</li>
+<li><a href="ROUTING.html">ROUTING.md</a> — Remote endpoint routing</li>
+<li><a href="SKILLS.html">SKILLS.md</a> — Agent Skills system</li>
+<li><a href="user_manual.html">user_manual.md</a> — General Harvey
+usage</li>
+<li><a href="getting_started.html">getting_started.md</a> — Quick start
+guide</li>
+</ul>
 </section>
 </body>
 </html>

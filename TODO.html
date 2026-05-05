@@ -60,6 +60,121 @@ tools.</label></li>
 have a help guide</label></li>
 <li><label><input type="checkbox" checked="" />Make sure line editing
 and $EDITOR configuration have help guides</label></li>
+<li><label><input type="checkbox" />Explore adding an LSP service suing
+Go lsp module for intergrating Harvey with an IDE or text
+editor</label></li>
+<li><label><input type="checkbox" />Continue Phase 3 &amp; 4 for
+integrating Go from Mozilla AI GitHub priojects</label></li>
+</ul>
+<h2 id="documentation-tasks">Documentation Tasks</h2>
+<h3 id="priority-1-create-missing-documentation-files">Priority 1:
+Create Missing Documentation Files</h3>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><strong>CONFIGURATION.md</strong> - Document all
+configuration files and options (harvey.yaml, routes.json)</label></li>
+<li><label><input type="checkbox"
+checked="" /><strong>SKILLS.md</strong> - Skills system deep dive
+(SKILL.md format, discovery paths, compiled skills, triggers, skill
+wizard)</label></li>
+<li><label><input type="checkbox"
+checked="" /><strong>ROUTING.md</strong> - Remote endpoint routing
+(<span class="citation" data-cites="mention">@mention</span> syntax,
+endpoint types, configuration)</label></li>
+<li><label><input type="checkbox"
+checked="" /><strong>KNOWLEDGE_BASE.md</strong> - KB schema, FTS5
+search, projects/observations/concepts model</label></li>
+<li><label><input type="checkbox"
+checked="" /><strong>SESSIONS.md</strong> - Session recording and
+Fountain format specification</label></li>
+</ul>
+<h3 id="priority-2-expand-existing-documentation">Priority 2: Expand
+Existing Documentation</h3>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><strong>Using_RAGs_with_Harvey.md</strong> - Expand from
+brief overview to comprehensive guide (borrow content from
+RAG_Support_Design.md)</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Add testing
+section</strong> to user_manual.md or create TESTING.md (created
+TESTING.md)</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Update
+INSTALL.md</strong> - Fix URLs (Laboratory.github.io →
+rsdoiel.github.io), remove publicai.co references (will be regenerated
+by cmt)</label></li>
+</ul>
+<h3 id="priority-3-improve-go-code-documentation">Priority 3: Improve Go
+Code Documentation</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Add package-level docs to
+model_cache.go</label></li>
+<li><label><input type="checkbox" checked="" />Add package-level docs to
+ollama.go</label></li>
+<li><label><input type="checkbox" checked="" />Add package-level docs to
+route_persist.go</label></li>
+<li><label><input type="checkbox" checked="" />Add package-level docs to
+skill_compile.go</label></li>
+<li><label><input type="checkbox" checked="" />Add package-level docs to
+skill_dispatch.go</label></li>
+<li><label><input type="checkbox" checked="" />Add package-level docs to
+skill_wizard.go</label></li>
+<li><label><input type="checkbox" checked="" />recorder.go — Already has
+package-level docs</label></li>
+<li><label><input type="checkbox" checked="" />sessions_files.go —
+Already has package-level docs</label></li>
+<li><label><input type="checkbox" checked="" />Add function-level docs
+to cmdOllama</label></li>
+<li><label><input type="checkbox" checked="" />Add function-level docs
+to cmdKB</label></li>
+<li><label><input type="checkbox" checked="" />Add function-level docs
+to cmdRag</label></li>
+<li><label><input type="checkbox" checked="" />Add function-level docs
+to cmdRoute</label></li>
+<li><label><input type="checkbox" checked="" />Add function-level docs
+to cmdRecord</label></li>
+<li><label><input type="checkbox" checked="" />Add function-level docs
+to cmdSession</label></li>
+<li><label><input type="checkbox" checked="" />Add function-level docs
+to cmdSkill</label></li>
+<li><label><input type="checkbox" checked="" />Document
+workspaceFileTree in harvey.go</label></li>
+<li><label><input type="checkbox" checked="" />Document
+workspaceGitStatus in harvey.go</label></li>
+<li><label><input type="checkbox" checked="" />ExpandDynamicSections
+already has documentation</label></li>
+<li><label><input type="checkbox" checked="" />LLMClient interface
+already has examples in documentation</label></li>
+<li><label><input type="checkbox" checked="" />Embedder interface
+already has examples in documentation</label></li>
+</ul>
+<h3 id="priority-4-fix-outdated-references">Priority 4: Fix Outdated
+References</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Search/replace
+<code>Laboratory.github.io</code> → <code>rsdoiel.github.io</code>
+across all files</label></li>
+<li><label><input type="checkbox" checked="" />Remove or disclaim
+publicai.co references (getting_started.md, user_manual.md,
+codemeta.json)</label></li>
+<li><label><input type="checkbox" checked="" />Update
+<code>.harvey/</code> → <code>agents/</code> directory references
+(workspace.go, route_persist.go, skills.go, tier2_test.go, ROUTING.md,
+CONFIGURATION.md, ARCHITECTURE.md, SESSIONS.md)</label></li>
+<li><label><input type="checkbox" checked="" />Fix HTML entities in
+about.md (&gt;= → &gt;=) — SKIPPED: cmt-generated file</label></li>
+</ul>
+<h3 id="priority-5-organize-documentation">Priority 5: Organize
+Documentation</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create <code>docs/</code>
+directory to organize documentation</label></li>
+<li><label><input type="checkbox" checked="" />Create
+<code>DOCUMENTATION.md</code> that lists all docs with
+descriptions</label></li>
+<li><label><input type="checkbox" checked="" />Ensure all docs are
+linked from README.md or user_manual.md</label></li>
+<li><label><input type="checkbox" checked="" />Add MODEL_CACHE.md -
+Document capability probing, cache database, model metadata</label></li>
 </ul>
 </section>
 </body>

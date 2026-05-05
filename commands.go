@@ -13,7 +13,104 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// sensitiveCmdEnvVars contains environment variable names that should be
+// EXCLUDED from child processes to prevent sensitive data leakage.
+var sensitiveCmdEnvVars = []string{
+	"ANTHROPIC_API_KEY",
+	"DEEPSEEK_API_KEY",
+	"GEMINI_API_KEY",
+	"GOOGLE_API_KEY",
+	"MISTRAL_API_KEY",
+	"OPENAI_API_KEY",
+}
+
+// safeCmdEnvPrefixes contains environment variable name prefixes that are
+// safe to pass to child processes.
+var safeCmdEnvPrefixes = []string{
+	"PATH",
+	"HOME",
+	"USER",
+	"USERNAME",
+	"SHELL",
+	"TERM",
+	"LANG",
+	"LC_",
+	"PWD",
+	"OLLAMA",
+	"HARVEY",
+}
+
+/** filterCommandEnvironment returns a filtered copy of the environment for
+ * commands executed via /run. Sensitive variables (API keys) are explicitly
+ * excluded, and only safe variables are included.
+ *
+ * Parameters:
+ *   env ([]string) — the original environment in "KEY=VALUE" format.
+ *
+ * Returns:
+ *   []string — filtered environment with only safe variables.
+ */
+func filterCommandEnvironment(env []string) []string {
+	sensitiveMap := make(map[string]bool)
+	for _, v := range sensitiveCmdEnvVars {
+		sensitiveMap[v] = true
+	}
+
+	safeMap := make(map[string]bool)
+	for _, p := range safeCmdEnvPrefixes {
+		safeMap[p] = true
+	}
+
+	var result []string
+	for _, e := range env {
+		idx := strings.IndexByte(e, '=')
+		if idx == -1 {
+			continue
+		}
+		varName := e[:idx]
+
+		// Exclude sensitive variables
+		if sensitiveMap[varName] {
+			continue
+		}
+
+		// Include safe variables
+		isSafe := false
+		for prefix := range safeMap {
+			if varName == prefix || strings.HasPrefix(varName, prefix+"_") {
+				isSafe = true
+				break
+			}
+		}
+		// Also allow HARVEY_* and OLLAMA_* variables
+		if strings.HasPrefix(varName, "HARVEY_") || strings.HasPrefix(varName, "OLLAMA_") {
+			isSafe = true
+		}
+
+		if isSafe {
+			result = append(result, e)
+		}
+	}
+
+	// Always ensure PATH is set
+	pathFound := false
+	for _, e := range result {
+		if strings.HasPrefix(e, "PATH=") {
+			pathFound = true
+			break
+		}
+	}
+	if !pathFound {
+		if path := os.Getenv("PATH"); path != "" {
+			result = append(result, "PATH="+path)
+		}
+	}
+
+	return result
+}
 
 /** Command describes a slash command available in the Harvey REPL.
  *
@@ -134,6 +231,21 @@ func (a *Agent) registerCommands() {
 			Description: "Manage pinned context that survives /clear",
 			Handler:     cmdContext,
 		},
+		"audit": {
+			Usage:       "/audit <show [n]|clear|status>",
+			Description: "View or clear the audit log of security-relevant events",
+			Handler:     cmdAudit,
+		},
+		"permissions": {
+			Usage:       "/permissions <list [PATH]|set PATH PERMS|reset>",
+			Description: "Manage workspace file permissions (read, write, exec, delete)",
+			Handler:     cmdPermissions,
+		},
+		"security": {
+			Usage:       "/security status",
+			Description: "Show security settings status (safe mode, permissions, audit)",
+			Handler:     cmdSecurity,
+		},
 		"record": {
 			Usage:       "/record <start [FILE]|stop|status>",
 			Description: "Record session exchanges to a Markdown file",
@@ -158,6 +270,11 @@ func (a *Agent) registerCommands() {
 			Usage:       "/route <add NAME URL [MODEL] | rm NAME | list | on | off | status>",
 			Description: "Register remote LLM endpoints and dispatch to them with @name in prompts",
 			Handler:     cmdRoute,
+		},
+		"safemode": {
+			Usage:       "/safemode <on|off|status|allow CMD|deny CMD|reset>",
+			Description: "Enable/disable safe mode or manage the command allowlist",
+			Handler:     cmdSafeMode,
 		},
 		"exit": {
 			Usage:       "/exit",
@@ -396,6 +513,33 @@ func cmdClear(a *Agent, _ []string, out io.Writer) error {
 	return nil
 }
 
+/** cmdRoute handles remote endpoint routing configuration for multi-model
+ * workflows. Routes allow dispatching prompts to remote LLM endpoints via
+ * @mention syntax (e.g., @claude, @mistral) or explicitly via /route.
+ *
+ * Subcommands:
+ *   add NAME URL [MODEL]    — Register a new remote endpoint
+ *   rm NAME                 — Remove a registered endpoint
+ *   list                    — List all registered endpoints
+ *   on                      — Enable routing globally
+ *   off                     — Disable routing globally
+ *   status                  — Show routing status and endpoints
+ *
+ * Supported endpoint types:
+ *   Local:  ollama://host:port, llamafile://host:port, llamacpp://host:port
+ *   Cloud:  anthropic://, deepseek://, gemini://, mistral://, openai://
+ *
+ * Cloud providers read API keys from environment variables:
+ *   ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, OPENAI_API_KEY
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with route registry.
+ *   args ([]string)  — Command arguments from user input.
+ *   out  (io.Writer) — Destination for command output.
+ *
+ * Returns:
+ *   error — On command execution failure.
+ */
 func cmdRoute(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return routeStatus(a, out)
@@ -444,7 +588,7 @@ func routeAdd(a *Agent, args []string, out io.Writer) error {
 	}
 	ep := &RouteEndpoint{Name: name, URL: rawURL, Model: model, Kind: kind}
 	a.Routes.Add(ep)
-	if saveErr := SaveRouteConfig(a.Routes); saveErr != nil {
+	if saveErr := SaveRouteConfig(a.Workspace, a.Routes); saveErr != nil {
 		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
 	}
 	fmt.Fprintf(out, "  Added: @%s → %s", name, rawURL)
@@ -461,7 +605,7 @@ func routeRemove(a *Agent, name string, out io.Writer) error {
 		return nil
 	}
 	a.Routes.Remove(name)
-	if saveErr := SaveRouteConfig(a.Routes); saveErr != nil {
+	if saveErr := SaveRouteConfig(a.Workspace, a.Routes); saveErr != nil {
 		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
 	}
 	fmt.Fprintf(out, "  Removed: @%s\n", name)
@@ -499,7 +643,7 @@ func routeList(a *Agent, out io.Writer) error {
 func routeOn(a *Agent, out io.Writer) error {
 	a.Routes.Enabled = true
 	a.Config.RoutingEnabled = true
-	if saveErr := SaveRouteConfig(a.Routes); saveErr != nil {
+	if saveErr := SaveRouteConfig(a.Workspace, a.Routes); saveErr != nil {
 		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
 	}
 	fmt.Fprintln(out, "  Routing on. Prefix your prompt with @name to dispatch to a registered endpoint.")
@@ -509,7 +653,7 @@ func routeOn(a *Agent, out io.Writer) error {
 func routeOff(a *Agent, out io.Writer) error {
 	a.Routes.Enabled = false
 	a.Config.RoutingEnabled = false
-	if saveErr := SaveRouteConfig(a.Routes); saveErr != nil {
+	if saveErr := SaveRouteConfig(a.Workspace, a.Routes); saveErr != nil {
 		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
 	}
 	fmt.Fprintln(out, "  Routing off. @mentions will be rejected until you run /route on.")
@@ -532,6 +676,115 @@ func routeStatus(a *Agent, out io.Writer) error {
 	} else {
 		fmt.Fprintf(out, "  Endpoints: %d registered (use /route list for details)\n", count)
 	}
+	return nil
+}
+
+// ─── /safemode ──────────────────────────────────────────────────────────────
+
+/** cmdSafeMode handles safe mode configuration for restricting which commands
+ * can be executed via the ! prefix or /run command. Safe mode provides a
+ * command allowlist to prevent execution of potentially dangerous commands.
+ *
+ * Subcommands:
+ *   on       — Enable safe mode (restricts commands to allowlist)
+ *   off      — Disable safe mode (all commands allowed)
+ *   status  — Show current safe mode status and allowlist
+ *   allow CMD — Add a command to the allowlist
+ *   deny CMD  — Remove a command from the allowlist
+ *   reset    — Reset allowlist to defaults
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with configuration.
+ *   args ([]string)  — Command arguments from user input.
+ *   out  (io.Writer) — Destination for command output.
+ *
+ * Returns:
+ *   error — On command execution failure.
+ */
+func cmdSafeMode(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /safemode <on|off|status|allow CMD|deny CMD|reset>")
+		return nil
+	}
+
+	switch strings.ToLower(args[0]) {
+	case "on":
+		return safeModeOn(a, out)
+	case "off":
+		return safeModeOff(a, out)
+	case "status":
+		return safeModeStatus(a, out)
+	case "allow":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /safemode allow CMD")
+			return nil
+		}
+		return safeModeAllow(a, args[1], out)
+	case "deny":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /safemode deny CMD")
+			return nil
+		}
+		return safeModeDeny(a, args[1], out)
+	case "reset":
+		return safeModeReset(a, out)
+	default:
+		fmt.Fprintf(out, "Unknown safemode subcommand: %q\n", args[0])
+		fmt.Fprintln(out, "Usage: /safemode <on|off|status|allow CMD|deny CMD|reset>")
+	}
+	return nil
+}
+
+func safeModeOn(a *Agent, out io.Writer) error {
+	a.Config.SafeMode = true
+	fmt.Fprintln(out, "  Safe mode enabled. Only allowed commands can be executed.")
+	fmt.Fprintf(out, "  Allowed: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
+	return nil
+}
+
+func safeModeOff(a *Agent, out io.Writer) error {
+	a.Config.SafeMode = false
+	fmt.Fprintln(out, "  Safe mode disabled. All commands are allowed.")
+	return nil
+}
+
+func safeModeStatus(a *Agent, out io.Writer) error {
+	if a.Config.SafeMode {
+		fmt.Fprintln(out, "  Safe mode: on")
+		fmt.Fprintf(out, "  Allowed commands (%d): %s\n", len(a.Config.AllowedCommands), strings.Join(a.Config.AllowedCommands, ", "))
+	} else {
+		fmt.Fprintln(out, "  Safe mode: off")
+		fmt.Fprintln(out, "  All commands are allowed.")
+	}
+	return nil
+}
+
+func safeModeAllow(a *Agent, cmd string, out io.Writer) error {
+	oldLen := len(a.Config.AllowedCommands)
+	a.Config.AddAllowedCommand(cmd)
+	if len(a.Config.AllowedCommands) > oldLen {
+		fmt.Fprintf(out, "  Added %q to allowlist.\n", cmd)
+	} else {
+		fmt.Fprintf(out, "  %q is already in the allowlist.\n", cmd)
+	}
+	return nil
+}
+
+func safeModeDeny(a *Agent, cmd string, out io.Writer) error {
+	oldLen := len(a.Config.AllowedCommands)
+	a.Config.RemoveAllowedCommand(cmd)
+	if len(a.Config.AllowedCommands) < oldLen {
+		fmt.Fprintf(out, "  Removed %q from allowlist.\n", cmd)
+	} else {
+		fmt.Fprintf(out, "  %q is not in the allowlist.\n", cmd)
+	}
+	return nil
+}
+
+func safeModeReset(a *Agent, out io.Writer) error {
+	a.Config.ResetAllowedCommands()
+	fmt.Fprintln(out, "  Allowlist reset to defaults.")
+	fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
 	return nil
 }
 
@@ -656,6 +909,34 @@ func truncate(s string, n int) string {
 	return string(runes[:n-1]) + "…"
 }
 
+/** cmdOllama handles Ollama server and model management commands.
+ *
+ * Subcommands:
+ *   start     — Launch ollama serve as a background process
+ *   stop      — Print instructions to stop Ollama via system service manager
+ *   status    — Check if Ollama server is running
+ *   list      — List all installed models with metadata
+ *   ps        — Show running models (via ollama ps)
+ *   run       — Start a model in interactive mode (detached from Harvey)
+ *   pull      — Download a model from Ollama registry
+ *   push      — Upload a model to Ollama registry
+ *   show      — Display detailed model information
+ *   create    — Create a model from a Modelfile
+ *   cp        — Copy a model to a new name
+ *   rm        — Remove a model from the local store
+ *   probe     — Test model capabilities (tools, embeddings)
+ *   logs      — Show Ollama server logs
+ *   use       — Switch to a different model
+ *   env       — Display active Ollama environment variables
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with configuration.
+ *   args ([]string)  — Command arguments from user input.
+ *   out  (io.Writer) — Destination for command output.
+ *
+ * Returns:
+ *   error — On command execution failure.
+ */
 func cmdOllama(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		fmt.Fprintln(out, "Usage: /ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL|--all]|logs|use MODEL|env>")
@@ -984,6 +1265,30 @@ func ollamaFormatCtx(tokens int) string {
 
 // ─── /kb ─────────────────────────────────────────────────────────────────────
 
+/** cmdKB handles Knowledge Base (KB) commands for managing projects,
+ * observations, concepts, and full-text search.
+ *
+ * Subcommands:
+ *   status    — Show summary of all projects and recent observations
+ *   search    — Full-text search across all KB content
+ *   inject   — Inject KB content into conversation context
+ *   project  — Manage projects (add, list, info, status)
+ *   observe  — Manage observations (add, list)
+ *   concept  — Manage concepts (add, list, info)
+ *   link     — Link observations/concepts to projects/concepts
+ *
+ * The knowledge base is a SQLite3 database storing projects, observations,
+ * and concepts with FTS5 full-text search. Commands delegate to specialized
+ * handlers (kbStatus, kbSearch, kbProject, etc.).
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with active KB connection.
+ *   args ([]string)  — Command arguments from user input.
+ *   out  (io.Writer) — Destination for command output.
+ *
+ * Returns:
+ *   error — On command execution failure.
+ */
 func cmdKB(a *Agent, args []string, out io.Writer) error {
 	if a.KB == nil {
 		fmt.Fprintln(out, "Knowledge base is not open. This should not happen — please restart Harvey.")
@@ -1222,6 +1527,30 @@ func kbConcept(a *Agent, args []string, out io.Writer) error {
 
 // ─── /record ─────────────────────────────────────────────────────────────────
 
+/** cmdRecord manages session recording to Fountain screenplay files. Harvey
+ * records all conversations to .spmd files for auditability and resumption.
+ *
+ * Subcommands:
+ *   start [FILE]  — Begin recording to specified file (or auto-generated path)
+ *   stop         — Stop current recording session
+ *   status       — Show current recording status and file path
+ *
+ * Recording is enabled by default on startup. Sessions are saved to
+ * harvey/sessions/ by default, with filenames like:
+ *   harvey-session-YYYYMMDD-HHMMSS.spmd
+ *
+ * The Fountain format (.spmd) captures all chat turns, file operations,
+ * shell commands, and skill executions with proper character attribution
+ * (HARVEY, USER, MODEL_NAME, etc.).
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with recording state.
+ *   args ([]string)  — Command arguments from user input.
+ *   out  (io.Writer) — Destination for command output.
+ *
+ * Returns:
+ *   error — On command execution failure.
+ */
 func cmdRecord(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		fmt.Fprintln(out, "Usage: /record <start [FILE]|stop|status>")
@@ -1333,8 +1662,14 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 	for _, rel := range args {
 		data, err := a.Workspace.ReadFile(rel)
 		if err != nil {
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionFileRead, rel, StatusError)
+			}
 			fmt.Fprintf(out, "  ✗ %s: %v\n", rel, err)
 			continue
+		}
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionFileRead, rel, StatusSuccess)
 		}
 		fmt.Fprintf(out, "  ✓ %s (%d bytes)\n", rel, len(data))
 		sb.WriteString("\n```" + rel + "\n")
@@ -1389,7 +1724,13 @@ func cmdWrite(a *Agent, args []string, out io.Writer) error {
 	}
 
 	if err := a.Workspace.WriteFile(dest, []byte(content), 0o644); err != nil {
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionFileWrite, dest, StatusError)
+		}
 		return fmt.Errorf("write: %w", err)
+	}
+	if a.AuditBuffer != nil {
+		a.AuditBuffer.Log(ActionFileWrite, dest, StatusSuccess)
 	}
 	source := "full reply"
 	if ok {
@@ -1431,6 +1772,9 @@ const maxRunOutput = 8000
 // cmdRun executes a shell command inside the workspace root, captures combined
 // stdout+stderr, and injects the result into the conversation as a user-role
 // context message.
+//
+// Security: Uses direct exec (not shell) and filters environment to prevent
+// sensitive data leakage. Uses a timeout context to prevent hanging.
 func cmdRun(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
 		fmt.Fprintln(out, "No workspace initialised.")
@@ -1441,11 +1785,33 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 		return nil
 	}
 
+	// Safe mode check: verify command is in allowlist
+	if a.Config.SafeMode && !a.Config.IsCommandAllowed(args[0]) {
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionCommand, strings.Join(args, " "), StatusDenied)
+		}
+		fmt.Fprintf(out, yellow("  Command %q is not allowed in safe mode.\n"), args[0])
+		fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
+		fmt.Fprintln(out, "  Use /safemode off to disable, or /safemode allow CMD to add it.")
+		return nil
+	}
+
+	// Log allowed command execution
+	if a.AuditBuffer != nil {
+		a.AuditBuffer.Log(ActionCommand, strings.Join(args, " "), StatusAllowed)
+	}
+
 	cmdLine := strings.Join(args, " ")
 	fmt.Fprintf(out, "  $ %s\n", cmdLine)
 
-	cmd := exec.Command(args[0], args[1:]...)
+	// Use a context with timeout to prevent hanging commands
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = a.Workspace.Root
+	// Filter environment to prevent sensitive data leakage
+	cmd.Env = filterCommandEnvironment(os.Environ())
 	raw, _ := cmd.CombinedOutput() // error reflected via exit code note below
 
 	truncated := false
@@ -1614,6 +1980,8 @@ func cmdGit(a *Agent, args []string, out io.Writer) error {
 
 	cmd := exec.Command("git", gitArgs...)
 	cmd.Dir = a.Workspace.Root
+	// Filter environment to prevent sensitive data leakage
+	cmd.Env = filterCommandEnvironment(os.Environ())
 	raw, _ := cmd.CombinedOutput()
 
 	if len(raw) == 0 {
@@ -1910,6 +2278,32 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
  *   /session continue harvey/sessions/harvey-session-20260430.spmd
  *   /session replay old.spmd new.spmd
  */
+/** cmdSession handles session file operations for loading and replaying
+ * recorded conversations. Session files use the Fountain screenplay format
+ * (.spmd extension) and capture complete conversation history.
+ *
+ * Subcommands:
+ *   continue FILE    — Load a session file's chat history and continue
+ *   replay FILE [OUT] — Re-send all user prompts to current model, save to new file
+ *
+ * Continue mode loads the conversation history into the current session's
+ * context, allowing you to pick up where you left off with full context intact.
+ * The model used in the original session is automatically selected if available.
+ *
+ * Replay mode re-sends each user message from the source session to the
+ * currently active LLM backend, capturing fresh responses in a new session file.
+ * This is useful for comparing responses from different models or after
+ * model updates. Tagged code blocks in replies are applied with backup
+ * protection.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with workspace.
+ *   args ([]string)  — Command arguments from user input.
+ *   out  (io.Writer) — Destination for command output.
+ *
+ * Returns:
+ *   error — On command execution failure (non-fatal errors are printed to out).
+ */
 func cmdSession(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		fmt.Fprintln(out, "Usage: /session <continue FILE|replay FILE [OUTPUT]>")
@@ -1973,6 +2367,34 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
  *   /skill list
  *   /skill load go-review
  *   /skill info go-review
+ */
+/** cmdSkill handles Agent Skills management and execution. Skills are
+ * structured tasks defined in SKILL.md files that can be loaded into
+ * context, executed directly, or triggered automatically.
+ *
+ * Subcommands:
+ *   list    — List all discovered skills in the skills directory
+ *   load NAME — Load a skill's instructions into the conversation context
+ *   info NAME — Show metadata (description, version, author, etc.) for a skill
+ *   status  — Show skills directory paths and loaded skill status
+ *   new     — Create a new skill interactively via the skill wizard
+ *   run NAME — Execute a compiled skill directly
+ *
+ * Skills are discovered from the agents/skills/ directory tree on startup.
+ * Each skill is defined in a SKILL.md file with YAML frontmatter containing
+ * metadata (name, description, trigger, etc.) and Markdown body containing
+ * instructions.
+ *
+ * Skills can be triggered automatically when a user's prompt matches the
+ * skill's trigger pattern (see skill_dispatch.go for trigger matching logic).
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with skills catalog.
+ *   args ([]string)  — Command arguments from user input.
+ *   out  (io.Writer) — Destination for command output.
+ *
+ * Returns:
+ *   error — On command execution failure.
  */
 func cmdSkill(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 || strings.ToLower(args[0]) == "list" {
@@ -2368,6 +2790,8 @@ func promptAction(r *bufio.Reader, out io.Writer, header, preview string) action
 
 // cmdRunCtx is like cmdRun but uses a context so the spawned process can be
 // cancelled (e.g. via Ctrl+C). Output is injected into conversation context.
+//
+// Security: Filters environment to prevent sensitive data leakage.
 func cmdRunCtx(a *Agent, ctx context.Context, args []string, out io.Writer) error {
 	if a.Workspace == nil {
 		fmt.Fprintln(out, "No workspace initialised.")
@@ -2382,6 +2806,8 @@ func cmdRunCtx(a *Agent, ctx context.Context, args []string, out io.Writer) erro
 
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = a.Workspace.Root
+	// Filter environment to prevent sensitive data leakage
+	cmd.Env = filterCommandEnvironment(os.Environ())
 	raw, _ := cmd.CombinedOutput()
 
 	truncated := false
@@ -2489,6 +2915,34 @@ func (a *Agent) logAction(kind, target string, choice actionChoice, outcome stri
 
 // ─── /rag ────────────────────────────────────────────────────────────────────
 
+/** cmdRag handles Retrieval-Augmented Generation (RAG) store management and
+ * context injection. RAG allows Harvey to retrieve relevant document snippets
+ * and inject them into the conversation context before each prompt.
+ *
+ * Subcommands:
+ *   status    — Show active store and all registered stores
+ *   list      — List all registered RAG stores
+ *   on        — Enable RAG context injection for current session
+ *   off       — Disable RAG context injection for current session
+ *   setup     — Create a new RAG store (interactive or with defaults)
+ *   new       — Create a named RAG store with interactive setup
+ *   switch    — Activate a different RAG store
+ *   drop      — Remove a store from the registry
+ *   ingest    — Ingest files/directories into the active store
+ *   query     — Query the active store and show matching chunks
+ *
+ * RAG stores are SQLite databases bound to a specific embedding model.
+ * Only the active store is kept open in memory. Each store can be queried
+ * independently and switched as needed for different projects or domains.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with RAG configuration.
+ *   args ([]string)  — Command arguments from user input.
+ *   out  (io.Writer) — Destination for command output.
+ *
+ * Returns:
+ *   error — On command execution failure.
+ */
 func cmdRag(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return ragStatus(a, out)

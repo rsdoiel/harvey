@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-fountain-format-specification">Harvey Fountain Format
+Specification</h1>
+<p><em>Version 1.0 — Multi-model character attribution for Harvey
+session recordings</em></p>
+<hr />
+<h2 id="overview">Overview</h2>
+<p>Harvey uses the <strong><a
+href="https://fountain.io">Fountain</a></strong> screenplay format for
+session recordings, stored with <code>.spmd</code> (Harvey-native) or
+<code>.fountain</code> (compatible with other tools) extensions.
+Fountain provides a plain-text, human-readable, and machine-parseable
+format that serves as a <strong>lingua franca</strong> between Harvey,
+Claude Code, and other LLM-based agents.</p>
+<h3 id="why-fountain">Why Fountain?</h3>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Fountain Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Human-readable</td>
+<td>Plain text, familiar screenplay format</td>
+</tr>
+<tr>
+<td>Machine-parseable</td>
+<td>Strict structure, regex-friendly</td>
+</tr>
+<tr>
+<td>Version-control friendly</td>
+<td>Text files, good diff/merge behavior</td>
+</tr>
+<tr>
+<td>Multi-participant</td>
+<td>Natural character/dialogue model</td>
+</tr>
+<tr>
+<td>Extensible</td>
+<td>Scene descriptions, parenthetical notes</td>
+</tr>
+<tr>
+<td>Cross-agent compatible</td>
+<td>Open format, shared with Claude Code</td>
+</tr>
+</tbody>
+</table>
+<h3 id="file-extensions">File Extensions</h3>
+<table>
+<colgroup>
+<col style="width: 36%" />
+<col style="width: 40%" />
+<col style="width: 23%" />
+</colgroup>
+<thead>
+<tr>
+<th>Extension</th>
+<th>Created By</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.spmd</code></td>
+<td>Harvey</td>
+<td>Primary format for new recordings</td>
+</tr>
+<tr>
+<td><code>.fountain</code></td>
+<td>Any Fountain-compatible tool</td>
+<td>Accepted by Harvey for reading</td>
+</tr>
+</tbody>
+</table>
+<h2 id="character-model">Character Model</h2>
+<p>Harvey Fountain sessions treat each participant (human, Harvey agent,
+or LLM) as a <strong>distinct character</strong> in a screenplay.
+Character names follow specific conventions that reveal their identity
+and role.</p>
+<h3 id="character-types">Character Types</h3>
+<table>
+<colgroup>
+<col style="width: 13%" />
+<col style="width: 43%" />
+<col style="width: 20%" />
+<col style="width: 22%" />
+</colgroup>
+<thead>
+<tr>
+<th>Type</th>
+<th>Naming Convention</th>
+<th>Example</th>
+<th>Identity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Human User</td>
+<td>ALL-CAPS (matches <code>Author:</code>)</td>
+<td>RSDOIEL</td>
+<td>Human participant</td>
+</tr>
+<tr>
+<td>Harvey Agent</td>
+<td><strong>HARVEY</strong></td>
+<td>HARVEY</td>
+<td>Harvey using local Ollama/Llamafile</td>
+</tr>
+<tr>
+<td>Routed Ollama</td>
+<td><strong>ROUTE_NAME</strong> (ALL-CAPS)</td>
+<td>PI2, NODE1, JULIE</td>
+<td>Remote Ollama via <code>/route add</code></td>
+</tr>
+<tr>
+<td>Cloud Model</td>
+<td><strong>MODEL_NAME</strong> (ALL-CAPS)</td>
+<td>MISTRAL, CLAUDE, GEMMA4</td>
+<td>Cloud API or forwarded</td>
+</tr>
+</tbody>
+</table>
+<h3 id="character-identity-rules">Character Identity Rules</h3>
+<p><strong>HARVEY</strong> represents Harvey when: - Using its locally
+configured Ollama backend - Using its locally configured Llamafile
+backend - The active model is noted in the scene description:
+<code>Model: llama3:latest</code></p>
+<p><strong>ROUTE_NAME</strong> represents a remote Ollama instance when:
+- Defined via <code>/route add NAME URL</code> (e.g.,
+<code>/route add pi2 ollama://192.168.1.2:11434</code>) - Harvey
+forwards to it: <code>HARVEY\nForwarding to PI2.</code> - The route
+appears as a character: <code>PI2\nResponse...</code></p>
+<p><strong>MODEL_NAME</strong> represents a cloud/remote model when: -
+User uses <span class="citation" data-cites="mention">@mention</span>:
+<code>RSDOIEL\n@mistral explain this</code> - Harvey forwards:
+<code>HARVEY\nForwarding to MISTRAL.</code> - Model responds:
+<code>MISTRAL\nExplanation...</code> - OR in EXT. scenes (direct
+conversation without Harvey)</p>
+<h3 id="character-naming-conventions">Character Naming Conventions</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Matches</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>^[A-Z]{2,}$</code></td>
+<td>Cloud model names</td>
+<td>CLAUDE, MISTRAL, LLAMA3</td>
+</tr>
+<tr>
+<td><code>^[A-Z][a-zA-Z0-9_-]*$</code></td>
+<td>Mixed case (rare)</td>
+<td>Julie (if configured as route)</td>
+</tr>
+<tr>
+<td><code>^HARVEY$</code></td>
+<td>Harvey agent</td>
+<td>HARVEY</td>
+</tr>
+<tr>
+<td>Author name (from title)</td>
+<td>Human user</td>
+<td>RSDOIEL</td>
+</tr>
+</tbody>
+</table>
+<h2 id="scene-types">Scene Types</h2>
+<p>Harvey uses two scene type prefixes from Fountain:
+<strong>INT.</strong> (Interior) and <strong>EXT.</strong> (Exterior).
+These distinguish whether Harvey is involved in the conversation.</p>
+<h3 id="int.-interior-scenes-harvey-involved">INT. — Interior Scenes
+(Harvey Involved)</h3>
+<p>Harvey is acting as the <strong>agent/orchestrator</strong> in these
+scenes. The scene heading lists Harvey and the human participant.</p>
+<p><strong>Format:</strong></p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+
+RSDOIEL
+User prompt here...
+
+HARVEY
+Harvey&#39;s response (local model) or forwarding...</code></pre>
+<p><strong>Use cases:</strong> - Harvey responding with its local
+Ollama/Llamafile model - Harvey forwarding to routed Ollama endpoints -
+Harvey forwarding to cloud models via <span class="citation"
+data-cites="mention">@mention</span> - Agent actions (file writes) -
+Skill activations</p>
+<h3 id="ext.-exterior-scenes-direct-model-human">EXT. — Exterior Scenes
+(Direct Model-Human)</h3>
+<p>Direct conversation between a model and human <strong>without
+Harvey’s intermediation</strong>. Harvey is not involved in these
+scenes.</p>
+<p><strong>Format:</strong></p>
+<pre><code>EXT. MISTRAL AND RSDOIEL 2026-05-04 18:30:00
+
+MISTRAL and RSDOIEL in direct conversation. Workspace: /home/user/project.
+
+RSDOIEL
+Direct prompt to Mistral...
+
+MISTRAL
+Mistral&#39;s direct response...</code></pre>
+<p><strong>Use cases:</strong> - Direct API conversations (bypassing
+Harvey) - Hypothetical: Future direct model access</p>
+<h2 id="scene-structure">Scene Structure</h2>
+<h3 id="title-block-before-fade-in">Title Block (Before FADE IN:)</h3>
+<p>The title block contains metadata about the session. All fields are
+optional except <code>Title:</code> and <code>Author:</code>.</p>
+<p><strong>Fields:</strong></p>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 25%" />
+<col style="width: 23%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Example</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Title:</code></td>
+<td>Yes</td>
+<td><code>Harvey Session</code></td>
+<td>Session title</td>
+</tr>
+<tr>
+<td><code>Credit:</code></td>
+<td>No</td>
+<td><code>Recorded by Harvey</code></td>
+<td>Recording application</td>
+</tr>
+<tr>
+<td><code>Author:</code></td>
+<td>Yes</td>
+<td><code>RSDOIEL</code></td>
+<td>Human participant (ALL-CAPS)</td>
+</tr>
+<tr>
+<td><code>Date:</code></td>
+<td>No</td>
+<td><code>2026-05-04 18:30:00</code></td>
+<td>Session start timestamp</td>
+</tr>
+<tr>
+<td><code>Draft date:</code></td>
+<td>No</td>
+<td><code>2026-05-04</code></td>
+<td>Date only</td>
+</tr>
+<tr>
+<td><code>Characters:</code></td>
+<td>No</td>
+<td><code>RSDOIEL, HARVEY, MISTRAL</code></td>
+<td>All characters (summary files only)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<pre><code>Title: Harvey Session - Documentation Review
+Credit: Recorded by Harvey
+Author: RSDOIEL
+Date: 2026-05-04 18:30:00
+Draft date: 2026-05-04
+Characters: RSDOIEL, HARVEY, MISTRAL
+
+FADE IN:</code></pre>
+<p><strong>Note:</strong> The <code>Characters:</code> field is
+typically omitted in <strong>streaming sessions</strong> (since future
+characters are unknown) and added in <strong>summary/analysis
+files</strong> (where all participants are known).</p>
+<h3 id="scene-heading">Scene Heading</h3>
+<p><strong>Format:</strong></p>
+<pre><code>(INT|EXT)\. CHARACTER1 AND CHARACTER2 (TALKING|) TIMESTAMP</code></pre>
+<p><strong>Regex:</strong></p>
+<pre><code>(INT|EXT)\. ([A-Z0-9_-]+) AND ([A-Z0-9_-]+) (TALKING)? (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})</code></pre>
+<p><strong>Examples:</strong></p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+INT. AGENT MODE 2026-05-04 18:35:00
+INT. SKILL FOUNTAIN-ANALYSIS 2026-05-04 18:40:00
+EXT. MISTRAL AND RSDOIEL 2026-05-04 18:45:00</code></pre>
+<h3 id="scene-description">Scene Description</h3>
+<p>The scene description appears between the scene heading and the first
+character/dialogue line. It provides context for the scene.</p>
+<p><strong>Required fields:</strong> -
+<code>Model: &lt;identifier&gt;</code> — The model/route for this
+interaction - <code>Workspace: &lt;path&gt;</code> — The workspace
+directory</p>
+<p><strong>Optional fields:</strong> - Any additional context (e.g.,
+“Connected: Ollama (llama3:latest)”) - Parenthetical notes about <span
+class="citation" data-cites="mentions">@mentions</span>:
+<code>(@modelname mentioned but does not respond)</code></p>
+<p><strong>Examples:</strong></p>
+<pre><code># Harvey-native (local Ollama)
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+
+# Routed Ollama
+Harvey and RSDOIEL are in chat mode. Model: ollama://192.168.1.2:11434. Workspace: /home/user/project.
+
+# With @mention note
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+(@julie mentioned but does not respond)</code></pre>
+<h3 id="dialogue">Dialogue</h3>
+<p>Dialogue consists of <strong>character names</strong> (ALL-CAPS)
+followed by their <strong>lines</strong>. Character names must match the
+names in the scene heading or be introduced via forwarding.</p>
+<p><strong>Format:</strong></p>
+<pre><code>CHARACTER_NAME
+Dialogue line 1
+Dialogue line 2
+
+ANOTHER_CHARACTER
+Response...</code></pre>
+<p><strong>Rules:</strong> - Character names are always ALL-CAPS - Blank
+line separates character from dialogue - Blank line between dialogue
+blocks - Dialogue wraps naturally (no special formatting needed)</p>
+<h3 id="special-syntax">Special Syntax</h3>
+<h4 id="forwarding">Forwarding</h4>
+<p>When Harvey forwards a prompt to another model:</p>
+<pre><code>HARVEY
+Forwarding to MODEL_NAME.
+
+MODEL_NAME
+Response...</code></pre>
+<h4 id="mention"><span class="citation"
+data-cites="Mention">@Mention</span></h4>
+<p>User can direct prompts to specific models:</p>
+<pre><code>RSDOIEL
+@mistral explain this code
+
+HARVEY
+Forwarding to MISTRAL.
+
+MISTRAL
+Explanation...</code></pre>
+<h4 id="file-operations-agent-scenes">File Operations (Agent
+Scenes)</h4>
+<pre><code>HARVEY
+Write path/to/file?
+
+RSDOIEL
+yes
+
+[[write: path/to/file — ok]]
+
+[[write: path/to/other — skipped]]
+
+[[write: path/to/error — error: permission denied]]</code></pre>
+<p>Status values: <code>ok</code>, <code>skipped</code>,
+<code>error: &lt;message&gt;</code></p>
+<h4 id="session-end">Session End</h4>
+<p>Every session file must end with:</p>
+<pre><code>THE END.</code></pre>
+<p>This marker is used by parsers to detect complete sessions.</p>
+<h2 id="model-representation-scenarios">Model Representation
+Scenarios</h2>
+<h3 id="scenario-1-harvey-using-local-ollama">Scenario 1: Harvey Using
+Local Ollama</h3>
+<p>Harvey responds directly using its configured local model.</p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+
+RSDOIEL
+What is the capital of France?
+
+HARVEY
+The capital of France is Paris.</code></pre>
+<p><strong>Character:</strong> HARVEY (Harvey agent with local model)
+<strong>Model:</strong> llama3:latest (from scene description)</p>
+<h3 id="scenario-2-harvey-forwarding-to-routed-ollama">Scenario 2:
+Harvey Forwarding to Routed Ollama</h3>
+<p>Harvey forwards to a remote Ollama instance registered as a
+route.</p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+
+Harvey and RSDOIEL are in chat mode. Model: ollama://192.168.1.2:11434. Workspace: /home/user/project.
+
+RSDOIEL
+@pi2 analyze this data
+
+HARVEY
+Forwarding to PI2.
+
+PI2
+Analysis: The data shows a normal distribution with mean 42.</code></pre>
+<p><strong>Route:</strong> PI2 (registered via
+<code>/route add pi2 ollama://192.168.1.2:11434</code>)
+<strong>Character:</strong> PI2 (the route name as character)</p>
+<h3
+id="scenario-3-harvey-forwarding-to-cloud-model-via-mention">Scenario 3:
+Harvey Forwarding to Cloud Model via <span class="citation"
+data-cites="mention">@mention</span></h3>
+<p>User uses <span class="citation" data-cites="mention">@mention</span>
+to direct a prompt to a specific cloud model.</p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+
+RSDOIEL
+@mistral review this code
+
+HARVEY
+Forwarding to MISTRAL.
+
+MISTRAL
+The code follows good practices. Consider adding error handling for the edge case at line 42.</code></pre>
+<p><strong>Character:</strong> MISTRAL (cloud model)
+<strong>Trigger:</strong> <span class="citation"
+data-cites="mention">@mention</span> in user dialogue</p>
+<h3 id="scenario-4-direct-external-conversation">Scenario 4: Direct
+External Conversation</h3>
+<p>Direct conversation with a model, bypassing Harvey.</p>
+<pre><code>EXT. CLAUDE AND RSDOIEL 2026-05-04 18:30:00
+
+CLAUDE and RSDOIEL in direct conversation. Workspace: /home/user/project.
+
+RSDOIEL
+Explain quantum computing
+
+CLAUDE
+Quantum computing uses quantum bits (qubits) that can exist in superposition...</code></pre>
+<p><strong>Note:</strong> No HARVEY character appears in EXT.
+scenes.</p>
+<h3 id="scenario-5-unfulfilled-mention">Scenario 5: Unfulfilled <span
+class="citation" data-cites="mention">@mention</span></h3>
+<p>User mentions a model that doesn’t respond.</p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+(@julie mentioned but does not respond)
+
+RSDOIEL
+@julie what do you think?
+
+HARVEY
+Julie does not respond.</code></pre>
+<p><strong>Note:</strong> The unfulfilled <span class="citation"
+data-cites="mention">@mention</span> is noted in the scene
+description.</p>
+<h3 id="scenario-6-multi-model-within-scene">Scenario 6: Multi-Model
+Within Scene</h3>
+<p>Multiple models introduced within a single scene via <span
+class="citation" data-cites="mention">@mention</span>.</p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+
+RSDOIEL
+@mistral review this, then @claude give a second opinion
+
+HARVEY
+Forwarding to MISTRAL.
+
+MISTRAL
+First opinion: The code is well-structured.
+
+HARVEY
+Forwarding to CLAUDE.
+
+CLAUDE
+Second opinion: I agree, but consider adding tests.</code></pre>
+<p><strong>Note:</strong> Multiple models can appear in a single INT.
+scene via sequential forwarding.</p>
+<h2 id="scene-types-reference">Scene Types Reference</h2>
+<h3 id="chat-scenes-int.-and-talking-or-ext.-and">Chat Scenes
+(<code>INT. … AND … TALKING</code> or <code>EXT. … AND …</code>)</h3>
+<p>Regular conversation between participants.</p>
+<p><strong>INT. example:</strong></p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /path.
+
+RSDOIEL
+Prompt...
+
+HARVEY
+Response...</code></pre>
+<p><strong>EXT. example:</strong></p>
+<pre><code>EXT. MISTRAL AND RSDOIEL 2026-05-04 18:30:00
+
+MISTRAL and RSDOIEL in direct conversation. Workspace: /path.
+
+RSDOIEL
+Prompt...
+
+MISTRAL
+Response...</code></pre>
+<h3 id="agent-mode-scenes-int.-agent-mode">Agent Mode Scenes
+(<code>INT. AGENT MODE</code>)</h3>
+<p>File write operations and other agent actions.</p>
+<pre><code>INT. AGENT MODE 2026-05-04 18:35:00
+
+HARVEY
+Harvey proposes to write 1 file(s) to the workspace.
+
+HARVEY
+Write path/to/file?
+
+RSDOIEL
+yes
+
+[[write: path/to/file — ok]]</code></pre>
+<p><strong>Fields:</strong> - Proposal:
+<code>Harvey proposes to write N file(s) to the workspace.</code> -
+Prompt: <code>Write path?</code> - Response: User’s
+<code>yes</code>/<code>no</code> - Outcome:
+<code>[[write: path — status]]</code></p>
+<h3 id="skill-scenes-int.-skill-name">Skill Scenes
+(<code>INT. SKILL &lt;NAME&gt;</code>)</h3>
+<p>Skill activation and execution.</p>
+<pre><code>INT. SKILL FOUNTAIN-ANALYSIS 2026-05-04 18:40:00
+
+Harvey executes the fountain-analysis skill.
+
+FOUNTAIN-ANALYSIS
+Reading agents/sessions/session.spmd for analysis.</code></pre>
+<p><strong>Fields:</strong> - Skill name (from heading) - Description
+action line</p>
+<h2 id="parsing-rules-for-tools">Parsing Rules for Tools</h2>
+<h3 id="file-structure">File Structure</h3>
+<pre><code>^Title: .*$
+^Credit: .*$
+^Author: ([A-Z]+)$
+^Date: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$
+^Draft date: \d{4}-\d{2}-\d{2}$
+^(Characters: .*)?$
+^$ 
+FADE IN:$ 
+^$ </code></pre>
+<h3 id="scene-parsing">Scene Parsing</h3>
+<ol type="1">
+<li><strong>Match scene heading:</strong>
+<code>(INT|EXT)\. ([A-Z0-9_-]+) AND ([A-Z0-9_-]+) (TALKING)? (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})</code></li>
+<li><strong>Extract scene description:</strong> Lines between heading
+and first ALL-CAPS character</li>
+<li><strong>Parse scene description:</strong>
+<ul>
+<li><code>Model: (.+)</code> → model identifier</li>
+<li><code>Workspace: (.+)</code> → workspace path</li>
+<li><code>\(@(\w+) mentioned but does not respond\)</code> → unfulfilled
+<span class="citation" data-cites="mention">@mention</span></li>
+</ul></li>
+<li><strong>Parse dialogue:</strong>
+<ul>
+<li>Character: <code>^[A-Z0-9_-]+$</code></li>
+<li>Dialogue: Subsequent lines until next character or blank line</li>
+</ul></li>
+<li><strong>Detect special syntax:</strong>
+<ul>
+<li>Forwarding: <code>^Forwarding to ([A-Z0-9_-]+)\.$</code></li>
+<li>File write:
+<code>^\[\[write: (.+) — (ok|skipped|error:.+)\]\]</code></li>
+<li><span class="citation" data-cites="mention">@mention</span>:
+<code>@([a-zA-Z][a-zA-Z0-9_-]*)</code></li>
+</ul></li>
+</ol>
+<h3 id="character-type-detection">Character Type Detection</h3>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pseudocode</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> character_type(name, scene_description, known_routes, author):</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> name <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span>:</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;harvey-native&quot;</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="kw">in</span> known_routes:</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;routed-ollama&quot;</span></span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="op">==</span> author:</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;human&quot;</span></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> is_all_caps_alphanumeric(name):</span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;cloud-model&quot;</span></span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span></code></pre></div>
+<h2 id="complete-example-sessions">Complete Example Sessions</h2>
+<h3 id="example-1-basic-harvey-session-local-model">Example 1: Basic
+Harvey Session (Local Model)</h3>
+<pre><code>Title: Quick Question
+Credit: Recorded by Harvey
+Author: RSDOIEL
+Date: 2026-05-04 10:00:00
+Draft date: 2026-05-04
+
+FADE IN:
+
+INT. HARVEY AND RSDOIEL TALKING 2026-05-04 10:00:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+
+RSDOIEL
+What is 2+2?
+
+HARVEY
+4
+
+THE END.</code></pre>
+<h3 id="example-2-multi-model-with-mention">Example 2: Multi-Model with
+<span class="citation" data-cites="mention">@mention</span></h3>
+<pre><code>Title: Code Review
+Credit: Recorded by Harvey
+Author: RSDOIEL
+Date: 2026-05-04 14:00:00
+Draft date: 2026-05-04
+
+FADE IN:
+
+INT. HARVEY AND RSDOIEL TALKING 2026-05-04 14:00:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/code.
+
+RSDOIEL
+@mistral review this function
+
+HARVEY
+Forwarding to MISTRAL.
+
+MISTRAL
+The function has a potential off-by-one error at line 23.
+
+RSDOIEL
+@claude can you confirm?
+
+HARVEY
+Forwarding to CLAUDE.
+
+CLAUDE
+Confirmed. The loop should use `&lt;=` not `&lt;`.
+
+THE END.</code></pre>
+<h3 id="example-3-with-file-operations">Example 3: With File
+Operations</h3>
+<pre><code>Title: Fix and Test
+Credit: Recorded by Harvey
+Author: RSDOIEL
+Date: 2026-05-04 15:00:00
+Draft date: 2026-05-04
+
+FADE IN:
+
+INT. HARVEY AND RSDOIEL TALKING 2026-05-04 15:00:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/code.
+
+RSDOIEL
+This function has a bug. Please fix it.
+
+HARVEY
+Here is the corrected version:
+
+```go src/calc.go
+func Add(a, b int) int {
+    return a + b
+}</code></pre>
+<p>RSDOIEL /apply</p>
+<p>INT. AGENT MODE 2026-05-04 15:02:00</p>
+<p>HARVEY Harvey proposes to write 1 file(s) to the workspace.</p>
+<p>HARVEY Write src/calc.go?</p>
+<p>RSDOIEL yes</p>
+<p>[[write: src/calc.go — ok]]</p>
+<p>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 15:03:00</p>
+<p>Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace:
+/home/user/code.</p>
+<p>RSDOIEL /run go test ./…</p>
+<p>HARVEY All tests pass.</p>
+<p>THE END.</p>
+<pre><code>
+### Example 4: Routed Ollama
+</code></pre>
+<p>Title: Cluster Query Credit: Recorded by Harvey Author: RSDOIEL Date:
+2026-05-04 16:00:00 Draft date: 2026-05-04</p>
+<p>FADE IN:</p>
+<p>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 16:00:00</p>
+<p>Harvey and RSDOIEL are in chat mode. Model:
+ollama://192.168.1.2:11434. Workspace: /home/user/data.</p>
+<p>RSDOIEL <span class="citation" data-cites="pi2">@pi2</span> process
+this dataset</p>
+<p>HARVEY Forwarding to PI2.</p>
+<p>PI2 Processing complete. 1000 records analyzed.</p>
+<p>THE END.</p>
+<pre><code>
+### Example 5: Unfulfilled @mention
+</code></pre>
+<p>Title: Offline Model Credit: Recorded by Harvey Author: RSDOIEL Date:
+2026-05-04 17:00:00 Draft date: 2026-05-04</p>
+<p>FADE IN:</p>
+<p>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 17:00:00</p>
+<p>Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace:
+/home/user/project. (<span class="citation"
+data-cites="offline-model">@offline-model</span> mentioned but does not
+respond)</p>
+<p>RSDOIEL <span class="citation"
+data-cites="offline-model">@offline-model</span> what is your
+status?</p>
+<p>HARVEY Offline-model does not respond.</p>
+<p>THE END. ```</p>
+<h2 id="validation-rules">Validation Rules</h2>
+<h3 id="required-elements">Required Elements</h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Required</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Title:</code></td>
+<td>Yes</td>
+<td>Non-empty</td>
+</tr>
+<tr>
+<td><code>Author:</code></td>
+<td>Yes</td>
+<td>ALL-CAPS, non-empty</td>
+</tr>
+<tr>
+<td><code>FADE IN:</code></td>
+<td>Yes</td>
+<td>Exact match</td>
+</tr>
+<tr>
+<td><code>THE END.</code></td>
+<td>Yes</td>
+<td>Exact match at end</td>
+</tr>
+<tr>
+<td>Scene headings</td>
+<td>Per scene</td>
+<td>Valid INT./EXT. format</td>
+</tr>
+<tr>
+<td>Scene descriptions</td>
+<td>Per scene</td>
+<td>Contains <code>Model:</code> and <code>Workspace:</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="character-validation">Character Validation</h3>
+<table>
+<colgroup>
+<col style="width: 46%" />
+<col style="width: 53%" />
+</colgroup>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Error</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Character not ALL-CAPS</td>
+<td>Warn: “Character name not uppercase: {name}”</td>
+</tr>
+<tr>
+<td>Character in INT. scene not in heading</td>
+<td>Warn: “Character {name} not in scene heading”</td>
+</tr>
+<tr>
+<td>HARVEY missing from INT. scene</td>
+<td>Warn: “INT. scene without HARVEY”</td>
+</tr>
+<tr>
+<td>HARVEY in EXT. scene</td>
+<td>Warn: “EXT. scene contains HARVEY”</td>
+</tr>
+<tr>
+<td>Unknown character type</td>
+<td>Warn: “Unknown character type: {name}”</td>
+</tr>
+</tbody>
+</table>
+<h3 id="model-validation">Model Validation</h3>
+<table>
+<colgroup>
+<col style="width: 46%" />
+<col style="width: 53%" />
+</colgroup>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Error</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Missing <code>Model:</code> in description</td>
+<td>Warn: “Scene missing Model: declaration”</td>
+</tr>
+<tr>
+<td>Model in description doesn’t match character</td>
+<td>Warn: “Model mismatch: description={x}, character={y}”</td>
+</tr>
+</tbody>
+</table>
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="for-session-recording-harvey">For Session Recording
+(Harvey)</h3>
+<ol type="1">
+<li><strong>Always include</strong> <code>Model:</code> and
+<code>Workspace:</code> in scene descriptions</li>
+<li><strong>Use INT.</strong> for all Harvey-mediated conversations</li>
+<li><strong>Use EXT.</strong> only for direct model-human conversations
+(no Harvey)</li>
+<li><strong>Attribute correctly</strong>: HARVEY for local, ROUTE_NAME
+for routed, MODEL_NAME for cloud</li>
+<li><strong>Track <span class="citation"
+data-cites="mentions">@mentions</span></strong>: Note unfulfilled
+mentions in scene description</li>
+<li><strong>Start new scenes</strong> when model changes (for clarity in
+analysis)</li>
+</ol>
+<h3 id="for-session-analysis">For Session Analysis</h3>
+<ol type="1">
+<li><strong>Extract all characters</strong> from dialogue (not just
+heading)</li>
+<li><strong>Track model timeline</strong> across scenes</li>
+<li><strong>Distinguish</strong> Harvey-native vs forwarded
+responses</li>
+<li><strong>Report <span class="citation"
+data-cites="mention">@mention</span> status</strong>
+(fulfilled/unfulfilled)</li>
+<li><strong>Warn on inconsistencies</strong> (model mismatches, missing
+declarations)</li>
+</ol>
+<h3 id="for-human-readability">For Human Readability</h3>
+<ol type="1">
+<li><strong>Keep scene descriptions concise</strong> but
+informative</li>
+<li><strong>Use parenthetical notes</strong> sparingly (for <span
+class="citation" data-cites="mention">@mention</span> tracking)</li>
+<li><strong>Group related exchanges</strong> in single scenes when
+possible</li>
+<li><strong>Start new scenes</strong> on major topic shifts or model
+changes</li>
+</ol>
+<h2 id="compatibility-notes">Compatibility Notes</h2>
+<h3 id="claude-code-compatibility">Claude Code Compatibility</h3>
+<p>Harvey accepts <code>.fountain</code> files created by Claude Code.
+These files may use slightly different formatting but follow the same
+fundamental structure:</p>
+<ul>
+<li>Scene headings with character names</li>
+<li>Dialogue blocks under characters</li>
+<li>Scene descriptions between headings and dialogue</li>
+</ul>
+<p><strong>Differences to handle:</strong> - Claude Code may use
+different scene description formats - Model names may appear differently
+- File operations may use different syntax</p>
+<p>Harvey’s parser is designed to be <strong>tolerant</strong> of these
+variations while maintaining strict output format for its own
+recordings.</p>
+<h3 id="future-compatibility">Future Compatibility</h3>
+<p>The Fountain format is designed to be <strong>extensible</strong>.
+Future versions may add: - New scene types - Additional metadata fields
+- New special syntax elements</p>
+<p>Older parsers should <strong>gracefully ignore</strong> unknown
+elements.</p>
+<h2 id="changelog">Changelog</h2>
+<table>
+<colgroup>
+<col style="width: 37%" />
+<col style="width: 25%" />
+<col style="width: 37%" />
+</colgroup>
+<thead>
+<tr>
+<th>Version</th>
+<th>Date</th>
+<th>Changes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.0</td>
+<td>2026-05-04</td>
+<td>Initial specification with multi-model character attribution</td>
+</tr>
+</tbody>
+</table>
+<p><em>This document describes Harvey’s use of the Fountain format. For
+the official Fountain specification, see https://fountain.io.</em></p>
+</section>
+</body>
+</html>

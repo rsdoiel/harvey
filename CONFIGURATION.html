@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-configuration-reference">Harvey Configuration
+Reference</h1>
+<h2 id="overview">Overview</h2>
+<p>Harvey uses a <strong>hierarchical configuration system</strong> with
+multiple configuration files at different levels. Configuration can be
+specified for your workspace, refined by a HARVEY.md file with
+additional environment varibables used for some features (example
+<code>$USER</code> is used for the username in the sessions files).</p>
+<h3 id="configuration-hierarchy">Configuration Hierarchy</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                    CONFIGURATION LEVELS                     │
+├─────────────────────────────────────────────────────────────┤
+│  1. Workspace Config         &lt;workspace&gt;/agents/harvey.yaml │
+│  2. System Prompt            &lt;workspace&gt;/HARVEY.md          │
+│  3. Environment Variables    Shell environment              │
+└─────────────────────────────────────────────────────────────┘</code></pre>
+<p><strong>Precedence:</strong> Workspace &gt; Workspace settings &gt;
+System Prompt &gt; Environment variables</p>
+<h2 id="configuration-files">Configuration Files</h2>
+<h3 id="configuration-workspaceagentsharvey.yaml">1. Configuration
+(<code>&lt;workspace&gt;/agents/harvey.yaml</code>)</h3>
+<p><strong>Purpose:</strong> Workspace-level configuration for Harvey’s
+subsystems: knowledge base, sessions, skills, RAG stores, and model
+cache.</p>
+<p><strong>Locations:</strong> Workspace:
+<code>&lt;workspace&gt;/agents/harvey.yaml</code></p>
+<p><strong>Format:</strong> YAML</p>
+<p><strong>Example:</strong></p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Knowledge base</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">knowledge_db</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents/knowledge.db&quot;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Session recordings</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="fu">sessions_dir</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents/sessions&quot;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Skills/agents directory</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="fu">agents_dir</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents&quot;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Auto-record setting (null = use default)</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="fu">auto_record</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Model capability cache</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="fu">model_cache_db</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents/model_cache.db&quot;</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="co"># RAG configuration</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="fu">rag</span><span class="kw">:</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">active</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;default&quot;</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stores</span><span class="kw">:</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;default&quot;</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents/rag/default.db&quot;</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">&quot;llama3.1:latest&quot;</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">&quot;granite-code:3b&quot;</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">&quot;mistral:latest&quot;</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;deno_typescript&quot;</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents/rag/deno_typescript.db&quot;</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">&quot;llama3.1:latest&quot;</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span></code></pre></div>
+<p><strong>Top-Level Fields:</strong></p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 13%" />
+<col style="width: 22%" />
+<col style="width: 20%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>knowledge_db</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>"agents/knowledge.db"</code></td>
+<td>Path to knowledge base SQLite file</td>
+</tr>
+<tr>
+<td><code>sessions_dir</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>"agents/sessions"</code></td>
+<td>Directory for session recordings</td>
+</tr>
+<tr>
+<td><code>agents_dir</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>"agents"</code></td>
+<td>Directory for skills/agents tree</td>
+</tr>
+<tr>
+<td><code>auto_record</code></td>
+<td>boolean/null</td>
+<td>No</td>
+<td><code>true</code></td>
+<td>Auto-record sessions (null = keep default)</td>
+</tr>
+<tr>
+<td><code>model_cache_db</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>"agents/model_cache.db"</code></td>
+<td>Path to model capability cache</td>
+</tr>
+<tr>
+<td><code>rag</code></td>
+<td>object</td>
+<td>No</td>
+<td>See below</td>
+<td>RAG configuration</td>
+</tr>
+</tbody>
+</table>
+<p><strong>RAG Configuration (<code>rag:</code>):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>boolean</td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Whether RAG is enabled</td>
+</tr>
+<tr>
+<td><code>active</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>""</code></td>
+<td>Name of active RAG store</td>
+</tr>
+<tr>
+<td><code>stores</code></td>
+<td>array</td>
+<td>No</td>
+<td><code>[]</code></td>
+<td>Array of named RAG stores</td>
+</tr>
+</tbody>
+</table>
+<p><strong>RAG Store Fields:</strong></p>
+<table>
+<colgroup>
+<col style="width: 19%" />
+<col style="width: 16%" />
+<col style="width: 27%" />
+<col style="width: 36%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>Unique store identifier</td>
+</tr>
+<tr>
+<td><code>db_path</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>Path to SQLite database file</td>
+</tr>
+<tr>
+<td><code>embedding_model</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>Embedding model name (e.g., <code>nomic-embed-text</code>)</td>
+</tr>
+<tr>
+<td><code>model_map</code></td>
+<td>object</td>
+<td>No</td>
+<td>Mapping of generation model → embedding model</td>
+</tr>
+<tr>
+<td><code>embedder_kind</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>"ollama"</code></td>
+</tr>
+<tr>
+<td><code>embedder_url</code></td>
+<td>string</td>
+<td>No</td>
+<td>Base URL for encoderfile embedder</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Important Notes:</strong> - Paths are relative to the
+workspace root - Workspace <code>harvey.yaml</code> overrides global
+<code>harvey.yaml</code> - The <code>model_map</code> ensures each
+generation model uses the correct embedding model - Embedding model
+binding is enforced: you cannot mix embeddings from different models in
+the same store</p>
+<h3 id="configuration-for-routes-workspaceagentsroutes.json">2.
+Configuration for routes
+(<code>&lt;workspace&gt;/agents/routes.json</code>)</h3>
+<p><strong>Purpose:</strong> Persists routing endpoints and routing
+state across Harvey sessions.</p>
+<p><strong>Location:</strong>
+<code>&lt;workspace&gt;/agents/routes.json</code> (or
+<code>&lt;workspace&gt;\agents\routes.json</code> on Windows)</p>
+<p><strong>Format:</strong> JSON</p>
+<p><strong>Example:</strong></p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;enabled&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;endpoints&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;pi2&quot;</span><span class="fu">,</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama://192.168.1.12:11434&quot;</span><span class="fu">,</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;llama3.1:8b&quot;</span><span class="fu">,</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama&quot;</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;claude&quot;</span><span class="fu">,</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;anthropic://&quot;</span><span class="fu">,</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;claude-3-haiku&quot;</span><span class="fu">,</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;anthropic&quot;</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;pi3&quot;</span><span class="fu">,</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama://192.168.1.13:11434&quot;</span><span class="fu">,</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;mistral:latest&quot;</span><span class="fu">,</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama&quot;</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p><strong>Fields:</strong></p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 13%" />
+<col style="width: 22%" />
+<col style="width: 20%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>boolean</td>
+<td>No</td>
+<td><code>false</code></td>
+<td>Whether routing is enabled globally</td>
+</tr>
+<tr>
+<td><code>endpoints</code></td>
+<td>array</td>
+<td>No</td>
+<td><code>[]</code></td>
+<td>List of registered remote endpoints</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Endpoint Fields:</strong></p>
+<table>
+<colgroup>
+<col style="width: 19%" />
+<col style="width: 16%" />
+<col style="width: 27%" />
+<col style="width: 36%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>Unique identifier for the endpoint</td>
+</tr>
+<tr>
+<td><code>url</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>URL including scheme (e.g., <code>ollama://host:port</code>)</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td>string</td>
+<td>No</td>
+<td>Default model to use with this endpoint</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>string</td>
+<td>No</td>
+<td>Inferred from URL scheme</td>
+</tr>
+</tbody>
+</table>
+<p><strong>URL Schemes:</strong></p>
+<table>
+<colgroup>
+<col style="width: 22%" />
+<col style="width: 16%" />
+<col style="width: 41%" />
+<col style="width: 19%" />
+</colgroup>
+<thead>
+<tr>
+<th>Scheme</th>
+<th>Kind</th>
+<th>Backend Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ollama://host:port</code></td>
+<td>ollama</td>
+<td>Ollama server</td>
+<td>Local or remote</td>
+</tr>
+<tr>
+<td><code>http://host:port</code></td>
+<td>ollama</td>
+<td>Ollama server</td>
+<td>HTTP (insecure)</td>
+</tr>
+<tr>
+<td><code>https://host:port</code></td>
+<td>ollama</td>
+<td>Ollama server</td>
+<td>HTTPS (secure)</td>
+</tr>
+<tr>
+<td><code>llamafile://host:port</code></td>
+<td>llamafile</td>
+<td>Llamafile server</td>
+<td>OpenAI-compatible</td>
+</tr>
+<tr>
+<td><code>llamacpp://host:port</code></td>
+<td>llamacpp</td>
+<td>llama.cpp server</td>
+<td>OpenAI-compatible</td>
+</tr>
+<tr>
+<td><code>anthropic://</code></td>
+<td>anthropic</td>
+<td>Anthropic Claude</td>
+<td>Uses <code>ANTHROPIC_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>deepseek://</code></td>
+<td>deepseek</td>
+<td>DeepSeek API</td>
+<td>Uses <code>DEEPSEEK_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>gemini://</code></td>
+<td>gemini</td>
+<td>Google Gemini</td>
+<td>Uses <code>GEMINI_API_KEY</code> or <code>GOOGLE_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>mistral://</code></td>
+<td>mistral</td>
+<td>Mistral API</td>
+<td>Uses <code>MISTRAL_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>openai://</code></td>
+<td>openai</td>
+<td>OpenAI API</td>
+<td>Uses <code>OPENAI_API_KEY</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Commands:</strong> - <code>/route add NAME URL [MODEL]</code>
+— Register a new endpoint - <code>/route rm NAME</code> — Remove an
+endpoint - <code>/route list</code> — List all endpoints with status -
+<code>/route on</code> — Enable routing globally -
+<code>/route off</code> — Disable routing globally -
+<code>/route status</code> — Show routing state</p>
+<h3 id="system-prompt-workspaceharvey.md">3. System Prompt
+(<code>&lt;workspace&gt;/HARVEY.md</code>)</h3>
+<p><strong>Purpose:</strong> Provides the system prompt for Harvey’s LLM
+interactions. This is the primary way to give the model context about
+your project, conventions, and guidelines.</p>
+<p><strong>Location:</strong> <code>&lt;workspace&gt;/HARVEY.md</code>
+(loaded from current directory at startup)</p>
+<p><strong>Format:</strong> Markdown with optional dynamic markers</p>
+<p><strong>Example:</strong></p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>You are Harvey, a terminal coding agent. You are working in a Go project</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>located at /home/user/myproject.</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="fu">## Project Context</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>Today: <span class="co">&lt;!-- @date --&gt;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>Current git status:</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @git-status --&gt;</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>Workspace files:</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @files --&gt;</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="fu">## Conventions</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use Go 1.26+ features</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Prefer stdlib over third-party packages</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>All exported symbols need doc comments</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use <span class="in">`t.TempDir()`</span> in tests</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a><span class="fu">## Available Tools</span></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>You have access to the following slash commands: /read, /write, /run, /search,</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>/git, /apply, /clear, /summarize, /context, /kb, /rag, /ollama, /route, /skill.</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a><span class="fu">## Rules</span></span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a><span class="ss">1. </span>Tag code blocks with file paths for auto-apply</span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a><span class="ss">2. </span>Use /run to suggest shell commands</span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a><span class="ss">3. </span>Never narrate fake command output</span></code></pre></div>
+<p><strong>Dynamic Markers:</strong> Harvey expands these before
+injecting the system prompt:</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 46%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr>
+<th>Marker</th>
+<th>Replaced With</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;!-- @date --&gt;</code></td>
+<td>Current date (YYYY-MM-DD)</td>
+<td><code>2026-05-04</code></td>
+</tr>
+<tr>
+<td><code>&lt;!-- @files --&gt;</code></td>
+<td>Workspace file tree (hidden dirs excluded)</td>
+<td>Tree listing</td>
+</tr>
+<tr>
+<td><code>&lt;!-- @git-status --&gt;</code></td>
+<td>Output of <code>git status --short</code></td>
+<td><code>M README.md</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Notes:</strong> - The prompt is re-injected after
+<code>/clear</code> - Pinned context (from <code>/context add</code>) is
+injected after the system prompt - Skills catalog can be injected into
+the prompt via configuration</p>
+<h2 id="environment-variables">Environment Variables</h2>
+<p>Harvey reads environment variables for cloud provider API keys. These
+are optional and only needed when using the corresponding route
+types.</p>
+<table>
+<colgroup>
+<col style="width: 23%" />
+<col style="width: 23%" />
+<col style="width: 32%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Provider</th>
+<th>Route Scheme</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td>Anthropic</td>
+<td><code>anthropic://</code></td>
+<td>Claude API key</td>
+</tr>
+<tr>
+<td><code>DEEPSEEK_API_KEY</code></td>
+<td>DeepSeek</td>
+<td><code>deepseek://</code></td>
+<td>DeepSeek API key</td>
+</tr>
+<tr>
+<td><code>GEMINI_API_KEY</code></td>
+<td>Google</td>
+<td><code>gemini://</code></td>
+<td>Gemini API key (primary)</td>
+</tr>
+<tr>
+<td><code>GOOGLE_API_KEY</code></td>
+<td>Google</td>
+<td><code>gemini://</code></td>
+<td>Gemini API key (fallback)</td>
+</tr>
+<tr>
+<td><code>MISTRAL_API_KEY</code></td>
+<td>Mistral</td>
+<td><code>mistral://</code></td>
+<td>Mistral API key</td>
+</tr>
+<tr>
+<td><code>OPENAI_API_KEY</code></td>
+<td>OpenAI</td>
+<td><code>openai://</code></td>
+<td>OpenAI API key</td>
+</tr>
+<tr>
+<td><code>OLLAMA_HOST</code></td>
+<td>Ollama</td>
+<td><code>ollama://</code></td>
+<td>Ollama server host (default: <code>localhost</code>)</td>
+</tr>
+<tr>
+<td><code>OLLAMA_ORIGINS</code></td>
+<td>Ollama</td>
+<td><code>ollama://</code></td>
+<td>CORS origins for Ollama</td>
+</tr>
+<tr>
+<td><code>OLLAMA_KEEP_ALIVE</code></td>
+<td>Ollama</td>
+<td><code>ollama://</code></td>
+<td>Keep-alive interval (default: <code>24h</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note:</strong> For local Ollama, Harvey uses the
+<code>ollama</code> command-line tool’s configuration by default. The
+<code>OLLAMA_HOST</code> environment variable can override the default
+<code>http://localhost:11434</code>.</p>
+<h2 id="configuration-workflow">Configuration Workflow</h2>
+<h3 id="typical-setup-process">Typical Setup Process</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Start Harvey for the first time (creates defaults)</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Register remote endpoints</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /route <span class="ex">add</span> pi2 ollama://192.168.1.12:11434 llama3.1:8b</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /route <span class="ex">on</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Configure RAG (optional)</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /rag <span class="ex">new</span> golang</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /rag <span class="ex">switch</span> golang</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /rag <span class="ex">on</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Create workspace-specific config</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> myproject/agents</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&#39;knowledge_db: myproject/agents/knowledge.db&#39;</span> <span class="op">&gt;</span> myproject/agents/harvey.yaml</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a><span class="co"># 5. Run Harvey in the project</span></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">-w</span> myproject</span></code></pre></div>
+<h3 id="configuration-file-precedence-example">Configuration File
+Precedence Example</h3>
+<pre><code>Workspace (myproject/agents/harvey.yaml):
+  rag:
+    enabled: true
+    active: golang
+    stores:
+      - name: golang
+        db_path: myproject/agents/rag/golang.db
+        embedding_model: nomic-embed-text
+
+Result: In myproject/, the golang store is active.</code></pre>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="common-issues">Common Issues</h3>
+<p><strong>“No routes configured”</strong> - Run
+<code>/route add NAME URL</code> to register endpoints - Run
+<code>/route on</code> to enable routing - Check
+<code>agents/routes.json</code> exists</p>
+<p><strong>“Knowledge base not found”</strong> - Harvey creates it
+automatically at first use - Check <code>agents/knowledge.db</code>
+exists - Verify path in <code>harvey.yaml</code> or create the
+directory</p>
+<p><strong>“Model cache not found”</strong> - Harvey creates it
+automatically - Check <code>agents/model_cache.db</code> exists - Run
+<code>/ollama probe</code> to populate it</p>
+<p><strong>“RAG store not found”</strong> - Run
+<code>/rag new NAME</code> to create a store - Run
+<code>/rag switch NAME</code> to activate it - Verify the database file
+exists at the specified path</p>
+<h3 id="verification-commands">Verification Commands</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check global routes</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--help</span> routing  <span class="co"># or: cat ./agents/routes.json</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Check workspace config</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> agents/harvey.yaml</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Check knowledge base</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/knowledge.db <span class="st">&quot;.tables&quot;</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Check model cache</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/model_cache.db <span class="st">&quot;SELECT count(*) FROM models;&quot;</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Check RAG stores</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> <span class="at">-la</span> agents/rag/<span class="pp">*</span>.db</span></code></pre></div>
+<h2 id="reference-all-configuration-options">Reference: All
+Configuration Options</h2>
+<h3 id="global-routes-agentsroutes.json">Global Routes
+(<code>agents/routes.json</code>)</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;enabled&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="er">/</span><span class="kw">false</span><span class="fu">,</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;endpoints&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;string (required)&quot;</span><span class="fu">,</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;string (required)&quot;</span><span class="fu">,</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;string (optional)&quot;</span><span class="fu">,</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;string (optional, auto-detected)&quot;</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<h3 id="workspace-agents-workspaceagentsharvey.yaml">Workspace Agents
+(<code>&lt;workspace&gt;/agents/harvey.yaml</code>)</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Paths</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="fu">knowledge_db</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;string (optional, default: agents/knowledge.db)&quot;</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="fu">sessions_dir</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;string (optional, default: agents/sessions)&quot;</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="fu">agents_dir</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;string (optional, default: agents)&quot;</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="fu">model_cache_db</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;string (optional, default: agents/model_cache.db)&quot;</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Behavior</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="fu">auto_record</span><span class="kw">:</span><span class="at"> true/false/null</span><span class="co">  # null = use default (true)</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co"># RAG Configuration</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="fu">rag</span><span class="kw">:</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> true/false</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">active</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;string (store name)&quot;</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stores</span><span class="kw">:</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;string&quot;</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;string&quot;</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;string&quot;</span></span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">&quot;generation-model&quot;</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;embedding-model&quot;</span></span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedder_kind</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;ollama&quot;</span><span class="co">  # or &quot;encoderfile&quot;</span></span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedder_url</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;http://host:port&quot;</span></span></code></pre></div>
+<p><em>For more details on specific subsystems, see:</em> - <a
+href="ROUTING.html">ROUTING.md</a> — Remote endpoint routing - <a
+href="KNOWLEDGE_BASE.html">KNOWLEDGE_BASE.md</a> — Knowledge base schema
+- <a href="RAG_Support_Design.html">RAG_Support_Design.md</a> — RAG
+implementation details - <a href="SESSIONS.html">SESSIONS.md</a> —
+Session recording format</p>
+</section>
+</body>
+</html>

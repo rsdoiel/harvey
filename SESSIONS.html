@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-sessions-recording-and-fountain-format">Harvey Sessions:
+Recording and Fountain Format</h1>
+<p><em>Version 1.0 — Complete guide to session recording in
+Harvey</em></p>
+<h2 id="overview">Overview</h2>
+<p>Harvey <strong>records every conversation</strong> to a
+<strong>Fountain screenplay file</strong> (<code>.spmd</code>
+extension), creating a persistent, human-readable, and machine-parseable
+record of all interactions. This enables:</p>
+<ul>
+<li><strong>Session resumption</strong> — Continue a previous
+conversation with full context</li>
+<li><strong>Session replay</strong> — Re-send prompts to a different
+model and capture new responses</li>
+<li><strong>Audit trail</strong> — Complete history of all prompts,
+responses, and file operations</li>
+<li><strong>Cross-agent compatibility</strong> — Fountain format is
+shared with other LLM systems</li>
+<li><strong>Multi-model tracking</strong> — Explicit character
+attribution for HARVEY, USER, and MODEL</li>
+</ul>
+<h3 id="file-extensions">File Extensions</h3>
+<table>
+<colgroup>
+<col style="width: 35%" />
+<col style="width: 41%" />
+<col style="width: 22%" />
+</colgroup>
+<thead>
+<tr>
+<th>Extension</th>
+<th>Description</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.spmd</code></td>
+<td><strong>Screenplay Markdown</strong> — Harvey’s primary session
+format</td>
+<td>Written by Harvey, read by all</td>
+</tr>
+<tr>
+<td><code>.fountain</code></td>
+<td>Standard Fountain format</td>
+<td>Read by Harvey (for compatibility)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note:</strong> Harvey writes <code>.spmd</code> files but can
+read both <code>.spmd</code> and <code>.fountain</code> files.</p>
+<h2 id="quick-start">Quick Start</h2>
+<h3 id="start-a-recorded-session">Start a Recorded Session</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Automatic recording to default location</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Creates: harvey/sessions/harvey-session-YYYYMMDD-HHMMSS.spmd</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Explicit recording path</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.spmd</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co"># In REPL, check recording status</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /record</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Recording:</span> ON</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  <span class="ex">File:</span> /home/user/project/harvey/sessions/harvey-session-20260504-142300.spmd</span></code></pre></div>
+<h3 id="continue-a-previous-session">Continue a Previous Session</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># From command line</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> harvey/sessions/harvey-session-20260504.spmd</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># From REPL</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /session continue harvey/sessions/harvey-session-20260504.spmd</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Loaded</span> 15 turns from harvey-session-20260504.spmd</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Model:</span> llama3.1:8b <span class="er">(</span><span class="ex">from</span> session recording<span class="kw">)</span></span></code></pre></div>
+<h3 id="replay-a-session-with-a-different-model">Replay a Session with a
+Different Model</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># From command line (replay to same file)</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> oldsession.spmd</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># From command line (replay to new file)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> oldsession.spmd <span class="at">--replay-output</span> newresponses.spmd</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"># From REPL</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /session replay oldsession.spmd newresponses.spmd</span></code></pre></div>
+<h3 id="list-available-sessions">List Available Sessions</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Sessions are stored in harvey/sessions/ by default</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /sessions</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Available</span> sessions <span class="er">(</span><span class="ex">newest</span> first<span class="kw">)</span><span class="bu">:</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[0]</span>  harvey-session-20260504-142300.spmd  <span class="er">(</span><span class="ex">2026-05-04</span> 14:23:00<span class="kw">)</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[1]</span>  harvey-session-20260503-101500.spmd  <span class="er">(</span><span class="ex">2026-05-03</span> 10:15:00<span class="kw">)</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[2]</span>  debugging-issue-42.spmd               <span class="er">(</span><span class="ex">2026-05-02</span> 09:30:00<span class="kw">)</span></span></code></pre></div>
+<h2 id="session-file-structure">Session File Structure</h2>
+<h3 id="fountain-screenplay-format">Fountain Screenplay Format</h3>
+<p>Harvey sessions follow the <strong><a
+href="https://fountain.io">Fountain screenplay format</a></strong>, a
+plain-text markup for screenplays that is both human-readable and
+machine-parseable.</p>
+<h3 id="file-layout">File Layout</h3>
+<pre><code>Title: Harvey Session
+Credit: Recorded by Harvey
+Author: RSDOIEL
+Date: 2026-05-04 14:23:00
+Draft date: 2026-05-04
+
+FADE IN:
+
+INT. HARVEY AND RSDOIEL TALKING 2026-05-04 14:23:05
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3.1. Workspace: /home/user/project.
+
+RSDOIEL
+What is the capital of France?
+
+HARVEY
+Forwarding to LLAMA3.1.
+
+LLAMA3.1
+The capital of France is Paris.
+
+[[stats: LLAMA3.1 · 10 tokens · 0.5s · 20.0 tok/s]]
+
+INT. AGENT MODE 2026-05-04 14:25:00
+
+HARVEY
+Harvey proposes to write 1 file(s) to the workspace.
+
+HARVEY
+Write notes.md?
+
+RSDOIEL
+yes
+
+[[write: notes.md — ok]]
+
+INT. SHELL 2026-05-04 14:30:00
+
+RSDOIEL
+! ls -la
+
+SHELL
+notes.md
+todo.txt
+
+[[shell: ls -la — exit 0]]
+
+THE END.</code></pre>
+<h3 id="character-model">Character Model</h3>
+<p>Harvey uses a <strong>multi-character model</strong> in Fountain
+files to distinguish between different participants:</p>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr>
+<th>Character</th>
+<th>Representation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>USER</code></td>
+<td>All caps (e.g., <code>RSDOIEL</code>)</td>
+<td>The human operator; name from <code>$USER</code> environment
+variable</td>
+</tr>
+<tr>
+<td><code>HARVEY</code></td>
+<td>Always <code>HARVEY</code></td>
+<td>The Harvey agent program</td>
+</tr>
+<tr>
+<td><code>MODEL</code></td>
+<td>All caps (e.g., <code>LLAMA3.1</code>, <code>GEMMA4</code>)</td>
+<td>The LLM backend model</td>
+</tr>
+<tr>
+<td><code>SHELL</code></td>
+<td>Always <code>SHELL</code></td>
+<td>Shell command execution output</td>
+</tr>
+<tr>
+<td><code>SKILL-NAME</code></td>
+<td>Uppercase skill name (e.g., <code>FOUNTAIN-ANALYSIS</code>)</td>
+<td>Skill execution dialogue</td>
+</tr>
+<tr>
+<td><code>ROUTE_NAME</code></td>
+<td>Uppercase route name (e.g., <code>PI2</code>,
+<code>CLAUDE</code>)</td>
+<td>Routed endpoint responses</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Character Attribution Rules:</strong> -
+<strong>HARVEY</strong> = local Ollama/Llamafile interactions -
+<strong>ROUTE_NAME</strong> = responses from routed endpoints (when
+<code>@mention</code> routing is used) - <strong>MODEL_NAME</strong> =
+direct model responses (cloud/direct, or when <code>@modelname</code> is
+used) - <strong>INT.</strong> scenes = Harvey is involved as an
+intermediary - <strong>EXT.</strong> scenes = direct model-human
+interaction (not used by Harvey currently)</p>
+<h2 id="scene-types">Scene Types</h2>
+<p>Harvey sessions contain different <strong>scene types</strong> that
+represent distinct interaction modes:</p>
+<h3 id="chat-scenes-int.-harvey-and-user-talking">1. Chat Scenes
+(<code>INT. HARVEY AND {USER} TALKING</code>)</h3>
+<p>Standard question-and-answer exchanges between user and model.</p>
+<p><strong>Structure:</strong></p>
+<pre><code>INT. HARVEY AND {USER} TALKING {TIMESTAMP}
+
+Harvey and {USER} are in chat mode. Model: {MODEL}. Workspace: {PATH}.
+
+{USER}
+{user input text}
+
+HARVEY
+Forwarding to {MODEL}.
+
+{MODEL}
+{LLM response text}
+
+{ROUTE_NAME}
+{routed response text}
+
+[[stats: ...]]
+[[route: ...]]</code></pre>
+<p><strong>Example:</strong></p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 14:23:05
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3.1. Workspace: /home/user/project.
+
+RSDOIEL
+@claude refactor this function
+
+HARVEY
+Forwarding to CLAUDE.
+
+CLAUDE
+Here is the refactored version of your function...
+
+[[stats: CLAUDE · 250 tokens · 2.5s · 100.0 tok/s]]</code></pre>
+<h3 id="agent-mode-scenes-int.-agent-mode">2. Agent Mode Scenes
+(<code>INT. AGENT MODE</code>)</h3>
+<p>File operations and tool usage (write, run, edit, etc.).</p>
+<p><strong>Structure:</strong></p>
+<pre><code>INT. AGENT MODE {TIMESTAMP}
+
+HARVEY
+Harvey proposes to write {N} file(s) to the workspace.
+
+HARVEY
+Write {filename}?
+
+{USER}
+{yes/no/all/quit}
+
+[[write: {filename} — {status}]]</code></pre>
+<p><strong>Example:</strong></p>
+<pre><code>INT. AGENT MODE 2026-05-04 14:25:00
+
+HARVEY
+Harvey proposes to write 2 file(s) to the workspace.
+
+HARVEY
+Write src/main.go?
+
+RSDOIEL
+yes
+
+[[write: src/main.go — ok]]
+
+HARVEY
+Write src/utils.go?
+
+RSDOIEL
+all
+
+[[write: src/utils.go — ok]]</code></pre>
+<h3 id="shell-scenes-int.-shell">3. Shell Scenes
+(<code>INT. SHELL</code>)</h3>
+<p>Shell command execution.</p>
+<p><strong>Structure:</strong></p>
+<pre><code>INT. SHELL {TIMESTAMP}
+
+{USER}
+! {command}
+
+SHELL
+{output}
+
+[[shell: {command} — exit {code}]]</code></pre>
+<p><strong>Example:</strong></p>
+<pre><code>INT. SHELL 2026-05-04 14:30:00
+
+RSDOIEL
+! git status
+
+SHELL
+On branch main
+Your branch is up to date with &#39;origin/main&#39;.
+
+[[shell: git status — exit 0]]</code></pre>
+<h3 id="skill-scenes-int.-skill-name">4. Skill Scenes
+(<code>INT. SKILL {NAME}</code>)</h3>
+<p>Skill execution and output.</p>
+<p><strong>Structure:</strong></p>
+<pre><code>INT. SKILL {SKILL-NAME} {TIMESTAMP}
+
+Harvey executes the {skill-name} skill.
+
+{description}
+
+{SKILL-NAME}
+{skill body/instructions}</code></pre>
+<p><strong>Example:</strong></p>
+<pre><code>INT. SKILL FOUNTAIN-ANALYSIS 2026-05-04 14:35:00
+
+Harvey executes the fountain-analysis skill.
+
+Read and actively monitor a Harvey Fountain screenplay file, parsing its structure...
+
+FOUNTAIN-ANALYSIS
+## Analysis Steps
+1. Parse the Fountain file...
+2. Extract scene metadata...</code></pre>
+<h2 id="mention-routing-in-scenes"><span class="citation"
+data-cites="mention">@mention</span> Routing in Scenes</h2>
+<p>When <strong><span class="citation"
+data-cites="mention">@mention</span> routing</strong> is used, Harvey
+records the routing decision and attributes responses to the routed
+model:</p>
+<h3 id="routing-flow-in-fountain">Routing Flow in Fountain</h3>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 14:40:00
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3.1. Workspace: /home/user/project.
+
+RSDOIEL
+@claude analyze this code
+
+HARVEY
+Forwarding to CLAUDE.
+
+CLAUDE
+The code has the following structure...
+
+[[stats: CLAUDE · 450 tokens · 3.2s · 140.6 tok/s]]</code></pre>
+<h3 id="multi-model-context-tracking">Multi-Model Context Tracking</h3>
+<p>When a user mentions multiple models or routing is involved:</p>
+<pre><code>RSDOIEL
+@mistral @claude compare your approaches
+
+HARVEY
+Forwarding to MISTRAL.
+
+MISTRAL
+My approach uses...
+
+HARVEY
+Forwarding to CLAUDE.
+
+CLAUDE
+My approach differs by...</code></pre>
+<p><strong>Context Window:</strong> The last 10 non-system messages are
+sent to the remote model for context.</p>
+<h2 id="fountain-syntax-reference">Fountain Syntax Reference</h2>
+<h3 id="element-types-used-by-harvey">Element Types Used by Harvey</h3>
+<table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 20%" />
+<col style="width: 35%" />
+</colgroup>
+<thead>
+<tr>
+<th>Fountain Element</th>
+<th>Syntax</th>
+<th>Harvey Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Title Page</td>
+<td><code>Title: value</code></td>
+<td>Session metadata (Title, Credit, Author, Date)</td>
+</tr>
+<tr>
+<td>Transition</td>
+<td><code>FADE IN:</code>, <code>THE END.</code></td>
+<td>Document start/end markers</td>
+</tr>
+<tr>
+<td>Scene Heading</td>
+<td><code>INT. ...</code> or <code>EXT. ...</code></td>
+<td>Scene type and timestamp</td>
+</tr>
+<tr>
+<td>Action</td>
+<td>Plain text paragraphs</td>
+<td>State description, routing info, stats</td>
+</tr>
+<tr>
+<td>Character</td>
+<td><code>CHARACTER</code> (all caps)</td>
+<td>Speaker identification (USER, HARVEY, MODEL)</td>
+</tr>
+<tr>
+<td>Parenthetical</td>
+<td><code>(parenthetical)</code></td>
+<td>Not currently used by Harvey</td>
+</tr>
+<tr>
+<td>Dialogue</td>
+<td>Text under character</td>
+<td>Spoken content (prompts, responses)</td>
+</tr>
+<tr>
+<td>Note</td>
+<td><code>[[note content]]</code></td>
+<td>Metadata: stats, file operations, shell results</td>
+</tr>
+<tr>
+<td>Centered</td>
+<td><code>&gt; centered text &lt;</code></td>
+<td>Not currently used by Harvey</td>
+</tr>
+</tbody>
+</table>
+<h3 id="harvey-specific-note-formats">Harvey-Specific Note Formats</h3>
+<p>Harvey uses Fountain <strong>notes</strong> (<code>[[...]]</code>)
+for machine-readable metadata:</p>
+<table>
+<colgroup>
+<col style="width: 39%" />
+<col style="width: 28%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr>
+<th>Note Type</th>
+<th>Format</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stats</td>
+<td><code>[[stats: {model} · {tokens} tokens · {time}s · {tok/s} tok/s]]</code></td>
+<td><code>[[stats: LLAMA3.1 · 50 tokens · 0.8s · 62.5 tok/s]]</code></td>
+</tr>
+<tr>
+<td>Write</td>
+<td><code>[[write: {path} — {status}]]</code></td>
+<td><code>[[write: src/main.go — ok]]</code></td>
+</tr>
+<tr>
+<td>Shell</td>
+<td><code>[[shell: {command} — exit {code}]]</code></td>
+<td><code>[[shell: ls -la — exit 0]]</code></td>
+</tr>
+<tr>
+<td>Read</td>
+<td><code>[[read: {path} — {status}]]</code></td>
+<td><code>[[read: data.json — ok]]</code></td>
+</tr>
+<tr>
+<td>Edit</td>
+<td><code>[[edit: {path} — {status}]]</code></td>
+<td><code>[[edit: README.md — ok]]</code></td>
+</tr>
+<tr>
+<td>Run</td>
+<td><code>[[run: {command} — {status}]]</code></td>
+<td><code>[[run: go test — ok]]</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="session-file-location">Session File Location</h2>
+<h3 id="default-location">Default Location</h3>
+<p>Sessions are stored in:</p>
+<pre><code>&lt;workspace&gt;/harvey/sessions/</code></pre>
+<h3 id="custom-location">Custom Location</h3>
+<p>Override in <code>harvey.yaml</code>:</p>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sessions_dir</span><span class="kw">:</span><span class="at"> custom/sessions/path</span></span></code></pre></div>
+<p>Or via command line:</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--sessions-dir</span> custom/sessions</span></code></pre></div>
+<h3 id="global-sessions">Global Sessions</h3>
+<p>Global sessions (not workspace-specific) are stored in:</p>
+<pre><code>~/harvey/sessions/</code></pre>
+<h2 id="session-commands">Session Commands</h2>
+<h3 id="record-manage-recording"><code>/record</code> — Manage
+Recording</h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/record</code></td>
+<td>Show current recording status</td>
+</tr>
+<tr>
+<td><code>/record on</code></td>
+<td>Start recording (default at startup)</td>
+</tr>
+<tr>
+<td><code>/record off</code></td>
+<td>Stop recording current session</td>
+</tr>
+<tr>
+<td><code>/record file &lt;path&gt;</code></td>
+<td>Change recording file path</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<pre><code>harvey&gt; /record
+  Recording: ON
+  File: /home/user/project/harvey/sessions/harvey-session-20260504-142300.spmd
+
+harvey&gt; /record off
+  Recording stopped.
+
+harvey&gt; /record on
+  Recording resumed to /home/user/project/harvey/sessions/harvey-session-20260504-142300.spmd</code></pre>
+<h3 id="session-session-operations"><code>/session</code> — Session
+Operations</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 59%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/session continue &lt;file&gt;</code></td>
+<td>Load chat history from file and continue</td>
+</tr>
+<tr>
+<td><code>/session replay &lt;file&gt; [output]</code></td>
+<td>Replay session to current model, optionally saving to new file</td>
+</tr>
+<tr>
+<td><code>/sessions</code></td>
+<td>List available session files</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<pre><code># Continue a previous session
+harvey&gt; /session continue harvey/sessions/old.spmd
+  Loaded 23 turns from old.spmd
+  Resuming conversation...
+
+# Replay to a different model
+harvey&gt; /session replay old.spmd new-responses.spmd
+  Replaying 23 turns from old.spmd
+  Recording to new-responses.spmd
+  [1/23] What is the capital of France?
+  ...
+
+# List sessions
+harvey&gt; /sessions
+  [0]  harvey-session-20260504-142300.spmd
+  [1]  harvey-session-20260503-101500.spmd</code></pre>
+<h3 id="command-line-session-options">Command-Line Session Options</h3>
+<table>
+<colgroup>
+<col style="width: 31%" />
+<col style="width: 68%" />
+</colgroup>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--record</code></td>
+<td>Enable session recording (default: on)</td>
+</tr>
+<tr>
+<td><code>--record-file &lt;path&gt;</code></td>
+<td>Record to specific file</td>
+</tr>
+<tr>
+<td><code>--no-record</code></td>
+<td>Disable session recording</td>
+</tr>
+<tr>
+<td><code>--continue &lt;file&gt;</code></td>
+<td>Continue from a session file</td>
+</tr>
+<tr>
+<td><code>--replay &lt;file&gt;</code></td>
+<td>Replay a session file</td>
+</tr>
+<tr>
+<td><code>--replay-output &lt;file&gt;</code></td>
+<td>Output file for replay (use with <code>--replay</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start with recording disabled</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--no-record</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Record to specific file</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> my-session.spmd</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Continue from previous session</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> ~/harvey/sessions/previous.spmd</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Replay a session with new model</span></span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--model</span> claude-3-haiku <span class="at">--replay</span> old-session.spmd <span class="at">--replay-output</span> new-session.spmd</span></code></pre></div>
+<h2 id="session-file-discovery">Session File Discovery</h2>
+<p>Harvey automatically scans for session files on startup:</p>
+<ol type="1">
+<li><strong>Workspace sessions:</strong> <code>harvey/sessions/</code>
+(newest first)</li>
+<li><strong>Global sessions:</strong> <code>~/harvey/sessions/</code>
+(if workspace has no sessions)</li>
+</ol>
+<h3 id="listsessionfiles-function"><code>ListSessionFiles()</code>
+Function</h3>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>files<span class="op">,</span> err <span class="op">:=</span> ListSessionFiles<span class="op">(</span><span class="st">&quot;harvey/sessions&quot;</span><span class="op">)</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> f <span class="op">:=</span> <span class="kw">range</span> files <span class="op">{</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;%s  %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> f<span class="op">.</span>ModTime<span class="op">.</span>Format<span class="op">(</span><span class="st">&quot;2006-01-02 15:04&quot;</span><span class="op">),</span> f<span class="op">.</span>Name<span class="op">)</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Returns session files sorted by modification time (newest first).</p>
+<h2 id="parsing-session-files">Parsing Session Files</h2>
+<p>Harvey provides functions to parse and extract data from session
+files:</p>
+<h3 id="parsefountainsession"><code>parseFountainSession()</code></h3>
+<p>Extracts chat turns from a Harvey Fountain file:</p>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>userName<span class="op">,</span> modelName<span class="op">,</span> turns<span class="op">,</span> err <span class="op">:=</span> parseFountainSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> turn <span class="op">:=</span> <span class="kw">range</span> turns <span class="op">{</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;USER: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>UserInput<span class="op">)</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;MODEL: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>ModelReply<span class="op">)</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Returns:</strong> - <code>userName</code> — ALL-CAPS user
+name from scene headings - <code>modelName</code> — ALL-CAPS model name
+from HARVEY’s “Forwarding to” dialogue - <code>turns</code> — Slice of
+<code>PlaybackTurn</code> structs with <code>UserInput</code> and
+<code>ModelReply</code></p>
+<h3
+id="extractmodelfromsession"><code>ExtractModelFromSession()</code></h3>
+<p>Extracts just the model name from a session file:</p>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>model<span class="op">,</span> err <span class="op">:=</span> ExtractModelFromSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="co">// model == &quot;LLAMA3.1&quot;</span></span></code></pre></div>
+<h2 id="recording-implementation">Recording Implementation</h2>
+<h3 id="recorder-type"><code>Recorder</code> Type</h3>
+<p>The <code>Recorder</code> struct handles writing session events to
+Fountain files:</p>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Recorder <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    f         <span class="op">*</span>os<span class="op">.</span>File      <span class="co">// File handle</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    path      <span class="dt">string</span>        <span class="co">// File path</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    userName  <span class="dt">string</span>        <span class="co">// ALL-CAPS user name</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    modelName <span class="dt">string</span>        <span class="co">// ALL-CAPS model name</span></span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>    workspace <span class="dt">string</span>        <span class="co">// Workspace path</span></span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="creating-a-recorder">Creating a Recorder</h3>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>r<span class="op">,</span> err <span class="op">:=</span> NewRecorder<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">,</span> <span class="st">&quot;Ollama (llama3.1:8b)&quot;</span><span class="op">,</span> <span class="st">&quot;/home/user/project&quot;</span><span class="op">)</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="cf">defer</span> r<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
+<p>This creates the file, writes the title page, and adds
+<code>FADE IN:</code>.</p>
+<h3 id="recording-chat-turns">Recording Chat Turns</h3>
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Simple turn (no stats)</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordTurn<span class="op">(</span><span class="st">&quot;Hello&quot;</span><span class="op">,</span> <span class="st">&quot;Hi there!&quot;</span><span class="op">)</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Full turn with stats and routing</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>stats <span class="op">:=</span> ChatStats<span class="op">{</span></span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    Model<span class="op">:</span>    <span class="st">&quot;llama3.1:8b&quot;</span><span class="op">,</span></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    Tokens<span class="op">:</span>   <span class="dv">50</span><span class="op">,</span></span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>    Time<span class="op">:</span>     <span class="fl">0.8</span><span class="op">,</span></span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>    TokensPerSec<span class="op">:</span> <span class="fl">62.5</span><span class="op">,</span></span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordTurnWithStats<span class="op">(</span></span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Hello&quot;</span><span class="op">,</span></span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Hi there!&quot;</span><span class="op">,</span></span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>    stats<span class="op">,</span></span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;Ollama (llama3.1:8b)&quot;</span><span class="op">},</span></span>
+<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;&quot;</span><span class="op">,</span></span>
+<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
+<h3 id="recording-agent-actions">Recording Agent Actions</h3>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Start agent mode scene</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>StartAgentScene<span class="op">(</span><span class="st">&quot;Harvey proposes to write 1 file.&quot;</span><span class="op">)</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Record write action</span></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordAgentAction<span class="op">(</span><span class="st">&quot;write&quot;</span><span class="op">,</span> <span class="st">&quot;hello.txt&quot;</span><span class="op">,</span> <span class="st">&quot;yes&quot;</span><span class="op">,</span> <span class="st">&quot;ok&quot;</span><span class="op">)</span></span></code></pre></div>
+<h3 id="recording-shell-commands">Recording Shell Commands</h3>
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordShellCommand<span class="op">(</span><span class="st">&quot;ls -la&quot;</span><span class="op">,</span> <span class="st">&quot;file1.txt</span><span class="ch">\n</span><span class="st">file2.txt</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> <span class="dv">0</span><span class="op">)</span></span></code></pre></div>
+<h3 id="recording-skill-execution">Recording Skill Execution</h3>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordSkillLoad<span class="op">(</span></span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;fountain-analysis&quot;</span><span class="op">,</span></span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Read and analyze a Fountain session file&quot;</span><span class="op">,</span></span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    skillBody<span class="op">,</span></span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
+<h3 id="closing-the-recorder">Closing the Recorder</h3>
+<div class="sourceCode" id="cb32"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>Close<span class="op">()</span> <span class="co">// Writes &quot;THE </span><span class="re">END</span><span class="co">.&quot;</span></span></code></pre></div>
+<h2 id="session-replay">Session Replay</h2>
+<h3 id="how-replay-works">How Replay Works</h3>
+<ol type="1">
+<li>Parse the source session file to extract chat turns</li>
+<li>Create a new Recorder for the output file</li>
+<li>For each turn:
+<ul>
+<li>Send the user input to the current LLM backend</li>
+<li>Record the new response to the output file</li>
+<li>Apply any tagged code blocks (with backup protection)</li>
+</ul></li>
+<li>Close the output file with “THE END.”</li>
+</ol>
+<h3 id="replay-with-backup-protection">Replay with Backup
+Protection</h3>
+<p>When replaying sessions that contain file writes:</p>
+<ol type="1">
+<li>If the target file exists, it’s renamed to
+<code>{file}.bak.{TIMESTAMP}</code></li>
+<li>The new content is written</li>
+<li>If backup or write fails, the action is recorded as “skipped”</li>
+</ol>
+<p><strong>Example:</strong></p>
+<pre><code>[[write: src/main.go — ok]]
+# If src/main.go existed, it becomes src/main.go.bak.20260504-142300
+
+[[write: src/main.go — skipped: cannot backup]]
+# If backup failed, write is skipped</code></pre>
+<h2 id="session-metadata">Session Metadata</h2>
+<h3 id="title-page-fields">Title Page Fields</h3>
+<p>Every Harvey session file begins with a title page containing
+metadata:</p>
+<pre><code>Title: Harvey Session
+Credit: Recorded by Harvey
+Author: {USER}
+Date: {YYYY-MM-DD HH:MM:SS}
+Draft date: {YYYY-MM-DD}</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source</th>
+<th>Format</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Title</code></td>
+<td>Fixed</td>
+<td><code>"Harvey Session"</code></td>
+</tr>
+<tr>
+<td><code>Credit</code></td>
+<td>Fixed</td>
+<td><code>"Recorded by Harvey"</code></td>
+</tr>
+<tr>
+<td><code>Author</code></td>
+<td>Environment</td>
+<td><code>$USER</code> (uppercase) or <code>"OPERATOR"</code></td>
+</tr>
+<tr>
+<td><code>Date</code></td>
+<td>Timestamp</td>
+<td><code>2006-01-02 15:04:05</code></td>
+</tr>
+<tr>
+<td><code>Draft date</code></td>
+<td>Timestamp</td>
+<td><code>2006-01-02</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="characters-header-optional">Characters Header (Optional)</h3>
+<p>For multi-model sessions, a <code>Characters:</code> line can be
+added to the title page:</p>
+<pre><code>Title: Harvey Session
+Credit: Recorded by Harvey
+Author: RSDOIEL
+Date: 2026-05-04 14:23:00
+Draft date: 2026-05-04
+Characters: RSDOIEL, HARVEY, LLAMA3.1, CLAUDE</code></pre>
+<h2 id="fountain-format-compatibility">Fountain Format
+Compatibility</h2>
+<h3 id="fountain-specification">Fountain Specification</h3>
+<p>Harvey uses a subset of the <strong><a
+href="https://fountain.io/syntax">Fountain screenplay
+format</a></strong>:</p>
+<ul>
+<li><strong>Title Page:</strong> Key-value pairs for metadata</li>
+<li><strong>Scene Headings:</strong> <code>INT.</code> or
+<code>EXT.</code> followed by description and timestamp</li>
+<li><strong>Action:</strong> Plain text paragraphs for stage
+directions</li>
+<li><strong>Character:</strong> ALL-CAPS names for speakers</li>
+<li><strong>Dialogue:</strong> Text following a character line</li>
+<li><strong>Notes:</strong> <code>[[content]]</code> for production
+notes</li>
+<li><strong>Transitions:</strong> <code>FADE IN:</code>,
+<code>THE END.</code> for scene markers</li>
+</ul>
+<h3 id="compatibility-with-other-tools">Compatibility with Other
+Tools</h3>
+<p>Harvey session files (<code>.spmd</code>) are valid Fountain files
+and can be:</p>
+<ul>
+<li><strong>Read by other Fountain-compatible tools</strong> — Any
+Fountain parser can read them</li>
+<li><strong>Imported into screenplay software</strong> — Final Draft,
+Highland, etc.</li>
+<li><strong>Processed by Harvey’s skills</strong> — The
+<code>fountain-analysis</code> skill can analyze any Fountain file</li>
+</ul>
+<h3 id="differences-from-standard-fountain">Differences from Standard
+Fountain</h3>
+<p>Harvey makes these Fountain-specific adaptations:</p>
+<ol type="1">
+<li><strong>Character names:</strong> Always ALL-CAPS (standard Fountain
+allows mixed case)</li>
+<li><strong>Timestamp in scene headings:</strong> Harvey includes
+timestamps in all scene headings</li>
+<li><strong>Machine-readable notes:</strong> Uses
+<code>[[key: value]]</code> format for structured metadata</li>
+<li><strong>State in action blocks:</strong> Includes
+<code>Model:</code>, <code>Workspace:</code> in action descriptions</li>
+</ol>
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="naming-sessions">Naming Sessions</h3>
+<ol type="1">
+<li><strong>Use descriptive names:</strong>
+<code>debugging-issue-42.spmd</code> instead of
+<code>session-1.spmd</code></li>
+<li><strong>Include dates:</strong>
+<code>20260504-research-llm-security.spmd</code></li>
+<li><strong>Use hyphens:</strong> <code>my-project-analysis.spmd</code>
+(avoid spaces)</li>
+<li><strong>Keep it short:</strong> Under 80 characters for
+readability</li>
+</ol>
+<h3 id="organizing-sessions">Organizing Sessions</h3>
+<ol type="1">
+<li><strong>Use subdirectories:</strong>
+<code>harvey/sessions/project-x/</code>,
+<code>harvey/sessions/experiments/</code></li>
+<li><strong>Archive old sessions:</strong> Move completed sessions to
+<code>harvey/sessions/archive/</code></li>
+<li><strong>Tag in filename:</strong>
+<code>20260504-llama3.1-research.spmd</code> to track model used</li>
+<li><strong>Group related sessions:</strong>
+<code>20260504-part1.spmd</code>, <code>20260504-part2.spmd</code></li>
+</ol>
+<h3 id="session-management">Session Management</h3>
+<ol type="1">
+<li><strong>Resume instead of replay:</strong> Use <code>continue</code>
+to pick up where you left off</li>
+<li><strong>Replay for model comparison:</strong> Use
+<code>replay</code> to compare responses from different models</li>
+<li><strong>Delete with care:</strong> Session files are the only record
+of your conversations</li>
+<li><strong>Backup important sessions:</strong> Copy <code>.spmd</code>
+files to a safe location</li>
+</ol>
+<h3 id="multi-model-workflows">Multi-Model Workflows</h3>
+<ol type="1">
+<li><strong>Use <span class="citation"
+data-cites="mention">@mention</span> explicitly:</strong>
+<code>@claude</code>, <code>@mistral</code>, etc. for clear
+attribution</li>
+<li><strong>Check routing config:</strong> Ensure endpoints are
+registered in <code>~/agents/routes.json</code></li>
+<li><strong>Verify context window:</strong> Remember only last 10
+messages are sent to remote models</li>
+<li><strong>Review session files:</strong> Confirm correct model
+attribution in the Fountain file</li>
+</ol>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="common-issues">Common Issues</h3>
+<table>
+<colgroup>
+<col style="width: 29%" />
+<col style="width: 29%" />
+<col style="width: 41%" />
+</colgroup>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Cause</th>
+<th>Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Session not recording</td>
+<td><code>--no-record</code> flag or config</td>
+<td>Check <code>/record</code> status, enable with
+<code>/record on</code></td>
+</tr>
+<tr>
+<td>Cannot find session file</td>
+<td>Wrong path or directory</td>
+<td>Use <code>/sessions</code> to list available files, check path</td>
+</tr>
+<tr>
+<td>Replay produces errors</td>
+<td>Model unavailable or rate limited</td>
+<td>Check model is running/available, try different model</td>
+</tr>
+<tr>
+<td>File writes skipped on replay</td>
+<td>Backup failed or permission denied</td>
+<td>Check file permissions, free disk space</td>
+</tr>
+<tr>
+<td>Characters not recognized</td>
+<td>Non-standard character names</td>
+<td>Use ALL-CAPS character names consistently</td>
+</tr>
+</tbody>
+</table>
+<h3 id="session-file-corruption">Session File Corruption</h3>
+<p>If a session file becomes corrupted:</p>
+<ol type="1">
+<li><p><strong>Try to continue anyway:</strong> Harvey may still extract
+valid turns</p></li>
+<li><p><strong>Check for backup:</strong> Harvey doesn’t auto-backup,
+but you may have manual backups</p></li>
+<li><p><strong>Reconstruct manually:</strong> Create a new session file
+with the important exchanges</p></li>
+<li><p><strong>Validate with Fountain parser:</strong></p>
+<div class="sourceCode" id="cb36"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="co"># If fountain CLI is available</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="ex">fountain</span> validate session.spmd</span></code></pre></div></li>
+</ol>
+<h3 id="missing-title-page">Missing Title Page</h3>
+<p>If a session file is missing the title page: - Harvey will still
+parse it but may have incomplete metadata - Author will default to
+<code>OPERATOR</code> - Date will be missing from the file</p>
+<h3 id="model-name-extraction-failure">Model Name Extraction
+Failure</h3>
+<p>If the model name cannot be extracted: - Defaults to
+<code>MODEL</code> - Check that HARVEY has a “Forwarding to {MODEL}.”
+dialogue line - Ensure the session was recorded with Harvey (not
+manually created)</p>
+<h2 id="advanced-usage">Advanced Usage</h2>
+<h3 id="programmatic-session-access">Programmatic Session Access</h3>
+<div class="sourceCode" id="cb37"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Open a session file</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>user<span class="op">,</span> model<span class="op">,</span> turns<span class="op">,</span> err <span class="op">:=</span> parseFountainSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Process turns</span></span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i<span class="op">,</span> turn <span class="op">:=</span> <span class="kw">range</span> turns <span class="op">{</span></span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Turn %d:</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> i<span class="op">+</span><span class="dv">1</span><span class="op">)</span></span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  User: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>UserInput<span class="op">)</span></span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  Model: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>ModelReply<span class="op">)</span></span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Create a custom session file</span></span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>r<span class="op">,</span> _ <span class="op">:=</span> NewRecorder<span class="op">(</span><span class="st">&quot;custom.spmd&quot;</span><span class="op">,</span> <span class="st">&quot;Custom Model&quot;</span><span class="op">,</span> <span class="st">&quot;/path/to/workspace&quot;</span><span class="op">)</span></span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>StartAgentScene<span class="op">(</span><span class="st">&quot;Custom scene&quot;</span><span class="op">)</span></span>
+<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>RecordAgentAction<span class="op">(</span><span class="st">&quot;custom&quot;</span><span class="op">,</span> <span class="st">&quot;target&quot;</span><span class="op">,</span> <span class="st">&quot;yes&quot;</span><span class="op">,</span> <span class="st">&quot;ok&quot;</span><span class="op">)</span></span>
+<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
+<h3 id="custom-session-parsing">Custom Session Parsing</h3>
+<p>For advanced analysis, use the Fountain library directly:</p>
+<div class="sourceCode" id="cb38"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="st">&quot;github.com/rsdoiel/fountain&quot;</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> err <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">switch</span> elem<span class="op">.</span>Type <span class="op">{</span></span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>SceneHeadingType<span class="op">:</span></span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Scene: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>CharacterType<span class="op">:</span></span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Character: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> fountain<span class="op">.</span>CharacterName<span class="op">(</span>elem<span class="op">))</span></span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>DialogueType<span class="op">:</span></span>
+<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Dialogue: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
+<span id="cb38-12"><a href="#cb38-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb38-13"><a href="#cb38-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="session-file-transformation">Session File Transformation</h3>
+<p>Convert sessions to other formats:</p>
+<div class="sourceCode" id="cb39"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to plain text</span></span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> _ <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Println<span class="op">(</span>fountainSrc<span class="op">(&amp;</span>elem<span class="op">))</span></span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to JSON</span></span>
+<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a><span class="co">// (Would need custom marshaling of fountain.Element)</span></span></code></pre></div>
+<h2 id="fountain-format-specification">Fountain Format
+Specification</h2>
+<p>For complete Fountain syntax, see: - <strong><a
+href="https://fountain.io">Fountain.io</a></strong> — Official
+specification - <strong><a
+href="https://github.com/mattgemmell/Fountain">Fountain
+GitHub</a></strong> — Reference implementation</p>
+<h3 id="supported-fountain-features">Supported Fountain Features</h3>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Supported</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Title Page</td>
+<td>✓</td>
+<td>With Harvey-specific fields</td>
+</tr>
+<tr>
+<td>Scene Headings</td>
+<td>✓</td>
+<td>INT./EXT. with timestamps</td>
+</tr>
+<tr>
+<td>Action</td>
+<td>✓</td>
+<td>State descriptions, routing info</td>
+</tr>
+<tr>
+<td>Character</td>
+<td>✓</td>
+<td>ALL-CAPS only</td>
+</tr>
+<tr>
+<td>Dialogue</td>
+<td>✓</td>
+<td>Full support</td>
+</tr>
+<tr>
+<td>Parenthetical</td>
+<td>✓</td>
+<td>Not currently used</td>
+</tr>
+<tr>
+<td>Notes</td>
+<td>✓</td>
+<td>Structured metadata format</td>
+</tr>
+<tr>
+<td>Transitions</td>
+<td>✓</td>
+<td>FADE IN:, THE END.</td>
+</tr>
+<tr>
+<td>Centered</td>
+<td>✗</td>
+<td>Not used</td>
+</tr>
+<tr>
+<td>Lyrics</td>
+<td>✗</td>
+<td>Not used</td>
+</tr>
+<tr>
+<td>Page Breaks</td>
+<td>✗</td>
+<td>Not used</td>
+</tr>
+<tr>
+<td>Section Headings</td>
+<td>✗</td>
+<td>Not used</td>
+</tr>
+</tbody>
+</table>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="CONFIGURATION.html">CONFIGURATION.md</a> — Configuration
+file reference</li>
+<li><a href="ROUTING.html">ROUTING.md</a> — Remote endpoint routing
+guide</li>
+<li><a href="KNOWLEDGE_BASE.html">KNOWLEDGE_BASE.md</a> — Knowledge base
+documentation</li>
+<li><a href="SKILLS.html">SKILLS.md</a> — Agent Skills system</li>
+<li><a
+href="agents/skills/fountain-analysis/SKILL.html">agents/skills/fountain-analysis/SKILL.md</a>
+— Fountain file analysis skill</li>
+</ul>
+<p><em>Documentation generated from recorder.go, replay.go, and
+sessions_files.go source code. Version 1.0.</em></p>
+</section>
+</body>
+</html>

@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-routing-remote-endpoint-configuration">Harvey Routing:
+Remote Endpoint Configuration</h1>
+<p><em>Version 1.0 — Complete guide to multi-model routing in
+Harvey</em></p>
+<h2 id="overview">Overview</h2>
+<p>Harvey’s <strong>routing system</strong> allows you to dispatch
+prompts to <strong>remote LLM endpoints</strong> — other Ollama
+instances on your network, Llamafile servers, or cloud providers
+(Anthropic, DeepSeek, Gemini, Mistral, OpenAI). This enables:</p>
+<ul>
+<li><strong>Multi-model workflows</strong>: Use different models for
+different tasks</li>
+<li><strong>Hardware distribution</strong>: Offload to more powerful
+machines</li>
+<li><strong>Cloud integration</strong>: Access commercial APIs when
+needed</li>
+<li><strong>Load balancing</strong>: Distribute work across a
+cluster</li>
+</ul>
+<h3 id="core-concept-mention-routing">Core Concept: <span
+class="citation" data-cites="mention">@mention</span> Routing</h3>
+<p>Prefix any prompt with <code>@name</code> to send it to a registered
+remote endpoint:</p>
+<pre><code>RSDOIEL
+@claude refactor this module
+
+HARVEY
+Forwarding to CLAUDE.
+
+CLAUDE
+Here is the refactored code...</code></pre>
+<p>The response is <strong>streamed back</strong> into your local
+conversation history, so Harvey retains full context of the
+exchange.</p>
+<h2 id="quick-start">Quick Start</h2>
+<h3 id="register-your-first-remote-endpoint">Register Your First Remote
+Endpoint</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># In Harvey REPL:</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or from shell:</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--route</span> add pi2 ollama://192.168.1.12:11434 llama3.1:8b</span></code></pre></div>
+<h3 id="enable-routing">Enable Routing</h3>
+<pre><code>harvey&gt; /route on</code></pre>
+<h3 id="use-it">Use It</h3>
+<pre><code>harvey&gt; @pi2 explain this algorithm
+
+HARVEY
+Forwarding to PI2.
+
+PI2
+The algorithm implements a depth-first search with...</code></pre>
+<h2 id="endpoint-types">Endpoint Types</h2>
+<p>Harvey supports <strong>10 endpoint types</strong> across local and
+cloud providers:</p>
+<h3 id="local-providers-no-api-key-required">Local Providers (No API Key
+Required)</h3>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 13%" />
+<col style="width: 18%" />
+<col style="width: 20%" />
+<col style="width: 31%" />
+<col style="width: 15%" />
+</colgroup>
+<thead>
+<tr>
+<th>Type</th>
+<th>Scheme</th>
+<th>Backend</th>
+<th>Default Port</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ollama</td>
+<td><code>ollama://host:port</code></td>
+<td>Ollama</td>
+<td>11434</td>
+<td>Official Ollama server</td>
+</tr>
+<tr>
+<td>Ollama</td>
+<td><code>http://host:port</code></td>
+<td>Ollama</td>
+<td>11434</td>
+<td>HTTP (insecure)</td>
+</tr>
+<tr>
+<td>Ollama</td>
+<td><code>https://host:port</code></td>
+<td>Ollama</td>
+<td>11434</td>
+<td>HTTPS (secure)</td>
+</tr>
+<tr>
+<td>Llamafile</td>
+<td><code>llamafile://host:port</code></td>
+<td>Llamafile</td>
+<td>8080</td>
+<td>OpenAI-compatible</td>
+</tr>
+<tr>
+<td>llama.cpp</td>
+<td><code>llamacpp://host:port</code></td>
+<td>llama.cpp</td>
+<td>8080</td>
+<td>OpenAI-compatible</td>
+</tr>
+</tbody>
+</table>
+<h3 id="cloud-providers-api-key-required">Cloud Providers (API Key
+Required)</h3>
+<table>
+<colgroup>
+<col style="width: 12%" />
+<col style="width: 16%" />
+<col style="width: 18%" />
+<col style="width: 37%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr>
+<th>Type</th>
+<th>Scheme</th>
+<th>Backend</th>
+<th>API Key Variable</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Anthropic</td>
+<td><code>anthropic://</code></td>
+<td>Claude</td>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td>All Claude models</td>
+</tr>
+<tr>
+<td>DeepSeek</td>
+<td><code>deepseek://</code></td>
+<td>DeepSeek</td>
+<td><code>DEEPSEEK_API_KEY</code></td>
+<td>All DeepSeek models</td>
+</tr>
+<tr>
+<td>Gemini</td>
+<td><code>gemini://</code></td>
+<td>Google</td>
+<td><code>GEMINI_API_KEY</code></td>
+<td>Primary</td>
+</tr>
+<tr>
+<td>Gemini</td>
+<td><code>gemini://</code></td>
+<td>Google</td>
+<td><code>GOOGLE_API_KEY</code></td>
+<td>Fallback</td>
+</tr>
+<tr>
+<td>Mistral</td>
+<td><code>mistral://</code></td>
+<td>Mistral</td>
+<td><code>MISTRAL_API_KEY</code></td>
+<td>All Mistral models</td>
+</tr>
+<tr>
+<td>OpenAI</td>
+<td><code>openai://</code></td>
+<td>OpenAI</td>
+<td><code>OPENAI_API_KEY</code></td>
+<td>All OpenAI models</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration-files">Configuration Files</h2>
+<h3 id="global-routes-agentsroutes.json">Global Routes:
+<code>~/agents/routes.json</code></h3>
+<p>All registered endpoints and routing state are persisted in JSON
+format.</p>
+<p><strong>Location:</strong> - Linux/macOS:
+<code>~/agents/routes.json</code> - Windows:
+<code>%USERPROFILE%\agents\routes.json</code></p>
+<p><strong>Example:</strong></p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;enabled&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;endpoints&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;pi2&quot;</span><span class="fu">,</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama://192.168.1.12:11434&quot;</span><span class="fu">,</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;llama3.1:8b&quot;</span><span class="fu">,</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama&quot;</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;pi3&quot;</span><span class="fu">,</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama://192.168.1.13:11434&quot;</span><span class="fu">,</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;mistral:latest&quot;</span><span class="fu">,</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama&quot;</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;claude&quot;</span><span class="fu">,</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;anthropic://&quot;</span><span class="fu">,</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;claude-3-haiku&quot;</span><span class="fu">,</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;anthropic&quot;</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;gemini&quot;</span><span class="fu">,</span></span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;gemini://&quot;</span><span class="fu">,</span></span>
+<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;gemini-1.5-flash&quot;</span><span class="fu">,</span></span>
+<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;gemini&quot;</span></span>
+<span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<h3 id="workspace-configuration-agentsharvey.yaml">Workspace
+Configuration: <code>agents/harvey.yaml</code></h3>
+<p>Routing can also be configured per-workspace, though global routes
+are typically sufficient.</p>
+<h2 id="commands-reference">Commands Reference</h2>
+<h3
+id="route-add-name-url-model"><code>/route add NAME URL [MODEL]</code></h3>
+<p>Register a new remote endpoint.</p>
+<p><strong>Arguments:</strong> - <code>NAME</code>: Unique identifier
+(used in <span class="citation" data-cites="mentions">@mentions</span>)
+- <code>URL</code>: Full URL including scheme (see table above) -
+<code>MODEL</code>: Optional default model for this endpoint</p>
+<p><strong>Examples:</strong></p>
+<pre><code>/route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
+/route add pi2 ollama://192.168.1.12:11434
+/route add claude anthropic:// claude-3-haiku
+/route add myollama http://localhost:11434
+/route add secure https://my-ollama.example.com:443</code></pre>
+<p><strong>Notes:</strong> - <code>NAME</code> must be unique across all
+endpoints - If <code>MODEL</code> is omitted, you must specify it each
+time you use the endpoint - The URL scheme determines the backend
+type</p>
+<h3 id="route-rm-name"><code>/route rm NAME</code></h3>
+<p>Remove a registered endpoint.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>/route rm pi2
+/route rm claude</code></pre>
+<h3 id="route-list"><code>/route list</code></h3>
+<p>List all registered endpoints with reachability status.</p>
+<p><strong>Output:</strong></p>
+<pre><code>  Endpoints registered:
+
+  ✓  @pi2      ollama://192.168.1.12:11434  llama3.1:8b
+  ✓  @pi3      ollama://192.168.1.13:11434  mistral:latest
+  ✗  @pi4      ollama://192.168.1.14:11434  (unreachable)
+  ✓  @claude   anthropic://                   claude-3-haiku
+  ?  @gemini   gemini://                      (API key not set)</code></pre>
+<p><strong>Status indicators:</strong> - <code>✓</code> (green):
+Endpoint is reachable - <code>✗</code> (yellow): Endpoint is unreachable
+- <code>?</code> (yellow): API key not configured (cloud providers)</p>
+<h3 id="route-on"><code>/route on</code></h3>
+<p>Enable routing globally. Persisted across sessions.</p>
+<h3 id="route-off"><code>/route off</code></h3>
+<p>Disable routing globally. <span class="citation"
+data-cites="mentions">@mentions</span> will be rejected. Persisted
+across sessions.</p>
+<h3 id="route-status"><code>/route status</code></h3>
+<p>Show routing state and endpoint count.</p>
+<p><strong>Output:</strong></p>
+<pre><code>Routing: on
+Endpoints: 5 registered
+Active endpoint: none (routing uses @mention)</code></pre>
+<h2 id="usage-patterns">Usage Patterns</h2>
+<h3 id="pattern-1-pi-cluster-workload-distribution">Pattern 1: Pi
+Cluster Workload Distribution</h3>
+<pre><code># Register cluster nodes
+harvey&gt; /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
+harvey&gt; /route add pi3 ollama://192.168.1.13:11434 mistral:latest
+harvey&gt; /route add pi4 ollama://192.168.1.14:11434 phi3:latest
+
+# Enable routing
+harvey&gt; /route on
+
+# Distribute work
+harvey&gt; @pi2 write unit tests for the parser package
+harvey&gt; @pi3 review the API design document
+harvey&gt; @pi4 generate documentation</code></pre>
+<h3 id="pattern-2-local-cloud-hybrid">Pattern 2: Local + Cloud
+Hybrid</h3>
+<pre><code># Use local model for most work
+harvey&gt; Explain this Go code
+
+# Switch to cloud for complex tasks
+harvey&gt; @claude This is a complex architecture decision, give me options</code></pre>
+<h3 id="pattern-3-model-comparison">Pattern 3: Model Comparison</h3>
+<pre><code># Same prompt to multiple models
+harvey&gt; @llama3 How would you refactor this?
+harvey&gt; @mistral How would you refactor this?
+harvey&gt; @claude How would you refactor this?
+
+# Compare responses in the same conversation</code></pre>
+<h2 id="context-window-behavior">Context Window Behavior</h2>
+<p>When you dispatch a prompt to a remote endpoint via <span
+class="citation" data-cites="mention">@mention</span>, Harvey sends:</p>
+<ol type="1">
+<li><strong>Your prompt</strong> (with <span class="citation"
+data-cites="mention">@mention</span> removed)</li>
+<li><strong>Last 10 non-system messages</strong> from local history</li>
+<li><strong>System prompt</strong> from HARVEY.md</li>
+</ol>
+<p><strong>Why 10 messages?</strong> This gives the remote model enough
+context without sending the entire conversation (which may exceed the
+remote model’s context window or waste tokens).</p>
+<p><strong>Example:</strong></p>
+<pre><code>Local history:
+  [system] HARVEY.md content
+  [user] Read the parser code
+  [assistant] Here is the parser code...
+  [user] The ParseExpr function has a bug
+  [assistant] Yes, it doesn&#39;t handle empty input...
+  [user] @claude How should we fix this?
+
+Sent to CLAUDE:
+  [system] HARVEY.md content
+  [user] Read the parser code
+  [assistant] Here is the parser code...
+  [user] The ParseExpr function has a bug
+  [assistant] Yes, it doesn&#39;t handle empty input...
+  [user] How should we fix this?</code></pre>
+<p>The <code>@claude</code> prefix is removed from the sent prompt.</p>
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="naming-endpoints">Naming Endpoints</h3>
+<table>
+<colgroup>
+<col style="width: 31%" />
+<col style="width: 26%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>Good</th>
+<th>Bad</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pi2</code>, <code>pi3</code>, <code>pi4</code></td>
+<td><code>node2</code>, <code>server2</code></td>
+<td>Consistent with role</td>
+</tr>
+<tr>
+<td><code>claude</code>, <code>mistral</code></td>
+<td><code>model1</code>, <code>api1</code></td>
+<td>Descriptive of model</td>
+</tr>
+<tr>
+<td><code>gpu-box</code>, <code>big-iron</code></td>
+<td><code>machine</code>, <code>computer</code></td>
+<td>Descriptive of hardware</td>
+</tr>
+<tr>
+<td><code>dev</code>, <code>prod</code>, <code>test</code></td>
+<td><code>d</code>, <code>p</code>, <code>t</code></td>
+<td>Clear purpose</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommendations:</strong> - Use <strong>lowercase</strong>
+names (Harvey normalizes to lowercase internally) - Use
+<strong>hyphens</strong> for multi-word: <code>gpu-box</code>,
+<code>code-review</code> - Avoid spaces and special characters - Keep
+names <strong>short</strong> (used frequently in <span class="citation"
+data-cites="mentions">@mentions</span>)</p>
+<h3 id="organizing-endpoints">Organizing Endpoints</h3>
+<p><strong>By hardware:</strong></p>
+<pre><code>/route add pi2 ollama://192.168.1.12:11434
+/route add pi3 ollama://192.168.1.13:11434
+/route add pi4 ollama://192.168.1.14:11434</code></pre>
+<p><strong>By capability:</strong></p>
+<pre><code>/route add coder ollama://192.168.1.100:11434 codellama:13b
+/route add reasoner ollama://192.168.1.100:11434 llama3:70b
+/route add embedder ollama://192.168.1.100:11434 nomic-embed-text</code></pre>
+<p><strong>By project:</strong></p>
+<pre><code>/route add harvey ollama://localhost:11434 llama3.1:8b
+/route add mable ollama://localhost:11434 mistral:latest</code></pre>
+<h3 id="model-selection">Model Selection</h3>
+<p><strong>For coding tasks:</strong> - Local:
+<code>codellama:13b</code>, <code>llama3:latest</code> - Cloud:
+<code>@claude</code> (Claude 3 Sonnet/Haiku)</p>
+<p><strong>For reasoning/complex tasks:</strong> - Local:
+<code>llama3:70b</code> (if you have the VRAM) - Cloud:
+<code>@claude</code> (Claude 3 Opus)</p>
+<p><strong>For embedding:</strong> - Local:
+<code>nomic-embed-text</code>, <code>mxbai-embed-large</code></p>
+<p><strong>For small/quick tasks:</strong> - Local:
+<code>llama3:8b</code>, <code>phi3:latest</code> - Cloud:
+<code>@mistral</code> (Mistral Small)</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="unknown-endpoint-name">“Unknown endpoint: <span class="citation"
+data-cites="name">@name</span>”</h3>
+<p><strong>Cause:</strong> The endpoint hasn’t been registered.</p>
+<p><strong>Fix:</strong></p>
+<pre><code>/route add name URL [MODEL]</code></pre>
+<h3 id="routing-is-disabled">“Routing is disabled”</h3>
+<p><strong>Cause:</strong> Routing has been turned off.</p>
+<p><strong>Fix:</strong></p>
+<pre><code>/route on</code></pre>
+<h3 id="endpoint-name-is-not-reachable">“Endpoint <span class="citation"
+data-cites="name">@name</span> is not reachable”</h3>
+<p><strong>Causes:</strong> - Ollama server not running - Wrong IP/port
+- Firewall blocking connection - Ollama not installed on remote
+machine</p>
+<p><strong>Fix:</strong></p>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check if Ollama is running on the remote</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> pi2 ollama <span class="at">--version</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start Ollama on the remote</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> pi2 ollama serve</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify connectivity</span></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> http://192.168.1.12:11434/api/tags</span></code></pre></div>
+<h3 id="api-key-not-configured-for-claude">“API key not configured for
+<span class="citation" data-cites="claude">@claude</span>”</h3>
+<p><strong>Cause:</strong> The required environment variable isn’t
+set.</p>
+<p><strong>Fix:</strong></p>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># For current session</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">ANTHROPIC_API_KEY</span><span class="op">=</span>sk-...</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Permanently (add to ~/.bashrc or ~/.zshrc)</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&#39;export ANTHROPIC_API_KEY=sk-...&#39;</span> <span class="op">&gt;&gt;</span> ~/.bashrc</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> ~/.bashrc</span></code></pre></div>
+<h3 id="model-not-available-on-pi2">“Model not available on <span
+class="citation" data-cites="pi2">@pi2</span>”</h3>
+<p><strong>Cause:</strong> The model hasn’t been pulled on the remote
+Ollama instance.</p>
+<p><strong>Fix:</strong></p>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># On the remote machine</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> pi2 ollama pull llama3.1:8b</span></code></pre></div>
+<p>Or pull it directly through Harvey:</p>
+<pre><code>harvey&gt; /ollama pull llama3.1:8b</code></pre>
+<p>(Note: This pulls on the local machine, not the remote)</p>
+<h2 id="advanced-programmatic-access">Advanced: Programmatic Access</h2>
+<p>Routes can be managed programmatically via the
+<code>RouteRegistry</code> type in Go code.</p>
+<p><strong>Example (from Harvey source):</strong></p>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Add a route programmatically</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>rr <span class="op">:=</span> agent<span class="op">.</span>Routes</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>rr<span class="op">.</span>Add<span class="op">(&amp;</span>RouteEndpoint<span class="op">{</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    Name<span class="op">:</span> <span class="st">&quot;pi5&quot;</span><span class="op">,</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    URL<span class="op">:</span>  <span class="st">&quot;ollama://192.168.1.15:11434&quot;</span><span class="op">,</span></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    Model<span class="op">:</span> <span class="st">&quot;llama3.1:8b&quot;</span><span class="op">,</span></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    Kind<span class="op">:</span> KindOllama<span class="op">,</span></span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a><span class="op">})</span></span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a><span class="co">// Save to disk</span></span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>SaveRouteConfig<span class="op">(</span>rr<span class="op">)</span></span></code></pre></div>
+<h2 id="security-considerations">Security Considerations</h2>
+<h3 id="api-key-management">API Key Management</h3>
+<p><strong>Never commit API keys to version control.</strong></p>
+<p><strong>Recommended approach:</strong></p>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Set in shell profile (not in repository)</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&#39;export ANTHROPIC_API_KEY=...&#39;</span> <span class="op">&gt;&gt;</span> ~/.bashrc</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Or use a secrets manager</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a><span class="bu">eval</span> <span class="st">&quot;</span><span class="va">$(</span><span class="ex">vault</span> read <span class="at">-f</span> json secret/harvey/anthropic<span class="va">)</span><span class="st">&quot;</span></span></code></pre></div>
+<p><strong>Environment variable precedence:</strong> - Harvey checks
+environment variables at startup - Changing them requires restarting
+Harvey - Each cloud provider uses its own variable name</p>
+<h3 id="network-security">Network Security</h3>
+<p><strong>For local network routes:</strong> - Use HTTPS if exposed to
+untrusted networks - Consider firewall rules to restrict access - Use
+SSH tunneling for remote access</p>
+<p><strong>For cloud providers:</strong> - API keys have the same
+permissions as your account - Monitor usage to detect anomalies - Rotate
+keys periodically</p>
+<h2 id="complete-example-session">Complete Example Session</h2>
+<pre><code>Title: Multi-Model Development Session
+Credit: Recorded by Harvey
+Author: RSDOIEL
+Date: 2026-05-04 14:00:00
+Draft date: 2026-05-04
+
+FADE IN:
+
+INT. HARVEY AND RSDOIEL TALKING 2026-05-04 14:00:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+
+RSDOIEL
+/route list
+
+HARVEY
+Endpoints registered:
+  ✓  @pi2      ollama://192.168.1.12:11434  llama3.1:8b
+  ✓  @pi3      ollama://192.168.1.13:11434  mistral:latest
+  ✓  @claude   anthropic://                   claude-3-haiku
+
+RSDOIEL
+@pi2 write a unit test for the Parse function
+
+HARVEY
+Forwarding to PI2.
+
+PI2
+Here is a comprehensive test for Parse:
+
+```go parser_test.go
+func TestParse(t *testing.T) {
+    // ... test code
+}</code></pre>
+<p>RSDOIEL /apply</p>
+<p>INT. AGENT MODE 2026-05-04 14:05:00</p>
+<p>HARVEY Harvey proposes to write 1 file(s) to the workspace.</p>
+<p>HARVEY Write parser_test.go?</p>
+<p>RSDOIEL yes</p>
+<p>[[write: parser_test.go — ok]]</p>
+<p>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 14:06:00</p>
+<p>Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace:
+/home/user/project.</p>
+<p>RSDOIEL <span class="citation" data-cites="claude">@claude</span>
+review this test and suggest improvements</p>
+<p>HARVEY Forwarding to CLAUDE.</p>
+<p>CLAUDE The test is well-structured. Consider adding: 1. Edge case for
+empty input 2. Property-based testing 3. Benchmark</p>
+<p>THE END. ```</p>
+<p><em>See also:</em> - <a
+href="CONFIGURATION.html">CONFIGURATION.md</a> — All configuration files
+- <a href="agents/skills/fountain-analysis/SKILL.html">fountain-analysis
+skill</a> — Analyze session files - <a
+href="ARCHITECTURE.html">ARCHITECTURE.md</a> — Technical deep dive on
+routing implementation</p>
+</section>
+</body>
+</html>

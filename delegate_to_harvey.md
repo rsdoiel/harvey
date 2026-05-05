@@ -1,16 +1,12 @@
 I want you to integrate the SessionManager into the Harvey agent. All the
 relevant code is in this workspace. Here is exactly what needs to happen:
 
----
-
 ## 1. harvey.go — extend the Agent struct
 
 Add two fields to the Agent struct (around line 107):
 
     Sessions   *SessionManager
     SessionID  int64
-
----
 
 ## 2. terminal.go — open sessions on startup
 
@@ -23,7 +19,7 @@ Add a new method initSessions alongside initKnowledgeBase (around line 227):
             return
         }
         a.Sessions = sm
-        fmt.Fprintln(out, "✓ Sessions: .harvey/sessions.db")
+        fmt.Fprintln(out, "✓ Sessions: agents/sessions/ (Fountain .spmd files)")
     }
 
 Call it in Run() immediately after a.initKnowledgeBase(out) (around line 84).
@@ -35,8 +31,6 @@ Also defer cleanup in Run() alongside the existing Recorder defer:
             a.Sessions.Close()
         }
     }()
-
----
 
 ## 3. terminal.go — resume or start a session after backend selection
 
@@ -82,8 +76,6 @@ declines (or no session exists), it creates a fresh one.
         }
     }
 
----
-
 ## 4. terminal.go — checkpoint after each chat turn
 
 In the REPL loop, after a.AddMessage("assistant", buf.String()) (around
@@ -98,8 +90,6 @@ line 200), add a checkpoint save:
             fmt.Fprintf(out, yellow("  ✗")+" Session save error: %v\n", err)
         }
     }
-
----
 
 ## 5. commands.go — update cmdClear to start a new session
 
@@ -118,8 +108,6 @@ In cmdClear (around line 222), after a.ClearHistory(), add:
         }
     }
 
----
-
 ## 6. commands.go — update cmdStatus to show session info
 
 In cmdStatus (around line 199), add after the KB block:
@@ -129,8 +117,6 @@ In cmdStatus (around line 199), add after the KB block:
     } else {
         fmt.Fprintln(out, "Session:   none")
     }
-
----
 
 ## 7. commands.go — add /session command
 
@@ -228,8 +214,6 @@ Implement cmdSession:
         }
         return nil
     }
-
----
 
 ## Verification steps
 

@@ -3,40 +3,37 @@
 
 ## What is Harvey?
 
-harvey is a terminal agent for local large language models.
+harvey is a terminal agent for local language models.
 
 See [man page](harvey.1.md)
 
 How it starts:
 
-harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It then connects to a local Ollama server or publicai.co
-and starts an interactive chat session.
+Harvey looks for HARVEY.md in the workspace root and uses it as a system
+prompt. It then connects to a local Ollama server and starts an interactive
+chat session.
 
-All file I/O is constrained to the workspace directory (--workdir or ".").
-A knowledge base is stored at `<workdir>/harvey/knowledge.db` and is created
-automatically on first run. Session recordings are stored in
-`<workdir>/harvey/sessions/`. Both paths can be overridden in `harvey/harvey.yaml`.
+> **Note:** Harvey focuses on local models via Ollama. It has limited
+> support for SaaS endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI).
+
+All file I/O is constrained to the workspace.
+A knowledge base is stored at `<workspace>/agents/knowledge.db` and is
+created automatically on first run. Session recordings are stored in
+`<workspace>/agents/sessions/`. Both paths can be overridden in
+`<workspace>/agents/harvey.yaml`.
 
 > Type /help inside the session for available slash commands.
 
 ## Typical invocations
 
+1. Change to your project directory (example: "$HOME/myproject")
+2. Launch Harvey
+
 ```sh
-# Start in the current directory, auto-select Ollama model
-harvey
+# Change to project directory
+cd $HOME/myproject
 
-# Start with a specific model
-harvey -m codellama:13b
-
-# Point at a workspace that is not the current directory
-harvey -w ~/projects/myapp
-
-# Use a non-default Ollama endpoint
-harvey --ollama http://192.168.1.10:11434
-
-# Use publicai.co (requires PUBLICAI_API_KEY to be set)
-export PUBLICAI_API_KEY=sk-...
+# Start in the workspace (current directory), auto-select Ollama model
 harvey
 ```
 
@@ -45,21 +42,18 @@ harvey
 When Harvey starts it:
 
 1. Prints the banner and resolves the workspace root.
-2. Opens (or creates) `harvey/knowledge.db` in the workspace.
-3. Loads `harvey/harvey.yaml` if present (overrides paths for KB, sessions, agents).
-4. Scans `harvey/sessions/` for prior `.spmd` / `.fountain` session files and
+2. Opens (or creates) `agents/knowledge.db` in the workspace.
+3. Loads `agents/harvey.yaml` if present (overrides paths for KB, sessions, agents).
+4. Scans `agents/sessions/` for prior `.spmd` / `.fountain` session files and
    offers to resume one (default: No). If a session is chosen, the model it
    used is pre-selected in the next step.
-5. Reads `HARVEY.md` from the current directory, expands any
+5. Reads `HARVEY.md` from the workspace root, expands any
    [dynamic markers](#dynamic-markers), and injects it as the system prompt.
 6. Probes Ollama; if reachable, selects the model from the resumed session or
    lets you choose from the installed list.
 7. If Ollama is unreachable, offers to start `ollama serve` then retries.
-8. If Ollama is still unavailable, offers to connect to publicai.co instead.
-9. Begins recording the session to a new `.spmd` file in `harvey/sessions/`.
+9. Begins recording the session to a new `.spmd` file in `agents/sessions/`.
 10. Drops you into the REPL prompt: `harvey > `
-
----
 
 ## The HARVEY.md system prompt
 
@@ -103,8 +97,6 @@ Today: <!-- @date -->
 - All exported symbols need /** ... */ doc comments.
 - Use `t.TempDir()` in tests; no global state.
 ~~~
-
----
 
 ## Session walkthrough
 
@@ -164,8 +156,6 @@ After each assistant response Harvey prints a stats line showing prompt tokens,
 reply tokens, elapsed time, and generation speed. While the model is thinking,
 an animated spinner with an estimated completion time keeps the terminal alive.
 
----
-
 ## Keyboard shortcuts
 
 Harvey's prompt supports readline-style line editing.
@@ -198,8 +188,6 @@ The `Ctrl+X Ctrl+E` shortcut is especially useful for longer prompts — you can
 write, edit, and review the full prompt in your preferred editor before sending
 it. The current line content is pre-loaded into the editor so you can also edit
 a prompt you have already started typing.
-
----
 
 ## Slash commands
 
@@ -236,13 +224,7 @@ Type `/help` at any prompt for a live command list. All commands begin with `/`.
 | `/ollama logs` | Tail the Ollama service log |
 | `/ollama env` | Show Ollama environment variables as seen by Harvey |
 
-**publicai.co**
-
-| Command | Description |
-|---|---|
-| `/publicai connect` | Connect using `PUBLICAI_API_KEY` |
-| `/publicai disconnect` | Drop the publicai.co connection |
-| `/publicai status` | Show whether publicai.co is connected |
+> **Note:** publicai.co support has been removed. These commands are no longer available.
 
 ## File operations
 
@@ -292,7 +274,7 @@ harvey > /run make build
 ### `/search PATTERN [PATH]`
 
 Searches workspace files for a regular expression. Results are capped at 100
-matching lines. Binary files and hidden directories (`.git`, `.harvey`, etc.)
+matching lines. Binary files and hidden directories (`.git`, `.gitignore`, etc.)
 are skipped automatically. An optional second argument scopes the search to
 a subdirectory.
 
@@ -343,7 +325,7 @@ func (s *Spinner) run() {
 ```
 ~~~
 
-## Session quality (Tier 3)
+## Session quality
 
 ### `/summarize`
 
@@ -387,7 +369,7 @@ by newlines. To replace it entirely, `/context clear` then `/context add`.
 
 ## Knowledge base commands
 
-Harvey maintains a SQLite knowledge base at `harvey/knowledge.db` in the
+Harvey maintains a SQLite knowledge base at `agents/knowledge.db` in the
 workspace. It is independent of conversation history and persists across
 sessions.
 
@@ -436,7 +418,7 @@ format that Harvey can replay or resume later.
 
 ```
 harvey > /record start
-Recording started: /home/user/myproject/harvey-session-20260415-142300.fountain
+Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.fountain
 
 harvey > /record stop
 Recording stopped. Session saved to harvey-session-20260415-142300.fountain
@@ -498,8 +480,6 @@ harvey > /files internal/parser
 
 Lists files in the workspace root or a subdirectory. Useful for discovering
 paths before using `/read` or `/write`.
-
----
 
 ## Typical workflows
 

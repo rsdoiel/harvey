@@ -1,0 +1,1 @@
+I would like to explore integrating Harvey with an IDE. I have a collegue who uses VS Code, he like's the GitHub CoPilot integration but the token costs are too much. I've told him a little about Harvey but it doesn't want to use a TUI REPL. What would you suggest for integrating IDE support for Harvey?

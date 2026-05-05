@@ -1,3 +1,17 @@
+// Package harvey — skill_dispatch.go handles runtime activation and execution
+// of skills. When a user's prompt matches a skill's trigger pattern, this file
+// manages the complete dispatch lifecycle:
+//
+//   - Trigger matching (MatchesTrigger) via regex or keyword patterns
+//   - Skill lookup in the catalog (SortedSkillNames for deterministic ordering)
+//   - Full dispatch workflow (DispatchSkill): check compiled scripts, handle staleness,
+//     offer recompilation, and execute or fall back to LLM context loading
+//   - Compiled script execution (runCompiledScript) with HARVEY_* environment variables
+//
+// Skills can be triggered automatically based on their Trigger pattern or invoked
+// explicitly via /skill run. The dispatcher prefers compiled scripts when available
+// and falls back to loading the skill body into LLM context.
+
 package harvey
 
 import (
@@ -12,6 +26,98 @@ import (
 	"sort"
 	"strings"
 )
+
+// sensitiveSkillEnvVars contains environment variable names that should be
+// EXCLUDED from skill execution to prevent sensitive data leakage.
+var sensitiveSkillEnvVars = []string{
+	"ANTHROPIC_API_KEY",
+	"DEEPSEEK_API_KEY",
+	"GEMINI_API_KEY",
+	"GOOGLE_API_KEY",
+	"MISTRAL_API_KEY",
+	"OPENAI_API_KEY",
+}
+
+// safeSkillEnvPrefixes contains environment variable name prefixes that are
+// safe to pass to skill processes.
+var safeSkillEnvPrefixes = []string{
+	"PATH",
+	"HOME",
+	"USER",
+	"USERNAME",
+	"SHELL",
+	"TERM",
+	"LANG",
+	"LC_",
+	"PWD",
+	"TMPDIR",
+	"TEMP",
+}
+
+/** filterSkillEnvironment returns a filtered copy of the environment for
+ * skill script execution. Sensitive variables (API keys) are explicitly
+ * excluded, and only safe variables plus HARVEY_* variables are included.
+ *
+ * Parameters:
+ *   env ([]string) — the original environment in "KEY=VALUE" format.
+ *
+ * Returns:
+ *   []string — filtered environment with only safe variables.
+ */
+func filterSkillEnvironment(env []string) []string {
+	sensitiveMap := make(map[string]bool)
+	for _, v := range sensitiveSkillEnvVars {
+		sensitiveMap[v] = true
+	}
+
+	safeMap := make(map[string]bool)
+	for _, p := range safeSkillEnvPrefixes {
+		safeMap[p] = true
+	}
+
+	var result []string
+	for _, e := range env {
+		idx := strings.IndexByte(e, '=')
+		if idx == -1 {
+			continue
+		}
+		varName := e[:idx]
+
+		// Exclude sensitive variables
+		if sensitiveMap[varName] {
+			continue
+		}
+
+		// Include safe variables
+		isSafe := false
+		for prefix := range safeMap {
+			if varName == prefix || strings.HasPrefix(varName, prefix+"_") {
+				isSafe = true
+				break
+			}
+		}
+		
+		if isSafe {
+			result = append(result, e)
+		}
+	}
+
+	// Always ensure PATH is set
+	pathFound := false
+	for _, e := range result {
+		if strings.HasPrefix(e, "PATH=") {
+			pathFound = true
+			break
+		}
+	}
+	if !pathFound {
+		if path := os.Getenv("PATH"); path != "" {
+			result = append(result, "PATH="+path)
+		}
+	}
+
+	return result
+}
 
 /** MatchesTrigger reports whether prompt matches the trigger pattern stored in
  * skill.Trigger. Returns false when skill.Trigger is empty.
@@ -180,7 +286,10 @@ func runCompiledScript(ctx context.Context, a *Agent, skill *SkillMeta, scriptPa
 		cmd = exec.CommandContext(ctx, "bash", scriptPath)
 	}
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(),
+	// Build a restricted environment for skill execution
+	// Start with filtered base environment, then add HARVEY_* variables
+	cmd.Env = filterSkillEnvironment(os.Environ())
+	cmd.Env = append(cmd.Env,
 		"HARVEY_PROMPT="+prompt,
 		"HARVEY_WORKDIR="+workDir,
 		"HARVEY_MODEL="+modelName,
@@ -193,8 +302,18 @@ func runCompiledScript(ctx context.Context, a *Agent, skill *SkillMeta, scriptPa
 	cmd.Stderr = out
 
 	fmt.Fprintf(out, "  [running compiled skill: %s]\n", skill.Name)
+	// Log skill execution
+	if a.AuditBuffer != nil {
+		a.AuditBuffer.Log(ActionSkillRun, skill.Name+": "+prompt, StatusAllowed)
+	}
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(out, "  [exit: %v]\n", err)
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionSkillRun, skill.Name+": "+prompt, StatusError)
+		}
+	} else if a.AuditBuffer != nil {
+		// Update status to success if no error
+		a.AuditBuffer.Log(ActionSkillRun, skill.Name+": completed", StatusSuccess)
 	}
 
 	if buf.Len() > 0 {

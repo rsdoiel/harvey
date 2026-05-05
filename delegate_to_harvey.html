@@ -41,13 +41,11 @@ figcaption {
 <p>I want you to integrate the SessionManager into the Harvey agent. All
 the relevant code is in this workspace. Here is exactly what needs to
 happen:</p>
-<hr />
 <h2 id="harvey.go-extend-the-agent-struct">1. harvey.go — extend the
 Agent struct</h2>
 <p>Add two fields to the Agent struct (around line 107):</p>
 <pre><code>Sessions   *SessionManager
 SessionID  int64</code></pre>
-<hr />
 <h2 id="terminal.go-open-sessions-on-startup">2. terminal.go — open
 sessions on startup</h2>
 <p>Add a new method initSessions alongside initKnowledgeBase (around
@@ -59,7 +57,7 @@ line 227):</p>
         return
     }
     a.Sessions = sm
-    fmt.Fprintln(out, &quot;✓ Sessions: .harvey/sessions.db&quot;)
+    fmt.Fprintln(out, &quot;✓ Sessions: agents/sessions/ (Fountain .spmd files)&quot;)
 }</code></pre>
 <p>Call it in Run() immediately after a.initKnowledgeBase(out) (around
 line 84).</p>
@@ -70,7 +68,6 @@ defer:</p>
         a.Sessions.Close()
     }
 }()</code></pre>
-<hr />
 <h2
 id="terminal.go-resume-or-start-a-session-after-backend-selection">3.
 terminal.go — resume or start a session after backend selection</h2>
@@ -114,7 +111,6 @@ user declines (or no session exists), it creates a fresh one.</p>
         }
     }
 }</code></pre>
-<hr />
 <h2 id="terminal.go-checkpoint-after-each-chat-turn">4. terminal.go —
 checkpoint after each chat turn</h2>
 <p>In the REPL loop, after a.AddMessage(“assistant”, buf.String())
@@ -128,7 +124,6 @@ checkpoint after each chat turn</h2>
         fmt.Fprintf(out, yellow(&quot;  ✗&quot;)+&quot; Session save error: %v\n&quot;, err)
     }
 }</code></pre>
-<hr />
 <h2 id="commands.go-update-cmdclear-to-start-a-new-session">5.
 commands.go — update cmdClear to start a new session</h2>
 <p>In cmdClear (around line 222), after a.ClearHistory(), add:</p>
@@ -144,7 +139,6 @@ commands.go — update cmdClear to start a new session</h2>
         a.SessionID = id
     }
 }</code></pre>
-<hr />
 <h2 id="commands.go-update-cmdstatus-to-show-session-info">6.
 commands.go — update cmdStatus to show session info</h2>
 <p>In cmdStatus (around line 199), add after the KB block:</p>
@@ -153,7 +147,6 @@ commands.go — update cmdStatus to show session info</h2>
 } else {
     fmt.Fprintln(out, &quot;Session:   none&quot;)
 }</code></pre>
-<hr />
 <h2 id="commands.go-add-session-command">7. commands.go — add /session
 command</h2>
 <p>Register a new command in registerCommands():</p>
@@ -247,7 +240,6 @@ command</h2>
     }
     return nil
 }</code></pre>
-<hr />
 <h2 id="verification-steps">Verification steps</h2>
 <p>After making all changes, run:</p>
 <pre><code>go build ./...

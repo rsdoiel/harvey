@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.1b 6f586b0
+%harvey(7) user manual | version 0.0.1c 393e389
 % R. S. Doiel
-% 2026-05-02
+% 2026-05-04
 
 # NAME
 
@@ -73,7 +73,7 @@ match the parent directory name.
 
 # EXAMPLE — the bundled go-review skill
 
-  Location: harvey/skills/go-review/SKILL.md
+  Location: agents/skills/go-review/SKILL.md
 
 ~~~markdown
   ---
@@ -138,18 +138,11 @@ matching trigger wins.
 ## DISCOVERY PATHS  (project overrides user on name collision)
 
 ~~~
-  User scope
-    ~/harvey/skills/           Harvey-native
-    ~/agents/skills/           cross-client (non-hidden)
-    ~/.agents/skills/          cross-client (shared with Claude Code, etc.)
-
-  Project scope  (relative to --workdir, default ".")
-    harvey/skills/             Harvey-native
-    agents/skills/             cross-client (non-hidden)
-    .agents/skills/            cross-client
+  Project scope
+    <workspace>/agents/skills/           Harvey-native (and shared clients)
 ~~~
 
-Skills placed in agents/skills/ or .agents/skills/ are visible to any agent
+Skills placed in agents/skills/ are visible to any agent
 that follows the Agent Skills specification (https://agentskills.dev).
 
 

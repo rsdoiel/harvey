@@ -1,10 +1,14 @@
 # Harvey User Manual
 
 Harvey is a terminal-based coding agent backed by a local
-[Ollama](https://ollama.com) server or [publicai.co](https://publicai.co).
+[Ollama](https://ollama.com) server.
 It provides an interactive REPL where you chat with a large language model
 while also being able to read files, run commands, search code, and apply
 suggested changes — all sandboxed to a single workspace directory.
+
+> **Note:** Previous versions of Harvey supported publicai.co. This support has
+> been removed as of May 2025. Harvey now focuses exclusively on local models via
+> Ollama and remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI).
 
 ---
 
@@ -32,6 +36,7 @@ suggested changes — all sandboxed to a single workspace directory.
 
 ## Further reading
 
+- [DOCUMENTATION.md](DOCUMENTATION.md) — master index of all Harvey documentation
 - [ARCHITECTURE.md](ARCHITECTURE.md) — detailed technical documentation:
   component map, core types, conversation model, backend implementations,
   test coverage, and the full feature roadmap.

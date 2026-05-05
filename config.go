@@ -3,6 +3,7 @@ package harvey
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -117,6 +118,11 @@ type Config struct {
 	RagStores           []RagStoreEntry // all registered named RAG stores
 	RagActive           string          // name of the currently active store; "" = none
 	RagEnabled          bool            // when true, inject top-K chunks before each Chat call
+	// Security settings
+	SafeMode            bool     // when true, only commands in AllowedCommands can be executed via ! or /run
+	AllowedCommands    []string // list of command names permitted when SafeMode is enabled; default: ls, cat, grep, head, tail, wc, find, stat, jq, htmlq, bat, batcat
+	// Permissions: map from path prefix to list of allowed actions (read, write, exec, delete)
+	Permissions map[string][]string // e.g., {".": ["read", "write", "exec", "delete"], "src/": ["read"]}
 }
 
 /** ActiveRagStore returns a pointer to the active RagStoreEntry, or nil when
@@ -209,12 +215,258 @@ func (c *Config) RemoveRagStore(name string) {
  *   cfg := DefaultConfig()
  *   fmt.Println(cfg.OllamaURL) // "http://localhost:11434"
  */
+// DefaultAllowedCommands is the default list of commands allowed when SafeMode is enabled.
+// These are considered safe read-only or low-risk utilities.
+var DefaultAllowedCommands = []string{
+	"ls", "cat", "grep", "head", "tail", "wc",
+	"find", "stat", "jq", "htmlq", "bat", "batcat",
+}
+
 func DefaultConfig() *Config {
-	return &Config{
-		WorkDir:       ".",
-		OllamaURL:     "http://localhost:11434",
-		AutoRecord: true,
+	allowed := make([]string, len(DefaultAllowedCommands))
+	copy(allowed, DefaultAllowedCommands)
+	// Default permissions: full access to workspace root, read-only for subdirectories
+	defaultPerms := map[string][]string{
+		".": {"read", "write", "exec", "delete"},
 	}
+	return &Config{
+		WorkDir:         ".",
+		OllamaURL:       "http://localhost:11434",
+		AutoRecord:     true,
+		SafeMode:        false,
+		AllowedCommands: allowed,
+		Permissions:    defaultPerms,
+	}
+}
+
+/** IsCommandAllowed returns true if cmd is in the AllowedCommands list.
+ * When SafeMode is false, all commands are allowed (returns true).
+ * When SafeMode is true, only commands in AllowedCommands are permitted.
+ *
+ * Parameters:
+ *   cmd (string) — the command name to check.
+ *
+ * Returns:
+ *   bool — true if the command is allowed.
+ *
+ * Example:
+ *   if !cfg.IsCommandAllowed("git") {
+ *       fmt.Println("git is not allowed in safe mode")
+ *   }
+ */
+func (c *Config) IsCommandAllowed(cmd string) bool {
+	if !c.SafeMode {
+		return true
+	}
+	for _, allowed := range c.AllowedCommands {
+		if cmd == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+/** AddAllowedCommand adds a command to the AllowedCommands list if not already present.
+ *
+ * Parameters:
+ *   cmd (string) — command name to add.
+ *
+ * Example:
+ *   cfg.AddAllowedCommand("git")
+ */
+func (c *Config) AddAllowedCommand(cmd string) {
+	for _, existing := range c.AllowedCommands {
+		if existing == cmd {
+			return
+		}
+	}
+	c.AllowedCommands = append(c.AllowedCommands, cmd)
+}
+
+/** RemoveAllowedCommand removes a command from the AllowedCommands list.
+ * It is a no-op if the command is not present.
+ *
+ * Parameters:
+ *   cmd (string) — command name to remove.
+ *
+ * Example:
+ *   cfg.RemoveAllowedCommand("git")
+ */
+func (c *Config) RemoveAllowedCommand(cmd string) {
+	out := c.AllowedCommands[:0]
+	for _, e := range c.AllowedCommands {
+		if e != cmd {
+			out = append(out, e)
+		}
+	}
+	c.AllowedCommands = out
+}
+
+/** ResetAllowedCommands replaces AllowedCommands with the default list.
+ *
+ * Example:
+ *   cfg.ResetAllowedCommands()
+ */
+func (c *Config) ResetAllowedCommands() {
+	c.AllowedCommands = make([]string, len(DefaultAllowedCommands))
+	copy(c.AllowedCommands, DefaultAllowedCommands)
+}
+
+// Permission types
+const (
+	PermRead   = "read"
+	PermWrite  = "write"
+	PermExec   = "exec"
+	PermDelete = "delete"
+)
+
+// AllPermissions is a slice of all valid permission types.
+var AllPermissions = []string{PermRead, PermWrite, PermExec, PermDelete}
+
+/** HasPermission checks if the given permission is allowed for a path.
+ * It checks the most specific matching path prefix first.
+ *
+ * Parameters:
+ *   path (string) — the path to check (relative to workspace root).
+ *   perm (string) — the permission to check (read, write, exec, delete).
+ *
+ * Returns:
+ *   bool — true if the permission is allowed.
+ *
+ * Example:
+ *   if cfg.HasPermission("src/main.go", "read") {
+ *       // read is allowed
+ *   }
+ */
+func (c *Config) HasPermission(path string, perm string) bool {
+	if c.Permissions == nil {
+		return true // No permissions configured means all allowed
+	}
+
+	// Find the most specific matching prefix
+	bestMatch := "."
+	bestMatchLen := 0
+
+	for prefix := range c.Permissions {
+		if strings.HasPrefix(path, prefix) || path == prefix {
+			// Check if this is a better (more specific) match
+			if len(prefix) > bestMatchLen {
+				bestMatch = prefix
+				bestMatchLen = len(prefix)
+			}
+		}
+	}
+
+	// Check if the permission is in the list for the best matching prefix
+	for _, p := range c.Permissions[bestMatch] {
+		if p == perm {
+			return true
+		}
+	}
+	return false
+}
+
+/** SetPermission sets the permissions for a path prefix.
+ * Replaces any existing permissions for that prefix.
+ *
+ * Parameters:
+ *   prefix (string) — the path prefix (e.g., "src/", ".", "docs/"").
+ *   perms ([]string) — list of permissions (read, write, exec, delete).
+ *
+ * Example:
+ *   cfg.SetPermission("src/", []string{"read"})
+ */
+func (c *Config) SetPermission(prefix string, perms []string) {
+	if c.Permissions == nil {
+		c.Permissions = make(map[string][]string)
+	}
+	c.Permissions[prefix] = perms
+}
+
+/** AddPermission adds a permission to a path prefix.
+ * Creates the prefix entry if it doesn't exist.
+ *
+ * Parameters:
+ *   prefix (string) — the path prefix.
+ *   perm (string) — the permission to add (read, write, exec, delete).
+ *
+ * Example:
+ *   cfg.AddPermission("src/", "read")
+ */
+func (c *Config) AddPermission(prefix string, perm string) {
+	if c.Permissions == nil {
+		c.Permissions = make(map[string][]string)
+	}
+	perms := c.Permissions[prefix]
+	// Check if permission already exists
+	for _, p := range perms {
+		if p == perm {
+			return
+		}
+	}
+	c.Permissions[prefix] = append(perms, perm)
+}
+
+/** RemovePermission removes a permission from a path prefix.
+ * It is a no-op if the prefix or permission doesn't exist.
+ *
+ * Parameters:
+ *   prefix (string) — the path prefix.
+ *   perm (string) — the permission to remove.
+ *
+ * Example:
+ *   cfg.RemovePermission("src/", "write")
+ */
+func (c *Config) RemovePermission(prefix string, perm string) {
+	if c.Permissions == nil {
+		return
+	}
+	perms, ok := c.Permissions[prefix]
+	if !ok {
+		return
+	}
+	// Remove the permission
+	out := perms[:0]
+	for _, p := range perms {
+		if p != perm {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		delete(c.Permissions, prefix)
+	} else {
+		c.Permissions[prefix] = out
+	}
+}
+
+/** ResetPermissions resets permissions to the default (full access to root).
+ *
+ * Example:
+ *   cfg.ResetPermissions()
+ */
+func (c *Config) ResetPermissions() {
+	c.Permissions = map[string][]string{
+		".": {PermRead, PermWrite, PermExec, PermDelete},
+	}
+}
+
+/** PermissionString returns a comma-separated string of permissions for a prefix.
+ *
+ * Parameters:
+ *   prefix (string) — the path prefix.
+ *
+ * Returns:
+ *   string — comma-separated permissions, or "none" if no permissions.
+ */
+func (c *Config) PermissionString(prefix string) string {
+	if c.Permissions == nil {
+		return "none"
+	}
+	perms, ok := c.Permissions[prefix]
+	if !ok || len(perms) == 0 {
+		return "none"
+	}
+	return strings.Join(perms, ", ")
 }
 
 // ragStoreYAML is the on-disk representation of one entry under rag.stores.
@@ -242,12 +494,13 @@ type ragYAML struct {
 
 // harveyYAML is the on-disk representation of harvey/harvey.yaml.
 type harveyYAML struct {
-	KnowledgeDB  string  `yaml:"knowledge_db"`
-	SessionsDir  string  `yaml:"sessions_dir"`
-	AgentsDir    string  `yaml:"agents_dir"`
-	AutoRecord   *bool   `yaml:"auto_record"` // nil = not set (keep default)
-	ModelCacheDB string  `yaml:"model_cache_db"`
-	RAG          ragYAML `yaml:"rag"`
+	KnowledgeDB  string            `yaml:"knowledge_db"`
+	SessionsDir  string            `yaml:"sessions_dir"`
+	AgentsDir    string            `yaml:"agents_dir"`
+	AutoRecord   *bool             `yaml:"auto_record"` // nil = not set (keep default)
+	ModelCacheDB string            `yaml:"model_cache_db"`
+	RAG          ragYAML           `yaml:"rag"`
+	Permissions  map[string][]string `yaml:"permissions,omitempty"` // path prefix -> permissions list
 }
 
 /** LoadHarveyYAML reads agents/harvey.yaml from ws and applies any overrides
@@ -322,6 +575,10 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 		cfg.RagActive = "default"
 	}
 	cfg.RagEnabled = y.RAG.Enabled
+	// Load permissions if present
+	if y.Permissions != nil {
+		cfg.Permissions = y.Permissions
+	}
 	return nil
 }
 
@@ -368,6 +625,10 @@ func SaveRAGConfig(ws *Workspace, cfg *Config) error {
 		Active:  cfg.RagActive,
 		Stores:  stores,
 		Enabled: cfg.RagEnabled,
+	}
+	// Save permissions
+	if cfg.Permissions != nil {
+		y.Permissions = cfg.Permissions
 	}
 
 	out, err := yaml.Marshal(&y)
