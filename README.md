@@ -46,7 +46,7 @@ Useful small open models are hear [today](model_testing_plan.md). In the hype th
 
 ## Release Notes
 
-- version: 0.0.1
+- version: 0.0.1c
 - status: working proof of concept
 
 ### Authors

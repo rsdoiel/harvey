@@ -6,9 +6,8 @@ It provides an interactive REPL where you chat with a large language model
 while also being able to read files, run commands, search code, and apply
 suggested changes — all sandboxed to a single workspace directory.
 
-> **Note:** Previous versions of Harvey supported publicai.co. This support has
-> been removed as of May 2025. Harvey now focuses exclusively on local models via
-> Ollama and remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI).
+> **Note:** Harvey focuses on local models via Ollama or Ollama servers
+> running on the local network. It has limited support for remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI).
 
 ---
 
@@ -44,8 +43,5 @@ suggested changes — all sandboxed to a single workspace directory.
   component map, core types, conversation model, backend implementations,
   security system, test coverage, and the full feature roadmap.
 - [harvey.1.md](harvey.1.md) — man page source (generated from `harvey -help`).
-- [README.md](README.md) — project overview and quick-start.
-- [INSTALL.md](INSTALL.md) — installation instructions for all platforms.
-- [about.md](about.md) — project metadata.
 - [GitHub Issues](https://github.com/rsdoiel/harvey/issues) — bug reports and
   feature requests.
