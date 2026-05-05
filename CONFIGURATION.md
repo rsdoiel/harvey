@@ -104,6 +104,62 @@ rag:
 - The `model_map` ensures each generation model uses the correct embedding model
 - Embedding model binding is enforced: you cannot mix embeddings from different models in the same store
 
+**Security Configuration:**
+
+The following fields control Harvey's security features and are also persisted
+in `harvey.yaml` by the `/safemode`, `/permissions`, and related commands.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `safe_mode` | boolean | No | `false` | Enable command allowlist (see `/safemode`) |
+| `allowed_commands` | string list | No | See below | Commands permitted when safe_mode is true |
+| `permissions` | object | No | Full access | Path-prefix permission map (see below) |
+| `run_timeout` | string | No | `"5m"` | Timeout for shell commands run via `!` or `/run` |
+| `ollama_timeout` | string | No | `""` (none) | HTTP timeout for local LLM providers; empty or `"0"` means no timeout |
+
+**Default `allowed_commands`:** `ls`, `cat`, `grep`, `head`, `tail`, `wc`,
+`find`, `stat`, `jq`, `htmlq`, `bat`, `batcat`
+
+**Timeout format** (`run_timeout`, `ollama_timeout`): Go duration string or
+plain integer seconds. Examples: `"5m"`, `"300"`, `"1m30s"`, `"300s"`.
+`ollama_timeout` should be left unset (no timeout) for local hardware where
+inference can take several minutes.
+
+**`permissions` map** — keys are path prefixes relative to the workspace root;
+values are lists of allowed actions (`read`, `write`, `exec`, `delete`).
+Harvey checks the most specific matching prefix. Default is full access to `.`.
+
+```yaml
+permissions:
+  ".":           [read, write, exec, delete]   # workspace root — full access
+  "docs/":       [read]                         # docs tree — read-only
+  "scripts/":    [read, exec]                   # scripts — run but not modify
+```
+
+Permission rules:
+- Prefix `"."` matches all paths (used as the catch-all default).
+- A more specific prefix (longer string) takes priority over a shorter one.
+- If no prefix matches, access is **denied** (secure by default).
+- The `/permissions` REPL command updates these settings and persists them.
+
+**Example harvey.yaml with security settings:**
+
+```yaml
+safe_mode: true
+allowed_commands:
+  - ls
+  - cat
+  - grep
+  - git
+
+run_timeout: "5m"
+ollama_timeout: ""   # no timeout for local Ollama
+
+permissions:
+  ".":      [read, write, exec, delete]
+  "docs/":  [read]
+```
+
 ### 2. Route configuration (`<workspace>/agents/routes.json`)
 
 **Purpose:** Persists routing endpoints and routing state across Harvey

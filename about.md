@@ -41,7 +41,10 @@ Working proof of concept.
 - Added RAG support and enhance metadata handling for the models pull from ollama
 - Switch from custom LLMClient to Mozilla's any-llm-go.
 - Dropped support for publicai.co's API (couldn't access it for testing)
-- Improved security issues for working prototype.
+- Security hardening: added safe mode command allowlist (/safemode), path-based workspace permissions (/permissions), in-memory audit log (/audit), and API key filtering for all child processes
+- Security fix: removed hard-coded HTTP timeout on Ollama provider (was 120 s, caused failures on slow hardware such as Raspberry Pi); timeout is now configurable via ollama_timeout in harvey.yaml, defaulting to unlimited
+- Configurable shell-command timeout via run_timeout in harvey.yaml (default 5 minutes, supports Go duration strings such as "10m" or "1m30s")
+- Safe mode and allowlist changes now persist across sessions in harvey.yaml
 
 ### Authors
 

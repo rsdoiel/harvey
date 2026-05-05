@@ -430,6 +430,73 @@ codes are noted in the context message.</p>
 harvey &gt; /run make build
   $ make build
   1203 bytes of output added to context (exit 1).</code></pre>
+<h2 id="security">Security</h2>
+<p>Harvey includes a layered security system for controlling what it can
+do on your system. All settings persist across sessions in
+<code>agents/harvey.yaml</code>.</p>
+<h3 id="safe-mode">Safe mode</h3>
+<p>Restricts which programs may be run via <code>!</code> or
+<code>/run</code> to an explicit allowlist.</p>
+<pre><code>harvey &gt; /safemode on
+  Safe mode enabled. Only allowed commands can be executed.
+  Allowed: ls, cat, grep, head, tail, wc, find, stat, jq, htmlq, bat, batcat
+
+harvey &gt; /safemode allow git
+  Added &quot;git&quot; to allowlist.
+
+harvey &gt; /safemode status
+  Safe mode: on
+  Allowed commands (13): ls, cat, grep, head, tail, wc, find, stat, jq, ...
+
+harvey &gt; /safemode off
+  Safe mode disabled. All commands are allowed.</code></pre>
+<p>Subcommands: <code>on</code>, <code>off</code>, <code>status</code>,
+<code>allow CMD</code>, <code>deny CMD</code>, <code>reset</code>.</p>
+<h3 id="workspace-permissions">Workspace permissions</h3>
+<p>Fine-grained read/write/exec/delete control per path prefix, checked
+before every <code>/read</code>, <code>/write</code>, and
+<code>/apply</code> operation.</p>
+<pre><code>harvey &gt; /permissions set docs/ read
+  Set permissions for &quot;docs/&quot;: read
+
+harvey &gt; /permissions list
+  Configured permissions:
+    .:     read, write, exec, delete
+    docs/: read</code></pre>
+<p>Subcommands: <code>list [PATH]</code>, <code>set PATH PERMS</code>,
+<code>reset</code>. Valid permission tokens: <code>read</code>,
+<code>write</code>, <code>exec</code>, <code>delete</code>.</p>
+<h3 id="audit-log">Audit log</h3>
+<p>Every command execution, file read, file write, and skill invocation
+is recorded to an in-memory ring buffer (last 1000 events).</p>
+<pre><code>harvey &gt; /audit show 5
+  Last 5 audit events:
+  [14:02:11.432] command: go test ./... (allowed)
+  [14:02:09.801] file_read: README.md (success)
+  [14:02:05.120] command: rm -rf / (denied)
+
+harvey &gt; /audit status
+  Audit buffer: 3/1000 events</code></pre>
+<p>Subcommands: <code>show [N]</code>, <code>clear</code>,
+<code>status</code>.</p>
+<h3 id="security-overview">Security overview</h3>
+<pre><code>harvey &gt; /security</code></pre>
+<p>Shows safe mode state, all configured path permissions, and audit
+buffer capacity at a glance.</p>
+<h3 id="api-key-filtering">API key filtering</h3>
+<p>Cloud provider API keys (<code>ANTHROPIC_API_KEY</code>,
+<code>DEEPSEEK_API_KEY</code>, <code>GEMINI_API_KEY</code>,
+<code>MISTRAL_API_KEY</code>, <code>OPENAI_API_KEY</code>) are stripped
+from the environment of every child process started by <code>!</code> or
+<code>/run</code>. They are never visible to commands Harvey runs on
+your behalf.</p>
+<h3 id="configurable-timeouts">Configurable timeouts</h3>
+<p>Shell commands have a configurable timeout (default 5 minutes).
+Ollama queries default to no timeout, which is correct for slow
+hardware. Both are set in <code>agents/harvey.yaml</code>:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">run_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;5m&quot;</span><span class="co">       # or &quot;300s&quot;, &quot;1m30s&quot;, &quot;300&quot;</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ollama_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">      # empty = no timeout (recommended for Ollama on a Pi)</span></span></code></pre></div>
 <h2 id="code-assistance">Code assistance</h2>
 <h3 id="search-pattern-path"><code>/search PATTERN [PATH]</code></h3>
 <p>Searches workspace files for a regular expression. Results are capped
@@ -466,12 +533,12 @@ for a single Y/n confirmation, then writes all of them.</p>
   ✓ harvey/terminal.go</code></pre>
 <p>For Harvey to auto-detect a file, tag the fence line with the target
 path:</p>
-<div class="sourceCode" id="cb11"><pre
-class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="in">```go harvey/spinner.go</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="in">func (s *Spinner) run() {</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="in">    ...</span></span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="in">```go harvey/spinner.go</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="in">func (s *Spinner) run() {</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="in">    ...</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span></code></pre></div>
 <h2 id="session-quality">Session quality</h2>
 <h3 id="summarize"><code>/summarize</code></h3>
 <p>Asks the connected LLM to condense the current conversation into a
@@ -605,9 +672,9 @@ Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.fo
 harvey &gt; /record stop
 Recording stopped. Session saved to harvey-session-20260415-142300.fountain</code></pre>
 <p>You can also start recording automatically at launch:</p>
-<div class="sourceCode" id="cb16"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record</span>                          <span class="co"># auto-named timestamped file</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.fountain  <span class="co"># explicit path</span></span></code></pre></div>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record</span>                          <span class="co"># auto-named timestamped file</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.fountain  <span class="co"># explicit path</span></span></code></pre></div>
 <h3 id="resuming-or-replaying-a-fountain-file">Resuming or replaying a
 Fountain file</h3>
 <p>There are two ways to use a recorded <code>.fountain</code> file in a
@@ -615,17 +682,17 @@ later session:</p>
 <p><strong>Continue</strong> — loads the Fountain file’s conversation
 history into context and drops you into the interactive REPL, so you can
 pick up exactly where you left off:</p>
-<div class="sourceCode" id="cb17"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> mysession.fountain</span></code></pre></div>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> mysession.fountain</span></code></pre></div>
 <p>Or from inside a running Harvey session:</p>
 <pre><code>harvey &gt; /session continue mysession.fountain</code></pre>
 <p><strong>Replay</strong> — re-sends every user turn from the Fountain
 file to the currently connected model and records the fresh responses to
 a new file. Useful for re-running a session against a different
 model:</p>
-<div class="sourceCode" id="cb19"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.fountain</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.fountain <span class="at">--replay-output</span> newresponses.fountain</span></code></pre></div>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.fountain</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.fountain <span class="at">--replay-output</span> newresponses.fountain</span></code></pre></div>
 <p>Or from inside a running Harvey session:</p>
 <pre><code>harvey &gt; /session replay mysession.fountain
 harvey &gt; /session replay mysession.fountain newresponses.fountain</code></pre>

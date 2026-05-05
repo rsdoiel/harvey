@@ -13,15 +13,15 @@ SKILLS
 
 # SYNOPSIS
 
-Skills allow agents to cary out uniform structured tasks. The SKILL.md file
-is a standard proposed by Anthoropic.
+Skills allow agents to carry out uniform structured tasks. The SKILL.md file
+is a standard proposed by Anthropic.
 
 # DESCRIPTION
 
 Skills are Markdown files that inject specialised instructions into Harvey's
 context on demand. Harvey scans for skills at startup but only loads a
 skill's full instructions when you explicitly ask for it. SKILL.md
-is document at <https://agentskills.io/home>.
+is documented at <https://agentskills.io/home>.
 
 
 # HOW SKILLS WORK
@@ -148,7 +148,7 @@ matching trigger wins.
 ~~~
 
 Skills placed in agents/skills/ are visible to any agent
-that follows the Agent Skills specification (https://agentskills.dev).
+that follows the Agent Skills specification (https://agentskills.io/home).
 
 
 # SLASH COMMANDS
@@ -1127,6 +1127,34 @@ DEEPSEEK_API_KEY    API key for DeepSeek (optional, for /route add NAME deepseek
 GEMINI_API_KEY      API key for Google Gemini (optional; GOOGLE_API_KEY also accepted)
 MISTRAL_API_KEY     API key for Mistral (optional, for /route add NAME mistral://)
 OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
+
+All of the above API key variables are filtered out of every child process
+environment — they are never passed to commands run via ! or /run.
+
+# SECURITY
+
+Harvey includes several features for controlling what it can do on your system.
+All settings survive restart when persisted via the commands below.
+
+Safe mode (/safemode)
+: Restricts which commands may be executed via ! and /run to an explicit
+  allowlist. Default allowlist: ls, cat, grep, head, tail, wc, find, stat,
+  jq, htmlq, bat, batcat.
+  Subcommands: on, off, status, allow CMD, deny CMD, reset.
+
+Workspace permissions (/permissions)
+: Fine-grained read/write/exec/delete control per path prefix. Persisted
+  in agents/harvey.yaml under the permissions: key.
+  Subcommands: list [PATH], set PATH PERMS, reset.
+
+Audit log (/audit)
+: In-memory ring buffer (1000 events) recording every command, file read,
+  file write, and skill invocation.
+  Subcommands: show [N], clear, status.
+
+Security overview (/security)
+: Displays safe mode state, workspace permissions, and audit buffer status
+  in a single view.
 
 # LINE EDITING
 

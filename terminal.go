@@ -58,11 +58,9 @@ var safeEnvPrefixes = []string{
 	"HARVEY",
 }
 
-/** filterEnvironment returns a filtered copy of the environment that only
- * includes safe variables (those with prefixes in safeEnvPrefixes) and
- * explicitly excludes sensitive variables (those with prefixes in
- * sensitiveEnvPrefixes). This prevents sensitive environment variables
- * (like API keys) from being inherited by child processes spawned via the ! command.
+/** filterEnvironment returns a filtered copy of the environment safe to pass to
+ * child processes. Delegates to filterCommandEnvironment which is the canonical
+ * implementation shared with the /run command.
  *
  * Parameters:
  *   env ([]string) — the original environment in "KEY=VALUE" format.
@@ -71,73 +69,7 @@ var safeEnvPrefixes = []string{
  *   []string — filtered environment with only safe variables.
  */
 func filterEnvironment(env []string) []string {
-	var result []string
-	
-	// First, check for sensitive vars and exclude them
-	sensitiveMap := make(map[string]bool)
-	for _, prefix := range sensitiveEnvPrefixes {
-		sensitiveMap[prefix] = true
-	}
-	
-	// Then check for safe vars to include
-	safeMap := make(map[string]bool)
-	for _, prefix := range safeEnvPrefixes {
-		safeMap[prefix] = true
-	}
-	
-	for _, e := range env {
-		// Extract the variable name (before the '=')
-		idx := strings.IndexByte(e, '=')
-		if idx == -1 {
-			continue
-		}
-		varName := e[:idx]
-		
-		// Exclude sensitive variables
-		isSensitive := false
-		for prefix := range sensitiveMap {
-			if varName == prefix {
-				isSensitive = true
-				break
-			}
-		}
-		if isSensitive {
-			continue
-		}
-		
-		// Include only safe variables or those that don't match any pattern
-		isSafe := false
-		for prefix := range safeMap {
-			if varName == prefix || strings.HasPrefix(varName, prefix+"_") {
-				isSafe = true
-				break
-			}
-		}
-		// Also allow variables that start with HARVEY_ or OLLAMA_
-		if strings.HasPrefix(varName, "HARVEY_") || strings.HasPrefix(varName, "OLLAMA_") {
-			isSafe = true
-		}
-		
-		if isSafe {
-			result = append(result, e)
-		}
-	}
-	
-	// Always ensure PATH is set
-	pathFound := false
-	for _, e := range result {
-		if strings.HasPrefix(e, "PATH=") {
-			pathFound = true
-			break
-		}
-	}
-	if !pathFound {
-		if path := os.Getenv("PATH"); path != "" {
-			result = append(result, "PATH="+path)
-		}
-	}
-	
-	return result
+	return filterCommandEnvironment(env)
 }
 
 /** parseCommandLine splits a command line string into a program name and
@@ -470,7 +402,13 @@ func (a *Agent) Run(out io.Writer) error {
 			var capBuf bytes.Buffer
 			mw := io.MultiWriter(out, &capBuf)
 
-			bashCtx, cancelBash := context.WithCancel(context.Background())
+			var bashCtx context.Context
+			var cancelBash context.CancelFunc
+			if a.Config.RunTimeout > 0 {
+				bashCtx, cancelBash = context.WithTimeout(context.Background(), a.Config.RunTimeout)
+			} else {
+				bashCtx, cancelBash = context.WithCancel(context.Background())
+			}
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, os.Interrupt)
 			wasCancelled := false
@@ -857,12 +795,12 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredModel string) error {
 	// Command-line --model flag always wins.
 	if a.Config.OllamaModel != "" {
-		a.Client = newOllamaLLMClient(a.Config.OllamaURL, a.Config.OllamaModel)
+		a.Client = newOllamaLLMClient(a.Config.OllamaURL, a.Config.OllamaModel, a.Config.OllamaTimeout)
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.OllamaModel))
 		return nil
 	}
 
-	models, err := newOllamaLLMClient(a.Config.OllamaURL, "").Models(context.Background())
+	models, err := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).Models(context.Background())
 	if err != nil || len(models) == 0 {
 		fmt.Fprintln(out, yellow("  ✗")+" No models installed. Run: ollama pull <model>")
 		return nil
@@ -871,7 +809,7 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 	// If only one model is available, use it regardless of preference.
 	if len(models) == 1 {
 		a.Config.OllamaModel = models[0]
-		a.Client = newOllamaLLMClient(a.Config.OllamaURL, models[0])
+		a.Client = newOllamaLLMClient(a.Config.OllamaURL, models[0], a.Config.OllamaTimeout)
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(models[0]))
 		return nil
 	}
@@ -882,7 +820,7 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 			if strings.EqualFold(extractModelName(m), preferredModel) ||
 				strings.EqualFold(m, preferredModel) {
 				a.Config.OllamaModel = m
-				a.Client = newOllamaLLMClient(a.Config.OllamaURL, m)
+				a.Client = newOllamaLLMClient(a.Config.OllamaURL, m, a.Config.OllamaTimeout)
 				fmt.Fprintf(out, "  Using model: %s %s\n", cyan(m), dim("(from session)"))
 				return nil
 			}
@@ -905,7 +843,7 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 	}
 
 	a.Config.OllamaModel = chosen
-	a.Client = newOllamaLLMClient(a.Config.OllamaURL, chosen)
+	a.Client = newOllamaLLMClient(a.Config.OllamaURL, chosen, a.Config.OllamaTimeout)
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen))
 	return nil
 }

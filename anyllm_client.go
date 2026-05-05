@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
@@ -252,57 +253,70 @@ func (e *AnyLLMEmbedder) Embed(text string) ([]float64, error) {
 
 // ─── convenience constructors ─────────────────────────────────────────────────
 
+// localProviderHTTPOpt returns an anyllm.Option that controls the HTTP client
+// timeout for local providers (Ollama, Llamafile, llama.cpp). When timeout is
+// zero the HTTP client has no timeout, which is correct for long local inference
+// on slow hardware. When timeout is positive, WithTimeout is used.
+func localProviderHTTPOpt(timeout time.Duration) anyllm.Option {
+	if timeout <= 0 {
+		return anyllm.WithHTTPClient(&http.Client{})
+	}
+	return anyllm.WithTimeout(timeout)
+}
+
 /** newOllamaLLMClient creates an AnyLLMClient backed by a local Ollama server.
  * If baseURL is empty or invalid the Ollama default (localhost:11434) is used.
+ * Pass timeout=0 for no HTTP timeout (recommended for slow hardware).
  *
  * Parameters:
- *   baseURL (string) — Ollama base URL, e.g. "http://localhost:11434".
- *   model   (string) — model name to use for completions.
+ *   baseURL  (string)        — Ollama base URL, e.g. "http://localhost:11434".
+ *   model    (string)        — model name to use for completions.
+ *   timeout  (time.Duration) — HTTP client timeout; 0 means no timeout.
  *
  * Returns:
  *   *AnyLLMClient — ready to use.
  *
  * Example:
- *   client := newOllamaLLMClient("http://localhost:11434", "llama3.1:8b")
+ *   client := newOllamaLLMClient("http://localhost:11434", "llama3.1:8b", 0)
  */
-func newOllamaLLMClient(baseURL, model string) *AnyLLMClient {
-	var opts []anyllm.Option
+func newOllamaLLMClient(baseURL, model string, timeout time.Duration) *AnyLLMClient {
+	opts := []anyllm.Option{localProviderHTTPOpt(timeout)}
 	if baseURL != "" {
 		opts = append(opts, anyllm.WithBaseURL(baseURL))
 	}
 	p, err := ollama.New(opts...)
 	if err != nil {
-		p, _ = ollama.New()
+		p, _ = ollama.New(localProviderHTTPOpt(timeout))
 	}
 	return NewAnyLLMClient(p, model, "ollama", baseURL)
 }
 
 // newLlamafileLLMClient creates an AnyLLMClient backed by a Llamafile server.
 // apiURL must be the full /v1 base URL, e.g. "http://localhost:8080/v1".
-// If empty or invalid, the Llamafile default is used (reads LLAMAFILE_BASE_URL).
-func newLlamafileLLMClient(apiURL, model string) *AnyLLMClient {
-	var opts []anyllm.Option
+// Pass timeout=0 for no HTTP timeout.
+func newLlamafileLLMClient(apiURL, model string, timeout time.Duration) *AnyLLMClient {
+	opts := []anyllm.Option{localProviderHTTPOpt(timeout)}
 	if apiURL != "" {
 		opts = append(opts, anyllm.WithBaseURL(apiURL))
 	}
 	p, err := llamafile.New(opts...)
 	if err != nil {
-		p, _ = llamafile.New()
+		p, _ = llamafile.New(localProviderHTTPOpt(timeout))
 	}
 	return NewAnyLLMClient(p, model, "llamafile", apiURL)
 }
 
 // newLlamaCppLLMClient creates an AnyLLMClient backed by a llama.cpp server.
 // apiURL must be the full /v1 base URL, e.g. "http://127.0.0.1:8080/v1".
-// If empty or invalid, the llama.cpp default is used.
-func newLlamaCppLLMClient(apiURL, model string) *AnyLLMClient {
-	var opts []anyllm.Option
+// Pass timeout=0 for no HTTP timeout.
+func newLlamaCppLLMClient(apiURL, model string, timeout time.Duration) *AnyLLMClient {
+	opts := []anyllm.Option{localProviderHTTPOpt(timeout)}
 	if apiURL != "" {
 		opts = append(opts, anyllm.WithBaseURL(apiURL))
 	}
 	p, err := llamacpp.New(opts...)
 	if err != nil {
-		p, _ = llamacpp.New()
+		p, _ = llamacpp.New(localProviderHTTPOpt(timeout))
 	}
 	return NewAnyLLMClient(p, model, "llamacpp", apiURL)
 }

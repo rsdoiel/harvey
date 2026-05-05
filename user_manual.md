@@ -27,19 +27,22 @@ suggested changes — all sandboxed to a single workspace directory.
    - [Session quality](getting_started.md#session-quality-tier-3)
    - [Knowledge base](getting_started.md#knowledge-base-commands)
    - [Recording](getting_started.md#recording-commands)
-7. [Typical workflows](getting_started.md#typical-workflows)
-8. [Further reading](getting_started.md#further-reading)
-9. [Models I'm using](models.md)
-10. [Model evaluations](model_testing_plan.md)
-11. [Using RAGS with Harvey](Using_RAGs_with_Harvey.md)
+7. [Security](getting_started.md#security) — safe mode, permissions, audit log, API key filtering
+8. [Typical workflows](getting_started.md#typical-workflows)
+9. [Further reading](getting_started.md#further-reading)
+10. [Models I'm using](models.md)
+11. [Model evaluations](model_testing_plan.md)
+12. [Using RAGS with Harvey](Using_RAGs_with_Harvey.md)
 
 
 ## Further reading
 
 - [DOCUMENTATION.md](DOCUMENTATION.md) — master index of all Harvey documentation
+- [CONFIGURATION.md](CONFIGURATION.md) — all harvey.yaml keys including security
+  settings (safe mode, permissions, timeouts).
 - [ARCHITECTURE.md](ARCHITECTURE.md) — detailed technical documentation:
   component map, core types, conversation model, backend implementations,
-  test coverage, and the full feature roadmap.
+  security system, test coverage, and the full feature roadmap.
 - [harvey.1.md](harvey.1.md) — man page source (generated from `harvey -help`).
 - [README.md](README.md) — project overview and quick-start.
 - [INSTALL.md](INSTALL.md) — installation instructions for all platforms.

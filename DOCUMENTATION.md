@@ -43,7 +43,7 @@ These documents help you install and begin using Harvey.
 | [README.md](README.md) | Project overview, features, motivation, and philosophy | New users |
 | [INSTALL.md](INSTALL.md) | Installation instructions for all platforms | New users |
 | [about.md](about.md) | Project metadata and author information | All |
-| [getting_started.md](getting_started.md) | Comprehensive introduction with session walkthrough and keyboard shortcuts | New users |
+| [getting_started.md](getting_started.md) | Comprehensive introduction with session walkthrough, keyboard shortcuts, slash commands, and security features (safe mode, permissions, audit log) | New users |
 | [user_manual.md](user_manual.md) | Concise user manual with command reference | All users |
 | [HARVEY.md](HARVEY.md) | Default system prompt for Harvey | Reference |
 
@@ -67,8 +67,8 @@ Technical details about Harvey's internals and customization options.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| [CONFIGURATION.md](CONFIGURATION.md) | Complete guide to Harvey's workspace-local configuration. Covers agents/harvey.yaml, agents/routes.json, HARVEY.md system prompt, and environment variables for cloud provider API keys. | Users, Developers |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Detailed technical documentation. Includes component map, core types (Agent, LLMClient, Message, Workspace, KnowledgeBase, Recorder), backend implementations, test coverage, and feature roadmap. | Developers |
+| [CONFIGURATION.md](CONFIGURATION.md) | Complete guide to Harvey's workspace-local configuration. Covers agents/harvey.yaml (including security settings: safe mode, permissions, timeouts), agents/routes.json, HARVEY.md system prompt, and environment variables. | Users, Developers |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Detailed technical documentation. Includes component map, core types (Agent, LLMClient, Message, Workspace, KnowledgeBase, Recorder), security system (audit log, permissions, safe mode, env filtering), backend implementations, test coverage, and feature roadmap. | Developers |
 | [models.md](models.md) | Information about models being used and evaluated | Reference |
 | [model_testing_plan.md](model_testing_plan.md) | Comprehensive plan for testing and evaluating models | Developers |
 

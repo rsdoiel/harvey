@@ -247,6 +247,67 @@ linked from README.md or user_manual.md</label></li>
 <li><label><input type="checkbox" checked="" />Add MODEL_CACHE.md -
 Document capability probing, cache database, model metadata</label></li>
 </ul>
+<h2 id="security-follow-up-2026-05-04">Security Follow-Up
+(2026-05-04)</h2>
+<h3 id="code-fixes">Code Fixes</h3>
+<ul class="task-list">
+<li><p><label><input type="checkbox" checked="" /><strong>Issue 1 —
+Enforce permissions in file commands</strong>: Added
+<code>CheckReadPermission</code> / <code>CheckWritePermission</code>
+checks to <code>cmdRead</code>, <code>cmdWrite</code>, and
+<code>cmdApply</code> in <code>commands.go</code>. Denied ops are now
+audit-logged with <code>StatusDenied</code>.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>Issue 2 —
+Consolidate duplicate env-filter functions</strong>:
+<code>filterEnvironment</code> in <code>terminal.go</code> now delegates
+to <code>filterCommandEnvironment</code> in <code>commands.go</code>;
+one canonical implementation.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>Issue 3 —
+Persist SafeMode &amp; AllowedCommands across sessions</strong>: Added
+<code>safe_mode</code> and <code>allowed_commands</code> to
+<code>harveyYAML</code>; <code>LoadHarveyYAML</code> and
+<code>SaveRAGConfig</code> round-trip them.
+<code>safeModeOn/Off/Allow/Deny/Reset</code> all call
+<code>SaveRAGConfig</code>.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>Issue 4 —
+Configurable timeouts</strong>: Added <code>RunTimeout</code> (default 5
+min) and <code>OllamaTimeout</code> (default 0 = unlimited) to
+<code>Config</code>. Both are exposed as <code>run_timeout</code> /
+<code>ollama_timeout</code> in harvey.yaml and accept Go duration
+strings (“5m”, “1m30s”) or plain integer seconds. Critical bug fixed:
+any-llm-go Ollama provider had a hard-coded 120 s HTTP timeout that
+killed queries on slow hardware; now removed for local providers
+(Ollama, Llamafile, llama.cpp).</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>Issue 5 —
+Atomic global audit buffer</strong>: Replaced
+<code>var globalAuditBuffer *AuditBuffer</code> with
+<code>atomic.Pointer[AuditBuffer]</code> in
+<code>audit.go</code>.</label></p></li>
+</ul>
+<h3 id="documentation-fixes">Documentation Fixes</h3>
+<ul class="task-list">
+<li><p><label><input type="checkbox" checked="" /><strong>helptext.go —
+Fixed Agent Skills typos and URL</strong>: “Anthoropic” → “Anthropic”,
+“is document at” → “is documented at”, unified URL to
+<code>https://agentskills.io/home</code>. Mirrored fixes in
+harvey.7.md.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>helptext.go /
+harvey.1.md — Added SECURITY section</strong>: Documents
+<code>/safemode</code>, <code>/permissions</code>, <code>/audit</code>,
+<code>/security</code> commands and notes API key env-var
+filtering.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>codemeta.json
+— Improved releaseNotes</strong>: Replaced vague sentence with four
+specific bullets describing security hardening and timeout
+changes.</label></p></li>
+<li><p><label><input type="checkbox"
+checked="" /><strong>CONFIGURATION.md — Documented security
+configuration</strong>: Added full Security Configuration subsection
+covering <code>safe_mode</code>, <code>allowed_commands</code>,
+<code>permissions</code> map (format, matching rules, example),
+<code>run_timeout</code>, and
+<code>ollama_timeout</code>.</label></p></li>
+</ul>
 </section>
 </body>
 </html>

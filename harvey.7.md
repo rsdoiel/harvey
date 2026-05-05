@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.1c c550171
+%harvey(7) user manual | version 0.0.1c 3b2ed24
 % R. S. Doiel
 % 2026-05-04
 
@@ -8,15 +8,15 @@ SKILLS
 
 # SYNOPSIS
 
-Skills allow agents to cary out uniform structured tasks. The SKILL.md file
-is a standard proposed by Anthoropic.
+Skills allow agents to carry out uniform structured tasks. The SKILL.md file
+is a standard proposed by Anthropic.
 
 # DESCRIPTION
 
 Skills are Markdown files that inject specialised instructions into Harvey's
 context on demand. Harvey scans for skills at startup but only loads a
 skill's full instructions when you explicitly ask for it. SKILL.md
-is document at <https://agentskills.io/home>.
+is documented at <https://agentskills.io/home>.
 
 
 # HOW SKILLS WORK
@@ -143,7 +143,7 @@ matching trigger wins.
 ~~~
 
 Skills placed in agents/skills/ are visible to any agent
-that follows the Agent Skills specification (https://agentskills.dev).
+that follows the Agent Skills specification (https://agentskills.io/home).
 
 
 # SLASH COMMANDS

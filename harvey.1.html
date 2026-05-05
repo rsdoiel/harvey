@@ -116,6 +116,38 @@ for /route add NAME deepseek://) GEMINI_API_KEY API key for Google
 Gemini (optional; GOOGLE_API_KEY also accepted) MISTRAL_API_KEY API key
 for Mistral (optional, for /route add NAME mistral://) OPENAI_API_KEY
 API key for OpenAI (optional, for /route add NAME openai://)</p>
+<p>All of the above API key variables are filtered out of every child
+process environment — they are never passed to commands run via ! or
+/run.</p>
+<h1 id="security">SECURITY</h1>
+<p>Harvey includes several features for controlling what it can do on
+your system. All settings survive restart when persisted via the
+commands below.</p>
+<dl>
+<dt>Safe mode (/safemode)</dt>
+<dd>
+Restricts which commands may be executed via ! and /run to an explicit
+allowlist. Default allowlist: ls, cat, grep, head, tail, wc, find, stat,
+jq, htmlq, bat, batcat. Subcommands: on, off, status, allow CMD, deny
+CMD, reset.
+</dd>
+<dt>Workspace permissions (/permissions)</dt>
+<dd>
+Fine-grained read/write/exec/delete control per path prefix. Persisted
+in agents/harvey.yaml under the permissions: key. Subcommands: list
+[PATH], set PATH PERMS, reset.
+</dd>
+<dt>Audit log (/audit)</dt>
+<dd>
+In-memory ring buffer (1000 events) recording every command, file read,
+file write, and skill invocation. Subcommands: show [N], clear, status.
+</dd>
+<dt>Security overview (/security)</dt>
+<dd>
+Displays safe mode state, workspace permissions, and audit buffer status
+in a single view.
+</dd>
+</dl>
 <h1 id="line-editing">LINE EDITING</h1>
 <p>Harvey’s prompt supports readline-style editing. All key bindings
 apply while typing at the “harvey &gt;” prompt.</p>

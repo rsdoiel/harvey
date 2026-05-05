@@ -1,4 +1,4 @@
-%harvey(1) user manual | version 0.0.1c c550171
+%harvey(1) user manual | version 0.0.1c 3b2ed24
 % R. S. Doiel
 % 2026-05-04
 
@@ -73,6 +73,34 @@ DEEPSEEK_API_KEY    API key for DeepSeek (optional, for /route add NAME deepseek
 GEMINI_API_KEY      API key for Google Gemini (optional; GOOGLE_API_KEY also accepted)
 MISTRAL_API_KEY     API key for Mistral (optional, for /route add NAME mistral://)
 OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
+
+All of the above API key variables are filtered out of every child process
+environment — they are never passed to commands run via ! or /run.
+
+# SECURITY
+
+Harvey includes several features for controlling what it can do on your system.
+All settings survive restart when persisted via the commands below.
+
+Safe mode (/safemode)
+: Restricts which commands may be executed via ! and /run to an explicit
+  allowlist. Default allowlist: ls, cat, grep, head, tail, wc, find, stat,
+  jq, htmlq, bat, batcat.
+  Subcommands: on, off, status, allow CMD, deny CMD, reset.
+
+Workspace permissions (/permissions)
+: Fine-grained read/write/exec/delete control per path prefix. Persisted
+  in agents/harvey.yaml under the permissions: key.
+  Subcommands: list [PATH], set PATH PERMS, reset.
+
+Audit log (/audit)
+: In-memory ring buffer (1000 events) recording every command, file read,
+  file write, and skill invocation.
+  Subcommands: show [N], clear, status.
+
+Security overview (/security)
+: Displays safe mode state, workspace permissions, and audit buffer status
+  in a single view.
 
 # LINE EDITING
 

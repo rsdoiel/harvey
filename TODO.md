@@ -86,4 +86,28 @@
 - [x] Ensure all docs are linked from README.md or user_manual.md
 - [x] Add MODEL_CACHE.md - Document capability probing, cache database, model metadata
 
+## Security Follow-Up (2026-05-04)
+
+### Code Fixes
+
+- [x] **Issue 1 — Enforce permissions in file commands**: Added `CheckReadPermission` / `CheckWritePermission` checks to `cmdRead`, `cmdWrite`, and `cmdApply` in `commands.go`. Denied ops are now audit-logged with `StatusDenied`.
+
+- [x] **Issue 2 — Consolidate duplicate env-filter functions**: `filterEnvironment` in `terminal.go` now delegates to `filterCommandEnvironment` in `commands.go`; one canonical implementation.
+
+- [x] **Issue 3 — Persist SafeMode & AllowedCommands across sessions**: Added `safe_mode` and `allowed_commands` to `harveyYAML`; `LoadHarveyYAML` and `SaveRAGConfig` round-trip them. `safeModeOn/Off/Allow/Deny/Reset` all call `SaveRAGConfig`.
+
+- [x] **Issue 4 — Configurable timeouts**: Added `RunTimeout` (default 5 min) and `OllamaTimeout` (default 0 = unlimited) to `Config`. Both are exposed as `run_timeout` / `ollama_timeout` in harvey.yaml and accept Go duration strings ("5m", "1m30s") or plain integer seconds. Critical bug fixed: any-llm-go Ollama provider had a hard-coded 120 s HTTP timeout that killed queries on slow hardware; now removed for local providers (Ollama, Llamafile, llama.cpp).
+
+- [x] **Issue 5 — Atomic global audit buffer**: Replaced `var globalAuditBuffer *AuditBuffer` with `atomic.Pointer[AuditBuffer]` in `audit.go`.
+
+### Documentation Fixes
+
+- [x] **helptext.go — Fixed Agent Skills typos and URL**: "Anthoropic" → "Anthropic", "is document at" → "is documented at", unified URL to `https://agentskills.io/home`. Mirrored fixes in harvey.7.md.
+
+- [x] **helptext.go / harvey.1.md — Added SECURITY section**: Documents `/safemode`, `/permissions`, `/audit`, `/security` commands and notes API key env-var filtering.
+
+- [x] **codemeta.json — Improved releaseNotes**: Replaced vague sentence with four specific bullets describing security hardening and timeout changes.
+
+- [x] **CONFIGURATION.md — Documented security configuration**: Added full Security Configuration subsection covering `safe_mode`, `allowed_commands`, `permissions` map (format, matching rules, example), `run_timeout`, and `ollama_timeout`.
+
 

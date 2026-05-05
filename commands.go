@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // sensitiveCmdEnvVars contains environment variable names that should be
@@ -737,6 +736,11 @@ func cmdSafeMode(a *Agent, args []string, out io.Writer) error {
 
 func safeModeOn(a *Agent, out io.Writer) error {
 	a.Config.SafeMode = true
+	if a.Workspace != nil {
+		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "  Warning: could not persist safe mode: %v\n", err)
+		}
+	}
 	fmt.Fprintln(out, "  Safe mode enabled. Only allowed commands can be executed.")
 	fmt.Fprintf(out, "  Allowed: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
 	return nil
@@ -744,6 +748,11 @@ func safeModeOn(a *Agent, out io.Writer) error {
 
 func safeModeOff(a *Agent, out io.Writer) error {
 	a.Config.SafeMode = false
+	if a.Workspace != nil {
+		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "  Warning: could not persist safe mode: %v\n", err)
+		}
+	}
 	fmt.Fprintln(out, "  Safe mode disabled. All commands are allowed.")
 	return nil
 }
@@ -767,6 +776,11 @@ func safeModeAllow(a *Agent, cmd string, out io.Writer) error {
 	} else {
 		fmt.Fprintf(out, "  %q is already in the allowlist.\n", cmd)
 	}
+	if a.Workspace != nil {
+		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "  Warning: could not persist allowlist: %v\n", err)
+		}
+	}
 	return nil
 }
 
@@ -778,11 +792,21 @@ func safeModeDeny(a *Agent, cmd string, out io.Writer) error {
 	} else {
 		fmt.Fprintf(out, "  %q is not in the allowlist.\n", cmd)
 	}
+	if a.Workspace != nil {
+		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "  Warning: could not persist allowlist: %v\n", err)
+		}
+	}
 	return nil
 }
 
 func safeModeReset(a *Agent, out io.Writer) error {
 	a.Config.ResetAllowedCommands()
+	if a.Workspace != nil {
+		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "  Warning: could not persist allowlist: %v\n", err)
+		}
+	}
 	fmt.Fprintln(out, "  Allowlist reset to defaults.")
 	fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
 	return nil
@@ -1091,7 +1115,7 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 			return nil
 		}
 		a.Config.OllamaModel = model
-		a.Client = newOllamaLLMClient(a.Config.OllamaURL, model)
+		a.Client = newOllamaLLMClient(a.Config.OllamaURL, model, a.Config.OllamaTimeout)
 		fmt.Fprintf(out, "Now using Ollama model: %s\n", model)
 	default:
 		fmt.Fprintf(out, "Unknown ollama subcommand: %s\n", args[0])
@@ -1660,6 +1684,13 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 
 	ok := 0
 	for _, rel := range args {
+		if !a.CheckReadPermission(rel) {
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionFileRead, rel, StatusDenied)
+			}
+			fmt.Fprintf(out, "  ✗ %s: read permission denied\n", rel)
+			continue
+		}
 		data, err := a.Workspace.ReadFile(rel)
 		if err != nil {
 			if a.AuditBuffer != nil {
@@ -1723,6 +1754,13 @@ func cmdWrite(a *Agent, args []string, out io.Writer) error {
 		content = reply
 	}
 
+	if !a.CheckWritePermission(dest) {
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionFileWrite, dest, StatusDenied)
+		}
+		fmt.Fprintf(out, "  write permission denied for %s\n", dest)
+		return nil
+	}
 	if err := a.Workspace.WriteFile(dest, []byte(content), 0o644); err != nil {
 		if a.AuditBuffer != nil {
 			a.AuditBuffer.Log(ActionFileWrite, dest, StatusError)
@@ -1804,8 +1842,14 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 	cmdLine := strings.Join(args, " ")
 	fmt.Fprintf(out, "  $ %s\n", cmdLine)
 
-	// Use a context with timeout to prevent hanging commands
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Use a context with an optional timeout to prevent hanging commands.
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if a.Config.RunTimeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), a.Config.RunTimeout)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
@@ -2139,9 +2183,22 @@ func cmdApply(a *Agent, args []string, out io.Writer) error {
 	}
 
 	for _, b := range blocks {
+		if !a.CheckWritePermission(b.path) {
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionFileWrite, b.path, StatusDenied)
+			}
+			fmt.Fprintf(out, "  ✗ %s: write permission denied\n", b.path)
+			continue
+		}
 		if err := a.Workspace.WriteFile(b.path, []byte(b.content), 0o644); err != nil {
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionFileWrite, b.path, StatusError)
+			}
 			fmt.Fprintf(out, "  ✗ %s: %v\n", b.path, err)
 		} else {
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionFileWrite, b.path, StatusSuccess)
+			}
 			fmt.Fprintf(out, "  ✓ %s\n", b.path)
 		}
 	}
@@ -2640,7 +2697,7 @@ func modelList(a *Agent, out io.Writer) error {
 
 	// Ollama
 	if ProbeOllama(a.Config.OllamaURL) {
-		models, err := newOllamaLLMClient(a.Config.OllamaURL, "").Models(ctx)
+		models, err := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).Models(ctx)
 		if err == nil {
 			found = true
 			activeModel := ""
@@ -2684,14 +2741,14 @@ func modelSwitch(a *Agent, name string, out io.Writer) error {
 		return nil
 	}
 
-	models, err := newOllamaLLMClient(a.Config.OllamaURL, "").Models(ctx)
+	models, err := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).Models(ctx)
 	if err != nil {
 		return fmt.Errorf("listing models: %w", err)
 	}
 	for _, m := range models {
 		if m == name {
 			a.Config.OllamaModel = name
-			a.Client = newOllamaLLMClient(a.Config.OllamaURL, name)
+			a.Client = newOllamaLLMClient(a.Config.OllamaURL, name, a.Config.OllamaTimeout)
 			fmt.Fprintf(out, "  Switched to model: %s\n", name)
 			return nil
 		}
@@ -3278,7 +3335,7 @@ func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) 
 foundPref:
 
 	// Build proposed model map: all non-embedding generation models → preferred embedder.
-	genModels, _ := newOllamaLLMClient(a.Config.OllamaURL, "").Models(ctx)
+	genModels, _ := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).Models(ctx)
 	proposed := make(map[string]string)
 	for _, m := range genModels {
 		if !hasEmbedKeyword(m) {

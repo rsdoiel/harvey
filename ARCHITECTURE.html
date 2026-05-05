@@ -40,23 +40,27 @@ figcaption {
 <section>
 <h1 id="harvey-architecture">Harvey Architecture</h1>
 <p>Harvey is a terminal-based coding agent written in Go. It connects to
-a local <a href="https://ollama.com">Ollama</a> server (or optionally <a
-href="https://publicai.co">publicai.co</a>) and provides an interactive
-REPL for code-focused conversations. The design philosophy is: keep the
-LLM backend swappable, constrain all file I/O to a sandboxed workspace,
-and accumulate context through explicit slash commands rather than
-implicit background crawling.</p>
+a local <a href="https://ollama.com">Ollama</a> server (and optionally
+to cloud providers via named routes) and provides an interactive REPL
+for code-focused conversations. The design philosophy is: keep the LLM
+backend swappable, constrain all file I/O to a sandboxed workspace, and
+accumulate context through explicit slash commands rather than implicit
+background crawling.</p>
 <h2 id="component-map">Component map</h2>
 <pre><code>cmd/harvey/main.go          CLI entry point; parses flags; calls agent.Run()
 harvey.go                   Core types: Agent, LLMClient, Message, ChatStats,
                               ExpandDynamicSections
-config.go                   Config struct, DefaultConfig(), LoadHarveyMD()
+config.go                   Config struct, DefaultConfig(), LoadHarveyMD(),
+                              permissions, timeout, safe-mode configuration
 terminal.go                 REPL loop (Run), startup sequence, backend selection
 commands.go                 All slash-command handlers and dispatch
 workspace.go                Sandboxed file I/O (Workspace)
 knowledge.go                SQLite knowledge base (KnowledgeBase)
-ollama.go                   OllamaClient — streams /api/chat SSE
-publicai.go                 PublicAIClient — streams /v1/chat/completions SSE
+audit.go                    In-memory ring-buffer audit log (AuditBuffer)
+permissions.go              Permission check helpers (CheckReadPermission, etc.)
+ollama.go                   OllamaClient helpers and probing utilities
+anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go
+routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
 spinner.go                  Animated spinner with Edward Lear messages + timer
 recorder.go                 Markdown session recorder</code></pre>
 <h2 id="core-types">Core types</h2>
@@ -80,7 +84,7 @@ together for one session:</p>
 <tr>
 <td><code>Client</code></td>
 <td><code>LLMClient</code></td>
-<td>Current backend (Ollama or PublicAI)</td>
+<td>Current backend (Ollama, Llamafile, cloud provider)</td>
 </tr>
 <tr>
 <td><code>Config</code></td>
@@ -301,8 +305,12 @@ with <code>/</code>.</p>
 <td>Control the local Ollama service</td>
 </tr>
 <tr>
-<td><code>/publicai connect\|disconnect\|status</code></td>
-<td>Manage the publicai.co connection</td>
+<td><code>/route add\|remove\|list\|enable\|disable</code></td>
+<td>Manage named remote endpoints</td>
+</tr>
+<tr>
+<td><code>/model [NAME]</code></td>
+<td>Switch Ollama model; list available models</td>
 </tr>
 </tbody>
 </table>
@@ -472,6 +480,82 @@ history</td>
 </tr>
 </tbody>
 </table>
+<h3 id="security-commands">Security commands</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/safemode on\|off\|status\|allow CMD\|deny CMD\|reset</code></td>
+<td>Command allowlist; persisted to harvey.yaml</td>
+</tr>
+<tr>
+<td><code>/permissions list\|set PATH PERMS\|reset</code></td>
+<td>Path-prefix read/write/exec/delete control</td>
+</tr>
+<tr>
+<td><code>/audit show [N]\|clear\|status</code></td>
+<td>In-memory ring-buffer audit log (1000 events)</td>
+</tr>
+<tr>
+<td><code>/security</code></td>
+<td>Unified view of safe mode, permissions, and audit state</td>
+</tr>
+</tbody>
+</table>
+<h2 id="security-system-audit.go-permissions.go-config.go">Security
+system (<code>audit.go</code>, <code>permissions.go</code>,
+<code>config.go</code>)</h2>
+<p>Harvey’s security layer has four interlocking components.</p>
+<p><strong>Command allowlist (safe mode).</strong> When
+<code>Config.SafeMode</code> is true, every <code>!</code> and
+<code>/run</code> invocation checks the command name against
+<code>Config.AllowedCommands</code> before execution. Denied commands
+are audit-logged with <code>StatusDenied</code> and the user sees which
+commands are permitted. Settings are persisted to
+<code>agents/harvey.yaml</code> via <code>SaveRAGConfig</code> so they
+survive restart.</p>
+<p><strong>Path permissions.</strong> <code>Config.Permissions</code> is
+a <code>map[string][]string</code> keyed on path prefixes. Before any
+<code>ws.ReadFile</code>, <code>ws.WriteFile</code>, or block-write in
+<code>/apply</code>, the command handler calls
+<code>a.CheckReadPermission</code> /
+<code>a.CheckWritePermission</code>. The most specific matching prefix
+wins; unmatched paths are denied. Persisted under the
+<code>permissions:</code> key in harvey.yaml.</p>
+<p><strong>Audit log.</strong> <code>AuditBuffer</code>
+(<code>audit.go</code>) is a thread-safe ring buffer (capacity 1000)
+using <code>sync.RWMutex</code>. It records action type, details, and
+outcome (<code>allowed</code>, <code>denied</code>, <code>error</code>,
+<code>success</code>). The global instance is held via
+<code>sync/atomic.Pointer[AuditBuffer]</code> so it can be written from
+multiple goroutines without a lock on the pointer itself.</p>
+<p><strong>Environment filtering.</strong> Every child process launched
+via <code>!</code> or <code>/run</code> receives a filtered environment
+from <code>filterCommandEnvironment</code> (<code>commands.go</code>).
+Only variables in a safe-prefix allowlist (<code>PATH</code>,
+<code>HOME</code>, <code>USER</code>, <code>SHELL</code>,
+<code>TERM</code>, <code>LANG</code>, <code>LC_*</code>,
+<code>PWD</code>, <code>OLLAMA_*</code>, <code>HARVEY_*</code>) are
+forwarded; all cloud provider API key variables are unconditionally
+stripped.</p>
+<p><strong>Timeout configuration.</strong>
+<code>Config.RunTimeout</code> (default 5 minutes) bounds every
+<code>!</code> and <code>/run</code> subprocess via
+<code>context.WithTimeout</code>. <code>Config.OllamaTimeout</code>
+controls the HTTP client timeout for local LLM providers; it defaults to
+0 (no timeout) because inference on slow hardware (Raspberry Pi) can
+take several minutes. Both are configurable in harvey.yaml as duration
+strings (<code>"5m"</code>, <code>"300s"</code>, <code>"1m30s"</code>)
+or plain integer seconds.</p>
 <h2 id="knowledge-base-knowledge.go">Knowledge base
 (<code>knowledge.go</code>)</h2>
 <p>The SQLite database lives at
@@ -558,12 +642,21 @@ final chunk with <code>done: true</code> carries
 (all in nanoseconds). These are parsed into <code>ChatStats</code>;
 <code>TokensPerSec</code> is computed as
 <code>eval_count / (eval_duration / 1e9)</code>.</p>
-<h3 id="publicaiclient-publicai.go">PublicAIClient
-(<code>publicai.go</code>)</h3>
-<p>Posts to <code>/v1/chat/completions</code> (OpenAI-compatible SSE).
-Streams delta content from <code>choices[].delta.content</code>. Token
-counts are not available in the SSE stream; <code>ChatStats</code>
-carries only <code>Elapsed</code>.</p>
+<h3 id="anyllmclient-anyllm_client.go">AnyLLMClient
+(<code>anyllm_client.go</code>)</h3>
+<p>Wraps <a
+href="https://github.com/mozilla-ai/any-llm-go">mozilla-ai/any-llm-go</a>
+and implements <code>LLMClient</code>. Local providers (Ollama,
+Llamafile, llama.cpp) are constructed with
+<code>anyllm.WithHTTPClient(&amp;http.Client{})</code> when
+<code>Config.OllamaTimeout</code> is zero, removing the library’s
+default 120 s timeout which was too short for inference on slow
+hardware. Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI)
+use the library’s default timeout.</p>
+<p>Named remote endpoints are managed by <code>RouteRegistry</code>
+(<code>routing.go</code>). The <code>@name</code> prefix in a prompt
+dispatches that turn to the named endpoint instead of the primary
+backend.</p>
 <h3 id="backend-selection-at-startup-terminal.go">Backend selection at
 startup (<code>terminal.go</code>)</h3>
 <ol type="1">
@@ -572,8 +665,6 @@ startup (<code>terminal.go</code>)</h3>
 present a menu.</li>
 <li>If unreachable: offer to start <code>ollama serve</code>, then
 retry.</li>
-<li>If Ollama unavailable or declined: offer publicai.co (requires
-<code>PUBLICAI_API_KEY</code> environment variable).</li>
 <li>If nothing selected: Harvey starts without a backend; commands that
 need one (<code>/summarize</code>, chat turns) print a prompt to connect
 first.</li>

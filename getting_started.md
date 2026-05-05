@@ -269,6 +269,96 @@ harvey > /run make build
   1203 bytes of output added to context (exit 1).
 ```
 
+## Security
+
+Harvey includes a layered security system for controlling what it can do on
+your system. All settings persist across sessions in `agents/harvey.yaml`.
+
+### Safe mode
+
+Restricts which programs may be run via `!` or `/run` to an explicit allowlist.
+
+```
+harvey > /safemode on
+  Safe mode enabled. Only allowed commands can be executed.
+  Allowed: ls, cat, grep, head, tail, wc, find, stat, jq, htmlq, bat, batcat
+
+harvey > /safemode allow git
+  Added "git" to allowlist.
+
+harvey > /safemode status
+  Safe mode: on
+  Allowed commands (13): ls, cat, grep, head, tail, wc, find, stat, jq, ...
+
+harvey > /safemode off
+  Safe mode disabled. All commands are allowed.
+```
+
+Subcommands: `on`, `off`, `status`, `allow CMD`, `deny CMD`, `reset`.
+
+### Workspace permissions
+
+Fine-grained read/write/exec/delete control per path prefix, checked before
+every `/read`, `/write`, and `/apply` operation.
+
+```
+harvey > /permissions set docs/ read
+  Set permissions for "docs/": read
+
+harvey > /permissions list
+  Configured permissions:
+    .:     read, write, exec, delete
+    docs/: read
+```
+
+Subcommands: `list [PATH]`, `set PATH PERMS`, `reset`. Valid permission
+tokens: `read`, `write`, `exec`, `delete`.
+
+### Audit log
+
+Every command execution, file read, file write, and skill invocation is
+recorded to an in-memory ring buffer (last 1000 events).
+
+```
+harvey > /audit show 5
+  Last 5 audit events:
+  [14:02:11.432] command: go test ./... (allowed)
+  [14:02:09.801] file_read: README.md (success)
+  [14:02:05.120] command: rm -rf / (denied)
+
+harvey > /audit status
+  Audit buffer: 3/1000 events
+```
+
+Subcommands: `show [N]`, `clear`, `status`.
+
+### Security overview
+
+```
+harvey > /security
+```
+
+Shows safe mode state, all configured path permissions, and audit buffer
+capacity at a glance.
+
+### API key filtering
+
+Cloud provider API keys (`ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`,
+`GEMINI_API_KEY`, `MISTRAL_API_KEY`, `OPENAI_API_KEY`) are stripped from the
+environment of every child process started by `!` or `/run`. They are never
+visible to commands Harvey runs on your behalf.
+
+### Configurable timeouts
+
+Shell commands have a configurable timeout (default 5 minutes). Ollama queries
+default to no timeout, which is correct for slow hardware. Both are set in
+`agents/harvey.yaml`:
+
+```yaml
+run_timeout: "5m"       # or "300s", "1m30s", "300"
+ollama_timeout: ""      # empty = no timeout (recommended for Ollama on a Pi)
+```
+
 ## Code assistance
 
 ### `/search PATTERN [PATH]`

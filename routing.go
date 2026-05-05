@@ -213,11 +213,11 @@ func clientForEndpoint(ep *RouteEndpoint, cfg *Config) (LLMClient, error) {
 		if model == "" {
 			model = cfg.OllamaModel
 		}
-		return newOllamaLLMClient(ollamaBaseURL(ep.URL), model), nil
+		return newOllamaLLMClient(ollamaBaseURL(ep.URL), model, cfg.OllamaTimeout), nil
 	case KindLlamafile:
-		return newLlamafileLLMClient(LlamafileAPIURL(ep.URL), model), nil
+		return newLlamafileLLMClient(LlamafileAPIURL(ep.URL), model, cfg.OllamaTimeout), nil
 	case KindLlamaCpp:
-		return newLlamaCppLLMClient(LlamacppAPIURL(ep.URL), model), nil
+		return newLlamaCppLLMClient(LlamacppAPIURL(ep.URL), model, cfg.OllamaTimeout), nil
 	case KindAnthropic:
 		return newAnthropicLLMClient(model)
 	case KindDeepSeek:

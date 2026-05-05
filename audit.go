@@ -21,6 +21,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -262,20 +263,19 @@ func auditStatus(a *Agent, out io.Writer) error {
 
 // ─── Global Audit Helper ─────────────────────────────────────────────────────
 
-// AuditLog is a package-level convenience function to log an audit event.
-// It uses the global audit buffer if available, otherwise it's a no-op.
-// This is useful for logging from packages that don't have access to the Agent.
-var globalAuditBuffer *AuditBuffer
+// globalAuditBuffer is the package-level audit buffer used by AuditLog.
+// atomic.Pointer provides safe concurrent access without a mutex.
+var globalAuditBuffer atomic.Pointer[AuditBuffer]
 
 // SetGlobalAuditBuffer sets the global audit buffer used by AuditLog.
 func SetGlobalAuditBuffer(buf *AuditBuffer) {
-	globalAuditBuffer = buf
+	globalAuditBuffer.Store(buf)
 }
 
 // AuditLog logs an audit event to the global buffer if initialized.
 func AuditLog(event AuditEvent) {
-	if globalAuditBuffer != nil {
-		globalAuditBuffer.Add(event)
+	if buf := globalAuditBuffer.Load(); buf != nil {
+		buf.Add(event)
 	}
 }
 

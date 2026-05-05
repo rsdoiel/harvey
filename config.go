@@ -3,7 +3,9 @@ package harvey
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -123,6 +125,9 @@ type Config struct {
 	AllowedCommands    []string // list of command names permitted when SafeMode is enabled; default: ls, cat, grep, head, tail, wc, find, stat, jq, htmlq, bat, batcat
 	// Permissions: map from path prefix to list of allowed actions (read, write, exec, delete)
 	Permissions map[string][]string // e.g., {".": ["read", "write", "exec", "delete"], "src/": ["read"]}
+	// Timeout settings
+	RunTimeout    time.Duration // timeout for shell commands run via ! or /run; 0 means no timeout
+	OllamaTimeout time.Duration // HTTP client timeout for local LLM providers (Ollama, Llamafile, llama.cpp); 0 means no timeout
 }
 
 /** ActiveRagStore returns a pointer to the active RagStoreEntry, or nil when
@@ -232,10 +237,12 @@ func DefaultConfig() *Config {
 	return &Config{
 		WorkDir:         ".",
 		OllamaURL:       "http://localhost:11434",
-		AutoRecord:     true,
+		AutoRecord:      true,
 		SafeMode:        false,
 		AllowedCommands: allowed,
-		Permissions:    defaultPerms,
+		Permissions:     defaultPerms,
+		RunTimeout:      5 * time.Minute,
+		OllamaTimeout:   0, // no timeout — local inference can take minutes on slow hardware
 	}
 }
 
@@ -494,13 +501,35 @@ type ragYAML struct {
 
 // harveyYAML is the on-disk representation of harvey/harvey.yaml.
 type harveyYAML struct {
-	KnowledgeDB  string            `yaml:"knowledge_db"`
-	SessionsDir  string            `yaml:"sessions_dir"`
-	AgentsDir    string            `yaml:"agents_dir"`
-	AutoRecord   *bool             `yaml:"auto_record"` // nil = not set (keep default)
-	ModelCacheDB string            `yaml:"model_cache_db"`
-	RAG          ragYAML           `yaml:"rag"`
-	Permissions  map[string][]string `yaml:"permissions,omitempty"` // path prefix -> permissions list
+	KnowledgeDB     string              `yaml:"knowledge_db"`
+	SessionsDir     string              `yaml:"sessions_dir"`
+	AgentsDir       string              `yaml:"agents_dir"`
+	AutoRecord      *bool               `yaml:"auto_record"` // nil = not set (keep default)
+	ModelCacheDB    string              `yaml:"model_cache_db"`
+	RAG             ragYAML             `yaml:"rag"`
+	Permissions     map[string][]string `yaml:"permissions,omitempty"`
+	SafeMode        bool                `yaml:"safe_mode,omitempty"`
+	AllowedCommands []string            `yaml:"allowed_commands,omitempty"`
+	RunTimeout      string              `yaml:"run_timeout,omitempty"`    // e.g. "5m", "300s", "1m 30s", "300"
+	OllamaTimeout   string              `yaml:"ollama_timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
+}
+
+// parseDurationString parses a duration from a YAML string value. It accepts:
+//   - Plain integer: treated as seconds (e.g. "300" → 5 minutes)
+//   - Go duration string: "5m", "30s", "1m30s", "1h"
+//   - Duration with spaces: "1m 30s" → trimmed to "1m30s" before parsing
+//   - Zero or empty: returns 0 (no timeout)
+func parseDurationString(s string) (time.Duration, error) {
+	s = strings.ReplaceAll(s, " ", "")
+	if s == "" || s == "0" {
+		return 0, nil
+	}
+	// Try as plain integer (seconds).
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return time.Duration(n) * time.Second, nil
+	}
+	// Try as Go duration string.
+	return time.ParseDuration(s)
 }
 
 /** LoadHarveyYAML reads agents/harvey.yaml from ws and applies any overrides
@@ -579,6 +608,24 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.Permissions != nil {
 		cfg.Permissions = y.Permissions
 	}
+	// Load security settings
+	if y.SafeMode {
+		cfg.SafeMode = true
+	}
+	if len(y.AllowedCommands) > 0 {
+		cfg.AllowedCommands = y.AllowedCommands
+	}
+	// Load timeout settings
+	if y.RunTimeout != "" {
+		if d, err := parseDurationString(y.RunTimeout); err == nil {
+			cfg.RunTimeout = d
+		}
+	}
+	if y.OllamaTimeout != "" {
+		if d, err := parseDurationString(y.OllamaTimeout); err == nil {
+			cfg.OllamaTimeout = d
+		}
+	}
 	return nil
 }
 
@@ -629,6 +676,18 @@ func SaveRAGConfig(ws *Workspace, cfg *Config) error {
 	// Save permissions
 	if cfg.Permissions != nil {
 		y.Permissions = cfg.Permissions
+	}
+	// Save security settings
+	y.SafeMode = cfg.SafeMode
+	if len(cfg.AllowedCommands) > 0 {
+		y.AllowedCommands = cfg.AllowedCommands
+	}
+	// Save timeout settings (only write non-default values to keep the file clean)
+	if cfg.RunTimeout > 0 {
+		y.RunTimeout = cfg.RunTimeout.String()
+	}
+	if cfg.OllamaTimeout > 0 {
+		y.OllamaTimeout = cfg.OllamaTimeout.String()
 	}
 
 	out, err := yaml.Marshal(&y)
