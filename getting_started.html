@@ -43,19 +43,19 @@ figcaption {
 <p>harvey is a terminal agent for local language models.</p>
 <p>See <a href="harvey.1.html">man page</a></p>
 <p>How it starts:</p>
-<p>harvey looks for HARVEY.md in the current directory and uses it as a
+<p>Harvey looks for HARVEY.md in the workspace root and uses it as a
 system prompt. It then connects to a local Ollama server and starts an
 interactive chat session.</p>
 <blockquote>
-<p><strong>Note:</strong> Harvey focuses on local models via Ollama
-server. It has limited supoprt for SaaS endpoints (Anthropic, DeepSeek,
-Gemini, Mistral, OpenAI).</p>
+<p><strong>Note:</strong> Harvey focuses on local models via Ollama. It
+has limited support for SaaS endpoints (Anthropic, DeepSeek, Gemini,
+Mistral, OpenAI).</p>
 </blockquote>
-<p>All file I/O is constrained to the currenting directory. A knowledge
-base is stored at <code>&lt;workdir&gt;/agents/knowledge.db</code> and
-is created automatically on first run. Session recordings are stored in
-<code>&lt;workdir&gt;/agents/sessions/</code>. Both paths can be
-overridden in <code>agents/harvey.yaml</code>.</p>
+<p>All file I/O is constrained to the workspace. A knowledge base is
+stored at <code>&lt;workspace&gt;/agents/knowledge.db</code> and is
+created automatically on first run. Session recordings are stored in
+<code>&lt;workspace&gt;/agents/sessions/</code>. Both paths can be
+overridden in <code>&lt;workspace&gt;/agents/harvey.yaml</code>.</p>
 <blockquote>
 <p>Type /help inside the session for available slash commands.</p>
 </blockquote>
@@ -67,7 +67,7 @@ overridden in <code>agents/harvey.yaml</code>.</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Change to project directory</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> <span class="va">$HOME</span>/myproject</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start in the current directory, auto-select Ollama model</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start in the workspace (current directory), auto-select Ollama model</span></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span></code></pre></div>
 <h2 id="startup-sequence">Startup sequence</h2>
 <p>When Harvey starts it:</p>
@@ -81,8 +81,8 @@ for KB, sessions, agents).</li>
 <code>.fountain</code> session files and offers to resume one (default:
 No). If a session is chosen, the model it used is pre-selected in the
 next step.</li>
-<li>Reads <code>HARVEY.md</code> from the current directory, expands any
-<a href="#dynamic-markers">dynamic markers</a>, and injects it as the
+<li>Reads <code>HARVEY.md</code> from the workspace root, expands any <a
+href="#dynamic-markers">dynamic markers</a>, and injects it as the
 system prompt.</li>
 <li>Probes Ollama; if reachable, selects the model from the resumed
 session or lets you choose from the installed list.</li>

@@ -216,13 +216,12 @@ Required)</h3>
 </tbody>
 </table>
 <h2 id="configuration-files">Configuration Files</h2>
-<h3 id="global-routes-agentsroutes.json">Global Routes:
-<code>~/agents/routes.json</code></h3>
+<h3 id="route-configuration-workspaceagentsroutes.json">Route
+configuration: <code>&lt;workspace&gt;/agents/routes.json</code></h3>
 <p>All registered endpoints and routing state are persisted in JSON
-format.</p>
-<p><strong>Location:</strong> - Linux/macOS:
-<code>~/agents/routes.json</code> - Windows:
-<code>%USERPROFILE%\agents\routes.json</code></p>
+format inside the workspace. There is no global route configuration.</p>
+<p><strong>Location:</strong>
+<code>&lt;workspace&gt;/agents/routes.json</code></p>
 <p><strong>Example:</strong></p>
 <div class="sourceCode" id="cb5"><pre
 class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
@@ -254,10 +253,11 @@ class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="
 <span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
 <span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
 <span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
-<h3 id="workspace-configuration-agentsharvey.yaml">Workspace
-Configuration: <code>agents/harvey.yaml</code></h3>
-<p>Routing can also be configured per-workspace, though global routes
-are typically sufficient.</p>
+<h3 id="workspace-configuration-workspaceagentsharvey.yaml">Workspace
+configuration: <code>&lt;workspace&gt;/agents/harvey.yaml</code></h3>
+<p>Additional Harvey configuration (knowledge base path, sessions
+directory, RAG stores, etc.) lives in <code>agents/harvey.yaml</code>
+inside the workspace.</p>
 <h2 id="commands-reference">Commands Reference</h2>
 <h3
 id="route-add-name-url-model"><code>/route add NAME URL [MODEL]</code></h3>
@@ -295,11 +295,12 @@ type</p>
 Endpoint is reachable - <code>✗</code> (yellow): Endpoint is unreachable
 - <code>?</code> (yellow): API key not configured (cloud providers)</p>
 <h3 id="route-on"><code>/route on</code></h3>
-<p>Enable routing globally. Persisted across sessions.</p>
+<p>Enable routing. State is persisted to
+<code>agents/routes.json</code>.</p>
 <h3 id="route-off"><code>/route off</code></h3>
-<p>Disable routing globally. <span class="citation"
-data-cites="mentions">@mentions</span> will be rejected. Persisted
-across sessions.</p>
+<p>Disable routing. <span class="citation"
+data-cites="mentions">@mentions</span> will be rejected. State is
+persisted to <code>agents/routes.json</code>.</p>
 <h3 id="route-status"><code>/route status</code></h3>
 <p>Show routing state and endpoint count.</p>
 <p><strong>Output:</strong></p>

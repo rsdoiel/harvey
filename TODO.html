@@ -66,6 +66,77 @@ editor</label></li>
 <li><label><input type="checkbox" />Continue Phase 3 &amp; 4 for
 integrating Go from Mozilla AI GitHub priojects</label></li>
 </ul>
+<h2 id="security-tasks">Security Tasks</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" /><strong>Skill
+sandboxing</strong>: Implemented pure Go partial isolation for skill
+execution (env filtering via <code>filterSkillEnvironment()</code>, temp
+directory support, 30s timeouts via <code>exec.CommandContext()</code>,
+resource limits via memory-constrained execution).
+<strong>Note</strong>: Pure Go cannot provide full OS-level sandboxing -
+Linux namespaces/seccomp would require additional OS support. True
+isolation requires containers or similar. This limitation is documented
+in security documentation.</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Path traversal
+fix</strong>: Hardened <code>Workspace.AbsPath()</code> to use
+<code>filepath.Clean()</code> and proper prefix checking with normalized
+path comparison</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Shell injection
+fix</strong>: Replaced <code>sh -c</code> usage in <code>!</code>
+command with direct <code>exec.Command()</code> + custom
+<code>parseCommandLine()</code> parser that rejects shell
+metacharacters</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Command
+validation</strong>: Added allowlist and confirmation prompts for
+<code>/run</code> command execution via Safe Mode; environment filtering
+applied to <code>/run</code> and <code>/git</code> commands</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Editor
+validation</strong>: Added <code>validateEditorPath()</code> in
+skill_wizard.go rejecting shell metacharacters and path traversal; only
+allows known safe editors</label></li>
+<li><label><input type="checkbox" checked="" /><strong>API key
+protection</strong>: Implemented environment filtering throughout
+(sensitive variables: ANTHROPIC_API_KEY, DEEPSEEK_API_KEY,
+GEMINI_API_KEY, GOOGLE_API_KEY, MISTRAL_API_KEY, OPENAI_API_KEY). Error
+messages reference variable names only, never values.</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Information
+disclosure</strong>: Added file exclusion patterns to workspace file
+tree exposure; workspace files restricted to workspace root</label></li>
+</ul>
+<h3 id="architectural-security-features-implemented">Architectural
+Security Features (Implemented)</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" /><strong>Safe
+Mode</strong>: Command allowlist system with
+<code>/safemode on|off|status|allow|deny|reset</code> commands. Default
+allowlist: ls, cat, grep, head, tail, wc, find, stat, jq, htmlq, bat,
+batcat</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Audit
+Logging</strong>: In-memory ring buffer (1000 events) in
+<code>audit.go</code>. Commands: <code>/audit show [n]</code>,
+<code>/audit clear</code>, <code>/audit status</code>. Tracks: command,
+file_read, file_write, file_delete, file_list, skill_run, security
+events</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Permissions
+System</strong>: Path prefix-based permissions stored in
+<code>harvey.yaml</code>. Commands:
+<code>/permissions list [PATH]</code>,
+<code>/permissions set PATH PERMS</code>,
+<code>/permissions reset</code>. Permissions: read, write, exec,
+delete</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Security
+Status</strong>: Unified <code>/security status</code> command showing
+Safe Mode state, Workspace Permissions, Audit Buffer status, and attack
+surface summary</label></li>
+</ul>
+<h3 id="security-documentation">Security Documentation</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Created
+<code>harvey/agents/sessions/harvey_handoff_security_design.fountain</code>
+with complete handoff documentation</label></li>
+<li><label><input type="checkbox" checked="" />Updated this TODO.md with
+Security Tasks section</label></li>
+</ul>
 <h2 id="documentation-tasks">Documentation Tasks</h2>
 <h3 id="priority-1-create-missing-documentation-files">Priority 1:
 Create Missing Documentation Files</h3>

@@ -70,14 +70,14 @@ triggers.</p>
 
   Current model: llama3:latest
 
-  compile-skill           [user] - Compiles a target SKILL.md into correct compiled.bash and...
-  fountain-analysis       [user] - Read and actively monitor a Harvey Fountain screenplay file...
-  review-knowledge-base    [user] - Queries knowledge_base.db and delivers a structured report...
-  setup-codemeta...       [user] - Generates or updates a codemeta.json file for an experiment...
-  setup-experiment        [user] - Creates a new experiment directory in the Laboratory...
-  setup-knowledge-base    [user] - Creates knowledge_base.db in the current working directory...
-  update-knowledge-base   [user] - Adds or updates records in knowledge_base.db...
-  fetch-pg-corpus         [user] - Downloads the Project Gutenberg catalog and full text...</code></pre>
+  compile-skill           [project] - Compiles a target SKILL.md into correct compiled.bash and...
+  fountain-analysis       [project] - Read and actively monitor a Harvey Fountain screenplay file...
+  review-knowledge-base   [project] - Queries knowledge_base.db and delivers a structured report...
+  setup-codemeta...       [project] - Generates or updates a codemeta.json file for an experiment...
+  setup-experiment        [project] - Creates a new experiment directory in the Laboratory...
+  setup-knowledge-base    [project] - Creates knowledge_base.db in the workspace...
+  update-knowledge-base   [project] - Adds or updates records in knowledge_base.db...
+  fetch-pg-corpus         [project] - Downloads the Project Gutenberg catalog and full text...</code></pre>
 <h3 id="load-a-skill">Load a Skill</h3>
 <pre><code>harvey&gt; /skill load fountain-analysis
 
@@ -89,7 +89,7 @@ the LLM will follow them to complete the task.</p>
 
   Name:          fountain-analysis
   Description:   Read and actively monitor a Harvey Fountain screenplay file...
-  Source:        user
+  Source:        project
   Path:          /home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md
   License:       AGPL-3.0
   Compatibility: claude-code, harvey</code></pre>
@@ -100,8 +100,8 @@ the LLM will follow them to complete the task.</p>
   FOUNTAIN_FILE? session.spmd
   ... (skill executes directly)</code></pre>
 <h2 id="skill-discovery-paths">Skill Discovery Paths</h2>
-<p>Harvey scans for skills in the working directory’s agent
-directory.</p>
+<p>Harvey scans for skills in the workspace’s
+<code>agents/skills/</code> directory.</p>
 <h3 id="project-scope">Project Scope</h3>
 <table style="width:100%;">
 <colgroup>
@@ -277,9 +277,9 @@ description.</p>
 <p><strong>Output:</strong></p>
 <pre><code>  Current model: llama3:latest
 
-  compile-skill           [user] Compiles a target SKILL.md...
-  fountain-analysis       [user] Read and actively monitor...
-  review-knowledge-base   [user] Queries knowledge_base.db...
+  compile-skill           [project] Compiles a target SKILL.md...
+  fountain-analysis       [project] Read and actively monitor...
+  review-knowledge-base   [project] Queries knowledge_base.db...
   ...</code></pre>
 <h3 id="skill-load-name"><code>/skill load NAME</code></h3>
 <p>Inject the full skill body into the conversation context. The LLM
@@ -292,7 +292,7 @@ will then follow the skill’s instructions.</p>
 <p><strong>Output:</strong></p>
 <pre><code>  Name:          fountain-analysis
   Description:   Read and actively monitor a Harvey Fountain...
-  Source:        user
+  Source:        project
   Path:          /home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md
   License:       AGPL-3.0
   Compatibility: claude-code, harvey
@@ -306,8 +306,7 @@ will then follow the skill’s instructions.</p>
 <p>Show statistics about discovered skills.</p>
 <p><strong>Output:</strong></p>
 <pre><code>  Total: 8 skill(s)
-    Project scope: 0
-    User scope:    8</code></pre>
+    Project scope: 8</code></pre>
 <h3 id="skill-new"><code>/skill new</code></h3>
 <p>Run the interactive <strong>skill wizard</strong> to create a new
 skill.</p>

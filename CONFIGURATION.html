@@ -41,21 +41,21 @@ figcaption {
 <h1 id="harvey-configuration-reference">Harvey Configuration
 Reference</h1>
 <h2 id="overview">Overview</h2>
-<p>Harvey uses a <strong>hierarchical configuration system</strong> with
-multiple configuration files at different levels. Configuration can be
-specified for your workspace, refined by a HARVEY.md file with
-additional environment varibables used for some features (example
-<code>$USER</code> is used for the username in the sessions files).</p>
-<h3 id="configuration-hierarchy">Configuration Hierarchy</h3>
+<p>Harvey uses a <strong>workspace-local configuration system</strong>.
+All configuration files live inside the workspace — the directory where
+Harvey is launched. A HARVEY.md file in the workspace root provides the
+system prompt, and environment variables supply cloud provider API
+keys.</p>
+<h3 id="configuration-sources">Configuration Sources</h3>
 <pre><code>┌─────────────────────────────────────────────────────────────┐
-│                    CONFIGURATION LEVELS                     │
+│                    CONFIGURATION SOURCES                    │
 ├─────────────────────────────────────────────────────────────┤
 │  1. Workspace Config         &lt;workspace&gt;/agents/harvey.yaml │
 │  2. System Prompt            &lt;workspace&gt;/HARVEY.md          │
 │  3. Environment Variables    Shell environment              │
 └─────────────────────────────────────────────────────────────┘</code></pre>
-<p><strong>Precedence:</strong> Workspace &gt; Workspace settings &gt;
-System Prompt &gt; Environment variables</p>
+<p><strong>Precedence:</strong> Workspace config &gt; System prompt &gt;
+Environment variables</p>
 <h2 id="configuration-files">Configuration Files</h2>
 <h3 id="configuration-workspaceagentsharvey.yaml">1. Configuration
 (<code>&lt;workspace&gt;/agents/harvey.yaml</code>)</h3>
@@ -253,19 +253,16 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="
 </tbody>
 </table>
 <p><strong>Important Notes:</strong> - Paths are relative to the
-workspace root - Workspace <code>harvey.yaml</code> overrides global
-<code>harvey.yaml</code> - The <code>model_map</code> ensures each
-generation model uses the correct embedding model - Embedding model
-binding is enforced: you cannot mix embeddings from different models in
-the same store</p>
-<h3 id="configuration-for-routes-workspaceagentsroutes.json">2.
-Configuration for routes
-(<code>&lt;workspace&gt;/agents/routes.json</code>)</h3>
+workspace root - The <code>model_map</code> ensures each generation
+model uses the correct embedding model - Embedding model binding is
+enforced: you cannot mix embeddings from different models in the same
+store</p>
+<h3 id="route-configuration-workspaceagentsroutes.json">2. Route
+configuration (<code>&lt;workspace&gt;/agents/routes.json</code>)</h3>
 <p><strong>Purpose:</strong> Persists routing endpoints and routing
 state across Harvey sessions.</p>
 <p><strong>Location:</strong>
-<code>&lt;workspace&gt;/agents/routes.json</code> (or
-<code>&lt;workspace&gt;\agents\routes.json</code> on Windows)</p>
+<code>&lt;workspace&gt;/agents/routes.json</code></p>
 <p><strong>Format:</strong> JSON</p>
 <p><strong>Example:</strong></p>
 <div class="sourceCode" id="cb3"><pre
@@ -461,7 +458,7 @@ endpoint - <code>/route list</code> — List all endpoints with status -
 interactions. This is the primary way to give the model context about
 your project, conventions, and guidelines.</p>
 <p><strong>Location:</strong> <code>&lt;workspace&gt;/HARVEY.md</code>
-(loaded from current directory at startup)</p>
+(loaded from the workspace root at startup)</p>
 <p><strong>Format:</strong> Markdown with optional dynamic markers</p>
 <p><strong>Example:</strong></p>
 <div class="sourceCode" id="cb4"><pre
@@ -655,7 +652,7 @@ Result: In myproject/, the golang store is active.</code></pre>
 <p><strong>“No routes configured”</strong> - Run
 <code>/route add NAME URL</code> to register endpoints - Run
 <code>/route on</code> to enable routing - Check
-<code>agents/routes.json</code> exists</p>
+<code>&lt;workspace&gt;/agents/routes.json</code> exists</p>
 <p><strong>“Knowledge base not found”</strong> - Harvey creates it
 automatically at first use - Check <code>agents/knowledge.db</code>
 exists - Verify path in <code>harvey.yaml</code> or create the
@@ -669,8 +666,8 @@ automatically - Check <code>agents/model_cache.db</code> exists - Run
 exists at the specified path</p>
 <h3 id="verification-commands">Verification Commands</h3>
 <div class="sourceCode" id="cb7"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check global routes</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--help</span> routing  <span class="co"># or: cat ./agents/routes.json</span></span>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check workspace routes</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--help</span> routing  <span class="co"># or: cat agents/routes.json</span></span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Check workspace config</span></span>
 <span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> agents/harvey.yaml</span>
@@ -685,8 +682,8 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="
 <span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> <span class="at">-la</span> agents/rag/<span class="pp">*</span>.db</span></code></pre></div>
 <h2 id="reference-all-configuration-options">Reference: All
 Configuration Options</h2>
-<h3 id="global-routes-agentsroutes.json">Global Routes
-(<code>agents/routes.json</code>)</h3>
+<h3 id="routes-workspaceagentsroutes.json">Routes
+(<code>&lt;workspace&gt;/agents/routes.json</code>)</h3>
 <div class="sourceCode" id="cb8"><pre
 class="sourceCode json"><code class="sourceCode json"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;enabled&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="er">/</span><span class="kw">false</span><span class="fu">,</span></span>
