@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-skill-set-design-ollama-centric">Harvey
+<code>/skill-set</code> Design (Ollama-Centric)</h1>
+<h2 id="directory-structure">Directory Structure</h2>
+<pre><code>agents/
+├── skills/               # Skill implementations (e.g., `lint`, `test`)
+└── skill-sets/           # Skill set YAML files (e.g., `code-review.yaml`)</code></pre>
+<h2 id="yaml-structure-skill-set">YAML Structure (Skill Set)</h2>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> code-review</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">description</span><span class="kw">:</span><span class="at"> Tools for code quality</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="fu">skills</span><span class="kw">:</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> </span><span class="fu">trigger</span><span class="kw">:</span><span class="at"> /lint</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">prompt</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;Analyze this {language} code for PEP8/compliance: {code}&quot;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> </span><span class="fu">trigger</span><span class="kw">:</span><span class="at"> /test</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">prompt</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;Write tests for this {language} function: {code}&quot;</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="fu">metadata</span><span class="kw">:</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">version</span><span class="kw">:</span><span class="at"> </span><span class="fl">1.0</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">dependencies</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">pylint</span><span class="kw">,</span><span class="at"> flake8</span><span class="kw">]</span></span></code></pre></div>
+<h2 id="commands">Commands</h2>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 80%" />
+</colgroup>
+<thead>
+<tr>
+<th>Command</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/skill-set load &lt;name&gt;</code></td>
+<td>Loads <code>&lt;name&gt;.yaml</code>. Rejects if triggers are
+missing/duplicate. Calculates token count via Ollama API.</td>
+</tr>
+<tr>
+<td><code>/skill-set unload</code></td>
+<td>Clears the current skill set from context.</td>
+</tr>
+<tr>
+<td><code>/skill-set list</code></td>
+<td>Lists all YAML files in <code>agents/skill-sets/</code>.</td>
+</tr>
+<tr>
+<td><code>/skill-set create &lt;name&gt;</code></td>
+<td>Creates a new empty YAML file for <code>&lt;name&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>/skill-set delete &lt;name&gt;</code></td>
+<td>Deletes <code>&lt;name&gt;.yaml</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="validation-rules">Validation Rules</h2>
+<ul>
+<li><strong>Missing Skills</strong>: Reject load if any
+<code>trigger</code> in the YAML doesn’t exist in
+<code>agents/skills/</code>.</li>
+<li><strong>Duplicate Triggers</strong>: Reject load if any
+<code>trigger</code> is duplicated in the YAML.</li>
+<li><strong>Token Count</strong>: Warn if the total tokens for the skill
+set exceed the model’s context window.</li>
+</ul>
+<h2 id="tokenization">Tokenization</h2>
+<ul>
+<li><p>Use Ollama’s <code>/api/tokenize</code> endpoint for all models
+(pulled or local).</p></li>
+<li><p>Example API call:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> http://localhost:11434/api/tokenize <span class="at">-d</span> <span class="st">&#39;{&quot;model&quot;: &quot;phi:2.7b&quot;, &quot;content&quot;: &quot;Your prompt here&quot;}&#39;</span></span></code></pre></div></li>
+</ul>
+<h2 id="go-implementation-notes">Go Implementation Notes</h2>
+<ul>
+<li>Use <code>gopkg.in/yaml.v3</code> for YAML parsing.</li>
+<li>Use <code>net/http</code> to call Ollama’s API for
+tokenization.</li>
+<li>Validate triggers against <code>agents/skills/</code> before
+loading.</li>
+<li>need to figure out how to handle llamafile and tokenization
+counte</li>
+</ul>
+</section>
+</body>
+</html>
