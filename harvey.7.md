@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.1c cd1dcc3
+%harvey(7) user manual | version 0.0.1c 65896eb
 % R. S. Doiel
 % 2026-05-04
 
