@@ -13,8 +13,18 @@
 - [X] Change Harvey's directory from "harvey" to "agents" so that everything is shared with other agent tools.
 - [X] Make sure all commands have a help guide
 - [X] Make sure line editing and $EDITOR configuration have help guides
-- [ ] Explore adding an LSP service suing Go lsp module for intergrating Harvey with an IDE or text editor
-- [ ] Continue Phase 3 & 4 for integrating Go from Mozilla AI GitHub priojects
+- [X] Continue Phase 3 & 4 for integrating Go from Mozilla AI GitHub projects — `any-llm-go v0.9.0` is fully integrated; all providers (Ollama, Llamafile, llama.cpp, Mistral, DeepSeek, Gemini, Anthropic, OpenAI) wired in `anyllm_client.go`
+- [ ] Explore adding an LSP service using Go lsp module for integrating Harvey with an IDE or text editor
+
+## Upcoming Features
+
+- [ ] **Model aliases** (`prompts/model-aliases.md`): Short friendly names for long Ollama model identifiers (e.g. `qwen-coder` → `qwen2.5-coder:7b`). Store in `agents/harvey.yaml` under `model_aliases:` map. Resolve at model-selection time and record the full name in Fountain session headers.
+- [ ] **`/file-tree` command** (`prompts/read_files.md`): Display a directory tree (like Unix `tree`). Needs security review — restrict to workspace root.
+- [ ] **`/read-dir` command** (`prompts/read_files.md`): Read all files in a directory into current context. Needs size/depth limits and security review.
+- [ ] **Keyboard behaviors** (`prompts/keyboard_behaviors.md`): (a) Ctrl+J / Shift+Enter for multi-line input; (b) `@`-prefix file autocompletion; (c) Ctrl+G to open `$EDITOR`. Items (a) and (b) belong in termlib; (c) may already be partially covered by the Ctrl+X Ctrl+E chord — needs investigation.
+- [ ] **`/skill-set` command** (`prompts/skill-sets.md`, design doc `Harvey_Skill-Set_Design.md`): Load/unload named YAML bundles of skills from `agents/skill-sets/`. Validate triggers, calculate token cost via Ollama `/api/tokenize`.
+- [ ] **`fountain-session` skill**: Create `agents/skills/fountain-session/SKILL.md` to guide agents (especially Mistral Vibe) on how to *write* a well-formed session handoff summary in Fountain format. Currently only the analysis side (`fountain-analysis`) exists.
+- [ ] **Model selection guide**: Document which installed Ollama models are appropriate for which Harvey task types. See `agents/model_guide.md` (to be created).
 
 ## Security Tasks
 
