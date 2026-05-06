@@ -24,6 +24,8 @@
 - [ ] **Keyboard behaviors** (`prompts/keyboard_behaviors.md`): (a) Ctrl+J / Shift+Enter for multi-line input; (b) `@`-prefix file autocompletion; (c) Ctrl+G to open `$EDITOR`. Items (a) and (b) belong in termlib; (c) may already be partially covered by the Ctrl+X Ctrl+E chord — needs investigation.
 - [ ] **`/skill-set` command** (`prompts/skill-sets.md`, design doc `Harvey_Skill-Set_Design.md`): Load/unload named YAML bundles of skills from `agents/skill-sets/`. Validate triggers, calculate token cost via Ollama `/api/tokenize`.
 - [ ] **`fountain-session` skill**: Create `agents/skills/fountain-session/SKILL.md` to guide agents (especially Mistral Vibe) on how to *write* a well-formed session handoff summary in Fountain format. Currently only the analysis side (`fountain-analysis`) exists.
+- [X] **Remove `/apply`**: Redundant with always-on `autoExecuteReply`; removed from `commands.go`, `helptext.go`, `cmd/harvey/main.go`.
+- [X] **`SupportsTaggedBlocks` probe**: Added live test to `ThoroughProbeModel` — sends a minimal `/api/generate` request and checks the response with `findTaggedBlocks`. Column added to `model_cache.db` with migration. Displayed in `/ollama probe` output alongside tools/embed.
 - [ ] **Model selection guide**: Document which installed Ollama models are appropriate for which Harvey task types. See `agents/model_guide.md` (to be created).
 
 ## Security Tasks

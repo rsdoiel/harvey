@@ -522,6 +522,9 @@ func ThoroughProbeModel(ctx context.Context, baseURL, name string) (*ModelCapabi
 	cap.ProbeLevel = "thorough"
 	cap.ProbedAt = time.Now()
 
+	hc := &http.Client{Timeout: 30 * time.Second}
+
+	// ── Embedding probe ──────────────────────────────────────────────────────
 	type embedReq struct {
 		Model string `json:"model"`
 		Input string `json:"input"`
@@ -534,28 +537,72 @@ func ThoroughProbeModel(ctx context.Context, baseURL, name string) (*ModelCapabi
 	req, err2 := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/embed", bytes.NewReader(body))
 	if err2 != nil {
 		cap.SupportsEmbed = CapNo
-		return cap, nil
+	} else {
+		req.Header.Set("Content-Type", "application/json")
+		resp, err2 := hc.Do(req)
+		if err2 != nil || resp.StatusCode != http.StatusOK {
+			cap.SupportsEmbed = CapNo
+		} else {
+			var er embedResp
+			if json.NewDecoder(resp.Body).Decode(&er) != nil || len(er.Embeddings) == 0 || len(er.Embeddings[0]) == 0 {
+				cap.SupportsEmbed = CapNo
+			} else {
+				cap.SupportsEmbed = CapYes
+			}
+			resp.Body.Close()
+		}
 	}
-	req.Header.Set("Content-Type", "application/json")
 
-	hc := &http.Client{Timeout: 30 * time.Second}
-	resp, err2 := hc.Do(req)
-	if err2 != nil {
-		cap.SupportsEmbed = CapNo
+	// Skip tagged-block probe for embedding-only models — they don't do chat.
+	if cap.SupportsEmbed == CapYes && cap.SupportsTools == CapNo {
 		return cap, nil
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		cap.SupportsEmbed = CapNo
+	// ── Tagged-block probe ───────────────────────────────────────────────────
+	// Send a minimal chat request and check whether the model produces a
+	// path-tagged code block (the format Harvey's auto-execute relies on).
+	// Use a generous timeout: local inference can be slow on modest hardware.
+	type generateReq struct {
+		Model  string `json:"model"`
+		System string `json:"system"`
+		Prompt string `json:"prompt"`
+		Stream bool   `json:"stream"`
+	}
+	type generateResp struct {
+		Response string `json:"response"`
+	}
+
+	probeReq := generateReq{
+		Model:  name,
+		System: "When writing code, always tag the fenced code block with its target filename. Use the format: ```go path/to/file.go",
+		Prompt: "Write a minimal Go function that returns the integer 42. Put it in probe.go",
+		Stream: false,
+	}
+	probeBody, _ := json.Marshal(probeReq)
+	probeCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	req2, err3 := http.NewRequestWithContext(probeCtx, http.MethodPost, baseURL+"/api/generate", bytes.NewReader(probeBody))
+	if err3 != nil {
+		// Leave SupportsTaggedBlocks as CapUnknown.
 		return cap, nil
 	}
-	var er embedResp
-	if json.NewDecoder(resp.Body).Decode(&er) != nil || len(er.Embeddings) == 0 || len(er.Embeddings[0]) == 0 {
-		cap.SupportsEmbed = CapNo
+	req2.Header.Set("Content-Type", "application/json")
+	hc2 := &http.Client{} // no client-level timeout; rely on context
+	resp2, err3 := hc2.Do(req2)
+	if err3 != nil || resp2.StatusCode != http.StatusOK {
+		// Timeout or server error — leave as CapUnknown rather than CapNo.
 		return cap, nil
 	}
-	cap.SupportsEmbed = CapYes
+	defer resp2.Body.Close()
+	var gr generateResp
+	if json.NewDecoder(resp2.Body).Decode(&gr) != nil {
+		return cap, nil
+	}
+	if len(findTaggedBlocks(gr.Response)) > 0 {
+		cap.SupportsTaggedBlocks = CapYes
+	} else {
+		cap.SupportsTaggedBlocks = CapNo
+	}
 	return cap, nil
 }
 

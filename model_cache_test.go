@@ -29,9 +29,10 @@ func TestModelCacheSetGet(t *testing.T) {
 		Quantization:  "Q4_K_M",
 		SizeBytes:     2_000_000_000,
 		ContextLength: 131072,
-		SupportsTools: CapYes,
-		SupportsEmbed: CapNo,
-		ProbeLevel:    "fast",
+		SupportsTools:        CapYes,
+		SupportsEmbed:        CapNo,
+		SupportsTaggedBlocks: CapYes,
+		ProbeLevel:           "fast",
 		ProbedAt:      time.Now().Truncate(time.Second),
 	}
 
@@ -54,6 +55,9 @@ func TestModelCacheSetGet(t *testing.T) {
 	}
 	if got.SupportsEmbed != CapNo {
 		t.Errorf("SupportsEmbed: got %v want CapNo", got.SupportsEmbed)
+	}
+	if got.SupportsTaggedBlocks != CapYes {
+		t.Errorf("SupportsTaggedBlocks: got %v want CapYes", got.SupportsTaggedBlocks)
 	}
 	if got.ContextLength != 131072 {
 		t.Errorf("ContextLength: got %d want 131072", got.ContextLength)
@@ -79,10 +83,11 @@ func TestModelCacheUpsertOverwrites(t *testing.T) {
 	mc := openTestCache(t)
 
 	first := &ModelCapability{
-		Name:          "mistral:latest",
-		SupportsTools: CapUnknown,
-		SupportsEmbed: CapUnknown,
-		ProbeLevel:    "none",
+		Name:                 "mistral:latest",
+		SupportsTools:        CapUnknown,
+		SupportsEmbed:        CapUnknown,
+		SupportsTaggedBlocks: CapUnknown,
+		ProbeLevel:           "none",
 		ProbedAt:      time.Now().Truncate(time.Second),
 	}
 	if err := mc.Set(first); err != nil {
@@ -90,12 +95,13 @@ func TestModelCacheUpsertOverwrites(t *testing.T) {
 	}
 
 	second := &ModelCapability{
-		Name:          "mistral:latest",
-		Family:        "mistral",
-		ParameterSize: "7.2B",
-		SupportsTools: CapYes,
-		SupportsEmbed: CapNo,
-		ProbeLevel:    "thorough",
+		Name:                 "mistral:latest",
+		Family:               "mistral",
+		ParameterSize:        "7.2B",
+		SupportsTools:        CapYes,
+		SupportsEmbed:        CapNo,
+		SupportsTaggedBlocks: CapYes,
+		ProbeLevel:           "thorough",
 		ProbedAt:      time.Now().Truncate(time.Second),
 	}
 	if err := mc.Set(second); err != nil {

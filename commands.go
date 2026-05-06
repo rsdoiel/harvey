@@ -205,11 +205,6 @@ func (a *Agent) registerCommands() {
 			Description: "Run a read-only git command and inject its output into context",
 			Handler:     cmdGit,
 		},
-		"apply": {
-			Usage:       "/apply",
-			Description: "Write tagged code blocks from the last reply to their named files",
-			Handler:     cmdApply,
-		},
 		"summarize": {
 			Usage:       "/summarize",
 			Description: "Ask the LLM to summarize history and replace it with the summary",
@@ -395,9 +390,6 @@ func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 func cmdHelp(a *Agent, args []string, out io.Writer) error {
 	if len(args) > 0 {
 		switch strings.ToLower(args[0]) {
-		case "apply":
-			fmt.Fprint(out, FmtHelp(ApplyHelpText, "", "", "", ""))
-			return nil
 		case "clear":
 			fmt.Fprint(out, FmtHelp(ClearHelpText, "", "", "", ""))
 			return nil
@@ -429,7 +421,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprint(out, FmtHelp(SkillsHelpText, "", "", "", ""))
 			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: apply, clear, context, editing, kb, ollama, rag, record, routing, session, skills\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: clear, context, editing, kb, ollama, rag, record, routing, session, skills\n\n", args[0])
 		}
 	}
 
@@ -1019,8 +1011,8 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 			cap, err := FastProbeModel(ctx, a.Config.OllamaURL, model)
 			if err == nil {
 				_ = a.ModelCache.Set(cap)
-				fmt.Fprintf(out, "  tools: %s   embed: %s   ctx: %s   [fast probe]\n",
-					cap.SupportsTools, cap.SupportsEmbed, ollamaFormatCtx(cap.ContextLength))
+				fmt.Fprintf(out, "  tools: %s   embed: %s   tagged: %s   ctx: %s   [fast probe]\n",
+					cap.SupportsTools, cap.SupportsEmbed, cap.SupportsTaggedBlocks, ollamaFormatCtx(cap.ContextLength))
 			}
 		}
 	case "show":
@@ -1089,6 +1081,8 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		}
 	case "probe":
 		return ollamaProbe(a, args[1:], out)
+	case "probe-all":
+		return ollamaProbe(a, []string{"--all"}, out)
 	case "logs":
 		// Try the native ollama logs subcommand first; fall back to journalctl.
 		cmd := exec.Command("ollama", "logs")
@@ -1206,8 +1200,8 @@ func ollamaProbe(a *Agent, args []string, out io.Writer) error {
 		if err := a.ModelCache.Set(cap); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  tools: %s   embed: %s   ctx: %s   [thorough]\n",
-			cap.SupportsTools, cap.SupportsEmbed, ollamaFormatCtx(cap.ContextLength))
+		fmt.Fprintf(out, "  tools: %s   embed: %s   tagged: %s   ctx: %s   [thorough]\n",
+			cap.SupportsTools, cap.SupportsEmbed, cap.SupportsTaggedBlocks, ollamaFormatCtx(cap.ContextLength))
 		return nil
 	}
 
@@ -1248,8 +1242,8 @@ func ollamaProbe(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintf(out, "  %-36s  cache write error: %v\n", ollamaTruncateName(name, 36), err)
 			continue
 		}
-		fmt.Fprintf(out, "  %-36s  tools: %s   embed: %s   [thorough]\n",
-			ollamaTruncateName(name, 36), cap.SupportsTools, cap.SupportsEmbed)
+		fmt.Fprintf(out, "  %-36s  tools: %s   embed: %s   tagged: %s   [thorough]\n",
+			ollamaTruncateName(name, 36), cap.SupportsTools, cap.SupportsEmbed, cap.SupportsTaggedBlocks)
 	}
 	fmt.Fprintln(out, "Done.")
 	return nil
@@ -2053,8 +2047,6 @@ func cmdGit(a *Agent, args []string, out io.Writer) error {
 	return nil
 }
 
-// ─── /apply ──────────────────────────────────────────────────────────────────
-
 // taggedBlock is a fenced code block whose opening fence names a target file.
 type taggedBlock struct {
 	path    string
@@ -2136,73 +2128,6 @@ func looksLikePath(s string) bool {
 		}
 	}
 	return false
-}
-
-// cmdApply finds tagged code blocks in the last assistant reply and writes
-// each one to its named file in the workspace, prompting the user once before
-// making any changes.
-func cmdApply(a *Agent, args []string, out io.Writer) error {
-	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
-	}
-
-	var reply string
-	for i := len(a.History) - 1; i >= 0; i-- {
-		if a.History[i].Role == "assistant" {
-			reply = a.History[i].Content
-			break
-		}
-	}
-	if reply == "" {
-		fmt.Fprintln(out, "No assistant reply in history.")
-		return nil
-	}
-
-	blocks := findTaggedBlocks(reply)
-	if len(blocks) == 0 {
-		fmt.Fprintln(out, "  No tagged code blocks found in last reply.")
-		fmt.Fprintln(out, "  Tag a block with its target path, e.g.: ```go harvey/spinner.go")
-		return nil
-	}
-
-	fmt.Fprintf(out, "  Found %d tagged block(s):\n", len(blocks))
-	for _, b := range blocks {
-		fmt.Fprintf(out, "    %s (%d bytes)\n", b.path, len(b.content))
-	}
-
-	fmt.Fprint(out, "  Apply all? [Y/n] ")
-	scanner := bufio.NewScanner(a.In)
-	answer := ""
-	if scanner.Scan() {
-		answer = strings.ToLower(strings.TrimSpace(scanner.Text()))
-	}
-	if answer != "" && answer != "y" && answer != "yes" {
-		fmt.Fprintln(out, "  Aborted.")
-		return nil
-	}
-
-	for _, b := range blocks {
-		if !a.CheckWritePermission(b.path) {
-			if a.AuditBuffer != nil {
-				a.AuditBuffer.Log(ActionFileWrite, b.path, StatusDenied)
-			}
-			fmt.Fprintf(out, "  ✗ %s: write permission denied\n", b.path)
-			continue
-		}
-		if err := a.Workspace.WriteFile(b.path, []byte(b.content), 0o644); err != nil {
-			if a.AuditBuffer != nil {
-				a.AuditBuffer.Log(ActionFileWrite, b.path, StatusError)
-			}
-			fmt.Fprintf(out, "  ✗ %s: %v\n", b.path, err)
-		} else {
-			if a.AuditBuffer != nil {
-				a.AuditBuffer.Log(ActionFileWrite, b.path, StatusSuccess)
-			}
-			fmt.Fprintf(out, "  ✓ %s\n", b.path)
-		}
-	}
-	return nil
 }
 
 // ─── /summarize ──────────────────────────────────────────────────────────────

@@ -328,76 +328,20 @@ Model management:
     Launch an interactive ollama run session inside the terminal.
     stdin, stdout, and stderr are passed through directly.
 
-`
+Capability probing:
 
-	ApplyHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
-% R. S. Doiel
-% {release_date}
+  /ollama probe [MODEL]
+    Run a thorough probe on MODEL (or on all not-yet-probed models when
+    MODEL is omitted). Detects tool-calling support, embedding capability,
+    and whether the model reliably emits path-tagged code blocks (the
+    format Harvey's auto-execute relies on). Results are cached in
+    harvey/model_cache.db so /ollama list can display them immediately.
 
-# NAME
-
-APPLY — write tagged code blocks to the workspace
-
-# SYNOPSIS
-
-/apply
-
-# DESCRIPTION
-
-/apply scans the most recent assistant reply for fenced code blocks that
-carry a file path in their opening fence line, then writes each block to
-the named path inside the workspace.
-
-Harvey auto-applies tagged blocks immediately after every assistant reply,
-so you usually do not need to run /apply manually. Use it when:
-
-  - You cancelled the auto-apply prompt and want to apply later.
-  - You resumed a session and want to apply blocks from the loaded history.
-  - You want to re-apply blocks from a previous reply after reviewing them.
-
-# TAGGED BLOCK FORMAT
-
-A code block is "tagged" when its opening fence line includes a file path.
-Two formats are recognised:
-
-~~~
-  Colon-separated (lang:path):
-    ` + "```" + `go:harvey/spinner.go
-    ... code ...
-    ` + "```" + `
-
-  Space-separated (lang path):
-    ` + "```" + `go harvey/spinner.go
-    ... code ...
-    ` + "```" + `
-~~~
-
-The language hint (go, bash, ts, …) is optional but recommended. The path
-must contain a directory separator (/) or end with a recognised extension
-(.go, .ts, .md, .sh, etc.) to be detected as a path rather than a language
-name.
-
-Blocks without a path tag are ignored by /apply.
-
-# CONFIRMATION
-
-/apply lists every tagged block with its target path and byte count, then
-asks before writing:
-
-~~~
-  Found 2 tagged block(s):
-    harvey/spinner.go (1842 bytes)
-    harvey/spinner_test.go (640 bytes)
-  Apply all? [Y/n]
-~~~
-
-Press Enter or type y to write all blocks. Type n to abort without writing
-any files.
-
-# WORKSPACE CONSTRAINT
-
-All paths are resolved relative to the workspace root (--workdir or ".").
-Paths that would escape the workspace (e.g. ../../etc/passwd) are rejected.
+  /ollama probe-all
+    Re-probe every model currently installed on the local Ollama server,
+    refreshing cached capability data. Useful after pulling several new
+    models or when moving between machines with different model sets.
+    Equivalent to /ollama probe --all.
 
 `
 

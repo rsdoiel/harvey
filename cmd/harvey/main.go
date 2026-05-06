@@ -32,8 +32,6 @@ func main() {
 			if i+1 < len(os.Args) && len(os.Args[i+1]) > 0 && os.Args[i+1][0] != '-' {
 				i++
 				switch os.Args[i] {
-				case "apply":
-					fmt.Print(fmtHelp(harvey.ApplyHelpText, appName, version, releaseDate, releaseHash))
 				case "clear":
 					fmt.Print(fmtHelp(harvey.ClearHelpText, appName, version, releaseDate, releaseHash))
 				case "context":

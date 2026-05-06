@@ -24,16 +24,17 @@ import (
 
 const modelCacheSchema = `
 CREATE TABLE IF NOT EXISTS model_capabilities (
-    name           TEXT PRIMARY KEY,
-    family         TEXT    NOT NULL DEFAULT '',
-    parameter_size TEXT    NOT NULL DEFAULT '',
-    quantization   TEXT    NOT NULL DEFAULT '',
-    size_bytes     INTEGER NOT NULL DEFAULT 0,
-    context_length INTEGER NOT NULL DEFAULT 0,
-    supports_tools INTEGER NOT NULL DEFAULT -1,
-    supports_embed INTEGER NOT NULL DEFAULT -1,
-    probe_level    TEXT    NOT NULL DEFAULT 'none',
-    probed_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    name                   TEXT PRIMARY KEY,
+    family                 TEXT    NOT NULL DEFAULT '',
+    parameter_size         TEXT    NOT NULL DEFAULT '',
+    quantization           TEXT    NOT NULL DEFAULT '',
+    size_bytes             INTEGER NOT NULL DEFAULT 0,
+    context_length         INTEGER NOT NULL DEFAULT 0,
+    supports_tools         INTEGER NOT NULL DEFAULT -1,
+    supports_embed         INTEGER NOT NULL DEFAULT -1,
+    supports_tagged_blocks INTEGER NOT NULL DEFAULT -1,
+    probe_level            TEXT    NOT NULL DEFAULT 'none',
+    probed_at              DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 PRAGMA foreign_keys = ON;
@@ -90,26 +91,28 @@ func (c CapabilityStatus) String() string {
  *   Quantization  (string)           — quantization level, e.g. "Q4_K_M".
  *   SizeBytes     (int64)            — bytes on disk.
  *   ContextLength (int)              — context window in tokens; 0 = unknown.
- *   SupportsTools (CapabilityStatus) — whether the model supports tool/function calling.
- *   SupportsEmbed (CapabilityStatus) — whether the model can produce embeddings.
- *   ProbeLevel    (string)           — "none", "fast", or "thorough".
- *   ProbedAt      (time.Time)        — when the last probe ran.
+ *   SupportsTools         (CapabilityStatus) — whether the model supports tool/function calling.
+ *   SupportsEmbed         (CapabilityStatus) — whether the model can produce embeddings.
+ *   SupportsTaggedBlocks  (CapabilityStatus) — whether the model reliably emits path-tagged code blocks.
+ *   ProbeLevel            (string)           — "none", "fast", or "thorough".
+ *   ProbedAt              (time.Time)        — when the last probe ran.
  *
  * Example:
  *   caps, _ := cache.Get("llama3.2:latest")
- *   fmt.Printf("tools: %s  embed: %s\n", caps.SupportsTools, caps.SupportsEmbed)
+ *   fmt.Printf("tools: %s  embed: %s  tagged: %s\n", caps.SupportsTools, caps.SupportsEmbed, caps.SupportsTaggedBlocks)
  */
 type ModelCapability struct {
-	Name          string
-	Family        string
-	ParameterSize string
-	Quantization  string
-	SizeBytes     int64
-	ContextLength int
-	SupportsTools CapabilityStatus
-	SupportsEmbed CapabilityStatus
-	ProbeLevel    string
-	ProbedAt      time.Time
+	Name                 string
+	Family               string
+	ParameterSize        string
+	Quantization         string
+	SizeBytes            int64
+	ContextLength        int
+	SupportsTools        CapabilityStatus
+	SupportsEmbed        CapabilityStatus
+	SupportsTaggedBlocks CapabilityStatus
+	ProbeLevel           string
+	ProbedAt             time.Time
 }
 
 /** ModelCache is a SQLite3-backed store for Ollama model capability metadata.
@@ -178,6 +181,10 @@ func OpenModelCache(ws *Workspace, customPath string) (*ModelCache, error) {
 		db.Close()
 		return nil, fmt.Errorf("model_cache: apply schema: %w", err)
 	}
+	// Migrate existing databases that predate the supports_tagged_blocks column.
+	// SQLite returns "duplicate column name" if the column already exists; we
+	// silently ignore that error so this is safe to run on every open.
+	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN supports_tagged_blocks INTEGER NOT NULL DEFAULT -1`)
 	return &ModelCache{db: db, path: dbPath}, nil
 }
 
@@ -213,7 +220,7 @@ func (mc *ModelCache) Close() error {
 func (mc *ModelCache) Get(name string) (*ModelCapability, error) {
 	const q = `
 	SELECT name, family, parameter_size, quantization, size_bytes,
-	       context_length, supports_tools, supports_embed, probe_level, probed_at
+	       context_length, supports_tools, supports_embed, supports_tagged_blocks, probe_level, probed_at
 	FROM model_capabilities WHERE name = ?`
 	row := mc.db.QueryRow(q, name)
 	c, err := scanCapability(row)
@@ -243,22 +250,23 @@ func (mc *ModelCache) Set(cap *ModelCapability) error {
 	const q = `
 	INSERT INTO model_capabilities
 	    (name, family, parameter_size, quantization, size_bytes,
-	     context_length, supports_tools, supports_embed, probe_level, probed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	     context_length, supports_tools, supports_embed, supports_tagged_blocks, probe_level, probed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(name) DO UPDATE SET
-	    family         = excluded.family,
-	    parameter_size = excluded.parameter_size,
-	    quantization   = excluded.quantization,
-	    size_bytes     = excluded.size_bytes,
-	    context_length = excluded.context_length,
-	    supports_tools = excluded.supports_tools,
-	    supports_embed = excluded.supports_embed,
-	    probe_level    = excluded.probe_level,
-	    probed_at      = excluded.probed_at`
+	    family                 = excluded.family,
+	    parameter_size         = excluded.parameter_size,
+	    quantization           = excluded.quantization,
+	    size_bytes             = excluded.size_bytes,
+	    context_length         = excluded.context_length,
+	    supports_tools         = excluded.supports_tools,
+	    supports_embed         = excluded.supports_embed,
+	    supports_tagged_blocks = excluded.supports_tagged_blocks,
+	    probe_level            = excluded.probe_level,
+	    probed_at              = excluded.probed_at`
 	_, err := mc.db.Exec(q,
 		cap.Name, cap.Family, cap.ParameterSize, cap.Quantization,
 		cap.SizeBytes, cap.ContextLength,
-		int(cap.SupportsTools), int(cap.SupportsEmbed),
+		int(cap.SupportsTools), int(cap.SupportsEmbed), int(cap.SupportsTaggedBlocks),
 		cap.ProbeLevel, cap.ProbedAt,
 	)
 	if err != nil {
@@ -300,7 +308,7 @@ func (mc *ModelCache) Delete(name string) error {
 func (mc *ModelCache) All() ([]ModelCapability, error) {
 	const q = `
 	SELECT name, family, parameter_size, quantization, size_bytes,
-	       context_length, supports_tools, supports_embed, probe_level, probed_at
+	       context_length, supports_tools, supports_embed, supports_tagged_blocks, probe_level, probed_at
 	FROM model_capabilities ORDER BY name`
 	rows, err := mc.db.Query(q)
 	if err != nil {
@@ -330,12 +338,12 @@ type scanner interface {
 // scanCapability reads one ModelCapability from a scanner.
 func scanCapability(s scanner) (*ModelCapability, error) {
 	var c ModelCapability
-	var tools, embed int
+	var tools, embed, tagged int
 	var probedAt string
 	err := s.Scan(
 		&c.Name, &c.Family, &c.ParameterSize, &c.Quantization,
 		&c.SizeBytes, &c.ContextLength,
-		&tools, &embed,
+		&tools, &embed, &tagged,
 		&c.ProbeLevel, &probedAt,
 	)
 	if err != nil {
@@ -343,6 +351,7 @@ func scanCapability(s scanner) (*ModelCapability, error) {
 	}
 	c.SupportsTools = CapabilityStatus(tools)
 	c.SupportsEmbed = CapabilityStatus(embed)
+	c.SupportsTaggedBlocks = CapabilityStatus(tagged)
 	c.ProbedAt, _ = time.Parse(time.DateTime, probedAt)
 	return &c, nil
 }
