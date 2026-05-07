@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+    <style>
+figure {
+	max-width: 24%;
+	max-wight: 10%;
+      display: inline-block;
+      margin: 0 auto 1rem 0; /* flush left, space below */
+      text-align: center;    /* centers the figcaption */
+}
+
+figure img {
+      display: block;
+      max-width: 100%;
+}
+
+figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.9em;
+      color: #555;
+}
+    </style>
+</head>
+<body>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">README</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="search.html">Search</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="llamafile-a-language-model-ready-to-execute">Llamafile, a
+language model ready to execute</h1>
+<p><a href="https://mozilla-ai.github.io/llamafile/">Llamafile</a> is a
+project by Mozilla AI to deliver OS agnostic and hardware agnostic ready
+to run language models as a single executable file. They have done this
+by combining llama.cpp and Cosmopolitin c library for a portable
+delivery format without need to run emulators or a virtual machine. See
+they <a href="https://github.com/mozilla-ai/llamafile">project page</a>
+for more details.</p>
+<p>How does this works with Harvey? Well it givens Harvey another way to
+use the language model of your choice in addition to running Ollama. I
+suspect this will mean that Harvey could ship with a couple default
+language models ready to go rather than require you to find and install
+Ollama for your specific hardware and OS combo. The Mozilla AI project
+is now at release v0.10.0, which while still pre-v1.x shows it is
+steadily developing. One challenge is that while conceptual Llamafiles
+are pretty compelling finding models already compiled to it is a bit
+more of a challenge. Fortunately they include examples in their Git
+repository, you find those <a
+href="https://github.com/mozilla-ai/llamafile/blob/main/docs/example_llamafiles.html">here</a>.
+Aside from tracking the evolution of llama.cpp the latest format make
+its easier to compiler your own models. This is promising of itself.</p>
+<p>Where does Harvey go with this? Harvey has already integrated Mozilla
+AI’s any-llm-go module. Harvey has been updated to support Llamafiles
+though that remains an untested feature. In coming releases of Harvey I
+am hopefuly that’ll change and Llamafiles can become a regular part of
+Harvey, perhaps it’s primary model support. Still there is allot of
+research to be digested and code to be tested and refined.</p>
+</section>
+</body>
+</html>

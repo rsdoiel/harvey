@@ -36,6 +36,7 @@ suggested changes — all sandboxed to a single workspace directory.
 
 ## Further reading
 
+- [Llamafile Notes](llamafile_notes.md) - A short note on Llamafiles and Harvey planned integration
 - [DOCUMENTATION.md](DOCUMENTATION.md) — master index of all Harvey documentation
 - [CONFIGURATION.md](CONFIGURATION.md) — all harvey.yaml keys including security
   settings (safe mode, permissions, timeouts).
