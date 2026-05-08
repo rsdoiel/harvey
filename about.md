@@ -85,8 +85,8 @@ The Harvey name was inspired by the play of that name by Mary Chase. I saw paral
 
 ## Software Suggestions
 
-- CMTools >= 0.0.40
-- Pandoc >= 3.1
-- GNU Make >= 3
+- CMTools >= 0.0.43
+- Pandoc >= 3.9
+- GNU Make >= 3.8
 
 
