@@ -39,7 +39,7 @@ figcaption {
 </nav>
 <section>
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.1c">harvey 0.0.1c</h2>
+<h2 id="harvey-0.0.2">harvey 0.0.2</h2>
 <p>Working proof of concept.</p>
 <ul>
 <li>harvey directory, session overhaul, keyboard shortcuts, KB search
@@ -85,11 +85,30 @@ defaulting to unlimited</li>
 “1m30s”)</li>
 <li>Safe mode and allowlist changes now persist across sessions in
 harvey.yaml</li>
+<li>Fixed RAG startup error (SQLITE_CANTOPEN) when agents/rag/ directory
+does not exist; NewRagStore now creates parent directories
+automatically</li>
+<li>Fixed /rag on and /rag off not persisting the enabled state to
+harvey.yaml</li>
+<li>Fixed session model not being restored on resume when the prior
+session had no chat turns; model is now written to the Fountain title
+page at recording start</li>
+<li>Added context window usage to the post-response stat line: shows
+current/max tokens and percentage (e.g. 1840/32768 ctx (5%)); /status
+also shows the percentage; limit is sourced from –context flag or model
+cache automatically</li>
+<li>Added TAGGED column to /ollama list showing whether each model
+reliably emits path-tagged code blocks (used by auto-execute)</li>
+<li>Startup model picker now displays the same capability table as
+/ollama list with numbered rows for selection</li>
+<li>Added /rename NAME command to rename the active session file without
+ending the session</li>
+<li>Added /file-tree [PATH] command to display a tree-style workspace
+listing</li>
 </ul>
-<h3 id="authors">Authors</h3>
+<h2 id="authors">Authors</h2>
 <ul>
-<li>R. S. Doiel, <a href="https://orcid.org/0000-0003-0900-6903"
-class="uri">https://orcid.org/0000-0003-0900-6903</a></li>
+<li><a href="https://orcid.org/0000-0003-0900-6903">R. S. Doiel</a></li>
 </ul>
 <p>Harvey is an agent similar to Claude Code but written in Go and
 designed to use Ollama server to access large language models locally.
@@ -108,22 +127,22 @@ like another old film called Topper. Today I like the idea of a software
 Harvey that those who take time to see it, or in the case run it on a
 little computer, can have an adventure and some fun with it.</p>
 <ul>
-<li>License: <a href="https://www.gnu.org/licenses/agpl-3.0.txt"
-class="uri">https://www.gnu.org/licenses/agpl-3.0.txt</a></li>
-<li>GitHub: <a href="https://github.com/rsdoiel/harvey"
-class="uri">https://github.com/rsdoiel/harvey</a></li>
-<li>Issues: <a href="https://github.com/rsdoiel/harvey/issues"
-class="uri">https://github.com/rsdoiel/harvey/issues</a></li>
+<li><a href="https://www.gnu.org/licenses/agpl-3.0.txt">License</a></li>
+<li><a href="https://github.com/rsdoiel/harvey">Code Repository</a>
+<ul>
+<li><a href="https://github.com/rsdoiel/harvey/issues">Issue
+Tracker</a></li>
+</ul></li>
 </ul>
-<h3 id="programming-languages">Programming languages</h3>
+<h2 id="programming-languages">Programming languages</h2>
 <ul>
 <li>Go &gt;= 1.26.2</li>
 </ul>
-<h3 id="software-requirements">Software Requirements</h3>
+<h2 id="software-requirements">Software Requirements</h2>
 <ul>
 <li>Go &gt;= 1.26.2</li>
 </ul>
-<h3 id="software-suggestions">Software Suggestions</h3>
+<h2 id="software-suggestions">Software Suggestions</h2>
 <ul>
 <li>CMTools &gt;= 0.0.40</li>
 <li>Pandoc &gt;= 3.1</li>

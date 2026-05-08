@@ -11,20 +11,20 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.1c
+version: 0.0.2
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go &gt;&#x3D; 1.26.2
 
 
-date_released: 2026-05-04
+date_released: 2026-05-08
 ---
 
 About this software
 ===================
 
-## harvey 0.0.1c
+## harvey 0.0.2
 
 Working proof of concept.
 
@@ -45,6 +45,14 @@ Working proof of concept.
 - Security fix: removed hard-coded HTTP timeout on Ollama provider (was 120 s, caused failures on slow hardware such as Raspberry Pi); timeout is now configurable via ollama_timeout in harvey.yaml, defaulting to unlimited
 - Configurable shell-command timeout via run_timeout in harvey.yaml (default 5 minutes, supports Go duration strings such as "10m" or "1m30s")
 - Safe mode and allowlist changes now persist across sessions in harvey.yaml
+- Fixed RAG startup error (SQLITE_CANTOPEN) when agents/rag/ directory does not exist; NewRagStore now creates parent directories automatically
+- Fixed /rag on and /rag off not persisting the enabled state to harvey.yaml
+- Fixed session model not being restored on resume when the prior session had no chat turns; model is now written to the Fountain title page at recording start
+- Added context window usage to the post-response stat line: shows current/max tokens and percentage (e.g. 1840/32768 ctx (5%)); /status also shows the percentage; limit is sourced from --context flag or model cache automatically
+- Added TAGGED column to /ollama list showing whether each model reliably emits path-tagged code blocks (used by auto-execute)
+- Startup model picker now displays the same capability table as /ollama list with numbered rows for selection
+- Added /rename NAME command to rename the active session file without ending the session
+- Added /file-tree [PATH] command to display a tree-style workspace listing
 
 ## Authors
 
