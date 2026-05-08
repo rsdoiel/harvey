@@ -3,41 +3,22 @@
 <head>
     <title>harvey</title>
     <link rel="stylesheet" href="/css/site.css">
-    <style>
-figure {
-	max-width: 24%;
-	max-wight: 10%;
-      display: inline-block;
-      margin: 0 auto 1rem 0; /* flush left, space below */
-      text-align: center;    /* centers the figcaption */
-}
-
-figure img {
-      display: block;
-      max-width: 100%;
-}
-
-figcaption {
-      margin-top: 0.5rem;
-      font-size: 0.9em;
-      color: #555;
-}
-    </style>
 </head>
 <body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">README</a></li>
+    <li><a href="/">All Library Apps</a></li>
+    <li><a href="index.html">Home</a></li>
     <li><a href="LICENSE">LICENSE</a></li>
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <li><a href="search.html">Search</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="harvey-testing-guide">Harvey Testing Guide</h1>
 <p><em>Version 1.0 — Complete guide to testing Harvey</em></p>
 <h2 id="overview">Overview</h2>
@@ -113,11 +94,11 @@ testing tier system:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Category</th>
-<th>Directory/Pattern</th>
-<th>Purpose</th>
-<th>Speed</th>
-<th>Dependencies</th>
+<th scope="col">Category</th>
+<th scope="col">Directory/Pattern</th>
+<th scope="col">Purpose</th>
+<th scope="col">Speed</th>
+<th scope="col">Dependencies</th>
 </tr>
 </thead>
 <tbody>
@@ -167,9 +148,9 @@ testing tier system:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Test File</th>
-<th>What It Tests</th>
-<th>Key Tests</th>
+<th scope="col">Test File</th>
+<th scope="col">What It Tests</th>
+<th scope="col">Key Tests</th>
 </tr>
 </thead>
 <tbody>
@@ -880,9 +861,9 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb39-1"><a href=
 </colgroup>
 <thead>
 <tr>
-<th>Failure</th>
-<th>Likely Cause</th>
-<th>Solution</th>
+<th scope="col">Failure</th>
+<th scope="col">Likely Cause</th>
+<th scope="col">Solution</th>
 </tr>
 </thead>
 <tbody>
@@ -933,9 +914,9 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb40-1"><a href=
 <table>
 <thead>
 <tr>
-<th>Dependency</th>
-<th>Required For</th>
-<th>Setup</th>
+<th scope="col">Dependency</th>
+<th scope="col">Required For</th>
+<th scope="col">Setup</th>
 </tr>
 </thead>
 <tbody>

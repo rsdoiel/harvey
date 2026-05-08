@@ -3,41 +3,22 @@
 <head>
     <title>harvey</title>
     <link rel="stylesheet" href="/css/site.css">
-    <style>
-figure {
-	max-width: 24%;
-	max-wight: 10%;
-      display: inline-block;
-      margin: 0 auto 1rem 0; /* flush left, space below */
-      text-align: center;    /* centers the figcaption */
-}
-
-figure img {
-      display: block;
-      max-width: 100%;
-}
-
-figcaption {
-      margin-top: 0.5rem;
-      font-size: 0.9em;
-      color: #555;
-}
-    </style>
 </head>
 <body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">README</a></li>
+    <li><a href="/">All Library Apps</a></li>
+    <li><a href="index.html">Home</a></li>
     <li><a href="LICENSE">LICENSE</a></li>
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <li><a href="search.html">Search</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="harvey-architecture">Harvey Architecture</h1>
 <p>Harvey is a terminal-based coding agent written in Go. It connects to
 a local <a href="https://ollama.com">Ollama</a> server (and optionally
@@ -75,9 +56,9 @@ together for one session:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Field</th>
-<th>Type</th>
-<th>Purpose</th>
+<th scope="col">Field</th>
+<th scope="col">Type</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -221,8 +202,8 @@ with live data:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Marker</th>
-<th>Replaced with</th>
+<th scope="col">Marker</th>
+<th scope="col">Replaced with</th>
 </tr>
 </thead>
 <tbody>
@@ -264,8 +245,8 @@ with <code>/</code>.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Purpose</th>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -295,8 +276,8 @@ with <code>/</code>.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Purpose</th>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -322,8 +303,8 @@ with <code>/</code>.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Purpose</th>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -349,8 +330,8 @@ with <code>/</code>.</p>
 <table>
 <thead>
 <tr>
-<th>Command</th>
-<th>Purpose</th>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -376,8 +357,8 @@ with <code>/</code>.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Purpose</th>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -407,8 +388,8 @@ distinguish injected context from typed conversation.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Purpose</th>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -441,8 +422,8 @@ for a single Y/n confirmation before writing any files, reading from
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Purpose</th>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -469,8 +450,8 @@ history</td>
 <table>
 <thead>
 <tr>
-<th>Command</th>
-<th>Purpose</th>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -488,8 +469,8 @@ history</td>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Purpose</th>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -569,8 +550,8 @@ tables:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Table</th>
-<th>Purpose</th>
+<th scope="col">Table</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -681,8 +662,8 @@ The key types are:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Type</th>
-<th>Purpose</th>
+<th scope="col">Type</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
@@ -767,8 +748,8 @@ time (no vector extension required in SQLite).</p>
 </colgroup>
 <thead>
 <tr>
-<th>File</th>
-<th>Covers</th>
+<th scope="col">File</th>
+<th scope="col">Covers</th>
 </tr>
 </thead>
 <tbody>

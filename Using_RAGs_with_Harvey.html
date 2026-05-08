@@ -3,41 +3,22 @@
 <head>
     <title>harvey</title>
     <link rel="stylesheet" href="/css/site.css">
-    <style>
-figure {
-	max-width: 24%;
-	max-wight: 10%;
-      display: inline-block;
-      margin: 0 auto 1rem 0; /* flush left, space below */
-      text-align: center;    /* centers the figcaption */
-}
-
-figure img {
-      display: block;
-      max-width: 100%;
-}
-
-figcaption {
-      margin-top: 0.5rem;
-      font-size: 0.9em;
-      color: #555;
-}
-    </style>
 </head>
 <body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">README</a></li>
+    <li><a href="/">All Library Apps</a></li>
+    <li><a href="index.html">Home</a></li>
     <li><a href="LICENSE">LICENSE</a></li>
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <li><a href="search.html">Search</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="using-rags-with-harvey">Using RAGs with Harvey</h1>
 <h2 id="overview">Overview</h2>
 <p><strong>Retrieval-Augmented Generation (RAG)</strong> enhances
@@ -54,9 +35,9 @@ local knowledge store and inject them into the conversation context.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Problem</th>
-<th>Without RAG</th>
-<th>With RAG</th>
+<th scope="col">Problem</th>
+<th scope="col">Without RAG</th>
+<th scope="col">With RAG</th>
 </tr>
 </thead>
 <tbody>
@@ -194,10 +175,10 @@ embedding model understands what text <em>means</em>.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Model</th>
-<th>Size</th>
-<th>Quality</th>
-<th>Best For</th>
+<th scope="col">Model</th>
+<th scope="col">Size</th>
+<th scope="col">Quality</th>
+<th scope="col">Best For</th>
 </tr>
 </thead>
 <tbody>
@@ -280,9 +261,9 @@ reasons:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Scenario</th>
-<th>Single Store</th>
-<th>Multiple Stores</th>
+<th scope="col">Scenario</th>
+<th scope="col">Single Store</th>
+<th scope="col">Multiple Stores</th>
 </tr>
 </thead>
 <tbody>
@@ -322,8 +303,8 @@ reasons:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -750,10 +731,10 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb27-1"><a href=
 </colgroup>
 <thead>
 <tr>
-<th>Field</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default</th>
+<th scope="col">Field</th>
+<th scope="col">Type</th>
+<th scope="col">Description</th>
+<th scope="col">Default</th>
 </tr>
 </thead>
 <tbody>
@@ -817,9 +798,9 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb27-1"><a href=
 <table>
 <thead>
 <tr>
-<th>Variable</th>
-<th>Description</th>
-<th>Default</th>
+<th scope="col">Variable</th>
+<th scope="col">Description</th>
+<th scope="col">Default</th>
 </tr>
 </thead>
 <tbody>
@@ -839,9 +820,9 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb27-1"><a href=
 <table>
 <thead>
 <tr>
-<th>Flag</th>
-<th>Description</th>
-<th>Default</th>
+<th scope="col">Flag</th>
+<th scope="col">Description</th>
+<th scope="col">Default</th>
 </tr>
 </thead>
 <tbody>
@@ -1002,9 +983,9 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb37-1"><a href=
 </colgroup>
 <thead>
 <tr>
-<th>Issue</th>
-<th>Cause</th>
-<th>Solution</th>
+<th scope="col">Issue</th>
+<th scope="col">Cause</th>
+<th scope="col">Solution</th>
 </tr>
 </thead>
 <tbody>
@@ -1237,9 +1218,9 @@ information:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Feature</th>
-<th>RAG</th>
-<th>Knowledge Base</th>
+<th scope="col">Feature</th>
+<th scope="col">RAG</th>
+<th scope="col">Knowledge Base</th>
 </tr>
 </thead>
 <tbody>
@@ -1331,8 +1312,8 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb46-1"><a href=
 <table>
 <thead>
 <tr>
-<th>File</th>
-<th>Description</th>
+<th scope="col">File</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -1366,8 +1347,8 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb46-1"><a href=
 </colgroup>
 <thead>
 <tr>
-<th>Skill</th>
-<th>Description</th>
+<th scope="col">Skill</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>

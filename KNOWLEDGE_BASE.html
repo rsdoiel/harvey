@@ -3,41 +3,22 @@
 <head>
     <title>harvey</title>
     <link rel="stylesheet" href="/css/site.css">
-    <style>
-figure {
-	max-width: 24%;
-	max-wight: 10%;
-      display: inline-block;
-      margin: 0 auto 1rem 0; /* flush left, space below */
-      text-align: center;    /* centers the figcaption */
-}
-
-figure img {
-      display: block;
-      max-width: 100%;
-}
-
-figcaption {
-      margin-top: 0.5rem;
-      font-size: 0.9em;
-      color: #555;
-}
-    </style>
 </head>
 <body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">README</a></li>
+    <li><a href="/">All Library Apps</a></li>
+    <li><a href="index.html">Home</a></li>
     <li><a href="LICENSE">LICENSE</a></li>
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <li><a href="search.html">Search</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="harvey-knowledge-base">Harvey Knowledge Base</h1>
 <p><em>Version 1.0 — Complete guide to Harvey’s SQLite-backed knowledge
 management system</em></p>
@@ -163,11 +144,11 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="
 </colgroup>
 <thead>
 <tr>
-<th>Column</th>
-<th>Type</th>
-<th>Nullable</th>
-<th>Default</th>
-<th>Description</th>
+<th scope="col">Column</th>
+<th scope="col">Type</th>
+<th scope="col">Nullable</th>
+<th scope="col">Default</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -231,11 +212,11 @@ hypotheses.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Column</th>
-<th>Type</th>
-<th>Nullable</th>
-<th>Default</th>
-<th>Description</th>
+<th scope="col">Column</th>
+<th scope="col">Type</th>
+<th scope="col">Nullable</th>
+<th scope="col">Default</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -294,11 +275,11 @@ observations.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Column</th>
-<th>Type</th>
-<th>Nullable</th>
-<th>Default</th>
-<th>Description</th>
+<th scope="col">Column</th>
+<th scope="col">Type</th>
+<th scope="col">Nullable</th>
+<th scope="col">Default</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -344,9 +325,9 @@ observations.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Column</th>
-<th>Type</th>
-<th>Description</th>
+<th scope="col">Column</th>
+<th scope="col">Type</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -375,9 +356,9 @@ ignored</p>
 </colgroup>
 <thead>
 <tr>
-<th>Column</th>
-<th>Type</th>
-<th>Description</th>
+<th scope="col">Column</th>
+<th scope="col">Type</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -416,10 +397,10 @@ concepts.</p>
 <table>
 <thead>
 <tr>
-<th>Column</th>
-<th>Type</th>
-<th>Indexed</th>
-<th>Description</th>
+<th scope="col">Column</th>
+<th scope="col">Type</th>
+<th scope="col">Indexed</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -534,8 +515,8 @@ class="sourceCode go"><code class="sourceCode go"><span id="cb15-1"><a href="#cb
 </colgroup>
 <thead>
 <tr>
-<th>Method</th>
-<th>Description</th>
+<th scope="col">Method</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -565,8 +546,8 @@ class="sourceCode go"><code class="sourceCode go"><span id="cb15-1"><a href="#cb
 </colgroup>
 <thead>
 <tr>
-<th>Method</th>
-<th>Description</th>
+<th scope="col">Method</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -595,8 +576,8 @@ class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb
 </colgroup>
 <thead>
 <tr>
-<th>Method</th>
-<th>Description</th>
+<th scope="col">Method</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -622,8 +603,8 @@ class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb
 </colgroup>
 <thead>
 <tr>
-<th>Method</th>
-<th>Description</th>
+<th scope="col">Method</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -653,9 +634,9 @@ observations</td>
 </colgroup>
 <thead>
 <tr>
-<th>Syntax</th>
-<th>Example</th>
-<th>Meaning</th>
+<th scope="col">Syntax</th>
+<th scope="col">Example</th>
+<th scope="col">Meaning</th>
 </tr>
 </thead>
 <tbody>
@@ -713,8 +694,8 @@ FTS index will be automatically rebuilt when FTS5 becomes available</p>
 <table>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -744,8 +725,8 @@ FTS index will be automatically rebuilt when FTS5 becomes available</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -772,8 +753,8 @@ finding - <code>d</code> or <code>decision</code> → decision -
 <table>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -799,8 +780,8 @@ finding - <code>d</code> or <code>decision</code> → decision -
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -822,8 +803,8 @@ finding - <code>d</code> or <code>decision</code> → decision -
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -1000,9 +981,9 @@ returns results with both words</li>
 </colgroup>
 <thead>
 <tr>
-<th>Issue</th>
-<th>Cause</th>
-<th>Solution</th>
+<th scope="col">Issue</th>
+<th scope="col">Cause</th>
+<th scope="col">Solution</th>
 </tr>
 </thead>
 <tbody>

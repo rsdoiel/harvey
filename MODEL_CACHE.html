@@ -3,41 +3,22 @@
 <head>
     <title>harvey</title>
     <link rel="stylesheet" href="/css/site.css">
-    <style>
-figure {
-	max-width: 24%;
-	max-wight: 10%;
-      display: inline-block;
-      margin: 0 auto 1rem 0; /* flush left, space below */
-      text-align: center;    /* centers the figcaption */
-}
-
-figure img {
-      display: block;
-      max-width: 100%;
-}
-
-figcaption {
-      margin-top: 0.5rem;
-      font-size: 0.9em;
-      color: #555;
-}
-    </style>
 </head>
 <body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">README</a></li>
+    <li><a href="/">All Library Apps</a></li>
+    <li><a href="index.html">Home</a></li>
     <li><a href="LICENSE">LICENSE</a></li>
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <li><a href="search.html">Search</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="harvey-model-cache">Harvey Model Cache</h1>
 <p><em>Version 1.0 — Complete guide to model capability caching in
 Harvey</em></p>
@@ -55,9 +36,9 @@ the need to re-probe every model on each launch.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Problem</th>
-<th>Without Cache</th>
-<th>With Cache</th>
+<th scope="col">Problem</th>
+<th scope="col">Without Cache</th>
+<th scope="col">With Cache</th>
 </tr>
 </thead>
 <tbody>
@@ -177,9 +158,9 @@ class="sourceCode sql"><code class="sourceCode sql"><span id="cb3-1"><a href="#c
 </colgroup>
 <thead>
 <tr>
-<th>Column</th>
-<th>Type</th>
-<th>Description</th>
+<th scope="col">Column</th>
+<th scope="col">Type</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -388,11 +369,11 @@ tool support</p>
 <table>
 <thead>
 <tr>
-<th>Probe Level</th>
-<th>Tool Detection</th>
-<th>Embed Detection</th>
-<th>Speed</th>
-<th>API Calls</th>
+<th scope="col">Probe Level</th>
+<th scope="col">Tool Detection</th>
+<th scope="col">Embed Detection</th>
+<th scope="col">Speed</th>
+<th scope="col">API Calls</th>
 </tr>
 </thead>
 <tbody>
@@ -539,9 +520,9 @@ Connections:</strong> 1 (prevents locking issues)</p>
 </colgroup>
 <thead>
 <tr>
-<th>Issue</th>
-<th>Cause</th>
-<th>Solution</th>
+<th scope="col">Issue</th>
+<th scope="col">Cause</th>
+<th scope="col">Solution</th>
 </tr>
 </thead>
 <tbody>
@@ -622,9 +603,9 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href=
 <table>
 <thead>
 <tr>
-<th>Probe Type</th>
-<th>Time</th>
-<th>Network Calls</th>
+<th scope="col">Probe Type</th>
+<th scope="col">Time</th>
+<th scope="col">Network Calls</th>
 </tr>
 </thead>
 <tbody>
@@ -661,8 +642,8 @@ are added - Indexes are created - Existing data is preserved</p>
 </colgroup>
 <thead>
 <tr>
-<th>File</th>
-<th>Description</th>
+<th scope="col">File</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>

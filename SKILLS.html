@@ -3,41 +3,22 @@
 <head>
     <title>harvey</title>
     <link rel="stylesheet" href="/css/site.css">
-    <style>
-figure {
-	max-width: 24%;
-	max-wight: 10%;
-      display: inline-block;
-      margin: 0 auto 1rem 0; /* flush left, space below */
-      text-align: center;    /* centers the figcaption */
-}
-
-figure img {
-      display: block;
-      max-width: 100%;
-}
-
-figcaption {
-      margin-top: 0.5rem;
-      font-size: 0.9em;
-      color: #555;
-}
-    </style>
 </head>
 <body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">README</a></li>
+    <li><a href="/">All Library Apps</a></li>
+    <li><a href="index.html">Home</a></li>
     <li><a href="LICENSE">LICENSE</a></li>
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <li><a href="search.html">Search</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="harvey-skills-system">Harvey Skills System</h1>
 <p><em>Version 1.0 — Complete guide to Agent Skills in Harvey</em></p>
 <h2 id="overview">Overview</h2>
@@ -111,9 +92,9 @@ the LLM will follow them to complete the task.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Path</th>
-<th>Scope</th>
-<th>Notes</th>
+<th scope="col">Path</th>
+<th scope="col">Scope</th>
+<th scope="col">Notes</th>
 </tr>
 </thead>
 <tbody>
@@ -342,9 +323,9 @@ variables:</p>
 <table>
 <thead>
 <tr>
-<th>Variable</th>
-<th>Description</th>
-<th>Example</th>
+<th scope="col">Variable</th>
+<th scope="col">Description</th>
+<th scope="col">Example</th>
 </tr>
 </thead>
 <tbody>
@@ -506,9 +487,9 @@ hardcoded paths (use variables) - Assume specific tools are available
 <table>
 <thead>
 <tr>
-<th>Good</th>
-<th>Bad</th>
-<th>Reason</th>
+<th scope="col">Good</th>
+<th scope="col">Bad</th>
+<th scope="col">Reason</th>
 </tr>
 </thead>
 <tbody>
@@ -663,8 +644,8 @@ class="sourceCode xml"><code class="sourceCode xml"><span id="cb33-1"><a href="#
 <table>
 <thead>
 <tr>
-<th>Skill</th>
-<th>Purpose</th>
+<th scope="col">Skill</th>
+<th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>

@@ -3,41 +3,22 @@
 <head>
     <title>harvey</title>
     <link rel="stylesheet" href="/css/site.css">
-    <style>
-figure {
-	max-width: 24%;
-	max-wight: 10%;
-      display: inline-block;
-      margin: 0 auto 1rem 0; /* flush left, space below */
-      text-align: center;    /* centers the figcaption */
-}
-
-figure img {
-      display: block;
-      max-width: 100%;
-}
-
-figcaption {
-      margin-top: 0.5rem;
-      font-size: 0.9em;
-      color: #555;
-}
-    </style>
 </head>
 <body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">README</a></li>
+    <li><a href="/">All Library Apps</a></li>
+    <li><a href="index.html">Home</a></li>
     <li><a href="LICENSE">LICENSE</a></li>
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <li><a href="search.html">Search</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">GitHub</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="starting-harvey">Starting Harvey</h1>
 <h2 id="what-is-harvey">What is Harvey?</h2>
 <p>harvey is a terminal agent for local language models.</p>
@@ -113,8 +94,8 @@ an up-to-date picture of the project:</p>
 </colgroup>
 <thead>
 <tr>
-<th>Marker</th>
-<th>Replaced with</th>
+<th scope="col">Marker</th>
+<th scope="col">Replaced with</th>
 </tr>
 </thead>
 <tbody>
@@ -208,8 +189,8 @@ time keeps the terminal alive.</p>
 <table>
 <thead>
 <tr>
-<th>Key</th>
-<th>Action</th>
+<th scope="col">Key</th>
+<th scope="col">Action</th>
 </tr>
 </thead>
 <tbody>
@@ -235,8 +216,8 @@ time keeps the terminal alive.</p>
 <table>
 <thead>
 <tr>
-<th>Key</th>
-<th>Action</th>
+<th scope="col">Key</th>
+<th scope="col">Action</th>
 </tr>
 </thead>
 <tbody>
@@ -262,8 +243,8 @@ time keeps the terminal alive.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Key</th>
-<th>Action</th>
+<th scope="col">Key</th>
+<th scope="col">Action</th>
 </tr>
 </thead>
 <tbody>
@@ -295,8 +276,8 @@ commands begin with <code>/</code>.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -329,8 +310,8 @@ kept)</td>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -581,8 +562,8 @@ conversation history and persists across sessions.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -646,8 +627,8 @@ that Harvey can replay or resume later.</p>
 </colgroup>
 <thead>
 <tr>
-<th>Command</th>
-<th>Description</th>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
@@ -703,8 +684,8 @@ harvey &gt; /session replay mysession.fountain newresponses.fountain</code></pre
 </colgroup>
 <thead>
 <tr>
-<th>Startup flag</th>
-<th>Description</th>
+<th scope="col">Startup flag</th>
+<th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
