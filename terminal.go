@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rsdoiel/termlib"
 )
@@ -646,7 +647,7 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 		fmt.Fprint(out, buf.String())
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats)))
+		fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats, a.effectiveContextLimit())))
 		a.recordStats(stats)
 		a.AddMessage("assistant", buf.String())
 		if a.Recorder != nil {
@@ -664,8 +665,32 @@ func (a *Agent) Run(out io.Writer) error {
 // formatStatLine produces the permanent post-response status line.
 // models lists the model name(s) that handled the turn (e.g. ["fast", "full"]
 // when routing escalated, or a single name otherwise).
-func formatStatLine(models []string, stats ChatStats) string {
-	return "  " + stats.FormatWithModels(models)
+// contextLimit is the model's context window in tokens (0 = unknown).
+func formatStatLine(models []string, stats ChatStats, contextLimit int) string {
+	modelPart := strings.Join(models, " → ")
+	elapsed := stats.Elapsed.Round(time.Millisecond)
+
+	if stats.ReplyTokens == 0 {
+		if modelPart == "" {
+			return ""
+		}
+		return "  " + modelPart + " · " + elapsed.String()
+	}
+
+	var ctxPart string
+	if contextLimit > 0 && stats.PromptTokens > 0 {
+		pct := stats.PromptTokens * 100 / contextLimit
+		ctxPart = fmt.Sprintf("%d/%d ctx (%d%%)", stats.PromptTokens, contextLimit, pct)
+	} else {
+		ctxPart = fmt.Sprintf("%d ctx", stats.PromptTokens)
+	}
+
+	core := fmt.Sprintf("%d reply + %s · %s · %.1f tok/s",
+		stats.ReplyTokens, ctxPart, elapsed, stats.TokensPerSec)
+	if modelPart == "" {
+		return "  " + core
+	}
+	return "  " + modelPart + " · " + core
 }
 
 // initWorkspace resolves and announces the workspace root. It is a fatal error
@@ -800,10 +825,15 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 		return nil
 	}
 
-	models, err := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).Models(context.Background())
-	if err != nil || len(models) == 0 {
+	summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background())
+	if err != nil || len(summaries) == 0 {
 		fmt.Fprintln(out, yellow("  ✗")+" No models installed. Run: ollama pull <model>")
 		return nil
+	}
+
+	models := make([]string, len(summaries))
+	for i, s := range summaries {
+		models[i] = s.Name
 	}
 
 	// If only one model is available, use it regardless of preference.
@@ -830,9 +860,7 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 	}
 
 	fmt.Fprintln(out, "  Available models:")
-	for i, m := range models {
-		fmt.Fprintf(out, "    [%d] %s\n", i+1, m)
-	}
+	ollamaModelTable(a, summaries, out, true)
 	fmt.Fprintf(out, "    Select model [1-%d, default=1]: ", len(models))
 	line, _ := reader.ReadString('\n')
 	chosen := models[0]

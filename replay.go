@@ -57,7 +57,14 @@ func parseFountainSession(path string) (userName, modelName string, turns []Play
 	}
 
 	userName = "USER"
-	modelName = "MODEL"
+	modelName = ""
+
+	// Seed model from title page (written at session start, before any turns).
+	for _, tp := range doc.TitlePage {
+		if strings.EqualFold(tp.Name, "Model") && strings.TrimSpace(tp.Content) != "" {
+			modelName = strings.TrimSpace(tp.Content)
+		}
+	}
 
 	inChatScene := false
 	lastChar := ""

@@ -46,7 +46,7 @@ Useful small open models are hear [today](model_testing_plan.md). In the hype th
 
 ## Release Notes
 
-- version: 0.0.1c
+- version: 0.0.2
 - status: working proof of concept
 
 ### Authors
@@ -62,9 +62,9 @@ Useful small open models are hear [today](model_testing_plan.md). In the hype th
 
 For building Harvey and documentation from source.
 
-- CMTools >= 0.0.40
-- Pandoc >= 3.1
-- GNU Make >= 3
+- CMTools >= 0.0.43
+- Pandoc >= 3.9
+- GNU Make >= 3.8
 
 ## Related resources
 

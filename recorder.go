@@ -145,6 +145,7 @@ func NewRecorder(path, model, workspace string) (*Recorder, error) {
 		{Type: fountain.TitlePageType, Name: "Author", Content: user},
 		{Type: fountain.TitlePageType, Name: "Date", Content: now.Format("2006-01-02 15:04:05")},
 		{Type: fountain.TitlePageType, Name: "Draft date", Content: now.Format("2006-01-02")},
+		{Type: fountain.TitlePageType, Name: "Model", Content: r.modelName},
 	} {
 		fmt.Fprintln(f, fountainSrc(elem))
 	}
@@ -402,6 +403,43 @@ func (r *Recorder) RecordSkillLoad(name, description, body string) error {
 func (r *Recorder) Close() error {
 	r.writeTransition("THE END.")
 	return r.f.Close()
+}
+
+/** Rename renames the session file on disk to newPath without ending the
+ * session. The recorder continues appending to the renamed file.
+ * On failure it attempts to reopen the original file so recording can continue.
+ *
+ * Parameters:
+ *   newPath (string) — absolute destination path for the renamed file.
+ *
+ * Returns:
+ *   error — if sync, close, rename, or reopen fails.
+ *
+ * Example:
+ *   err := r.Rename("/sessions/my-feature.spmd")
+ */
+func (r *Recorder) Rename(newPath string) error {
+	if err := r.f.Sync(); err != nil {
+		return err
+	}
+	oldPath := r.path
+	if err := r.f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(oldPath, newPath); err != nil {
+		// Reopen at original path so recording can continue.
+		if f, openErr := os.OpenFile(oldPath, os.O_WRONLY|os.O_APPEND, 0o644); openErr == nil {
+			r.f = f
+		}
+		return err
+	}
+	f, err := os.OpenFile(newPath, os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	r.f = f
+	r.path = newPath
+	return nil
 }
 
 // DefaultSessionPath returns a timestamped default filename for a session

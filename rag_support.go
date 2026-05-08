@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
 
 	_ "github.com/glebarez/go-sqlite"
@@ -77,6 +79,9 @@ type Chunk struct {
  *   store, err := NewRagStore("rag_nomic_v1.db", "nomic-embed-text")
  */
 func NewRagStore(dbPath, embeddingModel string) (*RagStore, error) {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err

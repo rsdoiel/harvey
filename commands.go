@@ -250,6 +250,16 @@ func (a *Agent) registerCommands() {
 			Description: "Continue or replay a .spmd/.fountain session recording",
 			Handler:     cmdSession,
 		},
+		"rename": {
+			Usage:       "/rename NAME",
+			Description: "Rename the active session recording file",
+			Handler:     cmdRename,
+		},
+		"file-tree": {
+			Usage:       "/file-tree [PATH]",
+			Description: "Display a tree listing of the workspace (or a subdirectory)",
+			Handler:     cmdFileTree,
+		},
 		"skill": {
 			Usage:       "/skill <list|load NAME|info NAME|status|new|run NAME>",
 			Description: "List or load Agent Skills from the skill catalog",
@@ -408,8 +418,14 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "rag":
 			fmt.Fprint(out, FmtHelp(RagHelpText, "", "", "", ""))
 			return nil
+		case "file-tree", "filetree":
+			fmt.Fprint(out, FmtHelp(FileTreeHelpText, "", "", "", ""))
+			return nil
 		case "record", "recording":
 			fmt.Fprint(out, FmtHelp(RecordHelpText, "", "", "", ""))
+			return nil
+		case "rename":
+			fmt.Fprint(out, FmtHelp(RenameHelpText, "", "", "", ""))
 			return nil
 		case "routing", "route", "router":
 			fmt.Fprint(out, FmtHelp(RoutingHelpText, "", "", "", ""))
@@ -421,7 +437,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprint(out, FmtHelp(SkillsHelpText, "", "", "", ""))
 			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: clear, context, editing, kb, ollama, rag, record, routing, session, skills\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: clear, context, editing, file-tree, kb, ollama, rag, record, rename, routing, session, skills\n\n", args[0])
 		}
 	}
 
@@ -467,9 +483,10 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		if exact {
 			qualifier = ""
 		}
-		limit := a.Config.OllamaContextLength
+		limit := a.effectiveContextLimit()
 		if limit > 0 {
-			fmt.Fprintf(out, "Tokens:    %s%d / %d\n", qualifier, n, limit)
+			pct := n * 100 / limit
+			fmt.Fprintf(out, "Tokens:    %s%d / %d (%d%%)\n", qualifier, n, limit, pct)
 		} else {
 			fmt.Fprintf(out, "Tokens:    %s%d\n", qualifier, n)
 		}
@@ -1117,27 +1134,32 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 	return nil
 }
 
-// ollamaListTable prints the capability table for /ollama list.
-func ollamaListTable(a *Agent, summaries []ModelSummary, out io.Writer) {
+// ollamaModelTable prints the model capability table.
+// When numbered is true each row is prefixed with [N] for interactive selection;
+// when false the active model is marked with * instead.
+func ollamaModelTable(a *Agent, summaries []ModelSummary, out io.Writer, numbered bool) {
 	const nameW = 36
-	fmt.Fprintf(out, "%-*s  %7s  %-8s  %6s  %5s  %5s\n",
-		nameW, "NAME", "SIZE", "FAMILY", "CTX", "TOOLS", "EMBED")
-	fmt.Fprintf(out, "%s  %s  %s  %s  %s  %s\n",
+	fmt.Fprintf(out, "%-*s  %7s  %-8s  %6s  %5s  %5s  %6s\n",
+		nameW, "NAME", "SIZE", "FAMILY", "CTX", "TOOLS", "EMBED", "TAGGED")
+	fmt.Fprintf(out, "%s  %s  %s  %s  %s  %s  %s\n",
 		strings.Repeat("─", nameW),
 		strings.Repeat("─", 7),
 		strings.Repeat("─", 8),
 		strings.Repeat("─", 6),
 		strings.Repeat("─", 5),
 		strings.Repeat("─", 5),
+		strings.Repeat("─", 6),
 	)
 
 	activeName := ""
-	if ac, ok := a.Client.(*AnyLLMClient); ok {
-		activeName = ac.ModelName()
+	if !numbered {
+		if ac, ok := a.Client.(*AnyLLMClient); ok {
+			activeName = ac.ModelName()
+		}
 	}
 
 	unknownCount := 0
-	for _, s := range summaries {
+	for i, s := range summaries {
 		var cap *ModelCapability
 		if a.ModelCache != nil {
 			cap, _ = a.ModelCache.Get(s.Name)
@@ -1145,34 +1167,46 @@ func ollamaListTable(a *Agent, summaries []ModelSummary, out io.Writer) {
 
 		tools := CapUnknown
 		embed := CapUnknown
+		tagged := CapUnknown
 		ctx := 0
 		if cap != nil {
 			tools = cap.SupportsTools
 			embed = cap.SupportsEmbed
+			tagged = cap.SupportsTaggedBlocks
 			ctx = cap.ContextLength
 		} else {
 			unknownCount++
 		}
 
-		marker := "  "
-		if s.Name == activeName {
-			marker = "* "
+		var prefix string
+		if numbered {
+			prefix = fmt.Sprintf("[%2d] ", i+1)
+		} else if s.Name == activeName {
+			prefix = "* "
+		} else {
+			prefix = "  "
 		}
-		displayName := marker + ollamaTruncateName(s.Name, nameW-2)
+		displayName := prefix + ollamaTruncateName(s.Name, nameW-len(prefix))
 
-		fmt.Fprintf(out, "%-*s  %7s  %-8s  %6s  %5s  %5s\n",
+		fmt.Fprintf(out, "%-*s  %7s  %-8s  %6s  %5s  %5s  %6s\n",
 			nameW, displayName,
 			ollamaFormatBytes(s.SizeBytes),
 			ollamaTruncateName(s.Family, 8),
 			ollamaFormatCtx(ctx),
 			tools.String(),
 			embed.String(),
+			tagged.String(),
 		)
 	}
 
 	if unknownCount > 0 {
 		fmt.Fprintf(out, "\n  %d model(s) not yet probed — run /ollama probe to fill in capabilities.\n", unknownCount)
 	}
+}
+
+// ollamaListTable prints the capability table for /ollama list.
+func ollamaListTable(a *Agent, summaries []ModelSummary, out io.Writer) {
+	ollamaModelTable(a, summaries, out, false)
 }
 
 // ollamaProbe handles /ollama probe [MODEL|--all].
@@ -1256,6 +1290,104 @@ func ollamaTruncateName(s string, max int) string {
 		return s
 	}
 	return string(runes[:max-1]) + "…"
+}
+
+// ─── /rename ─────────────────────────────────────────────────────────────────
+
+/** cmdRename renames the active session recording file without ending the
+ * session. The new name is placed in the same directory as the current file.
+ * A .spmd extension is added automatically when omitted.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with an active Recorder.
+ *   args ([]string)  — [0] new filename (path components are stripped).
+ *   out  (io.Writer) — destination for command output.
+ *
+ * Returns:
+ *   error — on rename failure.
+ *
+ * Example:
+ *   /rename my-feature-session
+ */
+func cmdRename(a *Agent, args []string, out io.Writer) error {
+	if a.Recorder == nil {
+		fmt.Fprintln(out, "No active recording. Start one with /record start.")
+		return nil
+	}
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /rename NAME")
+		return nil
+	}
+	name := filepath.Base(args[0])
+	if !strings.HasSuffix(name, ".spmd") && !strings.HasSuffix(name, ".fountain") {
+		name += ".spmd"
+	}
+	newPath := filepath.Join(filepath.Dir(a.Recorder.Path()), name)
+	if err := a.Recorder.Rename(newPath); err != nil {
+		return fmt.Errorf("rename: %w", err)
+	}
+	fmt.Fprintf(out, "Session renamed to: %s\n", newPath)
+	return nil
+}
+
+// ─── /file-tree ──────────────────────────────────────────────────────────────
+
+/** cmdFileTree prints a tree-style listing of the workspace directory,
+ * skipping hidden files and directories. An optional path argument restricts
+ * the listing to a subdirectory of the workspace root.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with a configured Workspace.
+ *   args ([]string)  — optional [0] subdirectory path (relative to workspace root).
+ *   out  (io.Writer) — destination for command output.
+ *
+ * Returns:
+ *   error — if the path is outside the workspace.
+ *
+ * Example:
+ *   /file-tree
+ *   /file-tree harvey/
+ */
+func cmdFileTree(a *Agent, args []string, out io.Writer) error {
+	root := a.Workspace.Root
+	if len(args) > 0 {
+		abs, err := a.Workspace.AbsPath(args[0])
+		if err != nil {
+			return fmt.Errorf("file-tree: %w", err)
+		}
+		root = abs
+	}
+	rel, _ := filepath.Rel(a.Workspace.Root, root)
+	fmt.Fprintf(out, "%s\n", rel)
+	printDirTree(root, "", out)
+	return nil
+}
+
+// printDirTree recursively prints a directory tree using box-drawing characters.
+// Hidden entries (names starting with ".") are skipped.
+func printDirTree(dir, prefix string, out io.Writer) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	var visible []fs.DirEntry
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".") {
+			visible = append(visible, e)
+		}
+	}
+	for i, e := range visible {
+		connector := "├── "
+		childPrefix := prefix + "│   "
+		if i == len(visible)-1 {
+			connector = "└── "
+			childPrefix = prefix + "    "
+		}
+		fmt.Fprintf(out, "%s%s%s\n", prefix, connector, e.Name())
+		if e.IsDir() {
+			printDirTree(filepath.Join(dir, e.Name()), childPrefix, out)
+		}
+	}
 }
 
 // ollamaFormatBytes returns a human-readable size string from a byte count.
@@ -2942,10 +3074,16 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		a.RagOn = true
 		a.Config.RagEnabled = true
 		fmt.Fprintln(out, "RAG context injection: on")
+		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "Warning: could not save config: %v\n", err)
+		}
 	case "off":
 		a.RagOn = false
 		a.Config.RagEnabled = false
 		fmt.Fprintln(out, "RAG context injection: off")
+		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "Warning: could not save config: %v\n", err)
+		}
 	case "setup":
 		return ragSetup(a, out)
 	case "new":

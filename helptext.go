@@ -996,6 +996,94 @@ automatically migrated to a store named "default" on first load.
 
 `
 
+	RenameHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+RENAME — rename the active session recording file
+
+# SYNOPSIS
+
+/rename NAME
+
+# DESCRIPTION
+
+/rename changes the filename of the session currently being recorded without
+ending the session. Recording continues to the new file seamlessly.
+
+NAME is a bare filename — do not include a directory path. Harvey places the
+renamed file in the same directory as the original (agents/sessions/ by
+default). A .spmd extension is added automatically if omitted.
+
+# EXAMPLES
+
+Give the session a meaningful name while it is still running:
+
+  /rename my-feature-session
+
+This renames the current harvey-session-YYYYMMDD-HHMMSS.spmd to
+my-feature-session.spmd in agents/sessions/.
+
+  /rename rag-fix-and-context-display
+
+# SEE ALSO
+
+  /record   — start or stop session recording
+  /session  — continue or replay a recorded session
+  /help record
+  /help session
+
+`
+
+	FileTreeHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+FILE-TREE — display a tree listing of the workspace
+
+# SYNOPSIS
+
+/file-tree [PATH]
+
+# DESCRIPTION
+
+/file-tree prints the workspace directory structure using tree-style
+box-drawing characters (├──, └──). Hidden files and directories (names
+starting with ".") are excluded.
+
+An optional PATH restricts the listing to a subdirectory of the workspace
+root. Paths outside the workspace are rejected.
+
+# EXAMPLES
+
+Show the full workspace:
+
+  /file-tree
+
+Show only the harvey/ subdirectory:
+
+  /file-tree harvey/
+
+# OUTPUT FORMAT
+
+  .
+  ├── harvey/
+  │   ├── commands.go
+  │   └── harvey.go
+  └── agents/
+      └── harvey.yaml
+
+# SEE ALSO
+
+  /read   — read a file into context
+  /status — show workspace path
+
+`
+
 	HelpText = `%{app_name}(1) user manual | version {version} {release_hash}
 % R. S. Doiel
 % {release_date}

@@ -163,6 +163,32 @@ type Agent struct {
 	AuditBuffer   *AuditBuffer // in-memory audit log ring buffer; nil until initialized
 }
 
+/** effectiveContextLimit returns the context-window size in tokens for the
+ * active model. It prefers the explicit --context flag value; when that is
+ * zero it falls back to the probed ContextLength stored in the model cache.
+ * Returns 0 when neither source is available.
+ *
+ * Returns:
+ *   int — token limit, or 0 if unknown.
+ *
+ * Example:
+ *   limit := a.effectiveContextLimit()
+ *   if limit > 0 { fmt.Printf("window: %d tokens\n", limit) }
+ */
+func (a *Agent) effectiveContextLimit() int {
+	if a.Config.OllamaContextLength > 0 {
+		return a.Config.OllamaContextLength
+	}
+	if a.ModelCache != nil {
+		if ac, ok := a.Client.(*AnyLLMClient); ok {
+			if cap, _ := a.ModelCache.Get(ac.ModelName()); cap != nil && cap.ContextLength > 0 {
+				return cap.ContextLength
+			}
+		}
+	}
+	return 0
+}
+
 /** NewAgent creates an Agent from cfg and ws with an empty conversation
  * history. The knowledge base is opened lazily — it is nil if
  * OpenKnowledgeBase has not been called.
