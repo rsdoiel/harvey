@@ -10,6 +10,7 @@
 
 ## Next Steps
 
+- [ ] Improve tool support with tool schema that can be communicated to the language model
 - [ ] Add a `/rename` command so I can rename the session files in Harvey like I do in Claude Code.
 - [X] Change Harvey's directory from "harvey" to "agents" so that everything is shared with other agent tools.
 - [X] Make sure all commands have a help guide
