@@ -1,12 +1,12 @@
 
-# generated with CMTools 0.0.0 
+# generated with CMTools 0.0.3 f65ad21
 
 #
 # Simple Makefile for Golang based Projects built under POSIX.
 #
 PROJECT = harvey
 
-GIT_GROUP = Laboratory
+GIT_GROUP = rsdoiel
 
 PROGRAMS = harvey
 
@@ -52,7 +52,7 @@ version.go: .FORCE
 hash: .FORCE
 	git log --pretty=format:'%h' -n 1
 
-man: $(MAN_PAGES_1) $(MAN_PAGES_7) # $(MAN_PAGES_3)
+man: $(MAN_PAGES_1) # $(MAN_PAGES_3) $(MAN_PAGES_7)
 
 $(MAN_PAGES_1): .FORCE
 	mkdir -p man/man1
@@ -70,9 +70,10 @@ $(PROGRAMS): $(PACKAGE)
 	@mkdir -p bin
 	go build -o "bin/$@$(EXT)" cmd/$@/*.go
 	@./bin/$@ -help >$@.1.md
-	@./bin/$@ -help skills >$@.7.md
 
-$(MAN_PAGES): $(MAN_PAGES_1) $(MAN_PAGES_7) # .FORCE
+$(MAN_PAGES): .FORCE
+	mkdir -p man/man1
+	pandoc $@.md --from markdown --to man -s >man/man1/$@
 
 CITATION.cff: codemeta.json
 	cmt codemeta.json CITATION.cff
@@ -104,8 +105,8 @@ refresh:
 	git fetch origin
 	git pull origin $(BRANCH)
 
-publish: build website .FORCE
-	./publish.bash
+#publish: build website .FORCE
+#	./publish.bash
 
 clean:
 	@if [ -f version.go ]; then rm version.go; fi
