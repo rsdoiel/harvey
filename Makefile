@@ -1,5 +1,5 @@
 
-# generated with CMTools 0.0.3 f65ad21
+# generated with CMTools 0.0.3 12bc0e0
 
 #
 # Simple Makefile for Golang based Projects built under POSIX.
@@ -105,8 +105,8 @@ refresh:
 	git fetch origin
 	git pull origin $(BRANCH)
 
-#publish: build website .FORCE
-#	./publish.bash
+publish: build website .FORCE
+	./publish.bash
 
 clean:
 	@if [ -f version.go ]; then rm version.go; fi
@@ -200,7 +200,7 @@ distribute_docs:
 	@cp -vR man dist/
 	@for DNAME in $(DOCS); do cp -vR $$DNAME dist/; done
 
-release: build website installer.sh installer.ps1 save setup_dist distribute_docs dist/Linux-x86_64 dist/Linux-aarch64 dist/macOS-x86_64 dist/macOS-arm64 dist/Windows-x86_64 dist/Windows-arm64 dist/Linux-armv7l
+release: build installer.sh save setup_dist distribute_docs dist/Linux-x86_64 dist/Linux-aarch64 dist/macOS-x86_64 dist/macOS-arm64 dist/Windows-x86_64 dist/Windows-arm64 dist/Linux-armv7l
 
 
 .FORCE:

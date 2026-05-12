@@ -1,5 +1,5 @@
 <#
-generated with CMTools 0.0.1b d312e98
+generated with CMTools 0.0.3 12bc0e0
 
 .SYNOPSIS
 Release script for harvey on GitHub using gh CLI.

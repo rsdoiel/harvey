@@ -1,5 +1,5 @@
 #!/bin/bash
-# generated with CMTools 0.0.1b d312e98
+# generated with CMTools 0.0.3 12bc0e0
 
 #
 # Release script for harvey on GitHub using gh cli.
@@ -32,8 +32,8 @@ if [ "$YES_NO" = "y" ]; then
 		-F release_notes.tmp \
 		--generate-notes
 	echo "Uploading distribution files"
-    gh release upload "${RELEASE_TAG}"	dist/*.zip 
-	
+    gh release upload "${RELEASE_TAG}"	dist/*.zip
+
 	cat <<EOT
 
 Now goto repo release and finalize draft.
