@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-security-model">Harvey Security Model</h1>
+<p>Harvey is a <strong>local-first</strong> agent. The primary threat
+model is protecting your local machine and data, not network
+confidentiality. This document describes the protections in place, known
+limitations, and how to report security issues.</p>
+<hr />
+<h2 id="core-protections">Core protections</h2>
+<h3 id="workspace-sandboxing">Workspace sandboxing</h3>
+<p>All file operations (read, write, delete, list) are constrained to
+the workspace root. Path traversal via <code>../</code>, symlinks that
+escape the root, and absolute paths outside the workspace are rejected
+at <code>resolveWorkspacePath()</code> using
+<code>filepath.EvalSymlinks</code> before any comparison.</p>
+<h3 id="sensitive-file-blocking">Sensitive file blocking</h3>
+<p>The following file patterns are blocked from tool access regardless
+of workspace position:</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Pattern</th>
+<th scope="col">Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.env</code>, <code>.env.*</code></td>
+<td>Environment variable files</td>
+</tr>
+<tr>
+<td><code>.pem</code>, <code>.key</code>, <code>.p12</code>,
+<code>.pfx</code></td>
+<td>TLS/crypto keys</td>
+</tr>
+<tr>
+<td><code>id_rsa</code>, <code>id_ed25519</code>,
+<code>authorized_keys</code></td>
+<td>SSH keys</td>
+</tr>
+<tr>
+<td><code>harvey.yaml</code></td>
+<td>Runtime configuration (API keys, permissions)</td>
+</tr>
+<tr>
+<td><code>agents/</code> subtree</td>
+<td>Skills, sessions, knowledge base</td>
+</tr>
+</tbody>
+</table>
+<h3 id="shell-injection-prevention">Shell injection prevention</h3>
+<p>The <code>!</code> command and <code>/run</code> use
+<code>exec.Command()</code> directly — no shell interpreter is invoked.
+<code>parseCommandLine()</code> rejects shell metacharacters
+(<code>;</code>, <code>|</code>, <code>&amp;</code>, <code>&gt;</code>,
+<code>&lt;</code>, <code>`</code>, <code>$</code>, <code>(</code>,
+<code>)</code>, <code>{</code>, <code>}</code>, <code>[</code>,
+<code>]</code>) before execution.</p>
+<h3 id="api-key-filtering">API key filtering</h3>
+<p>The following environment variables are stripped from all child
+processes (skills, <code>/run</code>, <code>/git</code>):</p>
+<p><code>ANTHROPIC_API_KEY</code>, <code>COHERE_API_KEY</code>,
+<code>DEEPSEEK_API_KEY</code>, <code>GEMINI_API_KEY</code>,
+<code>GOOGLE_API_KEY</code>, <code>GROQ_API_KEY</code>,
+<code>MISTRAL_API_KEY</code>, <code>OPENAI_API_KEY</code>,
+<code>PERPLEXITY_API_KEY</code></p>
+<p>Error messages reference variable names only, never their values.</p>
+<h3 id="safe-mode">Safe Mode</h3>
+<p><code>/safemode on</code> restricts <code>/run</code> and
+<code>!</code> to a configurable command allowlist (default:
+<code>ls</code>, <code>cat</code>, <code>grep</code>, <code>head</code>,
+<code>tail</code>, <code>wc</code>, <code>find</code>,
+<code>stat</code>, <code>jq</code>, <code>htmlq</code>,
+<code>bat</code>, <code>batcat</code>). Manage with
+<code>/safemode allow COMMAND</code> and
+<code>/safemode deny COMMAND</code>. Safe Mode state and the allowlist
+persist across sessions in <code>agents/harvey.yaml</code>.</p>
+<h3 id="permissions-system">Permissions system</h3>
+<p>Path-prefix permissions stored in <code>agents/harvey.yaml</code>
+gate file operations. Managed with
+<code>/permissions set PATH PERMS</code>. Supported permissions:
+<code>read</code>, <code>write</code>, <code>exec</code>,
+<code>delete</code>.</p>
+<h3 id="audit-logging">Audit logging</h3>
+<p>An in-memory ring buffer (1000 events) records all commands, file
+operations, and skill runs with a status of <code>allowed</code> or
+<code>denied</code>. View with <code>/audit show</code>, clear with
+<code>/audit clear</code>. The buffer does not persist across sessions —
+no sensitive history is written to disk.</p>
+<h3 id="configurable-timeouts">Configurable timeouts</h3>
+<p><code>run_timeout</code> (default 5 min) in
+<code>agents/harvey.yaml</code> caps shell command execution via
+<code>exec.CommandContext</code>, preventing runaway processes.</p>
+<hr />
+<h2 id="network-security">Network security</h2>
+<p>Harvey connects to:</p>
+<ul>
+<li><p><strong>Local LLM servers</strong> (<code>ollama://</code>,
+<code>llamafile://</code>, <code>llamacpp://</code>) over HTTP by
+default. If the server is on a remote host, prompts and model responses
+travel unencrypted. Use a VPN or SSH tunnel on untrusted networks, or
+configure the server to support TLS and register the endpoint with
+<code>https://</code>. Harvey warns when a non-localhost
+<code>http://</code> URL is registered.</p></li>
+<li><p><strong>Cloud providers</strong> (<code>anthropic://</code>,
+<code>deepseek://</code>, <code>gemini://</code>,
+<code>mistral://</code>, <code>openai://</code>) — all cloud SDKs
+enforce HTTPS internally. API keys are read from environment variables
+and are never written to disk by Harvey.</p></li>
+</ul>
+<hr />
+<h2 id="known-limitations">Known limitations</h2>
+<table>
+<colgroup>
+<col style="width: 61%" />
+<col style="width: 38%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Limitation</th>
+<th scope="col">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No OS-level sandboxing</td>
+<td>Harvey uses pure Go isolation. Linux namespaces or seccomp require
+OS support. True isolation requires containers.</td>
+</tr>
+<tr>
+<td>Audit log is in-memory</td>
+<td>Lost when Harvey exits. No persistent audit trail across
+sessions.</td>
+</tr>
+<tr>
+<td>No rate limiting</td>
+<td>No per-turn cap on tool invocations from the model.</td>
+</tr>
+<tr>
+<td>No tool input size limits</td>
+<td>No maximum length validation on tool string inputs.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="reporting-security-issues">Reporting security issues</h2>
+<p>Report vulnerabilities via GitHub Issues: <a
+href="https://github.com/rsdoiel/harvey/issues"
+class="uri">https://github.com/rsdoiel/harvey/issues</a></p>
+<p>Include: a description of the issue, steps to reproduce, and your
+assessment of severity.</p>
+</section>
+</body>
+</html>
