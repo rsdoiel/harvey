@@ -1037,6 +1037,58 @@ my-feature-session.spmd in agents/sessions/.
 
 `
 
+	ModelAliasHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+MODEL ALIAS — manage short names for Ollama model identifiers
+
+# SYNOPSIS
+
+/model alias [list]
+/model alias set ALIAS FULL_MODEL_NAME
+/model alias remove ALIAS
+
+# DESCRIPTION
+
+Model aliases let you use short, memorable names instead of full Ollama model
+identifiers. Aliases are stored in agents/harvey.yaml under model_aliases: and
+persist across sessions.
+
+When you switch models with /model ALIAS, Harvey resolves the alias to the full
+identifier before querying Ollama. The full name is always recorded in Fountain
+session headers so a session can be resumed with the correct model.
+
+Aliases are case-insensitive. The full model name is stored as-is.
+
+# EXAMPLES
+
+Define an alias:
+
+  /model alias set qwen-coder qwen2.5-coder:7b
+  /model alias set granite ibm/granite4.1:3b
+
+Use the alias to switch models:
+
+  /model qwen-coder
+
+List all aliases:
+
+  /model alias list
+
+Remove an alias:
+
+  /model alias remove qwen-coder
+
+# SEE ALSO
+
+  /model       — list models or switch to a named model
+  /ollama list — show installed Ollama models with capabilities
+
+`
+
 	FileTreeHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
 % R. S. Doiel
 % {release_date}
@@ -1081,6 +1133,148 @@ Show only the harvey/ subdirectory:
 
   /read   — read a file into context
   /status — show workspace path
+
+`
+
+	ReadDirHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+READ-DIR — read all eligible files in a directory into context
+
+# SYNOPSIS
+
+/read-dir [PATH] [--depth N]
+
+# DESCRIPTION
+
+/read-dir walks a workspace directory and injects every readable, non-binary
+file into the conversation as a context message, using the same fenced-block
+format as /read.
+
+PATH defaults to the current workspace root. --depth (or -d) controls how
+many directory levels to descend; the default is 2 (the target directory plus
+one level of subdirectories). --depth 0 means unlimited.
+
+Files are skipped when they:
+
+  - are hidden (name starts with ".")
+  - are inside the agents/ subtree
+  - match sensitive patterns (.env*, *.pem, *.key, *.p12, *.pfx, harvey.yaml)
+  - are binary (contain a null byte in the first 512 bytes)
+  - exceed the per-file cap of 64 KB (reported as skipped)
+
+The total context injected is capped at 256 KB. If the cap is hit, Harvey
+reports how many files were loaded before stopping.
+
+# EXAMPLES
+
+Load all Go source files in the current package:
+
+  /read-dir harvey/
+
+Load only the top-level files in the workspace (no subdirectories):
+
+  /read-dir . --depth 1
+
+Load the entire docs/ tree:
+
+  /read-dir docs/ --depth 0
+
+# SEE ALSO
+
+  /read      — load specific files into context
+  /file-tree — display directory structure without loading files
+  /search    — search for a pattern across workspace files
+
+`
+
+	SkillSetHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+SKILL-SET — load and manage named bundles of Harvey skills
+
+# SYNOPSIS
+
+/skill-set <list|load NAME|info NAME|create NAME|status|unload>
+
+# DESCRIPTION
+
+/skill-set groups multiple skills into a named YAML bundle stored in
+agents/skill-sets/. Loading a bundle injects every skill in the bundle
+into the current conversation context in one step.
+
+Skill-set YAML files live in agents/skill-sets/ and reference skills by
+the name field in their SKILL.md frontmatter (e.g. "fountain-analysis").
+
+# SUBCOMMANDS
+
+list
+  List all YAML files found in agents/skill-sets/.
+
+load NAME
+  Parse NAME.yaml, validate every skill exists in agents/skills/, count
+  tokens for the combined bodies, and load each skill into context. Warns
+  when combined tokens exceed 50 % of the active context window; errors
+  when they exceed 100 %.
+
+info NAME
+  Show the skill-set description and the skills it contains without loading.
+
+create NAME
+  Scaffold a new NAME.yaml in agents/skill-sets/ with placeholder content.
+
+status
+  Show the currently loaded skill-set (if any).
+
+unload
+  Clear the active skill-set indicator. The injected context remains in
+  history; use /clear if you need a clean slate.
+
+# YAML FORMAT
+
+  name: go-dev
+  description: |
+    Skills for Go development sessions.
+  skills:
+    - fountain-analysis
+    - review-knowledge-base
+  metadata:
+    version: "1.0"
+    author: "R. S. Doiel"
+
+# EXAMPLES
+
+List available bundles:
+
+  /skill-set list
+
+Load the fountain bundle:
+
+  /skill-set load fountain
+
+Show bundle contents without loading:
+
+  /skill-set info fountain
+
+Check what is active:
+
+  /skill-set status
+
+Create a new bundle:
+
+  /skill-set create my-bundle
+
+# SEE ALSO
+
+  /skill load NAME — load a single skill
+  /skill list      — list individual skills
+  /help skills     — skills system overview
 
 `
 

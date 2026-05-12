@@ -128,3 +128,42 @@ func TestLoadHarveyMD_preambleAlwaysFirst(t *testing.T) {
 		t.Error("HARVEY.md content must not appear before the agentPreamble")
 	}
 }
+
+// ─── ResolveModelAlias ────────────────────────────────────────────────────────
+
+func TestResolveModelAlias_hit(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases["qwen-coder"] = "qwen2.5-coder:7b"
+
+	got := cfg.ResolveModelAlias("qwen-coder")
+	if got != "qwen2.5-coder:7b" {
+		t.Errorf("got %q, want %q", got, "qwen2.5-coder:7b")
+	}
+}
+
+func TestResolveModelAlias_caseInsensitive(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases["qwen-coder"] = "qwen2.5-coder:7b"
+
+	got := cfg.ResolveModelAlias("QWEN-CODER")
+	if got != "qwen2.5-coder:7b" {
+		t.Errorf("got %q, want %q", got, "qwen2.5-coder:7b")
+	}
+}
+
+func TestResolveModelAlias_miss(t *testing.T) {
+	cfg := DefaultConfig()
+	got := cfg.ResolveModelAlias("llama3.2:latest")
+	if got != "llama3.2:latest" {
+		t.Errorf("got %q, want %q", got, "llama3.2:latest")
+	}
+}
+
+func TestResolveModelAlias_nilMap(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases = nil
+	got := cfg.ResolveModelAlias("anything")
+	if got != "anything" {
+		t.Errorf("got %q, want %q", got, "anything")
+	}
+}

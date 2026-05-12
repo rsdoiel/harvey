@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 /** ChatStats holds timing and token-count data returned by a backend after
@@ -97,8 +99,10 @@ func (s ChatStats) FormatWithModels(models []string) string {
  *   msg := Message{Role: "user", Content: "Hello!"}
  */
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content"`
+	ToolCalls  []anyllm.ToolCall `json:"tool_calls,omitempty"`  // assistant → tool requests
+	ToolCallID string           `json:"tool_call_id,omitempty"` // tool → result correlation
 }
 
 /** LLMClient is the interface implemented by each LLM backend (Ollama,
@@ -158,6 +162,8 @@ type Agent struct {
 	PinnedContext string         // persists across /clear; re-injected after system prompt
 	Routes        *RouteRegistry // registered remote endpoints; nil when routing not configured
 	ActiveSkill   string         // name of the most recently loaded skill; "" when none
+	ActiveSkillSet string        // name of the currently loaded skill-set bundle; "" when none
+	Tools         *ToolRegistry  // schema-based tool registry; nil when tools are disabled
 	commands      map[string]*Command
 	statHistory   []ChatStats // rolling window of recent turn stats
 	AuditBuffer   *AuditBuffer // in-memory audit log ring buffer; nil until initialized
@@ -212,7 +218,7 @@ func NewAgent(cfg *Config, ws *Workspace) *Agent {
 		ep := cfg.Routes[i]
 		rr.Add(&ep)
 	}
-	return &Agent{
+	a := &Agent{
 		Config:      cfg,
 		Workspace:   ws,
 		Routes:      rr,
@@ -220,6 +226,11 @@ func NewAgent(cfg *Config, ws *Workspace) *Agent {
 		commands:    make(map[string]*Command),
 		AuditBuffer: NewAuditBuffer(DefaultAuditBufferCapacity),
 	}
+	if cfg.ToolsEnabled && ws != nil {
+		a.Tools = NewToolRegistry()
+		RegisterBuiltinTools(a.Tools, a)
+	}
+	return a
 }
 
 /** AddMessage appends a message to the conversation history.
@@ -364,6 +375,9 @@ func (a *Agent) spinnerLabel() string {
 	model := ""
 	if a.Client != nil {
 		model = a.Client.Name()
+	}
+	if a.ActiveSkillSet != "" {
+		return model + " · [" + a.ActiveSkillSet + "]"
 	}
 	if a.ActiveSkill != "" {
 		return model + " · " + a.ActiveSkill

@@ -19,11 +19,14 @@ import (
 // EXCLUDED from child processes to prevent sensitive data leakage.
 var sensitiveCmdEnvVars = []string{
 	"ANTHROPIC_API_KEY",
+	"COHERE_API_KEY",
 	"DEEPSEEK_API_KEY",
 	"GEMINI_API_KEY",
 	"GOOGLE_API_KEY",
+	"GROQ_API_KEY",
 	"MISTRAL_API_KEY",
 	"OPENAI_API_KEY",
+	"PERPLEXITY_API_KEY",
 }
 
 // safeCmdEnvPrefixes contains environment variable name prefixes that are
@@ -255,6 +258,11 @@ func (a *Agent) registerCommands() {
 			Description: "Rename the active session recording file",
 			Handler:     cmdRename,
 		},
+		"read-dir": {
+			Usage:       "/read-dir [PATH] [--depth N]",
+			Description: "Read all eligible files in a directory into context",
+			Handler:     cmdReadDir,
+		},
 		"file-tree": {
 			Usage:       "/file-tree [PATH]",
 			Description: "Display a tree listing of the workspace (or a subdirectory)",
@@ -264,6 +272,11 @@ func (a *Agent) registerCommands() {
 			Usage:       "/skill <list|load NAME|info NAME|status|new|run NAME>",
 			Description: "List or load Agent Skills from the skill catalog",
 			Handler:     cmdSkill,
+		},
+		"skill-set": {
+			Usage:       "/skill-set <list|load NAME|info NAME|create NAME|status|unload>",
+			Description: "Load or manage named bundles of skills from agents/skill-sets/",
+			Handler:     cmdSkillSet,
 		},
 		"inspect": {
 			Usage:       "/inspect [MODEL]",
@@ -418,6 +431,9 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "rag":
 			fmt.Fprint(out, FmtHelp(RagHelpText, "", "", "", ""))
 			return nil
+		case "read-dir", "readdir":
+			fmt.Fprint(out, FmtHelp(ReadDirHelpText, "", "", "", ""))
+			return nil
 		case "file-tree", "filetree":
 			fmt.Fprint(out, FmtHelp(FileTreeHelpText, "", "", "", ""))
 			return nil
@@ -426,6 +442,9 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			return nil
 		case "rename":
 			fmt.Fprint(out, FmtHelp(RenameHelpText, "", "", "", ""))
+			return nil
+		case "model-alias", "model alias", "alias":
+			fmt.Fprint(out, FmtHelp(ModelAliasHelpText, "", "", "", ""))
 			return nil
 		case "routing", "route", "router":
 			fmt.Fprint(out, FmtHelp(RoutingHelpText, "", "", "", ""))
@@ -436,8 +455,11 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "skills", "skill":
 			fmt.Fprint(out, FmtHelp(SkillsHelpText, "", "", "", ""))
 			return nil
+		case "skill-set", "skillset", "skill-sets":
+			fmt.Fprint(out, FmtHelp(SkillSetHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: clear, context, editing, file-tree, kb, ollama, rag, record, rename, routing, session, skills\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: clear, context, editing, file-tree, kb, model-alias, ollama, rag, read-dir, record, rename, routing, session, skill-set, skills\n\n", args[0])
 		}
 	}
 
@@ -604,6 +626,16 @@ func routeAdd(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, " (%s)", model)
 	}
 	fmt.Fprintln(out)
+	if strings.HasPrefix(rawURL, "http://") {
+		host := strings.TrimPrefix(rawURL, "http://")
+		if i := strings.IndexAny(host, "/:"); i >= 0 {
+			host = host[:i]
+		}
+		if host != "localhost" && host != "127.0.0.1" {
+			fmt.Fprintln(out, "  Warning: plain HTTP — prompts and responses travel unencrypted.")
+			fmt.Fprintln(out, "           Use https:// if the server supports TLS.")
+		}
+	}
 	return nil
 }
 
@@ -1846,6 +1878,192 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 	return nil
 }
 
+// ─── /read-dir ───────────────────────────────────────────────────────────────
+
+// defaultMaxReadDirBytes is the total context cap for /read-dir.
+const defaultMaxReadDirBytes = 256 * 1024
+
+/** cmdReadDir walks a workspace directory and injects all eligible files into
+ * the conversation as a context message. Files are skipped when hidden,
+ * binary, inside agents/, matching sensitive patterns, or over 64 KB.
+ * The total injected bytes are capped at 256 KB.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent with a configured Workspace.
+ *   args ([]string)  — optional [PATH] and [--depth N] flags.
+ *   out  (io.Writer) — destination for progress output.
+ *
+ * Returns:
+ *   error — path-resolution or OS errors only; skips are reported, not errored.
+ *
+ * Example:
+ *   /read-dir harvey/ --depth 1
+ */
+func cmdReadDir(a *Agent, args []string, out io.Writer) error {
+	if a.Workspace == nil {
+		fmt.Fprintln(out, "No workspace initialised.")
+		return nil
+	}
+
+	dirArg := "."
+	maxDepth := 2
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--depth", "-d":
+			if i+1 >= len(args) {
+				fmt.Fprintln(out, "read-dir: --depth requires a number")
+				return nil
+			}
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n < 0 {
+				fmt.Fprintf(out, "read-dir: invalid depth %q\n", args[i])
+				return nil
+			}
+			maxDepth = n
+		default:
+			if dirArg != "." {
+				fmt.Fprintln(out, "Usage: /read-dir [PATH] [--depth N]")
+				return nil
+			}
+			dirArg = args[i]
+		}
+	}
+
+	absDir, err := a.Workspace.AbsPath(dirArg)
+	if err != nil {
+		return fmt.Errorf("read-dir: %w", err)
+	}
+
+	relDir, _ := filepath.Rel(a.Workspace.Root, absDir)
+	if !a.CheckReadPermission(relDir) {
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionFileRead, relDir, StatusDenied)
+		}
+		fmt.Fprintf(out, "read-dir: read permission denied for %s\n", relDir)
+		return nil
+	}
+
+	info, err := os.Stat(absDir)
+	if err != nil {
+		return fmt.Errorf("read-dir: %w", err)
+	}
+	if !info.IsDir() {
+		fmt.Fprintf(out, "read-dir: %s is not a directory\n", dirArg)
+		return nil
+	}
+
+	const perFileCap = defaultMaxOutputBytes
+
+	var sb strings.Builder
+	sb.WriteString("[context: /read-dir " + dirArg + "]\n")
+
+	var ok, skipped, totalBytes int
+	stopped := false
+
+	filepath.WalkDir(absDir, func(p string, d fs.DirEntry, werr error) error {
+		if werr != nil || stopped {
+			return nil
+		}
+
+		if d.IsDir() {
+			if p == absDir {
+				return nil
+			}
+			if strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			// Enforce maxDepth (0 = unlimited).
+			if maxDepth > 0 {
+				rel, _ := filepath.Rel(absDir, p)
+				level := strings.Count(rel, string(filepath.Separator)) + 1
+				if level >= maxDepth {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+
+		// Skip hidden files.
+		if strings.HasPrefix(d.Name(), ".") {
+			skipped++
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(a.Workspace.Root, p)
+
+		if isAgentsDir(a.Workspace.Root, p) || sensitiveFileDenied(p) {
+			skipped++
+			return nil
+		}
+
+		if !a.CheckReadPermission(relPath) {
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionFileRead, relPath, StatusDenied)
+			}
+			skipped++
+			return nil
+		}
+
+		data, err := os.ReadFile(p)
+		if err != nil {
+			skipped++
+			return nil
+		}
+
+		if isBinary(data) {
+			skipped++
+			return nil
+		}
+
+		if len(data) > perFileCap {
+			fmt.Fprintf(out, "  ~ %s (%d bytes, exceeds per-file cap — skipped)\n", relPath, len(data))
+			skipped++
+			return nil
+		}
+
+		if totalBytes+len(data) > defaultMaxReadDirBytes {
+			stopped = true
+			return nil
+		}
+
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionFileRead, relPath, StatusSuccess)
+		}
+
+		sb.WriteString("\n```" + relPath + "\n")
+		sb.Write(data)
+		if len(data) > 0 && data[len(data)-1] != '\n' {
+			sb.WriteByte('\n')
+		}
+		sb.WriteString("```\n")
+
+		totalBytes += len(data)
+		ok++
+		fmt.Fprintf(out, "  ✓ %s (%d bytes)\n", relPath, len(data))
+		return nil
+	})
+
+	if ok == 0 {
+		fmt.Fprintln(out, "  No readable files found.")
+		return nil
+	}
+
+	a.AddMessage("user", sb.String())
+	if stopped {
+		fmt.Fprintf(out, "  %d file(s) added (%d bytes). Reached %d KB cap — narrow scope with a subdirectory path or --depth.\n",
+			ok, totalBytes, defaultMaxReadDirBytes/1024)
+	} else {
+		fmt.Fprintf(out, "  %d file(s) added to context (%d bytes)", ok, totalBytes)
+		if skipped > 0 {
+			fmt.Fprintf(out, ", %d skipped (hidden/binary/sensitive/too large)", skipped)
+		}
+		fmt.Fprintln(out, ".")
+	}
+	return nil
+}
+
 // ─── /write ──────────────────────────────────────────────────────────────────
 
 // cmdWrite writes the last assistant reply to a workspace file. If the reply
@@ -1968,6 +2186,16 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 	cmdLine := strings.Join(args, " ")
 	fmt.Fprintf(out, "  $ %s\n", cmdLine)
 
+	// Validate command line to prevent shell metacharacter injection
+	program, cmdArgs, err := parseCommandLine(cmdLine)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  Invalid command: %v\n"), err)
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionCommand, cmdLine, StatusDenied)
+		}
+		return nil
+	}
+
 	// Use a context with an optional timeout to prevent hanging commands.
 	var ctx context.Context
 	var cancel context.CancelFunc
@@ -1978,7 +2206,7 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 	}
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd := exec.CommandContext(ctx, program, cmdArgs...)
 	cmd.Dir = a.Workspace.Root
 	// Filter environment to prevent sensitive data leakage
 	cmd.Env = filterCommandEnvironment(os.Environ())
@@ -2716,6 +2944,266 @@ func warnIfSkillStale(skill *SkillMeta, out io.Writer) {
 	}
 }
 
+// ─── /skill-set ──────────────────────────────────────────────────────────────
+
+/** cmdSkillSet manages named YAML bundles of skills stored in
+ * agents/skill-sets/. Subcommands: list, load, info, create, status, unload.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent.
+ *   args ([]string)  — subcommand and optional name.
+ *   out  (io.Writer) — destination for output.
+ *
+ * Returns:
+ *   error — non-nil on unexpected I/O errors only; user errors are printed.
+ *
+ * Example:
+ *   /skill-set load fountain
+ */
+func cmdSkillSet(a *Agent, args []string, out io.Writer) error {
+	if a.Workspace == nil {
+		fmt.Fprintln(out, "No workspace initialised.")
+		return nil
+	}
+	if len(args) == 0 || strings.ToLower(args[0]) == "list" {
+		return skillSetList(a, out)
+	}
+	switch strings.ToLower(args[0]) {
+	case "load":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /skill-set load NAME")
+			return nil
+		}
+		return skillSetLoad(a, args[1], out)
+	case "info":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /skill-set info NAME")
+			return nil
+		}
+		return skillSetInfo(a, args[1], out)
+	case "create":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /skill-set create NAME")
+			return nil
+		}
+		return skillSetCreate(a, args[1], out)
+	case "status":
+		return skillSetStatus(a, out)
+	case "unload":
+		return skillSetUnload(a, out)
+	default:
+		fmt.Fprintf(out, "  Unknown subcommand %q. Usage: /skill-set <list|load NAME|info NAME|create NAME|status|unload>\n", args[0])
+	}
+	return nil
+}
+
+func skillSetList(a *Agent, out io.Writer) error {
+	names, err := listSkillSetNames(a.Workspace)
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		fmt.Fprintln(out, "  No skill-sets found in agents/skill-sets/.")
+		fmt.Fprintln(out, "  Create one with: /skill-set create NAME")
+		return nil
+	}
+	fmt.Fprintln(out)
+	for _, name := range names {
+		path := filepath.Join(skillSetDir(a.Workspace), name+".yaml")
+		ss, err := ParseSkillSet(path)
+		if err != nil {
+			fmt.Fprintf(out, "  %-24s  (parse error: %v)\n", name, err)
+			continue
+		}
+		desc := ss.Description
+		if len(desc) > 60 {
+			desc = desc[:57] + "..."
+		}
+		active := ""
+		if a.ActiveSkillSet == name {
+			active = " ✓"
+		}
+		fmt.Fprintf(out, "  %-24s%s  %s\n", name, active, desc)
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  Use /skill-set load NAME to activate a bundle.")
+	return nil
+}
+
+func skillSetLoad(a *Agent, name string, out io.Writer) error {
+	if len(a.Skills) == 0 {
+		fmt.Fprintln(out, "  No skills discovered. Run Harvey from a workspace with agents/skills/.")
+		return nil
+	}
+
+	ss, err := findSkillSet(a.Workspace, name)
+	if err != nil {
+		fmt.Fprintf(out, "  %v\n", err)
+		return nil
+	}
+
+	if err := validateSkillSet(ss, a.Skills); err != nil {
+		fmt.Fprintf(out, "  %v\n", err)
+		return nil
+	}
+
+	// Count tokens for the combined skill bodies.
+	var combined strings.Builder
+	for _, skillName := range ss.Skills {
+		combined.WriteString(a.Skills[skillName].Body)
+		combined.WriteString("\n")
+	}
+	ctx := context.Background()
+	model := ""
+	if a.Client != nil {
+		model = a.Client.Name()
+	}
+	tokens, exact := CountTokens(ctx, a.Config.OllamaURL, model, combined.String())
+	contextLimit := a.effectiveContextLimit()
+
+	if contextLimit > 0 {
+		pct := tokens * 100 / contextLimit
+		switch {
+		case pct >= 100:
+			fmt.Fprintf(out, "  ✗ Skill-set %q would use ~%d tokens (%d%% of %d-token context) — too large to load.\n",
+				ss.Name, tokens, pct, contextLimit)
+			fmt.Fprintln(out, "  Use /skill-set info to review the bundle and reduce its skills.")
+			return nil
+		case pct >= 50:
+			fmt.Fprintf(out, "  ⚠ Skill-set %q uses ~%d tokens (%d%% of %d-token context).\n",
+				ss.Name, tokens, pct, contextLimit)
+		}
+	}
+
+	// Load each skill in order.
+	loaded := 0
+	for _, skillName := range ss.Skills {
+		if err := skillLoad(a, skillName, out); err != nil {
+			fmt.Fprintf(out, "  ✗ %s: %v\n", skillName, err)
+		} else {
+			loaded++
+		}
+	}
+
+	a.ActiveSkillSet = ss.Name
+	a.ActiveSkill = "" // skill-set takes priority in the status line
+
+	exactStr := "~"
+	if exact {
+		exactStr = ""
+	}
+	fmt.Fprintf(out, "  Skill-set %q loaded: %d/%d skills, %s%d tokens",
+		ss.Name, loaded, len(ss.Skills), exactStr, tokens)
+	if contextLimit > 0 {
+		fmt.Fprintf(out, " (%d%% of context)", tokens*100/contextLimit)
+	}
+	fmt.Fprintln(out, ".")
+	return nil
+}
+
+func skillSetInfo(a *Agent, name string, out io.Writer) error {
+	ss, err := findSkillSet(a.Workspace, name)
+	if err != nil {
+		fmt.Fprintf(out, "  %v\n", err)
+		return nil
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "  Name:        %s\n", ss.Name)
+	if ss.Description != "" {
+		fmt.Fprintf(out, "  Description: %s\n", strings.ReplaceAll(strings.TrimRight(ss.Description, "\n"), "\n", "\n               "))
+	}
+	if len(ss.Metadata) > 0 {
+		keys := make([]string, 0, len(ss.Metadata))
+		for k := range ss.Metadata {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(out, "  %-12s %s\n", k+":", ss.Metadata[k])
+		}
+	}
+	fmt.Fprintf(out, "  Skills (%d):\n", len(ss.Skills))
+	for _, skillName := range ss.Skills {
+		status := "✓ found"
+		desc := ""
+		if a.Skills != nil {
+			if meta, ok := a.Skills[skillName]; ok {
+				d := meta.Description
+				if len(d) > 60 {
+					d = d[:57] + "..."
+				}
+				desc = " — " + d
+			} else {
+				status = "✗ not found"
+			}
+		}
+		fmt.Fprintf(out, "    [%s] %s%s\n", status, skillName, desc)
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
+func skillSetCreate(a *Agent, name string, out io.Writer) error {
+	dir := skillSetDir(a.Workspace)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("skill-set create: %w", err)
+	}
+	path := filepath.Join(dir, name+".yaml")
+	if _, err := os.Stat(path); err == nil {
+		fmt.Fprintf(out, "  Skill-set %q already exists at %s\n", name, path)
+		return nil
+	}
+	content := fmt.Sprintf(`name: %s
+description: |
+  Describe when to use this skill bundle.
+skills:
+  - skill-name-here
+metadata:
+  version: "1.0"
+`, name)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("skill-set create: %w", err)
+	}
+	fmt.Fprintf(out, "  Created %s\n", path)
+	fmt.Fprintln(out, "  Edit the file to list the skills you want in this bundle.")
+	return nil
+}
+
+func skillSetStatus(a *Agent, out io.Writer) error {
+	if a.ActiveSkillSet == "" {
+		fmt.Fprintln(out, "  No skill-set loaded.")
+		if a.ActiveSkill != "" {
+			fmt.Fprintf(out, "  Individual skill active: %s\n", a.ActiveSkill)
+		}
+		return nil
+	}
+	fmt.Fprintf(out, "  Active skill-set: %s\n", a.ActiveSkillSet)
+	if ss, err := findSkillSet(a.Workspace, a.ActiveSkillSet); err == nil {
+		for _, skillName := range ss.Skills {
+			fmt.Fprintf(out, "    - %s\n", skillName)
+		}
+	}
+	return nil
+}
+
+func skillSetUnload(a *Agent, out io.Writer) error {
+	if a.ActiveSkillSet == "" && a.ActiveSkill == "" {
+		fmt.Fprintln(out, "  No skill-set or skill currently active.")
+		return nil
+	}
+	prev := a.ActiveSkillSet
+	a.ActiveSkillSet = ""
+	a.ActiveSkill = ""
+	if prev != "" {
+		fmt.Fprintf(out, "  Skill-set %q unloaded from status indicator.\n", prev)
+	} else {
+		fmt.Fprintln(out, "  Skill indicator cleared.")
+	}
+	fmt.Fprintln(out, "  Note: skill content already injected into context history remains.")
+	fmt.Fprintln(out, "  Use /clear for a clean slate.")
+	return nil
+}
+
 // ─── /model ──────────────────────────────────────────────────────────────────
 
 /** cmdModel lists available models from all reachable backends, or switches
@@ -2743,7 +3231,73 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return modelList(a, out)
 	}
+	if args[0] == "alias" {
+		return cmdModelAlias(a, args[1:], out)
+	}
 	return modelSwitch(a, args[0], out)
+}
+
+// cmdModelAlias manages the model_aliases map in harvey.yaml.
+// Subcommands: list, set ALIAS FULLNAME, remove ALIAS
+func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 || args[0] == "list" {
+		if len(a.Config.ModelAliases) == 0 {
+			fmt.Fprintln(out, "  No model aliases defined.")
+			fmt.Fprintln(out, "  Use: /model alias set ALIAS FULL_MODEL_NAME")
+			return nil
+		}
+		// Collect and sort for deterministic output.
+		aliases := make([]string, 0, len(a.Config.ModelAliases))
+		for k := range a.Config.ModelAliases {
+			aliases = append(aliases, k)
+		}
+		sortStrings(aliases)
+		fmt.Fprintln(out, "  Model aliases:")
+		for _, k := range aliases {
+			fmt.Fprintf(out, "    %-20s → %s\n", k, a.Config.ModelAliases[k])
+		}
+		return nil
+	}
+
+	switch args[0] {
+	case "set":
+		if len(args) < 3 {
+			fmt.Fprintln(out, "Usage: /model alias set ALIAS FULL_MODEL_NAME")
+			return nil
+		}
+		alias := strings.ToLower(args[1])
+		full := args[2]
+		if a.Config.ModelAliases == nil {
+			a.Config.ModelAliases = make(map[string]string)
+		}
+		a.Config.ModelAliases[alias] = full
+		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "  ✗ Failed to save: %v\n", err)
+			return nil
+		}
+		fmt.Fprintf(out, "  Alias set: %s → %s\n", alias, full)
+
+	case "remove", "rm", "delete":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "Usage: /model alias remove ALIAS")
+			return nil
+		}
+		alias := strings.ToLower(args[1])
+		if _, ok := a.Config.ModelAliases[alias]; !ok {
+			fmt.Fprintf(out, "  Alias %q not found.\n", alias)
+			return nil
+		}
+		delete(a.Config.ModelAliases, alias)
+		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "  ✗ Failed to save: %v\n", err)
+			return nil
+		}
+		fmt.Fprintf(out, "  Alias %q removed.\n", alias)
+
+	default:
+		fmt.Fprintf(out, "  Unknown subcommand %q. Use: list, set, remove\n", args[0])
+	}
+	return nil
 }
 
 // modelList prints all models from every reachable backend, grouped by backend.
@@ -2791,6 +3345,12 @@ func modelSwitch(a *Agent, name string, out io.Writer) error {
 
 	if strings.HasPrefix(name, ollamaPrefix) {
 		name = strings.TrimPrefix(name, ollamaPrefix)
+	}
+
+	// Resolve alias → full model name before the Ollama lookup.
+	if resolved := a.Config.ResolveModelAlias(name); resolved != name {
+		fmt.Fprintf(out, "  Resolving alias %q → %s\n", name, resolved)
+		name = resolved
 	}
 
 	if !ProbeOllama(a.Config.OllamaURL) {

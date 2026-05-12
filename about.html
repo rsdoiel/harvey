@@ -5,7 +5,7 @@
     <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
     <li><a href="/">Home</a></li>
@@ -19,52 +19,9 @@
 </nav>
 <section>
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.2">harvey 0.0.2</h2>
+<h2 id="harvey-0.0.3">harvey 0.0.3</h2>
 <p>Working proof of concept.</p>
 <ul>
-<li>harvey directory, session overhaul, keyboard shortcuts, KB search
-&amp; inject</li>
-<li>Renamed state directory from .harvey/ to harvey/ (workspace-local
-and ~/harvey/ globally)</li>
-<li>Dropped SQLite sessions.db in favour of Fountain/SPMD session files;
-sessions now live in harvey/sessions/ and persist as .spmd recordings
-automatically on every run</li>
-<li>Session resume prompt now appears before Ollama model selection
-(default: No); selecting a prior session pre-selects the model recorded
-in that file</li>
-<li>Added .spmd as the primary session file extension; .fountain files
-from other LLM systems are also accepted everywhere Harvey reads
-sessions</li>
-<li>Added harvey/harvey.yaml for per-workspace overrides: knowledge_db,
-sessions_dir, agents_dir, auto_record</li>
-<li>Added Ctrl+X Ctrl+E chord to the termlib line editor: opens $EDITOR
-(→ $VISUAL → vi) with the current prompt buffer; saved content is
-submitted when the editor exits</li>
-<li>Added FTS5 full-text search to the knowledge base: /kb search TERM
-ranks results across observations, projects, and concepts using bm25();
-supports FTS5 phrase and prefix syntax</li>
-<li>Added /kb inject [PROJECT-NAME]: formats knowledge base content as
-Markdown and adds it to the conversation context so the LLM can reason
-about it</li>
-<li>Added keyboard-shortcuts section to getting_started.md and LINE
-EDITING section to –help / man page</li>
-<li>Added RAG support and enhance metadata handling for the models pull
-from ollama</li>
-<li>Switch from custom LLMClient to Mozilla’s any-llm-go.</li>
-<li>Dropped support for publicai.co’s API (couldn’t access it for
-testing)</li>
-<li>Security hardening: added safe mode command allowlist (/safemode),
-path-based workspace permissions (/permissions), in-memory audit log
-(/audit), and API key filtering for all child processes</li>
-<li>Security fix: removed hard-coded HTTP timeout on Ollama provider
-(was 120 s, caused failures on slow hardware such as Raspberry Pi);
-timeout is now configurable via ollama_timeout in harvey.yaml,
-defaulting to unlimited</li>
-<li>Configurable shell-command timeout via run_timeout in harvey.yaml
-(default 5 minutes, supports Go duration strings such as “10m” or
-“1m30s”)</li>
-<li>Safe mode and allowlist changes now persist across sessions in
-harvey.yaml</li>
 <li>Fixed RAG startup error (SQLITE_CANTOPEN) when agents/rag/ directory
 does not exist; NewRagStore now creates parent directories
 automatically</li>
@@ -85,27 +42,30 @@ reliably emits path-tagged code blocks (used by auto-execute)</li>
 ending the session</li>
 <li>Added /file-tree [PATH] command to display a tree-style workspace
 listing</li>
+<li>Added /model alias list|set|remove — manage aliases interactively;
+set/remove save to harvey.yaml immediately</li>
+<li>Improved and tightened up tool support</li>
+<li>Added /read-dir to read in an entire directory contents into the
+current context</li>
+<li>Improved keyboard handling</li>
+<li>Added support for skill sets, <code>/skill-set</code>, which can be
+loaded and unloaded together</li>
 </ul>
 <h2 id="authors">Authors</h2>
 <ul>
 <li><a href="https://orcid.org/0000-0003-0900-6903">R. S. Doiel</a></li>
 </ul>
-<p>Harvey is an agent similar to Claude Code but written in Go and
-designed to use Ollama server to access large language models locally.
-It is a terminal based application.</p>
+<p>Harvey is an agent REPL written in Go and designed to use Ollama
+server to access language models locally. It is a terminal based
+application.</p>
 <p>The Harvey name was inspired by the play of that name by Mary Chase.
 I saw parallels between the story Harvey and what I see as my personal
-language model agent. Most people think only of the over hyped big
-companies wasting billions. I think of my little computers and what they
-can accomplish. Harvey in the play is a mythic creature. Harvey is a
-Púca, my Harvey is similar in this commercial AI hype craze. How I did
-learned about Harvey? When I was young I saw the film on television
-called <a
-href="https://en.wikipedia.org/wiki/Harvey_(1950_film)">Harvey</a>
-featuring James Stewart. I remember really liking the film as much as I
-like another old film called Topper. Today I like the idea of a software
-Harvey that those who take time to see it, or in the case run it on a
-little computer, can have an adventure and some fun with it.</p>
+language model agent. Many people think of agents only in the context of
+very big companies. I think of my little computers and what they can
+accomplish with their own agent. Harvey, as a small agent for small and
+tiny computers, is a play on a mythic creature. Harvey is a Púca, a
+software Púca. Harvey can be fun for those who take time for it. It runs
+on a little computers. Have an adventure and some fun with Harvey.</p>
 <ul>
 <li><a href="https://www.gnu.org/licenses/agpl-3.0.txt">License</a></li>
 <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a>

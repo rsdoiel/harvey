@@ -114,39 +114,122 @@ func (a *AnyLLMClient) Name() string { return a.provName + " (" + a.modelName + 
  *   stats, err := client.Chat(ctx, agent.History, os.Stdout)
  */
 func (a *AnyLLMClient) Chat(ctx context.Context, messages []Message, out io.Writer) (ChatStats, error) {
-	anyllmMsgs := make([]anyllm.Message, len(messages))
-	for i, m := range messages {
-		anyllmMsgs[i] = anyllm.Message{Role: m.Role, Content: m.Content}
+	stats, _, err := a.chatInternal(ctx, messages, nil, out)
+	return stats, err
+}
+
+/** ChatWithTools sends the conversation history with tool schemas to the
+ * provider, streams reply tokens to out, and returns accumulated tool calls
+ * (if the model requests them) alongside timing stats.
+ *
+ * Parameters:
+ *   ctx      (context.Context)  — controls the request lifetime.
+ *   messages ([]Message)        — full conversation history including tool results.
+ *   tools    ([]anyllm.Tool)    — tool schemas to send in CompletionParams.
+ *   out      (io.Writer)        — destination for streamed reply tokens.
+ *
+ * Returns:
+ *   ChatStats         — timing and token counts.
+ *   []anyllm.ToolCall — tool calls requested by the model (nil if none).
+ *   error             — non-nil on transport or API failure.
+ *
+ * Example:
+ *   stats, calls, err := client.ChatWithTools(ctx, history, registry.GetToolSchemas(), os.Stdout)
+ */
+func (a *AnyLLMClient) ChatWithTools(ctx context.Context, messages []Message, tools []anyllm.Tool, out io.Writer) (ChatStats, []anyllm.ToolCall, error) {
+	return a.chatInternal(ctx, messages, tools, out)
+}
+
+// chatInternal is the shared implementation for Chat and ChatWithTools.
+// When tools is nil/empty, no tools are sent and tool calls are never returned.
+func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, tools []anyllm.Tool, out io.Writer) (ChatStats, []anyllm.ToolCall, error) {
+	anyllmMsgs := harvestMessagesToAnyllm(messages)
+
+	params := anyllm.CompletionParams{
+		Model:    a.modelName,
+		Messages: anyllmMsgs,
+	}
+	if len(tools) > 0 {
+		params.Tools = tools
 	}
 
 	start := time.Now()
-	chunks, errs := a.provider.CompletionStream(ctx, anyllm.CompletionParams{
-		Model:    a.modelName,
-		Messages: anyllmMsgs,
-	})
+	chunks, errs := a.provider.CompletionStream(ctx, params)
 
+	// accumulatedCalls holds tool call deltas merged by index.
+	var accumulatedCalls []anyllm.ToolCall
 	var stats ChatStats
+
 	for chunk := range chunks {
-		if len(chunk.Choices) > 0 {
-			if delta := chunk.Choices[0].Delta.Content; delta != "" {
-				fmt.Fprint(out, delta)
+		if len(chunk.Choices) == 0 {
+			if chunk.Usage != nil {
+				stats.PromptTokens = chunk.Usage.PromptTokens
+				stats.ReplyTokens = chunk.Usage.CompletionTokens
 			}
+			continue
 		}
-		// Capture usage from whichever chunk carries it (typically the final one).
+		choice := chunk.Choices[0]
+		if delta := choice.Delta.Content; delta != "" {
+			fmt.Fprint(out, delta)
+		}
+		// Merge incremental tool call deltas.
+		for _, tc := range choice.Delta.ToolCalls {
+			mergeToolCallDelta(&accumulatedCalls, tc)
+		}
 		if chunk.Usage != nil {
 			stats.PromptTokens = chunk.Usage.PromptTokens
 			stats.ReplyTokens = chunk.Usage.CompletionTokens
 		}
 	}
+
 	stats.Elapsed = time.Since(start)
 	if stats.ReplyTokens > 0 && stats.Elapsed > 0 {
 		stats.TokensPerSec = float64(stats.ReplyTokens) / stats.Elapsed.Seconds()
 	}
 
 	if err := <-errs; err != nil {
-		return ChatStats{}, err
+		return ChatStats{}, nil, err
 	}
-	return stats, nil
+
+	if len(accumulatedCalls) == 0 {
+		return stats, nil, nil
+	}
+	return stats, accumulatedCalls, nil
+}
+
+// harvestMessagesToAnyllm converts Harvey []Message to []anyllm.Message,
+// mapping ToolCalls and ToolCallID so tool-role messages round-trip correctly.
+func harvestMessagesToAnyllm(messages []Message) []anyllm.Message {
+	out := make([]anyllm.Message, len(messages))
+	for i, m := range messages {
+		out[i] = anyllm.Message{
+			Role:       m.Role,
+			Content:    m.Content,
+			ToolCalls:  m.ToolCalls,
+			ToolCallID: m.ToolCallID,
+		}
+	}
+	return out
+}
+
+// mergeToolCallDelta merges a streaming ToolCall delta into accumulatedCalls.
+// Deltas for the same index are concatenated; new indices are appended.
+func mergeToolCallDelta(acc *[]anyllm.ToolCall, delta anyllm.ToolCall) {
+	// Find by matching ID or by appending if this is a new call.
+	for i := range *acc {
+		if (*acc)[i].ID == delta.ID || (delta.ID == "" && i == len(*acc)-1) {
+			(*acc)[i].Function.Arguments += delta.Function.Arguments
+			if delta.Function.Name != "" && (*acc)[i].Function.Name == "" {
+				(*acc)[i].Function.Name = delta.Function.Name
+			}
+			if delta.Type != "" && (*acc)[i].Type == "" {
+				(*acc)[i].Type = delta.Type
+			}
+			return
+		}
+	}
+	// New tool call.
+	*acc = append(*acc, delta)
 }
 
 /** Models returns the names of models available on this backend. For providers

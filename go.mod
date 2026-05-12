@@ -1,12 +1,12 @@
 module github.com/rsdoiel/harvey
 
-go 1.26
+go 1.26.2
 
 require (
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/mozilla-ai/any-llm-go v0.9.0
 	github.com/rsdoiel/fountain v1.0.2
-	github.com/rsdoiel/termlib v0.0.0-00010101000000-000000000000
+	github.com/rsdoiel/termlib v0.0.7
 	gopkg.in/yaml.v3 v3.0.1
 )
 

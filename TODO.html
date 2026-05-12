@@ -5,7 +5,7 @@
     <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
     <li><a href="/">Home</a></li>
@@ -31,11 +31,66 @@ a help guide in REPL</label></li>
 <li><label><input type="checkbox" checked="" />/clear command is missing
 a help guide in REPL</label></li>
 </ul>
-<h2 id="next-steps">Next Steps</h2>
+<h2 id="next-steps-upcoming-features">Next Steps (upcoming
+features)</h2>
 <ul class="task-list">
-<li><label><input type="checkbox" />Add a <code>/rename</code> command
-so I can rename the session files in Harvey like I do in Claude
-Code.</label></li>
+<li><label><input type="checkbox"
+checked="" /><strong><code>/read-dir</code> command</strong>
+(<code>prompts/read_files.md</code>): Read all files in a directory into
+current context. Needs size/depth limits and security
+review.</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Keyboard
+behaviors — Ctrl+J</strong>
+(<code>prompts/keyboard_behaviors.md</code>): Ctrl+J inserts a newline
+for multi-line input in termlib LineEditor; Enter submits. Backspace
+merges lines. History navigation disabled while in multi-line mode.
+Items still open: (b) <code>@</code>-prefix file autocompletion; (c)
+Ctrl+G (Ctrl+X Ctrl+E already covers editor launch).</label></li>
+<li><label><input type="checkbox"
+checked="" /><strong><code>/skill-set</code> command</strong>
+(<code>prompts/skill-sets.md</code>, design doc
+<code>Harvey_Skill-Set_Design.md</code>): Load/unload named YAML bundles
+of skills from <code>agents/skill-sets/</code>. Validates skill names
+against catalog, counts tokens via Ollama <code>/api/tokenize</code>
+(heuristic fallback), warns at &gt;50% context and blocks at &gt;100%.
+Sample <code>agents/skill-sets/fountain.yaml</code>
+included.</label></li>
+<li><label><input type="checkbox"
+checked="" /><strong><code>fountain-session</code> skill</strong>:
+<code>agents/skills/fountain-session/SKILL.md</code> guides agents on
+writing session handoff summaries in Fountain format. v1.1: cleaner
+<code>&lt;PLACEHOLDER&gt;</code> syntax, correct Harvey save workflow
+(auto-record + /rename or tagged code block), cross-reference to
+FOUNTAIN_FORMAT.md, optional knowledge-base step.</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Model selection
+guide</strong>: <code>agents/model_guide.md</code> updated with current
+installed models from model_cache.db — tier structure,
+tools/tagged-block capability columns, task rubric, hardware constraints
+(M1 vs Pi 500+), and suggested model aliases.</label></li>
+<li><label><input type="checkbox" />Explore adding an LSP service using
+Go lsp module for integrating Harvey with an IDE or text
+editor</label></li>
+<li><label><input type="checkbox"
+checked="" /><strong><code>/file-tree</code> command</strong>
+(<code>prompts/read_files.md</code>): Display a directory tree (like
+Unix <code>tree</code>). Needs security review — restrict to workspace
+root.</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Remove
+<code>/apply</code></strong>: Redundant with always-on
+<code>autoExecuteReply</code>; removed from <code>commands.go</code>,
+<code>helptext.go</code>, <code>cmd/harvey/main.go</code>.</label></li>
+<li><label><input type="checkbox"
+checked="" /><strong><code>SupportsTaggedBlocks</code> probe</strong>:
+Added live test to <code>ThoroughProbeModel</code> — sends a minimal
+<code>/api/generate</code> request and checks the response with
+<code>findTaggedBlocks</code>. Column added to
+<code>model_cache.db</code> with migration. Displayed in
+<code>/ollama probe</code> output alongside tools/embed.</label></li>
+<li><label><input type="checkbox" checked="" />Improve tool support with
+tool schema that can be communicated to the language model</label></li>
+<li><label><input type="checkbox" checked="" />Add a
+<code>/rename</code> command so I can rename the session files in Harvey
+like I do in Claude Code.</label></li>
 <li><label><input type="checkbox" checked="" />Change Harvey’s directory
 from “harvey” to “agents” so that everything is shared with other agent
 tools.</label></li>
@@ -48,58 +103,12 @@ for integrating Go from Mozilla AI GitHub projects —
 <code>any-llm-go v0.9.0</code> is fully integrated; all providers
 (Ollama, Llamafile, llama.cpp, Mistral, DeepSeek, Gemini, Anthropic,
 OpenAI) wired in <code>anyllm_client.go</code></label></li>
-<li><label><input type="checkbox" />Explore adding an LSP service using
-Go lsp module for integrating Harvey with an IDE or text
-editor</label></li>
-</ul>
-<h2 id="upcoming-features">Upcoming Features</h2>
-<ul class="task-list">
-<li><label><input type="checkbox" /><strong>Model aliases</strong>
-(<code>prompts/model-aliases.md</code>): Short friendly names for long
-Ollama model identifiers (e.g. <code>qwen-coder</code> →
+<li><label><input type="checkbox" checked="" /><strong>Model
+aliases</strong> (<code>prompts/model-aliases.md</code>): Short friendly
+names for long Ollama model identifiers (e.g. <code>qwen-coder</code> →
 <code>qwen2.5-coder:7b</code>). Store in <code>agents/harvey.yaml</code>
 under <code>model_aliases:</code> map. Resolve at model-selection time
 and record the full name in Fountain session headers.</label></li>
-<li><label><input type="checkbox" /><strong><code>/file-tree</code>
-command</strong> (<code>prompts/read_files.md</code>): Display a
-directory tree (like Unix <code>tree</code>). Needs security review —
-restrict to workspace root.</label></li>
-<li><label><input type="checkbox" /><strong><code>/read-dir</code>
-command</strong> (<code>prompts/read_files.md</code>): Read all files in
-a directory into current context. Needs size/depth limits and security
-review.</label></li>
-<li><label><input type="checkbox" /><strong>Keyboard behaviors</strong>
-(<code>prompts/keyboard_behaviors.md</code>): (a) Ctrl+J / Shift+Enter
-for multi-line input; (b) <code>@</code>-prefix file autocompletion; (c)
-Ctrl+G to open <code>$EDITOR</code>. Items (a) and (b) belong in
-termlib; (c) may already be partially covered by the Ctrl+X Ctrl+E chord
-— needs investigation.</label></li>
-<li><label><input type="checkbox" /><strong><code>/skill-set</code>
-command</strong> (<code>prompts/skill-sets.md</code>, design doc
-<code>Harvey_Skill-Set_Design.md</code>): Load/unload named YAML bundles
-of skills from <code>agents/skill-sets/</code>. Validate triggers,
-calculate token cost via Ollama <code>/api/tokenize</code>.</label></li>
-<li><label><input
-type="checkbox" /><strong><code>fountain-session</code> skill</strong>:
-Create <code>agents/skills/fountain-session/SKILL.md</code> to guide
-agents (especially Mistral Vibe) on how to <em>write</em> a well-formed
-session handoff summary in Fountain format. Currently only the analysis
-side (<code>fountain-analysis</code>) exists.</label></li>
-<li><label><input type="checkbox" checked="" /><strong>Remove
-<code>/apply</code></strong>: Redundant with always-on
-<code>autoExecuteReply</code>; removed from <code>commands.go</code>,
-<code>helptext.go</code>, <code>cmd/harvey/main.go</code>.</label></li>
-<li><label><input type="checkbox"
-checked="" /><strong><code>SupportsTaggedBlocks</code> probe</strong>:
-Added live test to <code>ThoroughProbeModel</code> — sends a minimal
-<code>/api/generate</code> request and checks the response with
-<code>findTaggedBlocks</code>. Column added to
-<code>model_cache.db</code> with migration. Displayed in
-<code>/ollama probe</code> output alongside tools/embed.</label></li>
-<li><label><input type="checkbox" /><strong>Model selection
-guide</strong>: Document which installed Ollama models are appropriate
-for which Harvey task types. See <code>agents/model_guide.md</code> (to
-be created).</label></li>
 </ul>
 <h2 id="security-tasks">Security Tasks</h2>
 <ul class="task-list">
@@ -342,6 +351,46 @@ covering <code>safe_mode</code>, <code>allowed_commands</code>,
 <code>permissions</code> map (format, matching rules, example),
 <code>run_timeout</code>, and
 <code>ollama_timeout</code>.</label></p></li>
+</ul>
+<h2 id="pre-release-checklist-2026-05-12">Pre-Release Checklist
+(2026-05-12)</h2>
+<h3 id="security-hardening-v0.0.3-release">Security Hardening (v0.0.3
+Release)</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><strong>Critical — <code>/run</code>
+command injection fix</strong>: Update <code>cmdRun</code> in
+<code>commands.go:2186</code> to use <code>parseCommandLine()</code> for
+argument validation, preventing shell metacharacter
+injection</label></li>
+<li><label><input type="checkbox" /><strong>High — Expand API key
+filtering</strong>: Add <code>COHERE_API_KEY</code>,
+<code>GROQ_API_KEY</code>, <code>PERPLEXITY_API_KEY</code> to sensitive
+variable lists in <code>skill_dispatch.go</code> and
+<code>commands.go</code></label></li>
+<li><label><input type="checkbox" /><strong>High — Add SSH key
+blocking</strong>: Add <code>id_rsa</code>, <code>id_ed25519</code>,
+<code>authorized_keys</code> to <code>sensitiveDenyPatterns</code> in
+<code>tools.go</code></label></li>
+<li><label><input type="checkbox" checked="" /><strong>Medium — TLS
+verification for routes</strong>: Add warning when remote routes use
+HTTP (not HTTPS) for cloud providers in
+<code>routing.go</code></label></li>
+<li><label><input type="checkbox" /><strong>Medium — Install script
+security</strong>: Document SHA256 checksum verification in
+<code>INSTALL.md</code> before pipe-to-shell instructions</label></li>
+<li><label><input type="checkbox" /><strong>Medium — Symlink
+hardening</strong>: Update <code>isAgentsDir()</code> in
+<code>tools.go</code> to use <code>filepath.EvalSymlinks</code> for
+symlink-safe comparison</label></li>
+<li><label><input type="checkbox" /><strong>Low — Tool input
+limits</strong>: Add maximum length validation for string inputs in
+<code>builtin_tools.go</code> tool handlers</label></li>
+<li><label><input type="checkbox" /><strong>Low — Rate
+limiting</strong>: Consider adding per-turn tool call limits to prevent
+DoS via rapid tool invocations</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Documentation —
+Create SECURITY.md</strong>: Document Harvey’s security model, threats,
+and mitigations for users</label></li>
 </ul>
 </section>
 </body>

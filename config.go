@@ -128,6 +128,12 @@ type Config struct {
 	// Timeout settings
 	RunTimeout    time.Duration // timeout for shell commands run via ! or /run; 0 means no timeout
 	OllamaTimeout time.Duration // HTTP client timeout for local LLM providers (Ollama, Llamafile, llama.cpp); 0 means no timeout
+	// Model aliases: short name → full Ollama model identifier
+	ModelAliases map[string]string // e.g. {"qwen-coder": "qwen2.5-coder:7b"}
+	// Tool settings
+	ToolsEnabled          bool // when true, send tool schemas to models that support it
+	MaxToolCallsPerTurn   int  // hard limit on tool call rounds per user turn; 0 = defaultMaxToolCallsPerTurn
+	MaxOutputBytes        int  // cap on tool output injected into context; 0 = defaultMaxOutputBytes
 }
 
 /** ActiveRagStore returns a pointer to the active RagStoreEntry, or nil when
@@ -241,9 +247,36 @@ func DefaultConfig() *Config {
 		SafeMode:        false,
 		AllowedCommands: allowed,
 		Permissions:     defaultPerms,
-		RunTimeout:      5 * time.Minute,
-		OllamaTimeout:   0, // no timeout — local inference can take minutes on slow hardware
+		ModelAliases:          make(map[string]string),
+		RunTimeout:            5 * time.Minute,
+		OllamaTimeout:         0, // no timeout — local inference can take minutes on slow hardware
+		ToolsEnabled:          true,
+		MaxToolCallsPerTurn:   defaultMaxToolCallsPerTurn,
+		MaxOutputBytes:        defaultMaxOutputBytes,
 	}
+}
+
+/** ResolveModelAlias returns the full Ollama model identifier for alias, or
+ * alias itself when no mapping is defined. Lookup is case-insensitive.
+ *
+ * Parameters:
+ *   alias (string) — short name typed by the user (e.g. "qwen-coder").
+ *
+ * Returns:
+ *   string — full model identifier (e.g. "qwen2.5-coder:7b") or alias unchanged.
+ *
+ * Example:
+ *   full := cfg.ResolveModelAlias("qwen-coder") // → "qwen2.5-coder:7b"
+ *   same := cfg.ResolveModelAlias("llama3.2:latest") // → "llama3.2:latest"
+ */
+func (c *Config) ResolveModelAlias(alias string) string {
+	if c.ModelAliases == nil {
+		return alias
+	}
+	if full, ok := c.ModelAliases[strings.ToLower(alias)]; ok {
+		return full
+	}
+	return alias
 }
 
 /** IsCommandAllowed returns true if cmd is in the AllowedCommands list.
@@ -512,6 +545,14 @@ type harveyYAML struct {
 	AllowedCommands []string            `yaml:"allowed_commands,omitempty"`
 	RunTimeout      string              `yaml:"run_timeout,omitempty"`    // e.g. "5m", "300s", "1m 30s", "300"
 	OllamaTimeout   string              `yaml:"ollama_timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
+	Tools           toolsYAML           `yaml:"tools,omitempty"`
+	ModelAliases    map[string]string   `yaml:"model_aliases,omitempty"`  // short name → full Ollama model ID
+}
+
+type toolsYAML struct {
+	Enabled             *bool `yaml:"enabled,omitempty"`
+	MaxToolCallsPerTurn int   `yaml:"max_tool_calls_per_turn,omitempty"`
+	MaxOutputBytes      int   `yaml:"max_output_bytes,omitempty"`
 }
 
 // parseDurationString parses a duration from a YAML string value. It accepts:
@@ -626,6 +667,25 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 			cfg.OllamaTimeout = d
 		}
 	}
+	// Load model aliases
+	if len(y.ModelAliases) > 0 {
+		if cfg.ModelAliases == nil {
+			cfg.ModelAliases = make(map[string]string)
+		}
+		for k, v := range y.ModelAliases {
+			cfg.ModelAliases[strings.ToLower(k)] = v
+		}
+	}
+	// Load tool settings
+	if y.Tools.Enabled != nil {
+		cfg.ToolsEnabled = *y.Tools.Enabled
+	}
+	if y.Tools.MaxToolCallsPerTurn > 0 {
+		cfg.MaxToolCallsPerTurn = y.Tools.MaxToolCallsPerTurn
+	}
+	if y.Tools.MaxOutputBytes > 0 {
+		cfg.MaxOutputBytes = y.Tools.MaxOutputBytes
+	}
 	return nil
 }
 
@@ -689,6 +749,42 @@ func SaveRAGConfig(ws *Workspace, cfg *Config) error {
 	if cfg.OllamaTimeout > 0 {
 		y.OllamaTimeout = cfg.OllamaTimeout.String()
 	}
+
+	out, err := yaml.Marshal(&y)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(yamlPath, out, 0644)
+}
+
+/** SaveModelAliases writes the model_aliases map back to harvey.yaml,
+ * merging with any existing content so that unrelated keys are preserved.
+ *
+ * Parameters:
+ *   ws  (*Workspace) — workspace whose agents/ directory is written.
+ *   cfg (*Config)    — source of ModelAliases to persist.
+ *
+ * Returns:
+ *   error — on path resolution, YAML parse, or file write failure.
+ *
+ * Example:
+ *   if err := SaveModelAliases(ws, cfg); err != nil {
+ *       fmt.Println("could not save aliases:", err)
+ *   }
+ */
+func SaveModelAliases(ws *Workspace, cfg *Config) error {
+	yamlPath, err := ws.AbsPath(filepath.Join(harveySubdir, "harvey.yaml"))
+	if err != nil {
+		return err
+	}
+
+	// Read existing content to preserve all other keys.
+	var y harveyYAML
+	if data, err := os.ReadFile(yamlPath); err == nil {
+		_ = yaml.Unmarshal(data, &y)
+	}
+
+	y.ModelAliases = cfg.ModelAliases
 
 	out, err := yaml.Marshal(&y)
 	if err != nil {

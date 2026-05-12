@@ -5,7 +5,7 @@
     <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
     <li><a href="/">Home</a></li>
@@ -90,23 +90,25 @@ Large Language models are like the huge mainframes of the 1950s and
 The seeds for a different approach already exist. Ollama is only one
 example of that. I think real innovation can happen with small models
 that focus on specific domains and have a direct application. We’ve
-built extremely large general purpose models in part because collective
-the language model community need to see how far we could take the
-concepts. We already seem to be plateau at huge language models. Time to
-take a step back and see how small models can be and be really helpful.
-We need a personal level model system. I think the pieces are there,
-they just need to be gathered together in a simpler configuration.</p>
+built extremely large general purpose models in part because of a
+collective desire to see how far we could take these concepts. I think
+their is a plateau in creating ever larger models. Time to take a step
+back and see how small models can be while being really helpful. To move
+things forward I believe we will need a personal sized model. I think
+this could open interesting doors much as personal computing opened the
+door to what we have today. I think the pieces are there. They just need
+to be assembled in a simpler configuration. (2026-05, RSD)</p>
 <h2 id="open-models-small-models-combined-with-generalized-repls">Open
 Models, Small Models combined with generalized REPLs</h2>
 <p>The language model system space has enough maturity that we can pick
 the features that matter and ignore much of the initial growing pains.
-There is an opportunity ripe for creating tooling around the right
-fitness of use and purpose. The current crop of model systems (May 2026)
-layout base line features which are straight forward to implement.
-Coding agents are centered around concepts like sessions, skills,
-knowledge bases and retrieval augmented generation (RAG). There are
-plenty of papers and blog posts that describe these features, how they
-work and how to use them.</p>
+There is an opportunity ripe for creating tooling around fitness of use
+and purpose. The current crop of model systems (May 2026) layout base
+line features which are straight forward to implement. Coding agents are
+centered around concepts like sessions, skills, knowledge bases and
+retrieval augmented generation (RAG). There are plenty of papers and
+blog posts that describe these features, how they work and how to use
+them and importantly how to build them.</p>
 <p>The <a href="https://agentskills.io">SKILL.md</a> is a good example.
 It was proposed by Anthropic and adopted by others (example Mistral
 Vibe, OpenClaw). It is also pretty easy to implement using Ollama
@@ -135,14 +137,23 @@ CoPilot or Mistral Vibe. It should be transparent in how in works. It
 should document what it does. It should let me work with the models I
 chose for a specific task. It should be human scale and not put
 tentacles into everything else. I am working with language models on my
-local machine or my private network. Harvey avoids secrets. How Harvey
-is configured and it’s operating data should be visible to me as a human
-as well as any other language model system I might enlist. Harvey should
-let me be able to easily direct appropriate material to a remote service
-while keeping everything else local so I can continue the processing
-with models in my local machine. Harvey came about because I don’t see
-other applications that work with language models doing filling that
-niche.</p>
+local machine or my private network. Harvey should let me be able to
+easily direct appropriate material to a remote service while keeping
+everything else local so I can continue the processing with models in my
+local machine. Harvey came about because I don’t see other applications
+that work with language models doing filling that niche.</p>
+<p>NOTE: I have made an attempt to keep Harvey safe as I’ve designed
+Harvey. Harvey avoids secrets. How Harvey is configured and it’s
+operating data is visible to me as a human. There is risk in using
+language model agents because you are allowing a probablistic text model
+to direct the execution of commands. That’s just going to an attack
+surface for mischief. I’ve have placed limitations on some of Harvey’s
+capabilities as a result. It’s not perfect by a long short and hopefully
+I will be able to lower the risks over time. This is one of the areas I
+think will be critical in evolving person language model tooling. As a
+result you should keep in mind that Harvey is experimental, it is only a
+working proof of concept. Don’t use Harvey where the risks might
+endanger your data or person.</p>
 <h2 id="what-is-model-what-is-infrastructure">What is model? What is
 infrastructure?</h2>
 <p>Commercial SaaS language model services need to keep you engaged.
@@ -179,7 +190,7 @@ small computers I dreamed up Harvey. We’ll have to wait to see where
 that adventure could leads.</p>
 <h2 id="release-notes">Release Notes</h2>
 <ul>
-<li>version: 0.0.2</li>
+<li>version: 0.0.3</li>
 <li>status: working proof of concept</li>
 </ul>
 <h3 id="authors">Authors</h3>

@@ -380,3 +380,194 @@ func TestAutoExecuteReply_noRunFromSuggestions(t *testing.T) {
 		t.Errorf("expected no auto-run from suggestions, got %d history messages", len(a.History))
 	}
 }
+
+// ─── /read-dir ────────────────────────────────────────────────────────────────
+
+func writeWSFile(t *testing.T, a *Agent, rel string, content []byte) {
+	t.Helper()
+	if err := a.Workspace.WriteFile(rel, content, 0o644); err != nil {
+		t.Fatalf("WriteFile %s: %v", rel, err)
+	}
+}
+
+func TestCmdReadDir_basicRead(t *testing.T) {
+	a := newTestAgent(t)
+	writeWSFile(t, a, "hello.txt", []byte("hello world\n"))
+	writeWSFile(t, a, "world.go", []byte("package main\n"))
+
+	var out strings.Builder
+	if err := cmdReadDir(a, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(a.History) != 1 {
+		t.Fatalf("expected 1 history message, got %d", len(a.History))
+	}
+	msg := a.History[0].Content
+	if !strings.Contains(msg, "hello.txt") || !strings.Contains(msg, "world.go") {
+		t.Errorf("expected both files in context:\n%s", msg)
+	}
+	if !strings.Contains(msg, "hello world") {
+		t.Error("expected file content in context")
+	}
+}
+
+func TestCmdReadDir_hiddenFilesSkipped(t *testing.T) {
+	a := newTestAgent(t)
+	writeWSFile(t, a, "visible.txt", []byte("visible\n"))
+	writeWSFile(t, a, ".hidden", []byte("secret\n"))
+
+	var out strings.Builder
+	if err := cmdReadDir(a, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(a.History) == 0 {
+		t.Fatal("expected history message")
+	}
+	msg := a.History[0].Content
+	if strings.Contains(msg, ".hidden") {
+		t.Error("hidden file should be skipped")
+	}
+	if !strings.Contains(msg, "visible.txt") {
+		t.Error("visible file should be included")
+	}
+}
+
+func TestCmdReadDir_binaryFilesSkipped(t *testing.T) {
+	a := newTestAgent(t)
+	writeWSFile(t, a, "text.txt", []byte("normal text\n"))
+	binary := make([]byte, 10)
+	binary[3] = 0 // null byte marks binary
+	writeWSFile(t, a, "data.bin", binary)
+
+	var out strings.Builder
+	if err := cmdReadDir(a, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(a.History) == 0 {
+		t.Fatal("expected history message")
+	}
+	msg := a.History[0].Content
+	if strings.Contains(msg, "data.bin") {
+		t.Error("binary file should be skipped")
+	}
+	if !strings.Contains(msg, "text.txt") {
+		t.Error("text file should be included")
+	}
+}
+
+func TestCmdReadDir_depthOne_noSubdir(t *testing.T) {
+	a := newTestAgent(t)
+	writeWSFile(t, a, "top.txt", []byte("top\n"))
+	writeWSFile(t, a, "sub/deep.txt", []byte("deep\n"))
+
+	var out strings.Builder
+	if err := cmdReadDir(a, []string{".", "--depth", "1"}, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(a.History) == 0 {
+		t.Fatal("expected history message")
+	}
+	msg := a.History[0].Content
+	if strings.Contains(msg, "deep.txt") {
+		t.Error("subdir file should be excluded at depth 1")
+	}
+	if !strings.Contains(msg, "top.txt") {
+		t.Error("top-level file should be included")
+	}
+}
+
+func TestCmdReadDir_depthTwo_includesSubdir(t *testing.T) {
+	a := newTestAgent(t)
+	writeWSFile(t, a, "top.txt", []byte("top\n"))
+	writeWSFile(t, a, "sub/file.txt", []byte("sub\n"))
+	writeWSFile(t, a, "sub/nested/deep.txt", []byte("deep\n"))
+
+	var out strings.Builder
+	// default depth=2 reads root files + one level of subdirs
+	if err := cmdReadDir(a, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(a.History) == 0 {
+		t.Fatal("expected history message")
+	}
+	msg := a.History[0].Content
+	if !strings.Contains(msg, "top.txt") {
+		t.Error("top-level file should be included")
+	}
+	if !strings.Contains(msg, "sub/file.txt") {
+		t.Error("first-level subdir file should be included at depth 2")
+	}
+	if strings.Contains(msg, "deep.txt") {
+		t.Error("second-level subdir file should be excluded at depth 2")
+	}
+}
+
+func TestCmdReadDir_agentsDirSkipped(t *testing.T) {
+	a := newTestAgent(t)
+	writeWSFile(t, a, "good.txt", []byte("good\n"))
+	writeWSFile(t, a, "agents/secret.yaml", []byte("model: foo\n"))
+
+	var out strings.Builder
+	if err := cmdReadDir(a, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(a.History) == 0 {
+		t.Fatal("expected history message")
+	}
+	msg := a.History[0].Content
+	if strings.Contains(msg, "secret.yaml") {
+		t.Error("agents/ file should be skipped")
+	}
+}
+
+func TestCmdReadDir_sensitiveFileSkipped(t *testing.T) {
+	a := newTestAgent(t)
+	writeWSFile(t, a, "code.go", []byte("package main\n"))
+	writeWSFile(t, a, "id_rsa.key", []byte("-----BEGIN RSA-----\n"))
+
+	var out strings.Builder
+	if err := cmdReadDir(a, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(a.History) == 0 {
+		t.Fatal("expected history message")
+	}
+	msg := a.History[0].Content
+	if strings.Contains(msg, "id_rsa.key") {
+		t.Error("sensitive file should be skipped")
+	}
+	if !strings.Contains(msg, "code.go") {
+		t.Error("normal file should be included")
+	}
+}
+
+func TestCmdReadDir_noWorkspace(t *testing.T) {
+	a := &Agent{Config: DefaultConfig(), commands: make(map[string]*Command)}
+	var out strings.Builder
+	if err := cmdReadDir(a, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "No workspace") {
+		t.Error("expected 'No workspace' message when workspace is nil")
+	}
+}
+
+func TestCmdReadDir_notADirectory(t *testing.T) {
+	a := newTestAgent(t)
+	writeWSFile(t, a, "file.txt", []byte("not a dir\n"))
+
+	var out strings.Builder
+	if err := cmdReadDir(a, []string{"file.txt"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "not a directory") {
+		t.Errorf("expected 'not a directory' message, got: %s", out.String())
+	}
+}

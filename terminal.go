@@ -630,7 +630,19 @@ func (a *Agent) Run(out io.Writer) error {
 
 		var buf strings.Builder
 		sp := newSpinner(out, a.estimateDuration(), spLabel)
-		stats, chatErr := a.Client.Chat(chatCtx, a.History, &buf)
+		var stats ChatStats
+		var chatErr error
+		if a.Tools != nil && a.Config.ToolsEnabled {
+			ex := NewToolExecutor(a.Tools, a.Client, a.Config)
+			var updatedHistory []Message
+			updatedHistory, stats, chatErr = ex.RunToolLoop(chatCtx, a.History, &buf)
+			if chatErr == nil {
+				// Preserve any intermediate tool-call/result messages added by the loop.
+				a.History = updatedHistory
+			}
+		} else {
+			stats, chatErr = a.Client.Chat(chatCtx, a.History, &buf)
+		}
 		sp.stop()
 		close(watchDone) // stop the signal-watcher goroutine
 		cancelChat()     // release context resources (idempotent)
