@@ -1,5 +1,5 @@
 <#
-generated with CMTools 0.0.3 920d73d
+generated with CMTools 0.0.3 ff28069
 
 .SYNOPSIS
 Release script for harvey on GitHub using gh CLI.
@@ -42,7 +42,14 @@ if ($yesNo -eq "y") {
         --notes-file release_notes.tmp `
         --generate-notes
     Write-Output "Uploading distribution files and checksums"
-    gh release upload "${releaseTag}" (Get-ChildItem dist/*.zip) "dist/${checksumFile}"
+    Write-Output "  Starting upload: dist/${checksumFile}"
+    gh release upload "${releaseTag}" "dist/${checksumFile}"
+    Write-Output "  Completed upload: dist/${checksumFile}"
+    foreach ($file in (Get-ChildItem -Path dist -Filter *.zip)) {
+        Write-Output "  Starting upload: $($file.Name)"
+        gh release upload "${releaseTag}" $file.FullName
+        Write-Output "  Completed upload: $($file.Name)"
+    }
 
     Write-Output @"
 

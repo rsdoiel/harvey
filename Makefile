@@ -1,5 +1,5 @@
 
-# generated with CMTools 0.0.3 12bc0e0
+# generated with CMTools 0.0.3 ff28069
 
 #
 # Simple Makefile for Golang based Projects built under POSIX.
@@ -200,8 +200,8 @@ distribute_docs:
 	@cp -vR man dist/
 	@for DNAME in $(DOCS); do cp -vR $$DNAME dist/; done
 
-release: build installer.sh save setup_dist distribute_docs dist/Linux-x86_64 dist/Linux-aarch64 dist/macOS-x86_64 dist/macOS-arm64 dist/Windows-x86_64 dist/Windows-arm64 dist/Linux-armv7l
-	@printf "\nready to run\n\n\trelease.bash\n\n"
+release: build installer.sh installer.ps1 save setup_dist distribute_docs dist/Linux-x86_64 dist/Linux-aarch64 dist/macOS-x86_64 dist/macOS-arm64 dist/Windows-x86_64 dist/Windows-arm64 dist/Linux-armv7l
+	@printf "\n\nready to run\n\n\trelease.bash\n"
 
 
 .FORCE:

@@ -12,6 +12,18 @@ import (
 	"strings"
 )
 
+// maxInputPath caps path arguments to guard against excessively long inputs.
+const maxInputPath = 4096
+
+// maxInputContent caps write_file content to 10 MiB.
+const maxInputContent = 10 * 1024 * 1024
+
+// maxInputPattern caps regex pattern arguments.
+const maxInputPattern = 1024
+
+// maxInputCommand caps run_command / git_command argument strings.
+const maxInputCommand = 4096
+
 /** RegisterBuiltinTools registers all of Harvey's built-in schema-based tools
  * with the given registry. Every handler enforces the workspace boundary,
  * agent permission checks, safe-type assertions, and the output size cap.
@@ -46,6 +58,9 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			p, ok := args["path"].(string)
 			if !ok || p == "" {
 				return "", fmt.Errorf("read_file: path must be a non-empty string")
+			}
+			if len(p) > maxInputPath {
+				return "", fmt.Errorf("read_file: path exceeds maximum length of %d bytes", maxInputPath)
 			}
 			resolved, err := resolveWorkspacePath(root, p)
 			if err != nil {
@@ -95,9 +110,15 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			if !ok || p == "" {
 				return "", fmt.Errorf("write_file: path must be a non-empty string")
 			}
+			if len(p) > maxInputPath {
+				return "", fmt.Errorf("write_file: path exceeds maximum length of %d bytes", maxInputPath)
+			}
 			content, ok := args["content"].(string)
 			if !ok {
 				return "", fmt.Errorf("write_file: content must be a string")
+			}
+			if len(content) > maxInputContent {
+				return "", fmt.Errorf("write_file: content exceeds maximum size of %d bytes", maxInputContent)
 			}
 			if _, err := resolveWorkspacePath(root, p); err != nil {
 				return "", fmt.Errorf("write_file: %w", err)
@@ -138,6 +159,9 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 		func(ctx context.Context, args map[string]any) (string, error) {
 			p := "."
 			if v, ok := args["path"].(string); ok && v != "" {
+				if len(v) > maxInputPath {
+					return "", fmt.Errorf("list_files: path exceeds maximum length of %d bytes", maxInputPath)
+				}
 				p = v
 			}
 			if _, err := resolveWorkspacePath(root, p); err != nil {
@@ -183,6 +207,9 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			if !ok || pattern == "" {
 				return "", fmt.Errorf("search_files: pattern must be a non-empty string")
 			}
+			if len(pattern) > maxInputPattern {
+				return "", fmt.Errorf("search_files: pattern exceeds maximum length of %d bytes", maxInputPattern)
+			}
 			re, err := regexp.Compile(pattern)
 			if err != nil {
 				return "", fmt.Errorf("search_files: invalid pattern: %w", err)
@@ -190,6 +217,9 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 
 			searchRoot := "."
 			if v, ok := args["path"].(string); ok && v != "" {
+				if len(v) > maxInputPath {
+					return "", fmt.Errorf("search_files: path exceeds maximum length of %d bytes", maxInputPath)
+				}
 				searchRoot = v
 			}
 			absRoot, err := a.Workspace.AbsPath(searchRoot)
@@ -263,6 +293,9 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			cmdStr, ok := args["command"].(string)
 			if !ok || cmdStr == "" {
 				return "", fmt.Errorf("run_command: command must be a non-empty string")
+			}
+			if len(cmdStr) > maxInputCommand {
+				return "", fmt.Errorf("run_command: command exceeds maximum length of %d bytes", maxInputCommand)
 			}
 
 			program, cmdArgs, err := parseCommandLine(cmdStr)
@@ -339,6 +372,9 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 
 			gitArgs := []string{sub}
 			if extra, ok := args["args"].(string); ok && extra != "" {
+				if len(extra) > maxInputCommand {
+					return "", fmt.Errorf("git_command: args exceeds maximum length of %d bytes", maxInputCommand)
+				}
 				_, extraArgs, err := parseCommandLine(extra)
 				if err != nil {
 					return "", fmt.Errorf("git_command: invalid args: %w", err)

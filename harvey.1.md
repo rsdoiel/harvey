@@ -1,4 +1,4 @@
-%harvey(1) user manual | version 0.0.3 920d73d
+%harvey(1) user manual | version 0.0.3 ff28069
 % R. S. Doiel
 % 2026-05-12
 

@@ -1,9 +1,9 @@
-Installation for development of **harvey**
-===========================================
+Installation **harvey**
+============================
 
-**harvey** Harvey is an agent similar to Claude Code but written in Go and designed to use Ollama server to access large language models locally. It is a terminal based application.
+**harvey** Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.
 
-The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent. Most people think only of the over hyped big companies wasting billions. I think of my little computers and what they can accomplish. Harvey in the play is a mythic creature. Harvey is a Púca, my Harvey is similar in this commercial AI hype craze. How I did learned about Harvey? When I was young I saw the film on television called [Harvey](https://en.wikipedia.org/wiki/Harvey_(1950_film)) featuring James Stewart. I remember really liking the film as much as I like another old film called Topper. Today I like the idea of a software Harvey that those who take time to see it, or in the case run it on a little computer, can have an adventure and some fun with it.
+The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.
 
 Quick install with curl or irm
 ------------------------------
@@ -24,7 +24,7 @@ irm https://rsdoiel.github.io/harvey/installer.ps1 | iex
 
 ### If your are running macOS or Windows
 
-You may get security warnings if you are using macOS or Windows. See the notes for the specific operating system you're using to fix issues.
+You may get security warnings if you are using macOS or Windows. See the notes for the specific operating system you’re using to fix issues.
 
 - [INSTALL_NOTES_macOS.md](INSTALL_NOTES_macOS.md)
 - [INSTALL_NOTES_Windows.md](INSTALL_NOTES_Windows.md)
@@ -34,7 +34,7 @@ Installing from source
 
 ### Required software
 
-- Go &gt;&#x3D; 1.26.2
+- Go >= 1.26.2
 
 ### Steps
 
