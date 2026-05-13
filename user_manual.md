@@ -1,5 +1,7 @@
 # Harvey User Manual
 
+![Harvey, a six foot six invisible rabbit](media/harvey.svg "project mascot, a Púca")
+
 Harvey is a terminal-based coding agent backed by a local
 [Ollama](https://ollama.com) server.
 It provides an interactive REPL where you chat with a large language model
