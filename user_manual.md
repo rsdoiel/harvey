@@ -9,7 +9,7 @@ while also being able to read files, run commands, search code, and apply
 suggested changes — all sandboxed to a single workspace directory.
 
 > **Note:** Harvey focuses on local models via Ollama or Ollama servers
-> running on the local network. It has limited support for remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI).
+> running on the local network.
 
 ---
 
