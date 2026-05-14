@@ -3,6 +3,47 @@
 
 ## Bugs
 
+- [ ] When using a route the response is getting written into the status message rather then being buffered and returned when complete. ```harvey > /route list
+
+  ✗  @francis           ollama      http://localhost:8080/api/v1/chat  [(default)]
+  ✓  @wren              ollama      http://wren.local:11434  [qwen2.5-coder:7b]
+
+harvey > @wren write a Hello World program in Oberon langauge.
+  → dispatching to @wren
+
+@wren · working
+  ⎿ The Owl and the Pussycat sail by the light of thought...
+     ⎿ ⠴ [11s]:
+  ⎿ The Jumblies have gone to sea in a sieve to fetch your answer...
+     ⎿ ⠙ [13s]
+     ⎿ ⠸ [14s];
+
+     ⎿ ⠼ [15s];
+
+     ⎿ ⠏ [17s];
+  ⎿ The Dong with the luminous nose searches through the dark...
+     ⎿ ⠇ [21s]!");
+     ⎿ ⠋ [22s];
+
+     ⎿ ⠙ [23s].
+     ⎿ ⠏ [24s]`
+  ⎿ The Nutcrackers and the Sugar-Tongs are in conference...
+     ⎿ ⠏ [36s].
+  ⎿ The runcible spoon stirs the pot of possibilities...
+     ⎿ ⠹ [46s]:
+
+  ⎿ Far and few, far and few, the thoughts are gathering...
+     ⎿ ⠙ [49s]
+     ⎿ ⠇ [50s]`
+
+     ⎿ ⠼ [53s]:
+
+  ⎿ The Bong-tree sways as your answer takes its shape...
+     ⎿ ⠹ [55s]
+
+  @wren
+harvey > ```
+
 - [X] I don't think the RAG is function correctly, when I ran /rag setup the suggest embed didn't match what we discussed.
 - [X] /rag command is missing a help guide in REPL
 - [X] /apply command is missing a help guide in REPL
