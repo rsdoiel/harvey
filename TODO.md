@@ -10,6 +10,7 @@
 
 ## Next Steps (upcoming features)
 
+- [ ] Revise how the Ollama models are listed, the embedding models should be grouped together and the tools/tagged models in a group
 - [X] **`/read-dir` command** (`prompts/read_files.md`): Read all files in a directory into current context. Needs size/depth limits and security review.
 - [X] **Keyboard behaviors — Ctrl+J** (`prompts/keyboard_behaviors.md`): Ctrl+J inserts a newline for multi-line input in termlib LineEditor; Enter submits. Backspace merges lines. History navigation disabled while in multi-line mode. Items still open: (b) `@`-prefix file autocompletion; (c) Ctrl+G (Ctrl+X Ctrl+E already covers editor launch).
 - [X] **`/skill-set` command** (`prompts/skill-sets.md`, design doc `Harvey_Skill-Set_Design.md`): Load/unload named YAML bundles of skills from `agents/skill-sets/`. Validates skill names against catalog, counts tokens via Ollama `/api/tokenize` (heuristic fallback), warns at >50% context and blocks at >100%. Sample `agents/skill-sets/fountain.yaml` included.
