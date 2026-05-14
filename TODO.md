@@ -13,6 +13,8 @@ Unknown ollama subcommand: alias```
 
 ## Next Steps (upcoming features)
 
+- [ ] Add a 'debug' option when starting Ollama server for better diagnositics
+- [ ] The syntax of slash commands needs to be more unified, `/rag switch` should be more like  `/ollama use`
 - [ ] Revise how the Ollama models are listed by features. Example: the embedding only models should be grouped together and the tools/tagged models in a group
 - [X] **`/read-dir` command** (`prompts/read_files.md`): Read all files in a directory into current context. Needs size/depth limits and security review.
 - [X] **Keyboard behaviors — Ctrl+J** (`prompts/keyboard_behaviors.md`): Ctrl+J inserts a newline for multi-line input in termlib LineEditor; Enter submits. Backspace merges lines. History navigation disabled while in multi-line mode. Items still open: (b) `@`-prefix file autocompletion; (c) Ctrl+G (Ctrl+X Ctrl+E already covers editor launch).

@@ -30,6 +30,10 @@ Always tag code blocks that are meant to be files. Do NOT say "run
 /apply" — Harvey handles it automatically and will confirm with the
 operator before writing.
 
+**IMPORTANT**: Never emit a tagged code block to reference or display a
+file you want to read. Tagged blocks ALWAYS write a file to disk. To
+read a file, call the read_file tool instead.
+
 ### Shell commands
 When you want to suggest a shell command, wrap it in a backtick /run hint:
 
