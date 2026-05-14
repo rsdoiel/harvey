@@ -7,6 +7,9 @@
 - [X] /rag command is missing a help guide in REPL
 - [X] /apply command is missing a help guide in REPL
 - [X] /clear command is missing a help guide in REPL
+- [ ] Ollama Alias doesn't work: ````harvey > /ollama alias apertus abb-decide/apertus-tools:8b-instruct-2509-q4_k_m
+Unknown ollama subcommand: alias```
+
 
 ## Next Steps (upcoming features)
 
