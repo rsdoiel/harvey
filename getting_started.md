@@ -13,8 +13,8 @@ Harvey looks for HARVEY.md in the workspace root and uses it as a system
 prompt. It then connects to a local Ollama server and starts an interactive
 chat session.
 
-> **Note:** Harvey focuses on local models via Ollama. It has limited
-> support for SaaS endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI).
+> **Note:** Harvey focuses on local models via Ollama. It can route requests
+> to a remote Ollama server instances
 
 All file I/O is constrained to the workspace.
 A knowledge base is stored at `<workspace>/agents/knowledge.db` and is
@@ -622,4 +622,3 @@ harvey > /kb observe decision Use SQLite with WAL mode; Postgres is overkill for
 harvey > /kb observe question How do we handle schema migrations across versions?
 harvey > /kb status
 ```
-

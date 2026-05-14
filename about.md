@@ -1,8 +1,9 @@
 ---
 title: harvey
-abstract: "Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.
+abstract: |-
+  Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.
 
-The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey."
+  The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.
 authors:
   - family_name: Doiel
     given_name: R. S.
@@ -15,7 +16,7 @@ version: 0.0.3b
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
-  - Go &gt;&#x3D; 1.26.2
+  - Go >= 1.26.2
 
 
 date_released: 2026-05-12
