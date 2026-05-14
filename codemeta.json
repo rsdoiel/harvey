@@ -28,7 +28,7 @@
     "Pandoc >= 3.9",
     "GNU Make >= 3.8"
   ],
-  "version": "0.0.3",
+  "version": "0.0.3b",
   "developmentStatus": "active",
   "issueTracker": "https://github.com/rsdoiel/harvey/issues",
   "releaseNotes": "Working proof of concept.\n\n- Fixed RAG startup error (SQLITE_CANTOPEN) when agents/rag/ directory does not exist; NewRagStore now creates parent directories automatically\n- Fixed /rag on and /rag off not persisting the enabled state to harvey.yaml\n- Fixed session model not being restored on resume when the prior session had no chat turns; model is now written to the Fountain title page at recording start\n- Added context window usage to the post-response stat line: shows current/max tokens and percentage (e.g. 1840/32768 ctx (5%)); /status also shows the percentage; limit is sourced from --context flag or model cache automatically\n- Added TAGGED column to /ollama list showing whether each model reliably emits path-tagged code blocks (used by auto-execute)\n- Startup model picker now displays the same capability table as /ollama list with numbered rows for selection\n- Added /rename NAME command to rename the active session file without ending the session\n- Added /file-tree [PATH] command to display a tree-style workspace listing\n- Added /model alias list|set|remove — manage aliases interactively; set/remove save to harvey.yaml immediately\n- Improved and tightened up tool support\n- Added /read-dir to read in an entire directory contents into the current context\n- Improved keyboard handling\n- Added support for skill sets, `/skill-set`, which can be loaded and unloaded together",
