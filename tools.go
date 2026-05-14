@@ -42,25 +42,26 @@ type toolEntry struct {
 	handler ToolHandler
 }
 
-/** resolveWorkspacePath resolves p relative to workspaceRoot, verifies that
- * the result stays inside the workspace (including symlink evaluation), and
- * rejects paths that fall inside the agents/ subtree or match sensitive file
- * patterns.
+/** resolveWorkspacePath resolves p relative to workspaceRoot and enforces
+ * three invariants: (1) the result is inside the workspace, (2) no symbolic
+ * links are traversed — Harvey operates only on physical paths within the
+ * workspace tree, (3) the path does not target agents/ or match sensitive
+ * file patterns.
  *
  * Parameters:
  *   workspaceRoot (string) — absolute path of the workspace root.
  *   p             (string) — path from the LLM (relative or absolute).
  *
  * Returns:
- *   string — resolved absolute path, guaranteed to be inside workspaceRoot.
- *   error  — if the path escapes the workspace, targets agents/, or is a sensitive file.
+ *   string — resolved absolute path, guaranteed to be inside workspaceRoot with no symlinks.
+ *   error  — if the path escapes the workspace, contains a symlink, targets agents/, or is a sensitive file.
  *
  * Example:
  *   abs, err := resolveWorkspacePath("/home/user/proj", "src/main.go")
  */
 func resolveWorkspacePath(workspaceRoot, p string) (string, error) {
-	// Resolve the workspace root through symlinks so comparisons are consistent
-	// (e.g. macOS /var/folders → /private/var/folders).
+	// Resolve the workspace root to its real physical path for consistent
+	// comparison (e.g. macOS /var/folders → /private/var/folders).
 	realRoot, err := filepath.EvalSymlinks(workspaceRoot)
 	if err != nil {
 		realRoot = workspaceRoot
@@ -69,29 +70,41 @@ func resolveWorkspacePath(workspaceRoot, p string) (string, error) {
 	abs := filepath.Join(realRoot, p)
 	abs = filepath.Clean(abs)
 
-	real, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		// File may not exist yet (write_file case); check the cleaned path.
-		real = abs
-	}
-
+	// Check workspace bounds on the cleaned path before any symlink resolution
+	// so that path traversal via ../ is caught regardless of symlink state.
 	rootWithSep := realRoot
 	if !strings.HasSuffix(rootWithSep, string(filepath.Separator)) {
 		rootWithSep += string(filepath.Separator)
 	}
-	if real != realRoot && !strings.HasPrefix(real, rootWithSep) {
+	if abs != realRoot && !strings.HasPrefix(abs, rootWithSep) {
 		return "", fmt.Errorf("path %q is outside the workspace", p)
 	}
 
-	if isAgentsDir(realRoot, real) {
+	// Reject symbolic links: Harvey must stay within the physical workspace tree.
+	// When the path exists, EvalSymlinks must return the same path (no link was
+	// followed). When the path doesn't exist yet (write_file), check the parent
+	// directory instead — it must exist and must not be a symlink.
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		if real != abs {
+			return "", fmt.Errorf("path %q contains a symbolic link which is not permitted", p)
+		}
+	} else {
+		// File does not exist yet; check that the parent is not a symlink.
+		parent := filepath.Dir(abs)
+		if realParent, perr := filepath.EvalSymlinks(parent); perr == nil && realParent != parent {
+			return "", fmt.Errorf("path %q contains a symbolic link which is not permitted", p)
+		}
+	}
+
+	if isAgentsDir(realRoot, abs) {
 		return "", fmt.Errorf("path %q targets the agents/ directory which is off-limits to tools", p)
 	}
 
-	if sensitiveFileDenied(real) {
+	if sensitiveFileDenied(abs) {
 		return "", fmt.Errorf("path %q matches a sensitive file pattern and cannot be accessed by tools", p)
 	}
 
-	return real, nil
+	return abs, nil
 }
 
 // isAgentsDir reports whether resolved is inside the workspace's agents/ subtree.

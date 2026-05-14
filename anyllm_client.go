@@ -38,6 +38,7 @@ type AnyLLMClient struct {
 	modelName  string
 	provName   string
 	backendURL string
+	DebugLog   *DebugLog
 }
 
 /** NewAnyLLMClient creates an AnyLLMClient wrapping provider.
@@ -153,6 +154,7 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 		params.Tools = tools
 	}
 
+	a.DebugLog.LogLLMRequest(a.modelName, len(messages), len(tools))
 	start := time.Now()
 	chunks, errs := a.provider.CompletionStream(ctx, params)
 
@@ -188,8 +190,11 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 	}
 
 	if err := <-errs; err != nil {
+		a.DebugLog.LogError("llm_stream", err.Error())
 		return ChatStats{}, nil, err
 	}
+
+	a.DebugLog.LogLLMResponse(stats, len(accumulatedCalls))
 
 	if len(accumulatedCalls) == 0 {
 		return stats, nil, nil

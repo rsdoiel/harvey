@@ -24,7 +24,7 @@
     "Go >= 1.26.2"
   ],
   "softwareSuggestions": [
-    "CMTools >= 0.0.43",
+    "CMTools >= 0.0.45b",
     "Pandoc >= 3.9",
     "GNU Make >= 3.8"
   ],

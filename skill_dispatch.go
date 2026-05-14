@@ -215,6 +215,7 @@ func SortedSkillNames(cat SkillCatalog) []string {
  *   err := DispatchSkill(ctx, agent, skill, input, reader, os.Stdout)
  */
 func DispatchSkill(ctx context.Context, a *Agent, skill *SkillMeta, prompt string, reader *bufio.Reader, out io.Writer) error {
+	a.DebugLog.LogSkillDispatch(skill.Name, "dispatch")
 	bashPath := CompiledBashPath(skill.Path)
 	ps1Path := CompiledPS1Path(skill.Path)
 

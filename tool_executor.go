@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
 )
@@ -37,10 +38,11 @@ type ToolCapable interface {
  *   stats, err := ex.RunToolLoop(ctx, agent.History, os.Stdout)
  */
 type ToolExecutor struct {
-	Registry      *ToolRegistry
-	Client        LLMClient
-	MaxIterations int
+	Registry       *ToolRegistry
+	Client         LLMClient
+	MaxIterations  int
 	MaxOutputBytes int
+	DebugLog       *DebugLog
 }
 
 /** NewToolExecutor creates a ToolExecutor from the agent's tool registry,
@@ -92,10 +94,15 @@ func NewToolExecutor(registry *ToolRegistry, client LLMClient, cfg *Config) *Too
 func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.ToolCall) ([]Message, error) {
 	results := make([]Message, 0, len(toolCalls))
 	for _, tc := range toolCalls {
+		start := time.Now()
 		output, err := e.Registry.Dispatch(ctx, tc.Function.Name, tc.Function.Arguments, e.MaxOutputBytes)
+		elapsed := time.Since(start)
+		errStr := ""
 		if err != nil {
+			errStr = err.Error()
 			output = fmt.Sprintf("error: %v", err)
 		}
+		e.DebugLog.LogToolCall(tc.Function.Name, len(output), elapsed, errStr)
 		results = append(results, Message{
 			Role:       "tool",
 			Content:    output,

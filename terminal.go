@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -209,6 +210,10 @@ func (a *Agent) Run(out io.Writer) error {
 			a.Recorder = nil
 			fmt.Fprintf(out, dim("  Session saved to %s\n"), path)
 		}
+		if a.DebugLog != nil {
+			a.DebugLog.Close()
+			a.DebugLog = nil
+		}
 	}()
 	// reader is used only for startup yes/no prompts. A 1-byte buffer prevents
 	// it from consuming bytes that the LineEditor needs for the REPL loop.
@@ -271,6 +276,30 @@ func (a *Agent) Run(out io.Writer) error {
 	// Backend selection — use sessionModel as the preferred model hint.
 	if err := a.selectBackend(reader, out, sessionModel); err != nil {
 		return err
+	}
+
+	// Debug log — open after backend is known so session_start can record the model.
+	if a.Config.Debug && a.SessionsDir != "" {
+		logsDir := filepath.Join(filepath.Dir(a.SessionsDir), "logs")
+		if dl, err := OpenDebugLog(logsDir); err != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Debug log: %v\n", err)
+		} else {
+			a.DebugLog = dl
+			fmt.Fprintf(out, green("✓")+" Debug log: %s\n", dl.Path())
+			// Wire the debug log to the LLM client.
+			if ac, ok := a.Client.(*AnyLLMClient); ok {
+				ac.DebugLog = dl
+			}
+			modelID, modelDisplay, provider := "", "", ""
+			if a.Client != nil {
+				modelDisplay = a.Client.Name()
+				if ac, ok := a.Client.(*AnyLLMClient); ok {
+					modelID = ac.ModelName()
+					provider = ac.ProviderName()
+				}
+			}
+			dl.LogSessionStart(modelID, modelDisplay, provider, a.Workspace.Root, Version)
+		}
 	}
 
 	// Resume history from chosen session file.
@@ -634,6 +663,7 @@ func (a *Agent) Run(out io.Writer) error {
 		var chatErr error
 		if a.Tools != nil && a.Config.ToolsEnabled {
 			ex := NewToolExecutor(a.Tools, a.Client, a.Config)
+			ex.DebugLog = a.DebugLog
 			var updatedHistory []Message
 			updatedHistory, stats, chatErr = ex.RunToolLoop(chatCtx, a.History, &buf)
 			if chatErr == nil {
@@ -799,7 +829,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 	if askYesNo(reader, out, "    Start Ollama now? [Y/n] ", true) {
 		PrintOllamaEnv(out)
 		fmt.Fprintln(out, "  Starting Ollama...")
-		if err := StartOllamaService(); err != nil {
+		if err := StartOllamaService(""); err != nil {
 			fmt.Fprintf(out, red("  Failed: ")+"%v\n", err)
 		} else {
 			fmt.Fprintln(out, green("  ✓")+" Ollama started")
@@ -1044,6 +1074,12 @@ func (a *Agent) ragAugment(prompt string) string {
 	if len(relevant) == 0 {
 		return prompt
 	}
+
+	topScore := 0.0
+	if len(relevant) > 0 {
+		topScore = relevant[0].Score
+	}
+	a.DebugLog.LogRAGInject(entry.Name, prompt, len(relevant), topScore)
 
 	var sb strings.Builder
 	sb.WriteString("### Context (from knowledge base)\n\n")

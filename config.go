@@ -63,7 +63,7 @@ The operator can run it manually with /run.
 /** RagStoreEntry describes one named RAG knowledge store in the registry.
  *
  * Fields:
- *   Name           (string)            — short identifier used with /rag switch and /rag new.
+ *   Name           (string)            — short identifier used with /rag use and /rag new.
  *   DBPath         (string)            — path to the SQLite database, relative to workspace root.
  *   EmbeddingModel (string)            — embedding model name bound to this store.
  *   ModelMap       (map[string]string) — generation model → embedding model overrides.
@@ -138,6 +138,8 @@ type Config struct {
 	ToolsEnabled          bool // when true, send tool schemas to models that support it
 	MaxToolCallsPerTurn   int  // hard limit on tool call rounds per user turn; 0 = defaultMaxToolCallsPerTurn
 	MaxOutputBytes        int  // cap on tool output injected into context; 0 = defaultMaxOutputBytes
+	// Debug mode: set by --debug at startup; enables JSONL debug log and OLLAMA_DEBUG
+	Debug bool
 }
 
 /** ActiveRagStore returns a pointer to the active RagStoreEntry, or nil when

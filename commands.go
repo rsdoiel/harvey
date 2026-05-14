@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -422,14 +423,32 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "editing", "edit", "keybindings", "keys":
 			fmt.Fprint(out, FmtHelp(EditingHelpText, "", "", "", ""))
 			return nil
+		case "files":
+			fmt.Fprint(out, FmtHelp(FilesHelpText, "", "", "", ""))
+			return nil
+		case "git":
+			fmt.Fprint(out, FmtHelp(GitHelpText, "", "", "", ""))
+			return nil
+		case "inspect":
+			fmt.Fprint(out, FmtHelp(InspectHelpText, "", "", "", ""))
+			return nil
 		case "kb", "knowledge", "knowledge-base":
 			fmt.Fprint(out, FmtHelp(KBHelpText, "", "", "", ""))
+			return nil
+		case "model":
+			fmt.Fprint(out, FmtHelp(ModelHelpText, "", "", "", ""))
+			return nil
+		case "model-alias", "model alias", "alias":
+			fmt.Fprint(out, FmtHelp(ModelAliasHelpText, "", "", "", ""))
 			return nil
 		case "ollama":
 			fmt.Fprint(out, FmtHelp(OllamaHelpText, "", "", "", ""))
 			return nil
 		case "rag":
 			fmt.Fprint(out, FmtHelp(RagHelpText, "", "", "", ""))
+			return nil
+		case "read":
+			fmt.Fprint(out, FmtHelp(ReadHelpText, "", "", "", ""))
 			return nil
 		case "read-dir", "readdir":
 			fmt.Fprint(out, FmtHelp(ReadDirHelpText, "", "", "", ""))
@@ -443,11 +462,17 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "rename":
 			fmt.Fprint(out, FmtHelp(RenameHelpText, "", "", "", ""))
 			return nil
-		case "model-alias", "model alias", "alias":
-			fmt.Fprint(out, FmtHelp(ModelAliasHelpText, "", "", "", ""))
-			return nil
 		case "routing", "route", "router":
 			fmt.Fprint(out, FmtHelp(RoutingHelpText, "", "", "", ""))
+			return nil
+		case "run":
+			fmt.Fprint(out, FmtHelp(RunHelpText, "", "", "", ""))
+			return nil
+		case "search":
+			fmt.Fprint(out, FmtHelp(SearchHelpText, "", "", "", ""))
+			return nil
+		case "security", "safemode", "safe-mode", "permissions", "audit":
+			fmt.Fprint(out, FmtHelp(SecurityHelpText, "", "", "", ""))
 			return nil
 		case "session", "sessions":
 			fmt.Fprint(out, FmtHelp(SessionHelpText, "", "", "", ""))
@@ -458,8 +483,17 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "skill-set", "skillset", "skill-sets":
 			fmt.Fprint(out, FmtHelp(SkillSetHelpText, "", "", "", ""))
 			return nil
+		case "status":
+			fmt.Fprint(out, FmtHelp(StatusHelpText, "", "", "", ""))
+			return nil
+		case "summarize", "compact":
+			fmt.Fprint(out, FmtHelp(SummarizeHelpText, "", "", "", ""))
+			return nil
+		case "write":
+			fmt.Fprint(out, FmtHelp(WriteHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q. Available topics: clear, context, editing, file-tree, kb, model-alias, ollama, rag, read-dir, record, rename, routing, session, skill-set, skills\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: alias, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, model, model-alias, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 
@@ -496,7 +530,18 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 	if a.Client == nil {
 		fmt.Fprintln(out, "Backend:   none")
 	} else {
-		fmt.Fprintf(out, "Backend:   %s\n", a.Client.Name())
+		tag := ""
+		if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
+			if a.OllamaStartedByHarvey {
+				tag = " [Harvey]"
+			} else {
+				tag = " [external]"
+			}
+		}
+		fmt.Fprintf(out, "Backend:   %s%s\n", a.Client.Name(), tag)
+	}
+	if a.Config.Debug {
+		fmt.Fprintf(out, "Debug:     on (%s)\n", a.DebugLog.Path())
 	}
 	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
 	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" && len(a.History) > 0 {
@@ -631,12 +676,24 @@ func routeAdd(a *Agent, args []string, out io.Writer) error {
 		if i := strings.IndexAny(host, "/:"); i >= 0 {
 			host = host[:i]
 		}
-		if host != "localhost" && host != "127.0.0.1" {
+		if !isPrivateHost(host) {
 			fmt.Fprintln(out, "  Warning: plain HTTP — prompts and responses travel unencrypted.")
 			fmt.Fprintln(out, "           Use https:// if the server supports TLS.")
 		}
 	}
 	return nil
+}
+
+// isPrivateHost reports whether host is a loopback, link-local, or RFC-1918
+// private address. Accepts bare hostnames too — returns false for those since
+// we cannot classify them without a DNS lookup, so the warning is still shown.
+func isPrivateHost(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// Not a numeric IP. Keep the loopback name check for "localhost".
+		return host == "localhost"
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
 func routeRemove(a *Agent, name string, out io.Writer) error {
@@ -977,22 +1034,23 @@ func truncate(s string, n int) string {
 /** cmdOllama handles Ollama server and model management commands.
  *
  * Subcommands:
- *   start     — Launch ollama serve as a background process
- *   stop      — Print instructions to stop Ollama via system service manager
- *   status    — Check if Ollama server is running
- *   list      — List all installed models with metadata
- *   ps        — Show running models (via ollama ps)
- *   run       — Start a model in interactive mode (detached from Harvey)
- *   pull      — Download a model from Ollama registry
- *   push      — Upload a model to Ollama registry
- *   show      — Display detailed model information
- *   create    — Create a model from a Modelfile
- *   cp        — Copy a model to a new name
- *   rm        — Remove a model from the local store
- *   probe     — Test model capabilities (tools, embeddings)
- *   logs      — Show Ollama server logs
- *   use       — Switch to a different model
- *   env       — Display active Ollama environment variables
+ *   start [debug]  — Launch ollama serve; optional debug sets OLLAMA_DEBUG=1
+ *   stop           — Print instructions to stop Ollama via system service manager
+ *   status         — Check if Ollama server is running
+ *   list           — List all installed models with metadata
+ *   ps             — Show running models (via ollama ps)
+ *   run            — Start a model in interactive mode (detached from Harvey)
+ *   pull           — Download a model from Ollama registry
+ *   push           — Upload a model to Ollama registry
+ *   show           — Display detailed model information
+ *   create         — Create a model from a Modelfile
+ *   cp             — Copy a model to a new name
+ *   rm             — Remove a model from the local store
+ *   probe          — Test model capabilities (tools, embeddings)
+ *   logs           — Show Ollama server logs
+ *   use            — Switch to a different model
+ *   env            — Display active Ollama environment variables
+ *   alias          — Manage short model aliases (delegates to /model alias)
  *
  * Parameters:
  *   a    (*Agent)    — Harvey agent with configuration.
@@ -1004,16 +1062,43 @@ func truncate(s string, n int) string {
  */
 func cmdOllama(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL|--all]|logs|use MODEL|env>")
+		fmt.Fprintln(out, "Usage: /ollama <start [debug]|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL|--all]|logs|use MODEL|env|alias [NAME FULLNAME]>")
 		return nil
 	}
 	switch strings.ToLower(args[0]) {
 	case "start":
+		debug := len(args) > 1 && strings.ToLower(args[1]) == "debug"
+		if ProbeOllama(a.Config.OllamaURL) {
+			if debug || os.Getenv("OLLAMA_DEBUG") != "" {
+				fmt.Fprintln(out, "Ollama is already running externally — it will not have debug logging.")
+				fmt.Fprintln(out, "  To start in debug mode, quit Ollama first:")
+				fmt.Fprintln(out, "    macOS:  right-click the Ollama menu bar icon → Quit Ollama")
+				fmt.Fprintln(out, "    Linux:  systemctl stop ollama")
+				fmt.Fprintln(out, "  Then re-run: /ollama start debug")
+			} else {
+				fmt.Fprintln(out, "Ollama is already running.")
+			}
+			return nil
+		}
+		if debug {
+			os.Setenv("OLLAMA_DEBUG", "1")
+		}
 		PrintOllamaEnv(out)
-		fmt.Fprintln(out, "Starting Ollama...")
-		if err := StartOllamaService(); err != nil {
+		ollamaLogPath := a.DebugLog.OllamaLogPath()
+		if debug {
+			fmt.Fprintf(out, "Starting Ollama (debug mode)...")
+			if ollamaLogPath != "" {
+				fmt.Fprintf(out, " log: %s", ollamaLogPath)
+			}
+			fmt.Fprintln(out)
+		} else {
+			fmt.Fprintln(out, "Starting Ollama...")
+		}
+		if err := StartOllamaService(ollamaLogPath); err != nil {
 			return err
 		}
+		a.OllamaStartedByHarvey = true
+		a.DebugLog.LogOllamaStart(debug, ollamaLogPath)
 		fmt.Fprintln(out, "Ollama is running.")
 	case "stop":
 		fmt.Fprintln(out, "Use your system's service manager to stop Ollama (e.g. systemctl stop ollama).")
@@ -1160,6 +1245,14 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		a.Config.OllamaModel = model
 		a.Client = newOllamaLLMClient(a.Config.OllamaURL, model, a.Config.OllamaTimeout)
 		fmt.Fprintf(out, "Now using Ollama model: %s\n", model)
+	case "alias":
+		subargs := args[1:]
+		// If the next token is not a known subcommand keyword, treat as implicit "set".
+		if len(subargs) > 0 && subargs[0] != "list" && subargs[0] != "set" &&
+			subargs[0] != "remove" && subargs[0] != "rm" && subargs[0] != "delete" {
+			subargs = append([]string{"set"}, subargs...)
+		}
+		return cmdModelAlias(a, subargs, out)
 	default:
 		fmt.Fprintf(out, "Unknown ollama subcommand: %s\n", args[0])
 	}
@@ -1236,9 +1329,56 @@ func ollamaModelTable(a *Agent, summaries []ModelSummary, out io.Writer, numbere
 	}
 }
 
-// ollamaListTable prints the capability table for /ollama list.
+// ollamaListTable prints the capability table for /ollama list, grouped by tier:
+//   Tier 1 — full (tools + tagged blocks)
+//   Tier 2 — tools only
+//   Tier 3 — embed only
+//   Tier 4 — base / unprobed
 func ollamaListTable(a *Agent, summaries []ModelSummary, out io.Writer) {
-	ollamaModelTable(a, summaries, out, false)
+	type tier struct {
+		label  string
+		models []ModelSummary
+	}
+	tiers := []tier{
+		{"Full capability (tools + tagged blocks)", nil},
+		{"Tools support", nil},
+		{"Embed only", nil},
+		{"Base / unprobed", nil},
+	}
+
+	for _, s := range summaries {
+		var cap *ModelCapability
+		if a.ModelCache != nil {
+			cap, _ = a.ModelCache.Get(s.Name)
+		}
+		if cap == nil {
+			tiers[3].models = append(tiers[3].models, s)
+			continue
+		}
+		switch {
+		case cap.SupportsTools == CapYes && cap.SupportsTaggedBlocks == CapYes:
+			tiers[0].models = append(tiers[0].models, s)
+		case cap.SupportsTools == CapYes:
+			tiers[1].models = append(tiers[1].models, s)
+		case cap.SupportsEmbed == CapYes:
+			tiers[2].models = append(tiers[2].models, s)
+		default:
+			tiers[3].models = append(tiers[3].models, s)
+		}
+	}
+
+	first := true
+	for _, t := range tiers {
+		if len(t.models) == 0 {
+			continue
+		}
+		if !first {
+			fmt.Fprintln(out)
+		}
+		fmt.Fprintf(out, "  -- %s --\n", t.label)
+		ollamaModelTable(a, t.models, out, false)
+		first = false
+	}
 }
 
 // ollamaProbe handles /ollama probe [MODEL|--all].
@@ -2887,7 +3027,7 @@ func skillStatus(a *Agent, out io.Writer) error {
 // skillNew runs the interactive skill wizard via /skill new.
 func skillNew(a *Agent, out io.Writer) error {
 	reader := bufio.NewReaderSize(a.In, 1)
-	relPath, err := RunSkillWizard(a.Workspace, reader, out)
+	relPath, err := RunSkillWizard(a.Workspace, a.Config.AgentsDir, reader, out)
 	if err != nil {
 		return err
 	}
@@ -3600,7 +3740,7 @@ func (a *Agent) logAction(kind, target string, choice actionChoice, outcome stri
  *   off       — Disable RAG context injection for current session
  *   setup     — Create a new RAG store (interactive or with defaults)
  *   new       — Create a named RAG store with interactive setup
- *   switch    — Activate a different RAG store
+ *   use       — Activate a different RAG store
  *   drop      — Remove a store from the registry
  *   ingest    — Ingest files/directories into the active store
  *   query     — Query the active store and show matching chunks
@@ -3653,9 +3793,9 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		}
 		kind, url := ParseEmbedderFlags(args[2:])
 		return ragWizard(a, args[1], kind, url, out)
-	case "switch":
+	case "use":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /rag switch NAME")
+			fmt.Fprintln(out, "Usage: /rag use NAME")
 			return nil
 		}
 		return ragSwitch(a, args[1], out)
@@ -3760,11 +3900,11 @@ func ragSwitch(a *Agent, name string, out io.Writer) error {
 	}
 	dbPath, err := a.Workspace.AbsPath(entry.DBPath)
 	if err != nil {
-		return fmt.Errorf("rag switch: %w", err)
+		return fmt.Errorf("rag use: %w", err)
 	}
 	store, err := NewRagStore(dbPath, entry.EmbeddingModel)
 	if err != nil {
-		return fmt.Errorf("rag switch: open store: %w", err)
+		return fmt.Errorf("rag use: open store: %w", err)
 	}
 	a.Rag = store
 	a.Config.RagActive = name
@@ -4054,7 +4194,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	}
 	entry := a.Config.ActiveRagStore()
 	if entry == nil {
-		fmt.Fprintln(out, "No active RAG store. Run /rag switch NAME to select one.")
+		fmt.Fprintln(out, "No active RAG store. Run /rag use NAME to select one.")
 		return nil
 	}
 	embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)
@@ -4180,7 +4320,7 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 	}
 	entry := a.Config.ActiveRagStore()
 	if entry == nil {
-		fmt.Fprintln(out, "No active RAG store. Run /rag switch NAME to select one.")
+		fmt.Fprintln(out, "No active RAG store. Run /rag use NAME to select one.")
 		return nil
 	}
 	embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)

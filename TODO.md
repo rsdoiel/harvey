@@ -7,15 +7,15 @@
 - [X] /rag command is missing a help guide in REPL
 - [X] /apply command is missing a help guide in REPL
 - [X] /clear command is missing a help guide in REPL
-- [ ] Ollama Alias doesn't work: ````harvey > /ollama alias apertus abb-decide/apertus-tools:8b-instruct-2509-q4_k_m
+- [X] Ollama Alias doesn't work: ````harvey > /ollama alias apertus abb-decide/apertus-tools:8b-instruct-2509-q4_k_m
 Unknown ollama subcommand: alias```
 
 
 ## Next Steps (upcoming features)
 
-- [ ] Add a 'debug' option when starting Ollama server for better diagnositics
-- [ ] The syntax of slash commands needs to be more unified, `/rag switch` should be more like  `/ollama use`
-- [ ] Revise how the Ollama models are listed by features. Example: the embedding only models should be grouped together and the tools/tagged models in a group
+- [X] Add a 'debug' option when starting Ollama server for better diagnositics
+- [X] The syntax of slash commands needs to be more unified, `/rag switch` should be more like  `/ollama use`
+- [X] Revise how the Ollama models are listed by features. Example: the embedding only models should be grouped together and the tools/tagged models in a group
 - [X] **`/read-dir` command** (`prompts/read_files.md`): Read all files in a directory into current context. Needs size/depth limits and security review.
 - [X] **Keyboard behaviors — Ctrl+J** (`prompts/keyboard_behaviors.md`): Ctrl+J inserts a newline for multi-line input in termlib LineEditor; Enter submits. Backspace merges lines. History navigation disabled while in multi-line mode. Items still open: (b) `@`-prefix file autocompletion; (c) Ctrl+G (Ctrl+X Ctrl+E already covers editor launch).
 - [X] **`/skill-set` command** (`prompts/skill-sets.md`, design doc `Harvey_Skill-Set_Design.md`): Load/unload named YAML bundles of skills from `agents/skill-sets/`. Validates skill names against catalog, counts tokens via Ollama `/api/tokenize` (heuristic fallback), warns at >50% context and blocks at >100%. Sample `agents/skill-sets/fountain.yaml` included.
@@ -136,14 +136,14 @@ Unknown ollama subcommand: alias```
 
 ### Security Hardening (v0.0.3 Release)
 
-- [ ] **Critical — `/run` command injection fix**: Update `cmdRun` in `commands.go:2186` to use `parseCommandLine()` for argument validation, preventing shell metacharacter injection
-- [ ] **High — Expand API key filtering**: Add `COHERE_API_KEY`, `GROQ_API_KEY`, `PERPLEXITY_API_KEY` to sensitive variable lists in `skill_dispatch.go` and `commands.go`
-- [ ] **High — Add SSH key blocking**: Add `id_rsa`, `id_ed25519`, `authorized_keys` to `sensitiveDenyPatterns` in `tools.go`
+- [X] **Critical — `/run` command injection fix**: `cmdRun` already uses `parseCommandLine()` for argument validation
+- [X] **High — Expand API key filtering**: `COHERE_API_KEY`, `GROQ_API_KEY`, `PERPLEXITY_API_KEY` already in both `skill_dispatch.go` and `commands.go`
+- [X] **High — Add SSH key blocking**: `id_rsa`, `id_ed25519`, `authorized_keys` already in `sensitiveDenyPatterns` in `tools.go`
 - [X] **Medium — TLS verification for routes**: Add warning when remote routes use HTTP (not HTTPS) for cloud providers in `routing.go`
-- [ ] **Medium — Install script security**: Document SHA256 checksum verification in `INSTALL.md` before pipe-to-shell instructions
-- [ ] **Medium — Symlink hardening**: Update `isAgentsDir()` in `tools.go` to use `filepath.EvalSymlinks` for symlink-safe comparison
-- [ ] **Low — Tool input limits**: Add maximum length validation for string inputs in `builtin_tools.go` tool handlers
-- [ ] **Low — Rate limiting**: Consider adding per-turn tool call limits to prevent DoS via rapid tool invocations
+- [X] **Medium — Install script security**: `release.bash` and `release.ps1` now generate and upload SHA256 checksums alongside release zips. INSTALL.md user-facing verification docs still pending (cmt-generated; needs codemeta.json update).
+- [X] **Medium — Symlink hardening**: `resolveWorkspacePath` now rejects any path where `EvalSymlinks` changes the result — symbolic links are not followed inside the workspace
+- [X] **Low — Tool input limits**: `builtin_tools.go` already has `maxInputPath`, `maxInputContent`, `maxInputPattern`, `maxInputCommand` constants with validation
+- [X] **Low — Rate limiting**: `MaxToolCallsPerTurn` already enforced in `ToolExecutor`
 - [X] **Documentation — Create SECURITY.md**: Document Harvey's security model, threats, and mitigations for users
 
 

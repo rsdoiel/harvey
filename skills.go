@@ -508,8 +508,8 @@ func ValidSkillName(name string) bool {
  *   string — absolute path to scripts/compiled.bash sibling.
  *
  * Example:
- *   p := CompiledBashPath("/proj/.agents/skills/my-skill/SKILL.md")
- *   // returns "/proj/.agents/skills/my-skill/scripts/compiled.bash"
+ *   p := CompiledBashPath("/proj/agents/skills/my-skill/SKILL.md")
+ *   // returns "/proj/agents/skills/my-skill/scripts/compiled.bash"
  */
 func CompiledBashPath(skillPath string) string {
 	return filepath.Join(filepath.Dir(skillPath), "scripts", "compiled.bash")
@@ -525,8 +525,8 @@ func CompiledBashPath(skillPath string) string {
  *   string — absolute path to scripts/compiled.ps1 sibling.
  *
  * Example:
- *   p := CompiledPS1Path("/proj/.agents/skills/my-skill/SKILL.md")
- *   // returns "/proj/.agents/skills/my-skill/scripts/compiled.ps1"
+ *   p := CompiledPS1Path("/proj/agents/skills/my-skill/SKILL.md")
+ *   // returns "/proj/agents/skills/my-skill/scripts/compiled.ps1"
  */
 func CompiledPS1Path(skillPath string) string {
 	return filepath.Join(filepath.Dir(skillPath), "scripts", "compiled.ps1")

@@ -275,8 +275,12 @@ CLI operation.
 
 Service control:
 
-  /ollama start
-    Launch ollama serve in the background.
+  /ollama start [debug]
+    Launch ollama serve in the background. If Ollama is already running,
+    prints a warning and exits. Pass debug to also set OLLAMA_DEBUG=1
+    in the Ollama process; output is captured to agents/logs/ollama-TIMESTAMP.log.
+    Note: OLLAMA_DEBUG is inherited from Harvey's process — start Harvey with
+    --debug for full diagnostic coverage.
 
   /ollama stop
     Print a reminder to stop Ollama via your system's service manager
@@ -342,6 +346,20 @@ Capability probing:
     refreshing cached capability data. Useful after pulling several new
     models or when moving between machines with different model sets.
     Equivalent to /ollama probe --all.
+
+Model aliases:
+
+  /ollama alias NAME FULLNAME
+    Create a short alias for a long model name. Equivalent to
+    /model alias set NAME FULLNAME.
+
+  /ollama alias list
+    List all defined model aliases.
+
+  /ollama alias remove NAME
+    Remove an alias. Equivalent to /model alias remove NAME.
+
+  See also: /help model-alias
 
 `
 
@@ -822,7 +840,7 @@ and switch between them as your work changes:
   research-X    Papers and notes for a specific research topic
 
 Only the active store is open at any time, so inactive stores consume no
-memory. The active store can be changed with /rag switch at any time.
+memory. The active store can be changed with /rag use at any time.
 
 On storage-constrained hardware (e.g. a Raspberry Pi), keep stores small
 and topical: a focused 5 000-chunk store retrieves better than a bloated
@@ -888,7 +906,7 @@ re-ingest the documents.
   /rag ingest ~/projects/novel/drafts/
 
   # Switch back to golang when you return to code
-  /rag switch golang
+  /rag use golang
 
   # See all registered stores
   /rag list
@@ -932,7 +950,7 @@ are all low (< 0.3) for a question you expect the store to answer, consider:
   at agents/rag/NAME.db and saves the config to agents/harvey.yaml.
   The new store is immediately set as active.
 
-/rag switch NAME
+/rag use NAME
   Close the currently open store and activate NAME. The change is persisted
   to agents/harvey.yaml.
 
@@ -1278,6 +1296,735 @@ Create a new bundle:
 
 `
 
+	StatusHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+STATUS — show Harvey's current runtime state
+
+# SYNOPSIS
+
+/status
+
+# DESCRIPTION
+
+/status prints a snapshot of the active Harvey session. It is the fastest
+way to confirm what model you are talking to, how full the context window is,
+and whether optional subsystems (RAG, routing, recording) are active.
+
+# OUTPUT FIELDS
+
+Backend
+  The active LLM provider and model name, e.g. "ollama (gemma4:e2b)".
+  When the Ollama backend was started by Harvey this session the tag
+  [Harvey] is appended. When Ollama was already running before Harvey
+  connected the tag [external] is appended.
+
+Debug
+  Shown only when Harvey was started with --debug. Prints the path of the
+  JSONL diagnostic log file being written this session.
+
+History
+  Number of messages in the current conversation history (all roles).
+
+Tokens
+  Estimated token count for the current history, the model's context
+  window size, and the percentage used. An exact count is shown when the
+  Ollama tokenizer API responds; otherwise an approximation prefixed with
+  "~" is shown. Not shown when the context window size is unknown.
+
+Routing
+  "on (N endpoint(s))" when remote routes are configured and enabled.
+  "off" otherwise. See /help routing for details.
+
+Workspace
+  Absolute path of the workspace root Harvey was started in.
+
+KB
+  "open (PATH)" when a SQLite knowledge base is open; "not open" otherwise.
+
+Sessions
+  Absolute path of the sessions directory.
+
+Recording
+  Path of the active Fountain session file, or "off" when not recording.
+
+# EXAMPLES
+
+~~~
+  harvey > /status
+  Backend:   ollama (gemma4:e2b) [external]
+  History:   5 messages
+  Tokens:    ~1 247 / 131 072 (0%)
+  Routing:   off
+  Workspace: /Users/alice/myproject
+  KB:        open (/Users/alice/myproject/agents/knowledge.db)
+  Sessions:  /Users/alice/myproject/agents/sessions
+  Recording: /Users/alice/myproject/agents/sessions/harvey-session-20260514-094620.spmd
+~~~
+
+# SEE ALSO
+
+  /ollama status   — check whether the Ollama daemon is reachable
+  /help ollama     — Ollama server and model management
+  /help record     — session recording
+
+`
+
+	FilesHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+FILES — list workspace directory contents
+
+# SYNOPSIS
+
+/files [PATH]
+
+# DESCRIPTION
+
+/files lists the contents of a directory inside the workspace. Directories
+are shown with a trailing "/". Hidden entries (names beginning with ".") are
+not suppressed — all entries returned by the OS are shown.
+
+PATH is relative to the workspace root. When omitted, the workspace root
+itself is listed.
+
+/files does not recurse. Use /file-tree to display a recursive tree, or
+/read-dir to read all files in a directory into context.
+
+Harvey will not list directories outside the workspace root.
+
+# EXAMPLES
+
+List the workspace root:
+
+~~~
+  harvey > /files
+~~~
+
+List a subdirectory:
+
+~~~
+  harvey > /files src/
+  harvey > /files docs
+~~~
+
+# SEE ALSO
+
+  /file-tree [PATH]   — recursive directory tree display
+  /read-dir [PATH]    — read all files in a directory into context
+  /read FILE...       — read specific files into context
+  /help file-tree
+  /help read-dir
+
+`
+
+	ReadHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+READ — inject file contents into the conversation context
+
+# SYNOPSIS
+
+/read FILE [FILE...]
+
+# DESCRIPTION
+
+/read loads one or more workspace files and injects their contents into the
+conversation as a user-role message. The model sees the file contents in the
+very next turn and can answer questions about them, suggest edits, or use
+them as reference material.
+
+Multiple files are concatenated with a blank line between each, all in a
+single injected message. Each file's content is preceded by a header showing
+its workspace-relative path.
+
+FILE is a path relative to the workspace root. Absolute paths outside the
+workspace are rejected. Symlinks are not followed. Sensitive files
+(e.g. .env, id_rsa, harvey.yaml) are blocked regardless of permissions.
+
+The agents/ directory is off-limits to /read to prevent skills and
+configuration from being inadvertently exposed.
+
+Context window impact: reading large files can quickly consume the model's
+context window. Check /status after reading to see the token impact.
+
+# EXAMPLES
+
+Read a single file:
+
+~~~
+  harvey > /read src/main.go
+~~~
+
+Read several files at once:
+
+~~~
+  harvey > /read README.md docs/ARCHITECTURE.md
+~~~
+
+Read then ask a question:
+
+~~~
+  harvey > /read harvey.go
+  harvey > What does the ragAugment function do?
+~~~
+
+# SEE ALSO
+
+  /read-dir [PATH]   — read all files in a directory
+  /files [PATH]      — list directory contents
+  /status            — check remaining context window space
+  /help read-dir
+
+`
+
+	WriteHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+WRITE — save the last assistant reply to a file
+
+# SYNOPSIS
+
+/write PATH
+
+# DESCRIPTION
+
+/write extracts content from the most recent assistant message and writes it
+to PATH inside the workspace.
+
+Content extraction follows this rule: if the reply contains a fenced code
+block (~~~ ... ~~~), the contents of the first such block are written.
+Otherwise the full reply text is written. This means you can ask the model
+to produce a file, inspect the reply, and then /write it without needing to
+copy and paste.
+
+PATH is relative to the workspace root. Parent directories must already
+exist — /write will not create them. The file is created or overwritten.
+Symlinks are not followed. Workspace permissions are checked before writing.
+
+# EXAMPLES
+
+Ask the model to write a Go function and save it:
+
+~~~
+  harvey > Write a Go function that parses ISO 8601 dates.
+  harvey > /write src/dateparse.go
+~~~
+
+Save a full reply (no code block) as a markdown file:
+
+~~~
+  harvey > Summarize the three main design decisions in this codebase.
+  harvey > /write docs/design-summary.md
+~~~
+
+# SEE ALSO
+
+  /read FILE...     — inject file contents into context
+  /run COMMAND      — run a shell command after writing
+  /help read
+
+`
+
+	RunHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+RUN — execute a shell command inside the workspace
+
+# SYNOPSIS
+
+/run COMMAND [ARGS...]
+
+# DESCRIPTION
+
+/run executes COMMAND with the given ARGS in the workspace root directory.
+The command's combined stdout and stderr are printed to the Harvey REPL.
+Output is truncated at 64 KiB to protect the context window.
+
+Shell metacharacters (;, |, &, >, <, $, backtick, (, ), {}, []) are rejected.
+This means /run is not a shell — you cannot pipe commands or use
+redirection. Use the ! prefix for multi-word shell lines when you need
+that, subject to the same Safe Mode restrictions.
+
+SAFE MODE
+
+When Safe Mode is on, only commands in the allowlist may be executed.
+The default allowlist is: ls, cat, grep, head, tail, wc, find, stat,
+jq, htmlq, bat, batcat. Use /safemode allow CMD to extend it.
+
+If /run is blocked by Safe Mode, Harvey prints the allowlist and
+suggests /safemode allow CMD. See /help security for full details.
+
+ENVIRONMENT FILTERING
+
+API keys and other sensitive environment variables are stripped from
+the child process before it runs. The child process inherits the rest
+of the Harvey environment.
+
+TIMEOUT
+
+The default run timeout is 5 minutes. Override with run_timeout in
+agents/harvey.yaml (e.g. run_timeout: "2m").
+
+# EXAMPLES
+
+~~~
+  harvey > /run go test ./...
+  harvey > /run ls -la src/
+  harvey > /run grep -r "TODO" .
+~~~
+
+# SEE ALSO
+
+  /git <status|diff|...>   — read-only git commands (always allowed)
+  /safemode                — configure the command allowlist
+  /help security           — Safe Mode, permissions, and audit log
+
+`
+
+	SearchHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+SEARCH — regex search across workspace files
+
+# SYNOPSIS
+
+/search PATTERN [PATH]
+
+# DESCRIPTION
+
+/search walks the workspace (or a subdirectory) and prints every line that
+matches PATTERN. PATTERN is a Go regular expression.
+
+Results are shown in the format:
+
+  file.go:42: matching line text
+
+Hidden directories (names beginning with ".") are skipped. Results are
+capped at 200 matches to prevent flooding the context window. If the cap
+is reached, a truncation notice is printed.
+
+PATH is relative to the workspace root. When omitted, the entire workspace
+is searched.
+
+/search is useful for finding where a symbol is defined or used before
+asking the model to explain or modify it. The results are printed to the
+REPL but are not automatically injected into the conversation — paste the
+relevant lines or use /read to load the file.
+
+# EXAMPLES
+
+Search for a function name:
+
+~~~
+  harvey > /search ragAugment
+~~~
+
+Search for a TODO comment in a subdirectory:
+
+~~~
+  harvey > /search "TODO|FIXME" src/
+~~~
+
+Case-insensitive search:
+
+~~~
+  harvey > /search "(?i)context.length"
+~~~
+
+# SEE ALSO
+
+  /read FILE...    — load a file into context after finding it
+  /files [PATH]    — list directory contents
+
+`
+
+	GitHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+GIT — run read-only git commands in the workspace
+
+# SYNOPSIS
+
+/git <status|diff|log|show|blame> [ARGS...]
+
+# DESCRIPTION
+
+/git runs read-only git subcommands in the workspace root and prints their
+output to the REPL. Only the five safe, non-mutating subcommands are
+permitted; write operations such as commit, push, checkout, and reset are
+blocked.
+
+ARGS are passed directly to the underlying git command, so all the usual
+flags and path arguments work.
+
+Output is capped at 64 KiB. Sensitive environment variables are filtered
+from the git process.
+
+/git operates on whatever repository contains the workspace root. If the
+workspace is not inside a git repository, git will report an error.
+
+# SUBCOMMANDS
+
+/git status [ARGS...]
+  Show the working tree status.
+
+/git diff [ARGS...]
+  Show unstaged or staged changes. Pass --staged for staged-only.
+
+/git log [ARGS...]
+  Show the commit log. Useful flags: --oneline, -n N, --since DATE.
+
+/git show [REF]
+  Show a commit, tag, or tree object.
+
+/git blame FILE
+  Show what revision last modified each line of FILE.
+
+# EXAMPLES
+
+~~~
+  harvey > /git status
+  harvey > /git diff HEAD~1
+  harvey > /git log --oneline -10
+  harvey > /git blame src/main.go
+~~~
+
+After reviewing changes, ask the model:
+
+~~~
+  harvey > /git diff
+  harvey > Explain what changed and whether there are any risks.
+~~~
+
+# SEE ALSO
+
+  /run COMMAND   — run arbitrary (safe-mode-checked) commands
+  /help run
+
+`
+
+	SummarizeHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+SUMMARIZE — condense conversation history to free context window space
+
+# SYNOPSIS
+
+/summarize
+/compact
+
+# DESCRIPTION
+
+/summarize (alias: /compact) asks the active model to produce a concise
+summary of the current conversation, then replaces the entire history with:
+
+  1. The system prompt (re-injected automatically).
+  2. Any pinned context set with /context add.
+  3. A single user message containing the summary.
+
+This frees up the context window so you can continue a long session without
+hitting the model's token limit or degrading response quality from a
+very-full context.
+
+The summary is generated by the same model you are currently using. Small or
+instruction-poor models may produce lower-quality summaries. If the summary
+is empty (e.g. the model refused or failed), history is left unchanged.
+
+At least two non-system messages must exist in history; otherwise the
+command does nothing.
+
+/compact is an exact alias for /summarize — both names work identically.
+
+# WORKFLOW
+
+~~~
+  harvey > /status
+  Tokens: ~98 000 / 131 072 (74%)
+
+  harvey > /summarize
+  History condensed to 847 chars.
+
+  harvey > /status
+  Tokens: ~312 / 131 072 (0%)
+~~~
+
+# WHAT SURVIVES SUMMARIZE
+
+  System prompt    — re-injected automatically.
+  Pinned context   — re-injected as the first user message.
+  RAG state        — unaffected.
+  Recording        — the running session continues; summary is not
+                     written back to the Fountain file.
+
+# SEE ALSO
+
+  /context add TEXT   — pin a summary you compose manually
+  /clear              — discard history entirely (no summary generated)
+  /status             — check context window usage before and after
+  /help context
+  /help clear
+
+`
+
+	ModelHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+MODEL — list installed models or switch the active model
+
+# SYNOPSIS
+
+/model
+/model NAME
+/model ollama://NAME
+/model alias [list|set ALIAS NAME|remove ALIAS]
+
+# DESCRIPTION
+
+Without arguments, /model lists all models available across every reachable
+backend (Ollama, routes), marking the currently active model with *.
+
+With a NAME argument, /model switches the active model for the current
+session. Harvey does not restart; the switch takes effect on the next
+user turn.
+
+NAME can be:
+  - A bare Ollama model identifier: llama3.1:8b
+  - An ollama:// URL: ollama://llama3.1:8b
+  - A model alias defined with /model alias set
+
+/model alias is a shorthand for managing short memorable names for long
+Ollama model identifiers. See /help model-alias for full details.
+
+# SWITCHING MODELS
+
+~~~
+  harvey > /model
+  * gemma4:e2b        ...
+    llama3.1:8b       ...
+    qwen2.5-coder:7b  ...
+
+  harvey > /model llama3.1:8b
+  harvey > /model qwen-coder        (if alias defined)
+  harvey > /model ollama://mistral:latest
+~~~
+
+When switching, Harvey replaces the backend client immediately. The
+conversation history is preserved so you can compare responses from
+different models within the same session.
+
+# CAPABILITY PROBING
+
+After pulling a new model, run /ollama probe MODEL to detect its tool-
+calling, embedding, and tagged-block capabilities. Results are cached in
+agents/model_cache.db and shown in /model and /ollama list.
+
+# SEE ALSO
+
+  /ollama list       — list installed Ollama models with capabilities
+  /ollama probe      — probe and cache model capabilities
+  /model alias set   — define a short alias for a long model name
+  /help model-alias
+  /help ollama
+
+`
+
+	InspectHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+INSPECT — show detailed Ollama model information
+
+# SYNOPSIS
+
+/inspect
+/inspect MODEL
+
+# DESCRIPTION
+
+/inspect queries the local Ollama server for detailed information about
+installed models. Requires an Ollama backend; use /ollama start first if
+Ollama is not running.
+
+Without a MODEL argument, /inspect shows a summary table of all installed
+models: name, disk size, family, context length, and capability flags
+(tools, embed, tagged-blocks). This is identical to /ollama list.
+
+With a MODEL argument, /inspect shows the full detail view for that model:
+family, parameter count, quantization level, disk size, context length,
+and all Modelfile parameter lines (e.g. temperature, system prompt).
+
+# EXAMPLES
+
+Summary of all installed models:
+
+~~~
+  harvey > /inspect
+~~~
+
+Detail view for a specific model:
+
+~~~
+  harvey > /inspect gemma4:e2b
+  Model:        gemma4:e2b [loaded]
+  Family:       gemma4
+  Parameters:   2.5B
+  Quantization: Q4_K_M
+  Context:      131072 tokens
+  Disk size:    1.7 GiB
+
+  Modelfile parameters:
+    stop "<end_of_turn>"
+~~~
+
+# SEE ALSO
+
+  /ollama list        — model table (same as /inspect with no args)
+  /ollama probe       — test and cache capability flags
+  /ollama show MODEL  — raw Modelfile via the ollama CLI
+  /help ollama
+
+`
+
+	SecurityHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+SECURITY — Safe Mode, workspace permissions, and audit logging
+
+# SYNOPSIS
+
+/safemode <on|off|status|allow CMD|deny CMD|reset>
+/permissions <list [PATH]|set PATH PERMS|reset>
+/audit <show [N]|clear|status>
+/security status
+
+# DESCRIPTION
+
+Harvey includes four complementary security controls. All settings survive
+restart when persisted via the commands below. Run /security status for a
+unified view of the current security posture.
+
+## SAFE MODE (/safemode)
+
+Safe Mode restricts which programs the model may execute via the ! prefix
+and /run. When enabled, only commands in the allowlist are permitted.
+
+Default allowlist: ls, cat, grep, head, tail, wc, find, stat, jq, htmlq,
+bat, batcat.
+
+Subcommands:
+
+  /safemode on
+    Enable Safe Mode. Commands not in the allowlist are blocked and
+    audit-logged.
+
+  /safemode off
+    Disable Safe Mode. All commands accepted by the shell metacharacter
+    filter are permitted.
+
+  /safemode status
+    Show whether Safe Mode is on or off and list the current allowlist.
+
+  /safemode allow CMD
+    Add CMD to the allowlist. Persisted to agents/harvey.yaml.
+
+  /safemode deny CMD
+    Remove CMD from the allowlist. Persisted to agents/harvey.yaml.
+
+  /safemode reset
+    Restore the default allowlist.
+
+## WORKSPACE PERMISSIONS (/permissions)
+
+Workspace permissions give fine-grained read/write/exec/delete control per
+path prefix within the workspace. Permissions are persisted in
+agents/harvey.yaml under the permissions: key.
+
+Permission values: read, write, exec, delete (comma-separated).
+
+Subcommands:
+
+  /permissions list [PATH]
+    List permissions for all prefixes, or for a specific PATH.
+
+  /permissions set PATH PERMS
+    Set permissions for PATH. PERMS is a comma-separated list of values.
+    Example: /permissions set src/ read,write
+
+  /permissions reset
+    Remove all custom permissions.
+
+## AUDIT LOG (/audit)
+
+Harvey maintains an in-memory ring buffer of the last 1 000 events covering
+command execution, file reads, file writes, file deletes, file listings,
+skill runs, and security denials. The log resets when Harvey exits.
+
+Subcommands:
+
+  /audit show [N]
+    Print the most recent N events (default 20).
+
+  /audit clear
+    Clear the in-memory audit buffer.
+
+  /audit status
+    Show the buffer size and event count.
+
+## SECURITY OVERVIEW (/security status)
+
+/security status prints a single unified view of: Safe Mode state and
+allowlist, workspace permissions, and audit buffer status.
+
+# EXAMPLES
+
+~~~
+  harvey > /safemode on
+  harvey > /safemode allow make
+  harvey > /permissions set src/ read,write
+  harvey > /audit show 10
+  harvey > /security status
+~~~
+
+# SEE ALSO
+
+  /help run      — shell command execution and timeout
+  /help routing  — remote endpoint security
+
+`
+
 	HelpText = `%{app_name}(1) user manual | version {version} {release_hash}
 % R. S. Doiel
 % {release_date}
@@ -1346,6 +2093,12 @@ Type /help inside the session for available slash commands.
 --replay-output FILE
 : write replay responses to FILE (default: auto-named timestamped file; implies --replay)
 
+--debug
+: enable diagnostic mode: sets OLLAMA_DEBUG=1 in the Ollama subprocess and
+  writes a JSONL event log to agents/logs/harvey-TIMESTAMP.jsonl covering
+  every LLM request/response, RAG injection, tool call, and skill dispatch.
+  Use "harvey --help status" to see the log path during a session.
+
 # ENVIRONMENT
 
 ANTHROPIC_API_KEY   API key for Anthropic Claude (optional, for /route add NAME anthropic://)
@@ -1356,6 +2109,109 @@ OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
 
 All of the above API key variables are filtered out of every child process
 environment — they are never passed to commands run via ! or /run.
+
+# COMMANDS
+
+Type /help TOPIC inside Harvey for the full guide on any topic. All topics
+are also available from the shell: harvey --help TOPIC.
+
+**Workspace**
+
+/files [PATH]
+: list directory contents inside the workspace
+
+/read FILE [FILE...]
+: inject file contents into the conversation as context
+
+/write PATH
+: save the last assistant reply (or its first code block) to a file
+
+/read-dir [PATH] [--depth N]
+: read all eligible files in a directory tree into context
+
+/file-tree [PATH]
+: display a recursive directory tree
+
+/search PATTERN [PATH]
+: regex search across workspace files (Go regexp syntax)
+
+/run COMMAND [ARGS...]
+: run a shell command; subject to Safe Mode and timeout
+
+/git <status|diff|log|show|blame> [ARGS...]
+: read-only git commands in the workspace
+
+**Model and backend**
+
+/model [NAME]
+: list all installed models, or switch to NAME
+
+/model alias set ALIAS NAME
+: define a short alias for a long model identifier
+
+/ollama <start [debug]|stop|status|list|ps|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL]|logs|use MODEL|env|alias NAME FULLNAME>
+: manage the local Ollama server and installed models
+
+/inspect [MODEL]
+: show detailed model information (Ollama only)
+
+/route <add NAME URL [MODEL]|rm NAME|list|on|off|status>
+: manage named remote LLM endpoints (@mention routing)
+
+**Context and history**
+
+/context <show|add TEXT...|clear>
+: manage pinned context that survives /clear
+
+/clear
+: reset conversation history (system prompt and pinned context survive)
+
+/summarize
+: condense history to a summary, freeing context window space (/compact is an alias)
+
+/status
+: show active backend, token usage, routing, recording, and debug state
+
+**Sessions**
+
+/record <start [FILE]|stop|status>
+: start or stop Fountain session recording
+
+/rename NAME
+: rename the active session file without interrupting recording
+
+/session <continue FILE|replay FILE [OUTPUT]>
+: load history from a prior session or replay its turns
+
+**Knowledge base**
+
+/kb <status|search TEXT|inject TEXT|project [ID]|observe KIND BODY|concept NAME>
+: query and update the SQLite knowledge base
+
+/rag <list|new NAME|use NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
+: manage retrieval-augmented generation stores
+
+**Skills**
+
+/skill <list|load NAME|info NAME|status|new|run NAME>
+: discover, load, and run agent skills
+
+/skill-set <list|load NAME|info NAME|create NAME|status|unload>
+: manage named bundles of skills
+
+**Security**
+
+/safemode <on|off|status|allow CMD|deny CMD|reset>
+: restrict which commands the model may execute
+
+/permissions <list [PATH]|set PATH PERMS|reset>
+: fine-grained read/write/exec/delete control per path prefix
+
+/audit <show [N]|clear|status>
+: review the in-memory command and file-access audit log
+
+/security status
+: unified security posture overview
 
 # SECURITY
 

@@ -360,9 +360,21 @@ func PrintOllamaEnv(out io.Writer) {
 }
 
 // StartOllamaService launches "ollama serve" as a background process and waits
-// up to 5 seconds for it to become reachable.
-func StartOllamaService() error {
+// up to 5 seconds for it to become reachable. OLLAMA_DEBUG is inherited from
+// Harvey's process environment (set via --debug at startup). When ollamaLogPath
+// is non-empty, subprocess stdout and stderr are redirected to that file so debug
+// output is captured rather than discarded.
+func StartOllamaService(ollamaLogPath string) error {
 	cmd := exec.Command("ollama", "serve")
+	if ollamaLogPath != "" {
+		f, err := os.Create(ollamaLogPath)
+		if err == nil {
+			cmd.Stdout = f
+			cmd.Stderr = f
+			// The subprocess inherits its own fd; safe to close the parent's copy.
+			defer f.Close()
+		}
+	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("could not launch ollama: %w", err)
 	}

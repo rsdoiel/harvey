@@ -3,6 +3,7 @@ package harvey
 import (
 	"bufio"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,16 +30,16 @@ func TestValidSkillName(t *testing.T) {
 // ─── CompiledBashPath / CompiledPS1Path ──────────────────────────────────────
 
 func TestCompiledBashPath(t *testing.T) {
-	got := CompiledBashPath("/proj/.agents/skills/my-skill/SKILL.md")
-	want := "/proj/.agents/skills/my-skill/scripts/compiled.bash"
+	got := CompiledBashPath("/proj/agents/skills/my-skill/SKILL.md")
+	want := "/proj/agents/skills/my-skill/scripts/compiled.bash"
 	if got != want {
 		t.Errorf("want %q, got %q", want, got)
 	}
 }
 
 func TestCompiledPS1Path(t *testing.T) {
-	got := CompiledPS1Path("/proj/.agents/skills/my-skill/SKILL.md")
-	want := "/proj/.agents/skills/my-skill/scripts/compiled.ps1"
+	got := CompiledPS1Path("/proj/agents/skills/my-skill/SKILL.md")
+	want := "/proj/agents/skills/my-skill/scripts/compiled.ps1"
 	if got != want {
 		t.Errorf("want %q, got %q", want, got)
 	}
@@ -151,7 +152,7 @@ func TestRunSkillWizard_invalidName(t *testing.T) {
 	input := "Bad Name\n"
 	reader := bufio.NewReader(strings.NewReader(input))
 	var out strings.Builder
-	_, err := RunSkillWizard(ws, reader, &out)
+	_, err := RunSkillWizard(ws, "", reader, &out)
 	if err == nil {
 		t.Fatal("want error for invalid skill name, got nil")
 	}
@@ -164,7 +165,7 @@ func TestRunSkillWizard_overwriteGuard(t *testing.T) {
 	ws := makeWizardWorkspace(t)
 
 	// Pre-create the skill.
-	existing := ".agents/skills/my-skill/SKILL.md"
+	existing := "agents/skills/my-skill/SKILL.md"
 	if err := ws.WriteFile(existing, []byte("---\ndescription: exists\n---\nbody"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +173,7 @@ func TestRunSkillWizard_overwriteGuard(t *testing.T) {
 	input := "my-skill\n"
 	reader := bufio.NewReader(strings.NewReader(input))
 	var out strings.Builder
-	_, err := RunSkillWizard(ws, reader, &out)
+	_, err := RunSkillWizard(ws, "", reader, &out)
 	if err == nil {
 		t.Fatal("want error when skill already exists, got nil")
 	}
@@ -182,9 +183,13 @@ func TestRunSkillWizard_overwriteGuard(t *testing.T) {
 }
 
 func TestRunSkillWizard_success(t *testing.T) {
-	// Stub editor: use /bin/true (no-op, leaves temp file with default content).
+	// Stub editor: use `true` (no-op, leaves temp file with default content).
+	truePath, err := exec.LookPath("true")
+	if err != nil {
+		t.Skip("true not found in PATH")
+	}
 	t.Setenv("VISUAL", "")
-	t.Setenv("EDITOR", "/bin/true")
+	t.Setenv("EDITOR", truePath)
 
 	ws := makeWizardWorkspace(t)
 	// Provide all fields including optional ones.
@@ -200,12 +205,12 @@ func TestRunSkillWizard_success(t *testing.T) {
 
 	reader := bufio.NewReader(strings.NewReader(input))
 	var out strings.Builder
-	relPath, err := RunSkillWizard(ws, reader, &out)
+	relPath, err := RunSkillWizard(ws, "", reader, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if relPath != ".agents/skills/my-skill/SKILL.md" {
-		t.Errorf("want '.agents/skills/my-skill/SKILL.md', got %q", relPath)
+	if relPath != "agents/skills/my-skill/SKILL.md" {
+		t.Errorf("want 'agents/skills/my-skill/SKILL.md', got %q", relPath)
 	}
 
 	// Read back the created file.
@@ -233,8 +238,12 @@ func TestRunSkillWizard_success(t *testing.T) {
 }
 
 func TestRunSkillWizard_optionalFieldsOmitted(t *testing.T) {
+	truePath, err := exec.LookPath("true")
+	if err != nil {
+		t.Skip("true not found in PATH")
+	}
 	t.Setenv("VISUAL", "")
-	t.Setenv("EDITOR", "/bin/true")
+	t.Setenv("EDITOR", truePath)
 
 	ws := makeWizardWorkspace(t)
 	// Leave compatibility and trigger blank.
@@ -250,12 +259,12 @@ func TestRunSkillWizard_optionalFieldsOmitted(t *testing.T) {
 
 	reader := bufio.NewReader(strings.NewReader(input))
 	var out strings.Builder
-	_, err := RunSkillWizard(ws, reader, &out)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	_, wizErr := RunSkillWizard(ws, "", reader, &out)
+	if wizErr != nil {
+		t.Fatalf("unexpected error: %v", wizErr)
 	}
 
-	abs, _ := ws.AbsPath(".agents/skills/lean-skill/SKILL.md")
+	abs, _ := ws.AbsPath("agents/skills/lean-skill/SKILL.md")
 	content, _ := os.ReadFile(abs)
 	cs := string(content)
 

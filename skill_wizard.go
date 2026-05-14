@@ -195,27 +195,31 @@ Step-by-step instructions for the model to follow when this skill is active.
 
 /** RunSkillWizard interactively collects skill metadata from the user,
  * opens $EDITOR/$VISUAL for the instructions body, and writes the resulting
- * SKILL.md into ws at .agents/skills/<name>/SKILL.md.
+ * SKILL.md into ws at <agentsDir>/skills/<name>/SKILL.md.
  *
  * Short fields (name, description, license, compatibility, author, version,
  * trigger) are collected via the provided reader. The instructions body is
  * edited in $VISUAL or $EDITOR (falling back to vi).
  *
  * Parameters:
- *   ws     (*Workspace)    — workspace for path resolution and file writes.
- *   reader (*bufio.Reader) — reads short field responses; use bufio.NewReaderSize(os.Stdin, 1).
- *   out    (io.Writer)     — destination for prompts and status messages.
+ *   ws        (*Workspace)    — workspace for path resolution and file writes.
+ *   agentsDir (string)        — agents directory name; empty defaults to "agents".
+ *   reader    (*bufio.Reader) — reads short field responses; use bufio.NewReaderSize(os.Stdin, 1).
+ *   out       (io.Writer)     — destination for prompts and status messages.
  *
  * Returns:
- *   relPath (string) — relative path to the created SKILL.md, e.g. ".agents/skills/my-skill/SKILL.md".
+ *   relPath (string) — relative path to the created SKILL.md, e.g. "agents/skills/my-skill/SKILL.md".
  *   err     (error)  — on validation failure, editor error, or write failure.
  *
  * Example:
- *   relPath, err := RunSkillWizard(ws, bufio.NewReaderSize(os.Stdin, 1), os.Stdout)
+ *   relPath, err := RunSkillWizard(ws, "", bufio.NewReaderSize(os.Stdin, 1), os.Stdout)
  *   if err != nil { log.Fatal(err) }
  *   fmt.Println("created:", relPath)
  */
-func RunSkillWizard(ws *Workspace, reader *bufio.Reader, out io.Writer) (string, error) {
+func RunSkillWizard(ws *Workspace, agentsDir string, reader *bufio.Reader, out io.Writer) (string, error) {
+	if agentsDir == "" {
+		agentsDir = "agents"
+	}
 	// ── name ────────────────────────────────────────────────────────────────
 	fmt.Fprint(out, "  Skill name (lowercase letters, numbers, hyphens): ")
 	name, err := readLine(reader)
@@ -226,7 +230,7 @@ func RunSkillWizard(ws *Workspace, reader *bufio.Reader, out io.Writer) (string,
 		return "", fmt.Errorf("skill wizard: invalid name %q (use lowercase letters, numbers, hyphens only)", name)
 	}
 
-	relMD := ".agents/skills/" + name + "/SKILL.md"
+	relMD := agentsDir + "/skills/" + name + "/SKILL.md"
 	abs, err := ws.AbsPath(relMD)
 	if err != nil {
 		return "", fmt.Errorf("skill wizard: %w", err)

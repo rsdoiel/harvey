@@ -164,9 +164,11 @@ type Agent struct {
 	ActiveSkill   string         // name of the most recently loaded skill; "" when none
 	ActiveSkillSet string        // name of the currently loaded skill-set bundle; "" when none
 	Tools         *ToolRegistry  // schema-based tool registry; nil when tools are disabled
-	commands      map[string]*Command
-	statHistory   []ChatStats // rolling window of recent turn stats
-	AuditBuffer   *AuditBuffer // in-memory audit log ring buffer; nil until initialized
+	commands               map[string]*Command
+	statHistory            []ChatStats  // rolling window of recent turn stats
+	AuditBuffer            *AuditBuffer // in-memory audit log ring buffer; nil until initialized
+	DebugLog               *DebugLog    // JSONL diagnostic log; nil when --debug not set
+	OllamaStartedByHarvey  bool         // true when Harvey launched the Ollama subprocess this session
 }
 
 /** effectiveContextLimit returns the context-window size in tokens for the
