@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>KB — knowledge base management</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/kb [status] /kb search TERM [TERM…] /kb inject [PROJECT] /kb project
+&lt;list|add NAME [DESC]|use ID&gt; /kb observe [KIND] TEXT /kb concept
+&lt;list|add NAME [DESC]&gt;</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>Harvey keeps a SQLite knowledge base at
+<workdir>/agents/knowledge.db. It stores structured notes about
+experiments and concepts so you can search and inject that context into
+conversations without relying on the model’s general knowledge.</p>
+<p>The knowledge base is independent of the RAG store (/help rag). KB
+holds hand-authored structured records; RAG holds embedded chunks from
+ingested documents. Use both: /kb inject to bring structured records
+into context, and RAG to retrieve relevant document passages
+automatically.</p>
+<h1 id="concepts">CONCEPTS</h1>
+<p>Project — a named container for a body of work. One project can be
+“active” at a time; /kb observe attaches to the active project.</p>
+<p>Observation — a timestamped note attached to a project. Each
+observation has a kind:</p>
+<pre><code>              note        — general remark
+              finding     — empirical result
+              decision    — a choice made and its rationale
+              question    — open question to return to
+              hypothesis  — testable prediction</code></pre>
+<p>Concept — a named idea or term that can be referenced across multiple
+projects and observations.</p>
+<h1 id="subcommands">SUBCOMMANDS</h1>
+<p>/kb status Show the database path, project count, and observation
+count.</p>
+<p>/kb search TERM [TERM…] Full-text search (FTS5) across all
+observations and concepts. Supports quoted phrases and prefix
+wildcards:</p>
+<pre><code>  /kb search RAG embedding
+  /kb search &quot;context window&quot;
+  /kb search grpc*</code></pre>
+<p>/kb inject [PROJECT] Format the knowledge base as Markdown and add it
+to the conversation as a user message. With no argument, injects the
+active project (or all projects if none is active). With a project name,
+injects only that project.</p>
+<pre><code>  /kb inject
+  /kb inject harvey</code></pre>
+<p>/kb project list List all projects with ID, name, and status. The
+active project is marked with *.</p>
+<p>/kb project add NAME <a href="#description">DESCRIPTION</a> Create a
+project and set it as the active project.</p>
+<pre><code>  /kb project add harvey &quot;terminal coding agent for Ollama&quot;</code></pre>
+<p>/kb project use ID Set an existing project as the active project by
+numeric ID.</p>
+<p>/kb observe [KIND] TEXT Record an observation against the active
+project. KIND defaults to “note” if omitted. Valid kinds: note, finding,
+decision, question, hypothesis.</p>
+<pre><code>  /kb observe finding RAG threshold of 0.3 eliminates noise on granite3-moe
+  /kb observe decision switched embedding model to nomic-embed-text
+  /kb observe question does bge-m3 outperform nomic on code retrieval?</code></pre>
+<p>/kb concept list List all concepts with ID and description.</p>
+<p>/kb concept add NAME <a href="#description">DESCRIPTION</a> Add a
+named concept to the knowledge base.</p>
+<pre><code>  /kb concept add RAG &quot;retrieval-augmented generation&quot;
+  /kb concept add &quot;context window&quot; &quot;token budget for a single LLM call&quot;</code></pre>
+<h1 id="workflow-example">WORKFLOW EXAMPLE</h1>
+<pre><code>  /kb project add myapp &quot;Go CLI for processing audio files&quot;
+  /kb observe decision using ffmpeg via exec.Command, not a Go binding
+  /kb observe finding ffmpeg probe takes ~80 ms per file on Pi 4
+  /kb observe question can we batch probe calls to reduce overhead?
+  /kb concept add ffmpeg &quot;audio/video processing CLI&quot;
+  /kb inject</code></pre>
+<p>After /kb inject the model sees the full project record as context
+and can answer questions about it, suggest next steps, or help resolve
+open questions.</p>
+</section>
+</body>
+</html>

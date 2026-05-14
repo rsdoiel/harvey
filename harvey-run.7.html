@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>RUN — execute a shell command inside the workspace</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/run COMMAND [ARGS…]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/run executes COMMAND with the given ARGS in the workspace root
+directory. The command’s combined stdout and stderr are printed to the
+Harvey REPL. Output is truncated at 64 KiB to protect the context
+window.</p>
+<p>Shell metacharacters (;, |, &amp;, &gt;, &lt;, $, backtick, (, ), {},
+[]) are rejected. This means /run is not a shell — you cannot pipe
+commands or use redirection. Use the ! prefix for multi-word shell lines
+when you need that, subject to the same Safe Mode restrictions.</p>
+<p>SAFE MODE</p>
+<p>When Safe Mode is on, only commands in the allowlist may be executed.
+The default allowlist is: ls, cat, grep, head, tail, wc, find, stat, jq,
+htmlq, bat, batcat. Use /safemode allow CMD to extend it.</p>
+<p>If /run is blocked by Safe Mode, Harvey prints the allowlist and
+suggests /safemode allow CMD. See /help security for full details.</p>
+<p>ENVIRONMENT FILTERING</p>
+<p>API keys and other sensitive environment variables are stripped from
+the child process before it runs. The child process inherits the rest of
+the Harvey environment.</p>
+<p>TIMEOUT</p>
+<p>The default run timeout is 5 minutes. Override with run_timeout in
+agents/harvey.yaml (e.g. run_timeout: “2m”).</p>
+<h1 id="examples">EXAMPLES</h1>
+<pre><code>  harvey &gt; /run go test ./...
+  harvey &gt; /run ls -la src/
+  harvey &gt; /run grep -r &quot;TODO&quot; .</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/git &lt;status|diff|…&gt; — read-only git commands (always allowed)
+/safemode — configure the command allowlist /help security — Safe Mode,
+permissions, and audit log</p>
+</section>
+</body>
+</html>

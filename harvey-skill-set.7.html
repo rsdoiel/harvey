@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>SKILL-SET — load and manage named bundles of Harvey skills</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/skill-set &lt;list|load NAME|info NAME|create
+NAME|status|unload&gt;</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/skill-set groups multiple skills into a named YAML bundle stored in
+agents/skill-sets/. Loading a bundle injects every skill in the bundle
+into the current conversation context in one step.</p>
+<p>Skill-set YAML files live in agents/skill-sets/ and reference skills
+by the name field in their SKILL.md frontmatter
+(e.g. “fountain-analysis”).</p>
+<h1 id="subcommands">SUBCOMMANDS</h1>
+<p>list List all YAML files found in agents/skill-sets/.</p>
+<p>load NAME Parse NAME.yaml, validate every skill exists in
+agents/skills/, count tokens for the combined bodies, and load each
+skill into context. Warns when combined tokens exceed 50 % of the active
+context window; errors when they exceed 100 %.</p>
+<p>info NAME Show the skill-set description and the skills it contains
+without loading.</p>
+<p>create NAME Scaffold a new NAME.yaml in agents/skill-sets/ with
+placeholder content.</p>
+<p>status Show the currently loaded skill-set (if any).</p>
+<p>unload Clear the active skill-set indicator. The injected context
+remains in history; use /clear if you need a clean slate.</p>
+<h1 id="yaml-format">YAML FORMAT</h1>
+<p>name: go-dev description: | Skills for Go development sessions.
+skills: - fountain-analysis - review-knowledge-base metadata: version:
+“1.0” author: “R. S. Doiel”</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>List available bundles:</p>
+<p>/skill-set list</p>
+<p>Load the fountain bundle:</p>
+<p>/skill-set load fountain</p>
+<p>Show bundle contents without loading:</p>
+<p>/skill-set info fountain</p>
+<p>Check what is active:</p>
+<p>/skill-set status</p>
+<p>Create a new bundle:</p>
+<p>/skill-set create my-bundle</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/skill load NAME — load a single skill /skill list — list individual
+skills /help skills — skills system overview</p>
+</section>
+</body>
+</html>

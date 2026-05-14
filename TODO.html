@@ -30,10 +30,21 @@ help guide in REPL</label></li>
 a help guide in REPL</label></li>
 <li><label><input type="checkbox" checked="" />/clear command is missing
 a help guide in REPL</label></li>
+<li><label><input type="checkbox" checked="" />Ollama Alias doesn’t
+work:
+`<code>harvey &gt; /ollama alias apertus abb-decide/apertus-tools:8b-instruct-2509-q4_k_m Unknown ollama subcommand: alias</code></label></li>
 </ul>
 <h2 id="next-steps-upcoming-features">Next Steps (upcoming
 features)</h2>
 <ul class="task-list">
+<li><label><input type="checkbox" checked="" />Add a ‘debug’ option when
+starting Ollama server for better diagnositics</label></li>
+<li><label><input type="checkbox" checked="" />The syntax of slash
+commands needs to be more unified, <code>/rag switch</code> should be
+more like <code>/ollama use</code></label></li>
+<li><label><input type="checkbox" checked="" />Revise how the Ollama
+models are listed by features. Example: the embedding only models should
+be grouped together and the tools/tagged models in a group</label></li>
 <li><label><input type="checkbox"
 checked="" /><strong><code>/read-dir</code> command</strong>
 (<code>prompts/read_files.md</code>): Read all files in a directory into
@@ -357,37 +368,40 @@ covering <code>safe_mode</code>, <code>allowed_commands</code>,
 <h3 id="security-hardening-v0.0.3-release">Security Hardening (v0.0.3
 Release)</h3>
 <ul class="task-list">
-<li><label><input type="checkbox" /><strong>Critical — <code>/run</code>
-command injection fix</strong>: Update <code>cmdRun</code> in
-<code>commands.go:2186</code> to use <code>parseCommandLine()</code> for
-argument validation, preventing shell metacharacter
-injection</label></li>
-<li><label><input type="checkbox" /><strong>High — Expand API key
-filtering</strong>: Add <code>COHERE_API_KEY</code>,
-<code>GROQ_API_KEY</code>, <code>PERPLEXITY_API_KEY</code> to sensitive
-variable lists in <code>skill_dispatch.go</code> and
+<li><label><input type="checkbox" checked="" /><strong>Critical —
+<code>/run</code> command injection fix</strong>: <code>cmdRun</code>
+already uses <code>parseCommandLine()</code> for argument
+validation</label></li>
+<li><label><input type="checkbox" checked="" /><strong>High — Expand API
+key filtering</strong>: <code>COHERE_API_KEY</code>,
+<code>GROQ_API_KEY</code>, <code>PERPLEXITY_API_KEY</code> already in
+both <code>skill_dispatch.go</code> and
 <code>commands.go</code></label></li>
-<li><label><input type="checkbox" /><strong>High — Add SSH key
-blocking</strong>: Add <code>id_rsa</code>, <code>id_ed25519</code>,
-<code>authorized_keys</code> to <code>sensitiveDenyPatterns</code> in
-<code>tools.go</code></label></li>
+<li><label><input type="checkbox" checked="" /><strong>High — Add SSH
+key blocking</strong>: <code>id_rsa</code>, <code>id_ed25519</code>,
+<code>authorized_keys</code> already in
+<code>sensitiveDenyPatterns</code> in <code>tools.go</code></label></li>
 <li><label><input type="checkbox" checked="" /><strong>Medium — TLS
 verification for routes</strong>: Add warning when remote routes use
 HTTP (not HTTPS) for cloud providers in
 <code>routing.go</code></label></li>
-<li><label><input type="checkbox" /><strong>Medium — Install script
-security</strong>: Document SHA256 checksum verification in
-<code>INSTALL.md</code> before pipe-to-shell instructions</label></li>
-<li><label><input type="checkbox" /><strong>Medium — Symlink
-hardening</strong>: Update <code>isAgentsDir()</code> in
-<code>tools.go</code> to use <code>filepath.EvalSymlinks</code> for
-symlink-safe comparison</label></li>
-<li><label><input type="checkbox" /><strong>Low — Tool input
-limits</strong>: Add maximum length validation for string inputs in
-<code>builtin_tools.go</code> tool handlers</label></li>
-<li><label><input type="checkbox" /><strong>Low — Rate
-limiting</strong>: Consider adding per-turn tool call limits to prevent
-DoS via rapid tool invocations</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Medium — Install
+script security</strong>: <code>release.bash</code> and
+<code>release.ps1</code> now generate and upload SHA256 checksums
+alongside release zips. INSTALL.md user-facing verification docs still
+pending (cmt-generated; needs codemeta.json update).</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Medium — Symlink
+hardening</strong>: <code>resolveWorkspacePath</code> now rejects any
+path where <code>EvalSymlinks</code> changes the result — symbolic links
+are not followed inside the workspace</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Low — Tool input
+limits</strong>: <code>builtin_tools.go</code> already has
+<code>maxInputPath</code>, <code>maxInputContent</code>,
+<code>maxInputPattern</code>, <code>maxInputCommand</code> constants
+with validation</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Low — Rate
+limiting</strong>: <code>MaxToolCallsPerTurn</code> already enforced in
+<code>ToolExecutor</code></label></li>
 <li><label><input type="checkbox" checked="" /><strong>Documentation —
 Create SECURITY.md</strong>: Document Harvey’s security model, threats,
 and mitigations for users</label></li>

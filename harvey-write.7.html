@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>WRITE — save the last assistant reply to a file</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/write PATH</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/write extracts content from the most recent assistant message and
+writes it to PATH inside the workspace.</p>
+<p>Content extraction follows this rule: if the reply contains a fenced
+code block (<sub></sub>~ … <sub></sub>~), the contents of the first such
+block are written. Otherwise the full reply text is written. This means
+you can ask the model to produce a file, inspect the reply, and then
+/write it without needing to copy and paste.</p>
+<p>PATH is relative to the workspace root. Parent directories must
+already exist — /write will not create them. The file is created or
+overwritten. Symlinks are not followed. Workspace permissions are
+checked before writing.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Ask the model to write a Go function and save it:</p>
+<pre><code>  harvey &gt; Write a Go function that parses ISO 8601 dates.
+  harvey &gt; /write src/dateparse.go</code></pre>
+<p>Save a full reply (no code block) as a markdown file:</p>
+<pre><code>  harvey &gt; Summarize the three main design decisions in this codebase.
+  harvey &gt; /write docs/design-summary.md</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/read FILE… — inject file contents into context /run COMMAND — run a
+shell command after writing /help read</p>
+</section>
+</body>
+</html>

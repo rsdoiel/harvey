@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>MODEL ALIAS — manage short names for Ollama model identifiers</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/model alias [list] /model alias set ALIAS FULL_MODEL_NAME /model
+alias remove ALIAS</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>Model aliases let you use short, memorable names instead of full
+Ollama model identifiers. Aliases are stored in agents/harvey.yaml under
+model_aliases: and persist across sessions.</p>
+<p>When you switch models with /model ALIAS, Harvey resolves the alias
+to the full identifier before querying Ollama. The full name is always
+recorded in Fountain session headers so a session can be resumed with
+the correct model.</p>
+<p>Aliases are case-insensitive. The full model name is stored
+as-is.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Define an alias:</p>
+<p>/model alias set qwen-coder qwen2.5-coder:7b /model alias set granite
+ibm/granite4.1:3b</p>
+<p>Use the alias to switch models:</p>
+<p>/model qwen-coder</p>
+<p>List all aliases:</p>
+<p>/model alias list</p>
+<p>Remove an alias:</p>
+<p>/model alias remove qwen-coder</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/model — list models or switch to a named model /ollama list — show
+installed Ollama models with capabilities</p>
+</section>
+</body>
+</html>

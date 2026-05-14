@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>FILES — list workspace directory contents</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/files [PATH]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/files lists the contents of a directory inside the workspace.
+Directories are shown with a trailing “/”. Hidden entries (names
+beginning with “.”) are not suppressed — all entries returned by the OS
+are shown.</p>
+<p>PATH is relative to the workspace root. When omitted, the workspace
+root itself is listed.</p>
+<p>/files does not recurse. Use /file-tree to display a recursive tree,
+or /read-dir to read all files in a directory into context.</p>
+<p>Harvey will not list directories outside the workspace root.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>List the workspace root:</p>
+<pre><code>  harvey &gt; /files</code></pre>
+<p>List a subdirectory:</p>
+<pre><code>  harvey &gt; /files src/
+  harvey &gt; /files docs</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/file-tree [PATH] — recursive directory tree display /read-dir [PATH]
+— read all files in a directory into context /read FILE… — read specific
+files into context /help file-tree /help read-dir</p>
+</section>
+</body>
+</html>

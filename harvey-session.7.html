@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>SESSION — continue or replay recorded conversations</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/session continue FILE /session replay FILE [OUTPUT]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>Harvey saves every conversation to a Fountain .spmd file. The
+/session command lets you reload those files in two distinct ways:</p>
+<p>continue — restore the conversation history and keep chatting. replay
+— re-send the original user turns to the current model and record fresh
+responses.</p>
+<h1 id="continue">CONTINUE</h1>
+<p>/session continue FILE loads all turns from FILE into the current
+history and returns you to the REPL. The model sees the full prior
+conversation as if it had been running the whole time.</p>
+<p>Use continue to:</p>
+<ul>
+<li>Resume work across Harvey restarts.</li>
+<li>Switch to a different model and pick up mid-conversation.</li>
+<li>Inspect and then extend a session that was auto-saved.</li>
+</ul>
+<p>Harvey also offers to continue the most recently saved session at
+startup; pressing Enter at that prompt is equivalent to /session
+continue.</p>
+<h1 id="replay">REPLAY</h1>
+<p>/session replay FILE [OUTPUT] re-runs a session by sending each user
+turn to the currently connected model in sequence. The model’s fresh
+responses are recorded to OUTPUT (default: an auto-named file in the
+sessions directory).</p>
+<p>Use replay to:</p>
+<ul>
+<li>Run an old conversation through a new or different model for
+comparison.</li>
+<li>Re-generate responses after changing the system prompt
+(HARVEY.md).</li>
+<li>Benchmark how different models handle the same sequence of
+prompts.</li>
+</ul>
+<p>Replay does not show the original assistant responses — it only shows
+the new ones produced by the current model.</p>
+<h1 id="session-file-format">SESSION FILE FORMAT</h1>
+<p>Session files use the Fountain screenplay format with a .spmd
+extension. Each exchange is an INT scene with speaker labels (RSDOIEL,
+HARVEY, model name). These files are plain text and human-readable.</p>
+<p>Default save location: <workdir>/agents/sessions/ File naming:
+harvey-session-YYYYMMDD-HHMMSS.spmd</p>
+<h1 id="cli-flags">CLI FLAGS</h1>
+<p>The same operations are available as startup flags:</p>
+<p>harvey –continue FILE load history then open REPL harvey –replay FILE
+replay without entering REPL harvey –replay-output FILE write replay
+output to FILE</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/record — start or stop session recording manually harvey –help —
+full CLI flag reference</p>
+</section>
+</body>
+</html>

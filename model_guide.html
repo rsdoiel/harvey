@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-model-selection-guide">Harvey Model Selection Guide</h1>
+<p><em>Last updated: 2026-05-12 — model inventory from
+<code>/ollama probe</code> (agents/model_cache.db). M1 Mac is the
+primary machine; Raspberry Pi 500+ runs a subset.</em></p>
+<hr />
+<h2 id="capability-legend">Capability legend</h2>
+<p><strong>Tools</strong> — model sends <code>tool_call</code> responses
+that Harvey’s tool executor can dispatch (required for
+<code>/run</code>, <code>/git</code>, file-write operations in agent
+mode).</p>
+<p><strong>Tagged</strong> — model respects Harvey’s
+<code>```path</code> fenced-block syntax so autoExecute can write files
+without a <code>/apply</code> prompt. <code>-1</code> = not yet
+probed.</p>
+<hr />
+<h2 id="installed-model-inventory">Installed model inventory</h2>
+<h3 id="embedding-only-models-not-for-chat">Embedding-only models (not
+for chat)</h3>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 35%" />
+<col style="width: 30%" />
+<col style="width: 35%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Model</th>
+<th scope="col">Size</th>
+<th scope="col">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nomic-embed-text:latest</code></td>
+<td>137 MB</td>
+<td>Harvey default for RAG; 2K context</td>
+</tr>
+<tr>
+<td><code>mxbai-embed-large</code></td>
+<td>334 MB</td>
+<td>Strong English-only embedding</td>
+</tr>
+<tr>
+<td><code>bge-m3:latest</code></td>
+<td>567 MB</td>
+<td>Best installed embed; 8K context, multilingual</td>
+</tr>
+<tr>
+<td><code>locusai/all-minilm-l6-v2:latest</code></td>
+<td>—</td>
+<td>Lightweight sentence embedder</td>
+</tr>
+</tbody>
+</table>
+<p>Do not select these for Harvey chat sessions — they produce unusable
+responses.</p>
+<hr />
+<h3 id="chat-coding-models-by-capability-tier">Chat / coding models by
+capability tier</h3>
+<h4 id="tier-1-very-small-1-b-params">Tier 1 — Very small (≤ 1 B
+params)</h4>
+<table>
+<thead>
+<tr>
+<th scope="col">Model</th>
+<th scope="col">Params</th>
+<th scope="col">Context</th>
+<th scope="col">Tools</th>
+<th scope="col">Tagged</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>smollm:360m</code></td>
+<td>362 M</td>
+<td>2K</td>
+<td>—</td>
+<td>-1</td>
+</tr>
+<tr>
+<td><code>sailor2:1b</code></td>
+<td>988 M</td>
+<td>32K</td>
+<td>—</td>
+<td>-1</td>
+</tr>
+<tr>
+<td><code>smollm:1.7b</code></td>
+<td>1.7 B</td>
+<td>2K</td>
+<td>—</td>
+<td>-1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Good for:</strong> Trivial string transformations, testing
+Harvey plumbing, one-sentence RAG lookups where the model just reads
+injected context and echoes it back.</p>
+<p><strong>Avoid for:</strong> Any reasoning, multi-step logic, code
+generation, anything requiring the model to hold more than one idea at
+once.</p>
+<p><strong>Note:</strong> <code>sailor2:1b</code> has a surprisingly
+large 32K context for its size — use it for token-constrained machines
+that need a slightly longer window.</p>
+<hr />
+<h4 id="tier-2-small-24-b-params">Tier 2 — Small (2–4 B params)</h4>
+<table>
+<thead>
+<tr>
+<th scope="col">Model</th>
+<th scope="col">Params</th>
+<th scope="col">Context</th>
+<th scope="col">Tools</th>
+<th scope="col">Tagged</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>granite3-moe:3b</code></td>
+<td>3.4 B</td>
+<td><strong>4K</strong></td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td><code>smallthinker:latest</code></td>
+<td>3.4 B</td>
+<td>32K</td>
+<td>—</td>
+<td>-1</td>
+</tr>
+<tr>
+<td><code>stable-code:3b</code></td>
+<td>3 B</td>
+<td>16K</td>
+<td>—</td>
+<td>-1</td>
+</tr>
+<tr>
+<td><code>cogito:3b</code></td>
+<td>3.6 B</td>
+<td>131K</td>
+<td>✓</td>
+<td>-1</td>
+</tr>
+<tr>
+<td><code>phi4-mini:latest</code></td>
+<td>3.8 B</td>
+<td>131K</td>
+<td>✓</td>
+<td>-1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Good for:</strong> Single-function code generation with a
+clear spec, adding docstrings, answering scoped questions about a file
+already in context, writing short unit tests.</p>
+<p><strong>Avoid for:</strong> Multi-file analysis, architectural
+decisions, anything requiring context &gt; 4K (for granite3-moe) or &gt;
+~16K (for others at this tier).</p>
+<p><strong>Recommended defaults at this tier:</strong> - Agent tasks
+needing tool-calling <em>and</em> tagged blocks:
+<strong><code>granite3-moe:3b</code></strong> (only 4K context — short
+sessions only) - Reasoning tasks:
+<strong><code>smallthinker:latest</code></strong> (chain-of-thought
+trained, 32K) - General fast chat with large context:
+<strong><code>cogito:3b</code></strong> or
+<strong><code>phi4-mini</code></strong> (both 131K) - Code-only, no tool
+support needed: <strong><code>stable-code:3b</code></strong></p>
+<hr />
+<h4 id="tier-3-medium-79-b-params">Tier 3 — Medium (7–9 B params)</h4>
+<table>
+<thead>
+<tr>
+<th scope="col">Model</th>
+<th scope="col">Params</th>
+<th scope="col">Context</th>
+<th scope="col">Tools</th>
+<th scope="col">Tagged</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apertus-tools:8b</code></td>
+<td>8.1 B</td>
+<td>65K</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td><code>gemma2:latest</code></td>
+<td>9.2 B</td>
+<td>8K</td>
+<td>—</td>
+<td>-1</td>
+</tr>
+<tr>
+<td><code>gemma4:latest</code></td>
+<td>8 B</td>
+<td>131K</td>
+<td>✓</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>llama3.1:latest</code></td>
+<td>8 B</td>
+<td>131K</td>
+<td>✓</td>
+<td>-1</td>
+</tr>
+<tr>
+<td><code>ministral-3:latest</code></td>
+<td>8.9 B</td>
+<td>262K</td>
+<td>✓</td>
+<td>-1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Good for:</strong> Writing complete functions or small files,
+explaining existing code in depth, writing tests that require
+understanding of the code under test, debugging with a stack trace in
+context, most day-to-day Harvey coding tasks.</p>
+<p><strong>Avoid for:</strong> <code>gemma2</code> for anything needing
+more than ~8K context.</p>
+<p><strong>Recommended defaults at this tier:</strong> - Agent/tool
+tasks with autoExecute: <strong><code>apertus-tools:8b</code></strong> —
+only 8B model confirmed tools=✓ <em>and</em> tagged=✓. Best pick for
+iterative coding loops. - General assistant:
+<strong><code>llama3.1:latest</code></strong> — reliable, well-tested
+instruction following. - Session handoffs / long docs:
+<strong><code>ministral-3:latest</code></strong> — 262K context fits
+entire session histories; Mistral models follow structured formatting
+reliably.</p>
+<hr />
+<h4 id="tier-4-large-2324-b-params">Tier 4 — Large (23–24 B params)</h4>
+<table>
+<thead>
+<tr>
+<th scope="col">Model</th>
+<th scope="col">Params</th>
+<th scope="col">Context</th>
+<th scope="col">Tools</th>
+<th scope="col">Tagged</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mistral-small:latest</code></td>
+<td>23.6 B</td>
+<td>32K</td>
+<td>✓</td>
+<td>-1</td>
+</tr>
+<tr>
+<td><code>mistral-small3.2</code></td>
+<td>24 B</td>
+<td>131K</td>
+<td>✓</td>
+<td>-1</td>
+</tr>
+<tr>
+<td><code>devstral-small-2:24b</code></td>
+<td>24 B</td>
+<td><strong>393K</strong></td>
+<td>✓</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Good for:</strong> Multi-file refactoring, architectural
+reasoning, writing new features end-to-end, security review, writing
+documentation, anything that benefits from a large context window and
+strong reasoning.</p>
+<p><strong>Notes:</strong> -
+<strong><code>devstral-small-2:24b</code></strong> is Mistral’s
+coding-specialized model with the largest context window installed (393K
+tokens). First choice for complex software tasks on the M1 Mac. -
+<strong><code>mistral-small3.2</code></strong> (131K) is the best
+general-purpose large model when you don’t need coding specialisation. -
+<strong><code>mistral-small:latest</code></strong> (32K context, older
+version) — prefer <code>mistral-small3.2</code>. - All Tier 4 models
+<strong>require ~16–20 GB free RAM</strong>. They will not run on the
+Raspberry Pi 500+.</p>
+<hr />
+<h2 id="hardware-constraints">Hardware constraints</h2>
+<table>
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 56%" />
+<col style="width: 18%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Machine</th>
+<th scope="col">Max practical model</th>
+<th scope="col">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M1 Mac</td>
+<td><code>devstral-small-2:24b</code> (15 GB)</td>
+<td>All models available</td>
+</tr>
+<tr>
+<td>Raspberry Pi 500+</td>
+<td><code>ministral-3:latest</code> (8.9B) or smaller</td>
+<td>24B models will not run</td>
+</tr>
+</tbody>
+</table>
+<p>When working on the Pi, treat <code>ministral-3:latest</code> as the
+Tier 4 ceiling and <code>apertus-tools:8b</code> as the everyday coding
+model.</p>
+<hr />
+<h2 id="task-rubric">Task rubric</h2>
+<table>
+<colgroup>
+<col style="width: 11%" />
+<col style="width: 18%" />
+<col style="width: 35%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Task</th>
+<th scope="col">Min tier</th>
+<th scope="col">Recommended (Mac)</th>
+<th scope="col">Recommended (Pi)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Add a docstring</td>
+<td>2</td>
+<td><code>phi4-mini</code></td>
+<td><code>phi4-mini</code></td>
+</tr>
+<tr>
+<td>Quick Q&amp;A on a <code>/read</code> file</td>
+<td>2</td>
+<td><code>cogito:3b</code></td>
+<td><code>cogito:3b</code></td>
+</tr>
+<tr>
+<td>Write a unit test (known signature)</td>
+<td>2–3</td>
+<td><code>apertus-tools:8b</code></td>
+<td><code>apertus-tools:8b</code></td>
+</tr>
+<tr>
+<td>Fix a bug with error + context</td>
+<td>2–3</td>
+<td><code>apertus-tools:8b</code></td>
+<td><code>apertus-tools:8b</code></td>
+</tr>
+<tr>
+<td>Write a new function</td>
+<td>3</td>
+<td><code>apertus-tools:8b</code></td>
+<td><code>apertus-tools:8b</code></td>
+</tr>
+<tr>
+<td>Write a complete new file</td>
+<td>3</td>
+<td><code>apertus-tools:8b</code></td>
+<td><code>llama3.1</code></td>
+</tr>
+<tr>
+<td>Debug across multiple files</td>
+<td>3–4</td>
+<td><code>ministral-3</code></td>
+<td><code>ministral-3</code></td>
+</tr>
+<tr>
+<td>Multi-file feature (new code)</td>
+<td>4</td>
+<td><code>devstral-small-2:24b</code></td>
+<td><code>ministral-3</code></td>
+</tr>
+<tr>
+<td>Architectural review</td>
+<td>4</td>
+<td><code>devstral-small-2:24b</code></td>
+<td><code>mistral-small3.2</code>*</td>
+</tr>
+<tr>
+<td>Write documentation</td>
+<td>3–4</td>
+<td><code>ministral-3</code></td>
+<td><code>ministral-3</code></td>
+</tr>
+<tr>
+<td>Security review</td>
+<td>4</td>
+<td><code>devstral-small-2:24b</code></td>
+<td><code>ministral-3</code></td>
+</tr>
+<tr>
+<td>Reasoning / multi-step planning</td>
+<td>2–4</td>
+<td><code>smallthinker</code> or <code>mistral-small3.2</code></td>
+<td><code>smallthinker</code></td>
+</tr>
+<tr>
+<td>Agent loop (tool-calling + file writes)</td>
+<td>2–3</td>
+<td><code>apertus-tools:8b</code></td>
+<td><code>apertus-tools:8b</code></td>
+</tr>
+<tr>
+<td>Session handoff (Fountain writing)</td>
+<td>3</td>
+<td><code>ministral-3</code></td>
+<td><code>ministral-3</code></td>
+</tr>
+<tr>
+<td>RAG-augmented Q&amp;A</td>
+<td>1–2</td>
+<td><code>cogito:3b</code></td>
+<td><code>cogito:3b</code></td>
+</tr>
+<tr>
+<td>Embedding for RAG</td>
+<td>—</td>
+<td><code>bge-m3:latest</code></td>
+<td><code>nomic-embed-text</code></td>
+</tr>
+</tbody>
+</table>
+<p>*mistral-small3.2 is 24B and may be marginal on Pi; use with
+care.</p>
+<hr />
+<h2 id="suggested-model-aliases">Suggested model aliases</h2>
+<p>Add to <code>agents/harvey.yaml</code> under
+<code>model_aliases:</code>. Use
+<code>/model alias set NAME MODEL</code> or edit the file directly.</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model_aliases</span><span class="kw">:</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">  # Coding and agent work</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">agent</span><span class="kw">:</span><span class="at">      abb-decide/apertus-tools:8b-instruct-2509-q4_k_m</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">agent-fast</span><span class="kw">:</span><span class="at"> granite3-moe:3b</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">coder</span><span class="kw">:</span><span class="at">      devstral-small-2:24b</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co">  # General assistant</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">chat</span><span class="kw">:</span><span class="at">       llama3.1:latest</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">chat-big</span><span class="kw">:</span><span class="at">   mistral-small3.2</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">fast</span><span class="kw">:</span><span class="at">       cogito:3b</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="co">  # Long-context / documents</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">docs</span><span class="kw">:</span><span class="at">       ministral-3:latest</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">long</span><span class="kw">:</span><span class="at">       devstral-small-2:24b</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="co">  # Reasoning</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">think</span><span class="kw">:</span><span class="at">      smallthinker:latest</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="co">  # Code only (no tools needed)</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">code-light</span><span class="kw">:</span><span class="at"> stable-code:3b</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="co">  # Embedding (for /rag setup)</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">embed</span><span class="kw">:</span><span class="at">      bge-m3:latest</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">embed-fast</span><span class="kw">:</span><span class="at"> nomic-embed-text:latest</span></span></code></pre></div>
+<hr />
+<h2 id="planning-a-harvey-work-session">Planning a Harvey work
+session</h2>
+<p>Before starting, ask:</p>
+<ol type="1">
+<li><strong>What is the task?</strong> Pick a tier and model from the
+table above.</li>
+<li><strong>Which machine?</strong> <code>devstral-small-2:24b</code>
+needs ~16 GB free — Mac only.</li>
+<li><strong>Do I need tool-calling?</strong> Agent mode requires
+tools=✓. Use <code>apertus-tools:8b</code> or
+<code>granite3-moe:3b</code> (short context) for reliable tool
+dispatch.</li>
+<li><strong>How much context?</strong> If <code>/read-dir</code> loads a
+full package, pick a 131K+ model. Tier 2 models below 32K will truncate
+silently.</li>
+<li><strong>Is RAG useful?</strong> If the task involves an API the
+model doesn’t know well, run <code>/rag on</code> before asking.</li>
+</ol>
+<h3 id="typical-session-setup">Typical session setup</h3>
+<pre><code># 1. Start Harvey
+harvey
+
+# 2. Select model mid-session (or use an alias):
+/model agent              # → apertus-tools:8b (agent tasks)
+/model coder              # → devstral-small-2:24b (complex coding)
+/model docs               # → ministral-3:latest (long documents)
+/model fast               # → cogito:3b (quick Q&amp;A)
+
+# 3. Enable RAG if needed
+/rag on
+
+# 4. Load context
+/read harvey/commands.go
+/read-dir harvey/ --depth 1
+
+# 5. Optionally load a skill bundle
+/skill-set load fountain</code></pre>
+<hr />
+<h2 id="what-harvey-can-realistically-do-with-small-models">What Harvey
+can realistically do with small models</h2>
+<p>Small models (Tier 2) work well when: - The task is <strong>scoped to
+a single function</strong> and you provide the signature - You have
+<strong>injected the relevant file</strong> via <code>/read</code> first
+- You ask for <strong>one thing at a time</strong> (no “also do X and Y
+and Z”) - The answer fits in <strong>a few hundred tokens</strong></p>
+<p>Small models fail when: - Asked to reason about code they haven’t
+seen - Context is filled with unrelated content - Asked to make design
+decisions without constraints - Asked to generate large amounts of code
+in one shot</p>
+<p><strong>Best pattern for small models in Harvey:</strong> 1.
+<code>/read</code> the specific file or function 2. Ask a focused
+question or give a tightly scoped task 3. Review the output before using
+<code>/apply</code></p>
+<hr />
+<h2 id="keeping-this-guide-current">Keeping this guide current</h2>
+<p>Run <code>/ollama probe</code> after installing new models to update
+<code>agents/model_cache.db</code>. Re-examine the capability columns
+(tools, tagged blocks) and update the inventory table above when results
+change. The <code>probed_at</code> column tracks when each entry was
+last verified.</p>
+</section>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>ROUTING</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p><span class="citation" data-cites="name">@name</span> prompt text</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>Harvey can dispatch individual prompts to remote LLM endpoints —
+other Ollama instances on a Pi cluster, Llamafile servers, or cloud
+providers — using <span class="citation"
+data-cites="mention">@mention</span> syntax. Prefix any prompt with
+<span class="citation" data-cites="name">@name</span> to send it to the
+named endpoint instead of the local model. The reply is streamed back
+and lands in the local conversation history so future turns retain full
+context.</p>
+<p>Routing is explicitly user-driven: there is no automatic
+classification. You choose which endpoint handles each prompt by using
+(or omitting) an <span class="citation"
+data-cites="mention">@mention</span>.</p>
+<h1 id="context-window">CONTEXT WINDOW</h1>
+<p>When a prompt is dispatched to a remote endpoint, Harvey sends the
+last 10 non-system messages from the local history alongside it. System
+messages are excluded. This gives the remote model enough context to be
+useful without sending the entire conversation over the network. The
+window size is a starting point and will be tuned over time.</p>
+<h1 id="endpoint-types">ENDPOINT TYPES</h1>
+<p>Local providers (no API key):</p>
+<p>ollama://host:port A remote Ollama server (also accepts http:// and
+https://). llamafile://host:port A Llamafile binary server
+(OpenAI-compatible, port 8080). llamacpp://host:port A llama.cpp server
+(OpenAI-compatible, port 8080).</p>
+<p>Cloud providers (API key read from environment):</p>
+<p>anthropic:// Anthropic Claude (ANTHROPIC_API_KEY) deepseek://
+DeepSeek (DEEPSEEK_API_KEY) gemini:// Google Gemini (GEMINI_API_KEY or
+GOOGLE_API_KEY) mistral:// Mistral (MISTRAL_API_KEY) openai:// OpenAI
+(OPENAI_API_KEY)</p>
+<h1 id="example-session">EXAMPLE SESSION</h1>
+<pre><code>  # Register a Pi cluster node
+  /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
+
+  # Register the Anthropic cloud endpoint
+  /route add claude anthropic:// claude-sonnet-4-20250514
+
+  # Enable routing
+  /route on
+
+  # Dispatch a complex task to the cloud
+  @claude refactor this module to use the repository pattern
+
+  # Run a quick task on a Pi node
+  @pi2 write a unit test for the Parse function
+
+  # Local model handles everything else (no @mention)
+  what does this error mean?</code></pre>
+<h1 id="slash-commands">SLASH COMMANDS</h1>
+<pre><code>  /route add NAME URL [MODEL]   register a remote endpoint
+                                  @pi2    ollama://192.168.1.12:11434 llama3.1:8b
+                                  @claude anthropic:// claude-sonnet-4-20250514
+  /route rm NAME                remove a registered endpoint
+  /route list                   show all endpoints with reachability status
+  /route on                     enable @mention dispatch (persisted)
+  /route off                    disable @mention dispatch (persisted)
+  /route status                 show routing state and endpoint count</code></pre>
+<p>Registered endpoints and the on/off state persist across sessions in
+<code>&lt;workspace&gt;/agents/routes.json.</code></p>
+</section>
+</body>
+</html>

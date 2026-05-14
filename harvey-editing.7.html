@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>EDITING — line editing and multi-line input</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>Type at the “harvey &gt;” prompt. Use key bindings below to navigate
+and edit. For multi-line input, press Ctrl+X Ctrl+E to open an external
+editor.</p>
+<h1 id="line-editing">LINE EDITING</h1>
+<p>Harvey’s prompt supports readline-style single-line editing.</p>
+<p>Navigation:</p>
+<p>Left / Right arrows move cursor one character Home / Ctrl+A jump to
+beginning of line End / Ctrl+E jump to end of line Up / Down arrows
+cycle through prompt history</p>
+<p>Editing:</p>
+<p>Backspace delete character before cursor Ctrl+D delete character
+under cursor; exits on empty line Ctrl+K delete from cursor to end of
+line</p>
+<p>Actions:</p>
+<p>Enter submit the prompt to the model Ctrl+C cancel current input and
+return to prompt</p>
+<h1 id="multi-line-input-with-editor">MULTI-LINE INPUT WITH $EDITOR</h1>
+<p>Press Ctrl+X then Ctrl+E to open the current line in your preferred
+editor. Harvey reads the environment variables in this order to find the
+editor:</p>
+<ol type="1">
+<li>$EDITOR</li>
+<li>$VISUAL</li>
+<li>vi (hard fallback)</li>
+</ol>
+<p>Write or paste your multi-line text in the editor, then save and
+quit. Harvey reads the file on exit and submits the full contents as
+your prompt. This is the recommended approach for long prompts, pasted
+code, or anything with embedded newlines.</p>
+<h1 id="tips">TIPS</h1>
+<ul>
+<li>Up/Down arrows recall previous prompts, including multi-line ones
+that were composed in $EDITOR.</li>
+<li>Ctrl+C on an empty line has no effect (Harvey does not exit on ^C).
+Use /exit, /quit, or /bye to end the session.</li>
+<li>If $EDITOR is not set, export it in your shell profile: export
+EDITOR=nano # or vim, emacs, hx, micro, etc.</li>
+</ul>
+</section>
+</body>
+</html>

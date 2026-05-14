@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>FILE-TREE — display a tree listing of the workspace</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/file-tree [PATH]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/file-tree prints the workspace directory structure using tree-style
+box-drawing characters (├──, └──). Hidden files and directories (names
+starting with “.”) are excluded.</p>
+<p>An optional PATH restricts the listing to a subdirectory of the
+workspace root. Paths outside the workspace are rejected.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Show the full workspace:</p>
+<p>/file-tree</p>
+<p>Show only the harvey/ subdirectory:</p>
+<p>/file-tree harvey/</p>
+<h1 id="output-format">OUTPUT FORMAT</h1>
+<p>. ├── harvey/ │ ├── commands.go │ └── harvey.go └── agents/ └──
+harvey.yaml</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/read — read a file into context /status — show workspace path</p>
+</section>
+</body>
+</html>

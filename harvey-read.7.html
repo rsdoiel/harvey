@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>READ — inject file contents into the conversation context</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/read FILE [FILE…]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/read loads one or more workspace files and injects their contents
+into the conversation as a user-role message. The model sees the file
+contents in the very next turn and can answer questions about them,
+suggest edits, or use them as reference material.</p>
+<p>Multiple files are concatenated with a blank line between each, all
+in a single injected message. Each file’s content is preceded by a
+header showing its workspace-relative path.</p>
+<p>FILE is a path relative to the workspace root. Absolute paths outside
+the workspace are rejected. Symlinks are not followed. Sensitive files
+(e.g. .env, id_rsa, harvey.yaml) are blocked regardless of
+permissions.</p>
+<p>The agents/ directory is off-limits to /read to prevent skills and
+configuration from being inadvertently exposed.</p>
+<p>Context window impact: reading large files can quickly consume the
+model’s context window. Check /status after reading to see the token
+impact.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Read a single file:</p>
+<pre><code>  harvey &gt; /read src/main.go</code></pre>
+<p>Read several files at once:</p>
+<pre><code>  harvey &gt; /read README.md docs/ARCHITECTURE.md</code></pre>
+<p>Read then ask a question:</p>
+<pre><code>  harvey &gt; /read harvey.go
+  harvey &gt; What does the ragAugment function do?</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/read-dir [PATH] — read all files in a directory /files [PATH] — list
+directory contents /status — check remaining context window space /help
+read-dir</p>
+</section>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>CONTEXT — manage pinned context that survives /clear</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/context show /context add TEXT… /context clear</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>Pinned context is a block of text that is always present as the first
+user message after the system prompt. It survives /clear so the model
+keeps seeing it no matter how many times you reset the conversation.</p>
+<p>Use pinned context for information the model should never lose sight
+of:</p>
+<ul>
+<li>A project description or goal that frames every question.</li>
+<li>Key constraints (“do not modify files outside agents/”).</li>
+<li>A running summary you composed to replace a long conversation.</li>
+<li>Environment facts that are not in HARVEY.md.</li>
+</ul>
+<p>Pinned context is stored in memory only; it is not persisted to
+agents/harvey.yaml or session files. It resets when Harvey exits.</p>
+<h1 id="subcommands">SUBCOMMANDS</h1>
+<p>/context show Print the current pinned context and its byte count. If
+no context is set, prints “(pinned context is empty)”.</p>
+<p>/context add TEXT… Append TEXT to the pinned context. Multiple words
+are joined with a space. Calling add again appends a newline then the
+new text so you can build up multi-line context incrementally.</p>
+<pre><code>  /context add This project targets Raspberry Pi OS (armv7l).
+  /context add Never use cgo; the binary must be statically linked.</code></pre>
+<p>/context clear Remove the pinned context and delete the
+pinned-context message from the conversation history. The model will not
+see it in subsequent turns.</p>
+<h1 id="relation-to-clear">RELATION TO /CLEAR</h1>
+<p>/clear resets the conversation history but keeps pinned context.
+After /clear, the system prompt is re-injected, then the pinned context
+is re-injected as the first user message, so the model’s next turn
+starts with both.</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/clear — reset conversation history (pinned context survives)
+/summarize — condense history; combine with /context add to preserve a
+summary across /clear</p>
+</section>
+</body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>RAG — Retrieval-Augmented Generation</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/rag &lt;list|new NAME|switch NAME|drop NAME|setup|ingest
+PATH|status|query TEXT|on|off&gt;</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>RAG lets Harvey find relevant snippets from a local knowledge store
+and inject them into the context window before each prompt is sent to
+the model. This grounds the model’s replies in documents you have
+ingested, reducing hallucination and allowing it to answer questions
+about your own codebase, notes, and reference material without needing
+those files to be manually read into context with /read.</p>
+<p>When RAG is on, every user prompt is silently augmented with a short
+block of matching text retrieved from the store. Only chunks that score
+above the relevance threshold (0.3 cosine similarity) are injected; if
+nothing scores high enough, the prompt is sent unmodified.</p>
+<h1 id="named-stores">NAMED STORES</h1>
+<p>Harvey supports multiple named RAG stores. Each store is an
+independent SQLite database bound to one embedding model — you cannot
+mix vectors from different embedding models in the same store, and
+Harvey enforces this at every ingest and query operation.</p>
+<p>Named stores let you maintain separate, topically focused knowledge
+bases and switch between them as your work changes:</p>
+<p>golang Go standard library docs, idioms, and project code deno
+Deno/TypeScript docs and project source web-frontend MDN references, CSS
+specs, web-component guides writing Style guides, project drafts,
+editorial notes research-X Papers and notes for a specific research
+topic</p>
+<p>Only the active store is open at any time, so inactive stores consume
+no memory. The active store can be changed with /rag use at any
+time.</p>
+<p>On storage-constrained hardware (e.g. a Raspberry Pi), keep stores
+small and topical: a focused 5 000-chunk store retrieves better than a
+bloated 50 000-chunk general store, and it fits in RAM.</p>
+<h1 id="embedding-model-choice">EMBEDDING MODEL CHOICE</h1>
+<p>RAG depends on a separate embedding model — a small neural network
+that converts text to vectors. The quality of retrieval depends heavily
+on the embedding model used. The models are ranked here from best to
+least suitable:</p>
+<p>nomic-embed-text (~274 MB) best general-purpose retrieval
+mxbai-embed-large (~670 MB) high quality, larger bge-small-en-v1.5 (~46
+MB) small but retrieval-optimised bge-m3 (~1.2 GB) multilingual
+all-minilm-l6-v2 (~46 MB) avoid — similarity-tuned, not
+retrieval-tuned</p>
+<p>The critical distinction: models like all-MiniLM were trained on
+sentence-similarity tasks (NLI, STS), not on document retrieval. On
+standard retrieval benchmarks (MTEB), all-MiniLM-L6-v2 scores around 56%
+while bge-small-en-v1.5 scores around 62% and nomic-embed-text around
+68%. Use a retrieval-optimised model whenever possible.</p>
+<p>The /rag new wizard detects which embedding models are installed and
+proposes the best available one, preferring nomic-embed-text &gt;
+mxbai-embed-large &gt; bge- &gt; all-minilm. If none are installed, it
+prints a list of recommended models you can pull with /ollama pull.</p>
+<p>Each store is bound to one embedding model at creation time. If you
+want to try a different embedding model for the same topic, create a new
+store and re-ingest the documents.</p>
+<h1 id="workflow-first-store">WORKFLOW — FIRST STORE</h1>
+<pre><code>  # Step 1 — choose an embedding model (one-time)
+  /ollama pull nomic-embed-text
+
+  # Step 2 — create and name a store
+  /rag new golang
+
+  # Step 3 — ingest the documents you want Harvey to retrieve from
+  /rag ingest agents/
+  /rag ingest HARVEY.md
+  /rag ingest docs/
+
+  # Step 4 — verify retrieval quality before trusting answers
+  /rag query what license does Harvey use?
+  /rag query how does routing work?
+
+  # RAG is now on automatically — ask questions normally
+  what license does Harvey use?</code></pre>
+<h1 id="workflow-multiple-stores">WORKFLOW — MULTIPLE STORES</h1>
+<pre><code>  # Create a writing store alongside the golang store
+  /rag new writing
+
+  # Ingest style guides and project drafts
+  /rag ingest ~/writing/style-guide.md
+  /rag ingest ~/projects/novel/drafts/
+
+  # Switch back to golang when you return to code
+  /rag use golang
+
+  # See all registered stores
+  /rag list</code></pre>
+<h1 id="diagnosing-poor-retrieval">DIAGNOSING POOR RETRIEVAL</h1>
+<p>Use /rag query to inspect what the store would return for a given
+question before sending it to the model. The output shows each chunk
+with its cosine similarity score (0.0–1.0) and source file:</p>
+<pre><code>  /rag query what license does Harvey use?
+
+  Top 5 result(s) for &quot;what license does Harvey use?&quot;:
+
+    [1] score=0.712  source=/home/user/Laboratory/harvey/LICENSE
+        GNU AFFERO GENERAL PUBLIC LICENSE...
+
+    [2] score=0.431  source=/home/user/Laboratory/harvey/README.md
+        Harvey is licensed under AGPL-3.0...</code></pre>
+<p>Scores below 0.3 are dropped from the injected context. If the top
+scores are all low (&lt; 0.3) for a question you expect the store to
+answer, consider:</p>
+<ol type="1">
+<li>Switching to a better embedding model (see Embedding Model Choice
+above) then creating a new store and re-ingesting.</li>
+<li>Ingesting the missing documents with /rag ingest PATH.</li>
+<li>Rephrasing the question to be closer to the language used in the
+docs.</li>
+</ol>
+<h1 id="subcommands">SUBCOMMANDS</h1>
+<p>/rag list List all registered stores with a * marking the active
+one.</p>
+<p>/rag new NAME Interactive wizard to create a named store. Detects
+installed embedding models, proposes the best one, shows the proposed
+generation-model → embedding-model mapping, and asks for confirmation.
+Creates the database at agents/rag/NAME.db and saves the config to
+agents/harvey.yaml. The new store is immediately set as active.</p>
+<p>/rag use NAME Close the currently open store and activate NAME. The
+change is persisted to agents/harvey.yaml.</p>
+<p>/rag drop NAME Remove a store from the registry after confirmation.
+The .db file is NOT deleted automatically — the path is printed so you
+can remove it manually.</p>
+<p>/rag setup Backward-compatible alias for /rag new using the current
+active store name, or “default” when no store is configured. Use /rag
+new NAME to give the store a meaningful name.</p>
+<p>/rag ingest PATH [PATH…] Reads each file or directory (recursively),
+splits text into paragraph-sized chunks (~500 characters each), embeds
+them using the active store’s embedding model, and stores the vectors in
+the database. Re-ingest any file after it changes to keep the store
+current. Supported text formats: .md, .txt, .go, .ts, and most
+plain-text files.</p>
+<p>/rag query TEXT Retrieves the top 5 matching chunks for TEXT from the
+active store and prints each one with its cosine similarity score and
+source path.</p>
+<p>/rag status Shows the active store (database path, embedding model,
+chunk count) and a summary list of all registered stores.</p>
+<p>/rag on Enable automatic context injection for the current
+session.</p>
+<p>/rag off Disable automatic context injection for the current session.
+The database and configuration are preserved; /rag on re-enables it.</p>
+<h1 id="configuration">CONFIGURATION</h1>
+<p>RAG configuration is persisted in agents/harvey.yaml. Example with
+two stores:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rag</span><span class="kw">:</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">active</span><span class="kw">:</span><span class="at"> golang</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">stores</span><span class="kw">:</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> golang</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/golang.db</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="at">          llama3.1</span><span class="fu">:latest</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="at">          granite3.3</span><span class="fu">:2b</span><span class="kw">:</span><span class="at">   nomic-embed-text</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> writing</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/writing.db</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span></code></pre></div>
+<p>Each store has its own db_path and embedding_model. The model_map
+lets different generation models share the same embedding model; entries
+are populated automatically by /rag new.</p>
+<p>Old single-store configurations (db_path at the top level of rag:)
+are automatically migrated to a store named “default” on first load.</p>
+</section>
+</body>
+</html>

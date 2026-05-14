@@ -88,6 +88,14 @@ responses
 write replay responses to FILE (default: auto-named timestamped file;
 implies –replay)
 </dd>
+<dt>–debug</dt>
+<dd>
+enable diagnostic mode: sets OLLAMA_DEBUG=1 in the Ollama subprocess and
+writes a JSONL event log to agents/logs/harvey-TIMESTAMP.jsonl covering
+every LLM request/response, RAG injection, tool call, and skill
+dispatch. Use “harvey –help status” to see the log path during a
+session.
+</dd>
 </dl>
 <h1 id="environment">ENVIRONMENT</h1>
 <p>ANTHROPIC_API_KEY API key for Anthropic Claude (optional, for /route
@@ -99,6 +107,149 @@ API key for OpenAI (optional, for /route add NAME openai://)</p>
 <p>All of the above API key variables are filtered out of every child
 process environment — they are never passed to commands run via ! or
 /run.</p>
+<h1 id="commands">COMMANDS</h1>
+<p>Type /help TOPIC inside Harvey for the full guide on any topic. All
+topics are also available from the shell: harvey –help TOPIC.</p>
+<p><strong>Workspace</strong></p>
+<dl>
+<dt>/files [PATH]</dt>
+<dd>
+list directory contents inside the workspace
+</dd>
+<dt>/read FILE [FILE…]</dt>
+<dd>
+inject file contents into the conversation as context
+</dd>
+<dt>/write PATH</dt>
+<dd>
+save the last assistant reply (or its first code block) to a file
+</dd>
+<dt>/read-dir [PATH] [–depth N]</dt>
+<dd>
+read all eligible files in a directory tree into context
+</dd>
+<dt>/file-tree [PATH]</dt>
+<dd>
+display a recursive directory tree
+</dd>
+<dt>/search PATTERN [PATH]</dt>
+<dd>
+regex search across workspace files (Go regexp syntax)
+</dd>
+<dt>/run COMMAND [ARGS…]</dt>
+<dd>
+run a shell command; subject to Safe Mode and timeout
+</dd>
+<dt>/git &lt;status|diff|log|show|blame&gt; [ARGS…]</dt>
+<dd>
+read-only git commands in the workspace
+</dd>
+</dl>
+<p><strong>Model and backend</strong></p>
+<dl>
+<dt>/model <a href="#name">NAME</a></dt>
+<dd>
+list all installed models, or switch to NAME
+</dd>
+<dt>/model alias set ALIAS NAME</dt>
+<dd>
+define a short alias for a long model identifier
+</dd>
+<dt>/ollama &lt;start [debug]|stop|status|list|ps|pull MODEL|push
+MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL]|logs|use
+MODEL|env|alias NAME FULLNAME&gt;</dt>
+<dd>
+manage the local Ollama server and installed models
+</dd>
+<dt>/inspect [MODEL]</dt>
+<dd>
+show detailed model information (Ollama only)
+</dd>
+<dt>/route &lt;add NAME URL [MODEL]|rm NAME|list|on|off|status&gt;</dt>
+<dd>
+manage named remote LLM endpoints (<span class="citation"
+data-cites="mention">@mention</span> routing)
+</dd>
+</dl>
+<p><strong>Context and history</strong></p>
+<dl>
+<dt>/context &lt;show|add TEXT…|clear&gt;</dt>
+<dd>
+manage pinned context that survives /clear
+</dd>
+<dt>/clear</dt>
+<dd>
+reset conversation history (system prompt and pinned context survive)
+</dd>
+<dt>/summarize</dt>
+<dd>
+condense history to a summary, freeing context window space (/compact is
+an alias)
+</dd>
+<dt>/status</dt>
+<dd>
+show active backend, token usage, routing, recording, and debug state
+</dd>
+</dl>
+<p><strong>Sessions</strong></p>
+<dl>
+<dt>/record &lt;start [FILE]|stop|status&gt;</dt>
+<dd>
+start or stop Fountain session recording
+</dd>
+<dt>/rename NAME</dt>
+<dd>
+rename the active session file without interrupting recording
+</dd>
+<dt>/session &lt;continue FILE|replay FILE [OUTPUT]&gt;</dt>
+<dd>
+load history from a prior session or replay its turns
+</dd>
+</dl>
+<p><strong>Knowledge base</strong></p>
+<dl>
+<dt>/kb &lt;status|search TEXT|inject TEXT|project [ID]|observe KIND
+BODY|concept NAME&gt;</dt>
+<dd>
+query and update the SQLite knowledge base
+</dd>
+<dt>/rag &lt;list|new NAME|use NAME|drop NAME|setup|ingest
+PATH|status|query TEXT|on|off&gt;</dt>
+<dd>
+manage retrieval-augmented generation stores
+</dd>
+</dl>
+<p><strong>Skills</strong></p>
+<dl>
+<dt>/skill &lt;list|load NAME|info NAME|status|new|run NAME&gt;</dt>
+<dd>
+discover, load, and run agent skills
+</dd>
+<dt>/skill-set &lt;list|load NAME|info NAME|create
+NAME|status|unload&gt;</dt>
+<dd>
+manage named bundles of skills
+</dd>
+</dl>
+<p><strong>Security</strong></p>
+<dl>
+<dt>/safemode &lt;on|off|status|allow CMD|deny CMD|reset&gt;</dt>
+<dd>
+restrict which commands the model may execute
+</dd>
+<dt>/permissions &lt;list [PATH]|set PATH PERMS|reset&gt;</dt>
+<dd>
+fine-grained read/write/exec/delete control per path prefix
+</dd>
+<dt>/audit &lt;show [N]|clear|status&gt;</dt>
+<dd>
+review the in-memory command and file-access audit log
+</dd>
+<dt>/security status</dt>
+<dd>
+unified security posture overview
+</dd>
+</dl>
 <h1 id="security">SECURITY</h1>
 <p>Harvey includes several features for controlling what it can do on
 your system. All settings survive restart when persisted via the

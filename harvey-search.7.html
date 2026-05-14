@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>SEARCH — regex search across workspace files</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/search PATTERN [PATH]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/search walks the workspace (or a subdirectory) and prints every line
+that matches PATTERN. PATTERN is a Go regular expression.</p>
+<p>Results are shown in the format:</p>
+<p>file.go:42: matching line text</p>
+<p>Hidden directories (names beginning with “.”) are skipped. Results
+are capped at 200 matches to prevent flooding the context window. If the
+cap is reached, a truncation notice is printed.</p>
+<p>PATH is relative to the workspace root. When omitted, the entire
+workspace is searched.</p>
+<p>/search is useful for finding where a symbol is defined or used
+before asking the model to explain or modify it. The results are printed
+to the REPL but are not automatically injected into the conversation —
+paste the relevant lines or use /read to load the file.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Search for a function name:</p>
+<pre><code>  harvey &gt; /search ragAugment</code></pre>
+<p>Search for a TODO comment in a subdirectory:</p>
+<pre><code>  harvey &gt; /search &quot;TODO|FIXME&quot; src/</code></pre>
+<p>Case-insensitive search:</p>
+<pre><code>  harvey &gt; /search &quot;(?i)context.length&quot;</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/read FILE… — load a file into context after finding it /files [PATH]
+— list directory contents</p>
+</section>
+</body>
+</html>

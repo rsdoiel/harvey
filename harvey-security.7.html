@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>SECURITY — Safe Mode, workspace permissions, and audit logging</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/safemode &lt;on|off|status|allow CMD|deny CMD|reset&gt; /permissions
+&lt;list [PATH]|set PATH PERMS|reset&gt; /audit &lt;show
+[N]|clear|status&gt; /security status</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>Harvey includes four complementary security controls. All settings
+survive restart when persisted via the commands below. Run /security
+status for a unified view of the current security posture.</p>
+<h2 id="safe-mode-safemode">SAFE MODE (/safemode)</h2>
+<p>Safe Mode restricts which programs the model may execute via the !
+prefix and /run. When enabled, only commands in the allowlist are
+permitted.</p>
+<p>Default allowlist: ls, cat, grep, head, tail, wc, find, stat, jq,
+htmlq, bat, batcat.</p>
+<p>Subcommands:</p>
+<p>/safemode on Enable Safe Mode. Commands not in the allowlist are
+blocked and audit-logged.</p>
+<p>/safemode off Disable Safe Mode. All commands accepted by the shell
+metacharacter filter are permitted.</p>
+<p>/safemode status Show whether Safe Mode is on or off and list the
+current allowlist.</p>
+<p>/safemode allow CMD Add CMD to the allowlist. Persisted to
+agents/harvey.yaml.</p>
+<p>/safemode deny CMD Remove CMD from the allowlist. Persisted to
+agents/harvey.yaml.</p>
+<p>/safemode reset Restore the default allowlist.</p>
+<h2 id="workspace-permissions-permissions">WORKSPACE PERMISSIONS
+(/permissions)</h2>
+<p>Workspace permissions give fine-grained read/write/exec/delete
+control per path prefix within the workspace. Permissions are persisted
+in agents/harvey.yaml under the permissions: key.</p>
+<p>Permission values: read, write, exec, delete (comma-separated).</p>
+<p>Subcommands:</p>
+<p>/permissions list [PATH] List permissions for all prefixes, or for a
+specific PATH.</p>
+<p>/permissions set PATH PERMS Set permissions for PATH. PERMS is a
+comma-separated list of values. Example: /permissions set src/
+read,write</p>
+<p>/permissions reset Remove all custom permissions.</p>
+<h2 id="audit-log-audit">AUDIT LOG (/audit)</h2>
+<p>Harvey maintains an in-memory ring buffer of the last 1 000 events
+covering command execution, file reads, file writes, file deletes, file
+listings, skill runs, and security denials. The log resets when Harvey
+exits.</p>
+<p>Subcommands:</p>
+<p>/audit show [N] Print the most recent N events (default 20).</p>
+<p>/audit clear Clear the in-memory audit buffer.</p>
+<p>/audit status Show the buffer size and event count.</p>
+<h2 id="security-overview-security-status">SECURITY OVERVIEW (/security
+status)</h2>
+<p>/security status prints a single unified view of: Safe Mode state and
+allowlist, workspace permissions, and audit buffer status.</p>
+<h1 id="examples">EXAMPLES</h1>
+<pre><code>  harvey &gt; /safemode on
+  harvey &gt; /safemode allow make
+  harvey &gt; /permissions set src/ read,write
+  harvey &gt; /audit show 10
+  harvey &gt; /security status</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/help run — shell command execution and timeout /help routing —
+remote endpoint security</p>
+</section>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>READ-DIR — read all eligible files in a directory into context</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/read-dir [PATH] [–depth N]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/read-dir walks a workspace directory and injects every readable,
+non-binary file into the conversation as a context message, using the
+same fenced-block format as /read.</p>
+<p>PATH defaults to the current workspace root. –depth (or -d) controls
+how many directory levels to descend; the default is 2 (the target
+directory plus one level of subdirectories). –depth 0 means
+unlimited.</p>
+<p>Files are skipped when they:</p>
+<ul>
+<li>are hidden (name starts with “.”)</li>
+<li>are inside the agents/ subtree</li>
+<li>match sensitive patterns (.env<em>, </em>.pem, <em>.key, </em>.p12,
+*.pfx, harvey.yaml)</li>
+<li>are binary (contain a null byte in the first 512 bytes)</li>
+<li>exceed the per-file cap of 64 KB (reported as skipped)</li>
+</ul>
+<p>The total context injected is capped at 256 KB. If the cap is hit,
+Harvey reports how many files were loaded before stopping.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Load all Go source files in the current package:</p>
+<p>/read-dir harvey/</p>
+<p>Load only the top-level files in the workspace (no
+subdirectories):</p>
+<p>/read-dir . –depth 1</p>
+<p>Load the entire docs/ tree:</p>
+<p>/read-dir docs/ –depth 0</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/read — load specific files into context /file-tree — display
+directory structure without loading files /search — search for a pattern
+across workspace files</p>
+</section>
+</body>
+</html>

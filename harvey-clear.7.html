@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>CLEAR — reset the conversation history</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/clear</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/clear discards all messages in the current conversation and starts a
+fresh context window. The system prompt (HARVEY.md) is re-injected
+automatically so the model retains its role and workspace awareness.</p>
+<p>Use /clear when you want to start a new topic without restarting
+Harvey. The model has no memory of the previous conversation after
+/clear.</p>
+<h1 id="what-survives-clear">WHAT SURVIVES /CLEAR</h1>
+<p>System prompt — re-injected from HARVEY.md automatically. Pinned
+context — any text set with /context add is re-injected as the first
+user message, keeping persistent constraints visible to the model across
+topic changes. Recording — an active /record session keeps running; the
+cleared conversation is not written to the session file. RAG — the RAG
+store and its on/off state are unaffected. Skills — the skill catalog
+remains loaded; /skill load must be re-run to activate a skill in the
+new context.</p>
+<h1 id="what-clear-does-not-do">WHAT /CLEAR DOES NOT DO</h1>
+<ul>
+<li>It does not switch models or disconnect the backend.</li>
+<li>It does not delete session files already written to disk.</li>
+<li>It does not clear the knowledge base (/kb).</li>
+</ul>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/context — manage pinned context that survives /clear /summarize —
+condense history into a summary instead of discarding it</p>
+</section>
+</body>
+</html>

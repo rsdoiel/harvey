@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>GIT — run read-only git commands in the workspace</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/git &lt;status|diff|log|show|blame&gt; [ARGS…]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/git runs read-only git subcommands in the workspace root and prints
+their output to the REPL. Only the five safe, non-mutating subcommands
+are permitted; write operations such as commit, push, checkout, and
+reset are blocked.</p>
+<p>ARGS are passed directly to the underlying git command, so all the
+usual flags and path arguments work.</p>
+<p>Output is capped at 64 KiB. Sensitive environment variables are
+filtered from the git process.</p>
+<p>/git operates on whatever repository contains the workspace root. If
+the workspace is not inside a git repository, git will report an
+error.</p>
+<h1 id="subcommands">SUBCOMMANDS</h1>
+<p>/git status [ARGS…] Show the working tree status.</p>
+<p>/git diff [ARGS…] Show unstaged or staged changes. Pass –staged for
+staged-only.</p>
+<p>/git log [ARGS…] Show the commit log. Useful flags: –oneline, -n N,
+–since DATE.</p>
+<p>/git show [REF] Show a commit, tag, or tree object.</p>
+<p>/git blame FILE Show what revision last modified each line of
+FILE.</p>
+<h1 id="examples">EXAMPLES</h1>
+<pre><code>  harvey &gt; /git status
+  harvey &gt; /git diff HEAD~1
+  harvey &gt; /git log --oneline -10
+  harvey &gt; /git blame src/main.go</code></pre>
+<p>After reviewing changes, ask the model:</p>
+<pre><code>  harvey &gt; /git diff
+  harvey &gt; Explain what changed and whether there are any risks.</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/run COMMAND — run arbitrary (safe-mode-checked) commands /help
+run</p>
+</section>
+</body>
+</html>

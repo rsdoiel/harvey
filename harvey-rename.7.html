@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>RENAME — rename the active session recording file</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/rename NAME</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/rename changes the filename of the session currently being recorded
+without ending the session. Recording continues to the new file
+seamlessly.</p>
+<p>NAME is a bare filename — do not include a directory path. Harvey
+places the renamed file in the same directory as the original
+(agents/sessions/ by default). A .spmd extension is added automatically
+if omitted.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Give the session a meaningful name while it is still running:</p>
+<p>/rename my-feature-session</p>
+<p>This renames the current harvey-session-YYYYMMDD-HHMMSS.spmd to
+my-feature-session.spmd in agents/sessions/.</p>
+<p>/rename rag-fix-and-context-display</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/record — start or stop session recording /session — continue or
+replay a recorded session /help record /help session</p>
+</section>
+</body>
+</html>

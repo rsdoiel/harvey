@@ -52,7 +52,7 @@ choose to see its value. Harvey in the play was a Púca, a mythic Celtic
 spirit who at times was prone to mischief. The Púca chose who could see
 it but even then the person doing the seeing had to be willing to see it
 too.</p>
-<h2 id="motivation">Motivation</h2>
+<h2 id="motivation-spring-2026">Motivation (Spring 2026)</h2>
 <p>I think the <strong>current AI hype cycle</strong> will likely end
 with a bang and a crash. Since I started working on Harvey we’ve already
 seen the token expenses sky rocket. Many flat rate plans ration tokens.
@@ -114,34 +114,38 @@ It was proposed by Anthropic and adopted by others (example Mistral
 Vibe, OpenClaw). It is also pretty easy to implement using Ollama
 server. The concept of <a
 href="https://en.wikipedia.org/wiki/Retrieval-augmented_generation"
-title="Retrieval-augmented generation">RAG</a> and <a
+title="Retrieval-augmented generation">RAG</a> was easy to implement.
+Some trends like <a
 href="https://en.wikipedia.org/wiki/Model_Context_Protocol"
-title="Model Context Protocol">MCP</a> seems to be picking up steam too.
-These to can be implemented for a resource constrained system. Mozilla
-AI is working on implementing a way to unify many implementation
-elements. An example is their <a
+title="Model Context Protocol">MCP</a> strike me as a way to run up
+token usage. I remain on the fense about it’s usefulness. Pick the
+proven trends that favor limitted resource availability and implement
+them is the approach I’m taking with Harvey. Harvey isn’t being
+developed in a vacuum. Mozilla AI is working on implementing a way to
+unify many implementation elements. An example is their <a
 href="https://www.mozilla.ai/open-tools/choice-first-stack/any-llm">any-llm</a>
 project. <a href="https://github.com/ollama/ollama">Ollama</a> project.
-It lets you build tools that integrate with many language model systems
-available today. Then if you build on Ollama and Hugging Face’s
-offerings and have a foundation to roll your own tool. That’s how Harvey
-started.</p>
-<p>“Wait, wait, why Harvey? You should use OpenClaw!”, OpenClaw is
-interesting but it is very easy to mis-configure. I wasn’t comfortable
-with that myself. I felt like OpenClaw opened my computing environment
-up to a whole lot of hurt. I don’t want agents running around my
-personal communication. I don’t want them messing with my editor. I want
-my code agent to stick to a project directory. I want it focused on what
-I am working on. I want a safe tool as convenient as Claude Code, GitHub
-CoPilot or Mistral Vibe. It should be transparent in how in works. It
-should document what it does. It should let me work with the models I
-chose for a specific task. It should be human scale and not put
-tentacles into everything else. I am working with language models on my
-local machine or my private network. Harvey should let me be able to
-easily direct appropriate material to a remote service while keeping
-everything else local so I can continue the processing with models in my
-local machine. Harvey came about because I don’t see other applications
-that work with language models doing filling that niche.</p>
+Harvey can take advantage of that too. This approach let’s me evolve
+Harvey as a small project while allowing me to explore the domain of
+small model computing on small computers. That’s how Harvey started.</p>
+<h3 id="wait-wait-why-harvey-you-should-use-openclaw">Wait, wait, why
+Harvey? You should use OpenClaw!</h3>
+<p>OpenClaw is interesting but it is very easy to mis-configure. I
+wasn’t comfortable with that myself. I felt like OpenClaw opened my
+computing environment up to a whole lot of hurt. I don’t want agents
+running around my personal communication. I don’t want them messing with
+my editor. I want my code agent to stick to a project directory. I want
+it focused on what I am working on. I want a safe tool as convenient as
+Claude Code, GitHub CoPilot or Mistral Vibe. It should be transparent in
+how in works. It should document what it does. It should let me work
+with the models I chose for a specific task. It should be human scale
+and not put tentacles into everything else. I am working with language
+models on my local machine or my private network. Harvey should let me
+be able to easily direct appropriate material to a remote service while
+keeping everything else local so I can continue the processing with
+models in my local machine. Harvey came about because I don’t see other
+applications that work with language models doing filling that
+niche.</p>
 <p>NOTE: I have made an attempt to keep Harvey safe as I’ve designed
 Harvey. Harvey avoids secrets. How Harvey is configured and it’s
 operating data is visible to me as a human. There is risk in using
@@ -154,7 +158,7 @@ think will be critical in evolving person language model tooling. As a
 result you should keep in mind that Harvey is experimental, it is only a
 working proof of concept. Don’t use Harvey where the risks might
 endanger your data or person.</p>
-<h2 id="what-is-model-what-is-infrastructure">What is model? What is
+<h2 id="what-is-a-model-what-is-infrastructure">What is a model? What is
 infrastructure?</h2>
 <p>Commercial SaaS language model services need to keep you engaged.
 They’ve done a good job of building up the human user interface. The
@@ -164,30 +168,34 @@ recruitment methodology described by Steven Hassan. When you step back
 and look at actual implementations the ecosystems like those of OpenAI,
 Anthropic and others are not just the latest frontier model they include
 considerable effort in implementing the human user interface to keep
-engagement up. The frontier models are important but it is everything
-they wrap around is straight up traditional web services. This is true
-weather they used a language model to generate the code or not. That’s
-telling. The model is important but the user interface and the
-infrastructure under it is important too.</p>
+engagement up. The frontier models are important but their not
+mysterious when you look at how everything wrapped up traditional web
+services. This is true weather they used a language model to generate
+the code or not. That’s telling. The model is important but the user
+interface and the infrastructure under it is important too. That’s what
+has contact with us humans.</p>
 <p>When building our own language model system most of it can take
 advantage of traditional software programs and methods too. I suspect
 you can do allot before sending the resulting text as a prompt to the
 model for processing. What is done in parallel for the sake of scaling
-can be done sequentially if we’re at the scale of a single user. There
-is an opportunity on a locally run language model system to scale down
-instead of up.</p>
-<p>Useful small open models are hear <a
-href="model_testing_plan.html">today</a>. In the hype that focuses on
-bigger and more generalized the small specialized models seem
-undervalued. You can leverage the value if it is easily to run them
-locally. This is true especially if there are some key additional
-features like good session management, knowledge bases and RAG. Harvey
-shows this can be done on small affordable hardware. Hardware that
-doesn’t require new data centers and power plants to be built. I think
-smaller models, ones that can run at the edge will be the ones that
-carry weight in the long wrong. To explore the idea of small models on
-small computers I dreamed up Harvey. We’ll have to wait to see where
-that adventure could leads.</p>
+can be done sequentially if we’re at the scale of a single user.
+<strong>There is an opportunity on a locally run language model system
+to scale down instead of up.</strong></p>
+<p>I believe useful small open models are hear <a
+href="model_guide.html">today</a>. The trick is identifying those that
+are mature enough to use day in and day out safely. In the hype that
+focuses on bigger and more generalized the small specialized models seem
+undervalued. You can leverage the value if it is <a
+href="llamafile_notes.html"
+title="LLamafile is a form Mozilla AI is experimenting with that looks promising">easily
+to run them locally</a>. This is true especially if there are some key
+additional features like good session management, knowledge bases and
+RAG. Harvey shows this can be done on small affordable hardware.
+Hardware that doesn’t require new data centers and power plants to be
+built. I think smaller models, ones that can run at the edge will be the
+ones that carry weight in the long wrong. To explore the idea of small
+models on small computers I dreamed up Harvey. We’ll have to wait to see
+where that adventure could leads.</p>
 <h2 id="release-notes">Release Notes</h2>
 <ul>
 <li>version: 0.0.3</li>

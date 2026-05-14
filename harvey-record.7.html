@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>RECORD — record session exchanges to a Fountain file</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/record start [FILE] /record stop /record status</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/record saves each user prompt and assistant reply to a plain-text
+Fountain .spmd file as the conversation progresses. Recording is on by
+default: Harvey starts recording automatically at startup and prints
+“Recording to …” in the startup banner.</p>
+<p>Recorded files can be loaded later with /session continue (to resume)
+or /session replay (to re-run against a different model).</p>
+<h1 id="auto-record">AUTO-RECORD</h1>
+<p>Harvey records automatically unless auto-record is disabled. The
+session file is created in <workdir>/agents/sessions/ with a timestamped
+name:</p>
+<p>harvey-session-YYYYMMDD-HHMMSS.spmd</p>
+<p>The path is shown in the startup banner. When you exit Harvey the
+banner confirms the file was saved:</p>
+<p>Session saved to
+agents/sessions/harvey-session-20260501-143200.spmd</p>
+<h1 id="subcommands">SUBCOMMANDS</h1>
+<p>/record start [FILE] Begin recording to FILE. If FILE is omitted,
+Harvey generates a timestamped name in the sessions directory. Returns
+an error if a recording is already active — use /record stop first.</p>
+<p>/record stop Close the current recording file. The path is printed on
+exit. Harvey continues running; only the recording ends.</p>
+<p>/record status Show the path of the active recording, or report that
+no recording is in progress.</p>
+<h1 id="cli-flags">CLI FLAGS</h1>
+<p>harvey –record auto-record with a generated filename harvey
+–record-file FILE auto-record to a specific path</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/session — continue or replay a recorded session /help session</p>
+</section>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>STATUS — show Harvey’s current runtime state</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/status</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/status prints a snapshot of the active Harvey session. It is the
+fastest way to confirm what model you are talking to, how full the
+context window is, and whether optional subsystems (RAG, routing,
+recording) are active.</p>
+<h1 id="output-fields">OUTPUT FIELDS</h1>
+<p>Backend The active LLM provider and model name, e.g. “ollama
+(gemma4:e2b)”. When the Ollama backend was started by Harvey this
+session the tag [Harvey] is appended. When Ollama was already running
+before Harvey connected the tag [external] is appended.</p>
+<p>Debug Shown only when Harvey was started with –debug. Prints the path
+of the JSONL diagnostic log file being written this session.</p>
+<p>History Number of messages in the current conversation history (all
+roles).</p>
+<p>Tokens Estimated token count for the current history, the model’s
+context window size, and the percentage used. An exact count is shown
+when the Ollama tokenizer API responds; otherwise an approximation
+prefixed with “~” is shown. Not shown when the context window size is
+unknown.</p>
+<p>Routing “on (N endpoint(s))” when remote routes are configured and
+enabled. “off” otherwise. See /help routing for details.</p>
+<p>Workspace Absolute path of the workspace root Harvey was started
+in.</p>
+<p>KB “open (PATH)” when a SQLite knowledge base is open; “not open”
+otherwise.</p>
+<p>Sessions Absolute path of the sessions directory.</p>
+<p>Recording Path of the active Fountain session file, or “off” when not
+recording.</p>
+<h1 id="examples">EXAMPLES</h1>
+<pre><code>  harvey &gt; /status
+  Backend:   ollama (gemma4:e2b) [external]
+  History:   5 messages
+  Tokens:    ~1 247 / 131 072 (0%)
+  Routing:   off
+  Workspace: /Users/alice/myproject
+  KB:        open (/Users/alice/myproject/agents/knowledge.db)
+  Sessions:  /Users/alice/myproject/agents/sessions
+  Recording: /Users/alice/myproject/agents/sessions/harvey-session-20260514-094620.spmd</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/ollama status — check whether the Ollama daemon is reachable /help
+ollama — Ollama server and model management /help record — session
+recording</p>
+</section>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>INSPECT — show detailed Ollama model information</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/inspect /inspect MODEL</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/inspect queries the local Ollama server for detailed information
+about installed models. Requires an Ollama backend; use /ollama start
+first if Ollama is not running.</p>
+<p>Without a MODEL argument, /inspect shows a summary table of all
+installed models: name, disk size, family, context length, and
+capability flags (tools, embed, tagged-blocks). This is identical to
+/ollama list.</p>
+<p>With a MODEL argument, /inspect shows the full detail view for that
+model: family, parameter count, quantization level, disk size, context
+length, and all Modelfile parameter lines (e.g. temperature, system
+prompt).</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Summary of all installed models:</p>
+<pre><code>  harvey &gt; /inspect</code></pre>
+<p>Detail view for a specific model:</p>
+<pre><code>  harvey &gt; /inspect gemma4:e2b
+  Model:        gemma4:e2b [loaded]
+  Family:       gemma4
+  Parameters:   2.5B
+  Quantization: Q4_K_M
+  Context:      131072 tokens
+  Disk size:    1.7 GiB
+
+  Modelfile parameters:
+    stop &quot;&lt;end_of_turn&gt;&quot;</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/ollama list — model table (same as /inspect with no args) /ollama
+probe — test and cache capability flags /ollama show MODEL — raw
+Modelfile via the ollama CLI /help ollama</p>
+</section>
+</body>
+</html>

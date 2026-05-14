@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>MODEL — list installed models or switch the active model</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/model /model NAME /model ollama://NAME /model alias [list|set ALIAS
+NAME|remove ALIAS]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>Without arguments, /model lists all models available across every
+reachable backend (Ollama, routes), marking the currently active model
+with *.</p>
+<p>With a NAME argument, /model switches the active model for the
+current session. Harvey does not restart; the switch takes effect on the
+next user turn.</p>
+<p>NAME can be: - A bare Ollama model identifier: llama3.1:8b - An
+ollama:// URL: ollama://llama3.1:8b - A model alias defined with /model
+alias set</p>
+<p>/model alias is a shorthand for managing short memorable names for
+long Ollama model identifiers. See /help model-alias for full
+details.</p>
+<h1 id="switching-models">SWITCHING MODELS</h1>
+<pre><code>  harvey &gt; /model
+  * gemma4:e2b        ...
+    llama3.1:8b       ...
+    qwen2.5-coder:7b  ...
+
+  harvey &gt; /model llama3.1:8b
+  harvey &gt; /model qwen-coder        (if alias defined)
+  harvey &gt; /model ollama://mistral:latest</code></pre>
+<p>When switching, Harvey replaces the backend client immediately. The
+conversation history is preserved so you can compare responses from
+different models within the same session.</p>
+<h1 id="capability-probing">CAPABILITY PROBING</h1>
+<p>After pulling a new model, run /ollama probe MODEL to detect its
+tool- calling, embedding, and tagged-block capabilities. Results are
+cached in agents/model_cache.db and shown in /model and /ollama
+list.</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/ollama list — list installed Ollama models with capabilities /ollama
+probe — probe and cache model capabilities /model alias set — define a
+short alias for a long model name /help model-alias /help ollama</p>
+</section>
+</body>
+</html>
