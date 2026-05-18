@@ -248,7 +248,7 @@ func (a *Agent) replayWriteBlocks(reply string, rec *Recorder, out io.Writer) {
 	}
 
 	for _, b := range blocks {
-		abs, err := a.Workspace.AbsPath(b.path)
+		abs, err := resolveWorkspacePath(a.Workspace.Root, b.path)
 		if err != nil {
 			fmt.Fprintf(out, "  ✗ skipped %s: %v\n", b.path, err)
 			if rec != nil {
@@ -270,7 +270,12 @@ func (a *Agent) replayWriteBlocks(reply string, rec *Recorder, out io.Writer) {
 			fmt.Fprintf(out, "  ↩ backed up %s → %s\n", b.path, filepath.Base(bakPath))
 		}
 
-		if err := a.Workspace.WriteFile(b.path, []byte(b.content), 0o644); err != nil {
+		if err := func() error {
+			if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(abs, []byte(b.content), 0o644)
+		}(); err != nil {
 			fmt.Fprintf(out, "  ✗ %s: %v\n", b.path, err)
 			if rec != nil {
 				_ = rec.RecordAgentAction("write", b.path, "all", "error: "+err.Error())

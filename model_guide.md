@@ -163,7 +163,7 @@ When working on the Pi, treat `ministral-3:latest` as the Tier 4 ceiling and
 ## Suggested model aliases
 
 Add to `agents/harvey.yaml` under `model_aliases:`. Use
-`/model alias set NAME MODEL` or edit the file directly.
+`/ollama alias NAME MODEL` or edit the file directly.
 
 ```yaml
 model_aliases:
@@ -214,10 +214,10 @@ Before starting, ask:
 harvey
 
 # 2. Select model mid-session (or use an alias):
-/model agent              # → apertus-tools:8b (agent tasks)
-/model coder              # → devstral-small-2:24b (complex coding)
-/model docs               # → ministral-3:latest (long documents)
-/model fast               # → cogito:3b (quick Q&A)
+/ollama use agent              # → apertus-tools:8b (agent tasks)
+/ollama use coder              # → devstral-small-2:24b (complex coding)
+/ollama use docs               # → ministral-3:latest (long documents)
+/ollama use fast               # → cogito:3b (quick Q&A)
 
 # 3. Enable RAG if needed
 /rag on

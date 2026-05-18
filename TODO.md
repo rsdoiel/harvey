@@ -3,65 +3,36 @@
 
 ## Bugs
 
-- [ ] The `/ollama probe`  command does not work when referencing the model to probe with an alias
-- [ ] The `/ollama use` can switch to the model when provided with an alias, ```harvey > /ollama use apertus
-Now using Ollama model: apertus
-harvey > What is the weather in Santa Clarita today?
+## Next Steps (upcoming features, v0.0.5)
 
-Error: [ollama] model_not_found: 404 Not Found: model 'apertus' not found
-harvey > /ollama alias
-  Model aliases:
-    apertus              → abb-decide/apertus-tools:8b-instruct-2509-q4_k_m
-    gemma4               → gemma4:e2b
-    quen                 → qwen2.5:7b
-    qwen                 → qwen2.5:7b
-```
-- [ ] When using a route the response is getting written into the status message rather then being buffered and returned when complete. ```harvey > /route list
+- [ ] PDF extraction — shared internal `pdfExtract(file, pages)` function used by both commands
+      below. Uses three poppler utilities in sequence:
+      1. `pdfinfo` — metadata (title, author, page count, creation date)
+      2. `pdftotext -layout` — text extraction preserving spatial structure (prose, code, tables)
+      3. `pdfimages -list` — detect pages with raster images; flag sparse/empty pages that are
+         likely vector diagrams so output isn't silently incomplete
+      Vector diagrams (path-command graphics) cannot be extracted by any text tool — those pages
+      should be flagged for follow-up with a vision-capable route. Poppler (pdftotext, pdfinfo,
+      pdfimages) is the chosen backend; LibreOffice and Pandoc are not suitable for PDF input.
 
-  ✗  @francis           ollama      http://localhost:8080/api/v1/chat  [(default)]
-  ✓  @wren              ollama      http://wren.local:11434  [qwen2.5-coder:7b]
+- [ ] `/read_pdf FILE [PAGES]` slash command — context injection path. Calls `pdfExtract`
+      with an optional page range (e.g. `40-55`). Enforces a page cap (~20 pages) to stay
+      within context window limits. Output is injected into the conversation as a user message
+      so the model can reason about the content immediately. Ephemeral — not stored anywhere.
+      Example: `/read_pdf ~/docs/oberon2.pdf 49-63`
 
-harvey > @wren write a Hello World program in Oberon langauge.
-  → dispatching to @wren
+- [ ] `/rag ingest FILE.pdf` subcommand — RAG ingestion path. Calls `pdfExtract` on the full
+      document (no page cap), chunks the output by paragraph/section, attaches per-chunk metadata
+      (source file, page number, document title from pdfinfo), embeds, and stores in the active
+      RAG store. Pages flagged as diagram-heavy by pdfimages are stored with an incomplete-content
+      marker so retrieval results can surface the caveat. Companion to `/read_pdf`; both share
+      `pdfExtract` but serve different outputs (chat context vs. RAG database).
 
-@wren · working
-  ⎿ The Owl and the Pussycat sail by the light of thought...
-     ⎿ ⠴ [11s]:
-  ⎿ The Jumblies have gone to sea in a sieve to fetch your answer...
-     ⎿ ⠙ [13s]
-     ⎿ ⠸ [14s];
+- [ ] Attached file support — `/attach FILE` command that includes a file as multimodal content
+      in the next chat turn. For cloud routes with CompletionPDF/CompletionImage support
+      (Anthropic, Mistral, Gemini), sends the raw file bytes as a ContentPart so the model
+      processes it natively. For local/text-only models, falls back to text extraction.
+      See conversation notes for design details.
 
-     ⎿ ⠼ [15s];
 
-     ⎿ ⠏ [17s];
-  ⎿ The Dong with the luminous nose searches through the dark...
-     ⎿ ⠇ [21s]!");
-     ⎿ ⠋ [22s];
-
-     ⎿ ⠙ [23s].
-     ⎿ ⠏ [24s]`
-  ⎿ The Nutcrackers and the Sugar-Tongs are in conference...
-     ⎿ ⠏ [36s].
-  ⎿ The runcible spoon stirs the pot of possibilities...
-     ⎿ ⠹ [46s]:
-
-  ⎿ Far and few, far and few, the thoughts are gathering...
-     ⎿ ⠙ [49s]
-     ⎿ ⠇ [50s]`
-
-     ⎿ ⠼ [53s]:
-
-  ⎿ The Bong-tree sways as your answer takes its shape...
-     ⎿ ⠹ [55s]
-
-  @wren
-harvey > ```
-
-## Next Steps (upcoming features, v0.0.4)
-
-- [ ] A route should be able to be used as the current model, I should be able to use Harvey with Claude or Mistral as the working model assuming I've setup the routes and environment properly.
-- [ ] By default Harvey should start up in safe mode unless the agents/harvey.yaml has been set to have it off
-- [ ] The `/model alias set` should work like setting aliases in the `/ollama` commands
-- [ ] Auto-complete should work with model names, otherwise I'm shelling out to see models with very long names via the ollama list command.
-- [ ] An alias should not be allowed if it clashes with an existing model name or alias
 

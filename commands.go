@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // sensitiveCmdEnvVars contains environment variable names that should be
@@ -219,11 +221,6 @@ func (a *Agent) registerCommands() {
 			Description: "Alias for /summarize — condense conversation history",
 			Handler:     cmdSummarize,
 		},
-		"model": {
-			Usage:       "/model [NAME | ollama://NAME]",
-			Description: "List available models, or switch to a named model",
-			Handler:     cmdModel,
-		},
 		"context": {
 			Usage:       "/context <show|add TEXT...|clear>",
 			Description: "Manage pinned context that survives /clear",
@@ -285,7 +282,7 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdInspect,
 		},
 		"route": {
-			Usage:       "/route <add NAME URL [MODEL] | rm NAME | list | on | off | status>",
+			Usage:       "/route <add NAME URL [MODEL] | rm NAME | models URL | probe NAME | set NAME tools on|off | list | on | off | status>",
 			Description: "Register remote LLM endpoints and dispatch to them with @name in prompts",
 			Handler:     cmdRoute,
 		},
@@ -435,12 +432,6 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "kb", "knowledge", "knowledge-base":
 			fmt.Fprint(out, FmtHelp(KBHelpText, "", "", "", ""))
 			return nil
-		case "model":
-			fmt.Fprint(out, FmtHelp(ModelHelpText, "", "", "", ""))
-			return nil
-		case "model-alias", "model alias", "alias":
-			fmt.Fprint(out, FmtHelp(ModelAliasHelpText, "", "", "", ""))
-			return nil
 		case "ollama":
 			fmt.Fprint(out, FmtHelp(OllamaHelpText, "", "", "", ""))
 			return nil
@@ -493,7 +484,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprint(out, FmtHelp(WriteHelpText, "", "", "", ""))
 			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: alias, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, model, model-alias, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 
@@ -593,12 +584,15 @@ func cmdClear(a *Agent, _ []string, out io.Writer) error {
  * @mention syntax (e.g., @claude, @mistral) or explicitly via /route.
  *
  * Subcommands:
- *   add NAME URL [MODEL]    — Register a new remote endpoint
- *   rm NAME                 — Remove a registered endpoint
- *   list                    — List all registered endpoints
- *   on                      — Enable routing globally
- *   off                     — Disable routing globally
- *   status                  — Show routing status and endpoints
+ *   add NAME URL [MODEL]       — Register a new remote endpoint
+ *   rm NAME                    — Remove a registered endpoint
+ *   models URL                 — List models available at a provider URL
+ *   probe NAME                 — Show capability detail for a registered endpoint
+ *   set NAME tools on|off      — Enable or disable tool calling for an endpoint
+ *   list                       — List all registered endpoints with capabilities
+ *   on                         — Enable routing globally
+ *   off                        — Disable routing globally
+ *   status                     — Show routing status and endpoints
  *
  * Supported endpoint types:
  *   Local:  ollama://host:port, llamafile://host:port, llamacpp://host:port
@@ -624,10 +618,20 @@ func cmdRoute(a *Agent, args []string, out io.Writer) error {
 		return routeAdd(a, args[1:], out)
 	case "rm", "remove":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /route rm NAME")
+			fmt.Fprintln(out, "  Usage: /route rm NAME")
 			return nil
 		}
 		return routeRemove(a, args[1], out)
+	case "models":
+		return routeModels(a, args[1:], out)
+	case "probe":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "  Usage: /route probe NAME")
+			return nil
+		}
+		return routeProbe(a, args[1], out)
+	case "set":
+		return routeSet(a, args[1:], out)
 	case "list":
 		return routeList(a, out)
 	case "on":
@@ -638,7 +642,7 @@ func cmdRoute(a *Agent, args []string, out io.Writer) error {
 		return routeStatus(a, out)
 	default:
 		fmt.Fprintf(out, "  Unknown route subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "  Usage: /route <add NAME URL [MODEL] | rm NAME | list | on | off | status>")
+		fmt.Fprintln(out, "  Usage: /route <add NAME URL [MODEL] | rm NAME | models URL | probe NAME | set NAME tools on|off | list | on | off | status>")
 	}
 	return nil
 }
@@ -731,7 +735,15 @@ func routeList(a *Agent, out io.Writer) error {
 		if model == "" {
 			model = "(default)"
 		}
-		fmt.Fprintf(out, "  %s  @%-16s  %-10s  %s  [%s]\n", reachStr, n, ep.Kind, ep.URL, model)
+		toolsSuffix := ""
+		if kindSupportsTools(ep.Kind) {
+			if ep.Tools {
+				toolsSuffix = "  " + green("tools:on")
+			} else {
+				toolsSuffix = "  tools:off"
+			}
+		}
+		fmt.Fprintf(out, "  %s  @%-16s  %-10s  %s  [%s]%s\n", reachStr, n, ep.Kind, ep.URL, model, toolsSuffix)
 	}
 	fmt.Fprintln(out)
 	return nil
@@ -910,6 +922,166 @@ func safeModeReset(a *Agent, out io.Writer) error {
 	return nil
 }
 
+// formatCapabilities returns a compact one-line capability summary.
+func formatCapabilities(caps anyllm.Capabilities) string {
+	f := func(b bool) string {
+		if b {
+			return "✓"
+		}
+		return "—"
+	}
+	return fmt.Sprintf("chat %s  stream %s  tools %s  vision %s  pdf %s  reasoning %s  embed %s",
+		f(caps.Completion), f(caps.CompletionStreaming), f(caps.CompletionTools),
+		f(caps.CompletionImage), f(caps.CompletionPDF), f(caps.CompletionReasoning),
+		f(caps.Embedding))
+}
+
+/** routeModels lists available models for a provider URL before a route is
+ * registered. Takes a raw URL (e.g. "anthropic://") to infer the provider kind.
+ * For Anthropic the v1/models API is called directly; all other providers use
+ * the any-llm-go ModelLister interface.
+ *
+ * Usage: /route models URL
+ */
+func routeModels(a *Agent, args []string, out io.Writer) error {
+	if len(args) < 1 {
+		fmt.Fprintln(out, "  Usage: /route models URL")
+		fmt.Fprintln(out, "  Example: /route models anthropic://")
+		fmt.Fprintln(out, "           /route models ollama://192.168.1.12:11434")
+		return nil
+	}
+	rawURL := args[0]
+	kind, err := InferRouteKind(rawURL)
+	if err != nil {
+		fmt.Fprintf(out, "  %v\n", err)
+		return nil
+	}
+
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "  Provider: %s\n", kind)
+
+	// Show static capabilities (no network call needed).
+	ep := &RouteEndpoint{Kind: kind, URL: rawURL}
+	if client, cerr := clientForEndpoint(ep, a.Config); cerr == nil {
+		if ac, ok := client.(*AnyLLMClient); ok {
+			fmt.Fprintf(out, "  Capabilities: %s\n", formatCapabilities(ac.ProviderCapabilities()))
+		}
+	}
+
+	fmt.Fprintf(out, "\n  Fetching models from %s ...\n", rawURL)
+	ctx := context.Background()
+	models, err := listModelsForEndpoint(ctx, kind, rawURL, a.Config)
+	if err != nil {
+		fmt.Fprintf(out, "  Error: %v\n", err)
+		return nil
+	}
+	if len(models) == 0 {
+		fmt.Fprintln(out, "  No models returned.")
+		return nil
+	}
+	sort.Strings(models)
+	fmt.Fprintf(out, "  Models (%d):\n", len(models))
+	for _, m := range models {
+		fmt.Fprintf(out, "    %s\n", m)
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
+/** routeProbe shows detailed capability and status information for a registered
+ * endpoint. Unlike /route models, this operates on a named route rather than
+ * a raw URL.
+ *
+ * Usage: /route probe NAME
+ */
+func routeProbe(a *Agent, name string, out io.Writer) error {
+	ep := a.Routes.Lookup(name)
+	if ep == nil {
+		fmt.Fprintf(out, "  @%s not found. Use /route list to see registered endpoints.\n", name)
+		return nil
+	}
+
+	reach := probeRouteEndpoint(ep, a.Config)
+	reachStr := green("✓ reachable")
+	if !reach {
+		reachStr = yellow("✗ unreachable")
+	}
+	model := ep.Model
+	if model == "" {
+		model = "(default)"
+	}
+
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "  Route:    @%s\n", name)
+	fmt.Fprintf(out, "  Provider: %s\n", ep.Kind)
+	fmt.Fprintf(out, "  URL:      %s\n", ep.URL)
+	fmt.Fprintf(out, "  Status:   %s\n", reachStr)
+	fmt.Fprintf(out, "  Model:    %s\n", model)
+
+	toolsLine := "off"
+	if !kindSupportsTools(ep.Kind) {
+		toolsLine = "not supported by provider"
+	} else if ep.Tools {
+		toolsLine = green("on")
+	}
+	fmt.Fprintf(out, "  Tools:    %s\n", toolsLine)
+
+	if reach {
+		if client, err := clientForEndpoint(ep, a.Config); err == nil {
+			if ac, ok := client.(*AnyLLMClient); ok {
+				fmt.Fprintf(out, "  Caps:     %s\n", formatCapabilities(ac.ProviderCapabilities()))
+			}
+		}
+	}
+	fmt.Fprintf(out, "\n  Use /route models %s to list available models.\n\n", ep.URL)
+	return nil
+}
+
+/** routeSet updates a per-endpoint setting for a registered route and persists
+ * the change. Currently supports one setting:
+ *
+ *   tools on|off — enable or disable tool calling via ToolExecutor.
+ *
+ * Usage: /route set NAME tools on|off
+ */
+func routeSet(a *Agent, args []string, out io.Writer) error {
+	if len(args) < 3 {
+		fmt.Fprintln(out, "  Usage: /route set NAME tools on|off")
+		return nil
+	}
+	name, key, val := args[0], strings.ToLower(args[1]), strings.ToLower(args[2])
+	ep := a.Routes.Lookup(name)
+	if ep == nil {
+		fmt.Fprintf(out, "  @%s not found. Use /route list to see registered endpoints.\n", name)
+		return nil
+	}
+	switch key {
+	case "tools":
+		if !kindSupportsTools(ep.Kind) {
+			fmt.Fprintf(out, "  @%s provider (%s) does not support tool calling.\n", name, ep.Kind)
+			return nil
+		}
+		switch val {
+		case "on", "true", "yes":
+			ep.Tools = true
+			fmt.Fprintf(out, "  @%s: tools enabled. Dispatches will use Harvey's tool registry.\n", name)
+		case "off", "false", "no":
+			ep.Tools = false
+			fmt.Fprintf(out, "  @%s: tools disabled.\n", name)
+		default:
+			fmt.Fprintf(out, "  Unknown value %q — use: on | off\n", val)
+			return nil
+		}
+	default:
+		fmt.Fprintf(out, "  Unknown setting %q — available settings: tools\n", key)
+		return nil
+	}
+	if err := SaveRouteConfig(a.Workspace, a.Routes); err != nil {
+		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", err)
+	}
+	return nil
+}
+
 // probeRouteEndpoint returns true when ep appears reachable.
 // Local providers are probed via HTTP; cloud providers check for a non-empty API key env var.
 func probeRouteEndpoint(ep *RouteEndpoint, cfg *Config) bool {
@@ -1050,7 +1222,7 @@ func truncate(s string, n int) string {
  *   logs           — Show Ollama server logs
  *   use            — Switch to a different model
  *   env            — Display active Ollama environment variables
- *   alias          — Manage short model aliases (delegates to /model alias)
+ *   alias          — Manage short model aliases (/ollama alias NAME FULLNAME)
  *
  * Parameters:
  *   a    (*Agent)    — Harvey agent with configuration.
@@ -1237,14 +1409,7 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintln(out, "Usage: /ollama use MODEL")
 			return nil
 		}
-		model := args[1]
-		if !ProbeOllama(a.Config.OllamaURL) {
-			fmt.Fprintln(out, "Ollama is not running. Use /ollama start first.")
-			return nil
-		}
-		a.Config.OllamaModel = model
-		a.Client = newOllamaLLMClient(a.Config.OllamaURL, model, a.Config.OllamaTimeout)
-		fmt.Fprintf(out, "Now using Ollama model: %s\n", model)
+		return modelSwitch(a, args[1], out)
 	case "alias":
 		subargs := args[1:]
 		// If the next token is not a known subcommand keyword, treat as implicit "set".
@@ -1397,7 +1562,7 @@ func ollamaProbe(a *Agent, args []string, out io.Writer) error {
 
 	// /ollama probe MODEL — probe a specific model, always refresh.
 	if len(args) == 1 && args[0] != "--all" {
-		model := args[0]
+		model := a.Config.ResolveModelAlias(args[0])
 		fmt.Fprintf(out, "Probing %s...\n", model)
 		cap, err := ThoroughProbeModel(ctx, a.Config.OllamaURL, model)
 		if err != nil {
@@ -3344,46 +3509,13 @@ func skillSetUnload(a *Agent, out io.Writer) error {
 	return nil
 }
 
-// ─── /model ──────────────────────────────────────────────────────────────────
-
-/** cmdModel lists available models from all reachable backends, or switches
- * the active model when a name is supplied.
- *
- * Usage:
- *   /model                — list all available Ollama models.
- *   /model NAME           — switch to NAME.
- *   /model ollama://NAME  — switch Ollama to NAME (explicit prefix).
- *
- * Parameters:
- *   a    (*Agent)    — the running agent.
- *   args ([]string)  — optional model name with optional backend prefix.
- *   out  (io.Writer) — destination for output.
- *
- * Returns:
- *   error — on backend communication failure.
- *
- * Example:
- *   /model
- *   /model mistral:latest
- *   /model ollama://mistral:latest
- */
-func cmdModel(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return modelList(a, out)
-	}
-	if args[0] == "alias" {
-		return cmdModelAlias(a, args[1:], out)
-	}
-	return modelSwitch(a, args[0], out)
-}
-
 // cmdModelAlias manages the model_aliases map in harvey.yaml.
 // Subcommands: list, set ALIAS FULLNAME, remove ALIAS
 func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 || args[0] == "list" {
 		if len(a.Config.ModelAliases) == 0 {
 			fmt.Fprintln(out, "  No model aliases defined.")
-			fmt.Fprintln(out, "  Use: /model alias set ALIAS FULL_MODEL_NAME")
+			fmt.Fprintln(out, "  Use: /ollama alias set ALIAS FULL_MODEL_NAME")
 			return nil
 		}
 		// Collect and sort for deterministic output.
@@ -3402,13 +3534,22 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 	switch args[0] {
 	case "set":
 		if len(args) < 3 {
-			fmt.Fprintln(out, "Usage: /model alias set ALIAS FULL_MODEL_NAME")
+			fmt.Fprintln(out, "Usage: /ollama alias set ALIAS FULL_MODEL_NAME")
 			return nil
 		}
 		alias := strings.ToLower(args[1])
 		full := args[2]
 		if a.Config.ModelAliases == nil {
 			a.Config.ModelAliases = make(map[string]string)
+		}
+		// Reject if the alias name clashes with an installed model name.
+		if aliasClashesWithModel(a, alias) {
+			fmt.Fprintf(out, "  ✗ %q is already an installed model name — choose a different alias.\n", alias)
+			return nil
+		}
+		// Warn if updating an existing alias.
+		if existing, ok := a.Config.ModelAliases[alias]; ok && existing != full {
+			fmt.Fprintf(out, "  ⚠ Updating alias %q: %s → %s\n", alias, existing, full)
 		}
 		a.Config.ModelAliases[alias] = full
 		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
@@ -3419,7 +3560,7 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 
 	case "remove", "rm", "delete":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /model alias remove ALIAS")
+			fmt.Fprintln(out, "Usage: /ollama alias remove ALIAS")
 			return nil
 		}
 		alias := strings.ToLower(args[1])
@@ -3440,39 +3581,37 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 	return nil
 }
 
-// modelList prints all models from every reachable backend, grouped by backend.
-// The currently active model is marked with *.
-func modelList(a *Agent, out io.Writer) error {
-	ctx := context.Background()
-	found := false
-
-	// Ollama
-	if ProbeOllama(a.Config.OllamaURL) {
-		models, err := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).Models(ctx)
-		if err == nil {
-			found = true
-			activeModel := ""
-			if ac, ok := a.Client.(*AnyLLMClient); ok {
-				activeModel = ac.ModelName()
-			}
-			fmt.Fprintln(out, "  Ollama:")
-			if len(models) == 0 {
-				fmt.Fprintln(out, "    (no models installed — run: ollama pull <model>)")
-			}
-			for _, m := range models {
-				marker := "  "
-				if m == activeModel {
-					marker = "* "
+// aliasClashesWithModel reports whether name matches an installed Ollama model.
+// It checks the model cache first (no network call); if the cache is empty it
+// falls back to a live Ollama query. Returns false when neither source is
+// available so that a downed Ollama server never blocks alias creation.
+func aliasClashesWithModel(a *Agent, name string) bool {
+	// Check model cache first.
+	if a.ModelCache != nil {
+		if caps, err := a.ModelCache.All(); err == nil && len(caps) > 0 {
+			for _, cap := range caps {
+				if strings.EqualFold(cap.Name, name) {
+					return true
 				}
-				fmt.Fprintf(out, "    %s%s\n", marker, m)
 			}
+			return false
 		}
 	}
-
-	if !found {
-		fmt.Fprintln(out, "  No backends available. Start Ollama or use /route add to register an endpoint.")
+	// Fall back to live Ollama list.
+	if !ProbeOllama(a.Config.OllamaURL) {
+		return false
 	}
-	return nil
+	models, err := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).
+		Models(context.Background())
+	if err != nil {
+		return false
+	}
+	for _, m := range models {
+		if strings.EqualFold(m, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // modelSwitch changes the active model. An "ollama://" prefix forces the Ollama
@@ -3511,7 +3650,7 @@ func modelSwitch(a *Agent, name string, out io.Writer) error {
 		}
 	}
 	fmt.Fprintf(out, "  Model %q not found in Ollama.\n", name)
-	fmt.Fprintln(out, "  Use /model to list available models.")
+	fmt.Fprintln(out, "  Use /ollama list to see available models.")
 	return nil
 }
 

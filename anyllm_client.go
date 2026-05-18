@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	anyllm "github.com/mozilla-ai/any-llm-go"
 	"github.com/mozilla-ai/any-llm-go/providers/anthropic"
 	"github.com/mozilla-ai/any-llm-go/providers/deepseek"
@@ -269,6 +270,42 @@ func (a *AnyLLMClient) Models(ctx context.Context) ([]string, error) {
 
 // Close satisfies LLMClient. any-llm-go providers hold no closeable resources.
 func (a *AnyLLMClient) Close() error { return nil }
+
+/** ProviderCapabilities returns the feature flags reported by the underlying
+ * provider. When the provider does not implement CapabilityProvider, a
+ * conservative set with only Completion and CompletionStreaming is returned.
+ * No network call is made — all providers return static capability data.
+ *
+ * Returns:
+ *   anyllm.Capabilities — static flags for this provider.
+ *
+ * Example:
+ *   caps := client.ProviderCapabilities()
+ *   if caps.CompletionTools { fmt.Println("tools supported") }
+ */
+func (a *AnyLLMClient) ProviderCapabilities() anyllm.Capabilities {
+	if cp, ok := a.provider.(anyllm.CapabilityProvider); ok {
+		return cp.Capabilities()
+	}
+	return anyllm.Capabilities{Completion: true, CompletionStreaming: true}
+}
+
+// listAnthropicModels queries Anthropic's v1/models endpoint via the SDK.
+// The any-llm-go Anthropic provider does not implement ModelLister, so the
+// underlying SDK is called directly. Reads ANTHROPIC_API_KEY from the
+// environment; returns an auth error if the key is absent.
+func listAnthropicModels(ctx context.Context) ([]string, error) {
+	client := anthropicsdk.NewClient()
+	var names []string
+	iter := client.Models.ListAutoPaging(ctx, anthropicsdk.ModelListParams{})
+	for iter.Next() {
+		names = append(names, iter.Current().ID)
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("anthropic models: %w", err)
+	}
+	return names, nil
+}
 
 // ─── AnyLLMEmbedder ──────────────────────────────────────────────────────────
 

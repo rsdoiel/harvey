@@ -250,7 +250,7 @@ func DefaultConfig() *Config {
 		WorkDir:         ".",
 		OllamaURL:       "http://localhost:11434",
 		AutoRecord:      true,
-		SafeMode:        false,
+		SafeMode:        true,
 		AllowedCommands: allowed,
 		Permissions:     defaultPerms,
 		ModelAliases:          make(map[string]string),
@@ -547,7 +547,7 @@ type harveyYAML struct {
 	ModelCacheDB    string              `yaml:"model_cache_db"`
 	RAG             ragYAML             `yaml:"rag"`
 	Permissions     map[string][]string `yaml:"permissions,omitempty"`
-	SafeMode        bool                `yaml:"safe_mode,omitempty"`
+	SafeMode        *bool               `yaml:"safe_mode,omitempty"` // nil = not set (keep default)
 	AllowedCommands []string            `yaml:"allowed_commands,omitempty"`
 	RunTimeout      string              `yaml:"run_timeout,omitempty"`    // e.g. "5m", "300s", "1m 30s", "300"
 	OllamaTimeout   string              `yaml:"ollama_timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
@@ -655,9 +655,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.Permissions != nil {
 		cfg.Permissions = y.Permissions
 	}
-	// Load security settings
-	if y.SafeMode {
-		cfg.SafeMode = true
+	// Load security settings — only override the default when explicitly set in YAML.
+	if y.SafeMode != nil {
+		cfg.SafeMode = *y.SafeMode
 	}
 	if len(y.AllowedCommands) > 0 {
 		cfg.AllowedCommands = y.AllowedCommands
@@ -744,7 +744,7 @@ func SaveRAGConfig(ws *Workspace, cfg *Config) error {
 		y.Permissions = cfg.Permissions
 	}
 	// Save security settings
-	y.SafeMode = cfg.SafeMode
+	y.SafeMode = &cfg.SafeMode
 	if len(cfg.AllowedCommands) > 0 {
 		y.AllowedCommands = cfg.AllowedCommands
 	}

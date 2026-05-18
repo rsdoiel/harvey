@@ -35,6 +35,7 @@ const (
  *   URL   (string)    — endpoint URL; e.g. "ollama://host:port" or "anthropic://".
  *   Model (string)    — default model on this endpoint; empty falls back to Config defaults.
  *   Kind  (RouteKind) — KindOllama, KindLlamafile, KindLlamaCpp, etc.
+ *   Tools (bool)      — when true, dispatch uses ToolExecutor for tool calling.
  *
  * Example:
  *   ep := RouteEndpoint{Name: "pi2", URL: "ollama://192.168.1.12:11434", Model: "llama3.1:8b", Kind: KindOllama}
@@ -44,6 +45,7 @@ type RouteEndpoint struct {
 	URL   string
 	Model string
 	Kind  RouteKind
+	Tools bool `json:",omitempty"` // opt-in tool calling via ToolExecutor
 }
 
 /** RouteRegistry holds all registered endpoints and the routing-enabled flag.
@@ -173,22 +175,28 @@ func recentHistory(history []Message, n int) []Message {
  * streams the reply to out, and returns the full reply text. The context window
  * is capped at RecentContextN non-system messages from history.
  *
+ * When ep.Tools is true and registry is non-nil, the call goes through
+ * ToolExecutor so the remote model can invoke Harvey's local tools. Harvey's
+ * existing permission constraints (safe_mode, allowed_commands, permissions)
+ * are enforced by the registry — the remote model cannot bypass them.
+ *
  * Parameters:
- *   ctx     (context.Context) — controls the HTTP request lifetime.
- *   ep      (*RouteEndpoint)  — registered endpoint to send to.
- *   history ([]Message)       — full local conversation history.
- *   prompt  (string)          — current user prompt (already stripped of @mention).
- *   cfg     (*Config)         — used to resolve model defaults.
- *   out     (io.Writer)       — destination for streamed reply tokens.
+ *   ctx      (context.Context) — controls the HTTP request lifetime.
+ *   ep       (*RouteEndpoint)  — registered endpoint to send to.
+ *   history  ([]Message)       — full local conversation history.
+ *   prompt   (string)          — current user prompt (already stripped of @mention).
+ *   cfg      (*Config)         — used to resolve model defaults and tool limits.
+ *   registry (*ToolRegistry)   — Harvey's tool registry; nil disables tool calling.
+ *   out      (io.Writer)       — destination for streamed reply tokens.
  *
  * Returns:
  *   reply (string) — full reply text.
  *   err   (error)  — non-nil on transport or API failure.
  *
  * Example:
- *   reply, err := DispatchToEndpoint(ctx, ep, agent.History, "write a parser", cfg, os.Stdout)
+ *   reply, err := DispatchToEndpoint(ctx, ep, agent.History, "write a parser", cfg, agent.Tools, os.Stdout)
  */
-func DispatchToEndpoint(ctx context.Context, ep *RouteEndpoint, history []Message, prompt string, cfg *Config, out io.Writer) (string, error) {
+func DispatchToEndpoint(ctx context.Context, ep *RouteEndpoint, history []Message, prompt string, cfg *Config, registry *ToolRegistry, out io.Writer) (string, error) {
 	msgs := recentHistory(history, RecentContextN)
 	msgs = append(msgs, Message{Role: "user", Content: prompt})
 
@@ -199,6 +207,15 @@ func DispatchToEndpoint(ctx context.Context, ep *RouteEndpoint, history []Messag
 
 	var buf strings.Builder
 	w := io.MultiWriter(&buf, out)
+
+	if ep.Tools && registry != nil {
+		ex := NewToolExecutor(registry, client, cfg)
+		if _, _, err := ex.RunToolLoop(ctx, msgs, w); err != nil {
+			return "", fmt.Errorf("route %s: %w", ep.Name, err)
+		}
+		return buf.String(), nil
+	}
+
 	if _, err := client.Chat(ctx, msgs, w); err != nil {
 		return "", fmt.Errorf("route %s: %w", ep.Name, err)
 	}
@@ -283,4 +300,46 @@ func estimateTokens(s string) int {
 		n = 1
 	}
 	return n
+}
+
+/** listModelsForEndpoint returns the available model IDs for the given provider.
+ * For Anthropic, the v1/models SDK endpoint is called directly because the
+ * any-llm-go Anthropic provider does not implement ModelLister. All other
+ * providers use the standard ModelLister interface via a temporary client.
+ *
+ * Parameters:
+ *   ctx    (context.Context) — controls the request lifetime.
+ *   kind   (RouteKind)       — provider kind inferred from the URL scheme.
+ *   rawURL (string)          — raw endpoint URL; used for local providers.
+ *   cfg    (*Config)         — provides timeout and model defaults.
+ *
+ * Returns:
+ *   []string — model IDs; order depends on the provider.
+ *   error    — non-nil on API or transport failure.
+ *
+ * Example:
+ *   models, err := listModelsForEndpoint(ctx, KindMistral, "mistral://", cfg)
+ */
+func listModelsForEndpoint(ctx context.Context, kind RouteKind, rawURL string, cfg *Config) ([]string, error) {
+	if kind == KindAnthropic {
+		return listAnthropicModels(ctx)
+	}
+	ep := &RouteEndpoint{Kind: kind, URL: rawURL}
+	client, err := clientForEndpoint(ep, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return client.Models(ctx)
+}
+
+// kindSupportsTools reports whether the given provider kind supports tool
+// calling. This is derived from static capability data — no network call is
+// made. Used by /route list and /route set to display and validate tool status.
+func kindSupportsTools(kind RouteKind) bool {
+	switch kind {
+	case KindAnthropic, KindDeepSeek, KindGemini, KindMistral, KindOpenAI,
+		KindOllama, KindLlamafile, KindLlamaCpp:
+		return true
+	}
+	return false
 }

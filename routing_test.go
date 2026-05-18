@@ -224,7 +224,7 @@ func TestDispatchToEndpoint_ollama(t *testing.T) {
 	}
 
 	var out strings.Builder
-	reply, err := DispatchToEndpoint(context.Background(), ep, history, "write hello world", cfg, &out)
+	reply, err := DispatchToEndpoint(context.Background(), ep, history, "write hello world", cfg, nil, &out)
 	if err != nil {
 		t.Fatalf("DispatchToEndpoint: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestDispatchToEndpoint_ollama(t *testing.T) {
 func TestDispatchToEndpoint_unknownKind(t *testing.T) {
 	ep := &RouteEndpoint{Name: "bad", URL: "noop://", Kind: RouteKind("unknown")}
 	cfg := DefaultConfig()
-	_, err := DispatchToEndpoint(context.Background(), ep, nil, "hi", cfg, &strings.Builder{})
+	_, err := DispatchToEndpoint(context.Background(), ep, nil, "hi", cfg, nil, &strings.Builder{})
 	if err == nil {
 		t.Error("expected error for unknown endpoint kind")
 	}
@@ -282,7 +282,7 @@ func TestAtMentionDispatch_landsInHistory(t *testing.T) {
 	}
 
 	var out strings.Builder
-	reply, err := DispatchToEndpoint(context.Background(), ep, history, "write hello world", cfg, &out)
+	reply, err := DispatchToEndpoint(context.Background(), ep, history, "write hello world", cfg, nil, &out)
 	if err != nil {
 		t.Fatalf("DispatchToEndpoint: %v", err)
 	}
@@ -365,5 +365,85 @@ func TestEstimateTokens(t *testing.T) {
 			}
 			t.Errorf("estimateTokens(%q...) = %d, want %d–%d", preview, n, c.minN, c.maxN)
 		}
+	}
+}
+
+// ── kindSupportsTools ─────────────────────────────────────────────────────────
+
+func TestKindSupportsTools(t *testing.T) {
+	cases := []struct {
+		kind RouteKind
+		want bool
+	}{
+		{KindAnthropic, true},
+		{KindDeepSeek, true},
+		{KindGemini, true},
+		{KindMistral, true},
+		{KindOpenAI, true},
+		{KindOllama, true},
+		{KindLlamafile, true},
+		{KindLlamaCpp, true},
+		{RouteKind("unknown"), false},
+		{RouteKind(""), false},
+	}
+	for _, c := range cases {
+		got := kindSupportsTools(c.kind)
+		if got != c.want {
+			t.Errorf("kindSupportsTools(%q) = %v, want %v", c.kind, got, c.want)
+		}
+	}
+}
+
+// ── DispatchToEndpoint with tools ─────────────────────────────────────────────
+
+// TestDispatchToEndpoint_toolsDisabledFallsBackToChat verifies that when
+// ep.Tools is false, DispatchToEndpoint uses plain Chat even when a registry
+// is supplied.
+func TestDispatchToEndpoint_toolsDisabledFallsBackToChat(t *testing.T) {
+	srv := ollamaMockServer(t, 8192, "plain reply")
+	defer srv.Close()
+
+	ep := &RouteEndpoint{
+		Name:  "pi2",
+		URL:   srv.URL,
+		Model: "llama3.1:8b",
+		Kind:  KindOllama,
+		Tools: false, // explicitly off
+	}
+	cfg := DefaultConfig()
+	registry := NewToolRegistry()
+
+	var out strings.Builder
+	reply, err := DispatchToEndpoint(context.Background(), ep, nil, "hello", cfg, registry, &out)
+	if err != nil {
+		t.Fatalf("DispatchToEndpoint: %v", err)
+	}
+	if !strings.Contains(reply, "plain reply") {
+		t.Errorf("reply = %q, want it to contain 'plain reply'", reply)
+	}
+}
+
+// TestDispatchToEndpoint_toolsNilRegistryFallsBackToChat verifies that even
+// when ep.Tools is true, a nil registry causes plain Chat to be used.
+func TestDispatchToEndpoint_toolsNilRegistryFallsBackToChat(t *testing.T) {
+	srv := ollamaMockServer(t, 8192, "plain reply")
+	defer srv.Close()
+
+	ep := &RouteEndpoint{
+		Name:  "pi2",
+		URL:   srv.URL,
+		Model: "llama3.1:8b",
+		Kind:  KindOllama,
+		Tools: true, // on, but no registry supplied
+	}
+	cfg := DefaultConfig()
+
+	var out strings.Builder
+	reply, err := DispatchToEndpoint(context.Background(), ep, nil, "hello", cfg, nil, &out)
+	if err != nil {
+		t.Fatalf("DispatchToEndpoint: %v", err)
+	}
+	if !strings.Contains(reply, "plain reply") {
+		t.Errorf("reply = %q, want it to contain 'plain reply'", reply)
 	}
 }

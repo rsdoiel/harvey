@@ -207,6 +207,49 @@ Endpoints: 5 registered
 Active endpoint: none (routing uses @mention)
 ```
 
+### `/route models URL`
+
+List models available at a provider URL. Useful before `/route add` to see what
+model names are available at that endpoint.
+
+**Examples:**
+```
+/route models anthropic://
+/route models ollama://192.168.1.12:11434
+```
+
+### `/route probe NAME`
+
+Show reachability, URL, model, and tool-call capability for a registered endpoint.
+
+**Examples:**
+```
+/route probe claude
+/route probe pi2
+```
+
+**Output:**
+```
+  Route:    @claude
+  Provider: anthropic
+  URL:      anthropic://
+  Status:   ✓ reachable
+  Model:    claude-sonnet-4-20250514
+  Tools:    on
+  Caps:     streaming, tools, json_mode
+```
+
+### `/route set NAME tools on|off`
+
+Toggle tool calling for a registered endpoint. Only available for providers that
+support tool use (Anthropic, OpenAI, Mistral). Persisted to `agents/routes.json`.
+
+**Examples:**
+```
+/route set claude tools on
+/route set claude tools off
+```
+
 ## Usage Patterns
 
 ### Pattern 1: Pi Cluster Workload Distribution

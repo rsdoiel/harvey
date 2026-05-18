@@ -100,8 +100,6 @@ Work through these documents in order to understand Harvey completely.
   - [git](harvey-git.7.md)
   - [inspect](harvey-inspect.7.md)
   - [knowledge base](harvey-kb.7.md)
-  - [model](harvey-model.7.md)
-    - [model aliases](harvey-model-alias.7.md)
   - [ollama](harvey-ollama.7.md)
   - [RAG](harvey-rag.7.md)
   - [read](harvey-read.7.md)

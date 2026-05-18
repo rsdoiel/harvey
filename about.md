@@ -12,36 +12,36 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.3b
+version: 0.0.4
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go >= 1.26.2
 
 
-date_released: 2026-05-12
+date_released: 2026-05-18
 ---
 
 About this software
 ===================
 
-## harvey 0.0.3b
+## harvey 0.0.4
 
-Working proof of concept.
+Bug fixes, security hardening, and UX improvements.
 
-- Fixed RAG startup error (SQLITE_CANTOPEN) when agents/rag/ directory does not exist; NewRagStore now creates parent directories automatically
-- Fixed /rag on and /rag off not persisting the enabled state to harvey.yaml
-- Fixed session model not being restored on resume when the prior session had no chat turns; model is now written to the Fountain title page at recording start
-- Added context window usage to the post-response stat line: shows current/max tokens and percentage (e.g. 1840/32768 ctx (5%)); /status also shows the percentage; limit is sourced from --context flag or model cache automatically
-- Added TAGGED column to /ollama list showing whether each model reliably emits path-tagged code blocks (used by auto-execute)
-- Startup model picker now displays the same capability table as /ollama list with numbered rows for selection
-- Added /rename NAME command to rename the active session file without ending the session
-- Added /file-tree [PATH] command to display a tree-style workspace listing
-- Added /model alias list|set|remove — manage aliases interactively; set/remove save to harvey.yaml immediately
-- Improved and tightened up tool support
-- Added /read-dir to read in an entire directory contents into the current context
-- Improved keyboard handling
-- Added support for skill sets, `/skill-set`, which can be loaded and unloaded together
+- Removed /model command; model switching is now /ollama use NAME (with alias resolution) and remote dispatch uses @mention syntax to preserve cost-awareness for cloud providers
+- Fixed /ollama use not resolving model aliases before connecting to Ollama
+- Fixed /ollama probe not resolving model aliases before probing
+- Fixed route (@mention) response streaming into the spinner status line; response is now buffered and printed cleanly after the spinner stops
+- Fixed session file being truncated when the recording path collides with the resumed session path
+- Fixed replay (--replay / /session replay) bypassing sensitive-file and agents/ directory write guards; replayWriteBlocks now uses the same resolveWorkspacePath checks as the tool-call path
+- Safe mode now defaults to ON; set safe_mode: false in agents/harvey.yaml to disable
+- Alias collision check: /ollama alias set now rejects aliases that clash with an installed Ollama model name, and warns when updating an existing alias to a new value
+- Tab completion: model names, aliases, route @names, and slash commands now complete on Tab in the REPL; first Tab shows all matches and fills the longest common prefix, subsequent Tabs cycle through candidates
+- Added improved route functionality
+  - `/route models` will let you identify the models available by our route provider
+  - You can set tooling on or off per route
+  - Improved route list output
 
 ## Authors
 

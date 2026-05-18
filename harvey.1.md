@@ -1,6 +1,6 @@
-%harvey(1) user manual | version 0.0.3b 51c28d7
+%harvey(1) user manual | version 0.0.4 8275a7b
 % R. S. Doiel
-% 2026-05-12
+% 2026-05-18
 
 # NAME
 
@@ -115,12 +115,6 @@ are also available from the shell: harvey --help TOPIC.
 : read-only git commands in the workspace
 
 **Model and backend**
-
-/model [NAME]
-: list all installed models, or switch to NAME
-
-/model alias set ALIAS NAME
-: define a short alias for a long model identifier
 
 /ollama <start [debug]|stop|status|list|ps|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL]|logs|use MODEL|env|alias NAME FULLNAME>
 : manage the local Ollama server and installed models

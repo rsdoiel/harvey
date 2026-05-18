@@ -454,8 +454,8 @@ care.</p>
 <hr />
 <h2 id="suggested-model-aliases">Suggested model aliases</h2>
 <p>Add to <code>agents/harvey.yaml</code> under
-<code>model_aliases:</code>. Use
-<code>/model alias set NAME MODEL</code> or edit the file directly.</p>
+<code>model_aliases:</code>. Use <code>/ollama alias NAME MODEL</code>
+or edit the file directly.</p>
 <div class="sourceCode" id="cb1"><pre
 class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model_aliases</span><span class="kw">:</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">  # Coding and agent work</span></span>
@@ -505,10 +505,10 @@ model doesn’t know well, run <code>/rag on</code> before asking.</li>
 harvey
 
 # 2. Select model mid-session (or use an alias):
-/model agent              # → apertus-tools:8b (agent tasks)
-/model coder              # → devstral-small-2:24b (complex coding)
-/model docs               # → ministral-3:latest (long documents)
-/model fast               # → cogito:3b (quick Q&amp;A)
+/ollama use agent              # → apertus-tools:8b (agent tasks)
+/ollama use coder              # → devstral-small-2:24b (complex coding)
+/ollama use docs               # → ministral-3:latest (long documents)
+/ollama use fast               # → cogito:3b (quick Q&amp;A)
 
 # 3. Enable RAG if needed
 /rag on

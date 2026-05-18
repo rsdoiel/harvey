@@ -173,8 +173,7 @@ The REPL calls `dispatch(input, out)` for any line beginning with `/`.
 | Command | Purpose |
 |---|---|
 | `/ollama start\|stop\|status\|list\|use MODEL` | Control the local Ollama service |
-| `/route add\|remove\|list\|enable\|disable` | Manage named remote endpoints |
-| `/model [NAME]` | Switch Ollama model; list available models |
+| `/route add\|rm\|models\|probe\|set\|list\|on\|off\|status` | Manage named remote endpoints |
 
 ### Knowledge-base commands
 

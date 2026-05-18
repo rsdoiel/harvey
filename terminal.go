@@ -257,7 +257,7 @@ func (a *Agent) Run(out io.Writer) error {
 	// model can pre-select the Ollama model below.
 	var resumePath string
 	var sessionModel string
-	if a.Config.ContinuePath == "" { // --continue flag bypasses the picker
+	if a.Config.ContinuePath == "" && a.Config.ReplayPath == "" { // --continue and --replay bypass the picker
 		resumePath, sessionModel = a.pickSession(reader, out, sessDir)
 	}
 
@@ -318,6 +318,13 @@ func (a *Agent) Run(out io.Writer) error {
 		if recPath == "" {
 			recPath = DefaultSessionPath(a.SessionsDir)
 		}
+		// Guard: never truncate the session being resumed or continued.
+		// filepath.Clean normalises both sides so relative vs absolute doesn't matter.
+		if (resumePath != "" && filepath.Clean(recPath) == filepath.Clean(resumePath)) ||
+			(a.Config.ContinuePath != "" && filepath.Clean(recPath) == filepath.Clean(a.Config.ContinuePath)) {
+			recPath = DefaultSessionPath(a.SessionsDir)
+			fmt.Fprintf(out, yellow("  ⚠")+" Record path conflicts with resumed session; redirecting to %s\n", recPath)
+		}
 		model := "none"
 		if a.Client != nil {
 			model = a.Client.Name()
@@ -365,6 +372,9 @@ func (a *Agent) Run(out io.Writer) error {
 	fmt.Fprintln(out, dim("  /help for commands · /exit to quit"))
 	fmt.Fprintln(out, cyan(bold(sep)))
 	fmt.Fprintln(out)
+
+	// Attach completer now that all state (models, routes, aliases) is loaded.
+	le.Completer = a.buildCompleter()
 
 	// REPL
 	for {
@@ -536,7 +546,7 @@ func (a *Agent) Run(out io.Writer) error {
 			}()
 
 			sp := newSpinner(out, 0, "@"+name+" · working")
-			reply, dispErr := DispatchToEndpoint(dispCtx, ep, a.History, prompt, a.Config, out)
+			reply, dispErr := DispatchToEndpoint(dispCtx, ep, a.History, prompt, a.Config, a.Tools, io.Discard)
 			sp.stop()
 			close(watchDone)
 			cancelDisp()
@@ -550,6 +560,7 @@ func (a *Agent) Run(out io.Writer) error {
 				continue
 			}
 
+			fmt.Fprint(out, reply)
 			fmt.Fprintln(out)
 			fmt.Fprintln(out, dim("  @"+name))
 			a.AddMessage("user", input)
@@ -1029,6 +1040,95 @@ func askYesNo(reader *bufio.Reader, out io.Writer, prompt string, defaultYes boo
 		return defaultYes
 	}
 	return answer == "y" || answer == "yes"
+}
+
+// buildCompleter returns a completion function for the LineEditor. It examines
+// the text typed up to the cursor and returns candidate completions for the
+// last word, covering three contexts:
+//
+//   - Ollama model names and aliases: for `/ollama use`, `/ollama probe`,
+//     `/ollama alias set` (third token position)
+//   - Route @names: when input starts with "@"
+//   - Slash command names: when the first token starts with "/"
+func (a *Agent) buildCompleter() func(string) []string {
+	return func(line string) []string {
+		tokens := strings.Fields(line)
+		// Determine the word being completed: last token, or "" if line ends with space.
+		word := ""
+		if len(tokens) > 0 && !strings.HasSuffix(line, " ") {
+			word = tokens[len(tokens)-1]
+		}
+
+		// @mention — complete registered route names.
+		if strings.HasPrefix(word, "@") {
+			prefix := word[1:]
+			var matches []string
+			if a.Routes != nil {
+				for name := range a.Routes.Endpoints {
+					if strings.HasPrefix(name, prefix) {
+						matches = append(matches, "@"+name)
+					}
+				}
+			}
+			sortStrings(matches)
+			return matches
+		}
+
+		// Slash command — complete command names.
+		if len(tokens) == 1 && strings.HasPrefix(word, "/") {
+			prefix := strings.ToLower(word[1:])
+			var matches []string
+			for name := range a.commands {
+				if strings.HasPrefix(name, prefix) {
+					matches = append(matches, "/"+name)
+				}
+			}
+			sortStrings(matches)
+			return matches
+		}
+
+		// Ollama model / alias completion for subcommands that take a model name.
+		if len(tokens) >= 2 {
+			cmd := strings.ToLower(tokens[0])
+			sub := strings.ToLower(tokens[1])
+			needsModel := (cmd == "/ollama" && (sub == "use" || sub == "probe")) ||
+				(cmd == "/ollama" && sub == "alias" && len(tokens) == 4) // alias set ALIAS <model>
+			if needsModel {
+				return a.modelAndAliasCandidates(word)
+			}
+		}
+
+		return nil
+	}
+}
+
+// modelAndAliasCandidates returns Ollama model names and defined aliases that
+// start with prefix, sourced from the model cache (no live Ollama call needed).
+func (a *Agent) modelAndAliasCandidates(prefix string) []string {
+	var candidates []string
+	seen := make(map[string]bool)
+
+	// Aliases from config.
+	for alias := range a.Config.ModelAliases {
+		if strings.HasPrefix(alias, strings.ToLower(prefix)) {
+			candidates = append(candidates, alias)
+			seen[alias] = true
+		}
+	}
+
+	// Model names from cache.
+	if a.ModelCache != nil {
+		if caps, err := a.ModelCache.All(); err == nil {
+			for _, cap := range caps {
+				if strings.HasPrefix(cap.Name, prefix) && !seen[cap.Name] {
+					candidates = append(candidates, cap.Name)
+				}
+			}
+		}
+	}
+
+	sortStrings(candidates)
+	return candidates
 }
 
 // ragAugment prepends relevant RAG chunks to prompt when RAG is enabled.

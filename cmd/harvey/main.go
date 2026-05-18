@@ -57,10 +57,6 @@ func main() {
 					fmt.Print(fmtHelp(harvey.InspectHelpText, appName, version, releaseDate, releaseHash))
 				case "kb", "knowledge", "knowledge-base":
 					fmt.Print(fmtHelp(harvey.KBHelpText, appName, version, releaseDate, releaseHash))
-				case "model":
-					fmt.Print(fmtHelp(harvey.ModelHelpText, appName, version, releaseDate, releaseHash))
-				case "model-alias", "alias":
-					fmt.Print(fmtHelp(harvey.ModelAliasHelpText, appName, version, releaseDate, releaseHash))
 				case "ollama":
 					fmt.Print(fmtHelp(harvey.OllamaHelpText, appName, version, releaseDate, releaseHash))
 				case "rag":
@@ -92,7 +88,7 @@ func main() {
 				case "write":
 					fmt.Print(fmtHelp(harvey.WriteHelpText, appName, version, releaseDate, releaseHash))
 				default:
-					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: alias, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, model, model-alias, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
+					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
 					os.Exit(1)
 				}
 			} else {

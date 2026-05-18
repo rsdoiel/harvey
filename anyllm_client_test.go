@@ -329,3 +329,50 @@ func TestAnyLLMClient_FakeSSEServer(t *testing.T) {
 		t.Errorf("PromptTokens = %d, want 3", stats.PromptTokens)
 	}
 }
+
+// ─── ProviderCapabilities ─────────────────────────────────────────────────────
+
+// capabilityMockProvider extends mockProvider to implement CapabilityProvider.
+type capabilityMockProvider struct {
+	mockProvider
+	caps providers.Capabilities
+}
+
+func (c *capabilityMockProvider) Capabilities() providers.Capabilities { return c.caps }
+
+func TestAnyLLMClient_ProviderCapabilities_fromProvider(t *testing.T) {
+	t.Parallel()
+	want := providers.Capabilities{
+		Completion:          true,
+		CompletionStreaming:  true,
+		CompletionTools:     true,
+		CompletionImage:     true,
+		CompletionPDF:       true,
+		CompletionReasoning: true,
+	}
+	mock := &capabilityMockProvider{caps: want}
+	client := harvey.NewAnyLLMClient(mock, "m", "mock", "")
+
+	got := client.ProviderCapabilities()
+	if got != want {
+		t.Errorf("ProviderCapabilities() = %+v, want %+v", got, want)
+	}
+}
+
+func TestAnyLLMClient_ProviderCapabilities_conservativeFallback(t *testing.T) {
+	t.Parallel()
+	// Plain mockProvider does not implement CapabilityProvider.
+	p := &struct{ anyllm.Provider }{Provider: &mockProvider{}}
+	client := harvey.NewAnyLLMClient(p, "m", "mock", "")
+
+	got := client.ProviderCapabilities()
+	if !got.Completion {
+		t.Error("fallback Capabilities should have Completion=true")
+	}
+	if !got.CompletionStreaming {
+		t.Error("fallback Capabilities should have CompletionStreaming=true")
+	}
+	if got.CompletionTools {
+		t.Error("fallback Capabilities should have CompletionTools=false")
+	}
+}

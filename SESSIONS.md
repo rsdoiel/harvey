@@ -67,12 +67,11 @@ harvey> /session replay oldsession.spmd newresponses.spmd
 ### List Available Sessions
 
 ```bash
-# Sessions are stored in harvey/sessions/ by default
-harvey> /sessions
-  Available sessions (newest first):
-    [0]  harvey-session-20260504-142300.spmd  (2026-05-04 14:23:00)
-    [1]  harvey-session-20260503-101500.spmd  (2026-05-03 10:15:00)
-    [2]  debugging-issue-42.spmd               (2026-05-02 09:30:00)
+# Sessions are stored in agents/sessions/ by default
+harvey> /files agents/sessions/
+  harvey-session-20260504-142300.spmd
+  harvey-session-20260503-101500.spmd
+  debugging-issue-42.spmd
 ```
 
 ## Session File Structure

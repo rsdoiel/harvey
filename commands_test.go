@@ -17,8 +17,10 @@ func newTestAgent(t *testing.T) *Agent {
 	if err != nil {
 		t.Fatalf("NewWorkspace: %v", err)
 	}
+	cfg := DefaultConfig()
+	cfg.SafeMode = false // tests exercise command mechanics, not safe mode policy
 	return &Agent{
-		Config:    DefaultConfig(),
+		Config:    cfg,
 		Workspace: ws,
 		In:        strings.NewReader(""),
 		commands:  make(map[string]*Command),
@@ -569,5 +571,142 @@ func TestCmdReadDir_notADirectory(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "not a directory") {
 		t.Errorf("expected 'not a directory' message, got: %s", out.String())
+	}
+}
+
+// ── route commands ────────────────────────────────────────────────────────────
+
+// newTestAgentWithRoutes returns a test agent with an initialised route
+// registry containing one Anthropic endpoint.
+func newTestAgentWithRoutes(t *testing.T) *Agent {
+	t.Helper()
+	a := newTestAgent(t)
+	a.Routes = NewRouteRegistry()
+	a.Routes.Add(&RouteEndpoint{
+		Name:  "claude",
+		URL:   "anthropic://",
+		Model: "claude-3-5-sonnet",
+		Kind:  KindAnthropic,
+	})
+	return a
+}
+
+func TestRouteModels_noArgs(t *testing.T) {
+	a := newTestAgent(t)
+	a.Routes = NewRouteRegistry()
+	var out strings.Builder
+	if err := routeModels(a, nil, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Usage") {
+		t.Errorf("expected usage message, got: %s", out.String())
+	}
+}
+
+func TestRouteModels_badURL(t *testing.T) {
+	a := newTestAgent(t)
+	a.Routes = NewRouteRegistry()
+	var out strings.Builder
+	if err := routeModels(a, []string{"bogus://"}, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "unrecognised") {
+		t.Errorf("expected unrecognised URL message, got: %s", out.String())
+	}
+}
+
+func TestRouteProbe_notFound(t *testing.T) {
+	a := newTestAgentWithRoutes(t)
+	var out strings.Builder
+	if err := routeProbe(a, "ghost", &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "not found") {
+		t.Errorf("expected not-found message, got: %s", out.String())
+	}
+}
+
+func TestRouteProbe_knownEndpoint(t *testing.T) {
+	a := newTestAgentWithRoutes(t)
+	var out strings.Builder
+	if err := routeProbe(a, "claude", &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := out.String()
+	for _, want := range []string{"claude", "anthropic", "claude-3-5-sonnet"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("probe output missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestRouteSet_noArgs(t *testing.T) {
+	a := newTestAgentWithRoutes(t)
+	var out strings.Builder
+	if err := routeSet(a, nil, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Usage") {
+		t.Errorf("expected usage message, got: %s", out.String())
+	}
+}
+
+func TestRouteSet_notFound(t *testing.T) {
+	a := newTestAgentWithRoutes(t)
+	var out strings.Builder
+	if err := routeSet(a, []string{"ghost", "tools", "on"}, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "not found") {
+		t.Errorf("expected not-found message, got: %s", out.String())
+	}
+}
+
+func TestRouteSet_toolsOn(t *testing.T) {
+	a := newTestAgentWithRoutes(t)
+	var out strings.Builder
+	if err := routeSet(a, []string{"claude", "tools", "on"}, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ep := a.Routes.Lookup("claude")
+	if ep == nil || !ep.Tools {
+		t.Error("expected ep.Tools to be true after 'set tools on'")
+	}
+}
+
+func TestRouteSet_toolsOff(t *testing.T) {
+	a := newTestAgentWithRoutes(t)
+	// Enable first, then disable.
+	ep := a.Routes.Lookup("claude")
+	ep.Tools = true
+
+	var out strings.Builder
+	if err := routeSet(a, []string{"claude", "tools", "off"}, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ep.Tools {
+		t.Error("expected ep.Tools to be false after 'set tools off'")
+	}
+}
+
+func TestRouteSet_unknownKey(t *testing.T) {
+	a := newTestAgentWithRoutes(t)
+	var out strings.Builder
+	if err := routeSet(a, []string{"claude", "badkey", "on"}, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Unknown setting") {
+		t.Errorf("expected unknown setting message, got: %s", out.String())
+	}
+}
+
+func TestRouteSet_unknownValue(t *testing.T) {
+	a := newTestAgentWithRoutes(t)
+	var out strings.Builder
+	if err := routeSet(a, []string{"claude", "tools", "maybe"}, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Unknown value") {
+		t.Errorf("expected unknown value message, got: %s", out.String())
 	}
 }

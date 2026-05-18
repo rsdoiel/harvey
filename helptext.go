@@ -175,6 +175,8 @@ ROUTING
 
 # SYNOPSIS
 
+/route <add NAME URL [MODEL]|rm NAME|models URL|probe NAME|set NAME tools on|off|list|on|off|status>
+
 @name prompt text
 
 # DESCRIPTION
@@ -238,14 +240,20 @@ Cloud providers (API key read from environment):
 # SLASH COMMANDS
 
 ~~~
-  /route add NAME URL [MODEL]   register a remote endpoint
-                                  @pi2    ollama://192.168.1.12:11434 llama3.1:8b
-                                  @claude anthropic:// claude-sonnet-4-20250514
-  /route rm NAME                remove a registered endpoint
-  /route list                   show all endpoints with reachability status
-  /route on                     enable @mention dispatch (persisted)
-  /route off                    disable @mention dispatch (persisted)
-  /route status                 show routing state and endpoint count
+  /route add NAME URL [MODEL]        register a remote endpoint
+                                       @pi2    ollama://192.168.1.12:11434 llama3.1:8b
+                                       @claude anthropic:// claude-sonnet-4-20250514
+  /route rm NAME                     remove a registered endpoint
+  /route models URL                  list models available at a provider URL
+                                       useful before /route add to choose a model
+  /route probe NAME                  show reachability, model, and tool-call capability
+                                       for a registered endpoint
+  /route set NAME tools on|off       toggle tool calling for a registered endpoint
+                                       (only for providers that support tool use)
+  /route list                        show all endpoints with reachability status
+  /route on                          enable @mention dispatch (persisted)
+  /route off                         disable @mention dispatch (persisted)
+  /route status                      show routing state and endpoint count
 ~~~
 
 Registered endpoints and the on/off state persist across sessions in
@@ -350,16 +358,13 @@ Capability probing:
 Model aliases:
 
   /ollama alias NAME FULLNAME
-    Create a short alias for a long model name. Equivalent to
-    /model alias set NAME FULLNAME.
+    Create a short alias for a long model name.
 
   /ollama alias list
     List all defined model aliases.
 
   /ollama alias remove NAME
-    Remove an alias. Equivalent to /model alias remove NAME.
-
-  See also: /help model-alias
+    Remove an alias.
 
 `
 
@@ -1055,58 +1060,6 @@ my-feature-session.spmd in agents/sessions/.
 
 `
 
-	ModelAliasHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
-% R. S. Doiel
-% {release_date}
-
-# NAME
-
-MODEL ALIAS — manage short names for Ollama model identifiers
-
-# SYNOPSIS
-
-/model alias [list]
-/model alias set ALIAS FULL_MODEL_NAME
-/model alias remove ALIAS
-
-# DESCRIPTION
-
-Model aliases let you use short, memorable names instead of full Ollama model
-identifiers. Aliases are stored in agents/harvey.yaml under model_aliases: and
-persist across sessions.
-
-When you switch models with /model ALIAS, Harvey resolves the alias to the full
-identifier before querying Ollama. The full name is always recorded in Fountain
-session headers so a session can be resumed with the correct model.
-
-Aliases are case-insensitive. The full model name is stored as-is.
-
-# EXAMPLES
-
-Define an alias:
-
-  /model alias set qwen-coder qwen2.5-coder:7b
-  /model alias set granite ibm/granite4.1:3b
-
-Use the alias to switch models:
-
-  /model qwen-coder
-
-List all aliases:
-
-  /model alias list
-
-Remove an alias:
-
-  /model alias remove qwen-coder
-
-# SEE ALSO
-
-  /model       — list models or switch to a named model
-  /ollama list — show installed Ollama models with capabilities
-
-`
-
 	FileTreeHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
 % R. S. Doiel
 % {release_date}
@@ -1791,71 +1744,6 @@ command does nothing.
 
 `
 
-	ModelHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
-% R. S. Doiel
-% {release_date}
-
-# NAME
-
-MODEL — list installed models or switch the active model
-
-# SYNOPSIS
-
-/model
-/model NAME
-/model ollama://NAME
-/model alias [list|set ALIAS NAME|remove ALIAS]
-
-# DESCRIPTION
-
-Without arguments, /model lists all models available across every reachable
-backend (Ollama, routes), marking the currently active model with *.
-
-With a NAME argument, /model switches the active model for the current
-session. Harvey does not restart; the switch takes effect on the next
-user turn.
-
-NAME can be:
-  - A bare Ollama model identifier: llama3.1:8b
-  - An ollama:// URL: ollama://llama3.1:8b
-  - A model alias defined with /model alias set
-
-/model alias is a shorthand for managing short memorable names for long
-Ollama model identifiers. See /help model-alias for full details.
-
-# SWITCHING MODELS
-
-~~~
-  harvey > /model
-  * gemma4:e2b        ...
-    llama3.1:8b       ...
-    qwen2.5-coder:7b  ...
-
-  harvey > /model llama3.1:8b
-  harvey > /model qwen-coder        (if alias defined)
-  harvey > /model ollama://mistral:latest
-~~~
-
-When switching, Harvey replaces the backend client immediately. The
-conversation history is preserved so you can compare responses from
-different models within the same session.
-
-# CAPABILITY PROBING
-
-After pulling a new model, run /ollama probe MODEL to detect its tool-
-calling, embedding, and tagged-block capabilities. Results are cached in
-agents/model_cache.db and shown in /model and /ollama list.
-
-# SEE ALSO
-
-  /ollama list       — list installed Ollama models with capabilities
-  /ollama probe      — probe and cache model capabilities
-  /model alias set   — define a short alias for a long model name
-  /help model-alias
-  /help ollama
-
-`
-
 	InspectHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
 % R. S. Doiel
 % {release_date}
@@ -2142,12 +2030,6 @@ are also available from the shell: harvey --help TOPIC.
 : read-only git commands in the workspace
 
 **Model and backend**
-
-/model [NAME]
-: list all installed models, or switch to NAME
-
-/model alias set ALIAS NAME
-: define a short alias for a long model identifier
 
 /ollama <start [debug]|stop|status|list|ps|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL]|logs|use MODEL|env|alias NAME FULLNAME>
 : manage the local Ollama server and installed models

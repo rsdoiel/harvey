@@ -105,12 +105,11 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="
 <span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /session replay oldsession.spmd newresponses.spmd</span></code></pre></div>
 <h3 id="list-available-sessions">List Available Sessions</h3>
 <div class="sourceCode" id="cb4"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Sessions are stored in harvey/sessions/ by default</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /sessions</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Available</span> sessions <span class="er">(</span><span class="ex">newest</span> first<span class="kw">)</span><span class="bu">:</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[0]</span>  harvey-session-20260504-142300.spmd  <span class="er">(</span><span class="ex">2026-05-04</span> 14:23:00<span class="kw">)</span></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[1]</span>  harvey-session-20260503-101500.spmd  <span class="er">(</span><span class="ex">2026-05-03</span> 10:15:00<span class="kw">)</span></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="ex">[2]</span>  debugging-issue-42.spmd               <span class="er">(</span><span class="ex">2026-05-02</span> 09:30:00<span class="kw">)</span></span></code></pre></div>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Sessions are stored in agents/sessions/ by default</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /files agents/sessions/</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">harvey-session-20260504-142300.spmd</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="ex">harvey-session-20260503-101500.spmd</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="ex">debugging-issue-42.spmd</span></span></code></pre></div>
 <h2 id="session-file-structure">Session File Structure</h2>
 <h3 id="fountain-screenplay-format">Fountain Screenplay Format</h3>
 <p>Harvey sessions follow the <strong><a
