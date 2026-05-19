@@ -236,10 +236,19 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				if werr != nil || truncated {
 					return nil
 				}
+				if d.Type()&fs.ModeSymlink != 0 {
+					return nil
+				}
 				if d.IsDir() {
 					if strings.HasPrefix(d.Name(), ".") {
 						return filepath.SkipDir
 					}
+					if path == filepath.Join(a.Workspace.Root, "agents") {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if isAgentsDir(a.Workspace.Root, path) {
 					return nil
 				}
 				data, err := os.ReadFile(path)

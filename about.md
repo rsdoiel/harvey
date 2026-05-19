@@ -12,36 +12,25 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.4
+version: 0.0.5
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go >= 1.26.2
 
 
-date_released: 2026-05-18
+date_released: 2026-05-19
 ---
 
 About this software
 ===================
 
-## harvey 0.0.4
+## harvey 0.0.5
 
-Bug fixes, security hardening, and UX improvements.
-
-- Removed /model command; model switching is now /ollama use NAME (with alias resolution) and remote dispatch uses @mention syntax to preserve cost-awareness for cloud providers
-- Fixed /ollama use not resolving model aliases before connecting to Ollama
-- Fixed /ollama probe not resolving model aliases before probing
-- Fixed route (@mention) response streaming into the spinner status line; response is now buffered and printed cleanly after the spinner stops
-- Fixed session file being truncated when the recording path collides with the resumed session path
-- Fixed replay (--replay / /session replay) bypassing sensitive-file and agents/ directory write guards; replayWriteBlocks now uses the same resolveWorkspacePath checks as the tool-call path
-- Safe mode now defaults to ON; set safe_mode: false in agents/harvey.yaml to disable
-- Alias collision check: /ollama alias set now rejects aliases that clash with an installed Ollama model name, and warns when updating an existing alias to a new value
-- Tab completion: model names, aliases, route @names, and slash commands now complete on Tab in the REPL; first Tab shows all matches and fills the longest common prefix, subsequent Tabs cycle through candidates
-- Added improved route functionality
-  - `/route models` will let you identify the models available by our route provider
-  - You can set tooling on or off per route
-  - Improved route list output
+- Added support for working with PDF via poppler tools
+- Added `/read_pdf` command to read a PDF into the working context
+- Added `/rag inguest FILE.pdf` to ingest a PDF into our RAG+Knolwedge base
+- Added `/attach FILE` support (mainly for route supported language models)
 
 ## Authors
 

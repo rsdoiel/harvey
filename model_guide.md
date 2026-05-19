@@ -253,6 +253,14 @@ Small models fail when:
 
 ---
 
+## Model trust and supply chain
+
+Models pulled via `ollama pull` are contributed by third parties and downloaded
+from the Ollama registry. As with any software supply chain, prefer models from
+well-known organisations or projects you can independently verify. Model weights
+can encode biases or unexpected behaviours; test new models in a safe-mode
+session before granting broader permissions.
+
 ## Keeping this guide current
 
 Run `/ollama probe` after installing new models to update `agents/model_cache.db`.

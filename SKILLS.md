@@ -248,6 +248,12 @@ skill-name/
 3. Review the generated scripts
 4. Commit them alongside SKILL.md
 
+> **Security:** Compiled skills run as shell scripts with the full privileges of the
+> Harvey process. They are **not** sandboxed to the workspace directory — a compiled
+> skill can read, write, or delete any file accessible to the current user. Only run
+> compiled skills from trusted sources, and review generated scripts before invoking
+> `/skill run`.
+
 ### Type 3: Triggered Skills
 
 Skills with a `trigger:` field can be **auto-dispatched** when user input
@@ -264,6 +270,11 @@ trigger: /\b(run|execute) tests?\b/
 
 When the user types "run tests" or "execute test", Harvey automatically invokes
 the skill (if it's compiled) or loads it into context.
+
+> **Prompt injection risk:** If a trigger pattern uses broad keywords that naturally
+> appear in code, documentation, or RAG-retrieved content, a skill may be activated by
+> injected text rather than by the user's explicit intent. Keep trigger patterns
+> specific to avoid unintentional dispatch.
 
 ## Commands Reference
 

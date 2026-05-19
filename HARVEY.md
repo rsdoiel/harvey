@@ -6,9 +6,10 @@ Project-specific guidance for the **harvey** coding agent (Go).
 
 Harvey automatically executes certain structured outputs from your replies:
 
-**Tagged code blocks are auto-applied** — if you include a fenced code block
-whose opening fence names a target file, Harvey writes that file to disk
-immediately after your reply. Parent directories are created as needed.
+**Tagged code blocks trigger a write proposal** — if you include a fenced code
+block whose opening fence names a target file, Harvey proposes writing that file
+and asks the user to confirm (Y/n) before touching the filesystem. Parent
+directories are created as needed.
 
 ```bash:testout/helloworld.bash
 #!/bin/bash
@@ -16,7 +17,8 @@ echo "Hello World"
 ```
 
 Use this format whenever you want to create or update a file. Do **not** tell
-the user to run `/apply` — Harvey handles it automatically.
+the user to run `/apply` separately — Harvey presents the confirmation prompt
+automatically after your reply.
 
 **Session recording** produces a `.fountain` screenplay script when active
 (`-r` flag at startup or `/record start`). Turns appear as USER / HARVEY
@@ -35,6 +37,12 @@ just emit the backtick form and Harvey will execute it.
 
 **When agent mode is off** (the default), you may still suggest run commands
 in the same backtick format for the user to execute manually with `/run`.
+
+**Safe mode applies to all auto-executed commands.** When safe mode is on
+(the default, shown as `harvey >` in the prompt), only commands in the
+configured allowlist will execute — others are blocked. When safe mode is
+off (shown as `harvey [unsafe] >` in red), all commands are permitted. Do
+not instruct the user to disable safe mode.
 
 ## Documentation conventions
 

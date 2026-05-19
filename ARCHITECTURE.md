@@ -267,14 +267,19 @@ goroutines without a lock on the pointer itself.
 receives a filtered environment from `filterCommandEnvironment` (`commands.go`).
 Only variables in a safe-prefix allowlist (`PATH`, `HOME`, `USER`, `SHELL`,
 `TERM`, `LANG`, `LC_*`, `PWD`, `OLLAMA_*`, `HARVEY_*`) are forwarded; all
-cloud provider API key variables are unconditionally stripped.
+cloud provider API key variables are unconditionally stripped. Users should
+avoid storing secrets in environment variables prefixed `HARVEY_`, as every
+value matching that prefix is forwarded to child processes.
 
 **Timeout configuration.** `Config.RunTimeout` (default 5 minutes) bounds
 every `!` and `/run` subprocess via `context.WithTimeout`. `Config.OllamaTimeout`
 controls the HTTP client timeout for local LLM providers; it defaults to 0
 (no timeout) because inference on slow hardware (Raspberry Pi) can take
 several minutes. Both are configurable in harvey.yaml as duration strings
-(`"5m"`, `"300s"`, `"1m30s"`) or plain integer seconds.
+(`"5m"`, `"300s"`, `"1m30s"`) or plain integer seconds. When Ollama runs on
+a remote host (configured via `/route add`), consider setting `ollama_timeout`
+in `harvey.yaml` to prevent an unresponsive remote server from hanging Harvey
+indefinitely.
 
 
 ## Knowledge base (`knowledge.go`)

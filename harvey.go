@@ -92,17 +92,22 @@ func (s ChatStats) FormatWithModels(models []string) string {
 /** Message represents a single chat message exchanged with a backend.
  *
  * Fields:
- *   Role    (string) — "system", "user", or "assistant".
- *   Content (string) — the message body.
+ *   Role       (string)              — "system", "user", or "assistant".
+ *   Content    (string)              — message body; ignored when Parts is non-empty.
+ *   Parts      ([]anyllm.ContentPart) — multimodal content parts (e.g. image + text);
+ *                                      when non-empty, overrides Content.
+ *   ToolCalls  ([]anyllm.ToolCall)  — tool call requests from the assistant.
+ *   ToolCallID (string)             — correlates a tool-result message to its request.
  *
  * Example:
  *   msg := Message{Role: "user", Content: "Hello!"}
  */
 type Message struct {
-	Role       string           `json:"role"`
-	Content    string           `json:"content"`
-	ToolCalls  []anyllm.ToolCall `json:"tool_calls,omitempty"`  // assistant → tool requests
-	ToolCallID string           `json:"tool_call_id,omitempty"` // tool → result correlation
+	Role       string                `json:"role"`
+	Content    string                `json:"content"`
+	Parts      []anyllm.ContentPart  `json:"parts,omitempty"`
+	ToolCalls  []anyllm.ToolCall     `json:"tool_calls,omitempty"`
+	ToolCallID string                `json:"tool_call_id,omitempty"`
 }
 
 /** LLMClient is the interface implemented by each LLM backend (Ollama,
@@ -235,7 +240,7 @@ func NewAgent(cfg *Config, ws *Workspace) *Agent {
 	return a
 }
 
-/** AddMessage appends a message to the conversation history.
+/** AddMessage appends a plain-text message to the conversation history.
  *
  * Parameters:
  *   role    (string) — "system", "user", or "assistant".
@@ -246,6 +251,24 @@ func NewAgent(cfg *Config, ws *Workspace) *Agent {
  */
 func (a *Agent) AddMessage(role, content string) {
 	a.History = append(a.History, Message{Role: role, Content: content})
+}
+
+/** AddMessageParts appends a multimodal message to the conversation history.
+ * Use this when the message contains image or mixed text+image content.
+ * Parts override Content — do not set Content when using this method.
+ *
+ * Parameters:
+ *   role  (string)              — "user" (multimodal messages are always user-role).
+ *   parts ([]anyllm.ContentPart) — ordered content parts (text, image_url, etc.).
+ *
+ * Example:
+ *   agent.AddMessageParts("user", []anyllm.ContentPart{
+ *       {Type: "text", Text: "[attached: photo.jpg]"},
+ *       {Type: "image_url", ImageURL: &anyllm.ImageURL{URL: "data:image/jpeg;base64,..."}},
+ *   })
+ */
+func (a *Agent) AddMessageParts(role string, parts []anyllm.ContentPart) {
+	a.History = append(a.History, Message{Role: role, Parts: parts})
 }
 
 /** ClearHistory resets the conversation, re-injecting the system prompt if
@@ -408,6 +431,9 @@ func workspaceFileTree(ws *Workspace) string {
 	var lines []string
 	filepath.WalkDir(ws.Root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			return nil
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
 			return nil
 		}
 		rel, _ := filepath.Rel(ws.Root, path)

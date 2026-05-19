@@ -174,10 +174,14 @@ func blue(s string) string    { return ansiBlue + s + ansiReset }
 
 // prompt returns the input prompt string reflecting the current backend state.
 func (a *Agent) prompt() string {
+	prefix := "harvey"
 	if a.Client == nil {
-		return "harvey (no backend) > "
+		prefix = "harvey (no backend)"
 	}
-	return "harvey > "
+	if !a.Config.SafeMode {
+		return prefix + " " + red("[unsafe]") + " > "
+	}
+	return prefix + " > "
 }
 
 /** Run prints the startup banner, initialises the workspace and knowledge base,
@@ -233,6 +237,11 @@ func (a *Agent) Run(out io.Writer) error {
 	// harvey/harvey.yaml — apply path overrides before any path-dependent init.
 	if err := LoadHarveyYAML(a.Workspace, a.Config); err != nil {
 		fmt.Fprintf(out, yellow("  ✗")+" harvey.yaml: %v\n", err)
+	}
+	if a.Config.SafeMode {
+		fmt.Fprintln(out, green("✓")+" Safe mode on")
+	} else {
+		fmt.Fprintln(out, yellow("!")+" Safe mode OFF — all commands permitted")
 	}
 
 	// Knowledge base

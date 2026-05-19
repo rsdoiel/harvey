@@ -418,6 +418,7 @@ Build a knowledge base for a research project:
 harvey> /rag new research-llm-security
 harvey> /rag ingest ~/Downloads/paper1.pdf.txt
 # Note: Use Firefox "Save Page as... > Text Files" for web pages
+# See "Security Considerations" section before ingesting third-party content
 harvey> /rag ingest ~/research/notes/
 
 # Query your research
@@ -1176,6 +1177,41 @@ harvey --batch -c "/rag new test; /rag ingest README.md; /rag query test"
 - [Fountain Format](https://fountain.io) — Session file format specification
 - [MTEB Benchmark](https://huggingface.co/papers/2212.04355) — Massive Text Embedding Benchmark
 - [SQLite](https://sqlite.org) — Database engine used for RAG stores
+
+## Security Considerations
+
+### Prompt Injection via Ingested Content
+
+Documents ingested into a RAG store are injected verbatim into the LLM's context as
+retrieved chunks. If ingested content contains adversarial text — hidden instructions in
+a README, a web page with embedded directives, or a maliciously crafted PDF — the model
+may follow those instructions rather than the user's intent.
+
+**Mitigations:**
+
+- Only ingest content from sources you trust.
+- Use `/rag query TEXT` to inspect which chunks will be injected before enabling
+  auto-inject for a new store.
+- If you notice unexpected model behavior after ingesting new material, disable RAG
+  (`/rag off`) and query the store to identify the problematic chunk.
+
+### Third-Party Repository Ingestion
+
+Cloning external repositories (e.g., framework documentation, open-source projects) as
+RAG training material introduces content you do not control. Authors may update that
+content after you ingest it, and initial ingestion may include adversarial content in
+rarely-read files (changelogs, contributor guides, embedded examples).
+
+Review cloned content before ingesting:
+
+```bash
+# Scan for anything that looks like prompt injection before ingesting
+grep -rn "ignore previous\|disregard\|you are now\|system:" /path/to/cloned-repo/
+```
+
+### See Also
+
+- [SECURITY.md](SECURITY.md) — Harvey's security model and known limitations
 
 ## See Also
 

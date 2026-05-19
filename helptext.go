@@ -973,7 +973,18 @@ are all low (< 0.3) for a question you expect the store to answer, consider:
   paragraph-sized chunks (~500 characters each), embeds them using the
   active store's embedding model, and stores the vectors in the database.
   Re-ingest any file after it changes to keep the store current.
-  Supported text formats: .md, .txt, .go, .ts, and most plain-text files.
+
+  Supported formats:
+    Plain text — .md, .txt, .go, .ts, .py, .yaml, .toml, .sql, and other
+                 text files.
+    PDF        — .pdf files are extracted with the poppler utilities
+                 (pdfinfo, pdftotext, pdfimages; must be installed). Each
+                 page is chunked separately, and every chunk is prefixed
+                 with the document title and page number so retrieval
+                 results always carry their source. Pages that contain
+                 only vector graphics (no extractable text) are stored
+                 with an incomplete-content marker so the model knows to
+                 ask for a vision-capable route for those pages.
 
 /rag query TEXT
   Retrieves the top 5 matching chunks for TEXT from the active store and
@@ -1156,9 +1167,10 @@ Load the entire docs/ tree:
 
 # SEE ALSO
 
-  /read      — load specific files into context
-  /file-tree — display directory structure without loading files
-  /search    — search for a pattern across workspace files
+  /read FILE...           — load specific files into context
+  /attach FILE            — attach an image, PDF, or text file (auto-detects format)
+  /file-tree              — display directory structure without loading files
+  /search                 — search for a pattern across workspace files
 
 `
 
@@ -1433,10 +1445,166 @@ Read then ask a question:
 
 # SEE ALSO
 
-  /read-dir [PATH]   — read all files in a directory
-  /files [PATH]      — list directory contents
-  /status            — check remaining context window space
+  /read-dir [PATH]        — read all files in a directory
+  /read-pdf FILE [PAGES]  — extract and inject text from a PDF file
+  /attach FILE            — attach an image, PDF, or text file (auto-detects format)
+  /files [PATH]           — list directory contents
+  /status                 — check remaining context window space
   /help read-dir
+  /help read-pdf
+  /help attach
+
+`
+
+	AttachHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+ATTACH — attach a file to the conversation in the most useful form
+
+# SYNOPSIS
+
+/attach FILE
+
+# DESCRIPTION
+
+/attach reads FILE and injects it into the conversation as a user-role
+message, choosing the representation that best matches what the active
+route can accept:
+
+  Image files (JPEG, PNG, GIF, WebP)
+    If the active route reports vision capability, the image is encoded
+    as a base64 data-URL ContentPart and sent natively — the model sees
+    the actual pixels. If the route has no vision capability, a text
+    description (filename, MIME type, file size) is injected instead so
+    the turn still records that an attachment was attempted, and a tip is
+    printed suggesting an @mention route for vision.
+
+  PDF files
+    Text is extracted using the poppler utilities (pdfinfo, pdftotext,
+    pdfimages) and injected into the conversation. A 20-page cap applies
+    to keep context window usage reasonable; specify /read-pdf FILE PAGES
+    for a specific range. Diagram-only pages are flagged as incomplete.
+
+  Text and source-code files (≤ 256 KB)
+    The file content is injected as plain text, identical to /read.
+    Files larger than 256 KB are rejected; use /rag ingest for large
+    text corpora.
+
+  Binary files
+    Rejected with a clear error. Use an appropriate converter first.
+
+FILE may be an absolute path, a home-relative path (~/...), or a path
+relative to the current working directory. Unlike /read, /attach is not
+restricted to the workspace.
+
+# EXAMPLES
+
+Attach an image to the next turn on a vision-capable route:
+
+~~~
+  harvey > /route add claude https://api.anthropic.com claude-opus-4-7
+  harvey > /attach ~/screenshots/error.png
+  harvey > @claude What does this error message say?
+~~~
+
+Attach a PDF for the model to reason about:
+
+~~~
+  harvey > /attach ~/docs/spec.pdf
+  harvey > Summarise the module system described in this document.
+~~~
+
+Attach a local source file:
+
+~~~
+  harvey > /attach src/main.go
+  harvey > What does the main function do?
+~~~
+
+# SEE ALSO
+
+  /read FILE...       — inject workspace text files (workspace-scoped)
+  /read-pdf FILE PAGES — inject a specific page range from a PDF
+  /rag ingest PATH    — index a file into the RAG store for retrieval
+  /route              — manage named remote endpoints
+  /help read-pdf
+  /help rag
+
+`
+
+	ReadPDFHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+READ-PDF — extract text from a PDF and inject it into the conversation context
+
+# SYNOPSIS
+
+/read-pdf FILE [PAGES]
+
+# DESCRIPTION
+
+/read-pdf extracts text from a PDF file using the poppler utilities (pdfinfo,
+pdftotext, pdfimages) and injects the result into the conversation as a
+user-role context message. The model can then reason about the content
+immediately.
+
+FILE may be an absolute path, a path relative to the workspace root, or a
+home-relative path beginning with ~/. Unlike /read, /read-pdf is not
+restricted to workspace files.
+
+PAGES is an optional page range in the form FIRST-LAST (e.g. 40-55) or a
+single page number (e.g. 10). When omitted, the entire document is extracted.
+A hard limit of 20 pages per call applies to keep the context window
+manageable; specify a range if the document is larger.
+
+Three poppler tools are used in sequence:
+
+  pdfinfo    — document metadata (title, author, page count, creation date)
+  pdftotext  — text extraction preserving spatial layout (-layout flag)
+  pdfimages  — raster-image inventory used to detect diagram-only pages
+
+Pages that have sparse text and no raster images are flagged as likely
+vector-diagram pages. Those pages cannot be extracted by any text tool; the
+output will note them so you can follow up with a vision-capable model.
+
+The injected content is ephemeral — it is added to the current conversation
+and is not written to disk or stored in the RAG database. Use /rag ingest
+if you want to index a PDF for retrieval.
+
+# EXAMPLES
+
+Read the first ten pages of a PDF:
+
+~~~
+  harvey > /read-pdf ~/docs/oberon2.pdf 1-10
+~~~
+
+Read a specific section by page range:
+
+~~~
+  harvey > /read-pdf ~/docs/oberon2.pdf 49-63
+  harvey > Summarise the module system described in those pages.
+~~~
+
+Read a short PDF (≤ 20 pages) in full:
+
+~~~
+  harvey > /read-pdf project/spec.pdf
+~~~
+
+# SEE ALSO
+
+  /read FILE...       — inject plain-text workspace files into context
+  /rag ingest PATH    — index a file into the RAG store for retrieval
+  /status             — check remaining context window space
+  /help read
+  /help rag
 
 `
 

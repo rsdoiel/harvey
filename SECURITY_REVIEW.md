@@ -4,7 +4,7 @@
 
 This document provides a comprehensive security review of Harvey (v0.0.2+) in preparation for release. It identifies strengths, vulnerabilities, and recommendations for hardening the codebase.
 
-**Review Date**: 2025-05-12 (Updated)  
+**Review Date**: 2026-05-19 (Updated)  
 **Reviewer**: Mistral Vibe  
 **Target Version**: 0.0.2+ (post-fixes)  
 
@@ -18,7 +18,7 @@ Harvey has **significantly improved its security posture** since the initial rev
 - ✅ Sensitive environment variable list expanded (Cohere, Groq, Perplexity)
 - ✅ Sensitive file deny list expanded (SSH keys, authorized_keys)
 
-**Current Security Score: 8.5/10** - Strong foundation, production-ready with minor hardening needed.
+**Current Security Score: 8.5/10** - Strong foundation, suitable for personal and experimental use. See [SECURITY.md](SECURITY.md) for known limitations before production deployment.
 
 ---
 
@@ -69,7 +69,7 @@ Harvey has **significantly improved its security posture** since the initial rev
 
 ### parseCommandLine() Behavior
 
-**Current Documentation**: States that `parseCommandLine()` "rejects shell metacharacters"
+**Documentation (corrected)**: `SECURITY.md` originally stated that `parseCommandLine()` "rejects shell metacharacters." This has been corrected — `SECURITY.md` now accurately describes that security comes from `exec.Command()` not invoking a shell.
 
 **Actual Behavior**: The function parses command lines with quote handling but does **NOT** reject shell metacharacters like `|`, `>`, `<`, `&`, `;`. 
 
@@ -245,7 +245,7 @@ Harvey has **significantly improved its security posture** since the initial rev
 
 ## Conclusion
 
-Harvey has **matured into a production-ready tool** with a strong security foundation. All previously identified critical issues have been addressed.
+Harvey has **matured into a capable tool** with a strong security foundation, suitable for personal and experimental use. All previously identified critical issues have been addressed. Review [SECURITY.md](SECURITY.md) for known limitations before deploying in a sensitive or multi-user environment.
 
 **Key Achievements**:
 1. ✅ Command injection protection via direct exec (no shell)

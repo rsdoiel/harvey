@@ -74,7 +74,7 @@ read both <code>.spmd</code> and <code>.fountain</code> files.</p>
 <div class="sourceCode" id="cb1"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Automatic recording to default location</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Creates: harvey/sessions/harvey-session-YYYYMMDD-HHMMSS.spmd</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Creates: agents/sessions/harvey-session-YYYYMMDD-HHMMSS.spmd</span></span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Explicit recording path</span></span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.spmd</span>
@@ -82,14 +82,14 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co"># In REPL, check recording status</span></span>
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /record</span>
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Recording:</span> ON</span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  <span class="ex">File:</span> /home/user/project/harvey/sessions/harvey-session-20260504-142300.spmd</span></code></pre></div>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  <span class="ex">File:</span> /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd</span></code></pre></div>
 <h3 id="continue-a-previous-session">Continue a Previous Session</h3>
 <div class="sourceCode" id="cb2"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># From command line</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> harvey/sessions/harvey-session-20260504.spmd</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> agents/sessions/harvey-session-20260504.spmd</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># From REPL</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /session continue harvey/sessions/harvey-session-20260504.spmd</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /session continue agents/sessions/harvey-session-20260504.spmd</span>
 <span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Loaded</span> 15 turns from harvey-session-20260504.spmd</span>
 <span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Model:</span> llama3.1:8b <span class="er">(</span><span class="ex">from</span> session recording<span class="kw">)</span></span></code></pre></div>
 <h3 id="replay-a-session-with-a-different-model">Replay a Session with a
@@ -502,7 +502,7 @@ for machine-readable metadata:</p>
 <h2 id="session-file-location">Session File Location</h2>
 <h3 id="default-location">Default Location</h3>
 <p>Sessions are stored in:</p>
-<pre><code>&lt;workspace&gt;/harvey/sessions/</code></pre>
+<pre><code>&lt;workspace&gt;/agents/sessions/</code></pre>
 <h3 id="custom-location">Custom Location</h3>
 <p>Override in <code>harvey.yaml</code>:</p>
 <div class="sourceCode" id="cb17"><pre
@@ -510,9 +510,6 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb17-1"><a href=
 <p>Or via command line:</p>
 <div class="sourceCode" id="cb18"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--sessions-dir</span> custom/sessions</span></code></pre></div>
-<h3 id="global-sessions">Global Sessions</h3>
-<p>Global sessions (not workspace-specific) are stored in:</p>
-<pre><code>~/harvey/sessions/</code></pre>
 <h2 id="session-commands">Session Commands</h2>
 <h3 id="record-manage-recording"><code>/record</code> — Manage
 Recording</h3>
@@ -545,13 +542,13 @@ Recording</h3>
 <p><strong>Examples:</strong></p>
 <pre><code>harvey&gt; /record
   Recording: ON
-  File: /home/user/project/harvey/sessions/harvey-session-20260504-142300.spmd
+  File: /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
 
 harvey&gt; /record off
   Recording stopped.
 
 harvey&gt; /record on
-  Recording resumed to /home/user/project/harvey/sessions/harvey-session-20260504-142300.spmd</code></pre>
+  Recording resumed to /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd</code></pre>
 <h3 id="session-session-operations"><code>/session</code> — Session
 Operations</h3>
 <table>
@@ -582,7 +579,7 @@ Operations</h3>
 </table>
 <p><strong>Examples:</strong></p>
 <pre><code># Continue a previous session
-harvey&gt; /session continue harvey/sessions/old.spmd
+harvey&gt; /session continue agents/sessions/old.spmd
   Loaded 23 turns from old.spmd
   Resuming conversation...
 
@@ -637,45 +634,40 @@ harvey&gt; /sessions
 </tbody>
 </table>
 <p><strong>Examples:</strong></p>
-<div class="sourceCode" id="cb22"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start with recording disabled</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--no-record</span></span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Record to specific file</span></span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> my-session.spmd</span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Continue from previous session</span></span>
-<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> ~/harvey/sessions/previous.spmd</span>
-<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Replay a session with new model</span></span>
-<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--model</span> claude-3-haiku <span class="at">--replay</span> old-session.spmd <span class="at">--replay-output</span> new-session.spmd</span></code></pre></div>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Start with recording disabled</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--no-record</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Record to specific file</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> my-session.spmd</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Continue from previous session (path relative to or inside the workspace)</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> agents/sessions/previous.spmd</span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Replay a session with new model</span></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--model</span> claude-3-haiku <span class="at">--replay</span> old-session.spmd <span class="at">--replay-output</span> new-session.spmd</span></code></pre></div>
 <h2 id="session-file-discovery">Session File Discovery</h2>
-<p>Harvey automatically scans for session files on startup:</p>
-<ol type="1">
-<li><strong>Workspace sessions:</strong> <code>harvey/sessions/</code>
-(newest first)</li>
-<li><strong>Global sessions:</strong> <code>~/harvey/sessions/</code>
-(if workspace has no sessions)</li>
-</ol>
+<p>Harvey scans for session files in the workspace’s
+<code>agents/sessions/</code> directory on startup (newest first).</p>
 <h3 id="listsessionfiles-function"><code>ListSessionFiles()</code>
 Function</h3>
-<div class="sourceCode" id="cb23"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>files<span class="op">,</span> err <span class="op">:=</span> ListSessionFiles<span class="op">(</span><span class="st">&quot;harvey/sessions&quot;</span><span class="op">)</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> f <span class="op">:=</span> <span class="kw">range</span> files <span class="op">{</span></span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;%s  %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> f<span class="op">.</span>ModTime<span class="op">.</span>Format<span class="op">(</span><span class="st">&quot;2006-01-02 15:04&quot;</span><span class="op">),</span> f<span class="op">.</span>Name<span class="op">)</span></span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>files<span class="op">,</span> err <span class="op">:=</span> ListSessionFiles<span class="op">(</span><span class="st">&quot;agents/sessions&quot;</span><span class="op">)</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> f <span class="op">:=</span> <span class="kw">range</span> files <span class="op">{</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;%s  %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> f<span class="op">.</span>ModTime<span class="op">.</span>Format<span class="op">(</span><span class="st">&quot;2006-01-02 15:04&quot;</span><span class="op">),</span> f<span class="op">.</span>Name<span class="op">)</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p>Returns session files sorted by modification time (newest first).</p>
 <h2 id="parsing-session-files">Parsing Session Files</h2>
 <p>Harvey provides functions to parse and extract data from session
 files:</p>
 <h3 id="parsefountainsession"><code>parseFountainSession()</code></h3>
 <p>Extracts chat turns from a Harvey Fountain file:</p>
-<div class="sourceCode" id="cb24"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>userName<span class="op">,</span> modelName<span class="op">,</span> turns<span class="op">,</span> err <span class="op">:=</span> parseFountainSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> turn <span class="op">:=</span> <span class="kw">range</span> turns <span class="op">{</span></span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;USER: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>UserInput<span class="op">)</span></span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;MODEL: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>ModelReply<span class="op">)</span></span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>userName<span class="op">,</span> modelName<span class="op">,</span> turns<span class="op">,</span> err <span class="op">:=</span> parseFountainSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> turn <span class="op">:=</span> <span class="kw">range</span> turns <span class="op">{</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;USER: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>UserInput<span class="op">)</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;MODEL: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>ModelReply<span class="op">)</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p><strong>Returns:</strong> - <code>userName</code> — ALL-CAPS user
 name from scene headings - <code>modelName</code> — ALL-CAPS model name
 from HARVEY’s “Forwarding to” dialogue - <code>turns</code> — Slice of
@@ -684,66 +676,66 @@ from HARVEY’s “Forwarding to” dialogue - <code>turns</code> — Slice of
 <h3
 id="extractmodelfromsession"><code>ExtractModelFromSession()</code></h3>
 <p>Extracts just the model name from a session file:</p>
-<div class="sourceCode" id="cb25"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>model<span class="op">,</span> err <span class="op">:=</span> ExtractModelFromSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="co">// model == &quot;LLAMA3.1&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>model<span class="op">,</span> err <span class="op">:=</span> ExtractModelFromSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="co">// model == &quot;LLAMA3.1&quot;</span></span></code></pre></div>
 <h2 id="recording-implementation">Recording Implementation</h2>
 <h3 id="recorder-type"><code>Recorder</code> Type</h3>
 <p>The <code>Recorder</code> struct handles writing session events to
 Fountain files:</p>
-<div class="sourceCode" id="cb26"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Recorder <span class="kw">struct</span> <span class="op">{</span></span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    f         <span class="op">*</span>os<span class="op">.</span>File      <span class="co">// File handle</span></span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    path      <span class="dt">string</span>        <span class="co">// File path</span></span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    userName  <span class="dt">string</span>        <span class="co">// ALL-CAPS user name</span></span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    modelName <span class="dt">string</span>        <span class="co">// ALL-CAPS model name</span></span>
-<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>    workspace <span class="dt">string</span>        <span class="co">// Workspace path</span></span>
-<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Recorder <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    f         <span class="op">*</span>os<span class="op">.</span>File      <span class="co">// File handle</span></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    path      <span class="dt">string</span>        <span class="co">// File path</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    userName  <span class="dt">string</span>        <span class="co">// ALL-CAPS user name</span></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    modelName <span class="dt">string</span>        <span class="co">// ALL-CAPS model name</span></span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    workspace <span class="dt">string</span>        <span class="co">// Workspace path</span></span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <h3 id="creating-a-recorder">Creating a Recorder</h3>
-<div class="sourceCode" id="cb27"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>r<span class="op">,</span> err <span class="op">:=</span> NewRecorder<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">,</span> <span class="st">&quot;Ollama (llama3.1:8b)&quot;</span><span class="op">,</span> <span class="st">&quot;/home/user/project&quot;</span><span class="op">)</span></span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="cf">defer</span> r<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>r<span class="op">,</span> err <span class="op">:=</span> NewRecorder<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">,</span> <span class="st">&quot;Ollama (llama3.1:8b)&quot;</span><span class="op">,</span> <span class="st">&quot;/home/user/project&quot;</span><span class="op">)</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="cf">defer</span> r<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
 <p>This creates the file, writes the title page, and adds
 <code>FADE IN:</code>.</p>
 <h3 id="recording-chat-turns">Recording Chat Turns</h3>
-<div class="sourceCode" id="cb28"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Simple turn (no stats)</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordTurn<span class="op">(</span><span class="st">&quot;Hello&quot;</span><span class="op">,</span> <span class="st">&quot;Hi there!&quot;</span><span class="op">)</span></span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Full turn with stats and routing</span></span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>stats <span class="op">:=</span> ChatStats<span class="op">{</span></span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    Model<span class="op">:</span>    <span class="st">&quot;llama3.1:8b&quot;</span><span class="op">,</span></span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    Tokens<span class="op">:</span>   <span class="dv">50</span><span class="op">,</span></span>
-<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>    Time<span class="op">:</span>     <span class="fl">0.8</span><span class="op">,</span></span>
-<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>    TokensPerSec<span class="op">:</span> <span class="fl">62.5</span><span class="op">,</span></span>
-<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
-<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordTurnWithStats<span class="op">(</span></span>
-<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Hello&quot;</span><span class="op">,</span></span>
-<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Hi there!&quot;</span><span class="op">,</span></span>
-<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>    stats<span class="op">,</span></span>
-<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;Ollama (llama3.1:8b)&quot;</span><span class="op">},</span></span>
-<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;&quot;</span><span class="op">,</span></span>
-<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Simple turn (no stats)</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordTurn<span class="op">(</span><span class="st">&quot;Hello&quot;</span><span class="op">,</span> <span class="st">&quot;Hi there!&quot;</span><span class="op">)</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Full turn with stats and routing</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>stats <span class="op">:=</span> ChatStats<span class="op">{</span></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>    Model<span class="op">:</span>    <span class="st">&quot;llama3.1:8b&quot;</span><span class="op">,</span></span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>    Tokens<span class="op">:</span>   <span class="dv">50</span><span class="op">,</span></span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>    Time<span class="op">:</span>     <span class="fl">0.8</span><span class="op">,</span></span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>    TokensPerSec<span class="op">:</span> <span class="fl">62.5</span><span class="op">,</span></span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordTurnWithStats<span class="op">(</span></span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Hello&quot;</span><span class="op">,</span></span>
+<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Hi there!&quot;</span><span class="op">,</span></span>
+<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a>    stats<span class="op">,</span></span>
+<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;Ollama (llama3.1:8b)&quot;</span><span class="op">},</span></span>
+<span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;&quot;</span><span class="op">,</span></span>
+<span id="cb27-17"><a href="#cb27-17" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
 <h3 id="recording-agent-actions">Recording Agent Actions</h3>
-<div class="sourceCode" id="cb29"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Start agent mode scene</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>StartAgentScene<span class="op">(</span><span class="st">&quot;Harvey proposes to write 1 file.&quot;</span><span class="op">)</span></span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Record write action</span></span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordAgentAction<span class="op">(</span><span class="st">&quot;write&quot;</span><span class="op">,</span> <span class="st">&quot;hello.txt&quot;</span><span class="op">,</span> <span class="st">&quot;yes&quot;</span><span class="op">,</span> <span class="st">&quot;ok&quot;</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Start agent mode scene</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>StartAgentScene<span class="op">(</span><span class="st">&quot;Harvey proposes to write 1 file.&quot;</span><span class="op">)</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Record write action</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordAgentAction<span class="op">(</span><span class="st">&quot;write&quot;</span><span class="op">,</span> <span class="st">&quot;hello.txt&quot;</span><span class="op">,</span> <span class="st">&quot;yes&quot;</span><span class="op">,</span> <span class="st">&quot;ok&quot;</span><span class="op">)</span></span></code></pre></div>
 <h3 id="recording-shell-commands">Recording Shell Commands</h3>
-<div class="sourceCode" id="cb30"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordShellCommand<span class="op">(</span><span class="st">&quot;ls -la&quot;</span><span class="op">,</span> <span class="st">&quot;file1.txt</span><span class="ch">\n</span><span class="st">file2.txt</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> <span class="dv">0</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordShellCommand<span class="op">(</span><span class="st">&quot;ls -la&quot;</span><span class="op">,</span> <span class="st">&quot;file1.txt</span><span class="ch">\n</span><span class="st">file2.txt</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> <span class="dv">0</span><span class="op">)</span></span></code></pre></div>
 <h3 id="recording-skill-execution">Recording Skill Execution</h3>
-<div class="sourceCode" id="cb31"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordSkillLoad<span class="op">(</span></span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;fountain-analysis&quot;</span><span class="op">,</span></span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Read and analyze a Fountain session file&quot;</span><span class="op">,</span></span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    skillBody<span class="op">,</span></span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordSkillLoad<span class="op">(</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;fountain-analysis&quot;</span><span class="op">,</span></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Read and analyze a Fountain session file&quot;</span><span class="op">,</span></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    skillBody<span class="op">,</span></span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
 <h3 id="closing-the-recorder">Closing the Recorder</h3>
-<div class="sourceCode" id="cb32"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>Close<span class="op">()</span> <span class="co">// Writes &quot;THE </span><span class="re">END</span><span class="co">.&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>Close<span class="op">()</span> <span class="co">// Writes &quot;THE </span><span class="re">END</span><span class="co">.&quot;</span></span></code></pre></div>
 <h2 id="session-replay">Session Replay</h2>
 <h3 id="how-replay-works">How Replay Works</h3>
 <ol type="1">
@@ -886,10 +878,10 @@ readability</li>
 <h3 id="organizing-sessions">Organizing Sessions</h3>
 <ol type="1">
 <li><strong>Use subdirectories:</strong>
-<code>harvey/sessions/project-x/</code>,
-<code>harvey/sessions/experiments/</code></li>
+<code>agents/sessions/project-x/</code>,
+<code>agents/sessions/experiments/</code></li>
 <li><strong>Archive old sessions:</strong> Move completed sessions to
-<code>harvey/sessions/archive/</code></li>
+<code>agents/sessions/archive/</code></li>
 <li><strong>Tag in filename:</strong>
 <code>20260504-llama3.1-research.spmd</code> to track model used</li>
 <li><strong>Group related sessions:</strong>
@@ -906,6 +898,13 @@ of your conversations</li>
 <li><strong>Backup important sessions:</strong> Copy <code>.spmd</code>
 files to a safe location</li>
 </ol>
+<blockquote>
+<p><strong>Privacy note:</strong> Session files record the full output
+of shell commands run during the session (via <code>!</code> or
+<code>/run</code>), including directory listings and file contents.
+Review <code>.spmd</code> files before sharing them externally or
+committing them to a public repository.</p>
+</blockquote>
 <h3 id="multi-model-workflows">Multi-Model Workflows</h3>
 <ol type="1">
 <li><strong>Use <span class="citation"
@@ -973,9 +972,9 @@ but you may have manual backups</p></li>
 <li><p><strong>Reconstruct manually:</strong> Create a new session file
 with the important exchanges</p></li>
 <li><p><strong>Validate with Fountain parser:</strong></p>
-<div class="sourceCode" id="cb36"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="co"># If fountain CLI is available</span></span>
-<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="ex">fountain</span> validate session.spmd</span></code></pre></div></li>
+<div class="sourceCode" id="cb35"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="co"># If fountain CLI is available</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="ex">fountain</span> validate session.spmd</span></code></pre></div></li>
 </ol>
 <h3 id="missing-title-page">Missing Title Page</h3>
 <p>If a session file is missing the title page: - Harvey will still
@@ -989,49 +988,49 @@ dialogue line - Ensure the session was recorded with Harvey (not
 manually created)</p>
 <h2 id="advanced-usage">Advanced Usage</h2>
 <h3 id="programmatic-session-access">Programmatic Session Access</h3>
-<div class="sourceCode" id="cb37"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Open a session file</span></span>
-<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>user<span class="op">,</span> model<span class="op">,</span> turns<span class="op">,</span> err <span class="op">:=</span> parseFountainSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
-<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Process turns</span></span>
-<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i<span class="op">,</span> turn <span class="op">:=</span> <span class="kw">range</span> turns <span class="op">{</span></span>
-<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Turn %d:</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> i<span class="op">+</span><span class="dv">1</span><span class="op">)</span></span>
-<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  User: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>UserInput<span class="op">)</span></span>
-<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  Model: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>ModelReply<span class="op">)</span></span>
-<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
-<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Create a custom session file</span></span>
-<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>r<span class="op">,</span> _ <span class="op">:=</span> NewRecorder<span class="op">(</span><span class="st">&quot;custom.spmd&quot;</span><span class="op">,</span> <span class="st">&quot;Custom Model&quot;</span><span class="op">,</span> <span class="st">&quot;/path/to/workspace&quot;</span><span class="op">)</span></span>
-<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>StartAgentScene<span class="op">(</span><span class="st">&quot;Custom scene&quot;</span><span class="op">)</span></span>
-<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>RecordAgentAction<span class="op">(</span><span class="st">&quot;custom&quot;</span><span class="op">,</span> <span class="st">&quot;target&quot;</span><span class="op">,</span> <span class="st">&quot;yes&quot;</span><span class="op">,</span> <span class="st">&quot;ok&quot;</span><span class="op">)</span></span>
-<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
+<div class="sourceCode" id="cb36"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Open a session file</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>user<span class="op">,</span> model<span class="op">,</span> turns<span class="op">,</span> err <span class="op">:=</span> parseFountainSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Process turns</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i<span class="op">,</span> turn <span class="op">:=</span> <span class="kw">range</span> turns <span class="op">{</span></span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Turn %d:</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> i<span class="op">+</span><span class="dv">1</span><span class="op">)</span></span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  User: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>UserInput<span class="op">)</span></span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  Model: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>ModelReply<span class="op">)</span></span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Create a custom session file</span></span>
+<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a>r<span class="op">,</span> _ <span class="op">:=</span> NewRecorder<span class="op">(</span><span class="st">&quot;custom.spmd&quot;</span><span class="op">,</span> <span class="st">&quot;Custom Model&quot;</span><span class="op">,</span> <span class="st">&quot;/path/to/workspace&quot;</span><span class="op">)</span></span>
+<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>StartAgentScene<span class="op">(</span><span class="st">&quot;Custom scene&quot;</span><span class="op">)</span></span>
+<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>RecordAgentAction<span class="op">(</span><span class="st">&quot;custom&quot;</span><span class="op">,</span> <span class="st">&quot;target&quot;</span><span class="op">,</span> <span class="st">&quot;yes&quot;</span><span class="op">,</span> <span class="st">&quot;ok&quot;</span><span class="op">)</span></span>
+<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
 <h3 id="custom-session-parsing">Custom Session Parsing</h3>
 <p>For advanced analysis, use the Fountain library directly:</p>
-<div class="sourceCode" id="cb38"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="st">&quot;github.com/rsdoiel/fountain&quot;</span></span>
-<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> err <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
-<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
-<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">switch</span> elem<span class="op">.</span>Type <span class="op">{</span></span>
-<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>SceneHeadingType<span class="op">:</span></span>
-<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Scene: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
-<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>CharacterType<span class="op">:</span></span>
-<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Character: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> fountain<span class="op">.</span>CharacterName<span class="op">(</span>elem<span class="op">))</span></span>
-<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>DialogueType<span class="op">:</span></span>
-<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Dialogue: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
-<span id="cb38-12"><a href="#cb38-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
-<span id="cb38-13"><a href="#cb38-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="st">&quot;github.com/rsdoiel/fountain&quot;</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> err <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">switch</span> elem<span class="op">.</span>Type <span class="op">{</span></span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>SceneHeadingType<span class="op">:</span></span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Scene: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>CharacterType<span class="op">:</span></span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Character: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> fountain<span class="op">.</span>CharacterName<span class="op">(</span>elem<span class="op">))</span></span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>DialogueType<span class="op">:</span></span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Dialogue: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <h3 id="session-file-transformation">Session File Transformation</h3>
 <p>Convert sessions to other formats:</p>
-<div class="sourceCode" id="cb39"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to plain text</span></span>
-<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> _ <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
-<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
-<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Println<span class="op">(</span>fountainSrc<span class="op">(&amp;</span>elem<span class="op">))</span></span>
-<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
-<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to JSON</span></span>
-<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a><span class="co">// (Would need custom marshaling of fountain.Element)</span></span></code></pre></div>
+<div class="sourceCode" id="cb38"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to plain text</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> _ <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Println<span class="op">(</span>fountainSrc<span class="op">(&amp;</span>elem<span class="op">))</span></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to JSON</span></span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a><span class="co">// (Would need custom marshaling of fountain.Element)</span></span></code></pre></div>
 <h2 id="fountain-format-specification">Fountain Format
 Specification</h2>
 <p>For complete Fountain syntax, see: - <strong><a

@@ -24,7 +24,7 @@ Review - Pre-Release Assessment</h1>
 <p>This document provides a comprehensive security review of Harvey
 (v0.0.2+) in preparation for release. It identifies strengths,
 vulnerabilities, and recommendations for hardening the codebase.</p>
-<p><strong>Review Date</strong>: 2025-05-12 (Updated)<br />
+<p><strong>Review Date</strong>: 2026-05-19 (Updated)<br />
 <strong>Reviewer</strong>: Mistral Vibe<br />
 <strong>Target Version</strong>: 0.0.2+ (post-fixes)</p>
 <hr />
@@ -41,7 +41,9 @@ Perplexity)</li>
 authorized_keys)</li>
 </ul>
 <p><strong>Current Security Score: 8.5/10</strong> - Strong foundation,
-production-ready with minor hardening needed.</p>
+suitable for personal and experimental use. See <a
+href="SECURITY.html">SECURITY.md</a> for known limitations before
+production deployment.</p>
 <hr />
 <h2 id="strengths-well-implemented">Strengths (Well Implemented)</h2>
 <table>
@@ -243,8 +245,11 @@ for defense in depth</td>
 <h2 id="clarifications-documentation-updates-needed">Clarifications
 (Documentation Updates Needed)</h2>
 <h3 id="parsecommandline-behavior">parseCommandLine() Behavior</h3>
-<p><strong>Current Documentation</strong>: States that
-<code>parseCommandLine()</code> “rejects shell metacharacters”</p>
+<p><strong>Documentation (corrected)</strong>: <code>SECURITY.md</code>
+originally stated that <code>parseCommandLine()</code> “rejects shell
+metacharacters.” This has been corrected — <code>SECURITY.md</code> now
+accurately describes that security comes from
+<code>exec.Command()</code> not invoking a shell.</p>
 <p><strong>Actual Behavior</strong>: The function parses command lines
 with quote handling but does <strong>NOT</strong> reject shell
 metacharacters like <code>|</code>, <code>&gt;</code>,
@@ -498,9 +503,11 @@ validation</p>
 accepted</p>
 <hr />
 <h2 id="conclusion">Conclusion</h2>
-<p>Harvey has <strong>matured into a production-ready tool</strong> with
-a strong security foundation. All previously identified critical issues
-have been addressed.</p>
+<p>Harvey has <strong>matured into a capable tool</strong> with a strong
+security foundation, suitable for personal and experimental use. All
+previously identified critical issues have been addressed. Review <a
+href="SECURITY.html">SECURITY.md</a> for known limitations before
+deploying in a sensitive or multi-user environment.</p>
 <p><strong>Key Achievements</strong>: 1. ✅ Command injection protection
 via direct exec (no shell) 2. ✅ Comprehensive API key filtering 3. ✅
 Workspace sandboxing with path traversal protection 4. ✅ Sensitive file

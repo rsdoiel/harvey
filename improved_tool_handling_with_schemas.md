@@ -93,6 +93,9 @@ readable or writable by LLM-driven tool calls.
 
 ```go
 // isAgentsDir returns true if resolved is inside the workspace's agents/ subtree.
+// All callers either (a) pass a path that has already been checked for symlinks
+// via resolveWorkspacePath/EvalSymlinks, or (b) are in directory walkers that
+// skip symlink entries via d.Type()&fs.ModeSymlink before reaching this call.
 func isAgentsDir(workspaceRoot, resolved string) bool {
     agentsDir := filepath.Join(workspaceRoot, "agents") + string(filepath.Separator)
     return strings.HasPrefix(resolved, agentsDir)
@@ -568,7 +571,7 @@ User: "Read the file config.yaml and tell me what port it uses"
 | Streaming complexity | Accumulate `ChunkDelta.ToolCalls` incrementally, same pattern as content tokens |
 | `LLMClient` interface breakage | Extend interface with a new method rather than changing `Chat()` signature |
 | Path traversal / workspace escape | `resolveWorkspacePath` + `filepath.EvalSymlinks` enforced before every file op |
-| `agents/` directory exposure | `isAgentsDir` check in `resolveWorkspacePath`; fails closed (error, not silently skip) |
+| `agents/` directory exposure | `isAgentsDir` in `resolveWorkspacePath` (all file tools) and directory walker callbacks; symlinks rejected before any path check via `d.Type()&fs.ModeSymlink` in walkers and `filepath.EvalSymlinks` in `resolveWorkspacePath` |
 | Sensitive file exposure | Static denylist in `sensitiveFileDenied`; checked after workspace boundary |
 | Prompt injection via tool results | System prompt framing; output size cap limits attack surface |
 | LLM argument type mismatches | Safe two-value type assertions required in every handler |

@@ -134,7 +134,7 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  Harvey  0.0.0</span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>✓ Workspace: /home/user/myproject</span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>✓ Knowledge base: harvey/knowledge.db</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>✓ Knowledge base: agents/knowledge.db</span>
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>✓ Loaded HARVEY.md as system prompt</span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  Checking Ollama at http://localhost:11434...</span>
@@ -409,6 +409,14 @@ codes are noted in the context message.</p>
 harvey &gt; /run make build
   $ make build
   1203 bytes of output added to context (exit 1).</code></pre>
+<blockquote>
+<p><strong>Prompt injection note:</strong> <code>/run</code> injects
+command output directly into the model’s context. If that output comes
+from reading untrusted files, fetching URLs, or processing external
+content, it may contain adversarial text designed to redirect the
+model’s behavior. Review output before accepting the model’s follow-up
+suggestions.</p>
+</blockquote>
 <h2 id="security">Security</h2>
 <p>Harvey includes a layered security system for controlling what it can
 do on your system. All settings persist across sessions in
@@ -429,6 +437,15 @@ harvey &gt; /safemode status
 
 harvey &gt; /safemode off
   Safe mode disabled. All commands are allowed.</code></pre>
+<blockquote>
+<p><strong>When to keep safe mode on:</strong> The default allowlist is
+a reasonable starting point for read-only workflows (browsing,
+reviewing, querying). Only run <code>/safemode off</code> when you
+understand what commands the model may attempt — particularly when using
+unfamiliar models or enabling agent mode. The current safe mode state is
+always visible in the REPL prompt (<code>harvey &gt;</code> = safe,
+<code>harvey [unsafe] &gt;</code> in red = off).</p>
+</blockquote>
 <p>Subcommands: <code>on</code>, <code>off</code>, <code>status</code>,
 <code>allow CMD</code>, <code>deny CMD</code>, <code>reset</code>.</p>
 <h3 id="workspace-permissions">Workspace permissions</h3>
@@ -464,11 +481,13 @@ harvey &gt; /audit status
 buffer capacity at a glance.</p>
 <h3 id="api-key-filtering">API key filtering</h3>
 <p>Cloud provider API keys (<code>ANTHROPIC_API_KEY</code>,
-<code>DEEPSEEK_API_KEY</code>, <code>GEMINI_API_KEY</code>,
-<code>MISTRAL_API_KEY</code>, <code>OPENAI_API_KEY</code>) are stripped
-from the environment of every child process started by <code>!</code> or
-<code>/run</code>. They are never visible to commands Harvey runs on
-your behalf.</p>
+<code>COHERE_API_KEY</code>, <code>DEEPSEEK_API_KEY</code>,
+<code>GEMINI_API_KEY</code>, <code>GOOGLE_API_KEY</code>,
+<code>GROQ_API_KEY</code>, <code>MISTRAL_API_KEY</code>,
+<code>OPENAI_API_KEY</code>, <code>PERPLEXITY_API_KEY</code>) are
+stripped from the environment of every child process started by
+<code>!</code> or <code>/run</code>. They are never visible to commands
+Harvey runs on your behalf.</p>
 <h3 id="configurable-timeouts">Configurable timeouts</h3>
 <p>Shell commands have a configurable timeout (default 5 minutes).
 Ollama queries default to no timeout, which is correct for slow

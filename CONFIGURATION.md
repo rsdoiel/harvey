@@ -31,6 +31,10 @@ base, sessions, skills, RAG stores, and model cache.
 
 **Locations:** Workspace: `<workspace>/agents/harvey.yaml`
 
+> **Version control note:** If your workspace is a git repository, add `agents/`
+> to `.gitignore`. The directory contains configuration, databases, and session
+> recordings that should not be committed to version control.
+
 **Format:** YAML
 
 **Example:**
@@ -111,7 +115,7 @@ in `harvey.yaml` by the `/safemode`, `/permissions`, and related commands.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `safe_mode` | boolean | No | `false` | Enable command allowlist (see `/safemode`) |
+| `safe_mode` | boolean | No | `true` | Enable command allowlist (see `/safemode`) |
 | `allowed_commands` | string list | No | See below | Commands permitted when safe_mode is true |
 | `permissions` | object | No | Full access | Path-prefix permission map (see below) |
 | `run_timeout` | string | No | `"5m"` | Timeout for shell commands run via `!` or `/run` |
@@ -119,6 +123,11 @@ in `harvey.yaml` by the `/safemode`, `/permissions`, and related commands.
 
 **Default `allowed_commands`:** `ls`, `cat`, `grep`, `head`, `tail`, `wc`,
 `find`, `stat`, `jq`, `htmlq`, `bat`, `batcat`
+
+> **Security note:** `safe_mode` defaults to `true`. The default allowlist covers
+> read-only inspection commands. Add commands with `/safemode allow CMD` as your
+> workflow requires. Setting `safe_mode: false` in `harvey.yaml` permits the LLM
+> to run any command in `$PATH` — do this only in isolated environments you control.
 
 **Timeout format** (`run_timeout`, `ollama_timeout`): Go duration string or
 plain integer seconds. Examples: `"5m"`, `"300"`, `"1m30s"`, `"300s"`.
@@ -176,7 +185,7 @@ sessions.
   "endpoints": [
     {
       "name": "pi2",
-      "url": "ollama://192.168.1.12:11434",
+      "url": "ollama://192.0.2.12:11434",
       "model": "llama3.1:8b",
       "kind": "ollama"
     },
@@ -188,7 +197,7 @@ sessions.
     },
     {
       "name": "pi3",
-      "url": "ollama://192.168.1.13:11434",
+      "url": "ollama://192.0.2.13:11434",
       "model": "mistral:latest",
       "kind": "ollama"
     }
@@ -291,6 +300,11 @@ You have access to the following slash commands: /read, /write, /run, /search,
 - The prompt is re-injected after `/clear`
 - Pinned context (from `/context add`) is injected after the system prompt
 - Skills catalog can be injected into the prompt via configuration
+- **Cloud privacy:** When a cloud route (`@claude`, `@openrouter`, etc.) is
+  active, HARVEY.md is sent to the remote provider verbatim. Avoid hardcoding
+  absolute local paths in HARVEY.md. Use the `<!-- @files -->` dynamic marker
+  instead — it injects a workspace-relative file tree without exposing your
+  home directory layout.
 
 
 ## Environment Variables
@@ -325,7 +339,7 @@ harvey
 
 # 2. Register remote endpoints
 harvey
-> /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
+> /route add pi2 ollama://192.0.2.12:11434 llama3.1:8b
 harvey
 > /route on
 
@@ -385,6 +399,9 @@ Result: In myproject/, the golang store is active.
 - Verify the database file exists at the specified path
 
 ### Verification Commands
+
+> **Reminder:** Add `agents/` to `.gitignore` before committing. These files
+> contain endpoint URLs, model names, and database state that should stay local.
 
 ```bash
 # Check workspace routes

@@ -19,41 +19,15 @@
 </nav>
 <section>
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.4">harvey 0.0.4</h2>
-<p>Bug fixes, security hardening, and UX improvements.</p>
+<h2 id="harvey-0.0.5">harvey 0.0.5</h2>
 <ul>
-<li>Removed /model command; model switching is now /ollama use NAME
-(with alias resolution) and remote dispatch uses <span class="citation"
-data-cites="mention">@mention</span> syntax to preserve cost-awareness
-for cloud providers</li>
-<li>Fixed /ollama use not resolving model aliases before connecting to
-Ollama</li>
-<li>Fixed /ollama probe not resolving model aliases before probing</li>
-<li>Fixed route (<span class="citation"
-data-cites="mention">@mention</span>) response streaming into the
-spinner status line; response is now buffered and printed cleanly after
-the spinner stops</li>
-<li>Fixed session file being truncated when the recording path collides
-with the resumed session path</li>
-<li>Fixed replay (–replay / /session replay) bypassing sensitive-file
-and agents/ directory write guards; replayWriteBlocks now uses the same
-resolveWorkspacePath checks as the tool-call path</li>
-<li>Safe mode now defaults to ON; set safe_mode: false in
-agents/harvey.yaml to disable</li>
-<li>Alias collision check: /ollama alias set now rejects aliases that
-clash with an installed Ollama model name, and warns when updating an
-existing alias to a new value</li>
-<li>Tab completion: model names, aliases, route <span class="citation"
-data-cites="names">@names</span>, and slash commands now complete on Tab
-in the REPL; first Tab shows all matches and fills the longest common
-prefix, subsequent Tabs cycle through candidates</li>
-<li>Added improved route functionality
-<ul>
-<li><code>/route models</code> will let you identify the models
-available by our route provider</li>
-<li>You can set tooling on or off per route</li>
-<li>Improved route list output</li>
-</ul></li>
+<li>Added support for working with PDF via poppler tools</li>
+<li>Added <code>/read_pdf</code> command to read a PDF into the working
+context</li>
+<li>Added <code>/rag inguest FILE.pdf</code> to ingest a PDF into our
+RAG+Knolwedge base</li>
+<li>Added <code>/attach FILE</code> support (mainly for route supported
+language models)</li>
 </ul>
 <h2 id="authors">Authors</h2>
 <ul>

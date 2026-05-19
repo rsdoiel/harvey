@@ -35,4 +35,6 @@
       See conversation notes for design details.
 
 
+## Someday, maybe ideas
 
+- [ ] Add the ability to interact with S3 protocol for remote storage, this will be helpful in library and archival projects if Harvey is helping with processing

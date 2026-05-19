@@ -455,8 +455,8 @@ func (r *Recorder) Rename(newPath string) error {
 //
 // Example:
 //
-//	path := DefaultSessionPath("/home/user/project/harvey/sessions")
-//	// "/home/user/project/harvey/sessions/harvey-session-20260415-142300.spmd"
+//	path := DefaultSessionPath("/home/user/project/agents/sessions")
+//	// "/home/user/project/agents/sessions/harvey-session-20260415-142300.spmd"
 func DefaultSessionPath(dir string) string {
 	ts := time.Now().Format("20060102-150405")
 	return fmt.Sprintf("%s/harvey-session-%s.spmd", dir, ts)

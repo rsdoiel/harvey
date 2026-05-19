@@ -9,7 +9,7 @@
 //   - All other fields have sensible defaults
 //
 // After collecting all fields, the wizard assembles a complete SKILL.md file
-// with proper YAML frontmatter and writes it to .agents/skills/<name>/SKILL.md.
+// with proper YAML frontmatter and writes it to agents/skills/<name>/SKILL.md.
 // This file is invoked by /skill new when no arguments are provided.
 
 package harvey

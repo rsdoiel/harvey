@@ -521,10 +521,11 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href=
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag new research-llm-security</span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest ~/Downloads/paper1.pdf.txt</span>
 <span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Note: Use Firefox &quot;Save Page as... &gt; Text Files&quot; for web pages</span></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest ~/research/notes/</span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Query your research</span></span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> What are the key findings about prompt injection<span class="pp">?</span></span></code></pre></div>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="co"># See &quot;Security Considerations&quot; section before ingesting third-party content</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /rag ingest ~/research/notes/</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Query your research</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> What are the key findings about prompt injection<span class="pp">?</span></span></code></pre></div>
 <h3 id="pattern-4-multi-project-workflow">Pattern 4: Multi-Project
 Workflow</h3>
 <p>Switch between different knowledge domains:</p>
@@ -1376,7 +1377,40 @@ Benchmark</a> — Massive Text Embedding Benchmark</li>
 <li><a href="https://sqlite.org">SQLite</a> — Database engine used for
 RAG stores</li>
 </ul>
-<h2 id="see-also">See Also</h2>
+<h2 id="security-considerations">Security Considerations</h2>
+<h3 id="prompt-injection-via-ingested-content">Prompt Injection via
+Ingested Content</h3>
+<p>Documents ingested into a RAG store are injected verbatim into the
+LLM’s context as retrieved chunks. If ingested content contains
+adversarial text — hidden instructions in a README, a web page with
+embedded directives, or a maliciously crafted PDF — the model may follow
+those instructions rather than the user’s intent.</p>
+<p><strong>Mitigations:</strong></p>
+<ul>
+<li>Only ingest content from sources you trust.</li>
+<li>Use <code>/rag query TEXT</code> to inspect which chunks will be
+injected before enabling auto-inject for a new store.</li>
+<li>If you notice unexpected model behavior after ingesting new
+material, disable RAG (<code>/rag off</code>) and query the store to
+identify the problematic chunk.</li>
+</ul>
+<h3 id="third-party-repository-ingestion">Third-Party Repository
+Ingestion</h3>
+<p>Cloning external repositories (e.g., framework documentation,
+open-source projects) as RAG training material introduces content you do
+not control. Authors may update that content after you ingest it, and
+initial ingestion may include adversarial content in rarely-read files
+(changelogs, contributor guides, embedded examples).</p>
+<p>Review cloned content before ingesting:</p>
+<div class="sourceCode" id="cb47"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Scan for anything that looks like prompt injection before ingesting</span></span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a><span class="fu">grep</span> <span class="at">-rn</span> <span class="st">&quot;ignore previous\|disregard\|you are now\|system:&quot;</span> /path/to/cloned-repo/</span></code></pre></div>
+<h3 id="see-also">See Also</h3>
+<ul>
+<li><a href="SECURITY.html">SECURITY.md</a> — Harvey’s security model
+and known limitations</li>
+</ul>
+<h2 id="see-also-1">See Also</h2>
 <ul>
 <li><a href="CONFIGURATION.html">CONFIGURATION.md</a> — Configuration
 file reference</li>

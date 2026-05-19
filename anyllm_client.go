@@ -203,14 +203,21 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 	return stats, accumulatedCalls, nil
 }
 
-// harvestMessagesToAnyllm converts Harvey []Message to []anyllm.Message,
-// mapping ToolCalls and ToolCallID so tool-role messages round-trip correctly.
+// harvestMessagesToAnyllm converts Harvey []Message to []anyllm.Message.
+// When a message has Parts set, those are used as the Content (multimodal);
+// otherwise the plain string Content is used.
 func harvestMessagesToAnyllm(messages []Message) []anyllm.Message {
 	out := make([]anyllm.Message, len(messages))
 	for i, m := range messages {
+		var content any
+		if len(m.Parts) > 0 {
+			content = m.Parts
+		} else {
+			content = m.Content
+		}
 		out[i] = anyllm.Message{
 			Role:       m.Role,
-			Content:    m.Content,
+			Content:    content,
 			ToolCalls:  m.ToolCalls,
 			ToolCallID: m.ToolCallID,
 		}

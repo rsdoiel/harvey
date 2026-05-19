@@ -735,7 +735,7 @@ go test -v -test.v -run TestName
 
 ```bash
 # Run a single test
- sèlect * from knowledge base where
+go test -v -run TestName
 # Run tests matching a pattern
 go test -v -run TestWorkspace
 

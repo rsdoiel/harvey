@@ -32,9 +32,10 @@ workspace position:
 ### Shell injection prevention
 
 The `!` command and `/run` use `exec.Command()` directly — no shell
-interpreter is invoked. `parseCommandLine()` rejects shell metacharacters
-(`;`, `|`, `&`, `>`, `<`, `` ` ``, `$`, `(`, `)`, `{`, `}`, `[`, `]`)
-before execution.
+interpreter is invoked, so shell metacharacters (`;`, `|`, `&`, `>`, `<`,
+`` ` ``, `$`, `(`, `)`, `{`, `}`, `[`, `]`) are passed as literal string
+arguments rather than being interpreted. `parseCommandLine()` handles
+quoted-string splitting only; it does not reject these characters.
 
 ### API key filtering
 
@@ -102,12 +103,17 @@ Harvey connects to:
 | No rate limiting | No per-turn cap on tool invocations from the model. |
 | No tool input size limits | No maximum length validation on tool string inputs. |
 
+Directory walkers (`/read-dir`, `/search`, file-tree expansion, `grep_files` tool)
+skip symbolic links entirely — they will not follow a symlink to read or list its
+target.
+
 ---
 
 ## Reporting security issues
 
-Report vulnerabilities via GitHub Issues:
-<https://github.com/rsdoiel/harvey/issues>
+Report vulnerabilities privately via GitHub Security Advisories:
+<https://github.com/rsdoiel/harvey/security/advisories/new>
 
 Include: a description of the issue, steps to reproduce, and your
-assessment of severity.
+assessment of severity. Do not open a public GitHub Issue for a security
+vulnerability until a coordinated fix is available.

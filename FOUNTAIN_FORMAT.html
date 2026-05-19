@@ -323,6 +323,13 @@ character/dialogue line. It provides context for the scene.</p>
 <code>Model: &lt;identifier&gt;</code> — The model/route for this
 interaction - <code>Workspace: &lt;path&gt;</code> — The workspace
 directory</p>
+<blockquote>
+<p><strong>Privacy note:</strong> <code>Workspace:</code> records the
+absolute path of the user’s local workspace directory. Review
+<code>.spmd</code> session files before sharing them externally or
+committing them to a repository — they contain this path and the full
+output of any shell commands run during the session.</p>
+</blockquote>
 <p><strong>Optional fields:</strong> - Any additional context (e.g.,
 “Connected: Ollama (llama3:latest)”) - Parenthetical notes about <span
 class="citation" data-cites="mentions">@mentions</span>:

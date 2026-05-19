@@ -3,10 +3,12 @@ package harvey
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/fs"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -190,6 +192,16 @@ func (a *Agent) registerCommands() {
 			Usage:       "/read FILE [FILE...]",
 			Description: "Inject workspace file(s) into conversation context",
 			Handler:     cmdRead,
+		},
+		"attach": {
+			Usage:       "/attach FILE",
+			Description: "Attach a file to the next turn: image (native or text fallback), PDF (text extraction), or plain text",
+			Handler:     cmdAttach,
+		},
+		"read-pdf": {
+			Usage:       "/read-pdf FILE [PAGES]",
+			Description: "Extract text from a PDF and inject it into context (requires poppler)",
+			Handler:     cmdReadPDF,
 		},
 		"write": {
 			Usage:       "/write PATH",
@@ -438,8 +450,14 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "rag":
 			fmt.Fprint(out, FmtHelp(RagHelpText, "", "", "", ""))
 			return nil
+		case "attach":
+			fmt.Fprint(out, FmtHelp(AttachHelpText, "", "", "", ""))
+			return nil
 		case "read":
 			fmt.Fprint(out, FmtHelp(ReadHelpText, "", "", "", ""))
+			return nil
+		case "read-pdf", "readpdf":
+			fmt.Fprint(out, FmtHelp(ReadPDFHelpText, "", "", "", ""))
 			return nil
 		case "read-dir", "readdir":
 			fmt.Fprint(out, FmtHelp(ReadDirHelpText, "", "", "", ""))
@@ -484,7 +502,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprint(out, FmtHelp(WriteHelpText, "", "", "", ""))
 			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 
@@ -569,6 +587,11 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintf(out, "Recording: %s\n", a.Recorder.Path())
 	} else {
 		fmt.Fprintln(out, "Recording: off")
+	}
+	if a.Config.SafeMode {
+		fmt.Fprintln(out, "Safe mode: on")
+	} else {
+		fmt.Fprintln(out, "Safe mode: OFF (all commands permitted)")
 	}
 	return nil
 }
@@ -2023,7 +2046,7 @@ func kbConcept(a *Agent, args []string, out io.Writer) error {
  *   status       — Show current recording status and file path
  *
  * Recording is enabled by default on startup. Sessions are saved to
- * harvey/sessions/ by default, with filenames like:
+ * agents/sessions/ by default, with filenames like:
  *   harvey-session-YYYYMMDD-HHMMSS.spmd
  *
  * The Fountain format (.spmd) captures all chat turns, file operations,
@@ -2271,6 +2294,10 @@ func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 		if werr != nil || stopped {
 			return nil
 		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			skipped++
+			return nil
+		}
 
 		if d.IsDir() {
 			if p == absDir {
@@ -2367,6 +2394,334 @@ func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintln(out, ".")
 	}
 	return nil
+}
+
+// ─── /read-pdf ───────────────────────────────────────────────────────────────
+
+// readPDFMaxPages is the maximum number of pages /read-pdf will inject in one
+// call. PDFs larger than this require an explicit page range.
+const readPDFMaxPages = 20
+
+/** cmdReadPDF extracts text from a PDF file and injects it into the
+ * conversation as a user-role context message. It uses pdfExtract internally,
+ * which requires the poppler utilities (pdfinfo, pdftotext, pdfimages).
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent.
+ *   args ([]string)  — [FILE] and optional [PAGES] (e.g. "40-55").
+ *   out  (io.Writer) — destination for progress output.
+ *
+ * Returns:
+ *   error — only for unexpected internal failures; user errors are printed to out.
+ *
+ * Example:
+ *   /read-pdf ~/docs/oberon2.pdf 49-63
+ */
+func cmdReadPDF(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /read-pdf FILE [PAGES]")
+		fmt.Fprintln(out, "  Example: /read-pdf ~/docs/spec.pdf 40-55")
+		return nil
+	}
+
+	if err := checkPopplerTools(); err != nil {
+		fmt.Fprintln(out, err.Error())
+		return nil
+	}
+
+	filePath := args[0]
+	var pages string
+	if len(args) > 1 {
+		pages = args[1]
+	}
+
+	absPath, err := resolvePDFPath(filePath)
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ %s: %v\n", filePath, err)
+		return nil
+	}
+
+	// Enforce page cap before the expensive extraction.
+	if pages == "" {
+		infoOut, err := runTool("pdfinfo", absPath)
+		if err != nil {
+			fmt.Fprintf(out, "  ✗ cannot read PDF: %v\n", err)
+			return nil
+		}
+		info := parsePDFInfo(infoOut)
+		if info.Pages > readPDFMaxPages {
+			fmt.Fprintf(out, "  ✗ %s has %d pages; /read-pdf is limited to %d pages per call.\n",
+				filePath, info.Pages, readPDFMaxPages)
+			fmt.Fprintf(out, "     Specify a range, e.g.: /read-pdf %s 1-%d\n", filePath, readPDFMaxPages)
+			return nil
+		}
+	} else {
+		first, last, err := parsePDFPageRange(pages)
+		if err != nil {
+			fmt.Fprintf(out, "  ✗ %v\n", err)
+			return nil
+		}
+		if last-first+1 > readPDFMaxPages {
+			fmt.Fprintf(out, "  ✗ page range %s spans %d pages; limit is %d.\n",
+				pages, last-first+1, readPDFMaxPages)
+			fmt.Fprintf(out, "     Narrow the range, e.g.: %d-%d\n", first, first+readPDFMaxPages-1)
+			return nil
+		}
+	}
+
+	fmt.Fprintf(out, "  Extracting %s", filePath)
+	if pages != "" {
+		fmt.Fprintf(out, " pages %s", pages)
+	}
+	fmt.Fprintln(out, " …")
+
+	result, err := pdfExtract(absPath, pages)
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ %v\n", err)
+		return nil
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "[context: /read-pdf %s", filePath)
+	if pages != "" {
+		fmt.Fprintf(&sb, " pages %s", pages)
+	}
+	fmt.Fprintln(&sb, "]")
+	fmt.Fprintln(&sb)
+
+	if result.Info.Title != "" {
+		fmt.Fprintf(&sb, "Title:  %s\n", result.Info.Title)
+	}
+	if result.Info.Author != "" {
+		fmt.Fprintf(&sb, "Author: %s\n", result.Info.Author)
+	}
+	if result.Info.Pages > 0 {
+		fmt.Fprintf(&sb, "Pages:  %d\n", result.Info.Pages)
+	}
+	if result.Info.CreatedAt != "" {
+		fmt.Fprintf(&sb, "Date:   %s\n", result.Info.CreatedAt)
+	}
+	if len(result.DiagramPages) > 0 {
+		pageNums := make([]string, len(result.DiagramPages))
+		for i, p := range result.DiagramPages {
+			pageNums[i] = strconv.Itoa(p)
+		}
+		fmt.Fprintf(&sb, "\nNote: page(s) %s appear to contain only vector diagrams — content may be incomplete. Use a vision-capable model to process those pages.\n",
+			strings.Join(pageNums, ", "))
+	}
+	fmt.Fprintln(&sb)
+	sb.WriteString(result.Text)
+
+	a.AddMessage("user", sb.String())
+
+	// Count non-empty injected pages for the confirmation message.
+	injected := 0
+	for _, pt := range strings.Split(result.Text, "\f") {
+		if strings.TrimSpace(pt) != "" {
+			injected++
+		}
+	}
+	fmt.Fprintf(out, "  ✓ %d page(s) added to context", injected)
+	if len(result.DiagramPages) > 0 {
+		fmt.Fprintf(out, " (%d diagram-only page(s) flagged)", len(result.DiagramPages))
+	}
+	fmt.Fprintln(out)
+	return nil
+}
+
+// resolvePDFPath expands ~ and converts a relative path to absolute.
+// Unlike Workspace.AbsPath it does not enforce workspace boundaries, because
+// /read-pdf is designed to accept arbitrary file system paths.
+func resolvePDFPath(path string) (string, error) {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("cannot resolve home directory: %w", err)
+		}
+		if path == "~" {
+			return home, nil
+		}
+		path = filepath.Join(home, path[2:])
+	}
+	if !filepath.IsAbs(path) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return "", err
+		}
+		return abs, nil
+	}
+	return path, nil
+}
+
+// ─── /attach ─────────────────────────────────────────────────────────────────
+
+// attachMaxImageBytes is the file-size ceiling for native image attachment.
+const attachMaxImageBytes = 5 * 1024 * 1024 // 5 MB
+
+// attachMaxTextBytes is the ceiling for plain-text file injection.
+const attachMaxTextBytes = 256 * 1024 // 256 KB
+
+/** cmdAttach attaches a file to the conversation as the most useful form the
+ * current route can accept. Images are sent as base64 data-URL ContentParts
+ * when the active model supports vision; otherwise a text description is
+ * injected. PDFs are extracted via pdfExtract (same page cap as /read-pdf).
+ * All other files are injected as plain text when ≤ 256 KB.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent.
+ *   args ([]string)  — [FILE].
+ *   out  (io.Writer) — destination for progress output.
+ *
+ * Returns:
+ *   error — only for unexpected internal failures; user errors are printed to out.
+ *
+ * Example:
+ *   /attach ~/photos/diagram.png
+ *   /attach ~/docs/spec.pdf
+ */
+func cmdAttach(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /attach FILE")
+		fmt.Fprintln(out, "  Images: attached natively if the route supports vision, text description otherwise.")
+		fmt.Fprintln(out, "  PDFs:   text extracted via pdfExtract (20-page cap; requires poppler).")
+		fmt.Fprintln(out, "  Other:  injected as plain text (≤ 256 KB).")
+		return nil
+	}
+
+	filePath := args[0]
+	absPath, err := resolvePDFPath(filePath)
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ %s: %v\n", filePath, err)
+		return nil
+	}
+
+	fi, err := os.Stat(absPath)
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ %s: %v\n", filePath, err)
+		return nil
+	}
+	if fi.IsDir() {
+		fmt.Fprintf(out, "  ✗ %s is a directory; use /read-dir for directories\n", filePath)
+		return nil
+	}
+
+	// PDFs are routed before reading the full file to avoid loading 100 MB
+	// into memory only to hand it off to pdftotext.
+	if strings.ToLower(filepath.Ext(absPath)) == ".pdf" {
+		return cmdReadPDF(a, []string{absPath}, out)
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ %s: %v\n", filePath, err)
+		return nil
+	}
+
+	mime := attachDetectMIME(absPath, data)
+	base := filepath.Base(absPath)
+
+	if attachIsImageMIME(mime) {
+		return attachImage(a, filePath, base, data, mime, out)
+	}
+	return attachText(a, filePath, base, data, mime, out)
+}
+
+// attachImage attaches an image file to the conversation. When the active
+// route reports vision capability the image is encoded as a base64 data-URL
+// ContentPart; otherwise a text description is injected so the turn still
+// carries the attachment metadata.
+func attachImage(a *Agent, filePath, base string, data []byte, mime string, out io.Writer) error {
+	if len(data) > attachMaxImageBytes {
+		fmt.Fprintf(out, "  ✗ %s: image too large (%s); maximum is 5 MB\n",
+			filePath, formatBytes(int64(len(data))))
+		return nil
+	}
+
+	if attachClientSupportsVision(a) {
+		encoded := base64.StdEncoding.EncodeToString(data)
+		parts := []anyllm.ContentPart{
+			{Type: "text", Text: fmt.Sprintf("[attached: %s]", base)},
+			{Type: "image_url", ImageURL: &anyllm.ImageURL{
+				URL: "data:" + mime + ";base64," + encoded,
+			}},
+		}
+		a.AddMessageParts("user", parts)
+		fmt.Fprintf(out, "  ✓ %s attached natively (%s, %s)\n",
+			base, mime, formatBytes(int64(len(data))))
+	} else {
+		text := fmt.Sprintf(
+			"[attached: %s — %s, %s — vision not available on current route; switch to a vision-capable route to process this image natively]",
+			base, mime, formatBytes(int64(len(data))))
+		a.AddMessage("user", text)
+		fmt.Fprintf(out, "  ✓ %s attached as text description (route has no vision capability)\n", base)
+		fmt.Fprintln(out, "     Tip: use @name to route the next turn to a vision-capable endpoint.")
+	}
+	return nil
+}
+
+// attachText injects a plain-text (or unknown-format) file into the
+// conversation. Binary files are rejected with an explanation.
+func attachText(a *Agent, filePath, base string, data []byte, mime string, out io.Writer) error {
+	if len(data) > attachMaxTextBytes {
+		fmt.Fprintf(out, "  ✗ %s: file too large (%s) for text injection; maximum is 256 KB\n",
+			filePath, formatBytes(int64(len(data))))
+		fmt.Fprintln(out, "     Use /rag ingest to index large files for retrieval instead.")
+		return nil
+	}
+	// Reject binary content (null byte in sample is the classic heuristic).
+	sample := data
+	if len(sample) > 512 {
+		sample = sample[:512]
+	}
+	for _, b := range sample {
+		if b == 0 {
+			fmt.Fprintf(out, "  ✗ %s appears to be binary (%s); /attach supports images, PDFs, and text files\n",
+				filePath, mime)
+			return nil
+		}
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "[attached: %s]\n\n", base)
+	sb.Write(data)
+	a.AddMessage("user", sb.String())
+	fmt.Fprintf(out, "  ✓ %s attached as text (%s)\n", base, formatBytes(int64(len(data))))
+	return nil
+}
+
+// attachDetectMIME returns the MIME type of the file. The extension is
+// checked first for formats (e.g. WebP) that the sniff algorithm misidentifies;
+// then http.DetectContentType is applied to the first 512 bytes.
+func attachDetectMIME(path string, data []byte) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".webp":
+		return "image/webp"
+	}
+	sample := data
+	if len(sample) > 512 {
+		sample = sample[:512]
+	}
+	return http.DetectContentType(sample)
+}
+
+// attachIsImageMIME reports whether mime is an image type that can be
+// attached natively or described textually.
+func attachIsImageMIME(mime string) bool {
+	switch strings.SplitN(mime, ";", 2)[0] {
+	case "image/jpeg", "image/png", "image/gif", "image/webp":
+		return true
+	}
+	return false
+}
+
+// attachClientSupportsVision reports whether the current LLM client declares
+// image completion capability.
+func attachClientSupportsVision(a *Agent) bool {
+	ac, ok := a.Client.(*AnyLLMClient)
+	if !ok {
+		return false
+	}
+	return ac.ProviderCapabilities().CompletionImage
 }
 
 // ─── /write ──────────────────────────────────────────────────────────────────
@@ -2584,10 +2939,19 @@ func cmdSearch(a *Agent, args []string, out io.Writer) error {
 		if werr != nil || truncated {
 			return nil
 		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
 		if d.IsDir() {
 			if strings.HasPrefix(d.Name(), ".") {
 				return filepath.SkipDir
 			}
+			if path == filepath.Join(a.Workspace.Root, "agents") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if isAgentsDir(a.Workspace.Root, path) {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -2922,7 +3286,7 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
  *   error — on I/O failure.
  *
  * Example:
- *   /session continue harvey/sessions/harvey-session-20260430.spmd
+ *   /session continue agents/sessions/harvey-session-20260430.spmd
  *   /session replay old.spmd new.spmd
  */
 /** cmdSession handles session file operations for loading and replaying
@@ -4356,6 +4720,18 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 				fmt.Fprintf(out, "  error in %s: %v\n", p, err)
 			}
 			total += n
+		} else if strings.ToLower(filepath.Ext(absPath)) == ".pdf" {
+			n, diagrams, err := ragIngestPDF(a.Rag, embedder, absPath)
+			if err != nil {
+				fmt.Fprintf(out, "  error in %s: %v\n", p, err)
+			} else {
+				fmt.Fprintf(out, "  %s — %d chunk(s)", p, n)
+				if len(diagrams) > 0 {
+					fmt.Fprintf(out, " (%d diagram-only page(s) flagged)", len(diagrams))
+				}
+				fmt.Fprintln(out)
+				total += n
+			}
 		} else {
 			n, err := ragIngestFile(a.Rag, embedder, absPath)
 			if err != nil {
@@ -4377,6 +4753,9 @@ func ragIngestDir(store *RagStore, embedder Embedder, dir string, out io.Writer)
 		if err != nil || d.IsDir() {
 			return err
 		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
 		ext := strings.ToLower(filepath.Ext(path))
 		switch ext {
 		case ".md", ".txt", ".go", ".ts", ".py", ".yaml", ".yml", ".toml", ".sql":
@@ -4385,6 +4764,18 @@ func ragIngestDir(store *RagStore, embedder Embedder, dir string, out io.Writer)
 				fmt.Fprintf(out, "  skip %s: %v\n", path, err)
 			} else {
 				fmt.Fprintf(out, "  %s — %d chunk(s)\n", path, n)
+				total += n
+			}
+		case ".pdf":
+			n, diagrams, err := ragIngestPDF(store, embedder, path)
+			if err != nil {
+				fmt.Fprintf(out, "  skip %s: %v\n", path, err)
+			} else {
+				fmt.Fprintf(out, "  %s — %d chunk(s)", path, n)
+				if len(diagrams) > 0 {
+					fmt.Fprintf(out, " (%d diagram-only page(s) flagged)", len(diagrams))
+				}
+				fmt.Fprintln(out)
 				total += n
 			}
 		}
@@ -4407,6 +4798,70 @@ func ragIngestFile(store *RagStore, embedder Embedder, path string) (int, error)
 		return 0, err
 	}
 	return len(chunks), nil
+}
+
+// ragIngestPDF extracts text from a PDF with pdfExtract and ingests it into
+// store as per-page chunks. Each chunk is prefixed with the document title and
+// page number so retrieved context always carries its provenance. Diagram-only
+// pages (sparse text, no raster images) are stored with an incomplete-content
+// marker so retrieval results can surface the caveat.
+// Returns (chunkCount, diagramPageNumbers, error).
+func ragIngestPDF(store *RagStore, embedder Embedder, path string) (int, []int, error) {
+	result, err := pdfExtract(path, "")
+	if err != nil {
+		return 0, nil, err
+	}
+
+	title := filepath.Base(path)
+	if result.Info.Title != "" {
+		title = result.Info.Title
+	}
+
+	diagramSet := make(map[int]bool, len(result.DiagramPages))
+	for _, p := range result.DiagramPages {
+		diagramSet[p] = true
+	}
+
+	pageTexts := strings.Split(result.Text, "\f")
+	for len(pageTexts) > 0 && strings.TrimSpace(pageTexts[len(pageTexts)-1]) == "" {
+		pageTexts = pageTexts[:len(pageTexts)-1]
+	}
+
+	totalPages := result.Info.Pages
+	if totalPages == 0 {
+		totalPages = len(pageTexts)
+	}
+
+	var allChunks []string
+	for i, pageText := range pageTexts {
+		pageNum := i + 1
+		isDiagram := diagramSet[pageNum]
+
+		header := fmt.Sprintf("[PDF: %q, page %d of %d]", title, pageNum, totalPages)
+		if isDiagram {
+			header += "\n[DIAGRAM PAGE: vector graphics detected — text extraction is incomplete. Use a vision-capable model for this page.]"
+		}
+
+		chunks := ragChunk(pageText)
+		if len(chunks) == 0 {
+			if isDiagram {
+				// Store a placeholder so the diagram page is retrievable.
+				allChunks = append(allChunks, header)
+			}
+			continue
+		}
+		for _, chunk := range chunks {
+			allChunks = append(allChunks, header+"\n\n"+chunk)
+		}
+	}
+
+	if len(allChunks) == 0 {
+		return 0, result.DiagramPages, nil
+	}
+	if err := store.Ingest(path, allChunks, embedder); err != nil {
+		return 0, nil, err
+	}
+	return len(allChunks), result.DiagramPages, nil
 }
 
 // ragChunk splits text into paragraph-sized chunks of at most ~500 characters,

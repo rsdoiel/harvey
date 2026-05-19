@@ -88,8 +88,8 @@ type RagStoreEntry struct {
  *
  * Fields:
  *   WorkDir      (string) — root directory Harvey is allowed to read/write; defaults to ".".
- *   SessionsDir  (string) — directory for session .spmd files; empty = harvey/sessions/.
- *   KnowledgeDB  (string) — path to the knowledge base SQLite file; empty = harvey/knowledge.db.
+ *   SessionsDir  (string) — directory for session .spmd files; empty = agents/sessions/.
+ *   KnowledgeDB  (string) — path to the knowledge base SQLite file; empty = agents/knowledge.db.
  *   AgentsDir    (string) — base directory for the agents/skills tree; empty = agents/.
  *   SystemPrompt (string) — contents of HARVEY.md, injected as the system prompt.
  *   OllamaURL    (string) — Ollama base URL (default: http://localhost:11434).
@@ -105,8 +105,8 @@ type RagStoreEntry struct {
  */
 type Config struct {
 	WorkDir             string          // workspace root; all file I/O is constrained to this tree
-	SessionsDir         string          // directory for .spmd session files; empty = harvey/sessions/
-	KnowledgeDB         string          // path to knowledge.db; empty = harvey/knowledge.db
+	SessionsDir         string          // directory for .spmd session files; empty = agents/sessions/
+	KnowledgeDB         string          // path to knowledge.db; empty = agents/knowledge.db
 	AgentsDir           string          // agents/skills tree root; empty = agents/
 	CurrentProjectID    int64           // ID of the active knowledge-base project (0 = none)
 	SystemPrompt        string          // contents of HARVEY.md, injected as the system prompt
@@ -223,7 +223,7 @@ func (c *Config) RemoveRagStore(name string) {
 
 /** DefaultConfig returns a Config populated with sensible defaults. WorkDir
  * defaults to "." (the process working directory at startup). AutoRecord
- * defaults to true so every session is saved to harvey/sessions/.
+ * defaults to true so every session is saved to agents/sessions/.
  *
  * Returns:
  *   *Config — configuration with default values pre-filled.

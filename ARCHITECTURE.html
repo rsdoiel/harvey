@@ -522,7 +522,9 @@ Only variables in a safe-prefix allowlist (<code>PATH</code>,
 <code>TERM</code>, <code>LANG</code>, <code>LC_*</code>,
 <code>PWD</code>, <code>OLLAMA_*</code>, <code>HARVEY_*</code>) are
 forwarded; all cloud provider API key variables are unconditionally
-stripped.</p>
+stripped. Users should avoid storing secrets in environment variables
+prefixed <code>HARVEY_</code>, as every value matching that prefix is
+forwarded to child processes.</p>
 <p><strong>Timeout configuration.</strong>
 <code>Config.RunTimeout</code> (default 5 minutes) bounds every
 <code>!</code> and <code>/run</code> subprocess via
@@ -531,7 +533,10 @@ controls the HTTP client timeout for local LLM providers; it defaults to
 0 (no timeout) because inference on slow hardware (Raspberry Pi) can
 take several minutes. Both are configurable in harvey.yaml as duration
 strings (<code>"5m"</code>, <code>"300s"</code>, <code>"1m30s"</code>)
-or plain integer seconds.</p>
+or plain integer seconds. When Ollama runs on a remote host (configured
+via <code>/route add</code>), consider setting
+<code>ollama_timeout</code> in <code>harvey.yaml</code> to prevent an
+unresponsive remote server from hanging Harvey indefinitely.</p>
 <h2 id="knowledge-base-knowledge.go">Knowledge base
 (<code>knowledge.go</code>)</h2>
 <p>The SQLite database lives at

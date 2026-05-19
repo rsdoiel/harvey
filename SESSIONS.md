@@ -28,7 +28,7 @@ Harvey **records every conversation** to a **Fountain screenplay file** (`.spmd`
 ```bash
 # Automatic recording to default location
 harvey
-# Creates: harvey/sessions/harvey-session-YYYYMMDD-HHMMSS.spmd
+# Creates: agents/sessions/harvey-session-YYYYMMDD-HHMMSS.spmd
 
 # Explicit recording path
 harvey --record-file mysession.spmd
@@ -36,17 +36,17 @@ harvey --record-file mysession.spmd
 # In REPL, check recording status
 harvey> /record
   Recording: ON
-  File: /home/user/project/harvey/sessions/harvey-session-20260504-142300.spmd
+  File: /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
 ```
 
 ### Continue a Previous Session
 
 ```bash
 # From command line
-harvey --continue harvey/sessions/harvey-session-20260504.spmd
+harvey --continue agents/sessions/harvey-session-20260504.spmd
 
 # From REPL
-harvey> /session continue harvey/sessions/harvey-session-20260504.spmd
+harvey> /session continue agents/sessions/harvey-session-20260504.spmd
   Loaded 15 turns from harvey-session-20260504.spmd
   Model: llama3.1:8b (from session recording)
 ```
@@ -388,7 +388,7 @@ Harvey uses Fountain **notes** (`[[...]]`) for machine-readable metadata:
 Sessions are stored in:
 
 ```
-<workspace>/harvey/sessions/
+<workspace>/agents/sessions/
 ```
 
 ### Custom Location
@@ -405,13 +405,6 @@ Or via command line:
 harvey --sessions-dir custom/sessions
 ```
 
-### Global Sessions
-
-Global sessions (not workspace-specific) are stored in:
-
-```
-~/harvey/sessions/
-```
 
 ## Session Commands
 
@@ -428,13 +421,13 @@ Global sessions (not workspace-specific) are stored in:
 ```
 harvey> /record
   Recording: ON
-  File: /home/user/project/harvey/sessions/harvey-session-20260504-142300.spmd
+  File: /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
 
 harvey> /record off
   Recording stopped.
 
 harvey> /record on
-  Recording resumed to /home/user/project/harvey/sessions/harvey-session-20260504-142300.spmd
+  Recording resumed to /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
 ```
 
 ### `/session` — Session Operations
@@ -448,7 +441,7 @@ harvey> /record on
 **Examples:**
 ```
 # Continue a previous session
-harvey> /session continue harvey/sessions/old.spmd
+harvey> /session continue agents/sessions/old.spmd
   Loaded 23 turns from old.spmd
   Resuming conversation...
 
@@ -484,8 +477,8 @@ harvey --no-record
 # Record to specific file
 harvey --record-file my-session.spmd
 
-# Continue from previous session
-harvey --continue ~/harvey/sessions/previous.spmd
+# Continue from previous session (path relative to or inside the workspace)
+harvey --continue agents/sessions/previous.spmd
 
 # Replay a session with new model
 harvey --model claude-3-haiku --replay old-session.spmd --replay-output new-session.spmd
@@ -493,15 +486,12 @@ harvey --model claude-3-haiku --replay old-session.spmd --replay-output new-sess
 
 ## Session File Discovery
 
-Harvey automatically scans for session files on startup:
-
-1. **Workspace sessions:** `harvey/sessions/` (newest first)
-2. **Global sessions:** `~/harvey/sessions/` (if workspace has no sessions)
+Harvey scans for session files in the workspace's `agents/sessions/` directory on startup (newest first).
 
 ### `ListSessionFiles()` Function
 
 ```go
-files, err := ListSessionFiles("harvey/sessions")
+files, err := ListSessionFiles("agents/sessions")
 for _, f := range files {
     fmt.Printf("%s  %s\n", f.ModTime.Format("2006-01-02 15:04"), f.Name)
 }
@@ -724,8 +714,8 @@ Harvey makes these Fountain-specific adaptations:
 
 ### Organizing Sessions
 
-1. **Use subdirectories:** `harvey/sessions/project-x/`, `harvey/sessions/experiments/`
-2. **Archive old sessions:** Move completed sessions to `harvey/sessions/archive/`
+1. **Use subdirectories:** `agents/sessions/project-x/`, `agents/sessions/experiments/`
+2. **Archive old sessions:** Move completed sessions to `agents/sessions/archive/`
 3. **Tag in filename:** `20260504-llama3.1-research.spmd` to track model used
 4. **Group related sessions:** `20260504-part1.spmd`, `20260504-part2.spmd`
 
@@ -735,6 +725,11 @@ Harvey makes these Fountain-specific adaptations:
 2. **Replay for model comparison:** Use `replay` to compare responses from different models
 3. **Delete with care:** Session files are the only record of your conversations
 4. **Backup important sessions:** Copy `.spmd` files to a safe location
+
+> **Privacy note:** Session files record the full output of shell commands run
+> during the session (via `!` or `/run`), including directory listings and file
+> contents. Review `.spmd` files before sharing them externally or committing
+> them to a public repository.
 
 ### Multi-Model Workflows
 

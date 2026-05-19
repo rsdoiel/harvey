@@ -107,7 +107,7 @@ $ harvey -m llama3:latest
   Harvey  0.0.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ Workspace: /home/user/myproject
-✓ Knowledge base: harvey/knowledge.db
+✓ Knowledge base: agents/knowledge.db
 ✓ Loaded HARVEY.md as system prompt
 
   Checking Ollama at http://localhost:11434...
@@ -269,6 +269,12 @@ harvey > /run make build
   1203 bytes of output added to context (exit 1).
 ```
 
+> **Prompt injection note:** `/run` injects command output directly into the
+> model's context. If that output comes from reading untrusted files, fetching
+> URLs, or processing external content, it may contain adversarial text designed
+> to redirect the model's behavior. Review output before accepting the model's
+> follow-up suggestions.
+
 ## Security
 
 Harvey includes a layered security system for controlling what it can do on
@@ -293,6 +299,13 @@ harvey > /safemode status
 harvey > /safemode off
   Safe mode disabled. All commands are allowed.
 ```
+
+> **When to keep safe mode on:** The default allowlist is a reasonable starting
+> point for read-only workflows (browsing, reviewing, querying). Only run
+> `/safemode off` when you understand what commands the model may attempt —
+> particularly when using unfamiliar models or enabling agent mode. The current
+> safe mode state is always visible in the REPL prompt (`harvey >` = safe,
+> `harvey [unsafe] >` in red = off).
 
 Subcommands: `on`, `off`, `status`, `allow CMD`, `deny CMD`, `reset`.
 
@@ -343,10 +356,11 @@ capacity at a glance.
 
 ### API key filtering
 
-Cloud provider API keys (`ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`,
-`GEMINI_API_KEY`, `MISTRAL_API_KEY`, `OPENAI_API_KEY`) are stripped from the
-environment of every child process started by `!` or `/run`. They are never
-visible to commands Harvey runs on your behalf.
+Cloud provider API keys (`ANTHROPIC_API_KEY`, `COHERE_API_KEY`,
+`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`,
+`MISTRAL_API_KEY`, `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`) are stripped from
+the environment of every child process started by `!` or `/run`. They are
+never visible to commands Harvey runs on your behalf.
 
 ### Configurable timeouts
 

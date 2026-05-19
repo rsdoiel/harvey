@@ -68,12 +68,14 @@ of workspace position:</p>
 </table>
 <h3 id="shell-injection-prevention">Shell injection prevention</h3>
 <p>The <code>!</code> command and <code>/run</code> use
-<code>exec.Command()</code> directly — no shell interpreter is invoked.
-<code>parseCommandLine()</code> rejects shell metacharacters
-(<code>;</code>, <code>|</code>, <code>&amp;</code>, <code>&gt;</code>,
-<code>&lt;</code>, <code>`</code>, <code>$</code>, <code>(</code>,
-<code>)</code>, <code>{</code>, <code>}</code>, <code>[</code>,
-<code>]</code>) before execution.</p>
+<code>exec.Command()</code> directly — no shell interpreter is invoked,
+so shell metacharacters (<code>;</code>, <code>|</code>,
+<code>&amp;</code>, <code>&gt;</code>, <code>&lt;</code>,
+<code>`</code>, <code>$</code>, <code>(</code>, <code>)</code>,
+<code>{</code>, <code>}</code>, <code>[</code>, <code>]</code>) are
+passed as literal string arguments rather than being interpreted.
+<code>parseCommandLine()</code> handles quoted-string splitting only; it
+does not reject these characters.</p>
 <h3 id="api-key-filtering">API key filtering</h3>
 <p>The following environment variables are stripped from all child
 processes (skills, <code>/run</code>, <code>/git</code>):</p>
@@ -160,13 +162,18 @@ sessions.</td>
 </tr>
 </tbody>
 </table>
+<p>Directory walkers (<code>/read-dir</code>, <code>/search</code>,
+file-tree expansion, <code>grep_files</code> tool) skip symbolic links
+entirely — they will not follow a symlink to read or list its
+target.</p>
 <hr />
 <h2 id="reporting-security-issues">Reporting security issues</h2>
-<p>Report vulnerabilities via GitHub Issues: <a
-href="https://github.com/rsdoiel/harvey/issues"
-class="uri">https://github.com/rsdoiel/harvey/issues</a></p>
+<p>Report vulnerabilities privately via GitHub Security Advisories: <a
+href="https://github.com/rsdoiel/harvey/security/advisories/new"
+class="uri">https://github.com/rsdoiel/harvey/security/advisories/new</a></p>
 <p>Include: a description of the issue, steps to reproduce, and your
-assessment of severity.</p>
+assessment of severity. Do not open a public GitHub Issue for a security
+vulnerability until a coordinated fix is available.</p>
 </section>
 </body>
 </html>

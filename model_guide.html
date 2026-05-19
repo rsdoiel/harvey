@@ -536,6 +536,13 @@ in one shot</p>
 question or give a tightly scoped task 3. Review the output before using
 <code>/apply</code></p>
 <hr />
+<h2 id="model-trust-and-supply-chain">Model trust and supply chain</h2>
+<p>Models pulled via <code>ollama pull</code> are contributed by third
+parties and downloaded from the Ollama registry. As with any software
+supply chain, prefer models from well-known organisations or projects
+you can independently verify. Model weights can encode biases or
+unexpected behaviours; test new models in a safe-mode session before
+granting broader permissions.</p>
 <h2 id="keeping-this-guide-current">Keeping this guide current</h2>
 <p>Run <code>/ollama probe</code> after installing new models to update
 <code>agents/model_cache.db</code>. Re-examine the capability columns

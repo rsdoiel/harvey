@@ -878,12 +878,12 @@ Results from test
 	  <skill>
 	    <name>hello-world</name>
 	    <description>This display a simple hello world message via a skill.</description>
-	    <location>/home/rsdoiel/Laboratory/.agents/skills/hello-world/SKILL.md</location>
+	    <location>/home/user/workspace/agents/skills/hello-world/SKILL.md</location>
 	  </skill>
 	  <skill>
 	    <name>fountain-analysis</name>
 	    <description>Read and actively monitor a Harvey Fountain screenplay file, parsing its structure and delivering incremental analysis as new content arrives. Use when the user asks to analyse, watch, tail, or summarise a .fountain session file. Prompts for the filename if not provided in the request.</description>
-	    <location>/home/rsdoiel/Laboratory/.agents/skills/fountain-analysis/SKILL.md</location>
+	    <location>/home/user/workspace/agents/skills/fountain-analysis/SKILL.md</location>
 	  </skill>
 	</available_skills>
 
@@ -934,12 +934,12 @@ Results from test
 	  <skill>
 	    <name>hello-world</name>
 	    <description>This display a simple hello world message via a skill.</description>
-	    <location>/home/rsdoiel/Laboratory/.agents/skills/hello-world/SKILL.md</location>
+	    <location>/home/user/workspace/agents/skills/hello-world/SKILL.md</location>
 	  </skill>
 	  <skill>
 	    <name>fountain-analysis</name>
 	    <description>Read and actively monitor a Harvey Fountain screenplay file, parsing its structure and delivering incremental analysis as new content arrives. Use when the user asks to analyse, watch, tail, or summarise a .fountain session file. Prompts for the filename if not provided in the request.</description>
-	    <location>/home/rsdoiel/Laboratory/.agents/skills/fountain-analysis/SKILL.md</location>
+	    <location>/home/user/workspace/agents/skills/fountain-analysis/SKILL.md</location>
 	  </skill>
 	</available_skills>
 
@@ -962,7 +962,7 @@ Results from test
 	  <skill>
 	    <name>hello-world</name>
 	    <description>This display a simple hello world message via a skill.</description>
-	    <location>/home/rsdoiel/Laboratory/.agents/skills/hello-world/SKILL.md</location>
+	    <location>/home/user/workspace/agents/skills/hello-world/SKILL.md</location>
 	  </skill>
 	</available_skills>
 

@@ -54,7 +54,7 @@ Harvey's **Knowledge Base** is a SQLite3-backed store for **projects**, **observ
 The knowledge base file is located at:
 
 ```
-<workspace>/harvey/knowledge.db
+<workspace>/agents/knowledge.db
 ```
 
 Or at a custom path specified in `harvey.yaml`:
@@ -268,7 +268,7 @@ type KnowledgeBase struct {
 }
 
 // OpenKnowledgeBase opens (or creates) the SQLite knowledge base.
-// customPath overrides the default location (harvey/knowledge.db).
+// customPath overrides the default location (agents/knowledge.db).
 func OpenKnowledgeBase(ws *Workspace, customPath string) (*KnowledgeBase, error)
 
 // Close releases the database connection.
@@ -639,7 +639,7 @@ If the database file is corrupted:
 
 1. **Backup first:**
    ```bash
-   cp harvey/knowledge.db harvey/knowledge.db.bak
+   cp agents/knowledge.db agents/knowledge.db.bak
    ```
 
 2. **Harvey will auto-repair on open:**
@@ -650,10 +650,10 @@ If the database file is corrupted:
 3. **Manual recovery:**
    ```bash
    # Export data first
-   sqlite3 harvey/knowledge.db ".dump" > knowledge.dump
+   sqlite3 agents/knowledge.db ".dump" > knowledge.dump
    
    # Remove corrupted file
-   rm harvey/knowledge.db
+   rm agents/knowledge.db
    
    # Harvey will create a new database on next start
    # Re-import data from dump if needed
@@ -679,7 +679,7 @@ Harvey v0.2+ automatically creates the knowledge base on first use:
 
 1. Start Harvey in your workspace
 2. Run `/kb project add` to create your first project
-3. The database file `harvey/knowledge.db` will be created automatically
+3. The database file `agents/knowledge.db` will be created automatically
 
 ### From File-Based Notes
 
@@ -698,6 +698,8 @@ func MigrateFromMarkdown(kb *KnowledgeBase, dir string) error {
     files, _ := os.ReadDir(dir)
     for _, f := range files {
         if !f.IsDir() && strings.HasSuffix(f.Name(), ".md") {
+            // Note: illustrative only. In production Harvey code, use ws.ReadFile()
+            // instead of os.ReadFile() to enforce workspace sandboxing.
             content, _ := os.ReadFile(filepath.Join(dir, f.Name()))
             
             // Create project from directory name

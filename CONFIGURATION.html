@@ -44,6 +44,12 @@ subsystems: knowledge base, sessions, skills, RAG stores, and model
 cache.</p>
 <p><strong>Locations:</strong> Workspace:
 <code>&lt;workspace&gt;/agents/harvey.yaml</code></p>
+<blockquote>
+<p><strong>Version control note:</strong> If your workspace is a git
+repository, add <code>agents/</code> to <code>.gitignore</code>. The
+directory contains configuration, databases, and session recordings that
+should not be committed to version control.</p>
+</blockquote>
 <p><strong>Format:</strong> YAML</p>
 <p><strong>Example:</strong></p>
 <div class="sourceCode" id="cb2"><pre
@@ -263,7 +269,7 @@ persisted in <code>harvey.yaml</code> by the <code>/safemode</code>,
 <td><code>safe_mode</code></td>
 <td>boolean</td>
 <td>No</td>
-<td><code>false</code></td>
+<td><code>true</code></td>
 <td>Enable command allowlist (see <code>/safemode</code>)</td>
 </tr>
 <tr>
@@ -303,6 +309,15 @@ means no timeout</td>
 <code>tail</code>, <code>wc</code>, <code>find</code>,
 <code>stat</code>, <code>jq</code>, <code>htmlq</code>,
 <code>bat</code>, <code>batcat</code></p>
+<blockquote>
+<p><strong>Security note:</strong> <code>safe_mode</code> defaults to
+<code>true</code>. The default allowlist covers read-only inspection
+commands. Add commands with <code>/safemode allow CMD</code> as your
+workflow requires. Setting <code>safe_mode: false</code> in
+<code>harvey.yaml</code> permits the LLM to run any command in
+<code>$PATH</code> — do this only in isolated environments you
+control.</p>
+</blockquote>
 <p><strong>Timeout format</strong> (<code>run_timeout</code>,
 <code>ollama_timeout</code>): Go duration string or plain integer
 seconds. Examples: <code>"5m"</code>, <code>"300"</code>,
@@ -354,7 +369,7 @@ class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;endpoints&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;pi2&quot;</span><span class="fu">,</span></span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama://192.168.1.12:11434&quot;</span><span class="fu">,</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama://192.0.2.12:11434&quot;</span><span class="fu">,</span></span>
 <span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;llama3.1:8b&quot;</span><span class="fu">,</span></span>
 <span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama&quot;</span></span>
 <span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
@@ -366,7 +381,7 @@ class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="
 <span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
 <span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
 <span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;pi3&quot;</span><span class="fu">,</span></span>
-<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama://192.168.1.13:11434&quot;</span><span class="fu">,</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama://192.0.2.13:11434&quot;</span><span class="fu">,</span></span>
 <span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;mistral:latest&quot;</span><span class="fu">,</span></span>
 <span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama&quot;</span></span>
 <span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
@@ -611,7 +626,13 @@ injecting the system prompt:</p>
 <p><strong>Notes:</strong> - The prompt is re-injected after
 <code>/clear</code> - Pinned context (from <code>/context add</code>) is
 injected after the system prompt - Skills catalog can be injected into
-the prompt via configuration</p>
+the prompt via configuration - <strong>Cloud privacy:</strong> When a
+cloud route (<code>@claude</code>, <code>@openrouter</code>, etc.) is
+active, HARVEY.md is sent to the remote provider verbatim. Avoid
+hardcoding absolute local paths in HARVEY.md. Use the
+<code>&lt;!-- @files --&gt;</code> dynamic marker instead — it injects a
+workspace-relative file tree without exposing your home directory
+layout.</p>
 <h2 id="environment-variables">Environment Variables</h2>
 <p>Harvey reads environment variables for cloud provider API keys. These
 are optional and only needed when using the corresponding route
@@ -700,7 +721,7 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Register remote endpoints</span></span>
 <span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /route <span class="ex">add</span> pi2 ollama://192.168.1.12:11434 llama3.1:8b</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /route <span class="ex">add</span> pi2 ollama://192.0.2.12:11434 llama3.1:8b</span>
 <span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
 <span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /route <span class="ex">on</span></span>
 <span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a></span>
@@ -748,6 +769,11 @@ automatically - Check <code>agents/model_cache.db</code> exists - Run
 <code>/rag switch NAME</code> to activate it - Verify the database file
 exists at the specified path</p>
 <h3 id="verification-commands">Verification Commands</h3>
+<blockquote>
+<p><strong>Reminder:</strong> Add <code>agents/</code> to
+<code>.gitignore</code> before committing. These files contain endpoint
+URLs, model names, and database state that should stay local.</p>
+</blockquote>
 <div class="sourceCode" id="cb9"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check workspace routes</span></span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--help</span> routing  <span class="co"># or: cat agents/routes.json</span></span>

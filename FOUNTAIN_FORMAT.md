@@ -189,6 +189,11 @@ character/dialogue line. It provides context for the scene.
 - `Model: <identifier>` — The model/route for this interaction
 - `Workspace: <path>` — The workspace directory
 
+> **Privacy note:** `Workspace:` records the absolute path of the user's local
+> workspace directory. Review `.spmd` session files before sharing them externally
+> or committing them to a repository — they contain this path and the full output
+> of any shell commands run during the session.
+
 **Optional fields:**
 - Any additional context (e.g., "Connected: Ollama (llama3:latest)")
 - Parenthetical notes about @mentions: `(@modelname mentioned but does not respond)`

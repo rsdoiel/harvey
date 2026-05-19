@@ -37,10 +37,10 @@ Harvey retains full context of the exchange.
 
 ```bash
 # In Harvey REPL:
-harvey> /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
+harvey> /route add pi2 ollama://192.0.2.12:11434 llama3.1:8b
 
 # Or from shell:
-harvey --route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
+harvey --route add pi2 ollama://192.0.2.12:11434 llama3.1:8b
 ```
 
 ### Enable Routing
@@ -70,10 +70,15 @@ Harvey supports **10 endpoint types** across local and cloud providers:
 | Type | Scheme | Backend | Default Port | Notes |
 |------|--------|---------|--------------|-------|
 | Ollama | `ollama://host:port` | Ollama | 11434 | Official Ollama server |
-| Ollama | `http://host:port` | Ollama | 11434 | HTTP (insecure) |
+| Ollama | `http://host:port` | Ollama | 11434 | HTTP — prompts transmitted in plaintext |
 | Ollama | `https://host:port` | Ollama | 11434 | HTTPS (secure) |
 | Llamafile | `llamafile://host:port` | Llamafile | 8080 | OpenAI-compatible |
 | llama.cpp | `llamacpp://host:port` | llama.cpp | 8080 | OpenAI-compatible |
+
+> **Network privacy:** When using `http://` for a remote Ollama server, all
+> prompts and responses travel in plaintext and can be intercepted on the
+> network segment between Harvey and the server. Use `https://` or an SSH
+> tunnel for any Ollama endpoint that is not `localhost`.
 
 ### Cloud Providers (API Key Required)
 
@@ -102,13 +107,13 @@ inside the workspace. There is no global route configuration.
   "endpoints": [
     {
       "name": "pi2",
-      "url": "ollama://192.168.1.12:11434",
+      "url": "ollama://192.0.2.12:11434",
       "model": "llama3.1:8b",
       "kind": "ollama"
     },
     {
       "name": "pi3",
-      "url": "ollama://192.168.1.13:11434",
+      "url": "ollama://192.0.2.13:11434",
       "model": "mistral:latest",
       "kind": "ollama"
     },
@@ -146,8 +151,8 @@ Register a new remote endpoint.
 
 **Examples:**
 ```
-/route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
-/route add pi2 ollama://192.168.1.12:11434
+/route add pi2 ollama://192.0.2.12:11434 llama3.1:8b
+/route add pi2 ollama://192.0.2.12:11434
 /route add claude anthropic:// claude-3-haiku
 /route add myollama http://localhost:11434
 /route add secure https://my-ollama.example.com:443
@@ -176,9 +181,9 @@ List all registered endpoints with reachability status.
 ```
   Endpoints registered:
 
-  ✓  @pi2      ollama://192.168.1.12:11434  llama3.1:8b
-  ✓  @pi3      ollama://192.168.1.13:11434  mistral:latest
-  ✗  @pi4      ollama://192.168.1.14:11434  (unreachable)
+  ✓  @pi2      ollama://192.0.2.12:11434  llama3.1:8b
+  ✓  @pi3      ollama://192.0.2.13:11434  mistral:latest
+  ✗  @pi4      ollama://192.0.2.14:11434  (unreachable)
   ✓  @claude   anthropic://                   claude-3-haiku
   ?  @gemini   gemini://                      (API key not set)
 ```
@@ -215,7 +220,7 @@ model names are available at that endpoint.
 **Examples:**
 ```
 /route models anthropic://
-/route models ollama://192.168.1.12:11434
+/route models ollama://192.0.2.12:11434
 ```
 
 ### `/route probe NAME`
@@ -256,9 +261,9 @@ support tool use (Anthropic, OpenAI, Mistral). Persisted to `agents/routes.json`
 
 ```
 # Register cluster nodes
-harvey> /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
-harvey> /route add pi3 ollama://192.168.1.13:11434 mistral:latest
-harvey> /route add pi4 ollama://192.168.1.14:11434 phi3:latest
+harvey> /route add pi2 ollama://192.0.2.12:11434 llama3.1:8b
+harvey> /route add pi3 ollama://192.0.2.13:11434 mistral:latest
+harvey> /route add pi4 ollama://192.0.2.14:11434 phi3:latest
 
 # Enable routing
 harvey> /route on
@@ -344,16 +349,16 @@ The `@claude` prefix is removed from the sent prompt.
 
 **By hardware:**
 ```
-/route add pi2 ollama://192.168.1.12:11434
-/route add pi3 ollama://192.168.1.13:11434
-/route add pi4 ollama://192.168.1.14:11434
+/route add pi2 ollama://192.0.2.12:11434
+/route add pi3 ollama://192.0.2.13:11434
+/route add pi4 ollama://192.0.2.14:11434
 ```
 
 **By capability:**
 ```
-/route add coder ollama://192.168.1.100:11434 codellama:13b
-/route add reasoner ollama://192.168.1.100:11434 llama3:70b
-/route add embedder ollama://192.168.1.100:11434 nomic-embed-text
+/route add coder ollama://192.0.2.100:11434 codellama:13b
+/route add reasoner ollama://192.0.2.100:11434 llama3:70b
+/route add embedder ollama://192.0.2.100:11434 nomic-embed-text
 ```
 
 **By project:**
@@ -416,7 +421,7 @@ ssh pi2 ollama --version
 ssh pi2 ollama serve
 
 # Verify connectivity
-curl http://192.168.1.12:11434/api/tags
+curl http://192.0.2.12:11434/api/tags
 ```
 
 ### "API key not configured for @claude"
@@ -425,14 +430,26 @@ curl http://192.168.1.12:11434/api/tags
 
 **Fix:**
 ```bash
-# For current session
-export ANTHROPIC_API_KEY=sk-...
+# For current session only
+export ANTHROPIC_API_KEY=YOUR_KEY_HERE
 harvey
-
-# Permanently (add to ~/.bashrc or ~/.zshrc)
-echo 'export ANTHROPIC_API_KEY=sk-...' >> ~/.bashrc
-source ~/.bashrc
 ```
+
+> **Security note:** Avoid writing API keys into `~/.bashrc` or `~/.zshrc`. Shell
+> profile files may be world-readable on shared systems, captured by backup tools, or
+> recorded by terminal loggers. Prefer a secrets manager and load the key at session
+> start:
+>
+> ```bash
+> # macOS Keychain
+> export ANTHROPIC_API_KEY=$(security find-generic-password -s harvey-anthropic -w)
+>
+> # HashiCorp Vault
+> eval "$(vault read -f json secret/harvey/anthropic)"
+> ```
+>
+> If you must use a shell profile, run `chmod 600 ~/.bashrc` and avoid committing
+> dotfiles to a public repository.
 
 ### "Model not available on @pi2"
 
@@ -460,7 +477,7 @@ Routes can be managed programmatically via the `RouteRegistry` type in Go code.
 rr := agent.Routes
 rr.Add(&RouteEndpoint{
     Name: "pi5",
-    URL:  "ollama://192.168.1.15:11434",
+    URL:  "ollama://192.0.2.15:11434",
     Model: "llama3.1:8b",
     Kind: KindOllama,
 })
@@ -476,12 +493,26 @@ SaveRouteConfig(rr)
 **Never commit API keys to version control.**
 
 **Recommended approach:**
-```bash
-# Set in shell profile (not in repository)
-echo 'export ANTHROPIC_API_KEY=...' >> ~/.bashrc
 
-# Or use a secrets manager
-eval "$(vault read -f json secret/harvey/anthropic)"
+> **Security note:** Avoid writing API keys into `~/.bashrc` or `~/.zshrc`. Shell
+> profile files may be world-readable on shared systems, captured by backup tools, or
+> recorded by terminal loggers. Prefer a secrets manager:
+>
+> ```bash
+> # macOS Keychain
+> export ANTHROPIC_API_KEY=$(security find-generic-password -s harvey-anthropic -w)
+>
+> # HashiCorp Vault
+> eval "$(vault read -f json secret/harvey/anthropic)"
+> ```
+>
+> If you must use a shell profile, run `chmod 600 ~/.bashrc` and avoid committing
+> dotfiles to a public repository.
+
+For a current session only:
+```bash
+export ANTHROPIC_API_KEY=YOUR_KEY_HERE
+harvey
 ```
 
 **Environment variable precedence:**
@@ -521,8 +552,8 @@ RSDOIEL
 
 HARVEY
 Endpoints registered:
-  ✓  @pi2      ollama://192.168.1.12:11434  llama3.1:8b
-  ✓  @pi3      ollama://192.168.1.13:11434  mistral:latest
+  ✓  @pi2      ollama://192.0.2.12:11434  llama3.1:8b
+  ✓  @pi3      ollama://192.0.2.13:11434  mistral:latest
   ✓  @claude   anthropic://                   claude-3-haiku
 
 RSDOIEL

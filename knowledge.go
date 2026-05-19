@@ -80,7 +80,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
 
 /** KnowledgeBase is a SQLite3-backed store for projects, observations, and
  * concepts within a Harvey workspace. The database file lives at
- * <workspace>/harvey/knowledge.db (or a path overridden in harvey.yaml) and
+ * <workspace>/agents/knowledge.db (or a path overridden in harvey.yaml) and
  * is created automatically on first use.
  *
  * Example:
@@ -148,13 +148,13 @@ type Concept struct {
 }
 
 /** OpenKnowledgeBase opens (or creates) the SQLite knowledge base. customPath
- * overrides the default location (harvey/knowledge.db inside the workspace);
+ * overrides the default location (agents/knowledge.db inside the workspace);
  * pass an empty string to use the default. The schema is applied on every open
  * so that tables are created on first use without manual migration.
  *
  * Parameters:
  *   ws         (*Workspace) — the Harvey workspace that owns the database file.
- *   customPath (string)     — override path; empty = harvey/knowledge.db.
+ *   customPath (string)     — override path; empty = agents/knowledge.db.
  *
  * Returns:
  *   *KnowledgeBase — ready-to-use knowledge base handle.

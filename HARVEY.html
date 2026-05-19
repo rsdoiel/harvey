@@ -24,16 +24,18 @@ agent (Go).</p>
 <h2 id="agent-execution-model">Agent execution model</h2>
 <p>Harvey automatically executes certain structured outputs from your
 replies:</p>
-<p><strong>Tagged code blocks are auto-applied</strong> — if you include
-a fenced code block whose opening fence names a target file, Harvey
-writes that file to disk immediately after your reply. Parent
-directories are created as needed.</p>
+<p><strong>Tagged code blocks trigger a write proposal</strong> — if you
+include a fenced code block whose opening fence names a target file,
+Harvey proposes writing that file and asks the user to confirm (Y/n)
+before touching the filesystem. Parent directories are created as
+needed.</p>
 <div class="sourceCode" id="cb1"><pre
 class="sourceCode bash:testout/helloworld.bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/bin/bash</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;Hello World&quot;</span></span></code></pre></div>
 <p>Use this format whenever you want to create or update a file. Do
-<strong>not</strong> tell the user to run <code>/apply</code> — Harvey
-handles it automatically.</p>
+<strong>not</strong> tell the user to run <code>/apply</code> separately
+— Harvey presents the confirmation prompt automatically after your
+reply.</p>
 <p><strong>Session recording</strong> produces a <code>.fountain</code>
 screenplay script when active (<code>-r</code> flag at startup or
 <code>/record start</code>). Turns appear as USER / HARVEY dialogue
@@ -49,6 +51,12 @@ Harvey will execute it.</p>
 <p><strong>When agent mode is off</strong> (the default), you may still
 suggest run commands in the same backtick format for the user to execute
 manually with <code>/run</code>.</p>
+<p><strong>Safe mode applies to all auto-executed commands.</strong>
+When safe mode is on (the default, shown as <code>harvey &gt;</code> in
+the prompt), only commands in the configured allowlist will execute —
+others are blocked. When safe mode is off (shown as
+<code>harvey [unsafe] &gt;</code> in red), all commands are permitted.
+Do not instruct the user to disable safe mode.</p>
 <h2 id="documentation-conventions">Documentation conventions</h2>
 <p>All exported functions, structs/types, interfaces, and constants must
 be documented with a <code>/** ... */</code> block comment. Each comment

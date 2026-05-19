@@ -26,7 +26,7 @@ Work through these documents in order to understand Harvey completely.
 9. [Retrieval-Augmented Generation](Using_RAGs_with_Harvey.md) — retrieval-augmented generation
 10. [Knowledge Base](KNOWLEDGE_BASE.md) — SQLite-backed knowledge base
 11. [Sessions](SESSIONS.md) — session recording and the Fountain format
-12. [Fountain Format](FOUNTAIN_FORMAT.md) — Fountain screenplay format specification
+12. [Fountain files](FOUNTAIN_FORMAT.md) — Fountain screenplay format as related to describing human model system interactions
 13. [Model Cache](MODEL_CACHE.md) — model capability caching
 14. [Architecture](ARCHITECTURE.md) — component map and internal design
 15. [Testing](TESTING.md) — writing and running tests
@@ -51,7 +51,6 @@ Work through these documents in order to understand Harvey completely.
 - [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) — schema, FTS5 search, CLI commands, and Go API
 - [SESSIONS.md](SESSIONS.md) — session recording, file structure, and programmatic access
 - [MODEL_CACHE.md](MODEL_CACHE.md) — architecture, database schema, Go API, and probing mechanisms
-- [delegate_to_harvey.md](delegate_to_harvey.md) — delegating tasks to Harvey
 - [search.md](search.md) — search functionality
 - [further_reading.md](further_reading.md) — additional reading and resources
 

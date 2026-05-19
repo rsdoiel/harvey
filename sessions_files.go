@@ -97,7 +97,7 @@ func ExtractModelFromSession(path string) (string, error) {
 
 /** ResolveSessionsDir returns the absolute path to the sessions directory,
  * creating it if it does not exist. customPath overrides the default location
- * (harvey/sessions/ inside the workspace); pass an empty string for the default.
+ * (agents/sessions/ inside the workspace); pass an empty string for the default.
  *
  * Parameters:
  *   ws         (*Workspace) — the Harvey workspace.
