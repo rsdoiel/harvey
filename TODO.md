@@ -5,7 +5,7 @@
 
 ## Next Steps (upcoming features, v0.0.5)
 
-- [ ] PDF extraction — shared internal `pdfExtract(file, pages)` function used by both commands
+- [X] PDF extraction — shared internal `pdfExtract(file, pages)` function used by both commands
       below. Uses three poppler utilities in sequence:
       1. `pdfinfo` — metadata (title, author, page count, creation date)
       2. `pdftotext -layout` — text extraction preserving spatial structure (prose, code, tables)
@@ -15,20 +15,20 @@
       should be flagged for follow-up with a vision-capable route. Poppler (pdftotext, pdfinfo,
       pdfimages) is the chosen backend; LibreOffice and Pandoc are not suitable for PDF input.
 
-- [ ] `/read_pdf FILE [PAGES]` slash command — context injection path. Calls `pdfExtract`
+- [X] `/read_pdf FILE [PAGES]` slash command — context injection path. Calls `pdfExtract`
       with an optional page range (e.g. `40-55`). Enforces a page cap (~20 pages) to stay
       within context window limits. Output is injected into the conversation as a user message
       so the model can reason about the content immediately. Ephemeral — not stored anywhere.
       Example: `/read_pdf ~/docs/oberon2.pdf 49-63`
 
-- [ ] `/rag ingest FILE.pdf` subcommand — RAG ingestion path. Calls `pdfExtract` on the full
+- [X] `/rag ingest FILE.pdf` subcommand — RAG ingestion path. Calls `pdfExtract` on the full
       document (no page cap), chunks the output by paragraph/section, attaches per-chunk metadata
       (source file, page number, document title from pdfinfo), embeds, and stores in the active
       RAG store. Pages flagged as diagram-heavy by pdfimages are stored with an incomplete-content
       marker so retrieval results can surface the caveat. Companion to `/read_pdf`; both share
       `pdfExtract` but serve different outputs (chat context vs. RAG database).
 
-- [ ] Attached file support — `/attach FILE` command that includes a file as multimodal content
+- [X] Attached file support — `/attach FILE` command that includes a file as multimodal content
       in the next chat turn. For cloud routes with CompletionPDF/CompletionImage support
       (Anthropic, Mistral, Gemini), sends the raw file bytes as a ContentPart so the model
       processes it natively. For local/text-only models, falls back to text extraction.
