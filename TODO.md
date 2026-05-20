@@ -13,10 +13,10 @@
   Possible fixes: add a `write_file` built-in tool to the tool registry; add `tee` to
   `allowed_commands`; implement code-block extraction with an interactive write prompt.
 
-## Next Steps (upcoming features, v0.0.5)
+## Up Next (features for v0.0.6)
 
-- [x] The file tree built-in command is missing
-- [x] The `/rag ingest` method should be able to read the documents in the folder and ingest them one by one reporting progress. If the documents are large (> 100K), the ingest command to show the list of documents to be read and confirm before starting through the list
+- [ ] Add in built-in tool support dates, times and durations
+
 
 ## Someday, maybe ideas
 

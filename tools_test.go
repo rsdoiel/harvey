@@ -245,6 +245,32 @@ func TestBuiltinTool_WriteFile(t *testing.T) {
 	}
 }
 
+// TestBuiltinTool_WriteFile_emptyPathError checks that an empty or missing
+// path returns an error message that includes a concrete example, giving the
+// model enough context to retry with a correct argument.
+func TestBuiltinTool_WriteFile_emptyPathError(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	for _, argsJSON := range []string{
+		`{"path":"","content":"x"}`,
+		`{"content":"x"}`,
+	} {
+		_, err := r.Dispatch(context.Background(), "write_file", argsJSON, 0)
+		if err == nil {
+			t.Fatalf("args %s: expected error for empty/missing path", argsJSON)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "path") {
+			t.Errorf("args %s: error should mention 'path', got: %s", argsJSON, msg)
+		}
+		if !strings.Contains(msg, ".md") && !strings.Contains(msg, "e.g.") {
+			t.Errorf("args %s: error should include a concrete example, got: %s", argsJSON, msg)
+		}
+	}
+}
+
 func TestBuiltinTool_ListFiles(t *testing.T) {
 	a, root := makeTestAgent(t)
 	os.WriteFile(filepath.Join(root, "a.go"), []byte(""), 0o644)

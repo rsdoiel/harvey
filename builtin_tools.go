@@ -108,7 +108,9 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 		func(ctx context.Context, args map[string]any) (string, error) {
 			p, ok := args["path"].(string)
 			if !ok || p == "" {
-				return "", fmt.Errorf("write_file: path must be a non-empty string")
+				return "", fmt.Errorf("write_file: 'path' is required and must be a non-empty string — " +
+					"provide the destination path relative to the workspace root " +
+					"(e.g. {\"path\": \"output.md\", \"content\": \"...\"})")
 			}
 			if len(p) > maxInputPath {
 				return "", fmt.Errorf("write_file: path exceeds maximum length of %d bytes", maxInputPath)
