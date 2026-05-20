@@ -46,6 +46,18 @@ func TestLooksLikePath_knownExtensions(t *testing.T) {
 	}
 }
 
+// TestLooksLikePath_bashExtension confirms that .bash files are recognised as
+// paths (Fix A: .bash was absent from knownExts, so `parse_pdf.bash` was not
+// treated as a tagged target).
+func TestLooksLikePath_bashExtension(t *testing.T) {
+	cases := []string{"parse_pdf.bash", "testout/hello.bash"}
+	for _, c := range cases {
+		if !looksLikePath(c) {
+			t.Errorf("looksLikePath(%q) = false, want true (.bash should be a known extension)", c)
+		}
+	}
+}
+
 func TestLooksLikePath_languageIdentifiers(t *testing.T) {
 	cases := []string{"go", "python", "bash", "typescript", "rust"}
 	for _, c := range cases {

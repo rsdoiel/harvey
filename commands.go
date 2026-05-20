@@ -2782,6 +2782,30 @@ func cmdWrite(a *Agent, args []string, out io.Writer) error {
 	return nil
 }
 
+// suggestPathFromHistory scans the last user message in history for a single
+// token that looks like a file path (via looksLikePath). Returns that token
+// when exactly one candidate is found, or "" when there are zero or more than
+// one (ambiguous). Punctuation and backtick quotes are stripped before testing.
+func suggestPathFromHistory(history []Message) string {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role != "user" {
+			continue
+		}
+		var candidates []string
+		for _, tok := range strings.Fields(history[i].Content) {
+			tok = strings.Trim(tok, ".,;:!?\"'`()")
+			if looksLikePath(tok) {
+				candidates = append(candidates, tok)
+			}
+		}
+		if len(candidates) == 1 {
+			return candidates[0]
+		}
+		return ""
+	}
+	return ""
+}
+
 // extractCodeBlock finds the first fenced code block (``` ... ```) in text
 // and returns its contents without the fence lines. Returns ("", false) if
 // no fenced block is found.
@@ -3148,7 +3172,7 @@ func looksLikePath(s string) bool {
 	}
 	knownExts := []string{
 		".go", ".ts", ".js", ".py", ".rb", ".md", ".txt",
-		".json", ".yaml", ".yml", ".sh", ".sql", ".html",
+		".json", ".yaml", ".yml", ".sh", ".bash", ".sql", ".html",
 		".css", ".toml", ".mod", ".sum", ".env",
 	}
 	for _, ext := range knownExts {
@@ -4204,6 +4228,49 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 		} else {
 			fmt.Fprintf(out, "  ✓ wrote %s (%d bytes)\n", b.path, len(b.content))
 			a.logAction("write", b.path, choice, "ok")
+		}
+	}
+
+	// 2. Fallback for models that ignore the tagged-fence convention: if no
+	// tagged blocks were found but the reply contains a plain fenced code block,
+	// offer the user an interactive write prompt.
+	if len(blocks) == 0 {
+		content, ok := extractCodeBlock(reply)
+		if ok {
+			var dest string
+			if suggested := suggestPathFromHistory(a.History); suggested != "" {
+				// Path inferred from conversation — show the promptAction box
+				// (same UX as tagged blocks: Enter = yes, n = skip).
+				choice := promptAction(reader, out, "Write: "+suggested, content)
+				if choice != actionNo && choice != actionQuit {
+					dest = suggested
+				}
+			} else {
+				// No path known — ask the user to supply one.
+				fmt.Fprint(out, "  Untagged code block found. Write to file? (enter path, or press Enter to skip)\n  Path: ")
+				line, _ := reader.ReadString('\n')
+				dest = strings.TrimSpace(line)
+			}
+			if dest != "" {
+				if !a.CheckWritePermission(dest) {
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileWrite, dest, StatusDenied)
+					}
+					fmt.Fprintf(out, "  write permission denied for %s\n", dest)
+				} else if err := a.Workspace.WriteFile(dest, []byte(content), 0o644); err != nil {
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileWrite, dest, StatusError)
+					}
+					fmt.Fprintf(out, "  ✗ %s: %v\n", dest, err)
+					a.logAction("write", dest, actionYes, "error: "+err.Error())
+				} else {
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileWrite, dest, StatusSuccess)
+					}
+					fmt.Fprintf(out, "  ✓ wrote %s (%d bytes)\n", dest, len(content))
+					a.logAction("write", dest, actionYes, "ok")
+				}
+			}
 		}
 	}
 

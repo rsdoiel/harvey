@@ -383,6 +383,161 @@ func TestAutoExecuteReply_noRunFromSuggestions(t *testing.T) {
 	}
 }
 
+// TestAutoExecuteReply_untaggedFallback_writes confirms that a plain fenced
+// code block (no path in the fence line) is offered to the user for writing
+// when no tagged blocks are present — the APERTUS-TOOLS failure mode.
+func TestAutoExecuteReply_untaggedFallback_writes(t *testing.T) {
+	a := newTestAgent(t)
+	// Plain bash fence — no path tag, exactly what APERTUS-TOOLS emits.
+	reply := "Here is your script:\n\n```bash\n#!/bin/bash\necho hello\n```\n"
+
+	var out strings.Builder
+	// Simulate user typing "parse_pdf.sh" at the path prompt.
+	a.autoExecuteReply(reply, &out, newReader("parse_pdf.sh\n"), context.Background())
+
+	data, err := a.Workspace.ReadFile("parse_pdf.sh")
+	if err != nil {
+		t.Fatalf("file not created by untagged fallback: %v", err)
+	}
+	if !strings.Contains(string(data), "echo hello") {
+		t.Errorf("unexpected file content: %q", data)
+	}
+	if !strings.Contains(out.String(), "✓ wrote") {
+		t.Errorf("expected write confirmation; got: %s", out.String())
+	}
+}
+
+// TestAutoExecuteReply_untaggedFallback_skip confirms that pressing Enter
+// (empty path) skips the write without creating any file.
+func TestAutoExecuteReply_untaggedFallback_skip(t *testing.T) {
+	a := newTestAgent(t)
+	reply := "```bash\necho skip\n```\n"
+
+	var out strings.Builder
+	// Empty input → skip.
+	a.autoExecuteReply(reply, &out, newReader("\n"), context.Background())
+
+	if _, err := a.Workspace.ReadFile("parse_pdf.sh"); err == nil {
+		t.Error("expected no file created when user skips the untagged fallback")
+	}
+}
+
+// TestAutoExecuteReply_untaggedFallback_noBlockNoPrompt confirms that plain
+// prose (no fenced block at all) does not trigger the fallback prompt.
+func TestAutoExecuteReply_untaggedFallback_noBlockNoPrompt(t *testing.T) {
+	a := newTestAgent(t)
+	reply := "Here is an explanation with no code block."
+
+	var out strings.Builder
+	a.autoExecuteReply(reply, &out, newReader(""), context.Background())
+
+	// Nothing should be written and the output should contain no path prompt.
+	if strings.Contains(out.String(), "Write to file") {
+		t.Error("prompt should not appear when there is no code block")
+	}
+}
+
+// TestAutoExecuteReply_untaggedFallback_suggestedPath_confirms checks that when
+// the last user message contains an unambiguous filename, the promptAction box
+// is shown pre-filled with that path and Enter (yes) writes the file.
+func TestAutoExecuteReply_untaggedFallback_suggestedPath_confirms(t *testing.T) {
+	a := newTestAgent(t)
+	a.History = []Message{
+		{Role: "user", Content: "Write the bash script parse_pdf.sh to the workspace directory."},
+		{Role: "assistant", Content: ""},
+	}
+	reply := "Here is your script:\n\n```bash\n#!/bin/bash\necho hello\n```\n"
+
+	var out strings.Builder
+	// Enter = yes (accept the suggested path via promptAction).
+	a.autoExecuteReply(reply, &out, newReader("\n"), context.Background())
+
+	data, err := a.Workspace.ReadFile("parse_pdf.sh")
+	if err != nil {
+		t.Fatalf("file not created when user accepted suggested path: %v", err)
+	}
+	if !strings.Contains(string(data), "echo hello") {
+		t.Errorf("unexpected file content: %q", data)
+	}
+	// The promptAction box should include the suggested filename.
+	if !strings.Contains(out.String(), "parse_pdf.sh") {
+		t.Errorf("expected suggested filename in prompt output; got: %s", out.String())
+	}
+}
+
+// TestAutoExecuteReply_untaggedFallback_suggestedPath_declines checks that "n"
+// at the promptAction box leaves the file unwritten.
+func TestAutoExecuteReply_untaggedFallback_suggestedPath_declines(t *testing.T) {
+	a := newTestAgent(t)
+	a.History = []Message{
+		{Role: "user", Content: "Write parse_pdf.sh to the workspace."},
+		{Role: "assistant", Content: ""},
+	}
+	reply := "```bash\n#!/bin/bash\necho hello\n```\n"
+
+	var out strings.Builder
+	a.autoExecuteReply(reply, &out, newReader("n\n"), context.Background())
+
+	if _, err := a.Workspace.ReadFile("parse_pdf.sh"); err == nil {
+		t.Error("file should not be created when user declines the suggested path")
+	}
+}
+
+// ─── suggestPathFromHistory ───────────────────────────────────────────────────
+
+func TestSuggestPathFromHistory_findsFilename(t *testing.T) {
+	history := []Message{
+		{Role: "user", Content: "Write the bash script parse_pdf.sh to the workspace directory."},
+	}
+	if got := suggestPathFromHistory(history); got != "parse_pdf.sh" {
+		t.Errorf("got %q, want parse_pdf.sh", got)
+	}
+}
+
+func TestSuggestPathFromHistory_noPath(t *testing.T) {
+	history := []Message{
+		{Role: "user", Content: "What can you tell me about PDF parsing strategies?"},
+	}
+	if got := suggestPathFromHistory(history); got != "" {
+		t.Errorf("got %q, want empty string for prose-only message", got)
+	}
+}
+
+func TestSuggestPathFromHistory_usesLastUserMessage(t *testing.T) {
+	history := []Message{
+		{Role: "user", Content: "Read old.sh for me."},
+		{Role: "assistant", Content: "Here is the content…"},
+		{Role: "user", Content: "Now write it as new.sh"},
+	}
+	if got := suggestPathFromHistory(history); got != "new.sh" {
+		t.Errorf("got %q, want new.sh (from last user message)", got)
+	}
+}
+
+func TestSuggestPathFromHistory_ambiguousReturnsEmpty(t *testing.T) {
+	history := []Message{
+		{Role: "user", Content: "Write parse_pdf.sh and also rename old_parser.sh"},
+	}
+	if got := suggestPathFromHistory(history); got != "" {
+		t.Errorf("got %q, want empty string for ambiguous (multiple path tokens)", got)
+	}
+}
+
+func TestSuggestPathFromHistory_stripsQuotesAndPunctuation(t *testing.T) {
+	history := []Message{
+		{Role: "user", Content: "Please write `parse_pdf.sh` to disk."},
+	}
+	if got := suggestPathFromHistory(history); got != "parse_pdf.sh" {
+		t.Errorf("got %q, want parse_pdf.sh (backtick-quoted token)", got)
+	}
+}
+
+func TestSuggestPathFromHistory_emptyHistory(t *testing.T) {
+	if got := suggestPathFromHistory(nil); got != "" {
+		t.Errorf("got %q, want empty string for nil history", got)
+	}
+}
+
 // ─── /read-dir ────────────────────────────────────────────────────────────────
 
 func writeWSFile(t *testing.T, a *Agent, rel string, content []byte) {

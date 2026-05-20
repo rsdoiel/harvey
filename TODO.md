@@ -3,6 +3,16 @@
 
 ## Bugs
 
+- [ ] **Model cannot write files to workspace** — When asked to create a file, models respond
+  with a markdown code block instead of writing to disk. Two causes: (1) no write-capable
+  command in `allowed_commands` (only read-only tools like `ls`, `cat`, `grep` are listed),
+  and (2) small local models (e.g. APERTUS-TOOLS) do not reliably invoke tool-call protocol
+  for action requests. Debug log confirms zero `tool_call`/`command_exec` events during a
+  full session where the user explicitly requested file creation. See
+  [dev-notes/file-write-failure-diagnosis-20260520.md](dev-notes/file-write-failure-diagnosis-20260520.md).
+  Possible fixes: add a `write_file` built-in tool to the tool registry; add `tee` to
+  `allowed_commands`; implement code-block extraction with an interactive write prompt.
+
 ## Next Steps (upcoming features, v0.0.5)
 
 - [x] The file tree built-in command is missing
