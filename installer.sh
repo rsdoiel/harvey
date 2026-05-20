@@ -1,5 +1,5 @@
 #!/bin/sh
-# generated with CMTools 0.0.5 ea501fb
+# generated with CMTools 0.0.5 4d0a165
 
 #
 # Set the package name and version to install

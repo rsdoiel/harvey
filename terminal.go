@@ -1053,12 +1053,13 @@ func askYesNo(reader *bufio.Reader, out io.Writer, prompt string, defaultYes boo
 
 // buildCompleter returns a completion function for the LineEditor. It examines
 // the text typed up to the cursor and returns candidate completions for the
-// last word, covering three contexts:
+// last word, covering four contexts:
 //
 //   - Ollama model names and aliases: for `/ollama use`, `/ollama probe`,
 //     `/ollama alias set` (third token position)
 //   - Route @names: when input starts with "@"
 //   - Slash command names: when the first token starts with "/"
+//   - Workspace file/directory paths: for file-system commands
 func (a *Agent) buildCompleter() func(string) []string {
 	return func(line string) []string {
 		tokens := strings.Fields(line)
@@ -1107,8 +1108,119 @@ func (a *Agent) buildCompleter() func(string) []string {
 			}
 		}
 
+		// File-system path completion for workspace-aware commands.
+		if len(tokens) >= 1 && a.Workspace != nil {
+			cmd := strings.ToLower(tokens[0])
+
+			// pathStart is the token index (counting from 0, where 0 is the
+			// command itself) at which workspace path arguments begin.
+			pathStart := -1
+			onlyDirs := false
+			var extFilter map[string]bool
+
+			switch cmd {
+			case "/files", "/file-tree", "/read-dir":
+				pathStart = 1
+				onlyDirs = true
+			case "/read", "/write", "/attach":
+				pathStart = 1
+			case "/read-pdf":
+				pathStart = 1
+				extFilter = map[string]bool{".pdf": true}
+			case "/search":
+				pathStart = 2 // tokens[1] is the search pattern, not a path
+			case "/rag":
+				if len(tokens) >= 2 && strings.ToLower(tokens[1]) == "ingest" {
+					pathStart = 2 // /rag ingest PATH [PATH...]
+				}
+			}
+
+			if pathStart >= 0 {
+				// Current token position: the index of the word being completed.
+				currentPos := len(tokens) - 1
+				if strings.HasSuffix(line, " ") {
+					currentPos = len(tokens)
+				}
+				if currentPos >= pathStart {
+					matches := workspacePathCandidates(a.Workspace.Root, word, onlyDirs, extFilter)
+					sortStrings(matches)
+					return matches
+				}
+			}
+		}
+
 		return nil
 	}
+}
+
+/** workspacePathCandidates returns workspace-relative path completions for the
+ * partial word being typed. It lists entries in the directory component of word,
+ * filters to names beginning with the base component, skips hidden entries, and
+ * appends "/" to directories. If onlyDirs is true only directories are returned.
+ * extFilter (non-nil) further restricts files to those with the given extensions.
+ * Candidates containing spaces are double-quoted. The workspace root acts as the
+ * boundary: paths that escape it produce no results.
+ *
+ * Parameters:
+ *   root      (string)          — absolute workspace root path.
+ *   word      (string)          — partial path typed by the user (may be empty).
+ *   onlyDirs  (bool)            — when true, exclude regular files.
+ *   extFilter (map[string]bool) — allowed lowercase extensions; nil means any.
+ *
+ * Returns:
+ *   []string — workspace-relative path candidates (unsorted).
+ *
+ * Example:
+ *   matches := workspacePathCandidates("/home/user/proj", "har", false, nil)
+ *   // returns ["harvey/"] if harvey/ exists under the workspace root
+ */
+func workspacePathCandidates(root, word string, onlyDirs bool, extFilter map[string]bool) []string {
+	// Split word into its directory prefix and the base name being completed.
+	dir, base := filepath.Split(word)
+
+	absDir := filepath.Clean(filepath.Join(root, dir))
+
+	// Enforce workspace boundary.
+	rootSep := root
+	if !strings.HasSuffix(rootSep, string(filepath.Separator)) {
+		rootSep += string(filepath.Separator)
+	}
+	if absDir != root && !strings.HasPrefix(absDir, rootSep) {
+		return nil
+	}
+
+	entries, err := os.ReadDir(absDir)
+	if err != nil {
+		return nil
+	}
+
+	var matches []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue // skip hidden entries
+		}
+		if !strings.HasPrefix(name, base) {
+			continue
+		}
+		if onlyDirs && !e.IsDir() {
+			continue
+		}
+		if extFilter != nil && !e.IsDir() {
+			if !extFilter[strings.ToLower(filepath.Ext(name))] {
+				continue
+			}
+		}
+		candidate := dir + name
+		if e.IsDir() {
+			candidate += "/"
+		}
+		if strings.ContainsAny(candidate, " \t") {
+			candidate = `"` + candidate + `"`
+		}
+		matches = append(matches, candidate)
+	}
+	return matches
 }
 
 // modelAndAliasCandidates returns Ollama model names and defined aliases that

@@ -1711,7 +1711,7 @@ func cmdRename(a *Agent, args []string, out io.Writer) error {
 func cmdFileTree(a *Agent, args []string, out io.Writer) error {
 	root := a.Workspace.Root
 	if len(args) > 0 {
-		abs, err := a.Workspace.AbsPath(args[0])
+		abs, err := resolveWorkspacePath(a.Workspace.Root, args[0])
 		if err != nil {
 			return fmt.Errorf("file-tree: %w", err)
 		}
@@ -4690,6 +4690,64 @@ func ragCommitEntry(a *Agent, entry RagStoreEntry, out io.Writer) error {
 }
 
 // ragIngest chunks and embeds each path into the RAG store.
+// ragLargeFileThreshold is the file size above which /rag ingest shows the
+// document list and asks for confirmation before starting.
+const ragLargeFileThreshold = 100 * 1024 // 100 KB
+
+// ragIngestableExts is the set of file extensions eligible for RAG ingestion.
+var ragIngestableExts = map[string]bool{
+	".md": true, ".txt": true, ".go": true, ".ts": true, ".py": true,
+	".yaml": true, ".yml": true, ".toml": true, ".sql": true, ".pdf": true,
+}
+
+// ragCollectFiles expands a list of paths (files and directories) into the
+// ordered list of absolute file paths that ragIngest would process.
+func ragCollectFiles(paths []string, absPathFn func(string) (string, error)) ([]string, error) {
+	var files []string
+	for _, p := range paths {
+		abs, err := absPathFn(p)
+		if err != nil {
+			return nil, fmt.Errorf("collect %s: %w", p, err)
+		}
+		info, err := os.Stat(abs)
+		if err != nil {
+			return nil, fmt.Errorf("collect %s: %w", p, err)
+		}
+		if info.IsDir() {
+			err := filepath.WalkDir(abs, func(path string, d fs.DirEntry, werr error) error {
+				if werr != nil || d.IsDir() {
+					return werr
+				}
+				if d.Type()&fs.ModeSymlink != 0 {
+					return nil
+				}
+				if ragIngestableExts[strings.ToLower(filepath.Ext(path))] {
+					files = append(files, path)
+				}
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		} else if ragIngestableExts[strings.ToLower(filepath.Ext(abs))] {
+			files = append(files, abs)
+		}
+	}
+	return files, nil
+}
+
+// ragCountLarge returns the number of files whose size exceeds ragLargeFileThreshold.
+func ragCountLarge(files []string) int {
+	n := 0
+	for _, f := range files {
+		info, err := os.Stat(f)
+		if err == nil && info.Size() > ragLargeFileThreshold {
+			n++
+		}
+	}
+	return n
+}
+
 func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	if a.Rag == nil {
 		fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
@@ -4702,30 +4760,52 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	}
 	embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)
 
-	var total int
-	for _, p := range paths {
-		absPath, err := a.Workspace.AbsPath(p)
-		if err != nil {
-			fmt.Fprintf(out, "  skip %s: %v\n", p, err)
-			continue
-		}
-		info, err := os.Stat(absPath)
-		if err != nil {
-			fmt.Fprintf(out, "  skip %s: %v\n", p, err)
-			continue
-		}
-		if info.IsDir() {
-			n, err := ragIngestDir(a.Rag, embedder, absPath, out)
-			if err != nil {
-				fmt.Fprintf(out, "  error in %s: %v\n", p, err)
+	// Collect all candidate files across all given paths.
+	files, err := ragCollectFiles(paths, a.Workspace.AbsPath)
+	if err != nil {
+		fmt.Fprintf(out, "  error collecting files: %v\n", err)
+		return nil
+	}
+	if len(files) == 0 {
+		fmt.Fprintln(out, "No ingestable files found.")
+		return nil
+	}
+
+	// When there are multiple files or any file is large, show the list and
+	// ask for confirmation before starting the embedding work.
+	largeCount := ragCountLarge(files)
+	if len(files) > 1 || largeCount > 0 {
+		fmt.Fprintf(out, "Files to ingest (%d):\n", len(files))
+		for _, f := range files {
+			info, err := os.Stat(f)
+			sizeNote := ""
+			if err == nil && info.Size() > ragLargeFileThreshold {
+				sizeNote = fmt.Sprintf("  [%.0f KB]", float64(info.Size())/1024)
 			}
-			total += n
-		} else if strings.ToLower(filepath.Ext(absPath)) == ".pdf" {
-			n, diagrams, err := ragIngestPDF(a.Rag, embedder, absPath)
+			fmt.Fprintf(out, "  %s%s\n", f, sizeNote)
+		}
+		if largeCount > 0 {
+			fmt.Fprintf(out, "\nNote: %d file(s) exceed 100 KB and may take longer to embed.\n", largeCount)
+		}
+		fmt.Fprint(out, "Proceed? [y/N] ")
+		scanner := bufio.NewScanner(a.In)
+		scanner.Scan()
+		if answer := strings.ToLower(strings.TrimSpace(scanner.Text())); answer != "y" && answer != "yes" {
+			fmt.Fprintln(out, "Cancelled.")
+			return nil
+		}
+	}
+
+	// Ingest each file individually, reporting progress.
+	var total int
+	for i, absFile := range files {
+		fmt.Fprintf(out, "  [%d/%d] %s", i+1, len(files), absFile)
+		if strings.ToLower(filepath.Ext(absFile)) == ".pdf" {
+			n, diagrams, err := ragIngestPDF(a.Rag, embedder, absFile)
 			if err != nil {
-				fmt.Fprintf(out, "  error in %s: %v\n", p, err)
+				fmt.Fprintf(out, " — error: %v\n", err)
 			} else {
-				fmt.Fprintf(out, "  %s — %d chunk(s)", p, n)
+				fmt.Fprintf(out, " — %d chunk(s)", n)
 				if len(diagrams) > 0 {
 					fmt.Fprintf(out, " (%d diagram-only page(s) flagged)", len(diagrams))
 				}
@@ -4733,55 +4813,17 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 				total += n
 			}
 		} else {
-			n, err := ragIngestFile(a.Rag, embedder, absPath)
+			n, err := ragIngestFile(a.Rag, embedder, absFile)
 			if err != nil {
-				fmt.Fprintf(out, "  error in %s: %v\n", p, err)
+				fmt.Fprintf(out, " — error: %v\n", err)
 			} else {
-				fmt.Fprintf(out, "  %s — %d chunk(s)\n", p, n)
+				fmt.Fprintf(out, " — %d chunk(s)\n", n)
 				total += n
 			}
 		}
 	}
-	fmt.Fprintf(out, "Ingested %d chunk(s) total.\n", total)
+	fmt.Fprintf(out, "Ingested %d chunk(s) total from %d file(s).\n", total, len(files))
 	return nil
-}
-
-// ragIngestDir walks a directory and ingests all text files.
-func ragIngestDir(store *RagStore, embedder Embedder, dir string, out io.Writer) (int, error) {
-	var total int
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		if d.Type()&fs.ModeSymlink != 0 {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(path))
-		switch ext {
-		case ".md", ".txt", ".go", ".ts", ".py", ".yaml", ".yml", ".toml", ".sql":
-			n, err := ragIngestFile(store, embedder, path)
-			if err != nil {
-				fmt.Fprintf(out, "  skip %s: %v\n", path, err)
-			} else {
-				fmt.Fprintf(out, "  %s — %d chunk(s)\n", path, n)
-				total += n
-			}
-		case ".pdf":
-			n, diagrams, err := ragIngestPDF(store, embedder, path)
-			if err != nil {
-				fmt.Fprintf(out, "  skip %s: %v\n", path, err)
-			} else {
-				fmt.Fprintf(out, "  %s — %d chunk(s)", path, n)
-				if len(diagrams) > 0 {
-					fmt.Fprintf(out, " (%d diagram-only page(s) flagged)", len(diagrams))
-				}
-				fmt.Fprintln(out)
-				total += n
-			}
-		}
-		return nil
-	})
-	return total, err
 }
 
 // ragIngestFile reads a file, splits it into paragraph chunks, and ingests them.

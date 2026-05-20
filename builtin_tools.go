@@ -183,6 +183,41 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 		},
 	)
 
+	// ── file_tree ────────────────────────────────────────────────────────────
+	r.RegisterTool(
+		"file_tree",
+		"Display a recursive tree listing of the workspace (or a subdirectory), "+
+			"skipping hidden files and directories. "+
+			"Path must be relative to the workspace root; defaults to the root.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{
+					"type":        "string",
+					"description": "Relative path to the directory to display (default: workspace root)",
+				},
+			},
+		},
+		func(ctx context.Context, args map[string]any) (string, error) {
+			p := "."
+			if v, ok := args["path"].(string); ok && v != "" {
+				if len(v) > maxInputPath {
+					return "", fmt.Errorf("file_tree: path exceeds maximum length of %d bytes", maxInputPath)
+				}
+				p = v
+			}
+			absPath, err := resolveWorkspacePath(root, p)
+			if err != nil {
+				return "", fmt.Errorf("file_tree: %w", err)
+			}
+			rel, _ := filepath.Rel(root, absPath)
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "%s\n", rel)
+			printDirTree(absPath, "", &sb)
+			return capOutput(sb.String(), maxBytes), nil
+		},
+	)
+
 	// ── search_files ─────────────────────────────────────────────────────────
 	r.RegisterTool(
 		"search_files",
