@@ -3,17 +3,6 @@
 
 ## Bugs
 
-- [ ] Make sure memory and pipeline commands have help guilds
-  - Example output, ```wren:~/Laboratory/harvey $ harvey --help memory
-Unknown help topic "memory".
-Available topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write
-wren:~/Laboratory/harvey $ harvey --version
-harvey 0.0.5b (released 2026-05-25, fc4ded8)
-rsdoiel@wren:~/Laboratory/harvey $ harvey --help pipeline
-Unknown help topic "pipeline".
-Available topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write
-```
-
 ## Up Next (features for v0.0.6)
 
 ### Remote protocol integration

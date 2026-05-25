@@ -1912,6 +1912,77 @@ command does nothing.
 
 `
 
+	MemoryHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+MEMORY — mine session recordings for memories and manage the memory store
+
+# SYNOPSIS
+
+/memory <mine|list|show|forget|status> [args...]
+
+# DESCRIPTION
+
+/memory provides a semi-manual system for extracting useful knowledge from
+Harvey's Fountain session recordings (.spmd / .fountain files) and injecting
+that knowledge into future sessions. Memories persist across sessions as
+Fountain files in agents/memories/ inside the workspace.
+
+# SUBCOMMANDS
+
+  mine [FILE] [--force]
+        Scan unmined session files for memories. The LLM proposes memories
+        via one-shot JSON extraction; you review each interactively
+        (accept / edit / replace / skip / quit). Use --force to re-mine
+        sessions that have already been processed.
+
+  list [--type TYPE]
+        List stored memories. Optional --type filters to one of:
+        tool_use, workflow, user_preference.
+
+  show ID
+        Display the full Fountain source for one memory by its ID slug.
+
+  forget ID
+        Archive a memory (moves it to agents/memories/archive/ — not deleted).
+
+  status
+        Show memory store location, total count, and breakdown by type.
+
+# MEMORY TYPES
+
+  tool_use        A tool or command trick that worked (e.g. a useful flag,
+                  a workaround for a known bug).
+  workflow        A repeatable multi-step process (e.g. how to publish a release).
+  user_preference A stated or demonstrated preference (e.g. preferred coding style).
+
+# MEMORY INJECTION
+
+When a session starts, Harvey injects relevant memories into the system prompt
+context. With a RAG store configured, semantic similarity selects the top-K
+memories; without one, the most recent memories are used. The header line
+indicates which path was taken: "relevant memories" vs "recent memories".
+
+# PRIVACY
+
+Workspace paths are normalised to <workspace> before review. Credential
+patterns (password, token, Bearer, api_key, -----BEGIN, etc.) are flagged
+for human review but never auto-redacted. A scrub pass runs on every proposed
+memory before the review card is displayed.
+
+# EXAMPLES
+
+  /memory mine
+  /memory mine agents/sessions/harvey-session-20260525-140251.spmd
+  /memory list --type workflow
+  /memory show pipeline_confidence_extraction
+  /memory forget old_pattern_a1b2c3
+  /memory status
+`
+
 	PipelineHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
 % R. S. Doiel
 % {release_date}

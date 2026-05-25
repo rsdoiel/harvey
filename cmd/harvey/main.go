@@ -87,8 +87,12 @@ func main() {
 					fmt.Print(fmtHelp(harvey.StatusHelpText, appName, version, releaseDate, releaseHash))
 				case "write":
 					fmt.Print(fmtHelp(harvey.WriteHelpText, appName, version, releaseDate, releaseHash))
+				case "memory":
+					fmt.Print(fmtHelp(harvey.MemoryHelpText, appName, version, releaseDate, releaseHash))
+				case "pipeline":
+					fmt.Print(fmtHelp(harvey.PipelineHelpText, appName, version, releaseDate, releaseHash))
 				default:
-					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
+					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, memory, ollama, permissions, pipeline, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
 					os.Exit(1)
 				}
 			} else {

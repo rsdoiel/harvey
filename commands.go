@@ -514,8 +514,11 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "pipeline":
 			fmt.Fprint(out, FmtHelp(PipelineHelpText, "", "", "", ""))
 			return nil
+		case "memory":
+			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, memory, ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 
