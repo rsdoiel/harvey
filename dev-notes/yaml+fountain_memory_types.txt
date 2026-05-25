@@ -1,0 +1,733 @@
+
+Here is a **Markdown document** containing all the **example memory types** (tool use, workflows, user preferences) in the **hybrid YAML + Fountain format**, along with explanations and use cases.
+
+---
+
+```markdown
+# Harvey Memory Examples: YAML + Fountain Format
+
+**Version**: 1.0
+**Author**: Robert Doiel
+**Last Updated**: 2026-05-25
+**Status**: Draft
+
+---
+
+## Table of Contents
+1. [Overview](#overview)
+2. [Memory Types](#memory-types)
+   - [Tool Use Memories](#tool-use-memories)
+   - [Workflow Memories](#workflow-memories)
+   - [User Preference Memories](#user-preference-memories)
+3. [Example Use Cases](#example-use-cases)
+   - [Fixing a Git Error](#fixing-a-git-error)
+   - [Deploying a Flask App](#deploying-a-flask-app)
+   - [User Preferences for Coding](#user-preferences-for-coding)
+4. [File Organization](#file-organization)
+5. [Key Fields Explained](#key-fields-explained)
+
+---
+
+---
+
+## Overview
+
+This document provides **concrete examples** of Harvey’s **hybrid memory format**, combining:
+- **YAML front matter**: Structured metadata for filtering, retrieval, and validation.
+- **Fountain text**: Raw interaction logs for context and debugging.
+
+Each example includes:
+- The **full YAML + Fountain file**.
+- A **description** of the memory’s purpose.
+- **Use cases** for how Harvey would use it.
+
+---
+
+---
+
+## Memory Types
+
+Harvey supports **three primary memory types**, each with a distinct structure and purpose:
+
+| **Type**            | **Purpose**                                                                 | **Example Use Case**                          |
+|---------------------|-----------------------------------------------------------------------------|-----------------------------------------------|
+| **Tool Use**        | Log **individual tool invocations** (commands, outputs, errors).            | Fixing a `git` error.                          |
+| **Workflow**        | Store **multi-step processes** (e.g., deployment, debugging).               | Deploying a Flask app to AWS.                  |
+| **User Preference** | Track **user-specific settings** (e.g., coding style, tool choices).        | Preferred Python version or linter.           |
+
+---
+
+---
+
+## Tool Use Memories
+
+**Purpose**: Store **individual tool invocations**, including:
+- The **command** run.
+- The **input/output/error** of the tool.
+- **Context** (e.g., working directory, user).
+- **Success/failure** status.
+
+### Example 1: Fixing a Git Error
+**File**: `memories/tool_use/git_fix_456.fountain`
+
+```yaml
+---
+id: "git_fix_456"
+type: "tool_use"
+created_at: "2026-05-25T12:00:00Z"
+updated_at: "2026-05-25T12:05:00Z"
+tags: ["git", "commit", "error", "fix"]
+description: "Fixed 'fatal: not a git repository' by running 'git init'"
+metadata:
+  tool: "git"
+  command: "git init"
+  input: ""  # No input for this command
+  output: "Initialized empty Git repository in /path/to/repo/.git/"
+  error: "fatal: not a git repository (or any of the parent directories)"
+  success: true
+  context:
+    working_directory: "/path/to/repo"
+    user: "robert"
+---
+# Fountain Text: Raw Interaction Log
+
+User: I got this error: "fatal: not a git repository (or any of the parent directories)".
+Harvey: Running `git init`...
+Tool: git init
+Output: Initialized empty Git repository in /path/to/repo/.git/
+Harvey: The error is fixed. Try running your command again.
+User: Thanks!
+```
+
+#### **Use Cases**:
+1. **Retrieve Past Fixes**:
+   - Harvey encounters the same error and retrieves this memory to suggest `git init`.
+2. **Learn from Failures**:
+   - If `git init` fails, Harvey can log a new memory with the error and try a different approach.
+3. **Teach New Users**:
+   - Harvey can explain the fix to a new user by referencing this memory.
+
+---
+
+### Example 2: Debugging a Python Syntax Error
+**File**: `memories/tool_use/python_debug_101.fountain`
+
+```yaml
+---
+id: "python_debug_101"
+type: "tool_use"
+created_at: "2026-05-25T14:00:00Z"
+updated_at: "2026-05-25T14:05:00Z"
+tags: ["python", "debug", "syntax_error", "missing_colon"]
+description: "Fixed SyntaxError: invalid syntax by adding missing colon"
+metadata:
+  tool: "python"
+  command: "python script.py"
+  input: "script.py"
+  output: ""
+  error: "SyntaxError: invalid syntax (line 5)"
+  success: false
+  context:
+    file: "script.py"
+    line: 5
+    code_snippet: |
+      if x == 5
+        print("x is 5")
+  fix:
+    command: "sed -i '5s/$/:/' script.py"  # Add colon to line 5
+    description: "Added missing colon after `if x == 5`"
+    success: true
+---
+# Fountain Text: Raw Interaction Log
+
+User: I got a SyntaxError in my Python script. Can you help?
+Harvey: Running `python script.py` to see the error...
+Tool: python script.py
+Output:
+Error: SyntaxError: invalid syntax (line 5)
+Harvey: The error is on line 5. Let me check the code.
+Tool: cat script.py
+Output: |
+  if x == 5
+    print("x is 5")
+Harvey: Found the issue! Missing a colon after `if x == 5`.
+Harvey: Running `sed -i '5s/$/:/' script.py` to fix it...
+Tool: sed -i '5s/$/:/' script.py
+Output: ""  # No output on success
+Harvey: Fixed! Try running the script again.
+User: It works now. Thanks!
+```
+
+#### **Use Cases**:
+1. **Pattern Matching**:
+   - Harvey recognizes the `SyntaxError: invalid syntax` pattern and retrieves this memory.
+2. **Automated Fixes**:
+   - Harvey can **automatically apply the same `sed` fix** to similar errors.
+3. **Teaching**:
+   - Harvey can explain the fix to the user: *"You’re missing a colon after the `if` statement."*
+
+---
+
+### Example 3: Installing a Missing Python Module
+**File**: `memories/tool_use/pip_install_requests_202.fountain`
+
+```yaml
+---
+id: "pip_install_requests_202"
+type: "tool_use"
+created_at: "2026-05-25T15:00:00Z"
+updated_at: "2026-05-25T15:02:00Z"
+tags: ["python", "pip", "module_not_found", "fix"]
+description: "Fixed ModuleNotFoundError: No module named 'requests' by running 'pip install requests'"
+metadata:
+  tool: "pip"
+  command: "pip install requests"
+  input: ""
+  output: "Collecting requests... Successfully installed requests-2.31.0"
+  error: "ModuleNotFoundError: No module named 'requests'"
+  success: true
+  context:
+    python_version: "3.10"
+    virtualenv: "venv"
+---
+# Fountain Text: Raw Interaction Log
+
+User: My Python script is failing with `ModuleNotFoundError: No module named 'requests'`.
+Harvey: Running `pip install requests`...
+Tool: pip install requests
+Output: Collecting requests... Successfully installed requests-2.31.0
+Harvey: The module is now installed. Try running your script again.
+User: It works! Thanks.
+```
+
+#### **Use Cases**:
+1. **Dependency Management**:
+   - Harvey can **automatically install missing modules** by referencing this memory.
+2. **Environment Awareness**:
+   - Harvey notes the `python_version` and `virtualenv` to ensure compatibility.
+3. **Proactive Suggestions**:
+   - If the user mentions `requests` in a future query, Harvey can suggest installing it preemptively.
+
+---
+
+---
+## Workflow Memories
+
+**Purpose**: Store **multi-step processes** (e.g., deployment, debugging, research) as **reusable workflows**. Each workflow includes:
+- A **list of steps** (commands, tools, descriptions).
+- **Dependencies** between steps (e.g., step 2 requires step 1).
+- **Success/failure metrics** (e.g., `success_rate`).
+
+---
+
+### Example 1: Deploying a Flask App to AWS
+**File**: `memories/workflows/deploy_flask_app_789.fountain`
+
+```yaml
+---
+id: "deploy_flask_app_789"
+type: "workflow"
+created_at: "2026-05-25T13:00:00Z"
+updated_at: "2026-05-25T13:15:00Z"
+tags: ["flask", "deployment", "aws", "docker"]
+description: "Standard workflow for deploying a Flask app to AWS Elastic Beanstalk"
+metadata:
+  source: "user_defined"  # or "llm_generated"
+  success_rate: 0.95      # 95% success rate
+  last_used: "2026-05-20T10:00:00Z"
+  steps:
+    - id: "build_image"
+      description: "Build Docker image"
+      tool: "docker"
+      command: "docker build -t my-flask-app ."
+      expected_output: "Successfully built my-flask-app"
+      fallback: "docker build --no-cache -t my-flask-app ."
+      dependencies: []  # No dependencies for this step
+
+    - id: "run_container"
+      description: "Run Docker container locally for testing"
+      tool: "docker"
+      command: "docker run -p 5000:5000 my-flask-app"
+      expected_output: "* Running on http://0.0.0.0:5000/"
+      dependencies: ["build_image"]  # Requires build_image to succeed first
+      environment:
+        PORT: "5000"
+
+    - id: "push_to_ecr"
+      description: "Push Docker image to AWS ECR"
+      tool: "aws"
+      command: "aws ecr get-login-password | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-west-2.amazonaws.com && docker push 123456789012.dkr.ecr.us-west-2.amazonaws.com/my-flask-app:latest"
+      expected_output: "Pushed to ECR"
+      dependencies: ["build_image"]
+      environment:
+        AWS_REGION: "us-west-2"
+
+    - id: "deploy_to_beanstalk"
+      description: "Deploy to AWS Elastic Beanstalk"
+      tool: "aws"
+      command: "aws elasticbeanstalk create-application-version --application-name my-flask-app --version-label v1 --source-bundle S3Bucket=my-bucket,S3Key=my-flask-app.zip"
+      expected_output: "Application version created"
+      dependencies: ["push_to_ecr"]
+---
+# Fountain Text: Full Workflow Log
+
+User: Deploy my Flask app to AWS.
+Harvey: Starting deployment workflow...
+Harvey: Step 1/4: Building Docker image...
+Tool: docker build -t my-flask-app .
+Output: Successfully built my-flask-app.
+Harvey: Step 2/4: Running container locally for testing...
+Tool: docker run -p 5000:5000 my-flask-app
+Output: * Running on http://0.0.0.0:5000/
+Harvey: Step 3/4: Pushing to AWS ECR...
+Tool: aws ecr get-login-password | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-west-2.amazonaws.com && docker push 123456789012.dkr.ecr.us-west-2.amazonaws.com/my-flask-app:latest
+Output: Pushed to ECR.
+Harvey: Step 4/4: Deploying to Elastic Beanstalk...
+Tool: aws elasticbeanstalk create-application-version --application-name my-flask-app --version-label v1 --source-bundle S3Bucket=my-bucket,S3Key=my-flask-app.zip
+Output: Application version created.
+Harvey: Deployment successful! Your app is now live at http://my-flask-app.elasticbeanstalk.com.
+```
+
+#### **Use Cases**:
+1. **Reusable Workflows**:
+   - Harvey can **reuse this workflow** for future Flask deployments.
+2. **Error Handling**:
+   - If a step fails (e.g., `docker build` errors), Harvey can **fall back to the `fallback` command** or **retry with debugging**.
+3. **Teaching**:
+   - Harvey can **explain each step** to the user (e.g., *"First, we build the Docker image..."*).
+
+---
+### Example 2: Debugging a Python Script
+**File**: `memories/workflows/debug_python_script_303.fountain`
+
+```yaml
+---
+id: "debug_python_script_303"
+type: "workflow"
+created_at: "2026-05-25T16:00:00Z"
+updated_at: "2026-05-25T16:10:00Z"
+tags: ["python", "debug", "linting", "testing"]
+description: "Workflow for debugging a Python script: lint → test → run"
+metadata:
+  source: "llm_generated"
+  success_rate: 0.85
+  last_used: "2026-05-24T09:00:00Z"
+  steps:
+    - id: "lint"
+      description: "Run ruff linter"
+      tool: "ruff"
+      command: "ruff check script.py"
+      expected_output: "No issues found"
+      fallback: "ruff check --fix script.py"
+      dependencies: []
+
+    - id: "test"
+      description: "Run pytest"
+      tool: "pytest"
+      command: "pytest script_test.py -v"
+      expected_output: "All tests passed"
+      dependencies: ["lint"]
+
+    - id: "run"
+      description: "Run the script"
+      tool: "python"
+      command: "python script.py"
+      expected_output: "Script executed successfully"
+      dependencies: ["test"]
+---
+# Fountain Text: Full Workflow Log
+
+User: My Python script isn't working. Can you debug it?
+Harvey: Starting debugging workflow...
+Harvey: Step 1/3: Running ruff linter...
+Tool: ruff check script.py
+Output: error: Unused import `os` (line 3)
+Harvey: Found a linting issue. Running `ruff check --fix script.py`...
+Tool: ruff check --fix script.py
+Output: Fixed 1 issue
+Harvey: Step 2/3: Running pytest...
+Tool: pytest script_test.py -v
+Output: test_function PASSED
+Harvey: Step 3/3: Running the script...
+Tool: python script.py
+Output: Script executed successfully
+Harvey: Debugging complete! The script now works.
+```
+
+#### **Use Cases**:
+1. **Automated Debugging**:
+   - Harvey can **automatically run this workflow** when a user reports a script issue.
+2. **Step-by-Step Feedback**:
+   - Harvey can **report issues at each step** (e.g., *"Linting found an unused import..."*).
+3. **Customization**:
+   - Harvey can **modify the workflow** (e.g., use `flake8` instead of `ruff` if the user prefers).
+
+---
+---
+## User Preference Memories
+
+**Purpose**: Store **user-specific preferences** (e.g., coding style, tool choices, environment settings). These memories help Harvey **personalize its behavior** for each user.
+
+---
+
+### Example 1: Python Coding Preferences
+**File**: `memories/user_preferences/user_prefs_robert.fountain`
+
+```yaml
+---
+id: "user_prefs_robert"
+type: "user_preference"
+created_at: "2026-05-25T10:00:00Z"
+updated_at: "2026-05-25T16:00:00Z"
+tags: ["user:robert", "python", "style", "tools"]
+description: "Robert's coding preferences and tool configurations"
+metadata:
+  user: "robert"
+  preferences:
+    python:
+      version: "3.10"
+      linter: "ruff"
+      formatter: "black"
+      line_length: 88
+      quotes: "double"  # or "single"
+      virtualenv: "venv"  # or "conda", "pipenv"
+    git:
+      commit_style: "conventional"  # e.g., "feat:", "fix:", "docs:"
+      branch_naming: "kebab-case"   # e.g., "feature/new-login"
+      rebase: true                  # Prefer rebasing over merging
+    editor:
+      default: "micro"             # or "vim", "nano", "code"
+      theme: "solarized-dark"
+      font: "Fira Code"
+    shell:
+      default: "bash"
+      aliases:
+        gs: "git status"
+        ga: "git add"
+        gp: "git push"
+        gcm: "git commit -m"
+        py: "python3"
+---
+# Fountain Text: Interaction Log
+
+User: I prefer Python 3.10 and use ruff for linting.
+Harvey: Noted. I'll use Python 3.10 and ruff for your projects.
+User: Also, use conventional commits for Git.
+Harvey: Understood. I'll use `feat:`, `fix:`, etc. for commit messages.
+User: And my default editor is micro.
+Harvey: Got it. I'll use `micro` for editing files.
+User: One more thing: my shell aliases are gs, ga, gp, and gcm.
+Harvey: Added your aliases. I'll use them for Git commands.
+```
+
+#### **Use Cases**:
+1. **Personalized Tool Use**:
+   - Harvey uses `ruff` instead of `flake8` for linting Robert’s code.
+2. **Consistent Environment**:
+   - Harvey ensures Python 3.10 is used for Robert’s projects.
+3. **Efficient Workflows**:
+   - Harvey uses Robert’s **Git aliases** (e.g., `gs` instead of `git status`).
+
+---
+### Example 2: Project-Specific Preferences
+**File**: `memories/user_preferences/project_prefs_caltech_authors.fountain`
+
+```yaml
+---
+id: "project_prefs_caltech_authors"
+type: "user_preference"
+created_at: "2026-05-25T11:00:00Z"
+updated_at: "2026-05-25T11:30:00Z"
+tags: ["project:caltech_authors", "metadata", "workflow"]
+description: "Preferences for the CaltechAUTHORS project"
+metadata:
+  project: "caltech_authors"
+  preferences:
+    metadata:
+      format: "YAML"  # or "JSON", "XML"
+      required_fields: ["title", "authors", "date", "license"]
+      license: "CC-BY-4.0"  # Default license
+    workflow:
+      validation_tool: "ajv"  # JSON Schema validator
+      max_file_size: "10MB"   # Reject files larger than 10MB
+      allowed_extensions: [".pdf", ".md", ".tex"]
+    storage:
+      backend: "s3"          # or "local", "github"
+      bucket: "caltech-authors-data"
+---
+# Fountain Text: Interaction Log
+
+User: For the CaltechAUTHORS project, I want all metadata in YAML format.
+Harvey: Noted. I'll use YAML for CaltechAUTHORS metadata.
+User: Also, require title, authors, date, and license fields.
+Harvey: Added required fields: title, authors, date, license.
+User: And use CC-BY-4.0 as the default license.
+Harvey: Set default license to CC-BY-4.0.
+User: Only accept PDF, Markdown, or LaTeX files.
+Harvey: Restricted file extensions to .pdf, .md, .tex.
+```
+
+#### **Use Cases**:
+1. **Project-Specific Rules**:
+   - Harvey enforces **YAML metadata** for CaltechAUTHORS files.
+2. **Validation**:
+   - Harvey uses `ajv` to **validate metadata** against the required fields.
+3. **Storage**:
+   - Harvey uploads files to the **correct S3 bucket** (`caltech-authors-data`).
+
+---
+---
+## Example Use Cases
+
+This section demonstrates **how Harvey uses these memories** in practice.
+
+---
+### Fixing a Git Error
+
+#### Scenario
+User reports: *"I got this error: 'fatal: not a git repository'."*
+
+#### Harvey’s Workflow
+1. **Retrieve Relevant Memories**:
+   ```python
+   retriever = HybridRetriever("memories/")
+   memories = retriever.retrieve_hybrid(
+       query="fatal: not a git repository",
+       metadata_filter={"type": "tool_use", "tags": "git"},
+       k=3
+   )
+   ```
+   - Retrieves `git_fix_456.fountain` (and similar memories).
+
+2. **Construct Prompt**:
+   ```python
+   prompt = f"""
+   User: I got this error: 'fatal: not a git repository'.
+   Harvey: Previously, this error was fixed by running `git init`.
+   LLM: How would you fix this?
+   """
+   ```
+
+3. **LLM Response**:
+   ```text
+   LLM: Run `git init` to initialize a Git repository in the current directory.
+   ```
+
+4. **Execute and Log**:
+   - Harvey runs `git init`.
+   - Logs the interaction as a new memory (`git_fix_458.fountain`).
+
+---
+### Deploying a Flask App
+
+#### Scenario
+User requests: *"Deploy my Flask app to AWS."*
+
+#### Harvey’s Workflow
+1. **Retrieve Workflow**:
+   ```python
+   workflows = retriever.retrieve_hybrid(
+       query="Deploy my Flask app to AWS",
+       metadata_filter={"type": "workflow", "tags": "flask"},
+       k=1
+   )
+   ```
+   - Retrieves `deploy_flask_app_789.fountain`.
+
+2. **Execute Steps**:
+   - Harvey runs each step in order:
+     1. `docker build -t my-flask-app .`
+     2. `docker run -p 5000:5000 my-flask-app`
+     3. Push to AWS ECR.
+     4. Deploy to Elastic Beanstalk.
+
+3. **Log Execution**:
+   - Harvey logs the full workflow execution as a new memory (`deploy_flask_app_790.fountain`).
+
+---
+### User Preferences for Coding
+
+#### Scenario
+User says: *"Write a Python script to parse CSV files."*
+
+#### Harvey’s Workflow
+1. **Retrieve User Preferences**:
+   ```python
+   prefs = retriever.retrieve_hybrid(
+       query="user:robert",
+       metadata_filter={"type": "user_preference", "tags": "user:robert"},
+       k=1
+   )
+   ```
+   - Retrieves `user_prefs_robert.fountain`.
+
+2. **Apply Preferences**:
+   - Uses **Python 3.10**.
+   - Uses **ruff** for linting.
+   - Uses **conventional commit messages** if the script is version-controlled.
+
+3. **Generate Script**:
+   - Harvey writes the script and **lints it with ruff**.
+   - If the user requests changes, Harvey **updates the script** and re-lints.
+
+---
+---
+## File Organization
+
+Memories are organized in a **hierarchical directory structure** for scalability:
+
+```
+harvey/
+├── memories/               # Root directory for all memories
+│   ├── tool_use/           # Individual tool invocations
+│   │   ├── git_fix_456.fountain
+│   │   ├── python_debug_101.fountain
+│   │   ├── pip_install_requests_202.fountain
+│   │   └── ...
+│   ├── workflows/          # Multi-step workflows
+│   │   ├── deploy_flask_app_789.fountain
+│   │   ├── debug_python_script_303.fountain
+│   │   └── ...
+│   ├── user_preferences/   # User-specific settings
+│   │   ├── user_prefs_robert.fountain
+│   │   ├── project_prefs_caltech_authors.fountain
+│   │   └── ...
+│   └── index.yaml          # Optional: Master index of all memories
+└── embeddings/            # Optional: Precomputed embeddings for FAISS
+    ├── tool_use/
+    │   ├── git_fix_456.npy
+    │   ├── python_debug_101.npy
+    │   └── ...
+    ├── workflows/
+    │   ├── deploy_flask_app_789.npy
+    │   └── ...
+    └── user_preferences/
+        ├── user_prefs_robert.npy
+        └── ...
+```
+
+---
+---
+## Key Fields Explained
+
+This section explains the **purpose and usage** of key fields in the YAML front matter.
+
+---
+### Common Fields (All Memory Types)
+
+| **Field**       | **Type**       | **Purpose**                                                                 | **Example**                          |
+|-----------------|----------------|-----------------------------------------------------------------------------|--------------------------------------|
+| `id`            | string         | Unique identifier for the memory.                                          | `"git_fix_456"`                      |
+| `type`          | string         | Type of memory (`tool_use`, `workflow`, `user_preference`).                 | `"tool_use"`                         |
+| `created_at`    | string         | ISO 8601 timestamp of creation.                                            | `"2026-05-25T12:00:00Z"`             |
+| `updated_at`    | string         | ISO 8601 timestamp of last update.                                         | `"2026-05-25T12:05:00Z"`             |
+| `tags`          | list[string]   | Tags for filtering and retrieval.                                           | `["git", "error", "fix"]`             |
+| `description`   | string         | Human-readable summary of the memory.                                      | `"Fixed 'fatal: not a git repository'"` |
+
+---
+### Tool Use Memories
+
+| **Field**       | **Type**               | **Purpose**                                                                 | **Example**                          |
+|-----------------|------------------------|-----------------------------------------------------------------------------|--------------------------------------|
+| `metadata.tool` | string                 | Name of the tool (e.g., `git`, `python`, `docker`).                          | `"git"`                              |
+| `metadata.command` | string             | Exact command executed.                                                    | `"git init"`                         |
+| `metadata.input` | string               | Input to the tool (if any).                                                 | `"script.py"`                        |
+| `metadata.output` | string              | Tool’s stdout.                                                             | `"Initialized empty Git repository..."` |
+| `metadata.error` | string               | Tool’s stderr (if any).                                                     | `"fatal: not a git repository"`     |
+| `metadata.success` | boolean            | Did the tool succeed?                                                      | `true`                               |
+| `metadata.context` | map[string, any]   | Additional context (e.g., working directory, user).                       | `{"working_directory": "/path/to/repo"}` |
+| `metadata.fix`   | map[string, any]     | Optional: How the issue was fixed.                                         | `{"command": "git init", "success": true}` |
+
+---
+### Workflow Memories
+
+| **Field**               | **Type**               | **Purpose**                                                                 | **Example**                          |
+|-------------------------|------------------------|-----------------------------------------------------------------------------|--------------------------------------|
+| `metadata.source`       | string                 | Source of the workflow (`user_defined` or `llm_generated`).               | `"user_defined"`                     |
+| `metadata.success_rate` | float                 | Historical success rate of the workflow (0.0 to 1.0).                     | `0.95`                              |
+| `metadata.last_used`    | string                 | ISO 8601 timestamp of last use.                                             | `"2026-05-20T10:00:00Z"`             |
+| `metadata.steps`        | list[map]              | List of steps in the workflow.                                             | See [Workflow Example](#example-1-deploying-a-flask-app-to-aws). |
+
+#### Step Fields (Nested in `metadata.steps`)
+
+| **Field**               | **Type**               | **Purpose**                                                                 | **Example**                          |
+|-------------------------|------------------------|-----------------------------------------------------------------------------|--------------------------------------|
+| `id`                    | string                 | Unique identifier for the step.                                            | `"build_image"`                      |
+| `description`           | string                 | Human-readable description of the step.                                   | `"Build Docker image"`               |
+| `tool`                  | string                 | Tool used in this step.                                                    | `"docker"`                           |
+| `command`               | string                 | Command to execute.                                                        | `"docker build -t my-flask-app ."`   |
+| `expected_output`       | string                 | Expected output if the step succeeds.                                      | `"Successfully built my-flask-app"`   |
+| `fallback`              | string                 | Fallback command if the primary command fails.                            | `"docker build --no-cache -t my-flask-app ."` |
+| `dependencies`          | list[string]           | IDs of steps that must succeed before this step.                           | `["build_image"]`                     |
+| `environment`           | map[string, string]   | Environment variables for the step.                                        | `{"PORT": "5000"}`                   |
+
+---
+### User Preference Memories
+
+| **Field**               | **Type**               | **Purpose**                                                                 | **Example**                          |
+|-------------------------|------------------------|-----------------------------------------------------------------------------|--------------------------------------|
+| `metadata.user`         | string                 | Username (for multi-user Harvey).                                          | `"robert"`                           |
+| `metadata.preferences`  | map[string, any]      | Nested preferences by category (e.g., `python`, `git`, `editor`).          | See [User Preference Example](#example-1-python-coding-preferences). |
+
+#### Preference Fields (Nested in `metadata.preferences`)
+
+| **Category**    | **Field**       | **Type**       | **Purpose**                                                                 | **Example**                          |
+|-----------------|-----------------|----------------|-----------------------------------------------------------------------------|--------------------------------------|
+| `python`        | `version`       | string         | Preferred Python version.                                                  | `"3.10"`                             |
+| `python`        | `linter`        | string         | Preferred linter.                                                          | `"ruff"`                             |
+| `python`        | `formatter`     | string         | Preferred formatter.                                                        | `"black"`                            |
+| `git`           | `commit_style`  | string         | Commit message style (e.g., `conventional`, `emoji`).                     | `"conventional"`                     |
+| `git`           | `branch_naming` | string         | Branch naming convention (e.g., `kebab-case`, `snake_case`).               | `"kebab-case"`                       |
+| `editor`        | `default`       | string         | Default text editor.                                                       | `"micro"`                            |
+| `shell`         | `aliases`       | map[string, string] | Shell aliases (e.g., `gs: "git status"`).                                   | `{"gs": "git status", "ga": "git add"}` |
+
+---
+---
+## Summary
+
+This document provides **concrete examples** of Harvey’s **hybrid memory format**, combining:
+- **YAML front matter** for structured metadata.
+- **Fountain text** for raw interaction logs.
+
+### Key Takeaways:
+1. **Tool Use Memories**:
+   - Log **individual tool invocations** (commands, outputs, errors).
+   - Use for **retrieving past fixes** or **automating repetitive tasks**.
+
+2. **Workflow Memories**:
+   - Store **multi-step processes** (e.g., deployment, debugging).
+   - Use for **reusable workflows** or **guided execution**.
+
+3. **User Preference Memories**:
+   - Track **user-specific settings** (e.g., coding style, tool choices).
+   - Use for **personalizing Harvey’s behavior**.
+
+4. **File Organization**:
+   - Store memories in a **hierarchical directory structure** (`memories/{type}/{id}.fountain`).
+   - Optionally store **embeddings** in a parallel `embeddings/` directory.
+
+5. **Retrieval**:
+   - Use **SQLite FTS5** for **metadata filtering** (e.g., `type="tool_use"`).
+   - Use **FAISS** for **semantic search** (e.g., "find memories similar to this error").
+   - Combine both for **hybrid retrieval**.
+
+---
+---
+## Next Steps
+
+1. **Implement the Parser**:
+   - Write a **Python/Go parser** to split YAML front matter from Fountain text.
+   - Example: [Python Parser](#python-parser), [Go Parser](#go-parser).
+
+2. **Set Up Retrieval**:
+   - Implement **SQLite FTS5** for metadata filtering.
+   - Implement **FAISS** for semantic search.
+
+3. **Integrate with Harvey**:
+   - Use the **RAG pipeline** to inject memories into LLM prompts.
+   - Log new interactions as **Fountain files**.
+
+4. **Test on Edge**:
+   - Deploy on a **Raspberry Pi** and measure performance.
+   - Optimize for **low memory usage** (e.g., lazy loading, small embedding models).
+```

@@ -1,0 +1,1074 @@
+Here is a **comprehensive Markdown design document** for your hybrid approach, combining **YAML front matter + Fountain session files** with **semantic search via an in-memory index**. This document is structured to be **clear, actionable, and aligned with your preferences** (Markdown, YAML, simplicity, and edge deployment).
+
+---
+
+```markdown
+# Harvey Memory System: Hybrid YAML + Fountain Design
+
+**Version**: 1.0
+**Author**: Robert Doiel
+**Last Updated**: 2026-05-25
+**Status**: Draft
+
+---
+
+## Table of Contents
+1. [Overview](#overview)
+2. [Design Goals](#design-goals)
+3. [Memory Format](#memory-format)
+   - [YAML Front Matter](#yaml-front-matter)
+   - [Fountain Text](#fountain-text)
+   - [File Structure](#file-structure)
+4. [Semantic Search with In-Memory Index](#semantic-search-with-in-memory-index)
+   - [Embedding Generation](#embedding-generation)
+   - [FAISS Index](#faiss-index)
+   - [Hybrid Retrieval](#hybrid-retrieval)
+5. [Memory Lifecycle](#memory-lifecycle)
+   - [Creation](#creation)
+   - [Retrieval](#retrieval)
+   - [Update](#update)
+   - [Deletion](#deletion)
+6. [Integration with Harvey](#integration-with-harvey)
+   - [RAG Pipeline](#rag-pipeline)
+   - [LLM Interaction](#llm-interaction)
+7. [Edge Deployment Considerations](#edge-deployment-considerations)
+8. [Example Workflows](#example-workflows)
+9. [Advantages and Trade-offs](#advantages-and-trade-offs)
+10. [Future Extensions](#future-extensions)
+
+---
+
+---
+
+## Overview
+
+This document describes the **hybrid memory system** for Harvey, combining:
+1. **YAML front matter** for structured, machine-readable metadata.
+2. **Fountain session files** for human-readable, raw interaction logs.
+3. **In-memory semantic search** (via FAISS) for fast, scalable retrieval.
+
+This approach balances **structure** (for programmatic access) and **flexibility** (for human readability and debugging), while enabling **semantic search** to find relevant memories even when keywords don’t match exactly.
+
+---
+
+---
+
+## Design Goals
+
+| **Goal**                          | **Rationale**                                                                                     |
+|-----------------------------------|---------------------------------------------------------------------------------------------------|
+| **Human-Readable**                 | Memories should be easy to read, edit, and debug (e.g., in a text editor).                          |
+| **Machine-Readable**               | Structured metadata enables programmatic filtering, retrieval, and validation.                     |
+| **Semantic Search**               | Support retrieval based on **meaning**, not just keywords (e.g., "fix Git error" → "initialize repo"). |
+| **Edge-Friendly**                  | Lightweight, minimal dependencies, and efficient for Raspberry Pi/edge devices.                   |
+| **Backward Compatible**            | Reuse existing Fountain session files with minimal changes (add YAML front matter).               |
+| **Teachable to LLMs**              | Clear schema and examples allow LLMs to understand and generate valid memories.                  |
+| **Scalable**                       | Works for small (dozens) to medium (thousands) of memories.                                       |
+| **Versionable**                    | Support tracking changes over time (e.g., via Git).                                             |
+
+---
+
+---
+
+## Memory Format
+
+Each memory is stored as a **single `.fountain` file** with:
+1. **YAML front matter**: Structured metadata (delimited by `---`).
+2. **Fountain text**: Raw interaction log (unstructured text).
+
+### YAML Front Matter
+
+The YAML front matter contains **structured metadata** for filtering, retrieval, and validation. It is delimited by `---` at the start and end.
+
+#### Required Fields
+
+| **Field**       | **Type**       | **Description**                                                                 | **Example**                          |
+|-----------------|----------------|---------------------------------------------------------------------------------|--------------------------------------|
+| `id`            | string         | Unique identifier (UUID or hash).                                              | `"git_fix_456"`                      |
+| `type`          | string         | Type of memory (`tool_use`, `workflow`, `user_preference`, etc.).               | `"tool_use"`                         |
+| `created_at`    | string         | ISO 8601 timestamp of creation.                                                | `"2026-05-25T12:00:00Z"`             |
+| `updated_at`    | string         | ISO 8601 timestamp of last update.                                             | `"2026-05-25T12:05:00Z"`             |
+| `description`   | string         | Human-readable summary of the memory.                                          | `"Fixed 'fatal: not a git repository'"` |
+
+#### Optional Fields
+
+| **Field**       | **Type**               | **Description**                                                                 | **Example**                          |
+|-----------------|------------------------|---------------------------------------------------------------------------------|--------------------------------------|
+| `tags`          | list[string]          | Tags for filtering (e.g., `["git", "error", "fix"]`).                            | `["git", "commit"]`                  |
+| `metadata`      | map[string, any]      | Arbitrary key-value pairs (e.g., `tool`, `command`, `success`).                  | `{"tool": "git", "command": "git init"}` |
+| `embedding`     | string                 | Path to embedding file (e.g., `embeddings/tool_use/git_fix_456.npy`).           | `"embeddings/git_fix_456.npy"`      |
+
+#### Example: Tool Use Memory
+```yaml
+---
+id: "git_fix_456"
+type: "tool_use"
+created_at: "2026-05-25T12:00:00Z"
+updated_at: "2026-05-25T12:05:00Z"
+tags: ["git", "commit", "error", "fix"]
+description: "Fixed 'fatal: not a git repository' by running 'git init'"
+metadata:
+  tool: "git"
+  command: "git init"
+  success: true
+  context:
+    working_directory: "/path/to/repo"
+    user: "robert"
+---
+```
+
+---
+
+### Fountain Text
+
+The Fountain text contains the **raw interaction log** (unstructured) below the YAML front matter. This includes:
+- User queries.
+- Harvey’s actions (e.g., tool invocations).
+- Tool outputs (stdout/stderr).
+- LLM responses.
+- Any other relevant context.
+
+#### Example: Tool Use Memory (Full File)
+```yaml
+---
+id: "git_fix_456"
+type: "tool_use"
+created_at: "2026-05-25T12:00:00Z"
+updated_at: "2026-05-25T12:05:00Z"
+tags: ["git", "commit", "error", "fix"]
+description: "Fixed 'fatal: not a git repository' by running 'git init'"
+metadata:
+  tool: "git"
+  command: "git init"
+  success: true
+  context:
+    working_directory: "/path/to/repo"
+    user: "robert"
+---
+User: I got this error: "fatal: not a git repository (or any of the parent directories)".
+Harvey: Running `git init`...
+Tool: git init
+Output: Initialized empty Git repository in /path/to/repo/.git/
+Harvey: The error is fixed. Try running your command again.
+User: Thanks!
+```
+
+#### Example: Workflow Memory
+```yaml
+---
+id: "deploy_flask_app_789"
+type: "workflow"
+created_at: "2026-05-25T13:00:00Z"
+updated_at: "2026-05-25T13:15:00Z"
+tags: ["flask", "deployment", "aws"]
+description: "Standard workflow for deploying a Flask app to AWS Elastic Beanstalk"
+metadata:
+  source: "user_defined"
+  success_rate: 0.95
+  steps:
+    - id: "build_image"
+      description: "Build Docker image"
+      tool: "docker"
+      command: "docker build -t my-flask-app ."
+    - id: "run_container"
+      description: "Run Docker container"
+      tool: "docker"
+      command: "docker run -p 5000:5000 my-flask-app"
+---
+User: Deploy my Flask app to AWS.
+Harvey: Starting deployment workflow...
+Harvey: Step 1/2: Building Docker image...
+Tool: docker build -t my-flask-app .
+Output: Successfully built my-flask-app.
+Harvey: Step 2/2: Running container...
+Tool: docker run -p 5000:5000 my-flask-app
+Output: * Running on http://0.0.0.0:5000/
+Harvey: Deployment successful!
+```
+
+---
+
+### File Structure
+
+Memories are organized in a **directory structure** by type and ID for scalability:
+
+```
+harvey/
+├── memories/               # Root directory for all memories
+│   ├── tool_use/           # Tool use memories (e.g., commands, errors)
+│   │   ├── git_fix_456.fountain
+│   │   ├── python_debug_101.fountain
+│   │   └── ...
+│   ├── workflows/          # Multi-step workflows
+│   │   ├── deploy_flask_app_789.fountain
+│   │   └── ...
+│   ├── user_preferences/   # User-specific preferences
+│   │   ├── user_prefs_robert.fountain
+│   │   └── ...
+│   └── index.yaml          # Optional: Master index of all memories
+└── embeddings/            # Optional: Precomputed embeddings for FAISS
+    ├── tool_use/
+    │   ├── git_fix_456.npy
+    │   └── ...
+    └── workflows/
+        └── deploy_flask_app_789.npy
+```
+
+#### File Naming Convention
+- **Format**: `{type}/{id}.fountain`
+  - `type`: Subdirectory (e.g., `tool_use`, `workflows`).
+  - `id`: Unique identifier (e.g., `git_fix_456`).
+- **Example**: `memories/tool_use/git_fix_456.fountain`
+
+---
+
+---
+
+## Semantic Search with In-Memory Index
+
+To enable **semantic search** (finding memories based on meaning, not just keywords), we use:
+1. **Embedding Generation**: Convert Fountain text (and metadata) into vectors using a **sentence transformer model**.
+2. **FAISS Index**: Store embeddings in an **in-memory FAISS index** for fast similarity search.
+3. **Hybrid Retrieval**: Combine **metadata filtering** (SQLite) and **semantic search** (FAISS).
+
+---
+
+### Embedding Generation
+
+Embeddings are **vector representations** of text that capture semantic meaning. We use the [`sentence-transformers`](https://www.sbert.net/) library to generate embeddings for:
+- The **Fountain text** (raw interaction log).
+- The **YAML metadata** (e.g., `description`, `tags`).
+
+#### Embedding Model
+| **Model**               | **Size** | **Dimensions** | **Use Case**                          | **Pros**                          | **Cons**                          |
+|-------------------------|----------|---------------|---------------------------------------|-----------------------------------|-----------------------------------|
+| `all-MiniLM-L6-v2`      | 80MB     | 384           | General-purpose semantic search.      | Lightweight, fast.                | Less accurate than larger models. |
+| `all-mpnet-base-v2`     | 420MB    | 768           | Higher accuracy.                      | More accurate.                    | Larger, slower.                   |
+| `paraphrase-multilingual-MiniLM-L12-v2` | 250MB | 384 | Multilingual support.               | Supports 50+ languages.           | Larger than MiniLM.               |
+
+**Recommendation for Harvey**: Use `all-MiniLM-L6-v2` for **edge deployment** (Raspberry Pi).
+
+#### Embedding Generation Code (Python)
+```python
+from sentence_transformers import SentenceTransformer
+
+# Load the model (do this once at startup)
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+def generate_embedding(text: str) -> list[float]:
+    """Generate a 384-dimensional embedding for the given text."""
+    return model.encode(text).tolist()
+```
+
+#### What to Embed
+For each memory, generate an embedding for:
+```python
+text_for_embedding = f"{metadata['description']} {metadata.get('tags', [])} {fountain_text}"
+embedding = generate_embedding(text_for_embedding)
+```
+- **Why?** Combines structured metadata and unstructured text for better semantic matching.
+
+---
+
+### FAISS Index
+
+[FAISS](https://github.com/facebookresearch/faiss) (Facebook AI Similarity Search) is a library for **efficient similarity search** in high-dimensional spaces (e.g., embeddings). It enables **fast retrieval** of the most similar memories to a query.
+
+#### Why FAISS?
+| **Feature**               | **FAISS** | **Alternatives**               |
+|--------------------------|-----------|--------------------------------|
+| **Speed**                | ✅ Fast   | Annoy, HNSW (slower)           |
+| **Memory Usage**         | ✅ Low    | Brute-force (high)             |
+| **Dynamic Updates**      | ✅ Yes    | SQLite FTS5 (keyword-only)     |
+| **Edge-Friendly**        | ✅ Yes    | Most alternatives are heavier. |
+| **Python Support**       | ✅ Yes    | Go bindings available.         |
+
+#### FAISS Index Types
+| **Index Type**           | **Use Case**                          | **Pros**                          | **Cons**                          |
+|--------------------------|---------------------------------------|-----------------------------------|-----------------------------------|
+| `IndexFlatL2`            | Small to medium datasets (<10K).     | Simple, exact search.             | Slow for large datasets.          |
+| `IndexIVFFlat`           | Large datasets (>10K).               | Fast, scalable.                   | Approximate search.               |
+| `IndexHNSWFlat`          | Dynamic datasets (frequent updates). | Fast updates.                     | More memory usage.                |
+
+**Recommendation for Harvey**: Use `IndexFlatL2` for **<10K memories** (simple, exact). Switch to `IndexIVFFlat` for larger datasets.
+
+#### Building the FAISS Index
+```python
+import faiss
+import numpy as np
+from typing import List, Dict
+
+class FAISSIndex:
+    def __init__(self, dimension: int = 384):
+        self.index = faiss.IndexFlatL2(dimension)
+        self.id_to_path = {}  # Map FAISS IDs to .fountain file paths
+
+    def add_embeddings(self, embeddings: List[List[float]], file_paths: List[str]):
+        """Add embeddings and their corresponding file paths to the index."""
+        if not embeddings:
+            return
+        embeddings_array = np.array(embeddings, dtype=np.float32)
+        self.index.add(embeddings_array)
+        # Map FAISS IDs (0, 1, 2, ...) to file paths
+        for i, path in enumerate(file_paths):
+            self.id_to_path[len(self.id_to_path)] = path
+
+    def search(self, query_embedding: List[float], k: int = 3) -> List[Dict]:
+        """Search the index for the top-k most similar embeddings."""
+        if not self.index.ntotal:
+            return []
+        query_array = np.array([query_embedding], dtype=np.float32)
+        distances, indices = self.index.search(query_array, k)
+        results = []
+        for idx, distance in zip(indices[0], distances[0]):
+            if idx in self.id_to_path:
+                results.append({
+                    "file_path": self.id_to_path[idx],
+                    "distance": float(distance)
+                })
+        return results
+```
+
+#### Loading Memories into FAISS
+```python
+from faiss_index import FAISSIndex
+from embedding_generator import generate_embedding
+import os
+from memory_parser import parse_fountain_file
+
+def build_faiss_index(memories_dir: str) -> FAISSIndex:
+    """Build a FAISS index for all .fountain files in memories_dir."""
+    faiss_index = FAISSIndex(dimension=384)
+    embeddings = []
+    file_paths = []
+
+    for root, _, files in os.walk(memories_dir):
+        for file in files:
+            if file.endswith(".fountain"):
+                file_path = os.path.join(root, file)
+                parsed = parse_fountain_file(file_path)
+                # Combine metadata and text for embedding
+                text_for_embedding = (
+                    f"{parsed['metadata'].get('description', '')} "
+                    f"{' '.join(parsed['metadata'].get('tags', []))} "
+                    f"{parsed['text']}"
+                )
+                embedding = generate_embedding(text_for_embedding)
+                embeddings.append(embedding)
+                file_paths.append(file_path)
+
+    faiss_index.add_embeddings(embeddings, file_paths)
+    return faiss_index
+```
+
+---
+### Hybrid Retrieval
+
+Hybrid retrieval combines:
+1. **Metadata Filtering**: Use SQLite FTS5 to filter memories by `type`, `tags`, etc.
+2. **Semantic Search**: Use FAISS to find memories semantically similar to the query.
+
+#### Hybrid Retriever Class
+```python
+import sqlite3
+from faiss_index import FAISSIndex
+from memory_parser import parse_fountain_file
+
+class HybridRetriever:
+    def __init__(self, memories_dir: str, db_path: str = ":memory:"):
+        # Initialize FAISS index
+        self.faiss_index = build_faiss_index(memories_dir)
+
+        # Initialize SQLite for metadata filtering
+        self.db = sqlite3.connect(db_path)
+        self._init_db(memories_dir)
+
+    def _init_db(self, memories_dir: str):
+        """Initialize SQLite database with metadata from .fountain files."""
+        self.db.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+                id, type, tags, description, file_path
+            )
+        """)
+        for root, _, files in os.walk(memories_dir):
+            for file in files:
+                if file.endswith(".fountain"):
+                    file_path = os.path.join(root, file)
+                    parsed = parse_fountain_file(file_path)
+                    metadata = parsed["metadata"]
+                    tags = " ".join(metadata.get("tags", []))
+                    self.db.execute(
+                        """
+                        INSERT INTO memories_fts VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            metadata.get("id"),
+                            metadata.get("type"),
+                            tags,
+                            metadata.get("description", ""),
+                            file_path
+                        )
+                    )
+        self.db.commit()
+
+    def retrieve_by_metadata(self, **kwargs) -> List[Dict]:
+        """Filter memories by metadata (e.g., type='tool_use', tags=['git'])."""
+        query = "SELECT file_path FROM memories_fts WHERE "
+        conditions = []
+        args = []
+        for key, value in kwargs.items():
+            if key == "tags":
+                conditions.append(f"tags MATCH ?")
+                args.append(f"*{value}*")
+            else:
+                conditions.append(f"{key} = ?")
+                args.append(value)
+        query += " AND ".join(conditions)
+        cursor = self.db.cursor()
+        cursor.execute(query, args)
+        file_paths = [row[0] for row in cursor.fetchall()]
+        return [parse_fountain_file(fp) for fp in file_paths]
+
+    def retrieve_by_semantic(self, query: str, k: int = 3) -> List[Dict]:
+        """Retrieve top-k memories semantically similar to the query."""
+        query_embedding = generate_embedding(query)
+        results = self.faiss_index.search(query_embedding, k)
+        return [parse_fountain_file(result["file_path"]) for result in results]
+
+    def retrieve_hybrid(self, query: str, metadata_filter: Dict = None, k: int = 3) -> List[Dict]:
+        """Combine metadata filtering and semantic search."""
+        if metadata_filter:
+            # Step 1: Filter by metadata
+            filtered_memories = self.retrieve_by_metadata(**metadata_filter)
+            if not filtered_memories:
+                return []
+
+            # Step 2: Semantic search within filtered memories
+            # (In practice, rebuild a temporary FAISS index for filtered_memories)
+            # For simplicity, return filtered memories here.
+            return filtered_memories[:k]
+
+        # Fallback: Pure semantic search
+        return self.retrieve_by_semantic(query, k)
+```
+
+#### Example Usage
+```python
+retriever = HybridRetriever("memories/")
+
+# Retrieve Git tool use memories similar to "fatal: not a git repository"
+results = retriever.retrieve_hybrid(
+    query="fatal: not a git repository",
+    metadata_filter={"type": "tool_use", "tags": "git"},
+    k=3
+)
+
+for result in results:
+    print(f"ID: {result['metadata']['id']}")
+    print(f"Description: {result['metadata']['description']}")
+    print(f"Text: {result['text'][:100]}...")  # First 100 chars of Fountain text
+```
+
+---
+---
+## Memory Lifecycle
+
+This section describes how memories are **created, retrieved, updated, and deleted** in Harvey.
+
+---
+### Creation
+
+New memories are created when Harvey:
+1. **Completes a task** (e.g., fixes an error, runs a workflow).
+2. **Learns a user preference** (e.g., "I prefer Python 3.10").
+3. **Receives explicit feedback** (e.g., "Remember this for next time").
+
+#### Steps to Create a Memory
+1. **Generate Metadata**:
+   - Assign a unique `id` (e.g., UUID or hash of content).
+   - Set `type`, `tags`, `description`, etc.
+2. **Write Fountain Text**:
+   - Log the **full interaction** (user query, Harvey’s actions, tool outputs, LLM responses).
+3. **Save to File**:
+   - Write YAML front matter + Fountain text to `{type}/{id}.fountain`.
+4. **Update Indexes** (Optional):
+   - Add to **SQLite** (for metadata filtering).
+   - Generate and store **embedding** (for FAISS).
+
+#### Example: Creating a Tool Use Memory
+```python
+import yaml
+import os
+from datetime import datetime
+
+def create_tool_use_memory(
+    memory_id: str,
+    command: str,
+    output: str,
+    error: str,
+    success: bool,
+    context: Dict,
+    fountain_text: str,
+    memories_dir: str = "memories"
+):
+    """Create a new tool use memory file."""
+    memory = {
+        "id": memory_id,
+        "type": "tool_use",
+        "created_at": datetime.utcnow().isoformat() + "Z",
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "tags": ["git", "error", "fix"] if "git" in command else ["tool"],
+        "description": f"Ran `{command}`",
+        "metadata": {
+            "tool": command.split()[0],  # First word is the tool (e.g., "git")
+            "command": command,
+            "output": output,
+            "error": error,
+            "success": success,
+            "context": context
+        }
+    }
+
+    # Create directory if it doesn't exist
+    type_dir = os.path.join(memories_dir, memory["type"])
+    os.makedirs(type_dir, exist_ok=True)
+
+    # Write to .fountain file
+    file_path = os.path.join(type_dir, f"{memory_id}.fountain")
+    with open(file_path, "w") as f:
+        f.write("---\n")
+        yaml.dump(memory, f)
+        f.write("---\n")
+        f.write(fountain_text)
+
+    return file_path
+```
+
+---
+### Retrieval
+
+Memories are retrieved using:
+1. **Metadata Filtering**: Filter by `type`, `tags`, `tool`, etc. (SQLite FTS5).
+2. **Semantic Search**: Find memories semantically similar to a query (FAISS).
+3. **Hybrid Retrieval**: Combine both for precise results.
+
+#### Example: Retrieving Memories for a Git Error
+```python
+retriever = HybridRetriever("memories/")
+
+# Retrieve Git tool use memories similar to the error
+query = "fatal: not a git repository"
+results = retriever.retrieve_hybrid(
+    query=query,
+    metadata_filter={"type": "tool_use", "tags": "git"},
+    k=3
+)
+```
+
+---
+### Update
+
+Memories are updated when:
+- **New information is learned** (e.g., a better fix for an error).
+- **Metadata needs correction** (e.g., wrong `tags` or `description`).
+- **Fountain text is clarified** (e.g., adding more context).
+
+#### Approaches for Updates
+| **Approach**               | **Pros**                          | **Cons**                          | **Use Case**                     |
+|---------------------------|-----------------------------------|-----------------------------------|----------------------------------|
+| **Append-Only (Git)**     | Immutable, versioned.             | No in-place updates.              | Default for Harvey.             |
+| **Atomic Overwrite**       | In-place updates.                 | Risk of corruption.               | Rarely needed.                   |
+| **SQLite as Source**      | Single source of truth.           | More complex.                     | Large-scale systems.            |
+
+#### Example: Updating a Memory (Atomic Overwrite)
+```python
+import yaml
+import os
+import tempfile
+
+def update_memory(file_path: str, updates: Dict):
+    """Update a memory file atomically."""
+    # Load existing memory
+    with open(file_path, "r") as f:
+        content = f.read()
+    parsed = parse_fountain_file_from_string(content)
+    memory = parsed["metadata"]
+    memory.update(updates["metadata"])
+    if "text" in updates:
+        parsed["text"] = updates["text"]
+
+    # Write to temp file
+    dir_name = os.path.dirname(file_path)
+    with tempfile.NamedTemporaryFile(mode="w", dir=dir_name, suffix=".fountain", delete=False) as f:
+        f.write("---\n")
+        yaml.dump(memory, f)
+        f.write("---\n")
+        f.write(parsed["text"])
+        temp_path = f.name
+
+    # Atomic rename
+    os.rename(temp_path, file_path)
+```
+
+---
+### Deletion
+
+Memories are deleted when:
+- They are **outdated** (e.g., a tool’s behavior has changed).
+- They are **redundant** (e.g., duplicate of another memory).
+- They are **incorrect** (e.g., a fix no longer works).
+
+#### Example: Deleting a Memory
+```python
+import os
+
+def delete_memory(file_path: str):
+    """Delete a memory file."""
+    os.remove(file_path)
+```
+
+---
+---
+## Integration with Harvey
+
+This section describes how the memory system integrates with Harvey’s **RAG pipeline** and **LLM interactions**.
+
+---
+### RAG Pipeline
+
+Harvey uses a **Retrieval-Augmented Generation (RAG)** pipeline to:
+1. **Retrieve relevant memories** (using hybrid retrieval).
+2. **Inject memories into the LLM prompt**.
+3. **Generate a response** grounded in the retrieved context.
+
+#### RAG Workflow
+```
+User Query
+     ↓
+[Hybrid Retriever: Filter by metadata + semantic search]
+     ↓
+[Retrieved Memories: Top-K relevant memories]
+     ↓
+[Prompt Construction: Inject memories into LLM prompt]
+     ↓
+[LLM: Generate response using context]
+     ↓
+[Harvey: Execute/validate response, log new memory]
+```
+
+#### Example: RAG for a Git Error
+```python
+from hybrid_retriever import HybridRetriever
+
+# Initialize retriever
+retriever = HybridRetriever("memories/")
+
+# User query
+query = "How do I fix 'fatal: not a git repository'?"
+
+# Retrieve memories
+memories = retriever.retrieve_hybrid(
+    query=query,
+    metadata_filter={"type": "tool_use", "tags": "git"},
+    k=3
+)
+
+# Construct prompt
+prompt = f"""
+User: {query}
+Harvey: Previously, this error was fixed by:
+"""
+for memory in memories:
+    prompt += f"- {memory['metadata']['metadata'].get('command', '')}: {memory['metadata']['description']}\n"
+prompt += "LLM: How would you fix this?"
+
+# Call Ollama
+import subprocess
+result = subprocess.run(
+    ["ollama", "run", "quen2.5-coder:7b", prompt],
+    capture_output=True,
+    text=True
+)
+print("LLM:", result.stdout)
+```
+
+---
+### LLM Interaction
+
+The **stateless LLM** (e.g., Ollama’s `quen2.5-coder:7b`) interacts with memories **only through prompts**. It:
+1. **Receives a prompt** (which may include retrieved memories).
+2. **Generates a response** based on the prompt.
+3. **Does not store or manage memories** (Harvey does that).
+
+#### Example: LLM Prompt with Memories
+```text
+User: How do I fix "fatal: not a git repository"?
+Harvey: Previously, this error was fixed by:
+- git init: Fixed 'fatal: not a git repository' by running 'git init'
+- git init: Fixed 'fatal: not a git repository' in /path/to/repo
+LLM: How would you fix this?
+```
+
+#### LLM Response
+```text
+Run `git init` to initialize a Git repository in the current directory.
+```
+
+---
+---
+## Edge Deployment Considerations
+
+Harvey is designed to run on **edge devices** (e.g., Raspberry Pi). This section covers optimizations for **low-resource environments**.
+
+---
+### Memory Usage
+
+| **Component**               | **Memory Footprint**               | **Optimizations**                          |
+|-----------------------------|------------------------------------|-------------------------------------------|
+| **FAISS Index**             | ~10MB + (n_vectors * 4 bytes)      | Use `IndexFlatL2` for <10K memories.       |
+| **Embedding Model**         | ~80MB (`all-MiniLM-L6-v2`)          | Load once at startup; unload if idle.     |
+| **SQLite**                  | ~Size of data + overhead           | Use WAL mode for better performance.     |
+| **Ollama Model**            | ~4-8GB (`quen2.5-coder:7b`)        | Use 4-bit quantized version (`q4_0`).   |
+
+#### Example: FAISS Index for 10K Memories
+- **Embedding size**: 384 dimensions * 4 bytes = 1,536 bytes per vector.
+- **Total for 10K memories**: 10,000 * 1,536 bytes = **~15MB**.
+- **FAISS overhead**: ~10MB.
+- **Total**: **~25MB** (feasible for Raspberry Pi).
+
+---
+### Speed
+
+| **Operation**               | **Time (10K memories)** | **Optimizations**                          |
+|-----------------------------|-------------------------|-------------------------------------------|
+| **FAISS Search**            | ~1-10ms                 | Use `IndexFlatL2` for exact search.        |
+| **Embedding Generation**    | ~50-100ms per text      | Batch embeddings at startup.              |
+| **SQLite Query**            | ~1-10ms                 | Use FTS5 for full-text search.           |
+
+#### Example: Startup Optimization
+```python
+# Pre-load embeddings and FAISS index at startup
+from faiss_index import FAISSIndex
+from embedding_generator import EmbeddingGenerator
+
+class MemorySystem:
+    def __init__(self, memories_dir: str):
+        self.embedding_generator = EmbeddingGenerator()
+        self.faiss_index = FAISSIndex()
+        self._load_memories(memories_dir)
+
+    def _load_memories(self, memories_dir: str):
+        """Load all memories into FAISS and SQLite at startup."""
+        # 1. Load embeddings into FAISS
+        embeddings = []
+        file_paths = []
+        for root, _, files in os.walk(memories_dir):
+            for file in files:
+                if file.endswith(".fountain"):
+                    file_path = os.path.join(root, file)
+                    parsed = parse_fountain_file(file_path)
+                    text_for_embedding = (
+                        f"{parsed['metadata'].get('description', '')} "
+                        f"{' '.join(parsed['metadata'].get('tags', []))} "
+                        f"{parsed['text']}"
+                    )
+                    embedding = self.embedding_generator.generate_embedding(text_for_embedding)
+                    embeddings.append(embedding)
+                    file_paths.append(file_path)
+        self.faiss_index.add_embeddings(embeddings, file_paths)
+
+        # 2. Load metadata into SQLite (omitted for brevity)
+        ...
+```
+
+---
+### Lazy Loading
+
+To reduce startup time, **lazy-load** the FAISS index and SQLite database:
+```python
+class LazyMemorySystem:
+    def __init__(self, memories_dir: str):
+        self.memories_dir = memories_dir
+        self._faiss_index = None
+        self._sqlite_db = None
+
+    @property
+    def faiss_index(self):
+        if self._faiss_index is None:
+            self._faiss_index = build_faiss_index(self.memories_dir)
+        return self._faiss_index
+
+    @property
+    def sqlite_db(self):
+        if self._sqlite_db is None:
+            self._sqlite_db = sqlite3.connect(":memory:")
+            self._init_db(self.memories_dir)
+        return self._sqlite_db
+```
+
+---
+### Model Recommendations
+
+| **Component**               | **Recommended Model**       | **Size** | **Notes**                          |
+|-----------------------------|-----------------------------|----------|------------------------------------|
+| **Embedding Model**         | `all-MiniLM-L6-v2`          | 80MB     | Lightweight, fast, good accuracy. |
+| **LLM**                     | `quen2.5-coder:7b-q4_0`     | ~4GB     | 4-bit quantized for edge.         |
+| **Alternative LLM**         | `llama3.1:8b-instruct-q4_0` | ~5GB     | More capable, slightly larger.     |
+
+---
+---
+## Example Workflows
+
+This section provides **end-to-end examples** of how Harvey uses the memory system.
+
+---
+### Workflow 1: Fixing a Git Error
+
+#### Step 1: User Query
+```text
+User: How do I fix "fatal: not a git repository"?
+```
+
+#### Step 2: Harvey Retrieves Memories
+```python
+retriever = HybridRetriever("memories/")
+memories = retriever.retrieve_hybrid(
+    query="fatal: not a git repository",
+    metadata_filter={"type": "tool_use", "tags": "git"},
+    k=3
+)
+```
+
+#### Step 3: Harvey Constructs Prompt
+```python
+prompt = f"""
+User: How do I fix "fatal: not a git repository"?
+Harvey: Previously, this error was fixed by:
+- git init: Fixed 'fatal: not a git repository' by running 'git init'
+- git init: Fixed 'fatal: not a git repository' in /path/to/repo
+LLM: How would you fix this?
+"""
+```
+
+#### Step 4: LLM Generates Response
+```text
+LLM: Run `git init` to initialize a Git repository in the current directory.
+```
+
+#### Step 5: Harvey Executes and Logs
+```python
+# Execute the command
+import subprocess
+result = subprocess.run(
+    ["git", "init"],
+    capture_output=True,
+    text=True,
+    cwd="/path/to/repo"
+)
+
+# Log the interaction as a new memory
+fountain_text = f"""
+User: How do I fix "fatal: not a git repository"?
+Harvey: Running `git init`...
+Tool: git init
+Output: {result.stdout}
+Error: {result.stderr}
+Harvey: The error is fixed. Try running your command again.
+LLM: Run `git init` to initialize a Git repository in the current directory.
+"""
+
+create_tool_use_memory(
+    memory_id="git_fix_458",
+    command="git init",
+    output=result.stdout,
+    error=result.stderr,
+    success=result.returncode == 0,
+    context={"working_directory": "/path/to/repo", "user": "robert"},
+    fountain_text=fountain_text
+)
+```
+
+---
+### Workflow 2: Running a Workflow
+
+#### Step 1: User Query
+```text
+User: Deploy my Flask app to AWS.
+```
+
+#### Step 2: Harvey Retrieves Workflow
+```python
+retriever = HybridRetriever("memories/")
+workflows = retriever.retrieve_hybrid(
+    query="Deploy my Flask app to AWS",
+    metadata_filter={"type": "workflow", "tags": "flask"},
+    k=1
+)
+workflow = workflows[0]
+```
+
+#### Step 3: Harvey Executes Workflow
+```python
+for step in workflow["metadata"]["steps"]:
+    print(f"Step {step['id']}: {step['description']}")
+    result = subprocess.run(
+        step["command"].split(),
+        capture_output=True,
+        text=True
+    )
+    print(f"Output: {result.stdout}")
+    if result.returncode != 0:
+        print(f"Error: {result.stderr}")
+        break
+```
+
+#### Step 4: Harvey Logs the Workflow Execution
+```python
+fountain_text = f"""
+User: Deploy my Flask app to AWS.
+Harvey: Starting deployment workflow...
+"""
+for step in workflow["metadata"]["steps"]:
+    fountain_text += f"Harvey: Step {step['id']}: {step['description']}\n"
+    fountain_text += f"Tool: {step['command']}\n"
+    # Simulate execution
+    result = subprocess.run(step["command"].split(), capture_output=True, text=True)
+    fountain_text += f"Output: {result.stdout}\n"
+    if result.returncode != 0:
+        fountain_text += f"Error: {result.stderr}\n"
+        break
+
+create_tool_use_memory(
+    memory_id="deploy_flask_app_790",
+    command="deploy_flask_app_workflow",
+    output="Workflow completed successfully.",
+    error="",
+    success=True,
+    context={"workflow_id": workflow["metadata"]["id"]},
+    fountain_text=fountain_text
+)
+```
+
+---
+---
+## Advantages and Trade-offs
+
+| **Feature**               | **Advantages**                          | **Trade-offs**                          |
+|--------------------------|-----------------------------------------|-----------------------------------------|
+| **Hybrid Format**        | Human-readable + machine-readable.     | Slightly more complex parsing.          |
+| **YAML Front Matter**    | Structured, easy to filter/retrieve.    | No native semantic search.             |
+| **Fountain Text**        | Raw logs for debugging/context.         | Unstructured, harder to query.          |
+| **FAISS Index**          | Fast semantic search.                   | Requires Python + dependencies.         |
+| **SQLite FTS5**          | Fast keyword search, no dependencies.   | No semantic search.                     |
+| **Hybrid Retrieval**      | Best of both worlds.                    | More complex implementation.            |
+| **Edge-Friendly**         | Works on Raspberry Pi.                  | Limited by device resources.            |
+| **Git Integration**       | Versioning, rollbacks, collaboration.    | Requires Git setup.                      |
+
+---
+---
+## Future Extensions
+
+| **Extension**               | **Description**                                                                 | **Complexity** |
+|-----------------------------|---------------------------------------------------------------------------------|----------------|
+| **Graph-Based Memories**    | Store memories as nodes in a graph (e.g., tool dependencies).                   | Medium          |
+| **Parametric Memory**       | Fine-tune Ollama models with Harvey’s memories.                                | High           |
+| **Multi-Modal Memories**     | Store images, audio, or other media alongside text.                             | High           |
+| **Memory Compression**      | Compress old memories to save space.                                            | Medium         |
+| **Automated Summarization** | Use LLMs to summarize long Fountain texts.                                      | Low            |
+| **Memory Sharing**          | Sync memories across multiple Harvey instances.                                | Medium         |
+| **Trustworthiness**         | Add fields for confidence scores, sources, or validation status.              | Low            |
+
+---
+---
+## Appendix A: File Templates
+
+### Tool Use Memory Template
+```yaml
+---
+id: ""
+type: "tool_use"
+created_at: ""
+updated_at: ""
+tags: []
+description: ""
+metadata:
+  tool: ""
+  command: ""
+  input: ""
+  output: ""
+  error: ""
+  success: false
+  context: {}
+---
+# Fountain text here
+```
+
+### Workflow Memory Template
+```yaml
+---
+id: ""
+type: "workflow"
+created_at: ""
+updated_at: ""
+tags: []
+description: ""
+metadata:
+  source: ""
+  success_rate: 0.0
+  steps: []
+---
+# Fountain text here
+```
+
+### User Preference Memory Template
+```yaml
+---
+id: ""
+type: "user_preference"
+created_at: ""
+updated_at: ""
+tags: []
+description: ""
+metadata:
+  user: ""
+  preferences: {}
+---
+# Fountain text here
+```
+
+---
+---
+## Appendix B: Glossary
+
+| **Term**               | **Definition**                                                                 |
+|------------------------|--------------------------------------------------------------------------------|
+| **YAML Front Matter**  | Structured metadata at the top of a file, delimited by `---`.                  |
+| **Fountain Text**      | Raw, unstructured interaction logs below the YAML front matter.               |
+| **FAISS**              | Facebook AI Similarity Search: Library for fast similarity search in vectors.  |
+| **Embedding**          | Vector representation of text that captures semantic meaning.                 |
+| **RAG**                | Retrieval-Augmented Generation: Technique for grounding LLM responses in external data. |
+| **Hybrid Retrieval**   | Combining metadata filtering (SQLite) and semantic search (FAISS).           |
+| **Stateless LLM**      | LLM with no persistent memory between calls (e.g., Ollama).                   |
+
+---
+---
+## Appendix C: References
+
+1. [FAISS GitHub](https://github.com/facebookresearch/faiss)
+2. [Sentence Transformers](https://www.sbert.net/)
+3. [SQLite FTS5](https://www.sqlite.org/fts5.html)
+4. [YAML Specification](https://yaml.org/spec/1.2/spec.html)
+5. [Fountain Format](https://github.com/foamspace/foam) (inspiration for session files)
+```
+
+---
+
+---
+This **Markdown design document** provides a **comprehensive, actionable, and clear** blueprint for your hybrid memory system. It covers:
+1. **Format**: YAML front matter + Fountain text.
+2. **Retrieval**: SQLite (metadata) + FAISS (semantic).
+3. **Lifecycle**: Creation, retrieval, update, deletion.
+4. **Integration**: RAG pipeline, LLM interaction.
+5. **Edge Optimization**: Memory, speed, lazy loading.
+6. **Examples**: Full workflows for tool use and workflows.
+

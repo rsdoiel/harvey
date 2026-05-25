@@ -15,17 +15,19 @@
 
 ## Up Next (features for v0.0.6)
 
-- [ ] Add in built-in tool support dates, times and durations
+- [ ] Add in built-in tool support for dates, times and durations
 
 
 ## Someday, maybe ideas
 
 ### Prompt pipeline
+
 Design: [pipeline-design.md](pipeline-design.md) | Plan: [pipeline-plan.md](pipeline-plan.md)
 
 - [ ] `/pipeline <CONFIDENCE%> FILE [FILE ...]` — chain Markdown prompt files through models; each step's response feeds the next; confidence threshold gates progression; @mention routes individual steps to specific models; final response appended to Harvey's active conversation on success
 
 ### Remote protocol integration
+
 Design: [remote-protocol-design.md](remote-protocol-design.md) | Plan: [remote-protocol-plan.md](remote-protocol-plan.md)
 
 - [ ] Phase 1: `RemoteReader` abstraction interface + URI scheme factory

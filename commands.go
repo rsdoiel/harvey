@@ -178,6 +178,11 @@ func (a *Agent) registerCommands() {
 			Description: "Manage and query the workspace knowledge base",
 			Handler:     cmdKB,
 		},
+		"memory": {
+			Usage:       "/memory <mine|list|show|forget|status> [args...]",
+			Description: "Mine sessions for memories and manage the memory store",
+			Handler:     cmdMemory,
+		},
 		"rag": {
 			Usage:       "/rag <list|new NAME|switch NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>",
 			Description: "Manage named RAG knowledge stores for context-augmented generation",
@@ -5047,5 +5052,203 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 			fmt.Fprintf(out, "  [%d] score=%.3f  %s\n\n", i+1, c.Score, preview)
 		}
 	}
+	return nil
+}
+
+// ── /memory ──────────────────────────────────────────────────────────────────
+
+/** cmdMemory dispatches /memory subcommands: mine, list, show, forget, status.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent.
+ *   args ([]string)  — subcommand and arguments.
+ *   out  (io.Writer) — output writer.
+ *
+ * Returns:
+ *   error — on store open or subcommand failure.
+ *
+ * Example:
+ *   /memory mine
+ *   /memory list --type tool_use
+ *   /memory show git_fix_a3f891
+ *   /memory forget git_fix_a3f891
+ *   /memory status
+ */
+func cmdMemory(a *Agent, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status> [args...]")
+		return nil
+	}
+	store, err := NewMemoryStore(a.Workspace)
+	if err != nil {
+		return fmt.Errorf("/memory: open store: %w", err)
+	}
+	defer store.Close()
+
+	switch args[0] {
+	case "mine":
+		return cmdMemoryMine(a, args[1:], out, store)
+	case "list":
+		return cmdMemoryList(a, args[1:], out, store)
+	case "show":
+		return cmdMemoryShow(a, args[1:], out, store)
+	case "forget":
+		return cmdMemoryForget(a, args[1:], out, store)
+	case "status":
+		return cmdMemoryStatus(a, args[1:], out, store)
+	default:
+		fmt.Fprintf(out, "Unknown /memory subcommand: %q\n", args[0])
+		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status> [args...]")
+		return nil
+	}
+}
+
+// cmdMemoryMine mines a session file for memories with interactive review.
+func cmdMemoryMine(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	force := false
+	var sessionPath string
+	for _, arg := range args {
+		if arg == "--force" {
+			force = true
+		} else {
+			sessionPath = arg
+		}
+	}
+
+	manifest, err := LoadManifest(store.Dir())
+	if err != nil {
+		return fmt.Errorf("memory mine: load manifest: %w", err)
+	}
+
+	if sessionPath == "" {
+		sessDir := a.SessionsDir
+		if sessDir == "" {
+			sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")
+		}
+		var candidates []string
+		if force {
+			entries, _ := os.ReadDir(sessDir)
+			for _, e := range entries {
+				if !e.IsDir() && (filepath.Ext(e.Name()) == ".spmd" || filepath.Ext(e.Name()) == ".fountain") {
+					candidates = append(candidates, filepath.Join(sessDir, e.Name()))
+				}
+			}
+			sort.Strings(candidates)
+		} else {
+			candidates, err = manifest.UnminedSessions(sessDir)
+			if err != nil {
+				return fmt.Errorf("memory mine: list sessions: %w", err)
+			}
+		}
+		if len(candidates) == 0 {
+			fmt.Fprintln(out, "No unmined sessions found.")
+			return nil
+		}
+		sessionPath = candidates[len(candidates)-1]
+	}
+
+	if force {
+		filtered := manifest.Sessions[:0]
+		for _, e := range manifest.Sessions {
+			if e.Path != sessionPath {
+				filtered = append(filtered, e)
+			}
+		}
+		manifest.Sessions = filtered
+	}
+
+	var embedder Embedder
+	if entry := a.Config.ActiveRagStore(); entry != nil {
+		embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+	}
+
+	miner := NewMiner(store, manifest, a.Workspace)
+	return miner.Mine(context.Background(), sessionPath, a, embedder, out, a.In)
+}
+
+// cmdMemoryList lists non-archived memories, optionally filtered by type.
+func cmdMemoryList(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	typeFilter := ""
+	for i, arg := range args {
+		if arg == "--type" && i+1 < len(args) {
+			typeFilter = args[i+1]
+		}
+	}
+	metas, err := store.List(typeFilter)
+	if err != nil {
+		return fmt.Errorf("memory list: %w", err)
+	}
+	if len(metas) == 0 {
+		fmt.Fprintln(out, "No memories found.")
+		return nil
+	}
+	for _, m := range metas {
+		fmt.Fprintf(out, "%-30s  %-16s  %s\n", m.ID, m.Type, m.Description)
+	}
+	return nil
+}
+
+// cmdMemoryShow displays the full content of a memory by ID.
+func cmdMemoryShow(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /memory show <id>")
+		return nil
+	}
+	doc, err := store.ByID(args[0])
+	if err != nil {
+		return fmt.Errorf("memory show: %w", err)
+	}
+	if doc == nil {
+		fmt.Fprintf(out, "Memory %q not found.\n", args[0])
+		return nil
+	}
+	data, err := doc.Bytes()
+	if err != nil {
+		return fmt.Errorf("memory show: serialise: %w", err)
+	}
+	fmt.Fprint(out, string(data))
+	return nil
+}
+
+// cmdMemoryForget archives a memory by ID.
+func cmdMemoryForget(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /memory forget <id>")
+		return nil
+	}
+	if err := store.Archive(args[0]); err != nil {
+		return fmt.Errorf("memory forget: %w", err)
+	}
+	fmt.Fprintf(out, "Memory %q archived.\n", args[0])
+	return nil
+}
+
+// cmdMemoryStatus shows manifest summary and memory counts.
+func cmdMemoryStatus(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	n, err := store.Count()
+	if err != nil {
+		return fmt.Errorf("memory status: count: %w", err)
+	}
+
+	manifest, err := LoadManifest(store.Dir())
+	if err != nil {
+		return fmt.Errorf("memory status: load manifest: %w", err)
+	}
+
+	sessDir := a.SessionsDir
+	if sessDir == "" {
+		sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")
+	}
+	unmined, _ := manifest.UnminedSessions(sessDir)
+
+	totalCreated := 0
+	for _, e := range manifest.Sessions {
+		totalCreated += len(e.MemoriesCreated)
+	}
+
+	fmt.Fprintf(out, "Memory store:  %s\n", store.Dir())
+	fmt.Fprintf(out, "Active memories: %d\n", n)
+	fmt.Fprintf(out, "Sessions mined:  %d  (total memories created: %d)\n", len(manifest.Sessions), totalCreated)
+	fmt.Fprintf(out, "Sessions pending: %d\n", len(unmined))
 	return nil
 }

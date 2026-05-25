@@ -140,6 +140,8 @@ type Config struct {
 	MaxOutputBytes        int  // cap on tool output injected into context; 0 = defaultMaxOutputBytes
 	// Debug mode: set by --debug at startup; enables JSONL debug log and OLLAMA_DEBUG
 	Debug bool
+	// Memory system configuration
+	Memory MemoryConfig
 }
 
 /** ActiveRagStore returns a pointer to the active RagStoreEntry, or nil when
@@ -259,6 +261,11 @@ func DefaultConfig() *Config {
 		ToolsEnabled:          true,
 		MaxToolCallsPerTurn:   defaultMaxToolCallsPerTurn,
 		MaxOutputBytes:        defaultMaxOutputBytes,
+		Memory: MemoryConfig{
+			Enabled:       true,
+			TopK:          5,
+			InjectOnStart: true,
+		},
 	}
 }
 
@@ -515,6 +522,22 @@ func (c *Config) PermissionString(prefix string) string {
 	return strings.Join(perms, ", ")
 }
 
+/** MemoryConfig controls the behaviour of Harvey's memory system.
+ *
+ * Fields:
+ *   Enabled       (bool) — when false the entire memory system is skipped; default true.
+ *   TopK          (int)  — number of recent memories injected at session start; default 5.
+ *   InjectOnStart (bool) — inject memory context block in ClearHistory; default true.
+ *
+ * Example:
+ *   cfg.Memory = MemoryConfig{Enabled: true, TopK: 5, InjectOnStart: true}
+ */
+type MemoryConfig struct {
+	Enabled       bool
+	TopK          int
+	InjectOnStart bool
+}
+
 // ragStoreYAML is the on-disk representation of one entry under rag.stores.
 type ragStoreYAML struct {
 	Name           string            `yaml:"name"`
@@ -553,12 +576,19 @@ type harveyYAML struct {
 	OllamaTimeout   string              `yaml:"ollama_timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
 	Tools           toolsYAML           `yaml:"tools,omitempty"`
 	ModelAliases    map[string]string   `yaml:"model_aliases,omitempty"`  // short name → full Ollama model ID
+	Memory          memoryYAML          `yaml:"memory,omitempty"`
 }
 
 type toolsYAML struct {
 	Enabled             *bool `yaml:"enabled,omitempty"`
 	MaxToolCallsPerTurn int   `yaml:"max_tool_calls_per_turn,omitempty"`
 	MaxOutputBytes      int   `yaml:"max_output_bytes,omitempty"`
+}
+
+type memoryYAML struct {
+	Enabled       *bool `yaml:"enabled,omitempty"`
+	TopK          int   `yaml:"top_k,omitempty"`
+	InjectOnStart *bool `yaml:"inject_on_start,omitempty"`
 }
 
 // parseDurationString parses a duration from a YAML string value. It accepts:
@@ -691,6 +721,16 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	if y.Tools.MaxOutputBytes > 0 {
 		cfg.MaxOutputBytes = y.Tools.MaxOutputBytes
+	}
+	// Load memory settings
+	if y.Memory.Enabled != nil {
+		cfg.Memory.Enabled = *y.Memory.Enabled
+	}
+	if y.Memory.TopK > 0 {
+		cfg.Memory.TopK = y.Memory.TopK
+	}
+	if y.Memory.InjectOnStart != nil {
+		cfg.Memory.InjectOnStart = *y.Memory.InjectOnStart
 	}
 	return nil
 }

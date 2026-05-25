@@ -283,10 +283,46 @@ func (a *Agent) ClearHistory() {
 	} else {
 		a.History = nil
 	}
+	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Memory.InjectOnStart {
+		if block := loadMemoryContextBlock(a); block != "" {
+			a.AddMessage("user", block)
+		}
+	}
 	if a.PinnedContext != "" {
 		a.AddMessage("user", "[pinned context]\n\n"+a.PinnedContext)
 	}
 	a.ActiveSkill = ""
+}
+
+// loadMemoryContextBlock opens the memory store and returns a formatted block
+// of the N most recent memories. Returns "" when the store is unavailable or empty.
+func loadMemoryContextBlock(a *Agent) string {
+	store, err := NewMemoryStore(a.Workspace)
+	if err != nil {
+		return ""
+	}
+	defer store.Close()
+
+	topK := a.Config.Memory.TopK
+	if topK <= 0 {
+		topK = 5
+	}
+	docs, err := store.Recent(topK)
+	if err != nil || len(docs) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "[memory context — %d recent memories]\n\n", len(docs))
+	for _, doc := range docs {
+		fmt.Fprintf(&sb, "**[%s]** %s\n", doc.Meta.Type, doc.Meta.Description)
+		if doc.Meta.Summary != "" {
+			sb.WriteString(doc.Meta.Summary)
+			sb.WriteByte('\n')
+		}
+		sb.WriteByte('\n')
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 /** HasPermission checks if the given permission is allowed for a path.

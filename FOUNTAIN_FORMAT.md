@@ -490,6 +490,90 @@ Reading agents/sessions/session.spmd for analysis.
 - Skill name (from heading)
 - Description action line
 
+### Memory Scenes (`INT. MEMORY <TIMESTAMP>`)
+
+Memory documents stored in `agents/memories/` use an `INT. MEMORY <TIMESTAMP>`
+scene heading in place of the standard session heading. This scene type is
+**never recorded in live sessions** — it appears only in `.fountain` files under
+`agents/memories/{type}/` that were produced by `/memory mine`.
+
+The file begins with a YAML front matter block (replacing the Fountain title
+block) followed by a proper Fountain body.
+
+**File structure:**
+
+```
+---
+id: "git_fix_a3f891"
+type: "tool_use"
+created_at: "2026-05-25T12:00:00Z"
+updated_at: "2026-05-25T12:00:00Z"
+supersedes: []
+tags: ["git", "error", "fix"]
+description: "Fixed 'fatal: not a git repository' by running 'git init'"
+summary: "When git reports 'fatal: not a git repository', running git init
+  in the project directory resolves the error by initializing a new repo."
+source_session: "agents/sessions/harvey-session-20260525-103507.spmd"
+---
+
+FADE IN:
+
+INT. MEMORY 2026-05-25 12:00:00
+
+RSDOIEL
+I got: fatal: not a git repository (or any of the parent directories).
+
+HARVEY
+Running git init to initialize the repository.
+
+RSDOIEL
+That fixed it.
+
+THE END.
+```
+
+**YAML front matter fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Unique identifier, format `{type}_{6hex}` |
+| `type` | Yes | One of `tool_use`, `workflow`, `user_preference` |
+| `created_at` | Yes | RFC3339 timestamp |
+| `updated_at` | Yes | RFC3339 timestamp |
+| `supersedes` | Yes | IDs of memories this one replaces (empty list if none) |
+| `tags` | Yes | Keyword list for filtering |
+| `description` | Yes | One-sentence action-oriented summary |
+| `summary` | Yes | 2-3 sentences optimised for semantic search |
+| `source_session` | No | Path to the session this was mined from |
+| `metadata` | No | Arbitrary key-value context |
+
+**Memory types:**
+
+| Type | Purpose |
+|------|---------|
+| `tool_use` | A tool, command, or API trick that worked well |
+| `workflow` | A multi-step process that should be repeated |
+| `user_preference` | A stated or demonstrated user preference |
+
+**Directory layout:**
+
+```
+agents/memories/
+  tool_use/        ← active tool_use memories
+  workflow/        ← active workflow memories
+  user_preference/ ← active user_preference memories
+  archive/         ← superseded memories (moved here, not deleted)
+    tool_use/
+    workflow/
+    user_preference/
+  memories.db      ← SQLite index (FTS5 + vector embeddings)
+  manifest.yaml    ← tracks which sessions have been mined
+```
+
+**Workspace path normalisation:** Absolute workspace paths in memory content
+are replaced with the placeholder `<workspace>` before the memory is saved,
+so memory files do not embed machine-specific paths.
+
 ## Parsing Rules for Tools
 
 ### File Structure
@@ -799,6 +883,7 @@ Older parsers should **gracefully ignore** unknown elements.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-05-25 | Added `INT. MEMORY <TIMESTAMP>` scene type for memory documents |
 | 1.0 | 2026-05-04 | Initial specification with multi-model character attribution |
 
 *This document describes Harvey's use of the Fountain format. For the official
