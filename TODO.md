@@ -3,28 +3,18 @@
 
 ## Bugs
 
-- [ ] **Model cannot write files to workspace** — When asked to create a file, models respond
-  with a markdown code block instead of writing to disk. Two causes: (1) no write-capable
-  command in `allowed_commands` (only read-only tools like `ls`, `cat`, `grep` are listed),
-  and (2) small local models (e.g. APERTUS-TOOLS) do not reliably invoke tool-call protocol
-  for action requests. Debug log confirms zero `tool_call`/`command_exec` events during a
-  full session where the user explicitly requested file creation. See
-  [dev-notes/file-write-failure-diagnosis-20260520.md](dev-notes/file-write-failure-diagnosis-20260520.md).
-  Possible fixes: add a `write_file` built-in tool to the tool registry; add `tee` to
-  `allowed_commands`; implement code-block extraction with an interactive write prompt.
+- [ ] Make sure memory and pipeline commands have help guilds
+  - Example output, ```wren:~/Laboratory/harvey $ harvey --help memory
+Unknown help topic "memory".
+Available topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write
+wren:~/Laboratory/harvey $ harvey --version
+harvey 0.0.5b (released 2026-05-25, fc4ded8)
+rsdoiel@wren:~/Laboratory/harvey $ harvey --help pipeline
+Unknown help topic "pipeline".
+Available topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write
+```
 
 ## Up Next (features for v0.0.6)
-
-- [ ] Add in built-in tool support for dates, times and durations
-
-
-## Someday, maybe ideas
-
-### Prompt pipeline
-
-Design: [pipeline-design.md](pipeline-design.md) | Plan: [pipeline-plan.md](pipeline-plan.md)
-
-- [ ] `/pipeline <CONFIDENCE%> FILE [FILE ...]` — chain Markdown prompt files through models; each step's response feeds the next; confidence threshold gates progression; @mention routes individual steps to specific models; final response appended to Harvey's active conversation on success
 
 ### Remote protocol integration
 

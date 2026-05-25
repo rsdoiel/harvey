@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // maxInputPath caps path arguments to guard against excessively long inputs.
@@ -436,4 +437,201 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			return capOutput(string(raw), maxBytes), nil
 		},
 	)
+
+	// ── current_datetime ─────────────────────────────────────────────────────
+	r.RegisterTool(
+		"current_datetime",
+		"Return the current date and time in the system's local timezone and UTC. "+
+			"Use this whenever you need to know what time or date it is right now. "+
+			"Optional 'format' argument: 'human' (default), 'rfc3339', or 'unix'.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"format": map[string]any{
+					"type":        "string",
+					"description": "Output format: 'human' (default), 'rfc3339', or 'unix'",
+					"enum":        []string{"human", "rfc3339", "unix"},
+				},
+			},
+		},
+		func(_ context.Context, args map[string]any) (string, error) {
+			now := time.Now()
+			utc := now.UTC()
+			format, _ := args["format"].(string)
+			switch format {
+			case "rfc3339":
+				return fmt.Sprintf("local: %s\nutc:   %s",
+					now.Format(time.RFC3339),
+					utc.Format(time.RFC3339),
+				), nil
+			case "unix":
+				return fmt.Sprintf("%d", now.Unix()), nil
+			default:
+				zone, offset := now.Zone()
+				offsetH := offset / 3600
+				offsetM := (offset % 3600) / 60
+				sign := "+"
+				if offset < 0 {
+					sign = "-"
+					offsetH = -offsetH
+					offsetM = -offsetM
+				}
+				return fmt.Sprintf(
+					"local: %s (%s, UTC%s%02d:%02d)\nutc:   %s\nday:   %s\nunix:  %d",
+					now.Format("2006-01-02 15:04:05"),
+					zone, sign, offsetH, offsetM,
+					utc.Format("2006-01-02 15:04:05"),
+					now.Weekday().String(),
+					now.Unix(),
+				), nil
+			}
+		},
+	)
+
+	// ── datetime_diff ─────────────────────────────────────────────────────────
+	r.RegisterTool(
+		"datetime_diff",
+		"Compute the duration between two datetime strings. "+
+			"'from' is required; 'to' defaults to now. "+
+			"Accepted formats: RFC3339, '2006-01-02T15:04:05', '2006-01-02 15:04:05', '2006-01-02', 'Jan 2 2006', 'January 2 2006'.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"from": map[string]any{
+					"type":        "string",
+					"description": "Start datetime string",
+				},
+				"to": map[string]any{
+					"type":        "string",
+					"description": "End datetime string (default: now)",
+				},
+			},
+			"required": []string{"from"},
+		},
+		func(_ context.Context, args map[string]any) (string, error) {
+			fromStr, ok := args["from"].(string)
+			if !ok || fromStr == "" {
+				return "", fmt.Errorf("datetime_diff: 'from' must be a non-empty string")
+			}
+			fromT, err := parseDateTimeString(fromStr)
+			if err != nil {
+				return "", fmt.Errorf("datetime_diff: 'from': %w", err)
+			}
+			toT := time.Now()
+			if toStr, ok := args["to"].(string); ok && toStr != "" {
+				toT, err = parseDateTimeString(toStr)
+				if err != nil {
+					return "", fmt.Errorf("datetime_diff: 'to': %w", err)
+				}
+			}
+			diff := toT.Sub(fromT)
+			direction := "in the future"
+			if diff < 0 {
+				diff = -diff
+				direction = "in the past"
+			}
+			return fmt.Sprintf("%s (%s)", formatDuration(diff), direction), nil
+		},
+	)
+
+	// ── format_datetime ───────────────────────────────────────────────────────
+	r.RegisterTool(
+		"format_datetime",
+		"Parse a datetime string and reformat it. "+
+			"Accepted input formats: RFC3339, '2006-01-02T15:04:05', '2006-01-02 15:04:05', '2006-01-02', 'Jan 2 2006', 'January 2 2006'. "+
+			"Output formats: 'rfc3339', 'human', 'unix', 'date' (YYYY-MM-DD), 'time' (HH:MM:SS).",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"datetime": map[string]any{
+					"type":        "string",
+					"description": "Input datetime string to reformat",
+				},
+				"format": map[string]any{
+					"type":        "string",
+					"description": "Output format: 'rfc3339', 'human', 'unix', 'date', or 'time'",
+					"enum":        []string{"rfc3339", "human", "unix", "date", "time"},
+				},
+			},
+			"required": []string{"datetime", "format"},
+		},
+		func(_ context.Context, args map[string]any) (string, error) {
+			dtStr, ok := args["datetime"].(string)
+			if !ok || dtStr == "" {
+				return "", fmt.Errorf("format_datetime: 'datetime' must be a non-empty string")
+			}
+			fmtStr, ok := args["format"].(string)
+			if !ok || fmtStr == "" {
+				return "", fmt.Errorf("format_datetime: 'format' must be a non-empty string")
+			}
+			t, err := parseDateTimeString(dtStr)
+			if err != nil {
+				return "", fmt.Errorf("format_datetime: %w", err)
+			}
+			switch fmtStr {
+			case "rfc3339":
+				return t.Format(time.RFC3339), nil
+			case "unix":
+				return fmt.Sprintf("%d", t.Unix()), nil
+			case "date":
+				return t.Format("2006-01-02"), nil
+			case "time":
+				return t.Format("15:04:05"), nil
+			default: // "human"
+				return t.Format("2006-01-02 15:04:05"), nil
+			}
+		},
+	)
+}
+
+// parseDateTimeString tries a sequence of common datetime layouts and returns
+// the first successful parse. Returns an error when no layout matches.
+func parseDateTimeString(s string) (time.Time, error) {
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+		"Jan 2 2006",
+		"January 2 2006",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q: try RFC3339 (e.g. 2006-01-02T15:04:05Z) or YYYY-MM-DD", s)
+}
+
+// formatDuration returns a human-readable duration string, e.g. "2 days, 3 hours, 14 minutes".
+// Sub-minute durations are reported as seconds.
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%d seconds", int(d.Seconds()))
+	}
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	var parts []string
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%d day%s", days, plural(days)))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%d hour%s", hours, plural(hours)))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%d minute%s", minutes, plural(minutes)))
+	}
+	if len(parts) == 0 {
+		return "less than a minute"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// plural returns "s" when n != 1.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }

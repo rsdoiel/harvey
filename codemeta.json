@@ -12,7 +12,7 @@
     }
   ],
   "dateCreated": "2026-04-15",
-  "dateModified": "2026-05-19",
+  "dateModified": "2026-05-25",
   "datePublished": "2026-05-19",
   "description": "Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.\n\nThe Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.",
   "name": "harvey",
@@ -28,9 +28,9 @@
     "Pandoc >= 3.9",
     "GNU Make >= 3.8"
   ],
-  "version": "0.0.5",
+  "version": "0.0.5b",
   "developmentStatus": "active",
   "issueTracker": "https://github.com/rsdoiel/harvey/issues",
-  "releaseNotes": "- Added support for working with PDF via poppler tools\n- Added `/read_pdf` command to read a PDF into the working context\n- Added `/rag inguest FILE.pdf` to ingest a PDF into our RAG+Knolwedge base\n- Added `/attach FILE` support (mainly for route supported language models)",
+  "releaseNotes": "- Added `/memory` commands and \"memory\" implementation\n- Added `/pipeline` support and implementation\n- Bug fixes catching write_file failer in model responses",
   "copyrightHolder": "R. S. Doiel"
 }

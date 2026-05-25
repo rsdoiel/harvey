@@ -308,6 +308,11 @@ func (a *Agent) registerCommands() {
 			Description: "Enable/disable safe mode or manage the command allowlist",
 			Handler:     cmdSafeMode,
 		},
+		"pipeline": {
+			Usage:       "/pipeline <CONFIDENCE%> FILE [FILE ...]",
+			Description: "Chain Markdown prompt files through models with confidence gating",
+			Handler:     cmdPipeline,
+		},
 		"exit": {
 			Usage:       "/exit",
 			Description: "Exit Harvey",
@@ -506,8 +511,11 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "write":
 			fmt.Fprint(out, FmtHelp(WriteHelpText, "", "", "", ""))
 			return nil
+		case "pipeline":
+			fmt.Fprint(out, FmtHelp(PipelineHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 

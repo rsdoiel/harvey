@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-remote-protocol-integration-design">Harvey Remote
+Protocol Integration — Design</h1>
+<h2 id="overview">Overview</h2>
+<p>Harvey’s workspace is local by nature, but many workflows — RAG
+ingestion, reading reference material, attaching documents — involve
+files that live on remote storage. This design introduces a
+<strong>protocol abstraction layer</strong> that allows Harvey to read
+from any URI-addressed storage backend in a consistent, credential-safe
+way.</p>
+<p>The layer is read-only. Harvey writes only to its local
+workspace.</p>
+<p><strong>Initial target:</strong> S3-compatible object storage (AWS
+S3, MinIO, Cloudflare R2).<br />
+<strong>Planned follow-on:</strong> HTTP/HTTPS, SFTP/SCP.<br />
+<strong>Future:</strong> Additional protocols (FTP, DAV, etc.) can be
+added by implementing the <code>RemoteReader</code> interface.</p>
+<h2 id="uri-scheme">URI Scheme</h2>
+<p>All remote resources are addressed as URIs. Harvey detects a remote
+URI by the presence of a <code>://</code> scheme prefix.</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Scheme</th>
+<th scope="col">Backend</th>
+<th scope="col">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>s3://bucket/key</code></td>
+<td>S3-compatible</td>
+<td>AWS, MinIO, Cloudflare R2, etc.</td>
+</tr>
+<tr>
+<td><code>http://host/path</code></td>
+<td>HTTP</td>
+<td>Public unauthenticated resources</td>
+</tr>
+<tr>
+<td><code>https://host/path</code></td>
+<td>HTTPS</td>
+<td>TLS-secured public or authenticated</td>
+</tr>
+<tr>
+<td><code>sftp://user@host/path</code></td>
+<td>SFTP</td>
+<td>SSH file transfer</td>
+</tr>
+<tr>
+<td><code>scp://user@host/path</code></td>
+<td>SCP</td>
+<td>Treated as SFTP at protocol level</td>
+</tr>
+</tbody>
+</table>
+<p>A trailing <code>/</code> on a path signals directory/prefix
+semantics (list + walk).</p>
+<h2 id="protocol-abstraction-layer">Protocol Abstraction Layer</h2>
+<p>A single narrow interface covers all backends:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// RemoteReader provides read-only access to a remote storage backend.</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> RemoteReader <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Stat returns metadata for a single object.</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    Stat<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> uri <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Get downloads a single object, writing content to dst.</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    Get<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> uri <span class="dt">string</span><span class="op">,</span> dst io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">// List returns objects under a prefix URI (trailing slash).</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    List<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> prefix <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> RemoteObjectInfo <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    URI         <span class="dt">string</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    Size        <span class="dt">int64</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    ContentType <span class="dt">string</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    IsDir       <span class="dt">bool</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>NewRemoteReader(uri string) (RemoteReader, error)</code>
+inspects the scheme and returns the appropriate backend, or an error if
+the scheme is unsupported or required credentials are absent.</p>
+<h2 id="s3-compatible-backend">S3-Compatible Backend</h2>
+<h3 id="dependency">Dependency</h3>
+<p><code>github.com/minio/minio-go/v7</code> — works with AWS S3, MinIO,
+Cloudflare R2, and any S3-compatible endpoint. No AWS SDK required.</p>
+<h3 id="credential-sources-environment-only">Credential Sources
+(environment only)</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Variable</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AWS_ACCESS_KEY_ID</code></td>
+<td>Access key ID</td>
+</tr>
+<tr>
+<td><code>AWS_SECRET_ACCESS_KEY</code></td>
+<td>Secret access key</td>
+</tr>
+<tr>
+<td><code>AWS_SESSION_TOKEN</code></td>
+<td>Session token (optional, STS/assumed role)</td>
+</tr>
+<tr>
+<td><code>AWS_REGION</code></td>
+<td>Region (optional for MinIO/R2)</td>
+</tr>
+<tr>
+<td><code>AWS_ENDPOINT_URL</code></td>
+<td>Override endpoint for non-AWS services</td>
+</tr>
+</tbody>
+</table>
+<p>These are read once at client construction. They are never written to
+<code>harvey.yaml</code>, never passed to LLMs, and never appear in tool
+results or Fountain recordings.</p>
+<h3 id="uri-parsing">URI Parsing</h3>
+<pre><code>s3://mybucket/docs/   → bucket=mybucket, key=docs/, isPrefix=true
+s3://mybucket/file.md → bucket=mybucket, key=file.md, isPrefix=false</code></pre>
+<h3 id="file-type-filtering-rag">File Type Filtering (RAG)</h3>
+<p>S3 prefix walks use the same <code>ragIngestableExts</code> map as
+local ingestion: <code>.md</code>, <code>.txt</code>, <code>.go</code>,
+<code>.ts</code>, <code>.py</code>, <code>.yaml</code>,
+<code>.yml</code>, <code>.toml</code>, <code>.sql</code>,
+<code>.pdf</code>.</p>
+<h2 id="httphttps-backend">HTTP/HTTPS Backend</h2>
+<h3 id="dependency-1">Dependency</h3>
+<p><code>net/http</code> — Go standard library; no new module
+dependency.</p>
+<h3 id="credential-sources-environment-only-1">Credential Sources
+(environment only)</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Variable</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HTTP_BEARER_TOKEN</code></td>
+<td>Bearer token for Authorization header</td>
+</tr>
+<tr>
+<td><code>HTTP_BASIC_USER</code></td>
+<td>Username for HTTP Basic auth</td>
+</tr>
+<tr>
+<td><code>HTTP_BASIC_PASSWORD</code></td>
+<td>Password for HTTP Basic auth</td>
+</tr>
+</tbody>
+</table>
+<p>Public resources require no credentials.</p>
+<h3 id="security-constraints">Security Constraints</h3>
+<ul>
+<li>HTTPS is always preferred. Harvey does <strong>not</strong> follow
+redirects from HTTPS to HTTP (downgrade protection).</li>
+<li><code>List()</code> on an HTTP URI returns an error; there is no
+standard directory listing protocol over HTTP.</li>
+</ul>
+<h2 id="sftpscp-backend">SFTP/SCP Backend</h2>
+<h3 id="dependency-2">Dependency</h3>
+<p><code>golang.org/x/crypto/ssh</code> — verify whether this is already
+in the module graph before adding; it is a common transitive
+dependency.</p>
+<h3 id="credential-sources-environment-only-2">Credential Sources
+(environment only)</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Variable</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SFTP_USER</code></td>
+<td>SSH username</td>
+</tr>
+<tr>
+<td><code>SFTP_PASSWORD</code></td>
+<td>Password (optional if key auth used)</td>
+</tr>
+<tr>
+<td><code>SFTP_KEY_PATH</code></td>
+<td>Path to private key file</td>
+</tr>
+<tr>
+<td><code>SFTP_HOST_KEY</code></td>
+<td>Expected host key fingerprint (SHA-256)</td>
+</tr>
+</tbody>
+</table>
+<p>SSH host key verification is <strong>strict by default</strong>.
+Harvey will not silently accept an unknown host key.
+<code>SFTP_HOST_KEY</code> must be set, or the connection fails with an
+actionable error message.</p>
+<p><code>scp://</code> URIs are treated identically to
+<code>sftp://</code> at the protocol level.</p>
+<h2 id="credential-safety">Credential Safety</h2>
+<p>Credentials are read from environment variables at client
+construction and are <strong>never</strong>:</p>
+<ul>
+<li>Written to <code>harvey.yaml</code> or any file</li>
+<li>Included in tool results returned to the LLM</li>
+<li>Logged to the Fountain session recording (only the URI is
+recorded)</li>
+<li>Passed to subprocesses via the environment</li>
+</ul>
+<h3
+id="filtercommandenvironment-extensions"><code>filterCommandEnvironment</code>
+Extensions</h3>
+<p>The following variables are stripped from any environment slice
+passed to subprocesses or tool results:</p>
+<pre><code>AWS_ACCESS_KEY_ID       AWS_SECRET_ACCESS_KEY   AWS_SESSION_TOKEN
+AWS_SECURITY_TOKEN      MINIO_ACCESS_KEY        MINIO_SECRET_KEY
+SFTP_PASSWORD           SFTP_KEY_PATH           HTTP_BEARER_TOKEN
+HTTP_BASIC_PASSWORD</code></pre>
+<h2 id="integration-points">Integration Points</h2>
+<h3
+id="rag-ingest-s3bucketprefix"><code>/rag ingest s3://bucket/prefix/</code></h3>
+<p><code>ragCollectFiles</code> detects the <code>s3://</code> scheme
+prefix and delegates to <code>s3Reader.List()</code>. Each listed object
+is downloaded to <code>os.CreateTemp</code>, processed through the
+existing ingest pipeline, and the temp file is removed immediately after
+ingestion.</p>
+<p>The existing large-file confirmation flow (&gt; 100 KB) and per-file
+progress reporting apply unchanged.</p>
+<h3
+id="read-s3bucketkey-and-other-uri-schemes"><code>/read s3://bucket/key</code>
+(and other URI schemes)</h3>
+<p>The <code>/read</code> command detects a <code>://</code> prefix and
+calls <code>NewRemoteReader(uri).Get(ctx, uri, buf)</code>. File content
+is returned to the user and LLM context. The URI appears in output;
+credentials do not.</p>
+<p>The same extension applies to <code>/attach</code> for including
+remote content as conversation context.</p>
+<h3 id="tab-completion">Tab Completion</h3>
+<p><code>workspacePathCandidates</code> handles local paths only and is
+unchanged.</p>
+<p>A separate
+<code>remotePathCandidates(scheme, partial string) []string</code>
+handles URI completion:</p>
+<ul>
+<li><code>s3://</code> prefix: list buckets (credentials present), then
+keys within a named bucket</li>
+<li><code>sftp://</code>, <code>http://</code>, <code>https://</code>:
+no automatic listing; user types the path</li>
+</ul>
+<h2 id="implementation-phases">Implementation Phases</h2>
+<table>
+<thead>
+<tr>
+<th scope="col">Phase</th>
+<th scope="col">Scope</th>
+<th scope="col">Blocks on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>RemoteReader</code> interface + URI parsing + factory</td>
+<td>—</td>
+</tr>
+<tr>
+<td>2</td>
+<td>S3 backend</td>
+<td>Phase 1</td>
+</tr>
+<tr>
+<td>3</td>
+<td>S3 RAG ingest + <code>/read</code> integration</td>
+<td>Phase 2</td>
+</tr>
+<tr>
+<td>4</td>
+<td>S3 tab completion</td>
+<td>Phase 2</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>filterCommandEnvironment</code> extension</td>
+<td>Phase 2</td>
+</tr>
+<tr>
+<td>6</td>
+<td>HTTP/HTTPS backend</td>
+<td>Phase 1</td>
+</tr>
+<tr>
+<td>7</td>
+<td>SFTP/SCP backend</td>
+<td>Phase 1</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Tests</td>
+<td>Each phase</td>
+</tr>
+</tbody>
+</table>
+<h2 id="security-considerations">Security Considerations</h2>
+<ul>
+<li>All remote access is <strong>read-only</strong>; no write operations
+are exposed.</li>
+<li>Temp files for RAG ingestion are created with
+<code>os.CreateTemp</code> and cleaned up with
+<code>defer os.Remove(f.Name())</code> immediately after each file is
+ingested.</li>
+<li>HTTPS → HTTP redirect downgrade is blocked in the HTTP backend.</li>
+<li>SFTP host key verification is strict; unknown keys are rejected with
+a clear error rather than silently accepted.</li>
+<li>The workspace path boundary (<code>resolveWorkspacePath</code>) does
+not apply to remote URIs; the boundary is enforced by what URIs the user
+explicitly provides in commands.</li>
+</ul>
+<h2 id="future-protocol-extensibility">Future Protocol
+Extensibility</h2>
+<p>Adding a new protocol requires only:</p>
+<ol type="1">
+<li>Implementing <code>RemoteReader</code> for the new scheme</li>
+<li>Adding a case to <code>NewRemoteReader</code>’s scheme switch</li>
+<li>Documenting credential env vars</li>
+<li>Adding tests</li>
+</ol>
+<p>No changes to <code>ragCollectFiles</code>, <code>/read</code>, or
+<code>/attach</code> are needed.</p>
+</section>
+</body>
+</html>

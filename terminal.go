@@ -623,6 +623,12 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}
 
+		// Semantic memory injection — fires once per session (or after /clear).
+		if a.memoryContextPending {
+			a.injectMemoryContext(input)
+			a.memoryContextPending = false
+		}
+
 		// RAG context injection — prepend relevant chunks before sending.
 		augmented := a.ragAugment(input)
 		a.AddMessage("user", augmented)
@@ -677,6 +683,7 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}()
 
+		histLenBeforeChat := len(a.History)
 		var buf strings.Builder
 		sp := newSpinner(out, a.estimateDuration(), spLabel)
 		var stats ChatStats
@@ -711,6 +718,52 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats, a.effectiveContextLimit())))
 		a.recordStats(stats)
+
+		// Code-block extraction: when the model produced fenced code blocks
+		// but made no tool calls, offer to write each block to a file. This
+		// handles small local models that respond with prose + a code block
+		// instead of invoking the write_file tool.
+		if a.Workspace != nil && len(a.History) == histLenBeforeChat {
+			blocks := extractCodeBlocks(buf.String())
+			for i, block := range blocks {
+				label := "code block"
+				if block.Lang != "" {
+					label = block.Lang + " block"
+				}
+				if len(blocks) > 1 {
+					label += fmt.Sprintf(" %d/%d", i+1, len(blocks))
+				}
+				fmt.Fprintf(out, dim("\n[Write %s to file? Path (or Enter to skip)]: "), label)
+				pathLine, _ := reader.ReadString('\n')
+				pathLine = strings.TrimSpace(pathLine)
+				if pathLine == "" {
+					continue
+				}
+				if _, pathErr := resolveWorkspacePath(a.Workspace.Root, pathLine); pathErr != nil {
+					fmt.Fprintf(out, red("  ✗")+" %v\n", pathErr)
+					continue
+				}
+				if !a.CheckWritePermission(pathLine) {
+					fmt.Fprintf(out, red("  ✗")+" write permission denied for %q\n", pathLine)
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileWrite, pathLine, StatusDenied)
+					}
+					continue
+				}
+				if writeErr := a.Workspace.WriteFile(pathLine, []byte(block.Content), 0o644); writeErr != nil {
+					fmt.Fprintf(out, red("  ✗")+" write failed: %v\n", writeErr)
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileWrite, pathLine, StatusError)
+					}
+				} else {
+					fmt.Fprintf(out, green("✓")+" wrote %d bytes to %s\n", len(block.Content), pathLine)
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileWrite, pathLine, StatusSuccess)
+					}
+				}
+			}
+		}
+
 		a.AddMessage("assistant", buf.String())
 		if a.Recorder != nil {
 			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, ""); recErr != nil {
@@ -1129,6 +1182,8 @@ func (a *Agent) buildCompleter() func(string) []string {
 				extFilter = map[string]bool{".pdf": true}
 			case "/search":
 				pathStart = 2 // tokens[1] is the search pattern, not a path
+			case "/pipeline":
+				pathStart = 2 // tokens[1] is the confidence %, paths start at index 2
 			case "/rag":
 				if len(tokens) >= 2 && strings.ToLower(tokens[1]) == "ingest" {
 					pathStart = 2 // /rag ingest PATH [PATH...]

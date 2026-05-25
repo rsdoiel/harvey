@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ── resolveWorkspacePath ─────────────────────────────────────────────────────
@@ -312,5 +313,192 @@ func TestBuiltinTool_GitCommand_disallowed(t *testing.T) {
 	_, err := r.Dispatch(context.Background(), "git_command", `{"subcommand":"push"}`, 0)
 	if err == nil {
 		t.Fatal("expected error for disallowed git subcommand")
+	}
+}
+
+// ── datetime tools ───────────────────────────────────────────────────────────
+
+func TestBuiltinTool_CurrentDatetime_human(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	result, err := r.Dispatch(context.Background(), "current_datetime", `{}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"local:", "utc:", "day:", "unix:"} {
+		if !strings.Contains(result, want) {
+			t.Errorf("expected %q in result, got: %s", want, result)
+		}
+	}
+}
+
+func TestBuiltinTool_CurrentDatetime_rfc3339(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	result, err := r.Dispatch(context.Background(), "current_datetime", `{"format":"rfc3339"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "local:") || !strings.Contains(result, "utc:") {
+		t.Errorf("expected both local and utc lines, got: %s", result)
+	}
+}
+
+func TestBuiltinTool_CurrentDatetime_unix(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	result, err := r.Dispatch(context.Background(), "current_datetime", `{"format":"unix"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) < 10 {
+		t.Errorf("expected a Unix timestamp (10+ digits), got: %s", result)
+	}
+}
+
+func TestBuiltinTool_DatetimeDiff_knownInterval(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	result, err := r.Dispatch(context.Background(), "datetime_diff",
+		`{"from":"2026-01-01T00:00:00Z","to":"2026-01-03T02:30:00Z"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "2 days") {
+		t.Errorf("expected '2 days' in result, got: %s", result)
+	}
+	if !strings.Contains(result, "2 hours") {
+		t.Errorf("expected '2 hours' in result, got: %s", result)
+	}
+	if !strings.Contains(result, "30 minutes") {
+		t.Errorf("expected '30 minutes' in result, got: %s", result)
+	}
+}
+
+func TestBuiltinTool_DatetimeDiff_toDefaultsToNow(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	// "from" far in the past; no "to" → should use now without error.
+	_, err := r.Dispatch(context.Background(), "datetime_diff",
+		`{"from":"2000-01-01T00:00:00Z"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBuiltinTool_DatetimeDiff_invalidFrom(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	_, err := r.Dispatch(context.Background(), "datetime_diff", `{"from":"not-a-date"}`, 0)
+	if err == nil {
+		t.Fatal("expected error for unparseable 'from'")
+	}
+}
+
+func TestBuiltinTool_FormatDatetime_toRFC3339(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	result, err := r.Dispatch(context.Background(), "format_datetime",
+		`{"datetime":"2026-05-25","format":"rfc3339"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.HasPrefix(result, "2026-05-25") {
+		t.Errorf("unexpected result: %s", result)
+	}
+}
+
+func TestBuiltinTool_FormatDatetime_dateOnly(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	result, err := r.Dispatch(context.Background(), "format_datetime",
+		`{"datetime":"2026-05-25T09:14:00Z","format":"date"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "2026-05-25" {
+		t.Errorf("got %q, want %q", result, "2026-05-25")
+	}
+}
+
+func TestBuiltinTool_FormatDatetime_invalidInput(t *testing.T) {
+	a, _ := makeTestAgent(t)
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+
+	_, err := r.Dispatch(context.Background(), "format_datetime",
+		`{"datetime":"not-a-date","format":"rfc3339"}`, 0)
+	if err == nil {
+		t.Fatal("expected error for unparseable datetime")
+	}
+}
+
+// ── parseDateTimeString ───────────────────────────────────────────────────────
+
+func TestParseDateTimeString_rfc3339(t *testing.T) {
+	_, err := parseDateTimeString("2026-05-25T09:14:00Z")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseDateTimeString_dateOnly(t *testing.T) {
+	_, err := parseDateTimeString("2026-05-25")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseDateTimeString_monthDayYear(t *testing.T) {
+	_, err := parseDateTimeString("May 25 2026")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseDateTimeString_invalid(t *testing.T) {
+	_, err := parseDateTimeString("yesterday")
+	if err == nil {
+		t.Fatal("expected error for unrecognised input")
+	}
+}
+
+// ── formatDuration ────────────────────────────────────────────────────────────
+
+func TestFormatDuration_days(t *testing.T) {
+	d := 2*24*time.Hour + 3*time.Hour + 14*time.Minute
+	got := formatDuration(d)
+	if !strings.Contains(got, "2 days") || !strings.Contains(got, "3 hours") || !strings.Contains(got, "14 minutes") {
+		t.Errorf("unexpected: %q", got)
+	}
+}
+
+func TestFormatDuration_seconds(t *testing.T) {
+	got := formatDuration(45 * time.Second)
+	if !strings.Contains(got, "seconds") {
+		t.Errorf("expected 'seconds', got %q", got)
+	}
+}
+
+func TestFormatDuration_singular(t *testing.T) {
+	got := formatDuration(1*24*time.Hour + 1*time.Hour + 1*time.Minute)
+	if !strings.Contains(got, "1 day") || strings.Contains(got, "1 days") {
+		t.Errorf("expected singular 'day', got %q", got)
 	}
 }

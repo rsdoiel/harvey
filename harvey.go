@@ -169,6 +169,7 @@ type Agent struct {
 	ActiveSkill   string         // name of the most recently loaded skill; "" when none
 	ActiveSkillSet string        // name of the currently loaded skill-set bundle; "" when none
 	Tools         *ToolRegistry  // schema-based tool registry; nil when tools are disabled
+	memoryContextPending   bool         // true after ClearHistory until first user turn injects memories
 	commands               map[string]*Command
 	statHistory            []ChatStats  // rolling window of recent turn stats
 	AuditBuffer            *AuditBuffer // in-memory audit log ring buffer; nil until initialized
@@ -284,9 +285,7 @@ func (a *Agent) ClearHistory() {
 		a.History = nil
 	}
 	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Memory.InjectOnStart {
-		if block := loadMemoryContextBlock(a); block != "" {
-			a.AddMessage("user", block)
-		}
+		a.memoryContextPending = true
 	}
 	if a.PinnedContext != "" {
 		a.AddMessage("user", "[pinned context]\n\n"+a.PinnedContext)
@@ -294,12 +293,17 @@ func (a *Agent) ClearHistory() {
 	a.ActiveSkill = ""
 }
 
-// loadMemoryContextBlock opens the memory store and returns a formatted block
-// of the N most recent memories. Returns "" when the store is unavailable or empty.
-func loadMemoryContextBlock(a *Agent) string {
+// injectMemoryContext performs a semantic search against the memory store using
+// query as the retrieval key. When no embedder is configured, or when the
+// semantic search returns no results, it falls back to the N most recent
+// memories. The result is added to History as a user message.
+func (a *Agent) injectMemoryContext(query string) {
+	if !a.Config.Memory.Enabled || !a.Config.Memory.InjectOnStart || a.Workspace == nil {
+		return
+	}
 	store, err := NewMemoryStore(a.Workspace)
 	if err != nil {
-		return ""
+		return
 	}
 	defer store.Close()
 
@@ -307,13 +311,23 @@ func loadMemoryContextBlock(a *Agent) string {
 	if topK <= 0 {
 		topK = 5
 	}
-	docs, err := store.Recent(topK)
-	if err != nil || len(docs) == 0 {
-		return ""
+
+	label := "relevant"
+	var docs []MemoryDoc
+	if entry := a.Config.ActiveRagStore(); entry != nil && query != "" {
+		embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)
+		docs, _ = store.Query(query, embedder, topK)
+	}
+	if len(docs) == 0 {
+		label = "recent"
+		docs, _ = store.Recent(topK)
+	}
+	if len(docs) == 0 {
+		return
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "[memory context — %d recent memories]\n\n", len(docs))
+	fmt.Fprintf(&sb, "[memory context — %d %s memories]\n\n", len(docs), label)
 	for _, doc := range docs {
 		fmt.Fprintf(&sb, "**[%s]** %s\n", doc.Meta.Type, doc.Meta.Description)
 		if doc.Meta.Summary != "" {
@@ -322,7 +336,7 @@ func loadMemoryContextBlock(a *Agent) string {
 		}
 		sb.WriteByte('\n')
 	}
-	return strings.TrimRight(sb.String(), "\n")
+	a.AddMessage("user", strings.TrimRight(sb.String(), "\n"))
 }
 
 /** HasPermission checks if the given permission is allowed for a path.

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-remote-protocol-integration-implementation-plan">Harvey
+Remote Protocol Integration — Implementation Plan</h1>
+<p>See <a
+href="remote-protocol-design.html">remote-protocol-design.md</a> for the
+full design rationale.</p>
+<h2 id="new-module-dependencies">New Module Dependencies</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 37%" />
+<col style="width: 29%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Module</th>
+<th scope="col">Purpose</th>
+<th scope="col">Phase</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>github.com/minio/minio-go/v7</code></td>
+<td>S3-compatible object storage</td>
+<td>Phase 2</td>
+</tr>
+<tr>
+<td><code>golang.org/x/crypto</code></td>
+<td>SSH for SFTP/SCP (verify if already in graph)</td>
+<td>Phase 7</td>
+</tr>
+</tbody>
+</table>
+<p>After adding dependencies:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> harvey <span class="kw">&amp;&amp;</span> <span class="ex">go</span> mod tidy</span></code></pre></div>
+<h2 id="files-to-create">Files to Create</h2>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/remote.go</code></td>
+<td><code>RemoteReader</code> interface, <code>RemoteObjectInfo</code>,
+<code>NewRemoteReader</code> factory, <code>parseURIScheme</code></td>
+</tr>
+<tr>
+<td><code>harvey/remote_s3.go</code></td>
+<td>S3 backend: <code>s3Reader</code>, <code>newS3Reader</code>,
+<code>parseS3URI</code>, <code>Stat/Get/List</code></td>
+</tr>
+<tr>
+<td><code>harvey/remote_http.go</code></td>
+<td>HTTP/HTTPS backend: <code>httpReader</code>, auth headers, downgrade
+protection</td>
+</tr>
+<tr>
+<td><code>harvey/remote_sftp.go</code></td>
+<td>SFTP/SCP backend: <code>sftpReader</code>, strict host key
+verification</td>
+</tr>
+<tr>
+<td><code>harvey/remote_test.go</code></td>
+<td>Tests for all backends and integration points</td>
+</tr>
+</tbody>
+</table>
+<h2 id="files-to-modify">Files to Modify</h2>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/commands.go</code></td>
+<td><code>ragCollectFiles</code>: detect <code>s3://</code> and delegate
+to S3 list/download; <code>cmdRead</code>/<code>cmdAttach</code>: detect
+<code>://</code> and delegate to <code>NewRemoteReader</code></td>
+</tr>
+<tr>
+<td><code>harvey/terminal.go</code></td>
+<td><code>buildCompleter</code>: detect <code>s3://</code> prefix in
+word and call <code>remotePathCandidates</code></td>
+</tr>
+<tr>
+<td><code>harvey/environment.go</code> (or whichever file defines
+<code>filterCommandEnvironment</code>)</td>
+<td>Extend blocklist with credential env var names</td>
+</tr>
+</tbody>
+</table>
+<h2 id="implementation-phases">Implementation Phases</h2>
+<h3 id="phase-1-abstraction-layer-remote.go">Phase 1 — Abstraction Layer
+(<code>remote.go</code>)</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> RemoteReader <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    Stat<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> uri <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    Get<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> uri <span class="dt">string</span><span class="op">,</span> dst io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    List<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> prefix <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> parseURIScheme<span class="op">(</span>uri <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> NewRemoteReader<span class="op">(</span>uri <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>RemoteReader<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li><code>parseURIScheme</code> returns the scheme (e.g.,
+<code>"s3"</code>) or <code>""</code> for local paths</li>
+<li><code>NewRemoteReader</code> dispatches on scheme; returns error for
+unsupported schemes</li>
+</ul>
+<h3 id="phase-2-s3-backend-remote_s3.go">Phase 2 — S3 Backend
+(<code>remote_s3.go</code>)</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> s3Reader <span class="kw">struct</span><span class="op">{</span> client <span class="op">*</span>minio<span class="op">.</span>Client <span class="op">}</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> newS3Reader<span class="op">()</span> <span class="op">(*</span>s3Reader<span class="op">,</span> <span class="dt">error</span><span class="op">)</span>          <span class="co">// reads env vars</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> parseS3URI<span class="op">(</span>uri <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>bucket<span class="op">,</span> key <span class="dt">string</span><span class="op">,</span> isPrefix <span class="dt">bool</span><span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>s3Reader<span class="op">)</span> Stat<span class="op">(</span>ctx<span class="op">,</span> uri<span class="op">)</span> <span class="op">(</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>s3Reader<span class="op">)</span> Get<span class="op">(</span>ctx<span class="op">,</span> uri <span class="dt">string</span><span class="op">,</span> dst io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>s3Reader<span class="op">)</span> List<span class="op">(</span>ctx<span class="op">,</span> prefix <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li><code>newS3Reader</code> reads <code>AWS_ACCESS_KEY_ID</code>,
+<code>AWS_SECRET_ACCESS_KEY</code>, <code>AWS_REGION</code>,
+<code>AWS_ENDPOINT_URL</code> from environment; constructs MinIO
+client</li>
+<li><code>List</code> uses <code>ListObjects</code> with recursive=false
+to walk one prefix level; caller walks recursively if needed</li>
+<li>Files are filtered by <code>ragIngestableExts</code> in the RAG
+integration layer, not inside <code>List</code> itself (keeps the
+backend general-purpose)</li>
+</ul>
+<h3 id="phase-3-rag-read-integration-commands.go">Phase 3 — RAG + Read
+Integration (<code>commands.go</code>)</h3>
+<p><strong><code>ragCollectFiles</code> extension:</strong></p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> parseURIScheme<span class="op">(</span>path<span class="op">)</span> <span class="op">==</span> <span class="st">&quot;s3&quot;</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    reader<span class="op">,</span> err <span class="op">:=</span> newS3Reader<span class="op">()</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// list objects, download each to os.CreateTemp, append temp path to files</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// defer cleanup of each temp file after ingest</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<ul>
+<li>Large-file confirmation (&gt; 100 KB) and per-file progress apply
+as-is</li>
+<li>Temp file lifecycle: create → ingest → remove (per file, not
+deferred to end)</li>
+</ul>
+<p><strong><code>cmdRead</code> / <code>cmdAttach</code>
+extension:</strong></p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> parseURIScheme<span class="op">(</span>arg<span class="op">)</span> <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    reader<span class="op">,</span> err <span class="op">:=</span> NewRemoteReader<span class="op">(</span>arg<span class="op">)</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Get to a bytes.Buffer, return content</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Show URI in output; never show credentials</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="phase-4-s3-tab-completion-terminal.go">Phase 4 — S3 Tab
+Completion (<code>terminal.go</code>)</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> remotePathCandidates<span class="op">(</span>word <span class="dt">string</span><span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span></code></pre></div>
+<ul>
+<li>If <code>word</code> == <code>"s3://"</code> or
+<code>"s3://&lt;partial-bucket&gt;"</code>: list buckets</li>
+<li>If <code>word</code> == <code>"s3://bucket/"</code> or deeper: list
+keys under the prefix</li>
+<li>Returns nil if credentials are absent (no error shown; completion is
+silent)</li>
+</ul>
+<p>In <code>buildCompleter</code>, before local path handling:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> strings<span class="op">.</span>HasPrefix<span class="op">(</span>word<span class="op">,</span> <span class="st">&quot;s3://&quot;</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> remotePathCandidates<span class="op">(</span>word<span class="op">)</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="phase-5-credential-filtering">Phase 5 — Credential
+Filtering</h3>
+<p>Locate <code>filterCommandEnvironment</code> (search
+<code>harvey/*.go</code> for the function). Extend its blocklist:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> sensitiveEnvVars <span class="op">=</span> <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span><span class="dt">bool</span><span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;AWS_ACCESS_KEY_ID&quot;</span><span class="op">:</span>     <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;AWS_SECRET_ACCESS_KEY&quot;</span><span class="op">:</span> <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;AWS_SESSION_TOKEN&quot;</span><span class="op">:</span>     <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;AWS_SECURITY_TOKEN&quot;</span><span class="op">:</span>    <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;MINIO_ACCESS_KEY&quot;</span><span class="op">:</span>      <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;MINIO_SECRET_KEY&quot;</span><span class="op">:</span>      <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;SFTP_PASSWORD&quot;</span><span class="op">:</span>         <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;SFTP_KEY_PATH&quot;</span><span class="op">:</span>         <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;HTTP_BEARER_TOKEN&quot;</span><span class="op">:</span>     <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;HTTP_BASIC_PASSWORD&quot;</span><span class="op">:</span>   <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="phase-6-httphttps-backend-remote_http.go">Phase 6 — HTTP/HTTPS
+Backend (<code>remote_http.go</code>)</h3>
+<div class="sourceCode" id="cb9"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> httpReader <span class="kw">struct</span><span class="op">{</span> client <span class="op">*</span>http<span class="op">.</span>Client<span class="op">;</span> bearerToken<span class="op">,</span> basicUser<span class="op">,</span> basicPassword <span class="dt">string</span> <span class="op">}</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> newHTTPReader<span class="op">()</span> <span class="op">*</span>httpReader   <span class="co">// reads HTTP_* env vars</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>httpReader<span class="op">)</span> Stat<span class="op">(</span>ctx<span class="op">,</span> uri<span class="op">)</span> <span class="op">(</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span>   <span class="co">// HEAD request</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>httpReader<span class="op">)</span> Get<span class="op">(</span>ctx<span class="op">,</span> uri <span class="dt">string</span><span class="op">,</span> dst io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span>  <span class="co">// GET; reject HTTPS→HTTP redirect</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>httpReader<span class="op">)</span> List<span class="op">(</span>ctx<span class="op">,</span> prefix <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span>  <span class="co">// always error</span></span></code></pre></div>
+<ul>
+<li>Custom <code>http.Client</code> with <code>CheckRedirect</code> that
+rejects scheme downgrades</li>
+<li>Auth header applied only when credentials are present</li>
+</ul>
+<h3 id="phase-7-sftpscp-backend-remote_sftp.go">Phase 7 — SFTP/SCP
+Backend (<code>remote_sftp.go</code>)</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> sftpReader <span class="kw">struct</span><span class="op">{</span> <span class="co">/* ssh.Client + sftp.Client */</span> <span class="op">}</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> newSFTPReader<span class="op">(</span>host<span class="op">,</span> user <span class="dt">string</span><span class="op">)</span> <span class="op">(*</span>sftpReader<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>sftpReader<span class="op">)</span> Stat<span class="op">(</span>ctx<span class="op">,</span> uri<span class="op">)</span> <span class="op">(</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>sftpReader<span class="op">)</span> Get<span class="op">(</span>ctx<span class="op">,</span> uri <span class="dt">string</span><span class="op">,</span> dst io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>sftpReader<span class="op">)</span> List<span class="op">(</span>ctx<span class="op">,</span> prefix <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span>RemoteObjectInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li><code>newSFTPReader</code> reads <code>SFTP_USER</code>,
+<code>SFTP_PASSWORD</code>, <code>SFTP_KEY_PATH</code>,
+<code>SFTP_HOST_KEY</code> from env</li>
+<li>Host key callback: compare fingerprint against
+<code>SFTP_HOST_KEY</code>; reject if missing or mismatch with a clear
+error:
+<code>"sftp: unknown host key for &lt;host&gt;; set SFTP_HOST_KEY=&lt;fingerprint&gt;"</code></li>
+<li><code>scp://</code> URIs resolved to <code>sftp://</code> before
+dispatch in <code>NewRemoteReader</code></li>
+</ul>
+<h3 id="phase-8-tests-remote_test.go">Phase 8 — Tests
+(<code>remote_test.go</code>)</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Test</th>
+<th scope="col">Method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S3 <code>parseS3URI</code> — valid, prefix, invalid</td>
+<td>Unit</td>
+</tr>
+<tr>
+<td>S3 <code>Get</code> / <code>List</code></td>
+<td><code>httptest.Server</code> mimicking MinIO responses</td>
+</tr>
+<tr>
+<td>HTTP <code>Get</code> with bearer token</td>
+<td><code>httptest.Server</code></td>
+</tr>
+<tr>
+<td>HTTP HTTPS→HTTP redirect blocked</td>
+<td><code>httptest.Server</code> chain</td>
+</tr>
+<tr>
+<td>HTTP <code>List</code> returns error</td>
+<td>Unit</td>
+</tr>
+<tr>
+<td><code>filterCommandEnvironment</code> strips all credential
+vars</td>
+<td>Unit</td>
+</tr>
+<tr>
+<td><code>remotePathCandidates</code> with mocked S3</td>
+<td><code>httptest.Server</code></td>
+</tr>
+<tr>
+<td>SFTP unknown host key rejected</td>
+<td>Mocked SSH handshake</td>
+</tr>
+</tbody>
+</table>
+<h2 id="acceptance-criteria">Acceptance Criteria</h2>
+<ul class="task-list">
+<li><label><input
+type="checkbox" /><code>/rag ingest s3://bucket/prefix/</code> lists,
+confirms if large, ingests with progress</label></li>
+<li><label><input type="checkbox" /><code>/read s3://bucket/key</code>
+returns file content to user</label></li>
+<li><label><input
+type="checkbox" /><code>/read https://example.com/file.txt</code>
+returns public content</label></li>
+<li><label><input type="checkbox" />Credentials never appear in tool
+results, Fountain recording, or subprocess env</label></li>
+<li><label><input type="checkbox" />HTTP backend rejects HTTPS → HTTP
+redirect</label></li>
+<li><label><input type="checkbox" />SFTP backend rejects unrecognised
+host key with actionable error</label></li>
+<li><label><input type="checkbox" />S3 tab completion lists buckets and
+keys when credentials present</label></li>
+<li><label><input type="checkbox" /><code>go test ./...</code>
+passes</label></li>
+<li><label><input type="checkbox" /><code>go mod tidy</code> leaves no
+unused deps</label></li>
+</ul>
+</section>
+</body>
+</html>

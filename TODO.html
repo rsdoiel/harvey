@@ -20,51 +20,34 @@
 <section>
 <h1 id="action-items">Action Items</h1>
 <h2 id="bugs">Bugs</h2>
-<h2 id="next-steps-upcoming-features-v0.0.5">Next Steps (upcoming
-features, v0.0.5)</h2>
 <ul class="task-list">
-<li><p><label><input type="checkbox" />PDF extraction — shared internal
-<code>pdfExtract(file, pages)</code> function used by both commands
-below. Uses three poppler utilities in sequence: 1. <code>pdfinfo</code>
-— metadata (title, author, page count, creation date) 2.
-<code>pdftotext -layout</code> — text extraction preserving spatial
-structure (prose, code, tables) 3. <code>pdfimages -list</code> — detect
-pages with raster images; flag sparse/empty pages that are likely vector
-diagrams so output isn’t silently incomplete Vector diagrams
-(path-command graphics) cannot be extracted by any text tool — those
-pages should be flagged for follow-up with a vision-capable route.
-Poppler (pdftotext, pdfinfo, pdfimages) is the chosen backend;
-LibreOffice and Pandoc are not suitable for PDF input.</label></p></li>
-<li><p><label><input
-type="checkbox" /><code>/read_pdf FILE [PAGES]</code> slash command —
-context injection path. Calls <code>pdfExtract</code> with an optional
-page range (e.g. <code>40-55</code>). Enforces a page cap (~20 pages) to
-stay within context window limits. Output is injected into the
-conversation as a user message so the model can reason about the content
-immediately. Ephemeral — not stored anywhere. Example:
-<code>/read_pdf ~/docs/oberon2.pdf 49-63</code></label></p></li>
-<li><p><label><input type="checkbox" /><code>/rag ingest FILE.pdf</code>
-subcommand — RAG ingestion path. Calls <code>pdfExtract</code> on the
-full document (no page cap), chunks the output by paragraph/section,
-attaches per-chunk metadata (source file, page number, document title
-from pdfinfo), embeds, and stores in the active RAG store. Pages flagged
-as diagram-heavy by pdfimages are stored with an incomplete-content
-marker so retrieval results can surface the caveat. Companion to
-<code>/read_pdf</code>; both share <code>pdfExtract</code> but serve
-different outputs (chat context vs. RAG database).</label></p></li>
-<li><p><label><input type="checkbox" />Attached file support —
-<code>/attach FILE</code> command that includes a file as multimodal
-content in the next chat turn. For cloud routes with
-CompletionPDF/CompletionImage support (Anthropic, Mistral, Gemini),
-sends the raw file bytes as a ContentPart so the model processes it
-natively. For local/text-only models, falls back to text extraction. See
-conversation notes for design details.</label></p></li>
+<li><label><input type="checkbox" />Make sure memory and pipeline
+commands have help guilds</label>
+<ul>
+<li>Example output,
+<code>wren:~/Laboratory/harvey $ harvey --help memory Unknown help topic "memory". Available topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write wren:~/Laboratory/harvey $ harvey --version harvey 0.0.5b (released 2026-05-25, fc4ded8) rsdoiel@wren:~/Laboratory/harvey $ harvey --help pipeline Unknown help topic "pipeline". Available topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, ollama, permissions, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write</code></li>
+</ul></li>
 </ul>
-<h2 id="someday-maybe-ideas">Someday, maybe ideas</h2>
+<h2 id="up-next-features-for-v0.0.6">Up Next (features for v0.0.6)</h2>
+<h3 id="remote-protocol-integration">Remote protocol integration</h3>
+<p>Design: <a
+href="remote-protocol-design.html">remote-protocol-design.md</a> | Plan:
+<a href="remote-protocol-plan.html">remote-protocol-plan.md</a></p>
 <ul class="task-list">
-<li><label><input type="checkbox" />Add the ability to interact with S3
-protocol for remote storage, this will be helpful in library and
-archival projects if Harvey is helping with processing</label></li>
+<li><label><input type="checkbox" />Phase 1: <code>RemoteReader</code>
+abstraction interface + URI scheme factory</label></li>
+<li><label><input type="checkbox" />Phase 2: S3-compatible backend
+(MinIO Go client; AWS, MinIO, Cloudflare R2)</label></li>
+<li><label><input type="checkbox" />Phase 3: S3 RAG ingest +
+<code>/read</code> + tab completion</label></li>
+<li><label><input type="checkbox" />Phase 4:
+<code>filterCommandEnvironment</code> credential stripping
+(AWS/SFTP/HTTP vars)</label></li>
+<li><label><input type="checkbox" />Phase 5: HTTP/HTTPS backend (stdlib
+<code>net/http</code>; downgrade protection)</label></li>
+<li><label><input type="checkbox" />Phase 6: SFTP/SCP backend
+(<code>golang.org/x/crypto/ssh</code>; strict host key
+verification)</label></li>
 </ul>
 </section>
 </body>

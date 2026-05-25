@@ -561,6 +561,150 @@ FOUNTAIN-ANALYSIS
 Reading agents/sessions/session.spmd for analysis.</code></pre>
 <p><strong>Fields:</strong> - Skill name (from heading) - Description
 action line</p>
+<h3 id="memory-scenes-int.-memory-timestamp">Memory Scenes
+(<code>INT. MEMORY &lt;TIMESTAMP&gt;</code>)</h3>
+<p>Memory documents stored in <code>agents/memories/</code> use an
+<code>INT. MEMORY &lt;TIMESTAMP&gt;</code> scene heading in place of the
+standard session heading. This scene type is <strong>never recorded in
+live sessions</strong> — it appears only in <code>.fountain</code> files
+under <code>agents/memories/{type}/</code> that were produced by
+<code>/memory mine</code>.</p>
+<p>The file begins with a YAML front matter block (replacing the
+Fountain title block) followed by a proper Fountain body.</p>
+<p><strong>File structure:</strong></p>
+<pre><code>---
+id: &quot;git_fix_a3f891&quot;
+type: &quot;tool_use&quot;
+created_at: &quot;2026-05-25T12:00:00Z&quot;
+updated_at: &quot;2026-05-25T12:00:00Z&quot;
+supersedes: []
+tags: [&quot;git&quot;, &quot;error&quot;, &quot;fix&quot;]
+description: &quot;Fixed &#39;fatal: not a git repository&#39; by running &#39;git init&#39;&quot;
+summary: &quot;When git reports &#39;fatal: not a git repository&#39;, running git init
+  in the project directory resolves the error by initializing a new repo.&quot;
+source_session: &quot;agents/sessions/harvey-session-20260525-103507.spmd&quot;
+---
+
+FADE IN:
+
+INT. MEMORY 2026-05-25 12:00:00
+
+RSDOIEL
+I got: fatal: not a git repository (or any of the parent directories).
+
+HARVEY
+Running git init to initialize the repository.
+
+RSDOIEL
+That fixed it.
+
+THE END.</code></pre>
+<p><strong>YAML front matter fields:</strong></p>
+<table>
+<colgroup>
+<col style="width: 23%" />
+<col style="width: 33%" />
+<col style="width: 43%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Field</th>
+<th scope="col">Required</th>
+<th scope="col">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Yes</td>
+<td>Unique identifier, format <code>{type}_{6hex}</code></td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td>Yes</td>
+<td>One of <code>tool_use</code>, <code>workflow</code>,
+<code>user_preference</code></td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>Yes</td>
+<td>RFC3339 timestamp</td>
+</tr>
+<tr>
+<td><code>updated_at</code></td>
+<td>Yes</td>
+<td>RFC3339 timestamp</td>
+</tr>
+<tr>
+<td><code>supersedes</code></td>
+<td>Yes</td>
+<td>IDs of memories this one replaces (empty list if none)</td>
+</tr>
+<tr>
+<td><code>tags</code></td>
+<td>Yes</td>
+<td>Keyword list for filtering</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>Yes</td>
+<td>One-sentence action-oriented summary</td>
+</tr>
+<tr>
+<td><code>summary</code></td>
+<td>Yes</td>
+<td>2-3 sentences optimised for semantic search</td>
+</tr>
+<tr>
+<td><code>source_session</code></td>
+<td>No</td>
+<td>Path to the session this was mined from</td>
+</tr>
+<tr>
+<td><code>metadata</code></td>
+<td>No</td>
+<td>Arbitrary key-value context</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Memory types:</strong></p>
+<table>
+<thead>
+<tr>
+<th scope="col">Type</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tool_use</code></td>
+<td>A tool, command, or API trick that worked well</td>
+</tr>
+<tr>
+<td><code>workflow</code></td>
+<td>A multi-step process that should be repeated</td>
+</tr>
+<tr>
+<td><code>user_preference</code></td>
+<td>A stated or demonstrated user preference</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Directory layout:</strong></p>
+<pre><code>agents/memories/
+  tool_use/        ← active tool_use memories
+  workflow/        ← active workflow memories
+  user_preference/ ← active user_preference memories
+  archive/         ← superseded memories (moved here, not deleted)
+    tool_use/
+    workflow/
+    user_preference/
+  memories.db      ← SQLite index (FTS5 + vector embeddings)
+  manifest.yaml    ← tracks which sessions have been mined</code></pre>
+<p><strong>Workspace path normalisation:</strong> Absolute workspace
+paths in memory content are replaced with the placeholder
+<code>&lt;workspace&gt;</code> before the memory is saved, so memory
+files do not embed machine-specific paths.</p>
 <h2 id="parsing-rules-for-tools">Parsing Rules for Tools</h2>
 <h3 id="file-structure">File Structure</h3>
 <pre><code>^Title: .*$
@@ -600,19 +744,19 @@ and first ALL-CAPS character</li>
 </ul></li>
 </ol>
 <h3 id="character-type-detection">Character Type Detection</h3>
-<div class="sourceCode" id="cb24"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pseudocode</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> character_type(name, scene_description, known_routes, author):</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> name <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span>:</span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;harvey-native&quot;</span></span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="kw">in</span> known_routes:</span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;routed-ollama&quot;</span></span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="op">==</span> author:</span>
-<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;human&quot;</span></span>
-<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> is_all_caps_alphanumeric(name):</span>
-<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;cloud-model&quot;</span></span>
-<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
-<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pseudocode</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> character_type(name, scene_description, known_routes, author):</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> name <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span>:</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;harvey-native&quot;</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="kw">in</span> known_routes:</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;routed-ollama&quot;</span></span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="op">==</span> author:</span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;human&quot;</span></span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> is_all_caps_alphanumeric(name):</span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;cloud-model&quot;</span></span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span></code></pre></div>
 <h2 id="complete-example-sessions">Complete Example Sessions</h2>
 <h3 id="example-1-basic-harvey-session-local-model">Example 1: Basic
 Harvey Session (Local Model)</h3>
@@ -913,6 +1057,12 @@ elements.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>1.1</td>
+<td>2026-05-25</td>
+<td>Added <code>INT. MEMORY &lt;TIMESTAMP&gt;</code> scene type for
+memory documents</td>
+</tr>
 <tr>
 <td>1.0</td>
 <td>2026-05-04</td>

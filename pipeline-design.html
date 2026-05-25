@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-pipeline-design">Harvey Pipeline — Design</h1>
+<h2 id="overview">Overview</h2>
+<p>The <code>/pipeline</code> command chains a sequence of Markdown
+prompt files, passing each step’s response as input to the next. A
+configurable confidence threshold gates progression: if a step’s
+measured confidence falls below the threshold the pipeline stops
+immediately with a diagnostic error. The pipeline is a first-class
+session construct — its execution appears as a distinct scene block in
+the Fountain session recording, then returns to the original scene.</p>
+<h2 id="command-syntax">Command Syntax</h2>
+<pre><code>/pipeline &lt;CONFIDENCE%&gt; FILE [FILE ...]</code></pre>
+<table>
+<thead>
+<tr>
+<th scope="col">Argument</th>
+<th scope="col">Format</th>
+<th scope="col">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CONFIDENCE%</code></td>
+<td>Required, first arg, integer or decimal</td>
+<td><code>90%</code></td>
+</tr>
+<tr>
+<td><code>FILE</code></td>
+<td>Workspace-relative path, one or more</td>
+<td><code>prompts/step1.md</code></td>
+</tr>
+</tbody>
+</table>
+<p>Examples:</p>
+<pre><code>/pipeline 85% review.md summarise.md
+/pipeline 90% setup.md step1.md step2.md finalise.md</code></pre>
+<p>Tab completion applies to FILE arguments via the existing
+<code>workspacePathCandidates</code> helper; <code>/pipeline</code> is
+added to <code>buildCompleter</code> with path positions starting at
+token index 2 (index 1 is the confidence %).</p>
+<h2 id="pipeline-file-format">Pipeline File Format</h2>
+<p>Each FILE is a plain Markdown document. Its body is sent verbatim to
+the model as the user message, with one detected annotation and one
+hidden addition described below.</p>
+<h3 id="mention-model-routing"><span class="citation"
+data-cites="mention">@mention</span> — Model Routing</h3>
+<p>Harvey scans the file body for the <strong>first</strong> occurrence
+of <code>@[\w:.-]+</code>. That token determines the model for this
+step. All subsequent <span class="citation"
+data-cites="mentions">@mentions</span> are left in the body and become
+part of the prompt text passed to the model unchanged.</p>
+<p>No frontmatter is required; <span class="citation"
+data-cites="mention">@mention</span> may appear anywhere in the file —
+first line, mid-paragraph, or at the end. This keeps the format
+accessible to users who are not familiar with YAML frontmatter.</p>
+<p>If no <span class="citation" data-cites="mention">@mention</span> is
+found the step uses Harvey’s currently active <code>a.Client</code>.</p>
+<p>If an <span class="citation" data-cites="mention">@mention</span> is
+found but the model cannot be resolved the pipeline stops immediately
+(before executing any further steps) with an error;
+<code>a.History</code> and <code>a.Client</code> are unchanged.</p>
+<h3 id="hidden-confidence-instruction">Hidden Confidence
+Instruction</h3>
+<p>Harvey appends the following block to every outgoing user message
+<strong>before</strong> sending it to the model. It is never shown to
+the user in the pipeline file display, and it is stripped from the
+response before the response is displayed or forwarded to the next
+step.</p>
+<pre><code>---
+After your response, append the following JSON block on its own line.
+Do not include any text after the block.
+{&quot;confidence&quot;: 0.0-1.0, &quot;reason&quot;: &quot;one-line rationale&quot;}</code></pre>
+<p>The appended instruction is logged in the Fountain session recording
+as a parenthetical note for auditability:
+<code>(hidden confidence instruction appended)</code>.</p>
+<h2 id="confidence-extraction-fallback-chain">Confidence Extraction —
+Fallback Chain</h2>
+<p>After each step Harvey attempts to extract a confidence score using
+the following priority order:</p>
+<table>
+<colgroup>
+<col style="width: 37%" />
+<col style="width: 29%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Priority</th>
+<th scope="col">Method</th>
+<th scope="col">Trigger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Parse <code>{"confidence": X.X, ...}</code> JSON block from end of
+response</td>
+<td>Always tried first</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Follow-up message: “Rate your confidence 0.0–1.0. Reply only:
+<code>CONFIDENCE: &lt;score&gt;</code>”</td>
+<td>JSON not found or unparseable</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Keyword scan: hedging phrases → 0.30; no hedging → 0.80</td>
+<td>Follow-up also fails</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Hedging phrases (keyword scan):</strong> “I’m not sure”, “I
+cannot determine”, “I don’t know”, “unclear”, “uncertain”, “it’s
+possible”, “might be”, “I’m unsure”.</p>
+<p>The confidence block and any follow-up exchange are stripped from the
+response before it is displayed or forwarded. Only the clean response
+body is shown and passed to the next step.</p>
+<h2 id="context-flow">Context Flow</h2>
+<h3 id="step-1">Step 1</h3>
+<p>Step 1 carries Harvey’s full current conversation history so the
+first model has session context:</p>
+<pre><code>Messages:  a.History
+         + User{ &lt;step1.md body&gt; + hidden confidence instruction }
+Client:    model resolved from step1.md @mention, or a.Client</code></pre>
+<h3 id="step-n-n-1">Step N (N &gt; 1)</h3>
+<p>Each subsequent step starts a fresh conversation (system prompt only)
+and receives only the previous step’s stripped response. This keeps
+context usage minimal across the chain — each step distils the previous
+output into a refined prompt for the next.</p>
+<pre><code>Messages:  SystemMsg{ a.Config.SystemPrompt }
+         + User{ &lt;step N-1 stripped response&gt;
+                 \n\n---\n\n
+                 &lt;step N markdown body&gt;
+                 + hidden confidence instruction }
+Client:    model resolved from step N&#39;s @mention, or a.Client</code></pre>
+<h2 id="model-resolution">Model Resolution</h2>
+<p>When a step’s <span class="citation"
+data-cites="mention">@mention</span> differs from Harvey’s active model,
+Harvey constructs a temporary <code>AnyLLMClient</code> struct for that
+step. This struct is a lightweight HTTP wrapper; no OS subprocess is
+spawned. The temporary client is discarded after the step completes.</p>
+<p><code>a.Client</code> is never mutated. Harvey returns to its
+original active model after the pipeline exits, regardless of
+outcome.</p>
+<h2 id="user-visible-ux">User-Visible UX</h2>
+<h3 id="spinner">Spinner</h3>
+<p>During each step’s LLM call the spinner shows:</p>
+<pre><code>[1/3] setup.md | context 12%</code></pre>
+<p>Context percentage:
+<code>(tokens_used / effective_context_limit) * 100</code>.</p>
+<h3 id="per-step-result-line">Per-Step Result Line</h3>
+<p>After each step completes, Harvey prints:</p>
+<pre><code>Step 1/3 [setup.md] — confidence: 0.91 ✓
+Step 2/3 [step1.md] — confidence: 0.72 ✗ (threshold: 0.90)</code></pre>
+<p>Response text streams live to the terminal as tokens arrive, so the
+user can interrupt with Ctrl-C if a step is producing unhelpful
+output.</p>
+<h2 id="session-state-on-exit">Session State on Exit</h2>
+<table>
+<colgroup>
+<col style="width: 30%" />
+<col style="width: 36%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Condition</th>
+<th scope="col"><code>a.History</code></th>
+<th scope="col"><code>a.Client</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All steps pass</td>
+<td>Final stripped response appended as assistant turn</td>
+<td>Unchanged</td>
+</tr>
+<tr>
+<td>Confidence threshold not met</td>
+<td>Unchanged</td>
+<td>Unchanged</td>
+</tr>
+<tr>
+<td><span class="citation" data-cites="mention">@mention</span> not
+resolved</td>
+<td>Unchanged</td>
+<td>Unchanged</td>
+</tr>
+<tr>
+<td>File not found</td>
+<td>Unchanged</td>
+<td>Unchanged</td>
+</tr>
+<tr>
+<td>Context/OOM error</td>
+<td>Unchanged</td>
+<td>Unchanged</td>
+</tr>
+</tbody>
+</table>
+<h2 id="error-conditions">Error Conditions</h2>
+<table>
+<colgroup>
+<col style="width: 35%" />
+<col style="width: 29%" />
+<col style="width: 35%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Condition</th>
+<th scope="col">Message</th>
+<th scope="col">Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Confidence below threshold</td>
+<td><code>Step N/M [file] — confidence: X.XX ✗ (threshold: Y.YY)</code></td>
+<td>Stop; History unchanged</td>
+</tr>
+<tr>
+<td><span class="citation" data-cites="mention">@mention</span> not
+resolved</td>
+<td><code>pipeline: @mention "name" did not resolve to a known model</code></td>
+<td>Stop immediately</td>
+</tr>
+<tr>
+<td>File not in workspace</td>
+<td><code>pipeline: cannot read "file": &lt;os error&gt;</code></td>
+<td>Stop immediately</td>
+</tr>
+<tr>
+<td>Context overflow</td>
+<td><code>pipeline: step N context limit exceeded</code></td>
+<td>Stop</td>
+</tr>
+<tr>
+<td>All confidence methods fail</td>
+<td>Keyword scan always produces a score; pipeline continues</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h2 id="fountain-session-recording">Fountain Session Recording</h2>
+<h3 id="entry">Entry</h3>
+<pre><code>INT. PIPELINE SETUP.MD STEP 1/3 2026-05-20 14:30:00
+
+RSDOIEL executes /pipeline 90% setup.md step1.md step2.md.
+Model: llama3:latest. Workspace: /path/to/workspace.
+(hidden confidence instruction appended)
+
+RSDOIEL
+&lt;step file content&gt;
+
+HARVEY
+&lt;step response&gt;
+
+(confidence: 0.91 — threshold met)</code></pre>
+<h3 id="between-steps">Between Steps</h3>
+<p>Each step begins a new scene heading. A <code>CUT TO:</code> line
+separates steps.</p>
+<h3 id="exit-success">Exit (Success)</h3>
+<pre><code>CUT BACK TO:
+
+INT. HARVEY AND RSDOIEL TALKING 2026-05-20 14:33:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /path.
+
+HARVEY
+&lt;final step response appended to History&gt;</code></pre>
+<h3 id="exit-failure">Exit (Failure)</h3>
+<pre><code>CUT BACK TO:
+
+INT. HARVEY AND RSDOIEL TALKING 2026-05-20 14:32:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /path.
+(pipeline stopped at step 2/3: confidence 0.72 below threshold 0.90)</code></pre>
+<h2 id="security-considerations">Security Considerations</h2>
+<ul>
+<li>Pipeline files are resolved with <code>resolveWorkspacePath</code>;
+path traversal outside the workspace root is blocked.</li>
+<li>Temporary <code>AnyLLMClient</code> instances use the same provider
+backend as the active session; no new credential material is
+introduced.</li>
+<li>The hidden confidence instruction is logged as a parenthetical note
+for auditability.</li>
+<li>No pipeline output is stored outside <code>a.History</code> (on
+success) or the terminal scrollback (on failure or during
+execution).</li>
+</ul>
+</section>
+</body>
+</html>

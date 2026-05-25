@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-pipeline-implementation-plan">Harvey Pipeline —
+Implementation Plan</h1>
+<p>See <a href="pipeline-design.html">pipeline-design.md</a> for the
+full design rationale.</p>
+<h2 id="new-module-dependencies">New Module Dependencies</h2>
+<p>None. The pipeline is implemented entirely with existing Harvey
+packages and the Go standard library.</p>
+<h2 id="files-to-create">Files to Create</h2>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/pipeline.go</code></td>
+<td>All pipeline logic: arg parsing, file reading, <span
+class="citation" data-cites="mention">@mention</span> scan, model
+resolution, confidence extraction, step execution, orchestrator</td>
+</tr>
+<tr>
+<td><code>harvey/pipeline_test.go</code></td>
+<td>Unit and integration tests</td>
+</tr>
+</tbody>
+</table>
+<h2 id="files-to-modify">Files to Modify</h2>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/commands.go</code></td>
+<td>Register <code>/pipeline</code> in the command dispatch table</td>
+</tr>
+<tr>
+<td><code>harvey/terminal.go</code></td>
+<td>Extend <code>buildCompleter</code>: add <code>/pipeline</code> with
+path positions starting at token index 2</td>
+</tr>
+</tbody>
+</table>
+<h2 id="implementation-phases">Implementation Phases</h2>
+<h3 id="phase-1-argument-parsing">Phase 1 — Argument Parsing</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> parsePipelineArgs<span class="op">(</span>root <span class="dt">string</span><span class="op">,</span> args <span class="op">[]</span><span class="dt">string</span><span class="op">)</span> <span class="op">(</span>threshold <span class="dt">float64</span><span class="op">,</span> files <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li>Validate <code>args[0]</code> matches <code>\d+(\.\d+)?%</code>;
+parse to float64 in (0, 1]</li>
+<li>Remaining tokens are workspace-relative file paths</li>
+<li>Each path is validated with <code>resolveWorkspacePath</code> (path
+escape blocked)</li>
+<li>Return error on missing files or zero paths</li>
+</ul>
+<h3 id="phase-2-file-reading-and-mention-extraction">Phase 2 — File
+Reading and <span class="citation" data-cites="mention">@mention</span>
+Extraction</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> readPipelineFile<span class="op">(</span>root<span class="op">,</span> relPath <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>body <span class="dt">string</span><span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> scanAtMention<span class="op">(</span>body <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span>  <span class="co">// returns &quot;&quot; if none found</span></span></code></pre></div>
+<ul>
+<li><code>readPipelineFile</code> resolves and reads; enforces workspace
+boundary</li>
+<li><code>scanAtMention</code> applies regex <code>@([\w:.-]+)</code>
+and returns the first capture group</li>
+</ul>
+<h3 id="phase-3-model-resolution">Phase 3 — Model Resolution</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> resolvePipelineClient<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> mention <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>LLMClient<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li>Empty mention → return <code>a.Client</code>, nil (no
+allocation)</li>
+<li>Non-empty → construct temporary <code>AnyLLMClient</code> using same
+provider as <code>a.Client</code> but with model name = mention</li>
+<li>If construction fails or model unavailable → return nil, descriptive
+error</li>
+</ul>
+<h3 id="phase-4-confidence-extraction">Phase 4 — Confidence
+Extraction</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> extractConfidence<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> client LLMClient<span class="op">,</span> response <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>score <span class="dt">float64</span><span class="op">,</span> stripped <span class="dt">string</span><span class="op">,</span> method <span class="dt">string</span><span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ol type="1">
+<li>Try <code>{"confidence": X.X ...}</code> JSON at end of response;
+strip block</li>
+<li>If fail: send follow-up
+<code>"Rate your confidence 0.0–1.0. Reply only: CONFIDENCE: &lt;score&gt;"</code>;
+parse reply</li>
+<li>If fail: keyword scan (hedging phrases → 0.30; no hedging →
+0.80)</li>
+</ol>
+<p>Returns the score, the response with the confidence block removed,
+the method used (“json”, “followup”, “keyword”), and any error from the
+follow-up call.</p>
+<h3 id="phase-5-step-execution">Phase 5 — Step Execution</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> runPipelineStep<span class="op">(</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    ctx context<span class="op">.</span>Context<span class="op">,</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    a <span class="op">*</span>Agent<span class="op">,</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    client LLMClient<span class="op">,</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    messages <span class="op">[]</span>Message<span class="op">,</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    out io<span class="op">.</span>Writer<span class="op">,</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    stepNum<span class="op">,</span> total <span class="dt">int</span><span class="op">,</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    filename <span class="dt">string</span><span class="op">,</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    threshold <span class="dt">float64</span><span class="op">,</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="op">)</span> <span class="op">(</span>strippedResponse <span class="dt">string</span><span class="op">,</span> confidence <span class="dt">float64</span><span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ol type="1">
+<li>Append hidden confidence instruction to the last <code>User</code>
+message</li>
+<li>Update spinner: <code>[N/total] filename | context X%</code></li>
+<li><code>client.Chat(ctx, messages, out)</code> — streams to
+terminal</li>
+<li><code>extractConfidence</code> on result</li>
+<li>Print per-step result line with ✓ or ✗</li>
+<li>If score &lt; threshold → return error</li>
+<li>Return stripped response for next step</li>
+</ol>
+<h3 id="phase-6-pipeline-orchestrator">Phase 6 — Pipeline
+Orchestrator</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> cmdPipeline<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> args <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span></code></pre></div>
+<ol type="1">
+<li><code>parsePipelineArgs</code> — validate threshold and files</li>
+<li>For each file: <code>readPipelineFile</code> →
+<code>scanAtMention</code> → <code>resolvePipelineClient</code>
+<ul>
+<li>Stop on any resolution error before running any steps</li>
+</ul></li>
+<li>Fountain: open pipeline scene block</li>
+<li>Step 1: messages = <code>a.History</code> + user message from
+file</li>
+<li>Step N (N &gt; 1): messages = system prompt + user message (prev
+response + file body)</li>
+<li><code>runPipelineStep</code> for each step; stop on error</li>
+<li>On success:
+<code>a.AddMessage("assistant", finalStrippedResponse)</code></li>
+<li>Fountain: <code>CUT BACK TO:</code> original scene</li>
+</ol>
+<h3 id="phase-7-tab-completion">Phase 7 — Tab Completion</h3>
+<p>In <code>buildCompleter</code> switch statement, add:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="st">&quot;/pipeline&quot;</span><span class="op">:</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    pathStart <span class="op">=</span> <span class="dv">2</span>  <span class="co">// tokens[1] is confidence %, paths start at index 2</span></span></code></pre></div>
+<h3 id="phase-8-tests-pipeline_test.go">Phase 8 — Tests
+(<code>pipeline_test.go</code>)</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Test</th>
+<th scope="col">Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TestParsePipelineArgs_valid</code></td>
+<td><code>90%</code>, <code>85.5%</code>, single and multiple files</td>
+</tr>
+<tr>
+<td><code>TestParsePipelineArgs_invalid</code></td>
+<td>Missing %, non-numeric, zero files, path escape</td>
+</tr>
+<tr>
+<td><code>TestScanAtMention_first</code></td>
+<td>First <span class="citation" data-cites="mention">@mention</span>
+wins, ignores later ones</td>
+</tr>
+<tr>
+<td><code>TestScanAtMention_none</code></td>
+<td>Returns empty string</td>
+</tr>
+<tr>
+<td><code>TestExtractConfidence_json</code></td>
+<td>Well-formed JSON block at end of response</td>
+</tr>
+<tr>
+<td><code>TestExtractConfidence_followup</code></td>
+<td>JSON absent, follow-up succeeds</td>
+</tr>
+<tr>
+<td><code>TestExtractConfidence_keyword</code></td>
+<td>Both JSON and follow-up fail, keyword scan used</td>
+</tr>
+<tr>
+<td><code>TestCmdPipeline_singleStep</code></td>
+<td>One file, confidence met, History updated</td>
+</tr>
+<tr>
+<td><code>TestCmdPipeline_multiStep</code></td>
+<td>Three files, all pass, final response appended</td>
+</tr>
+<tr>
+<td><code>TestCmdPipeline_failAtStep2</code></td>
+<td>Confidence fails at step 2, History unchanged</td>
+</tr>
+<tr>
+<td><code>TestCmdPipeline_mentionUnresolved</code></td>
+<td><span class="citation" data-cites="mention">@mention</span> not
+found, stops before step 1</td>
+</tr>
+<tr>
+<td><code>TestCmdPipeline_fileNotFound</code></td>
+<td>Missing file, stops with error</td>
+</tr>
+</tbody>
+</table>
+<h2 id="acceptance-criteria">Acceptance Criteria</h2>
+<ul class="task-list">
+<li><label><input
+type="checkbox" /><code>/pipeline 90% step1.md step2.md</code> runs
+end-to-end with mocked LLM client</label></li>
+<li><label><input type="checkbox" />Confidence below threshold stops at
+the correct step</label></li>
+<li><label><input type="checkbox" />Unresolved <span class="citation"
+data-cites="mention">@mention</span> stops immediately before any steps
+execute</label></li>
+<li><label><input type="checkbox" /><code>a.Client</code> and
+<code>a.History</code> unchanged on any failure</label></li>
+<li><label><input type="checkbox" />Final response appended to History
+on success</label></li>
+<li><label><input type="checkbox" />Tab completion offers file paths for
+argument positions 2 and beyond</label></li>
+<li><label><input type="checkbox" />Spinner shows filename and context
+percentage during each step</label></li>
+<li><label><input type="checkbox" />Per-step result line printed after
+each step completes</label></li>
+<li><label><input type="checkbox" /><code>go test ./...</code>
+passes</label></li>
+</ul>
+</section>
+</body>
+</html>

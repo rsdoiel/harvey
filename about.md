@@ -12,7 +12,7 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.5
+version: 0.0.5b
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
@@ -25,12 +25,11 @@ date_released: 2026-05-19
 About this software
 ===================
 
-## harvey 0.0.5
+## harvey 0.0.5b
 
-- Added support for working with PDF via poppler tools
-- Added `/read_pdf` command to read a PDF into the working context
-- Added `/rag inguest FILE.pdf` to ingest a PDF into our RAG+Knolwedge base
-- Added `/attach FILE` support (mainly for route supported language models)
+- Added `/memory` commands and "memory" implementation
+- Added `/pipeline` support and implementation
+- Bug fixes catching write_file failer in model responses
 
 ## Authors
 
