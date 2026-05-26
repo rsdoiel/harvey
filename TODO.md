@@ -3,7 +3,15 @@
 
 ## Bugs
 
+- [ ] The keyboard/line edit handling does not appear as part of help guide suggested by `/help` command.
+
 ## Up Next (features for v0.0.6)
+
+- [ ] Add built-in tool support for "whoami", this will be helpful in writing and project or writing review
+- [ ] Increase the `/rag ingest` kilo byte limit that triggers a user prompt from 100K to 1000K
+- [ ] There is an alias of `/rag setup` for `/rag new`, we can drop the alias.
+
+## Someday, maybe ideas
 
 ### Remote protocol integration
 
