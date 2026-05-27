@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-unified-memory-design">Harvey Unified Memory —
+Design</h1>
+<p><strong>Status (2026-05-26):</strong> Design draft. See <a
+href="memory-unified-plan.html">memory-unified-plan.md</a> for the
+phased implementation plan.</p>
+<p><strong>References:</strong> - “Memory in the Age of AI Agents: A
+Survey — Forms, Functions and Dynamics” (arXiv 2512.13564v2) — primary
+taxonomy reference. <code>Reference/papers/2512.13564v2.pdf</code> - “Is
+Grep All You Need? How Agent Harnesses Reshape Agentic Search” (arXiv
+2605.15184v1) — hybrid lexical/semantic retrieval strategy.
+<code>Reference/papers/2605.15184v1.pdf</code> - “Real-time and offline
+LLMs on edge devices: a systematic review” (PeerJ CS 3769) — real-time
+vs. offline access patterns.
+<code>Reference/papers/peerj-cs-3769.pdf</code> - “Performance analysis
+of localised LLMs in resource-constrained edge” (JEC 1047) — Pi
+throughput benchmarks; temperature guidance.
+<code>Reference/papers/JEC_1047_Ray_Pradhan.pdf</code> - “iGenOrch:
+Intelligent Orchestration for Multi-Model LLM Inference on Edge
+Platforms” (3746467) — latency-aware context allocation.
+<code>Reference/papers/3746467.3801501.pdf</code></p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>Harvey currently has three disconnected memory silos:</p>
+<table>
+<colgroup>
+<col style="width: 19%" />
+<col style="width: 32%" />
+<col style="width: 48%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Silo</th>
+<th scope="col">Location</th>
+<th scope="col">What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MemoryStore</code></td>
+<td><code>agents/memories/</code></td>
+<td>Agent experiences (tool_use, workflow, user_preference)</td>
+</tr>
+<tr>
+<td>RAG stores</td>
+<td><code>agents/rag/*.db</code></td>
+<td>Ingested documents for retrieval</td>
+</tr>
+<tr>
+<td>Knowledge Base</td>
+<td><code>agents/knowledge.db</code></td>
+<td>Project observations and concepts</td>
+</tr>
+</tbody>
+</table>
+<p>Each silo has its own retrieval path. At session start, only
+<code>MemoryStore</code> is wired to automatic injection; RAG and KB
+require manual commands (<code>/rag</code>, <code>/kb inject</code>). A
+query such as “how do I work in this project?” cannot draw from all
+three without separate steps.</p>
+<p>A second problem is resource pressure. Small models running on a
+Raspberry Pi 500+ have context windows of roughly 2 K–8 K tokens. Memory
+injection today has no token budget: <code>top_k</code> is the only
+governor, and it is model-agnostic. On a 2 K context window, five
+verbose memory documents can exhaust the budget before the user’s first
+question is in scope.</p>
+<p>The goal of this redesign is to:</p>
+<ol type="1">
+<li>Unify retrieval across all three silos into a single ranked result
+set injected at session start.</li>
+<li>Govern injection by a <strong>token budget</strong> proportional to
+the model’s context window.</li>
+<li>Add <strong>workspace_profile</strong> and
+<strong>project_fact</strong> memory types so the model always has
+stable workspace context without consuming retrieval budget.</li>
+<li>Restructure <code>harvey.yaml</code> so all memory-related
+configuration lives under a single <code>memory:</code> key.</li>
+<li>Add a <strong>rolling summary</strong> for in-session working memory
+so long conversations remain usable on small context models.</li>
+</ol>
+<hr />
+<h2 id="principles">Principles</h2>
+<p><strong>Workspace-centric.</strong> Harvey knows nothing outside the
+workspace. Every memory document, every index, every configuration file
+lives under <code>agents/</code> in the workspace root. There is no
+global profile, no cross-workspace state.</p>
+<p><strong>Budget-first.</strong> Memory injection is useful only when
+it fits in the context window alongside the user’s input and a
+meaningful response. Token budget enforcement is not optional.</p>
+<p><strong>Unified but manageable.</strong> The three silos keep their
+separate management commands (<code>/memory</code>, <code>/rag</code>,
+<code>/kb</code>) because they serve different authoring workflows. The
+unification is in the <em>retrieval and injection</em> path, not the
+storage path.</p>
+<p><strong>Same model, separate call.</strong> Harvey runs on hardware
+where only one model is loaded at a time. Operations that require an LLM
+(rolling summary compression, memory mining) use the current chat model
+in a separate call, not a second model.</p>
+<hr />
+<h2 id="memory-taxonomy-paper-harvey-mapping">Memory Taxonomy (paper →
+Harvey mapping)</h2>
+<p>The survey organises agent memory along three axes.</p>
+<h3 id="forms-what-carries-memory">Forms (what carries memory)</h3>
+<table>
+<colgroup>
+<col style="width: 28%" />
+<col style="width: 38%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Form</th>
+<th scope="col">Harvey</th>
+<th scope="col">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Token-level Flat (1D)</td>
+<td><code>.fountain</code> files + SQLite/FTS5/cosine</td>
+<td>Core storage; keep as-is</td>
+</tr>
+<tr>
+<td>Token-level Planar (2D)</td>
+<td>—</td>
+<td>Out of scope for this design</td>
+</tr>
+<tr>
+<td>Parametric</td>
+<td>—</td>
+<td>Not applicable; Harvey does not fine-tune</td>
+</tr>
+<tr>
+<td>Latent</td>
+<td>—</td>
+<td>Not applicable; no KV-cache control</td>
+</tr>
+</tbody>
+</table>
+<p>Harvey operates entirely in token-level flat memory. This is the
+right choice for a local, resource-constrained agent: it is transparent,
+editable, and requires no infrastructure beyond SQLite.</p>
+<h3 id="functions-why-memory-is-needed">Functions (why memory is
+needed)</h3>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 18%" />
+<col style="width: 54%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Function</th>
+<th scope="col">Types</th>
+<th scope="col">Injection priority</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Factual — workspace profile</td>
+<td><code>workspace_profile</code></td>
+<td>1 (always, highest)</td>
+</tr>
+<tr>
+<td>Factual — project facts</td>
+<td><code>project_fact</code></td>
+<td>2 (always, high)</td>
+</tr>
+<tr>
+<td>Experiential — tool use</td>
+<td><code>tool_use</code></td>
+<td>3 (semantic retrieval)</td>
+</tr>
+<tr>
+<td>Experiential — workflows</td>
+<td><code>workflow</code></td>
+<td>3 (semantic retrieval)</td>
+</tr>
+<tr>
+<td>Experiential — preferences</td>
+<td><code>user_preference</code></td>
+<td>4 (semantic retrieval)</td>
+</tr>
+<tr>
+<td>RAG knowledge</td>
+<td>RAG store chunks</td>
+<td>5 (if tokens remain)</td>
+</tr>
+<tr>
+<td>KB observations</td>
+<td>Knowledge base</td>
+<td>6 (if tokens remain)</td>
+</tr>
+</tbody>
+</table>
+<p>Factual types are always injected first because they are stable,
+compact, and high-value: a model that does not know who it is working
+with or what project it is in will produce lower-quality output
+regardless of how good its experiential retrieval is.</p>
+<h3 id="dynamics-how-memory-operates">Dynamics (how memory
+operates)</h3>
+<table>
+<colgroup>
+<col style="width: 28%" />
+<col style="width: 46%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Dynamic</th>
+<th scope="col">Current state</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Formation — post-hoc mining</td>
+<td><code>/memory mine</code> (manual)</td>
+<td>Add auto-mine on session end</td>
+</tr>
+<tr>
+<td>Formation — real-time</td>
+<td>None</td>
+<td>Out of scope</td>
+</tr>
+<tr>
+<td>Evolution — supersedes/archive</td>
+<td>Implemented</td>
+<td>Keep</td>
+</tr>
+<tr>
+<td>Evolution — consolidation</td>
+<td>None</td>
+<td>Out of scope (future)</td>
+</tr>
+<tr>
+<td>Retrieval — at session start</td>
+<td><code>injectMemoryContext</code> (Memory only)</td>
+<td>Replace with unified retrieval</td>
+</tr>
+<tr>
+<td>Retrieval — per-turn</td>
+<td>None</td>
+<td>Out of scope</td>
+</tr>
+<tr>
+<td>Working memory — compression</td>
+<td>None</td>
+<td>Add rolling summary</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="new-memory-types">New Memory Types</h2>
+<pre><code>workspace_profile   Stable facts about who works in this workspace and their
+                    role. Created once by the onboarding flow. Updated manually
+                    via /memory profile update or by replacing the document.
+
+project_fact        Workspace-specific technical facts: language, build system,
+                    key conventions, entry points. Auto-extracted from
+                    codemeta.json / go.mod / package.json / .git/config at first
+                    use; user-editable thereafter.</code></pre>
+<p>Both types live in <code>agents/memories/&lt;type&gt;/</code>
+alongside existing types. Both are included in standard memory
+management commands (<code>/memory list</code>,
+<code>/memory show</code>, <code>/memory forget</code>).</p>
+<p>The existing types (<code>tool_use</code>, <code>workflow</code>,
+<code>user_preference</code>) are unchanged. No type is removed.</p>
+<hr />
+<h2 id="config-restructuring">Config Restructuring</h2>
+<h3 id="goal">Goal</h3>
+<p>Move <code>RagStores</code>, <code>RagActive</code>,
+<code>RagEnabled</code>, <code>KnowledgeDB</code>, and
+<code>CurrentProjectID</code> from the top-level <code>Config</code>
+struct into <code>MemoryConfig</code>. Update <code>harvey.yaml</code>
+serialisation to place all of these under <code>memory:</code>. Keep
+reading the old top-level <code>rag:</code> and
+<code>knowledge_db:</code> keys for backward compatibility, but never
+write them.</p>
+<h3 id="new-memoryconfig-go">New <code>MemoryConfig</code> (Go)</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> MemoryConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Master switch and injection behaviour</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    Enabled       <span class="dt">bool</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    TopK          <span class="dt">int</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    InjectOnStart <span class="dt">bool</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    BudgetPct     <span class="dt">float64</span>  <span class="co">// fraction of model context window (default 0.25)</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">// RAG stores (moved from Config)</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    RagStores <span class="op">[]</span>RagStoreEntry</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    RagActive <span class="dt">string</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    RagEnabled <span class="dt">bool</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Knowledge base (moved from Config)</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    KnowledgeDB      <span class="dt">string</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    CurrentProjectID <span class="dt">int64</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Rolling summary</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    RollingSummary RollingSummaryConfig</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> RollingSummaryConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>    Enabled   <span class="dt">bool</span>     <span class="co">// default true</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    WarnAtPct <span class="dt">float64</span>  <span class="co">// warn at this fraction of context window (default 0.80)</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>    KeepTurns <span class="dt">int</span>      <span class="co">// keep last N turns verbatim during compression (default 6)</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Accessor methods currently on <code>Config</code>
+(<code>ActiveRagStore</code>, <code>RagStoreByName</code>,
+<code>AddOrUpdateRagStore</code>, <code>RemoveRagStore</code>) move to
+<code>MemoryConfig</code>. <code>SaveRAGConfig</code> is renamed
+<code>SaveMemoryConfig</code> and writes the full <code>memory:</code>
+section.</p>
+<h3 id="new-harvey.yaml-shape">New <code>harvey.yaml</code> shape</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">memory</span><span class="kw">:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">inject_on_start</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">budget_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.25</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">top_k</span><span class="kw">:</span><span class="at"> </span><span class="dv">5</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rolling_summary</span><span class="kw">:</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">warn_at_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">keep_turns</span><span class="kw">:</span><span class="at"> </span><span class="dv">6</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rag</span><span class="kw">:</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">active</span><span class="kw">:</span><span class="at"> harvey</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">stores</span><span class="kw">:</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> harvey</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/harvey.db</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">knowledge_base</span><span class="kw">:</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/knowledge.db</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">current_project</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span></span></code></pre></div>
+<p>Old top-level keys (<code>rag:</code>, <code>knowledge_db:</code>)
+are read silently for backward compat and migrated into
+<code>memory:</code> on the next save.</p>
+<hr />
+<h2 id="unified-retrieval">Unified Retrieval</h2>
+<h3 id="unifiedmemory-memory_unified.go"><code>UnifiedMemory</code>
+(<code>memory_unified.go</code>)</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> UnifiedResult <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    Source  <span class="dt">string</span>   <span class="co">// &quot;workspace_profile&quot;, &quot;project_fact&quot;,</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>                     <span class="co">// &quot;experiential&quot;, &quot;rag&quot;, &quot;kb&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    ID      <span class="dt">string</span>   <span class="co">// memory ID, RAG chunk ID, or KB observation ID</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    Content <span class="dt">string</span>   <span class="co">// formatted text ready for context injection</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    Score   <span class="dt">float64</span>  <span class="co">// cosine similarity or keyword score; 1.0 for factual types</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    Tokens  <span class="dt">int</span>      <span class="co">// estimated token count of Content</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> UnifiedMemory <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    store  <span class="op">*</span>MemoryStore</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    cfg    <span class="op">*</span>MemoryConfig</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    wsRoot <span class="dt">string</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="co">// Recall queries all silos and returns a budget-constrained result list.</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="co">// Factual types (workspace_profile, project_fact) are always returned first,</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a><span class="co">// regardless of score. Remaining slots are filled by scored results from</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a><span class="co">// experiential memories, RAG, and KB until budgetTokens is exhausted.</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>u <span class="op">*</span>UnifiedMemory<span class="op">)</span> Recall<span class="op">(</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>    query    <span class="dt">string</span><span class="op">,</span></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>    embedder Embedder<span class="op">,</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>    budget   <span class="dt">int</span><span class="op">,</span></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a><span class="op">)</span> <span class="op">([]</span>UnifiedResult<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<h3 id="hybrid-retrieval-strategy">Hybrid retrieval strategy</h3>
+<p>Research on agentic search (arXiv 2605.15184v1) shows that lexical
+(exact-match) search is competitive with semantic (vector) search in
+agent harnesses, and substantially cheaper. On a Pi, each embedding call
+is a round-trip to Ollama; FTS5 is free.</p>
+<p><code>Recall</code> uses a two-path strategy:</p>
+<p><strong>Fast path — always runs:</strong> FTS5 text search against
+description, summary, and tags in <code>memories.db</code>. This is the
+primary path when no embedder is configured or available. Results are
+scored by FTS5 rank.</p>
+<p><strong>Slow path — runs when embedder is available:</strong> Cosine
+similarity against stored embedding vectors, same as the current
+<code>MemoryStore.Query</code> implementation.</p>
+<p>The two result sets are merged by score, deduped, and truncated to
+<code>budget</code>. The fast path replaces the current
+<code>Recent()</code> fallback — “most recent” is a poor proxy for
+relevance.</p>
+<p><strong>Implication for the REPL:</strong> the
+<code>/memory recall</code> display command always uses the slow path
+(embedder required) because it is interactive and quality matters more
+than latency. Session-start injection uses whichever path is
+available.</p>
+<h3 id="token-budget-computation">Token budget computation</h3>
+<pre><code>budget = OllamaContextLength * Memory.BudgetPct</code></pre>
+<p><code>OllamaContextLength</code> comes from
+<code>Config.OllamaContextLength</code>, which is set by
+<code>/inspect</code> or populated from the Ollama model info at
+startup. When it is zero (unknown), fall back to a conservative default
+of 512 tokens.</p>
+<h3 id="real-time-vs.-offline-retrieval-paths">Real-time vs. offline
+retrieval paths</h3>
+<p>Edge LLM research (peerj-cs-3769) distinguishes two access patterns
+that map directly to Harvey’s two retrieval modes:</p>
+<table>
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 24%" />
+<col style="width: 16%" />
+<col style="width: 43%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Mode</th>
+<th scope="col">Trigger</th>
+<th scope="col">Path</th>
+<th scope="col">Latency target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Real-time</td>
+<td>Session start injection</td>
+<td>Fast (FTS5 first, semantic if available)</td>
+<td>&lt; 200 ms total</td>
+</tr>
+<tr>
+<td>Offline</td>
+<td><code>/memory recall</code>, background mining</td>
+<td>Slow (full semantic + reranking)</td>
+<td>seconds acceptable</td>
+</tr>
+</tbody>
+</table>
+<p>Memory formation (mining, auto-mine) and stats recording always run
+on the offline path, after the session or in the background.</p>
+<h3 id="context-injection-format">Context injection format</h3>
+<p>The injected message groups results by source with minimal markup so
+small models can parse it without confusion:</p>
+<pre><code>[memory context]
+
+[workspace profile]
+&lt;content of workspace_profile docs&gt;
+
+[project facts]
+&lt;content of project_fact docs&gt;
+
+[relevant experience]
+tool_use: &lt;description&gt;. &lt;summary&gt;
+workflow: &lt;description&gt;. &lt;summary&gt;
+
+[knowledge]
+&lt;rag chunk or kb observation&gt;</code></pre>
+<hr />
+<h2 id="workspace-profile-onboarding">Workspace Profile Onboarding</h2>
+<p>At <code>Agent.Reset()</code> (session start), check whether
+<code>agents/memories/workspace_profile/</code> contains any
+<code>.fountain</code> files. If not, and if the session is interactive
+(not replay), run the onboarding flow before injecting memory
+context:</p>
+<pre><code>Harvey: I don&#39;t have a workspace profile yet. A few quick questions:
+
+&gt; What should I call you in this workspace? _
+&gt; What is your role here? (developer / researcher / writer / other) _
+&gt; Primary language(s) or tools? e.g. Go, TypeScript, Python _
+&gt; Anything else I should know about this project? (Enter to skip) _</code></pre>
+<p>Immediately after, attempt to auto-extract <code>project_fact</code>
+from the workspace in this order:</p>
+<ol type="1">
+<li><code>codemeta.json</code> — name, description, programmingLanguage,
+developmentStatus</li>
+<li><code>go.mod</code> — module name</li>
+<li><code>package.json</code> — name, description</li>
+<li><code>.git/config</code> <code>remote.origin.url</code></li>
+<li>Ask if nothing was found</li>
+</ol>
+<p>Both documents are written as <code>.fountain</code> memory files and
+saved to the store. Onboarding is detected purely by file presence; no
+config flag is needed.</p>
+<p>The onboarding flow is a separate function
+(<code>RunOnboarding</code>) in <code>memory_onboarding.go</code> so it
+can be unit-tested independently.</p>
+<hr />
+<h2 id="rolling-summary-working-memory">Rolling Summary (Working
+Memory)</h2>
+<h3 id="trigger">Trigger</h3>
+<p>After every LLM reply, immediately before the REPL prompt is
+re-displayed:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> cfg<span class="op">.</span>Memory<span class="op">.</span>RollingSummary<span class="op">.</span>Enabled <span class="op">&amp;&amp;</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>   cfg<span class="op">.</span>OllamaContextLength <span class="op">&gt;</span> <span class="dv">0</span> <span class="op">&amp;&amp;</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>   <span class="dt">float64</span><span class="op">(</span>CountTokens<span class="op">(</span>History<span class="op">))</span> <span class="op">/</span> <span class="dt">float64</span><span class="op">(</span>cfg<span class="op">.</span>OllamaContextLength<span class="op">)</span> <span class="op">&gt;=</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>       cfg<span class="op">.</span>Memory<span class="op">.</span>RollingSummary<span class="op">.</span>WarnAtPct <span class="op">{</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    compressHistory<span class="op">(</span>agent<span class="op">,</span> cfg<span class="op">.</span>Memory<span class="op">.</span>RollingSummary<span class="op">.</span>KeepTurns<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="compression">Compression</h3>
+<p><code>compressHistory</code> takes all turns except the last
+<code>KeepTurns</code> and asks the current model in a <strong>separate,
+non-recorded call</strong>:</p>
+<pre><code>System: You are a summariser. Summarise the following conversation
+        history in at most 150 tokens. Focus on decisions made,
+        files changed, errors resolved, and context the user provided.
+
+User:   &lt;older turns as plain text&gt;</code></pre>
+<p>The reply replaces the older turns with a single synthetic user
+message:</p>
+<pre><code>[Session history compressed — summary: &lt;reply&gt;]</code></pre>
+<p>The last <code>KeepTurns</code> turns are kept verbatim. The overall
+history is now short enough that the model can continue without
+confusion.</p>
+<h3 id="notification">Notification</h3>
+<p>Harvey prints one line before compressing:</p>
+<pre><code>[context ~82% full — compressing older turns]</code></pre>
+<p>No confirmation is required. The user can always
+<code>/session save</code> to keep the full uncompressed history on disk
+before it is lost.</p>
+<hr />
+<h2 id="memory-recall-command"><code>/memory recall</code> Command</h2>
+<p>New subcommand under <code>/memory</code>:</p>
+<pre><code>/memory recall &lt;query text&gt;</code></pre>
+<p>Calls
+<code>UnifiedMemory.Recall(query, embedder, maxResults=10)</code> with a
+generous token budget (no cap; this is a display command, not
+injection). Displays results grouped by source with scores:</p>
+<pre><code>[workspace profile]  workspace_profile_a1b2c3
+  R. S. Doiel — systems developer — Go, TypeScript
+
+[project fact]       project_fact_d4e5f6
+  Harvey: terminal coding agent; Go module; AGPL-3.0
+
+[experience 0.91]    tool_use_a3f891
+  Run git init when git reports &#39;not a repository&#39;
+
+[rag 0.87]           harvey/FOUNTAIN_FORMAT.md (chunk 2)
+  The scene heading format is INT. MEMORY &lt;TIMESTAMP&gt;...
+
+[kb 0.74]
+  Finding: small models benefit from explicit project context</code></pre>
+<hr />
+<h2 id="memory-command-surface-unchanged"><code>/memory</code> Command
+Surface (unchanged)</h2>
+<p>Existing subcommands are not renamed or removed. <code>recall</code>
+is additive:</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Subcommand</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mine</code></td>
+<td>Post-hoc extraction from session files</td>
+</tr>
+<tr>
+<td><code>list [type]</code></td>
+<td>List active memories, optionally filtered</td>
+</tr>
+<tr>
+<td><code>show &lt;id&gt;</code></td>
+<td>Display full memory document</td>
+</tr>
+<tr>
+<td><code>forget &lt;id&gt;</code></td>
+<td>Archive a memory</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>Counts, manifest summary, store path</td>
+</tr>
+<tr>
+<td><code>recall &lt;query&gt;</code></td>
+<td><strong>NEW</strong> — unified search across all silos</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="adaptive-budget-tuning">Adaptive Budget Tuning</h2>
+<p><code>BudgetPct</code> defaults to <code>0.25</code> — a conservative
+starting point for small models. Over time Harvey accumulates enough
+session data to suggest better values.</p>
+<h3 id="what-is-tracked">What is tracked</h3>
+<p>Each session records two counters into a new
+<code>memory_stats</code> table in
+<code>agents/memories/memories.db</code>:</p>
+<table>
+<colgroup>
+<col style="width: 47%" />
+<col style="width: 52%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Column</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>session_id</code></td>
+<td>Filename of the session <code>.spmd</code> file</td>
+</tr>
+<tr>
+<td><code>budget_tokens</code></td>
+<td>Tokens allocated (<code>OllamaContextLength * BudgetPct</code>)</td>
+</tr>
+<tr>
+<td><code>injected_tokens</code></td>
+<td>Tokens actually injected (sum of
+<code>UnifiedResult.Tokens</code>)</td>
+</tr>
+<tr>
+<td><code>compressed</code></td>
+<td>1 if rolling summary fired at least once during the session</td>
+</tr>
+<tr>
+<td><code>recorded_at</code></td>
+<td>UTC timestamp</td>
+</tr>
+</tbody>
+</table>
+<p>The row is written at session end (same time as auto-mine, Phase
+5).</p>
+<h3 id="what-is-tracked-extended">What is tracked (extended)</h3>
+<p>Edge benchmarking research (JEC_1047_Ray_Pradhan.pdf) confirms that
+throughput (<code>tokens_per_sec</code>) is a reliable real-time
+indicator of model stress on Pi hardware. Harvey already captures this
+in <code>ChatStats.TokensPerSec</code> after every LLM call. Recording
+the session average alongside budget stats enables a third signal.</p>
+<p>Extended <code>memory_stats</code> row:</p>
+<table>
+<colgroup>
+<col style="width: 47%" />
+<col style="width: 52%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Column</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>avg_tokens_per_sec</code></td>
+<td>Average <code>ChatStats.TokensPerSec</code> across all turns in the
+session</td>
+</tr>
+</tbody>
+</table>
+<h3 id="when-to-suggest">When to suggest</h3>
+<p>At <code>/memory status</code>, if <code>memory_stats</code> has
+&gt;= 10 rows, Harvey computes three signals:</p>
+<ol type="1">
+<li><strong>Budget saturation</strong> —
+<code>avg(injected_tokens / budget_tokens)</code>: if &gt; 0.90, the
+budget is being maxed out and relevant memories are likely cut off.
+Suggestion: increase <code>budget_pct</code>.</li>
+<li><strong>Compression frequency</strong> — fraction of sessions where
+<code>compressed = 1</code>: if &gt; 0.50, rolling summary fires often.
+This is informational — compression is working as intended.</li>
+<li><strong>Throughput trend</strong> — if
+<code>avg_tokens_per_sec</code> is low (&lt; 2 tok/s on this hardware)
+AND budget saturation is high, the model is struggling with a large
+context. Suggestion: <em>reduce</em> <code>budget_pct</code> and rely
+more on lexical retrieval. This is the opposite of signal 1 and the
+signals are evaluated together.</li>
+</ol>
+<h3 id="output-format-in-memory-status">Output format (in
+<code>/memory status</code>)</h3>
+<pre><code>Memory budget:  25% of context (512 tokens on granite3.3:2b)
+Budget advice:  avg utilisation 93% over last 12 sessions —
+                consider increasing memory.budget_pct to 0.35</code></pre>
+<p>Or, if things look healthy:</p>
+<pre><code>Memory budget:  25% of context (512 tokens on granite3.3:2b)
+Budget advice:  avg utilisation 61% — current setting looks good</code></pre>
+<p>Harvey never changes <code>budget_pct</code> automatically; it only
+surfaces the suggestion. The user edits <code>harvey.yaml</code> to act
+on it.</p>
+<h3 id="schema-addition">Schema addition</h3>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> <span class="cf">IF</span> <span class="kw">NOT</span> <span class="kw">EXISTS</span> memory_stats (</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>           <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span> AUTOINCREMENT,</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    session_id   TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    budget_tokens  <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    injected_tokens <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>,</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>    compressed   <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>,  <span class="co">-- bool</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>    recorded_at  TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<p>This table is added to <code>memoriesSchema</code> in
+<code>memory_store.go</code> and populated at session end by a new
+<code>RecordSessionStats</code> method on <code>MemoryStore</code>.</p>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<p>The following are noted but deferred:</p>
+<ul>
+<li><strong>Planar / hierarchical memory (2D/3D):</strong> graph or tree
+structure between memory documents. Useful for concept mapping but adds
+retrieval complexity not justified at current scale.</li>
+<li><strong>Per-turn retrieval:</strong> querying memory on every model
+turn, not just at session start. Doubles LLM calls on Pi hardware.</li>
+<li><strong>Consolidation / forgetting policies:</strong> merging
+near-duplicate memories or decaying low-access ones. Useful future
+work.</li>
+<li><strong>Parametric / latent memory:</strong> fine-tuning or KV-cache
+manipulation. Requires infrastructure not available on Pi.</li>
+<li><strong>Auto-mine on session end (v1):</strong> desirable but lower
+priority than unified retrieval and budget management. Deferred to a
+follow-on plan item.</li>
+</ul>
+</section>
+</body>
+</html>

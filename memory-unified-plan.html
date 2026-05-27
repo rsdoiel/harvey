@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-unified-memory-implementation-plan">Harvey Unified Memory
+— Implementation Plan</h1>
+<p>See <a href="memory-unified-design.html">memory-unified-design.md</a>
+for the full design rationale and architecture decisions.</p>
+<p>Phases are ordered so each one compiles, passes tests, and provides
+standalone value. No phase depends on a later phase being started.</p>
+<hr />
+<h2 id="phase-1-config-restructure-split-into-5-sub-phases">Phase 1 —
+Config Restructure (split into 5 sub-phases)</h2>
+<p><strong>Goal:</strong> Move RAG and KB configuration under
+<code>MemoryConfig</code> in both the Go structs and
+<code>harvey.yaml</code>. All functionality stays identical; this is a
+pure restructure with no behaviour change.</p>
+<p>Each sub-phase compiles, passes all tests, and leaves Harvey fully
+functional. Sub-phases are designed to be completed in separate
+sessions.</p>
+<hr />
+<h3 id="phase-1a-additive-new-memoryconfig-fields">Phase 1a — Additive:
+new <code>MemoryConfig</code> fields</h3>
+<p><strong>Scope:</strong> <code>config.go</code> and
+<code>config_test.go</code> only. No call sites change. Nothing is
+removed.</p>
+<p><strong>Files to modify:</strong></p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.go</code></td>
+<td>Add <code>BudgetPct float64</code> and
+<code>RollingSummary RollingSummaryConfig</code> to
+<code>MemoryConfig</code>. Add <code>RollingSummaryConfig</code> type
+(<code>Enabled bool</code>, <code>WarnAtPct float64</code>,
+<code>KeepTurns int</code>). Set defaults in <code>DefaultConfig</code>:
+<code>BudgetPct: 0.25</code>,
+<code>RollingSummary: {Enabled: true, WarnAtPct: 0.80, KeepTurns: 6}</code>.
+Add <code>rolling_summary:</code> sub-struct to <code>memoryYAML</code>
+and wire it in <code>LoadHarveyYAML</code>.</td>
+</tr>
+<tr>
+<td><code>config_test.go</code></td>
+<td>Add test: <code>DefaultConfig().Memory.BudgetPct == 0.25</code>. Add
+round-trip test: marshal then unmarshal <code>memoryYAML</code> with
+rolling_summary fields; verify values survive.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Acceptance criteria:</strong> - <code>go build ./...</code>
+and <code>go test ./...</code> pass. - Harvey behaviour is
+unchanged.</p>
+<hr />
+<h3 id="phase-1b-mirror-rag-config-into-memoryconfig">Phase 1b — Mirror
+RAG config into <code>MemoryConfig</code></h3>
+<p><strong>Scope:</strong> <code>config.go</code> and
+<code>config_test.go</code> only. All existing <code>Config.Rag*</code>
+fields remain; they are kept in sync with
+<code>Config.Memory.Rag*</code> during load and save. No call sites
+change yet.</p>
+<p><strong>Files to modify:</strong></p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.go</code></td>
+<td>Add <code>RagStores []RagStoreEntry</code>,
+<code>RagActive string</code>, <code>RagEnabled bool</code> to
+<code>MemoryConfig</code>. Add <code>memory.rag</code> sub-struct to
+<code>memoryYAML</code> (reuse <code>ragYAML</code> type). In
+<code>LoadHarveyYAML</code>, after populating
+<code>cfg.RagStores/Active/Enabled</code> from old <code>rag:</code> or
+new <code>memory.rag:</code>, also copy those values into
+<code>cfg.Memory.Rag*</code>. Add <code>ActiveRagStore()</code>,
+<code>RagStoreByName()</code>, <code>AddOrUpdateRagStore()</code>,
+<code>RemoveRagStore()</code> methods to <code>MemoryConfig</code>
+(identical logic to the same methods on <code>Config</code>). Add
+<code>SaveMemoryConfig(ws, cfg)</code> that writes the full
+<code>memory:</code> section including <code>memory.rag</code>. Update
+<code>SaveRAGConfig</code> to call <code>SaveMemoryConfig</code>
+(becomes a thin wrapper).</td>
+</tr>
+<tr>
+<td><code>config_test.go</code></td>
+<td>Add backward-compat test: parse YAML with old top-level
+<code>rag:</code> section; verify <code>cfg.Memory.RagActive</code> and
+<code>cfg.RagActive</code> both have the expected value. Add round-trip
+test for <code>memory.rag</code> YAML path.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Acceptance criteria:</strong> - <code>go build ./...</code>
+and <code>go test ./...</code> pass. - An existing workspace with
+old-format <code>harvey.yaml</code> loads without error. Running
+<code>/rag status</code> works normally. - <code>SaveRAGConfig</code>
+still writes a valid file; its output now includes
+<code>memory.rag:</code> alongside the old <code>rag:</code>
+section.</p>
+<hr />
+<h3 id="phase-1c-migrate-rag-call-sites">Phase 1c — Migrate RAG call
+sites</h3>
+<p><strong>Scope:</strong> <code>commands.go</code> and
+<code>harvey.go</code>. Switch all RAG field accesses from
+<code>cfg.Rag*</code> / <code>cfg.ActiveRagStore()</code> etc. to
+<code>cfg.Memory.Rag*</code> / <code>cfg.Memory.ActiveRagStore()</code>
+etc. Switch <code>SaveRAGConfig</code> →
+<code>SaveMemoryConfig</code>.</p>
+<p><strong>Files to modify:</strong></p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td>Replace <code>a.Config.RagStores</code>,
+<code>a.Config.RagActive</code>, <code>a.Config.RagEnabled</code>,
+<code>a.Config.ActiveRagStore()</code>,
+<code>a.Config.RagStoreByName()</code>,
+<code>a.Config.AddOrUpdateRagStore()</code>,
+<code>a.Config.RemoveRagStore()</code> with
+<code>a.Config.Memory.*</code> equivalents throughout. Replace all
+<code>SaveRAGConfig(...)</code> calls with
+<code>SaveMemoryConfig(...)</code>.</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>Same substitutions for any RAG field accesses.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Acceptance criteria:</strong> - <code>go build ./...</code>
+and <code>go test ./...</code> pass. - All <code>/rag</code> subcommands
+work correctly end-to-end. - Old <code>Config.Rag*</code> fields on the
+<code>Config</code> struct still exist (not yet removed — that is Phase
+1e). Harvey is not broken if any unvisited call site still uses the old
+path.</p>
+<hr />
+<h3
+id="phase-1d-mirror-kb-into-memoryconfig-and-migrate-call-sites">Phase
+1d — Mirror KB into <code>MemoryConfig</code> and migrate call
+sites</h3>
+<p><strong>Scope:</strong> <code>config.go</code>,
+<code>commands.go</code>, <code>knowledge.go</code>,
+<code>knowledge_test.go</code>. Moves <code>KnowledgeDB</code> and
+<code>CurrentProjectID</code> into <code>MemoryConfig</code> and
+migrates all call sites in one step (the KB footprint is much smaller
+than RAG’s).</p>
+<p><strong>Files to modify:</strong></p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.go</code></td>
+<td>Add <code>KnowledgeDB string</code> and
+<code>CurrentProjectID int64</code> to <code>MemoryConfig</code>. Add
+<code>knowledge_base:</code> sub-struct to <code>memoryYAML</code>
+(<code>db_path string</code>, <code>current_project string</code>). In
+<code>LoadHarveyYAML</code>, populate both
+<code>cfg.KnowledgeDB</code>/<code>cfg.CurrentProjectID</code> and
+<code>cfg.Memory.KnowledgeDB</code>/<code>cfg.Memory.CurrentProjectID</code>
+from whichever YAML location is present.</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>Replace <code>a.Config.KnowledgeDB</code> and
+<code>a.Config.CurrentProjectID</code> with
+<code>a.Config.Memory.*</code> throughout.</td>
+</tr>
+<tr>
+<td><code>knowledge.go</code></td>
+<td>Same substitutions.</td>
+</tr>
+<tr>
+<td><code>knowledge_test.go</code></td>
+<td>Update field references.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Acceptance criteria:</strong> - <code>go build ./...</code>
+and <code>go test ./...</code> pass. - All <code>/kb</code> subcommands
+work correctly end-to-end.</p>
+<hr />
+<h3 id="phase-1e-final-cleanup-remove-old-top-level-fields">Phase 1e —
+Final cleanup: remove old top-level fields</h3>
+<p><strong>Scope:</strong> <code>config.go</code> and any remaining call
+sites. Remove <code>Config.RagStores</code>,
+<code>Config.RagActive</code>, <code>Config.RagEnabled</code>,
+<code>Config.KnowledgeDB</code>, <code>Config.CurrentProjectID</code>
+and the duplicate methods on <code>Config</code>. Remove the old
+top-level <code>rag:</code> write path from
+<code>SaveMemoryConfig</code>. Remove <code>SaveRAGConfig</code>.</p>
+<p><strong>Files to modify:</strong></p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.go</code></td>
+<td>Delete the five moved fields from <code>Config</code>. Delete
+<code>ActiveRagStore()</code>, <code>RagStoreByName()</code>,
+<code>AddOrUpdateRagStore()</code>, <code>RemoveRagStore()</code> from
+<code>Config</code>. Delete <code>SaveRAGConfig</code>. Update
+<code>LoadHarveyYAML</code> to only copy <code>memory.rag</code> values
+into <code>Config.Memory.*</code> (still reads old <code>rag:</code> for
+compat but no longer copies to now-absent <code>Config.Rag*</code>).
+Update <code>SaveMemoryConfig</code> to omit the legacy
+<code>rag:</code> top-level write.</td>
+</tr>
+<tr>
+<td><code>config_test.go</code></td>
+<td>Remove any tests that reference the deleted <code>Config.Rag*</code>
+fields directly.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Acceptance criteria:</strong> - <code>go build ./...</code>
+and <code>go test ./...</code> pass with no errors. -
+<code>harvey.yaml</code> written by Harvey no longer contains a
+top-level <code>rag:</code> section; all RAG config is under
+<code>memory.rag:</code>. - Old <code>harvey.yaml</code> files with
+top-level <code>rag:</code> still load correctly (backward-compat read
+path remains).</p>
+<hr />
+<h2 id="phase-2-new-memory-types-unified-retrieval-token-budget">Phase 2
+— New Memory Types + Unified Retrieval + Token Budget</h2>
+<p><strong>Goal:</strong> Add <code>workspace_profile</code> and
+<code>project_fact</code> types. Create <code>UnifiedMemory</code>.
+Replace <code>injectMemoryContext</code> with budget-aware unified
+injection. Add <code>/memory recall</code>.</p>
+<h3 id="files-to-create">Files to create</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory_unified.go</code></td>
+<td><code>UnifiedResult</code> struct, <code>UnifiedMemory</code> struct
+and <code>Recall</code> method, token budget allocation logic, context
+injection formatting</td>
+</tr>
+<tr>
+<td><code>memory_unified_test.go</code></td>
+<td>Unit tests for <code>Recall</code> (all silos empty, factual-only,
+mixed, budget truncation)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory.go</code></td>
+<td>Add <code>MemoryTypeWorkspaceProfile = "workspace_profile"</code>
+and <code>MemoryTypeProjectFact = "project_fact"</code> constants. Add
+both to <code>ValidMemoryTypes</code>.</td>
+</tr>
+<tr>
+<td><code>memory_store.go</code></td>
+<td>Add <code>workspace_profile</code> and <code>project_fact</code> to
+the <code>subdirs</code> slice in <code>NewMemoryStore</code> so the
+directories are created on startup.</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>Replace <code>injectMemoryContext</code> body: instantiate
+<code>UnifiedMemory</code>, compute <code>budgetTokens</code> from
+<code>OllamaContextLength * BudgetPct</code> (fallback 512), call
+<code>Recall</code>, format and inject. Keep the function signature
+unchanged so no callers need updating.</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>Add <code>"recall"</code> to the <code>cmdMemory</code> dispatch
+switch. Implement <code>cmdMemoryRecall</code>: opens store, calls
+<code>UnifiedMemory.Recall</code> with a display budget (no cap),
+formats grouped output.</td>
+</tr>
+<tr>
+<td><code>config.go</code></td>
+<td>Set <code>BudgetPct</code> default to <code>0.25</code> in
+<code>DefaultConfig</code>.</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Add <code>recall</code> to the <code>/memory</code> help text.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="notes">Notes</h3>
+<ul>
+<li><code>UnifiedMemory.Recall</code> scores factual types at 1.0
+(always included, always first). Experiential types are scored by cosine
+similarity against the session query. RAG chunks and KB observations are
+scored by their respective retrieval methods and appended if budget
+remains.</li>
+<li>Token estimation uses <code>len(content)/4</code> as an
+approximation. The exact <code>CountTokens</code> API call is too
+expensive to make once per result; the approximation keeps injection
+within ±20% of budget.</li>
+<li>The <code>query</code> passed to <code>Recall</code> at session
+start is the system prompt text (same as the previous
+<code>injectMemoryContext</code> behaviour).</li>
+<li><strong>Hybrid retrieval:</strong> <code>Recall</code> runs FTS5
+text search first (fast, no Ollama round-trip). If an embedder is
+available it also runs cosine similarity and merges the two result sets.
+The <code>Recent()</code> fallback is removed — FTS5 is always a better
+proxy for relevance than recency.</li>
+<li><strong>Temperature for internal LLM calls:</strong> Rolling summary
+compression and memory mining calls should use a low temperature
+(0.1–0.2) for deterministic, high-fidelity output. Pass temperature via
+a new optional field on the internal call rather than using the user’s
+current chat temperature setting.</li>
+</ul>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>Starting a session injects a <code>[memory context]</code> block
+containing only factual docs when no experiential memories exist.</li>
+<li>Starting a session with a large experiential store respects
+<code>budget_pct</code>: the injected block does not exceed
+<code>OllamaContextLength * BudgetPct</code> tokens (estimated).</li>
+<li><code>/memory recall "git error"</code> returns results from all
+populated silos in grouped format.</li>
+<li>Setting <code>memory.enabled: false</code> in harvey.yaml disables
+injection and recall.</li>
+</ul>
+<hr />
+<h2 id="phase-3-workspace-profile-onboarding">Phase 3 — Workspace
+Profile Onboarding</h2>
+<p><strong>Goal:</strong> On first use in a workspace, Harvey asks a few
+questions and creates <code>workspace_profile</code> and
+<code>project_fact</code> memory documents.</p>
+<h3 id="files-to-create-1">Files to create</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory_onboarding.go</code></td>
+<td><code>NeedsOnboarding(store *MemoryStore) bool</code>,
+<code>RunOnboarding(agent *Agent, store *MemoryStore, embedder Embedder, out io.Writer, in io.Reader) error</code>,
+<code>extractProjectFact(wsRoot string) string</code></td>
+</tr>
+<tr>
+<td><code>memory_onboarding_test.go</code></td>
+<td>Unit tests for <code>NeedsOnboarding</code>,
+<code>extractProjectFact</code> (workspace with codemeta.json, go.mod,
+bare workspace)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey.go</code></td>
+<td>In <code>Agent.Reset()</code> (or at REPL startup, after the store
+is opened), call <code>NeedsOnboarding</code>; if true, call
+<code>RunOnboarding</code> before
+<code>injectUnifiedContext</code>.</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>Add <code>"profile"</code> subcommand to <code>/memory</code> for
+manual profile management: <code>profile show</code> (list
+workspace_profile docs), <code>profile update</code> (open most recent
+in $EDITOR).</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Document the <code>profile</code> subcommand in <code>/memory</code>
+help.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="extractprojectfact-logic"><code>extractProjectFact</code>
+logic</h3>
+<p>Checks in order; stops at first success:</p>
+<ol type="1">
+<li>Parse <code>codemeta.json</code> in workspace root → extract
+<code>name</code>, <code>description</code>,
+<code>programmingLanguage</code>, <code>developmentStatus</code>.</li>
+<li>Parse <code>go.mod</code> → module name.</li>
+<li>Parse <code>package.json</code> → name, description.</li>
+<li>Read <code>.git/config</code> → <code>remote.origin.url</code>.</li>
+<li>Return empty string (caller will ask the user).</li>
+</ol>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>In a workspace with no <code>workspace_profile</code> memories,
+starting Harvey triggers the onboarding questions; after answering,
+memories are written and subsequent starts skip onboarding.</li>
+<li>In a workspace with <code>codemeta.json</code>, project_fact is
+populated automatically without questions.</li>
+<li><code>/memory profile show</code> lists the workspace_profile
+documents.</li>
+<li><code>/memory list workspace_profile</code> also works (uses the
+existing list command).</li>
+</ul>
+<hr />
+<h2 id="phase-4-rolling-summary-working-memory-compression">Phase 4 —
+Rolling Summary (Working Memory Compression)</h2>
+<p><strong>Goal:</strong> When conversation history approaches the
+context window limit, warn and compress older turns so long sessions
+remain usable on small models.</p>
+<h3 id="files-to-create-2">Files to create</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory_rolling.go</code></td>
+<td><code>ShouldCompress(historyTokens, contextLen int, warnAtPct float64) bool</code>,
+<code>CompressHistory(agent *Agent, keepTurns int, out io.Writer) error</code></td>
+</tr>
+<tr>
+<td><code>memory_rolling_test.go</code></td>
+<td>Unit tests for <code>ShouldCompress</code>; integration test stub
+for <code>CompressHistory</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey.go</code> (or <code>commands.go</code> REPL loop)</td>
+<td>After writing each assistant reply to history, call
+<code>ShouldCompress</code>; if true, print the warning line and call
+<code>CompressHistory</code>.</td>
+</tr>
+<tr>
+<td><code>config.go</code></td>
+<td>Set <code>RollingSummary</code> defaults in
+<code>DefaultConfig</code>: <code>Enabled: true</code>,
+<code>WarnAtPct: 0.80</code>, <code>KeepTurns: 6</code>. Add
+<code>rolling_summary:</code> sub-struct to <code>memoryYAML</code> and
+load it in <code>LoadHarveyYAML</code>.</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Document rolling summary in the <code>/context</code> or
+<code>/compact</code> help sections, or add a dedicated note in
+<code>/help memory</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="compresshistory-logic"><code>CompressHistory</code> logic</h3>
+<ol type="1">
+<li>Split <code>agent.History</code> into <code>older</code> (all but
+last <code>KeepTurns</code> turns) and <code>recent</code> (last
+<code>KeepTurns</code> turns).</li>
+<li>Format <code>older</code> as plain dialogue text.</li>
+<li>Call the current model with the summariser prompt (see design doc).
+This call is <strong>not recorded</strong> (bypasses the session
+recorder).</li>
+<li>Replace <code>agent.History</code> with
+<code>[summary message] + recent</code>.</li>
+<li>Print <code>[context ~N% full — compressing older turns]</code>
+before the model call.</li>
+</ol>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>ShouldCompress</code> returns false below threshold, true at
+or above.</li>
+<li>A session that runs long enough to hit 80% of the context window
+prints the warning message and continues normally afterward.</li>
+<li>Setting <code>rolling_summary.enabled: false</code> in harvey.yaml
+disables the feature; no compression occurs.</li>
+<li>The session <code>.spmd</code> recording on disk contains the
+original full history up to the point of compression; after compression
+only the summary + recent turns appear in new recording entries.</li>
+</ul>
+<hr />
+<h2 id="phase-2b-adaptive-budget-tuning">Phase 2b — Adaptive Budget
+Tuning</h2>
+<p><strong>Goal:</strong> Track per-session memory usage statistics and
+surface tuning suggestions in <code>/memory status</code>. Implemented
+alongside or immediately after Phase 2.</p>
+<h3 id="files-to-modify-3">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory_store.go</code></td>
+<td>Add <code>memory_stats</code> table to <code>memoriesSchema</code>
+(columns: <code>session_id</code>, <code>budget_tokens</code>,
+<code>injected_tokens</code>, <code>compressed</code>,
+<code>avg_tokens_per_sec</code>, <code>recorded_at</code>). Add
+<code>RecordSessionStats(sessionID string, budgetTokens, injectedTokens int, compressed bool, avgToksPerSec float64) error</code>
+method to <code>MemoryStore</code>.</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>At session end (before REPL exits), call
+<code>store.RecordSessionStats(...)</code> with values accumulated
+during the session. Track <code>injectedTokens</code>,
+<code>compressed</code>, and a running average of
+<code>ChatStats.TokensPerSec</code> as session-scoped variables.</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>In <code>cmdMemoryStatus</code>, query <code>memory_stats</code> for
+the last 10+ rows; compute budget saturation, compression frequency, and
+throughput trend; print the <code>Budget advice:</code> line (see design
+doc for all three signals).</td>
+</tr>
+<tr>
+<td><code>memory_store.go</code></td>
+<td>Add
+<code>BudgetStats(n int) (avgSaturation, compressionRate, avgToksPerSec float64, err error)</code>
+query method.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>After 10+ sessions, <code>/memory status</code> includes a
+<code>Budget advice:</code> line.</li>
+<li>Fewer than 10 sessions: the advice line is omitted silently.</li>
+<li>Stats table survives a <code>memories.db</code> rebuild (it is empty
+after rebuild; that is acceptable — stats accumulate again from next
+use).</li>
+</ul>
+<hr />
+<h2 id="phase-5-auto-mine-on-session-end">Phase 5 — Auto-mine on Session
+End</h2>
+<p><strong>Goal:</strong> When the user exits or clears history in a
+session that had enough turns to be worth mining, automatically propose
+memory extraction without requiring a manual <code>/memory mine</code>
+run.</p>
+<p><strong>Trigger:</strong> Session ends (user types
+<code>exit</code>/<code>quit</code>/<code>/clear</code>) AND the session
+has &gt;= 10 user turns AND the session file is not already in the
+manifest.</p>
+<p><strong>Behaviour:</strong> Harvey prints a single line:</p>
+<pre><code>[auto-mining session for memories — use /memory mine to review manually]</code></pre>
+<p>Then runs the non-interactive path of <code>Miner.Mine</code> (accept
+all proposals without interactive review, score &gt;= 0.70 threshold,
+skip near-duplicates). The user can review or revise afterward with
+<code>/memory list</code> and <code>/memory forget</code>.</p>
+<h3 id="files-to-modify-4">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey.go</code> or REPL exit path</td>
+<td>After recording the session to disk, check turn count and manifest;
+call auto-mine if criteria met.</td>
+</tr>
+<tr>
+<td><code>memory_miner.go</code></td>
+<td>Add
+<code>MineAuto(ctx, sessionPath, agent, embedder, out) error</code> that
+runs extraction + saves all proposals above a confidence threshold
+without interactive review.</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>Ensure <code>/clear</code> triggers the same check as exit (it
+already saves the session).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-4">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>Exiting a 10+ turn session triggers auto-mine; a new session
+starting in the same workspace shows the mined memories via
+<code>/memory list</code>.</li>
+<li>Exiting a short (&lt; 10 turn) session does not trigger
+auto-mine.</li>
+<li>Running <code>/memory mine</code> on an already-auto-mined session
+reports “already mined” (manifest entry exists).</li>
+</ul>
+<hr />
+<h2 id="dependency-graph">Dependency Graph</h2>
+<pre><code>Phase 1a (additive config fields)
+    └─► Phase 1b (mirror RAG into MemoryConfig)
+            └─► Phase 1c (migrate RAG call sites)
+                    └─► Phase 1d (mirror + migrate KB)
+                            └─► Phase 1e (remove old fields)
+                                    └─► Phase 2 (Unified Retrieval)
+                                            ├─► Phase 2b (Adaptive Budget Tuning)
+                                            ├─► Phase 3 (Onboarding)
+                                            └─► Phase 4 (Rolling Summary)
+                                                    └─► Phase 5 (Auto-mine)</code></pre>
+<p>Phase 1 sub-phases are strictly sequential — each one must compile
+and pass tests before starting the next. Phases 2b, 3, 4, and 5 each
+depend on Phase 2 but are independent of each other and can be developed
+in any order after Phase 2 is complete.</p>
+<hr />
+<h2 id="new-module-dependencies">New Module Dependencies</h2>
+<p>None. All implementation uses packages already imported by Harvey:
+<code>database/sql</code>, <code>gopkg.in/yaml.v3</code>,
+<code>github.com/glebarez/go-sqlite</code>, and the Go standard
+library.</p>
+<hr />
+<h2 id="open-questions">Open Questions</h2>
+<p>None outstanding. Design decisions were settled during the planning
+session on 2026-05-26. Record any new decisions or reversals here as
+implementation proceeds.</p>
+</section>
+</body>
+</html>
