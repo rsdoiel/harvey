@@ -221,7 +221,7 @@ func (a *Agent) ReplayFromFountain(ctx context.Context, srcPath, outPath string,
 		}
 		reply := strings.TrimSpace(buf.String())
 		a.AddMessage("assistant", reply)
-		_ = rec.RecordTurnWithStats(turn.UserInput, reply, stats, []string{a.Client.Name()}, "")
+		_ = rec.RecordTurnWithStats(turn.UserInput, reply, stats, []string{a.Client.Name()}, "", nil)
 
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, dim("  "+stats.Format()))

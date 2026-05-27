@@ -2,12 +2,17 @@ package harvey
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
 )
+
+// ErrToolLoopExceeded is returned by RunToolLoop when the LLM exceeds the
+// per-turn tool call iteration limit without producing a plain text response.
+var ErrToolLoopExceeded = errors.New("tool loop limit exceeded")
 
 /** ToolCapable is satisfied by LLM clients that support schema-based tool
  * calling. AnyLLMClient implements this interface; other backends that do not
@@ -169,5 +174,5 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 		history = append(history, results...)
 	}
 
-	return history, ChatStats{}, fmt.Errorf("tool loop exceeded %d iterations without a final response", e.MaxIterations)
+	return history, ChatStats{}, fmt.Errorf("tool loop exceeded %d iterations without a final response: %w", e.MaxIterations, ErrToolLoopExceeded)
 }

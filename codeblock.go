@@ -1,6 +1,9 @@
 package harvey
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 /** CodeBlock holds a single fenced code block parsed from a markdown response.
  *
@@ -15,6 +18,28 @@ import "strings"
 type CodeBlock struct {
 	Lang    string
 	Content string
+}
+
+// isToolCallBlock reports whether a code block looks like a tool call invocation
+// — a JSON object whose top-level keys include "name" and an arguments-like key.
+// Different models use different key names:
+//   - qwen2.5: {"name": "...", "arguments": {...}}
+//   - llama3.2: {"name": "...", "parameters": {...}}
+func isToolCallBlock(b CodeBlock) bool {
+	lang := strings.ToLower(strings.TrimSpace(b.Lang))
+	if lang != "json" && lang != "" {
+		return false
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(b.Content)), &obj); err != nil {
+		return false
+	}
+	if _, hasName := obj["name"]; !hasName {
+		return false
+	}
+	_, hasArgs := obj["arguments"]
+	_, hasParams := obj["parameters"]
+	return hasArgs || hasParams
 }
 
 // extractCodeBlocks returns all triple-backtick fenced code blocks in text,

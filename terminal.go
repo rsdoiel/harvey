@@ -704,6 +704,7 @@ func (a *Agent) Run(out io.Writer) error {
 		sp := newSpinner(out, a.estimateDuration(), spLabel)
 		var stats ChatStats
 		var chatErr error
+		var toolCallRecords []ToolCallRecord
 		if a.Tools != nil && a.Config.ToolsEnabled {
 			ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 			ex.DebugLog = a.DebugLog
@@ -712,6 +713,7 @@ func (a *Agent) Run(out io.Writer) error {
 			if chatErr == nil {
 				// Preserve any intermediate tool-call/result messages added by the loop.
 				a.History = updatedHistory
+				toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:])
 			}
 		} else {
 			stats, chatErr = a.Client.Chat(chatCtx, a.History, &buf)
@@ -725,7 +727,23 @@ func (a *Agent) Run(out io.Writer) error {
 			a.History = a.History[:len(a.History)-1]
 			continue
 		}
-		if chatErr != nil {
+		if errors.Is(chatErr, ErrToolLoopExceeded) {
+			// Small models (e.g. llama3.2:3b) sometimes call tools indefinitely
+			// and never produce a text response. Warn and retry without tools.
+			// Use a fresh context — chatCtx was already cancelled above.
+			fmt.Fprintln(out, yellow("  ⚠")+" Model entered a tool-calling loop; retrying without tools.")
+			fmt.Fprintln(out, dim("  Tip: /tools off disables tools for this model permanently in this session."))
+			buf.Reset()
+			fallbackCtx, cancelFallback := context.WithCancel(context.Background())
+			stats, chatErr = a.Client.Chat(fallbackCtx, a.History, &buf)
+			cancelFallback()
+			if chatErr != nil {
+				fmt.Fprintf(out, red("Error (fallback): ")+"%v\n", chatErr)
+				a.History = a.History[:len(a.History)-1]
+				continue
+			}
+			// Fall through to the normal display and recording path.
+		} else if chatErr != nil {
 			fmt.Fprintf(out, red("Error: ")+"%v\n", chatErr)
 			a.History = a.History[:len(a.History)-1]
 			continue
@@ -742,7 +760,27 @@ func (a *Agent) Run(out io.Writer) error {
 		// instead of invoking the write_file tool.
 		if a.Workspace != nil && len(a.History) == histLenBeforeChat {
 			blocks := extractCodeBlocks(buf.String())
+			// Warn when the model produced only tool-call-syntax blocks and no
+			// substantive content — a sign it ignored the prompt (common in
+			// small models like llama3.2 when tools are enabled).
+			if len(blocks) > 0 {
+				allToolCalls := true
+				for _, b := range blocks {
+					if !isToolCallBlock(b) {
+						allToolCalls = false
+						break
+					}
+				}
+				if allToolCalls {
+					fmt.Fprintln(out, yellow("  ⚠")+" Model produced only tool-call syntax; it may not have answered the question. Try /tools off or a larger model.")
+				}
+			}
 			for i, block := range blocks {
+				// Skip JSON blocks that look like tool call invocations — small
+				// models sometimes write these as prose instead of structured calls.
+				if isToolCallBlock(block) {
+					continue
+				}
 				label := "code block"
 				if block.Lang != "" {
 					label = block.Lang + " block"
@@ -783,7 +821,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 		a.AddMessage("assistant", buf.String())
 		if a.Recorder != nil {
-			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, ""); recErr != nil {
+			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, "", toolCallRecords); recErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
 			}
 		}
@@ -859,6 +897,24 @@ func (a *Agent) Run(out io.Writer) error {
 	}
 
 	return nil
+}
+
+// toolCallsFromHistory extracts ToolCallRecords from a slice of history
+// messages, collecting every tool call from assistant turns.
+func toolCallsFromHistory(msgs []Message) []ToolCallRecord {
+	var out []ToolCallRecord
+	for _, m := range msgs {
+		if m.Role != "assistant" || len(m.ToolCalls) == 0 {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			out = append(out, ToolCallRecord{
+				Name: tc.Function.Name,
+				Args: tc.Function.Arguments,
+			})
+		}
+	}
+	return out
 }
 
 // formatStatLine produces the permanent post-response status line.

@@ -66,7 +66,7 @@ func TestRecorder_withStats(t *testing.T) {
 
 	stats := ChatStats{PromptTokens: 10, ReplyTokens: 20, Elapsed: 1000000000, TokensPerSec: 20}
 	models := []string{"llama3.2:1b", "Ollama (llama3.1:8b)"}
-	if err := r.RecordTurnWithStats("Hi", "Hello!", stats, models, "Routing to llama3.1:8b"); err != nil {
+	if err := r.RecordTurnWithStats("Hi", "Hello!", stats, models, "Routing to llama3.1:8b", nil); err != nil {
 		t.Fatalf("RecordTurnWithStats: %v", err)
 	}
 	r.Close()

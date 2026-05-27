@@ -77,6 +77,22 @@ func fountainSrc(elem *fountain.Element) string {
 	}
 }
 
+// ToolCallRecord holds the name and raw JSON arguments of a single tool
+// invocation, for use in session recording.
+type ToolCallRecord struct {
+	Name string // tool function name, e.g. "read_file"
+	Args string // raw JSON arguments string
+}
+
+// formatToolCallAction returns a human-readable Fountain action line for a
+// tool call, e.g. "Harvey calls read_file: {"path": "foo.go"}".
+func formatToolCallAction(tc ToolCallRecord) string {
+	if tc.Args == "" || tc.Args == "{}" || tc.Args == "null" {
+		return "Harvey calls " + tc.Name
+	}
+	return "Harvey calls " + tc.Name + ": " + tc.Args
+}
+
 // Recorder writes a Harvey session to a Fountain screenplay source file,
 // using append-writes so in-progress sessions survive crashes.
 //
@@ -182,7 +198,7 @@ func (r *Recorder) Path() string { return r.path }
 //
 //	err := r.RecordTurn("What is 2+2?", "2 + 2 = 4.")
 func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
-	return r.RecordTurnWithStats(userInput, harveyReply, ChatStats{}, nil, "")
+	return r.RecordTurnWithStats(userInput, harveyReply, ChatStats{}, nil, "", nil)
 }
 
 // RecordTurnWithStats appends a full chat turn as a Fountain scene.
@@ -199,6 +215,8 @@ func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
 //	HARVEY
 //	Forwarding to {MODEL}.
 //
+//	Harvey calls tool_name: {...}        ← action block per tool call (omitted when nil)
+//
 //	{MODEL}
 //	(LLM reply)
 //
@@ -208,12 +226,12 @@ func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
 //
 // Parameters:
 //
-//	userInput   (string)    — the user's raw input text.
-//	harveyReply (string)    — the LLM's complete response text.
-//	stats       (ChatStats) — LLM call stats; omitted when empty.
-//	models      ([]string)  — ordered model names that handled the turn; nil for single-model sessions.
-//	routeStep   (string)    — routing decision text, e.g. "Routing to llama3.1:8b" or
-//	                          "Answered by llama3.2:1b"; empty when routing is disabled.
+//	userInput   (string)          — the user's raw input text.
+//	harveyReply (string)          — the LLM's complete response text.
+//	stats       (ChatStats)       — LLM call stats; omitted when empty.
+//	models      ([]string)        — ordered model names that handled the turn; nil for single-model sessions.
+//	routeStep   (string)          — routing decision text; empty when routing is disabled.
+//	toolCalls   ([]ToolCallRecord) — structured tool invocations from the tool loop; nil when none.
 //
 // Returns:
 //
@@ -221,8 +239,8 @@ func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
 //
 // Example:
 //
-//	err := r.RecordTurnWithStats("Hello", "Hi!", stats, []string{"llama3.2:1b", "Ollama (llama3.1:8b)"}, "Routing to llama3.1:8b")
-func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats ChatStats, models []string, routeStep string) error {
+//	err := r.RecordTurnWithStats("Hello", "Hi!", stats, []string{"llama3.2:1b", "Ollama (llama3.1:8b)"}, "Routing to llama3.1:8b", nil)
+func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats ChatStats, models []string, routeStep string, toolCalls []ToolCallRecord) error {
 	ts := time.Now().Format("2006-01-02 15:04:05")
 
 	r.writeSceneHeading(fmt.Sprintf("INT. HARVEY AND %s TALKING %s", r.userName, ts))
@@ -232,6 +250,9 @@ func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats Chat
 	))
 	r.writeDialogue(r.userName, "", userInput)
 	r.writeDialogue("HARVEY", "", fmt.Sprintf("Forwarding to %s.", r.modelName))
+	for _, tc := range toolCalls {
+		r.writeAction(formatToolCallAction(tc))
+	}
 	r.writeDialogue(r.modelName, "", harveyReply)
 	if routeStep != "" {
 		r.writeAction(routeStep)
