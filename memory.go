@@ -18,9 +18,11 @@ import (
 type MemoryType string
 
 const (
-	MemoryTypeToolUse        MemoryType = "tool_use"
-	MemoryTypeWorkflow       MemoryType = "workflow"
-	MemoryTypeUserPreference MemoryType = "user_preference"
+	MemoryTypeToolUse          MemoryType = "tool_use"
+	MemoryTypeWorkflow         MemoryType = "workflow"
+	MemoryTypeUserPreference   MemoryType = "user_preference"
+	MemoryTypeWorkspaceProfile MemoryType = "workspace_profile"
+	MemoryTypeProjectFact      MemoryType = "project_fact"
 )
 
 // ValidMemoryTypes lists the accepted values for MemoryMeta.Type.
@@ -28,6 +30,8 @@ var ValidMemoryTypes = []MemoryType{
 	MemoryTypeToolUse,
 	MemoryTypeWorkflow,
 	MemoryTypeUserPreference,
+	MemoryTypeWorkspaceProfile,
+	MemoryTypeProjectFact,
 }
 
 /** MemoryMeta holds the structured YAML front matter of a memory document.

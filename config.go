@@ -89,15 +89,12 @@ type RagStoreEntry struct {
  * Fields:
  *   WorkDir      (string) — root directory Harvey is allowed to read/write; defaults to ".".
  *   SessionsDir  (string) — directory for session .spmd files; empty = agents/sessions/.
- *   KnowledgeDB  (string) — path to the knowledge base SQLite file; empty = agents/knowledge.db.
  *   AgentsDir    (string) — base directory for the agents/skills tree; empty = agents/.
  *   SystemPrompt (string) — contents of HARVEY.md, injected as the system prompt.
  *   OllamaURL    (string) — Ollama base URL (default: http://localhost:11434).
  *   OllamaModel  (string) — currently selected Ollama model.
  *   AutoRecord   (bool)   — record every session to a .spmd file (default true).
- *   RagStores    ([]RagStoreEntry) — all registered named RAG stores.
- *   RagActive    (string)          — name of the currently active store; "" = none.
- *   RagEnabled   (bool)            — when true, inject top-K chunks before each Chat call.
+ *   Memory       (MemoryConfig) — unified memory system settings, including RAG and knowledge base.
  *
  * Example:
  *   cfg := DefaultConfig()
@@ -106,9 +103,7 @@ type RagStoreEntry struct {
 type Config struct {
 	WorkDir             string          // workspace root; all file I/O is constrained to this tree
 	SessionsDir         string          // directory for .spmd session files; empty = agents/sessions/
-	KnowledgeDB         string          // path to knowledge.db; empty = agents/knowledge.db
 	AgentsDir           string          // agents/skills tree root; empty = agents/
-	CurrentProjectID    int64           // ID of the active knowledge-base project (0 = none)
 	SystemPrompt        string          // contents of HARVEY.md, injected as the system prompt
 	OllamaURL           string          // Ollama base URL (default: http://localhost:11434)
 	OllamaModel         string          // currently selected Ollama model
@@ -121,106 +116,24 @@ type Config struct {
 	ReplayPath          string          // session file to replay instead of entering the REPL
 	ReplayOutputPath    string          // output path for replay recording; empty = auto-generated
 	ModelCacheDB        string          // path to model_cache.db; empty = harvey/model_cache.db
-	RagStores           []RagStoreEntry // all registered named RAG stores
-	RagActive           string          // name of the currently active store; "" = none
-	RagEnabled          bool            // when true, inject top-K chunks before each Chat call
 	// Security settings
-	SafeMode            bool     // when true, only commands in AllowedCommands can be executed via ! or /run
-	AllowedCommands    []string // list of command names permitted when SafeMode is enabled; default: ls, cat, grep, head, tail, wc, find, stat, jq, htmlq, bat, batcat
+	SafeMode        bool     // when true, only commands in AllowedCommands can be executed via ! or /run
+	AllowedCommands []string // list of command names permitted when SafeMode is enabled
 	// Permissions: map from path prefix to list of allowed actions (read, write, exec, delete)
-	Permissions map[string][]string // e.g., {".": ["read", "write", "exec", "delete"], "src/": ["read"]}
+	Permissions map[string][]string
 	// Timeout settings
 	RunTimeout    time.Duration // timeout for shell commands run via ! or /run; 0 means no timeout
-	OllamaTimeout time.Duration // HTTP client timeout for local LLM providers (Ollama, Llamafile, llama.cpp); 0 means no timeout
+	OllamaTimeout time.Duration // HTTP client timeout for local LLM providers; 0 means no timeout
 	// Model aliases: short name → full Ollama model identifier
-	ModelAliases map[string]string // e.g. {"qwen-coder": "qwen2.5-coder:7b"}
+	ModelAliases map[string]string
 	// Tool settings
-	ToolsEnabled          bool // when true, send tool schemas to models that support it
-	MaxToolCallsPerTurn   int  // hard limit on tool call rounds per user turn; 0 = defaultMaxToolCallsPerTurn
-	MaxOutputBytes        int  // cap on tool output injected into context; 0 = defaultMaxOutputBytes
+	ToolsEnabled        bool // when true, send tool schemas to models that support it
+	MaxToolCallsPerTurn int  // hard limit on tool call rounds per user turn; 0 = defaultMaxToolCallsPerTurn
+	MaxOutputBytes      int  // cap on tool output injected into context; 0 = defaultMaxOutputBytes
 	// Debug mode: set by --debug at startup; enables JSONL debug log and OLLAMA_DEBUG
 	Debug bool
-	// Memory system configuration
+	// Memory system: RAG stores, knowledge base, and retrieval settings
 	Memory MemoryConfig
-}
-
-/** ActiveRagStore returns a pointer to the active RagStoreEntry, or nil when
- * no store is configured.
- *
- * Returns:
- *   *RagStoreEntry — the active entry, or nil.
- *
- * Example:
- *   if e := cfg.ActiveRagStore(); e != nil {
- *       fmt.Println(e.DBPath)
- *   }
- */
-func (c *Config) ActiveRagStore() *RagStoreEntry {
-	if c.RagActive == "" {
-		return nil
-	}
-	return c.RagStoreByName(c.RagActive)
-}
-
-/** RagStoreByName returns a pointer to the named store entry, or nil when not
- * found.
- *
- * Parameters:
- *   name (string) — store name to look up.
- *
- * Returns:
- *   *RagStoreEntry — matching entry, or nil.
- *
- * Example:
- *   if e := cfg.RagStoreByName("golang"); e != nil {
- *       fmt.Println(e.EmbeddingModel)
- *   }
- */
-func (c *Config) RagStoreByName(name string) *RagStoreEntry {
-	for i := range c.RagStores {
-		if c.RagStores[i].Name == name {
-			return &c.RagStores[i]
-		}
-	}
-	return nil
-}
-
-/** AddOrUpdateRagStore inserts e into the registry if its name is new, or
- * replaces the existing entry if one with the same name already exists.
- *
- * Parameters:
- *   e (RagStoreEntry) — the entry to add or replace.
- *
- * Example:
- *   cfg.AddOrUpdateRagStore(RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db"})
- */
-func (c *Config) AddOrUpdateRagStore(e RagStoreEntry) {
-	for i := range c.RagStores {
-		if c.RagStores[i].Name == e.Name {
-			c.RagStores[i] = e
-			return
-		}
-	}
-	c.RagStores = append(c.RagStores, e)
-}
-
-/** RemoveRagStore removes the store with the given name from the registry.
- * It is a no-op when no store with that name exists.
- *
- * Parameters:
- *   name (string) — name of the store to remove.
- *
- * Example:
- *   cfg.RemoveRagStore("research-llm")
- */
-func (c *Config) RemoveRagStore(name string) {
-	out := c.RagStores[:0]
-	for _, e := range c.RagStores {
-		if e.Name != name {
-			out = append(out, e)
-		}
-	}
-	c.RagStores = out
 }
 
 /** DefaultConfig returns a Config populated with sensible defaults. WorkDir
@@ -265,6 +178,12 @@ func DefaultConfig() *Config {
 			Enabled:       true,
 			TopK:          5,
 			InjectOnStart: true,
+			BudgetPct:     0.25,
+			RollingSummary: RollingSummaryConfig{
+				Enabled:   true,
+				WarnAtPct: 0.80,
+				KeepTurns: 6,
+			},
 		},
 	}
 }
@@ -525,17 +444,132 @@ func (c *Config) PermissionString(prefix string) string {
 /** MemoryConfig controls the behaviour of Harvey's memory system.
  *
  * Fields:
- *   Enabled       (bool) — when false the entire memory system is skipped; default true.
- *   TopK          (int)  — number of recent memories injected at session start; default 5.
- *   InjectOnStart (bool) — inject memory context block in ClearHistory; default true.
+ *   Enabled           (bool)                — when false the entire memory system is skipped; default true.
+ *   TopK              (int)                 — number of memories retrieved at session start; default 5.
+ *   InjectOnStart     (bool)                — inject memory context block in ClearHistory; default true.
+ *   BudgetPct         (float64)             — fraction of model context window allocated to memory
+ *                                             injection (default 0.25); falls back to 512 tokens when
+ *                                             OllamaContextLength is unknown.
+ *   RollingSummary    (RollingSummaryConfig) — working-memory compression settings.
+ *   RagStores         ([]RagStoreEntry)      — all registered named RAG stores.
+ *   RagActive         (string)              — name of the currently active RAG store; "" = none.
+ *   RagEnabled        (bool)               — when true, inject top-K chunks before each Chat call.
+ *   KnowledgeDB       (string)             — path to knowledge.db; empty = agents/knowledge.db.
+ *   CurrentProjectID  (int64)              — in-session active knowledge-base project ID (0 = none).
  *
  * Example:
- *   cfg.Memory = MemoryConfig{Enabled: true, TopK: 5, InjectOnStart: true}
+ *   cfg.Memory = MemoryConfig{Enabled: true, TopK: 5, InjectOnStart: true, BudgetPct: 0.25}
  */
 type MemoryConfig struct {
-	Enabled       bool
-	TopK          int
-	InjectOnStart bool
+	Enabled          bool
+	TopK             int
+	InjectOnStart    bool
+	BudgetPct        float64              // fraction of model context window for memory injection
+	RollingSummary   RollingSummaryConfig // working-memory compression settings
+	RagStores        []RagStoreEntry      // all registered named RAG stores
+	RagActive        string               // name of the currently active RAG store; "" = none
+	RagEnabled       bool                 // when true, inject top-K chunks before each Chat call
+	KnowledgeDB      string               // path to knowledge.db; empty = agents/knowledge.db
+	CurrentProjectID int64                // in-session active knowledge-base project ID (0 = none)
+}
+
+/** RollingSummaryConfig controls automatic working-memory compression.
+ * When history token count exceeds WarnAtPct of the model context window,
+ * Harvey warns then compresses all but the last KeepTurns turns into a
+ * short summary via a separate low-temperature LLM call.
+ *
+ * Fields:
+ *   Enabled   (bool)    — when false compression never fires; default true.
+ *   WarnAtPct (float64) — compress when history exceeds this fraction of the
+ *                         model context window; default 0.80.
+ *   KeepTurns (int)     — number of recent turns to keep verbatim; default 6.
+ *
+ * Example:
+ *   cfg.Memory.RollingSummary = RollingSummaryConfig{Enabled: true, WarnAtPct: 0.80, KeepTurns: 6}
+ */
+type RollingSummaryConfig struct {
+	Enabled   bool
+	WarnAtPct float64
+	KeepTurns int
+}
+
+/** ActiveRagStore returns a pointer to the active RagStoreEntry in the memory
+ * config, or nil when no store is configured.
+ *
+ * Returns:
+ *   *RagStoreEntry — the active entry, or nil.
+ *
+ * Example:
+ *   if e := cfg.Memory.ActiveRagStore(); e != nil {
+ *       fmt.Println(e.DBPath)
+ *   }
+ */
+func (m *MemoryConfig) ActiveRagStore() *RagStoreEntry {
+	if m.RagActive == "" {
+		return nil
+	}
+	return m.RagStoreByName(m.RagActive)
+}
+
+/** RagStoreByName returns a pointer to the named store entry in the memory
+ * config, or nil when not found.
+ *
+ * Parameters:
+ *   name (string) — store name to look up.
+ *
+ * Returns:
+ *   *RagStoreEntry — matching entry, or nil.
+ *
+ * Example:
+ *   if e := cfg.Memory.RagStoreByName("golang"); e != nil {
+ *       fmt.Println(e.EmbeddingModel)
+ *   }
+ */
+func (m *MemoryConfig) RagStoreByName(name string) *RagStoreEntry {
+	for i := range m.RagStores {
+		if m.RagStores[i].Name == name {
+			return &m.RagStores[i]
+		}
+	}
+	return nil
+}
+
+/** AddOrUpdateRagStore inserts e into the memory config registry if its name
+ * is new, or replaces the existing entry if one with the same name exists.
+ *
+ * Parameters:
+ *   e (RagStoreEntry) — the entry to add or replace.
+ *
+ * Example:
+ *   cfg.Memory.AddOrUpdateRagStore(RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db"})
+ */
+func (m *MemoryConfig) AddOrUpdateRagStore(e RagStoreEntry) {
+	for i := range m.RagStores {
+		if m.RagStores[i].Name == e.Name {
+			m.RagStores[i] = e
+			return
+		}
+	}
+	m.RagStores = append(m.RagStores, e)
+}
+
+/** RemoveRagStore removes the store with the given name from the memory config
+ * registry. It is a no-op when no store with that name exists.
+ *
+ * Parameters:
+ *   name (string) — name of the store to remove.
+ *
+ * Example:
+ *   cfg.Memory.RemoveRagStore("research-llm")
+ */
+func (m *MemoryConfig) RemoveRagStore(name string) {
+	out := m.RagStores[:0]
+	for _, e := range m.RagStores {
+		if e.Name != name {
+			out = append(out, e)
+		}
+	}
+	m.RagStores = out
 }
 
 // ragStoreYAML is the on-disk representation of one entry under rag.stores.
@@ -562,13 +596,15 @@ type ragYAML struct {
 }
 
 // harveyYAML is the on-disk representation of harvey/harvey.yaml.
+// KnowledgeDB and RAG are kept for backward-compat reading of old files;
+// SaveMemoryConfig zeroes them before writing so only memory: is emitted.
 type harveyYAML struct {
-	KnowledgeDB     string              `yaml:"knowledge_db"`
+	KnowledgeDB     string              `yaml:"knowledge_db,omitempty"`
 	SessionsDir     string              `yaml:"sessions_dir"`
 	AgentsDir       string              `yaml:"agents_dir"`
 	AutoRecord      *bool               `yaml:"auto_record"` // nil = not set (keep default)
 	ModelCacheDB    string              `yaml:"model_cache_db"`
-	RAG             ragYAML             `yaml:"rag"`
+	RAG             ragYAML             `yaml:"rag,omitempty"`
 	Permissions     map[string][]string `yaml:"permissions,omitempty"`
 	SafeMode        *bool               `yaml:"safe_mode,omitempty"` // nil = not set (keep default)
 	AllowedCommands []string            `yaml:"allowed_commands,omitempty"`
@@ -585,10 +621,24 @@ type toolsYAML struct {
 	MaxOutputBytes      int   `yaml:"max_output_bytes,omitempty"`
 }
 
+type rollingSummaryYAML struct {
+	Enabled   *bool   `yaml:"enabled,omitempty"`
+	WarnAtPct float64 `yaml:"warn_at_pct,omitempty"`
+	KeepTurns int     `yaml:"keep_turns,omitempty"`
+}
+
+type knowledgeBaseYAML struct {
+	Path string `yaml:"path,omitempty"`
+}
+
 type memoryYAML struct {
-	Enabled       *bool `yaml:"enabled,omitempty"`
-	TopK          int   `yaml:"top_k,omitempty"`
-	InjectOnStart *bool `yaml:"inject_on_start,omitempty"`
+	Enabled        *bool               `yaml:"enabled,omitempty"`
+	TopK           int                 `yaml:"top_k,omitempty"`
+	InjectOnStart  *bool               `yaml:"inject_on_start,omitempty"`
+	BudgetPct      float64             `yaml:"budget_pct,omitempty"`
+	RollingSummary rollingSummaryYAML  `yaml:"rolling_summary,omitempty"`
+	RAG            ragYAML             `yaml:"rag,omitempty"`
+	KnowledgeBase  knowledgeBaseYAML   `yaml:"knowledge_base,omitempty"`
 }
 
 // parseDurationString parses a duration from a YAML string value. It accepts:
@@ -641,8 +691,12 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if err := yaml.Unmarshal(data, &y); err != nil {
 		return err
 	}
+	// KnowledgeDB: top-level key for backward compat; memory.knowledge_base.path takes precedence.
 	if y.KnowledgeDB != "" {
-		cfg.KnowledgeDB = y.KnowledgeDB
+		cfg.Memory.KnowledgeDB = y.KnowledgeDB
+	}
+	if y.Memory.KnowledgeBase.Path != "" {
+		cfg.Memory.KnowledgeDB = y.Memory.KnowledgeBase.Path
 	}
 	if y.SessionsDir != "" {
 		cfg.SessionsDir = y.SessionsDir
@@ -656,11 +710,11 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.ModelCacheDB != "" {
 		cfg.ModelCacheDB = y.ModelCacheDB
 	}
+	// RAG: top-level rag: key for backward compat; memory.rag: takes precedence when stores are set.
 	if len(y.RAG.Stores) > 0 {
-		// New multi-store format.
-		cfg.RagStores = make([]RagStoreEntry, len(y.RAG.Stores))
+		cfg.Memory.RagStores = make([]RagStoreEntry, len(y.RAG.Stores))
 		for i, s := range y.RAG.Stores {
-			cfg.RagStores[i] = RagStoreEntry{
+			cfg.Memory.RagStores[i] = RagStoreEntry{
 				Name:           s.Name,
 				DBPath:         s.DBPath,
 				EmbeddingModel: s.EmbeddingModel,
@@ -669,18 +723,43 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 				EmbedderURL:    s.EmbedderURL,
 			}
 		}
-		cfg.RagActive = y.RAG.Active
+		cfg.Memory.RagActive = y.RAG.Active
 	} else if y.RAG.DBPath != "" {
-		// Legacy flat format — migrate to a "default" entry.
-		cfg.RagStores = []RagStoreEntry{{
+		// Legacy flat format — migrate to a single "default" entry.
+		cfg.Memory.RagStores = []RagStoreEntry{{
 			Name:           "default",
 			DBPath:         y.RAG.DBPath,
 			EmbeddingModel: y.RAG.EmbeddingModel,
 			ModelMap:       y.RAG.ModelMap,
 		}}
-		cfg.RagActive = "default"
+		cfg.Memory.RagActive = "default"
 	}
-	cfg.RagEnabled = y.RAG.Enabled
+	cfg.Memory.RagEnabled = y.RAG.Enabled
+	// memory.rag: takes precedence over top-level rag: when stores are specified there.
+	if len(y.Memory.RAG.Stores) > 0 {
+		cfg.Memory.RagStores = make([]RagStoreEntry, len(y.Memory.RAG.Stores))
+		for i, s := range y.Memory.RAG.Stores {
+			cfg.Memory.RagStores[i] = RagStoreEntry{
+				Name:           s.Name,
+				DBPath:         s.DBPath,
+				EmbeddingModel: s.EmbeddingModel,
+				ModelMap:       s.ModelMap,
+				EmbedderKind:   s.EmbedderKind,
+				EmbedderURL:    s.EmbedderURL,
+			}
+		}
+		cfg.Memory.RagActive = y.Memory.RAG.Active
+		cfg.Memory.RagEnabled = y.Memory.RAG.Enabled
+	} else if y.Memory.RAG.DBPath != "" {
+		cfg.Memory.RagStores = []RagStoreEntry{{
+			Name:           "default",
+			DBPath:         y.Memory.RAG.DBPath,
+			EmbeddingModel: y.Memory.RAG.EmbeddingModel,
+			ModelMap:       y.Memory.RAG.ModelMap,
+		}}
+		cfg.Memory.RagActive = "default"
+		cfg.Memory.RagEnabled = y.Memory.RAG.Enabled
+	}
 	// Load permissions if present
 	if y.Permissions != nil {
 		cfg.Permissions = y.Permissions
@@ -732,63 +811,82 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.Memory.InjectOnStart != nil {
 		cfg.Memory.InjectOnStart = *y.Memory.InjectOnStart
 	}
+	if y.Memory.BudgetPct > 0 {
+		cfg.Memory.BudgetPct = y.Memory.BudgetPct
+	}
+	if y.Memory.RollingSummary.Enabled != nil {
+		cfg.Memory.RollingSummary.Enabled = *y.Memory.RollingSummary.Enabled
+	}
+	if y.Memory.RollingSummary.WarnAtPct > 0 {
+		cfg.Memory.RollingSummary.WarnAtPct = y.Memory.RollingSummary.WarnAtPct
+	}
+	if y.Memory.RollingSummary.KeepTurns > 0 {
+		cfg.Memory.RollingSummary.KeepTurns = y.Memory.RollingSummary.KeepTurns
+	}
 	return nil
 }
 
-/** SaveRAGConfig writes the RAG-related config fields back to
- * harvey/harvey.yaml, merging with any existing content so that non-RAG keys
- * are preserved.
+/** SaveMemoryConfig writes the memory-related config fields back to
+ * agents/harvey.yaml, merging with any existing content so that unrelated keys
+ * are preserved. It writes only to the memory: section; any legacy top-level
+ * rag: or knowledge_db: keys are cleared from the file on write.
  *
  * Parameters:
- *   ws  (*Workspace) — workspace whose harvey/ directory is written.
- *   cfg (*Config)    — source of RAG fields to persist.
+ *   ws  (*Workspace) — workspace whose agents/ directory is written.
+ *   cfg (*Config)    — source of Memory fields to persist.
  *
  * Returns:
  *   error — on path resolution, YAML parse, or file write failure.
  *
  * Example:
- *   if err := SaveRAGConfig(ws, cfg); err != nil {
- *       fmt.Println("could not save RAG config:", err)
+ *   if err := SaveMemoryConfig(ws, cfg); err != nil {
+ *       fmt.Println("could not save memory config:", err)
  *   }
  */
-func SaveRAGConfig(ws *Workspace, cfg *Config) error {
+func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	yamlPath, err := ws.AbsPath(filepath.Join(harveySubdir, "harvey.yaml"))
 	if err != nil {
 		return err
 	}
 
-	// Read existing content to preserve non-RAG keys.
+	// Read existing content to preserve unrelated keys.
 	var y harveyYAML
 	if data, err := os.ReadFile(yamlPath); err == nil {
 		_ = yaml.Unmarshal(data, &y)
 	}
+	// Clear legacy top-level keys; only memory: is written going forward.
+	y.RAG = ragYAML{}
+	y.KnowledgeDB = ""
 
-	stores := make([]ragStoreYAML, len(cfg.RagStores))
-	for i, e := range cfg.RagStores {
-		stores[i] = ragStoreYAML{
-			Name:           e.Name,
-			DBPath:         e.DBPath,
-			EmbeddingModel: e.EmbeddingModel,
-			ModelMap:       e.ModelMap,
-			EmbedderKind:   e.EmbedderKind,
-			EmbedderURL:    e.EmbedderURL,
+	var stores []ragStoreYAML
+	if len(cfg.Memory.RagStores) > 0 {
+		stores = make([]ragStoreYAML, len(cfg.Memory.RagStores))
+		for i, e := range cfg.Memory.RagStores {
+			stores[i] = ragStoreYAML{
+				Name:           e.Name,
+				DBPath:         e.DBPath,
+				EmbeddingModel: e.EmbeddingModel,
+				ModelMap:       e.ModelMap,
+				EmbedderKind:   e.EmbedderKind,
+				EmbedderURL:    e.EmbedderURL,
+			}
 		}
 	}
-	y.RAG = ragYAML{
-		Active:  cfg.RagActive,
+	y.Memory.RAG = ragYAML{
+		Active:  cfg.Memory.RagActive,
 		Stores:  stores,
-		Enabled: cfg.RagEnabled,
+		Enabled: cfg.Memory.RagEnabled,
 	}
-	// Save permissions
+	if cfg.Memory.KnowledgeDB != "" {
+		y.Memory.KnowledgeBase.Path = cfg.Memory.KnowledgeDB
+	}
 	if cfg.Permissions != nil {
 		y.Permissions = cfg.Permissions
 	}
-	// Save security settings
 	y.SafeMode = &cfg.SafeMode
 	if len(cfg.AllowedCommands) > 0 {
 		y.AllowedCommands = cfg.AllowedCommands
 	}
-	// Save timeout settings (only write non-default values to keep the file clean)
 	if cfg.RunTimeout > 0 {
 		y.RunTimeout = cfg.RunTimeout.String()
 	}
@@ -801,6 +899,25 @@ func SaveRAGConfig(ws *Workspace, cfg *Config) error {
 		return err
 	}
 	return os.WriteFile(yamlPath, out, 0644)
+}
+
+/** SaveRAGConfig is an alias for SaveMemoryConfig, retained for call-site
+ * compatibility. All RAG state now lives in cfg.Memory.
+ *
+ * Parameters:
+ *   ws  (*Workspace) — workspace whose agents/ directory is written.
+ *   cfg (*Config)    — source of Memory fields to persist.
+ *
+ * Returns:
+ *   error — on path resolution, YAML parse, or file write failure.
+ *
+ * Example:
+ *   if err := SaveRAGConfig(ws, cfg); err != nil {
+ *       fmt.Println("could not save RAG config:", err)
+ *   }
+ */
+func SaveRAGConfig(ws *Workspace, cfg *Config) error {
+	return SaveMemoryConfig(ws, cfg)
 }
 
 /** SaveModelAliases writes the model_aliases map back to harvey.yaml,

@@ -774,6 +774,24 @@ func (a *Agent) Run(out io.Writer) error {
 	}
 
 	fmt.Fprintln(out, dim("Goodbye."))
+
+	// Record session memory stats for adaptive budget tuning.
+	if a.Config.Memory.Enabled && a.Workspace != nil {
+		if memStore, msErr := NewMemoryStore(a.Workspace); msErr == nil {
+			sessionID := ""
+			if a.Recorder != nil {
+				sessionID = filepath.Base(a.Recorder.Path())
+			}
+			budget := 512
+			if a.Config.OllamaContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
+				budget = int(float64(a.Config.OllamaContextLength) * a.Config.Memory.BudgetPct)
+			}
+			_ = memStore.RecordSessionStats(sessionID, budget, a.sessionInjectedTokens,
+				a.sessionCompressed, a.avgToksPerSec())
+			memStore.Close()
+		}
+	}
+
 	return nil
 }
 
@@ -823,7 +841,7 @@ func (a *Agent) initWorkspace(out io.Writer) error {
 // initKnowledgeBase opens (or creates) the SQLite knowledge base. Failures are
 // non-fatal: the user is warned but Harvey continues without a KB.
 func (a *Agent) initKnowledgeBase(out io.Writer) {
-	kb, err := OpenKnowledgeBase(a.Workspace, a.Config.KnowledgeDB)
+	kb, err := OpenKnowledgeBase(a.Workspace, a.Config.Memory.KnowledgeDB)
 	if err != nil {
 		fmt.Fprintf(out, yellow("  ✗")+" Knowledge base unavailable: %v\n", err)
 		return
@@ -845,9 +863,9 @@ func (a *Agent) initModelCache(out io.Writer) {
 }
 
 // initRag opens the active RAG store when one is configured in harvey.yaml.
-// Failures are non-fatal. RagOn is set to match cfg.RagEnabled.
+// Failures are non-fatal. RagOn is set to match cfg.Memory.RagEnabled.
 func (a *Agent) initRag(out io.Writer) {
-	entry := a.Config.ActiveRagStore()
+	entry := a.Config.Memory.ActiveRagStore()
 	if entry == nil {
 		return
 	}
@@ -862,7 +880,7 @@ func (a *Agent) initRag(out io.Writer) {
 		return
 	}
 	a.Rag = store
-	a.RagOn = a.Config.RagEnabled
+	a.RagOn = a.Config.Memory.RagEnabled
 	status := "off"
 	if a.RagOn {
 		status = "on"
@@ -1320,7 +1338,7 @@ func (a *Agent) ragAugment(prompt string) string {
 	if !a.RagOn || a.Rag == nil {
 		return prompt
 	}
-	entry := a.Config.ActiveRagStore()
+	entry := a.Config.Memory.ActiveRagStore()
 	if entry == nil || entry.EmbeddingModel == "" {
 		return prompt
 	}

@@ -886,7 +886,7 @@ func cmdSafeMode(a *Agent, args []string, out io.Writer) error {
 func safeModeOn(a *Agent, out io.Writer) error {
 	a.Config.SafeMode = true
 	if a.Workspace != nil {
-		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist safe mode: %v\n", err)
 		}
 	}
@@ -898,7 +898,7 @@ func safeModeOn(a *Agent, out io.Writer) error {
 func safeModeOff(a *Agent, out io.Writer) error {
 	a.Config.SafeMode = false
 	if a.Workspace != nil {
-		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist safe mode: %v\n", err)
 		}
 	}
@@ -926,7 +926,7 @@ func safeModeAllow(a *Agent, cmd string, out io.Writer) error {
 		fmt.Fprintf(out, "  %q is already in the allowlist.\n", cmd)
 	}
 	if a.Workspace != nil {
-		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist allowlist: %v\n", err)
 		}
 	}
@@ -942,7 +942,7 @@ func safeModeDeny(a *Agent, cmd string, out io.Writer) error {
 		fmt.Fprintf(out, "  %q is not in the allowlist.\n", cmd)
 	}
 	if a.Workspace != nil {
-		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist allowlist: %v\n", err)
 		}
 	}
@@ -952,7 +952,7 @@ func safeModeDeny(a *Agent, cmd string, out io.Writer) error {
 func safeModeReset(a *Agent, out io.Writer) error {
 	a.Config.ResetAllowedCommands()
 	if a.Workspace != nil {
-		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist allowlist: %v\n", err)
 		}
 	}
@@ -1888,7 +1888,7 @@ func kbSearch(a *Agent, args []string, out io.Writer) error {
 // context. With no argument it uses the current project (or all projects when
 // none is set); with a project name it injects only that project.
 func kbInject(a *Agent, args []string, out io.Writer) error {
-	projectID := a.Config.CurrentProjectID
+	projectID := a.Config.Memory.CurrentProjectID
 	label := "all projects"
 
 	if len(args) > 0 {
@@ -1939,7 +1939,7 @@ func kbProject(a *Agent, args []string, out io.Writer) error {
 		}
 		for _, p := range projects {
 			active := ""
-			if a.Config.CurrentProjectID == p.ID {
+			if a.Config.Memory.CurrentProjectID == p.ID {
 				active = " *"
 			}
 			fmt.Fprintf(out, "  [%d]%s %s  (%s)\n", p.ID, active, p.Name, p.Status)
@@ -1958,7 +1958,7 @@ func kbProject(a *Agent, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		a.Config.CurrentProjectID = id
+		a.Config.Memory.CurrentProjectID = id
 		fmt.Fprintf(out, "Project %q added (id=%d) and set as current.\n", name, id)
 	case "use":
 		if len(args) < 2 {
@@ -1970,7 +1970,7 @@ func kbProject(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintf(out, "Invalid project ID: %s\n", args[1])
 			return nil
 		}
-		a.Config.CurrentProjectID = id
+		a.Config.Memory.CurrentProjectID = id
 		fmt.Fprintf(out, "Current project set to id=%d.\n", id)
 	default:
 		fmt.Fprintf(out, "Unknown project subcommand: %s\n", args[0])
@@ -1986,7 +1986,7 @@ func kbObserve(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "Kinds: %s  (default: note)\n", strings.Join(ValidObservationKinds, ", "))
 		return nil
 	}
-	if a.Config.CurrentProjectID == 0 {
+	if a.Config.Memory.CurrentProjectID == 0 {
 		fmt.Fprintln(out, "No current project. Use /kb project add NAME or /kb project use ID first.")
 		return nil
 	}
@@ -2002,7 +2002,7 @@ func kbObserve(a *Agent, args []string, out io.Writer) error {
 		return nil
 	}
 	body := strings.Join(bodyArgs, " ")
-	id, err := a.KB.AddObservation(a.Config.CurrentProjectID, kind, body)
+	id, err := a.KB.AddObservation(a.Config.Memory.CurrentProjectID, kind, body)
 	if err != nil {
 		return err
 	}
@@ -4358,16 +4358,16 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 			return nil
 		}
 		a.RagOn = true
-		a.Config.RagEnabled = true
+		a.Config.Memory.RagEnabled = true
 		fmt.Fprintln(out, "RAG context injection: on")
-		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "Warning: could not save config: %v\n", err)
 		}
 	case "off":
 		a.RagOn = false
-		a.Config.RagEnabled = false
+		a.Config.Memory.RagEnabled = false
 		fmt.Fprintln(out, "RAG context injection: off")
-		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "Warning: could not save config: %v\n", err)
 		}
 	case "setup":
@@ -4417,7 +4417,7 @@ func ragStatus(a *Agent, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "RAG context injection: %s\n", enabled)
 
-	entry := a.Config.ActiveRagStore()
+	entry := a.Config.Memory.ActiveRagStore()
 	if entry == nil {
 		fmt.Fprintln(out, "No store configured. Run /rag new NAME or /rag setup to get started.")
 		return nil
@@ -4443,11 +4443,11 @@ func ragStatus(a *Agent, out io.Writer) error {
 		}
 	}
 
-	if len(a.Config.RagStores) > 1 {
-		fmt.Fprintf(out, "\nAll stores (%d):\n", len(a.Config.RagStores))
-		for _, e := range a.Config.RagStores {
+	if len(a.Config.Memory.RagStores) > 1 {
+		fmt.Fprintf(out, "\nAll stores (%d):\n", len(a.Config.Memory.RagStores))
+		for _, e := range a.Config.Memory.RagStores {
 			marker := "  "
-			if e.Name == a.Config.RagActive {
+			if e.Name == a.Config.Memory.RagActive {
 				marker = "* "
 			}
 			fmt.Fprintf(out, "  %s%-16s %s  (%s)\n", marker, e.Name, e.DBPath, e.EmbeddingModel)
@@ -4458,14 +4458,14 @@ func ragStatus(a *Agent, out io.Writer) error {
 
 // ragList prints a brief listing of all registered stores.
 func ragList(a *Agent, out io.Writer) error {
-	if len(a.Config.RagStores) == 0 {
+	if len(a.Config.Memory.RagStores) == 0 {
 		fmt.Fprintln(out, "No RAG stores registered. Run /rag new NAME to create one.")
 		return nil
 	}
-	fmt.Fprintf(out, "RAG stores (%d):\n", len(a.Config.RagStores))
-	for _, e := range a.Config.RagStores {
+	fmt.Fprintf(out, "RAG stores (%d):\n", len(a.Config.Memory.RagStores))
+	for _, e := range a.Config.Memory.RagStores {
 		marker := "  "
-		if e.Name == a.Config.RagActive {
+		if e.Name == a.Config.Memory.RagActive {
 			marker = "* "
 		}
 		fmt.Fprintf(out, "  %s%-16s %s  (%s)\n", marker, e.Name, e.DBPath, e.EmbeddingModel)
@@ -4475,7 +4475,7 @@ func ragList(a *Agent, out io.Writer) error {
 
 // ragSwitch closes the current store and opens the named one.
 func ragSwitch(a *Agent, name string, out io.Writer) error {
-	entry := a.Config.RagStoreByName(name)
+	entry := a.Config.Memory.RagStoreByName(name)
 	if entry == nil {
 		fmt.Fprintf(out, "Store %q not found. Use /rag list to see available stores.\n", name)
 		return nil
@@ -4493,8 +4493,8 @@ func ragSwitch(a *Agent, name string, out io.Writer) error {
 		return fmt.Errorf("rag use: open store: %w", err)
 	}
 	a.Rag = store
-	a.Config.RagActive = name
-	if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+	a.Config.Memory.RagActive = name
+	if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 		fmt.Fprintf(out, "Warning: could not persist active store: %v\n", err)
 	}
 	fmt.Fprintf(out, "Active store: %s (%s)\n", entry.Name, entry.DBPath)
@@ -4503,7 +4503,7 @@ func ragSwitch(a *Agent, name string, out io.Writer) error {
 
 // ragDrop removes a store from the registry (does not delete the .db file).
 func ragDrop(a *Agent, name string, out io.Writer) error {
-	entry := a.Config.RagStoreByName(name)
+	entry := a.Config.Memory.RagStoreByName(name)
 	if entry == nil {
 		fmt.Fprintf(out, "Store %q not found.\n", name)
 		return nil
@@ -4517,16 +4517,16 @@ func ragDrop(a *Agent, name string, out io.Writer) error {
 		fmt.Fprintln(out, "Cancelled.")
 		return nil
 	}
-	if name == a.Config.RagActive {
+	if name == a.Config.Memory.RagActive {
 		if a.Rag != nil {
 			_ = a.Rag.Close()
 			a.Rag = nil
 		}
 		a.RagOn = false
-		a.Config.RagActive = ""
+		a.Config.Memory.RagActive = ""
 	}
-	a.Config.RemoveRagStore(name)
-	if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+	a.Config.Memory.RemoveRagStore(name)
+	if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 		fmt.Fprintf(out, "Warning: could not persist registry: %v\n", err)
 	}
 	fmt.Fprintf(out, "Store %q removed. To delete the database: rm %s\n", name, entry.DBPath)
@@ -4536,7 +4536,7 @@ func ragDrop(a *Agent, name string, out io.Writer) error {
 // ragSetup is the backward-compat /rag setup entry point. It re-runs the
 // wizard for the active store, or creates a "default" store when none exists.
 func ragSetup(a *Agent, out io.Writer) error {
-	name := a.Config.RagActive
+	name := a.Config.Memory.RagActive
 	if name == "" {
 		name = "default"
 	}
@@ -4743,11 +4743,11 @@ foundPref:
 // and enables RAG injection. It is called by both the Ollama and Encoderfile
 // wizard paths.
 func ragCommitEntry(a *Agent, entry RagStoreEntry, out io.Writer) error {
-	a.Config.AddOrUpdateRagStore(entry)
-	a.Config.RagActive = entry.Name
-	a.Config.RagEnabled = true
+	a.Config.Memory.AddOrUpdateRagStore(entry)
+	a.Config.Memory.RagActive = entry.Name
+	a.Config.Memory.RagEnabled = true
 
-	if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+	if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 		return fmt.Errorf("rag setup: save config: %w", err)
 	}
 
@@ -4836,7 +4836,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 		fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
 		return nil
 	}
-	entry := a.Config.ActiveRagStore()
+	entry := a.Config.Memory.ActiveRagStore()
 	if entry == nil {
 		fmt.Fprintln(out, "No active RAG store. Run /rag use NAME to select one.")
 		return nil
@@ -5037,7 +5037,7 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 		fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
 		return nil
 	}
-	entry := a.Config.ActiveRagStore()
+	entry := a.Config.Memory.ActiveRagStore()
 	if entry == nil {
 		fmt.Fprintln(out, "No active RAG store. Run /rag use NAME to select one.")
 		return nil
@@ -5087,7 +5087,7 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
  */
 func cmdMemory(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status> [args...]")
+		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status|recall> [args...]")
 		return nil
 	}
 	store, err := NewMemoryStore(a.Workspace)
@@ -5107,9 +5107,11 @@ func cmdMemory(a *Agent, args []string, out io.Writer) error {
 		return cmdMemoryForget(a, args[1:], out, store)
 	case "status":
 		return cmdMemoryStatus(a, args[1:], out, store)
+	case "recall":
+		return cmdMemoryRecall(a, args[1:], out, store)
 	default:
 		fmt.Fprintf(out, "Unknown /memory subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status> [args...]")
+		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status|recall> [args...]")
 		return nil
 	}
 }
@@ -5169,7 +5171,7 @@ func cmdMemoryMine(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 	}
 
 	var embedder Embedder
-	if entry := a.Config.ActiveRagStore(); entry != nil {
+	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
 		embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
 	}
 
@@ -5257,9 +5259,85 @@ func cmdMemoryStatus(a *Agent, args []string, out io.Writer, store *MemoryStore)
 		totalCreated += len(e.MemoriesCreated)
 	}
 
-	fmt.Fprintf(out, "Memory store:  %s\n", store.Dir())
+	fmt.Fprintf(out, "Memory store:    %s\n", store.Dir())
 	fmt.Fprintf(out, "Active memories: %d\n", n)
 	fmt.Fprintf(out, "Sessions mined:  %d  (total memories created: %d)\n", len(manifest.Sessions), totalCreated)
 	fmt.Fprintf(out, "Sessions pending: %d\n", len(unmined))
+
+	// Budget stats.
+	budgetPct := a.Config.Memory.BudgetPct
+	contextLen := a.effectiveContextLimit()
+	modelName := "unknown"
+	if a.Client != nil {
+		modelName = a.Client.Name()
+	}
+	if contextLen > 0 {
+		budget := int(float64(contextLen) * budgetPct)
+		fmt.Fprintf(out, "Memory budget:   %.0f%% of context (%d tokens on %s)\n",
+			budgetPct*100, budget, modelName)
+	} else {
+		fmt.Fprintf(out, "Memory budget:   %.0f%% of context (context window unknown)\n",
+			budgetPct*100)
+	}
+
+	statsCount, _ := store.StatsCount()
+	if statsCount >= 10 {
+		avgSat, compRate, avgTps, statsErr := store.BudgetStats(10)
+		if statsErr == nil {
+			satPct := int(avgSat * 100)
+			switch {
+			case avgSat > 0.90 && (avgTps == 0 || avgTps >= 2.0):
+				newPct := budgetPct * 1.4
+				fmt.Fprintf(out, "Budget advice:   avg utilisation %d%% over last 10 sessions —\n", satPct)
+				fmt.Fprintf(out, "                 consider increasing memory.budget_pct to %.2f\n", newPct)
+			case avgTps > 0 && avgTps < 2.0 && avgSat > 0.70:
+				newPct := budgetPct * 0.75
+				fmt.Fprintf(out, "Budget advice:   avg utilisation %d%%, throughput %.1f tok/s — context pressure high;\n", satPct, avgTps)
+				fmt.Fprintf(out, "                 consider reducing memory.budget_pct to %.2f\n", newPct)
+			default:
+				fmt.Fprintf(out, "Budget advice:   avg utilisation %d%% — current setting looks good\n", satPct)
+			}
+			if compRate > 0.50 {
+				fmt.Fprintf(out, "Compression:     rolling summary fired in %.0f%% of recent sessions\n", compRate*100)
+			}
+		}
+	}
+	return nil
+}
+
+// cmdMemoryRecall queries all memory silos and prints grouped results.
+func cmdMemoryRecall(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /memory recall <query>")
+		return nil
+	}
+	query := strings.Join(args, " ")
+
+	var embedder Embedder
+	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+		embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+	}
+
+	um := NewUnifiedMemory(store, &a.Config.Memory, a.Workspace)
+	results, err := um.Recall(query, embedder, 0)
+	if err != nil {
+		return fmt.Errorf("memory recall: %w", err)
+	}
+	if len(results) == 0 {
+		fmt.Fprintln(out, "No memories found.")
+		return nil
+	}
+
+	curSource := ""
+	for _, r := range results {
+		if r.Source != curSource {
+			if curSource != "" {
+				fmt.Fprintln(out)
+			}
+			fmt.Fprintf(out, "[%s]\n", sourceHeader(r.Source))
+			curSource = r.Source
+		}
+		fmt.Fprintf(out, "  [%.2f] %s\n", r.Score, r.Content)
+	}
 	return nil
 }

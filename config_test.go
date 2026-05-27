@@ -129,6 +129,94 @@ func TestLoadHarveyMD_preambleAlwaysFirst(t *testing.T) {
 	}
 }
 
+// ─── MemoryConfig defaults ────────────────────────────────────────────────────
+
+func TestDefaultConfig_MemoryBudgetPct(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Memory.BudgetPct != 0.25 {
+		t.Errorf("BudgetPct default: got %v, want 0.25", cfg.Memory.BudgetPct)
+	}
+}
+
+func TestDefaultConfig_RollingSummaryDefaults(t *testing.T) {
+	cfg := DefaultConfig()
+	rs := cfg.Memory.RollingSummary
+	if !rs.Enabled {
+		t.Error("RollingSummary.Enabled default: got false, want true")
+	}
+	if rs.WarnAtPct != 0.80 {
+		t.Errorf("RollingSummary.WarnAtPct default: got %v, want 0.80", rs.WarnAtPct)
+	}
+	if rs.KeepTurns != 6 {
+		t.Errorf("RollingSummary.KeepTurns default: got %d, want 6", rs.KeepTurns)
+	}
+}
+
+func TestLoadHarveyYAML_BudgetPctRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := `memory:
+  budget_pct: 0.35
+  rolling_summary:
+    enabled: false
+    warn_at_pct: 0.70
+    keep_turns: 4
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Memory.BudgetPct != 0.35 {
+		t.Errorf("BudgetPct: got %v, want 0.35", cfg.Memory.BudgetPct)
+	}
+	if cfg.Memory.RollingSummary.Enabled {
+		t.Error("RollingSummary.Enabled: got true, want false")
+	}
+	if cfg.Memory.RollingSummary.WarnAtPct != 0.70 {
+		t.Errorf("RollingSummary.WarnAtPct: got %v, want 0.70", cfg.Memory.RollingSummary.WarnAtPct)
+	}
+	if cfg.Memory.RollingSummary.KeepTurns != 4 {
+		t.Errorf("RollingSummary.KeepTurns: got %d, want 4", cfg.Memory.RollingSummary.KeepTurns)
+	}
+}
+
+func TestLoadHarveyYAML_RollingSummaryNotSet_KeepsDefaults(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// YAML with no memory section at all — defaults must survive unchanged.
+	yamlContent := "auto_record: true\n"
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Memory.BudgetPct != 0.25 {
+		t.Errorf("BudgetPct should keep default 0.25, got %v", cfg.Memory.BudgetPct)
+	}
+	if !cfg.Memory.RollingSummary.Enabled {
+		t.Error("RollingSummary.Enabled should keep default true")
+	}
+	if cfg.Memory.RollingSummary.WarnAtPct != 0.80 {
+		t.Errorf("RollingSummary.WarnAtPct should keep default 0.80, got %v", cfg.Memory.RollingSummary.WarnAtPct)
+	}
+	if cfg.Memory.RollingSummary.KeepTurns != 6 {
+		t.Errorf("RollingSummary.KeepTurns should keep default 6, got %d", cfg.Memory.RollingSummary.KeepTurns)
+	}
+}
+
 // ─── ResolveModelAlias ────────────────────────────────────────────────────────
 
 func TestResolveModelAlias_hit(t *testing.T) {
@@ -165,5 +253,316 @@ func TestResolveModelAlias_nilMap(t *testing.T) {
 	got := cfg.ResolveModelAlias("anything")
 	if got != "anything" {
 		t.Errorf("got %q, want %q", got, "anything")
+	}
+}
+
+// ─── MemoryConfig RAG methods ─────────────────────────────────────────────────
+
+func TestMemoryConfig_RagStoreByName_hit(t *testing.T) {
+	m := &MemoryConfig{
+		RagStores: []RagStoreEntry{
+			{Name: "docs", DBPath: "agents/rag/docs.db", EmbeddingModel: "nomic"},
+		},
+	}
+	e := m.RagStoreByName("docs")
+	if e == nil {
+		t.Fatal("expected entry, got nil")
+	}
+	if e.DBPath != "agents/rag/docs.db" {
+		t.Errorf("DBPath: got %q, want %q", e.DBPath, "agents/rag/docs.db")
+	}
+}
+
+func TestMemoryConfig_RagStoreByName_miss(t *testing.T) {
+	m := &MemoryConfig{}
+	if e := m.RagStoreByName("nope"); e != nil {
+		t.Errorf("expected nil, got %+v", e)
+	}
+}
+
+func TestMemoryConfig_ActiveRagStore_set(t *testing.T) {
+	m := &MemoryConfig{
+		RagStores: []RagStoreEntry{{Name: "main", DBPath: "agents/rag/main.db"}},
+		RagActive: "main",
+	}
+	e := m.ActiveRagStore()
+	if e == nil || e.Name != "main" {
+		t.Errorf("expected main, got %v", e)
+	}
+}
+
+func TestMemoryConfig_ActiveRagStore_empty(t *testing.T) {
+	m := &MemoryConfig{}
+	if e := m.ActiveRagStore(); e != nil {
+		t.Errorf("expected nil, got %+v", e)
+	}
+}
+
+func TestMemoryConfig_AddOrUpdateRagStore(t *testing.T) {
+	m := &MemoryConfig{}
+	m.AddOrUpdateRagStore(RagStoreEntry{Name: "a", DBPath: "a.db"})
+	if len(m.RagStores) != 1 {
+		t.Fatalf("expected 1 store, got %d", len(m.RagStores))
+	}
+	m.AddOrUpdateRagStore(RagStoreEntry{Name: "a", DBPath: "updated.db"})
+	if len(m.RagStores) != 1 {
+		t.Errorf("expected 1 store after update, got %d", len(m.RagStores))
+	}
+	if m.RagStores[0].DBPath != "updated.db" {
+		t.Errorf("DBPath after update: got %q, want %q", m.RagStores[0].DBPath, "updated.db")
+	}
+}
+
+func TestMemoryConfig_RemoveRagStore(t *testing.T) {
+	m := &MemoryConfig{
+		RagStores: []RagStoreEntry{{Name: "a"}, {Name: "b"}},
+	}
+	m.RemoveRagStore("a")
+	if len(m.RagStores) != 1 || m.RagStores[0].Name != "b" {
+		t.Errorf("unexpected stores after remove: %+v", m.RagStores)
+	}
+	m.RemoveRagStore("nonexistent")
+	if len(m.RagStores) != 1 {
+		t.Errorf("unexpected stores after no-op remove: %+v", m.RagStores)
+	}
+}
+
+// ─── LoadHarveyYAML memory.rag mirror and precedence ─────────────────────────
+
+func TestLoadHarveyYAML_TopLevelRagMirrorsIntoMemory(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := `rag:
+  enabled: true
+  active: docs
+  stores:
+    - name: docs
+      db_path: agents/rag/docs.db
+      embedding_model: nomic
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if len(cfg.Memory.RagStores) != 1 {
+		t.Fatalf("Memory.RagStores: got %d, want 1", len(cfg.Memory.RagStores))
+	}
+	if cfg.Memory.RagStores[0].Name != "docs" {
+		t.Errorf("Memory.RagStores[0].Name: got %q, want docs", cfg.Memory.RagStores[0].Name)
+	}
+	if cfg.Memory.RagActive != "docs" {
+		t.Errorf("Memory.RagActive: got %q, want docs", cfg.Memory.RagActive)
+	}
+	if !cfg.Memory.RagEnabled {
+		t.Error("Memory.RagEnabled: got false, want true")
+	}
+}
+
+func TestLoadHarveyYAML_MemoryRagOverridesTopLevel(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := `rag:
+  enabled: true
+  active: old
+  stores:
+    - name: old
+      db_path: agents/rag/old.db
+      embedding_model: nomic
+memory:
+  rag:
+    enabled: true
+    active: new
+    stores:
+      - name: new
+        db_path: agents/rag/new.db
+        embedding_model: nomic
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Memory.RagActive != "new" {
+		t.Errorf("Memory.RagActive: got %q, want new", cfg.Memory.RagActive)
+	}
+}
+
+// ─── SaveMemoryConfig and SaveRAGConfig ───────────────────────────────────────
+
+func TestSaveMemoryConfig_WritesMemoryRagSection(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Memory.RagStores = []RagStoreEntry{{Name: "docs", DBPath: "agents/rag/docs.db", EmbeddingModel: "nomic"}}
+	cfg.Memory.RagActive = "docs"
+	cfg.Memory.RagEnabled = true
+
+	if err := SaveMemoryConfig(ws, cfg); err != nil {
+		t.Fatalf("SaveMemoryConfig: %v", err)
+	}
+
+	cfg2 := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg2); err != nil {
+		t.Fatalf("LoadHarveyYAML after save: %v", err)
+	}
+	if len(cfg2.Memory.RagStores) != 1 || cfg2.Memory.RagStores[0].Name != "docs" {
+		t.Errorf("Memory.RagStores (via memory.rag:): got %+v", cfg2.Memory.RagStores)
+	}
+}
+
+// ─── MemoryConfig KB fields defaults ─────────────────────────────────────────
+
+func TestDefaultConfig_MemoryKnowledgeDBEmpty(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Memory.KnowledgeDB != "" {
+		t.Errorf("Memory.KnowledgeDB default: got %q, want empty", cfg.Memory.KnowledgeDB)
+	}
+}
+
+func TestDefaultConfig_MemoryCurrentProjectIDZero(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Memory.CurrentProjectID != 0 {
+		t.Errorf("Memory.CurrentProjectID default: got %d, want 0", cfg.Memory.CurrentProjectID)
+	}
+}
+
+// TestLoadHarveyYAML_KnowledgeDBMirror verifies that a top-level knowledge_db:
+// value is mirrored into cfg.Memory.KnowledgeDB.
+func TestLoadHarveyYAML_KnowledgeDBMirror(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := "knowledge_db: custom/kb.db\n"
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Memory.KnowledgeDB != "custom/kb.db" {
+		t.Errorf("Memory.KnowledgeDB: got %q, want custom/kb.db", cfg.Memory.KnowledgeDB)
+	}
+}
+
+// TestLoadHarveyYAML_MemoryKnowledgeBasePrecedence verifies that
+// memory.knowledge_base.path overrides the top-level knowledge_db: value.
+func TestLoadHarveyYAML_MemoryKnowledgeBasePrecedence(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := "knowledge_db: old/kb.db\nmemory:\n  knowledge_base:\n    path: new/kb.db\n"
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Memory.KnowledgeDB != "new/kb.db" {
+		t.Errorf("Memory.KnowledgeDB: got %q, want new/kb.db", cfg.Memory.KnowledgeDB)
+	}
+}
+
+// TestSaveMemoryConfig_PersistsKnowledgeDB verifies that SaveMemoryConfig
+// writes KnowledgeDB to both knowledge_db: and memory.knowledge_base.path:.
+func TestSaveMemoryConfig_PersistsKnowledgeDB(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Memory.KnowledgeDB = "custom/kb.db"
+
+	if err := SaveMemoryConfig(ws, cfg); err != nil {
+		t.Fatalf("SaveMemoryConfig: %v", err)
+	}
+
+	cfg2 := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg2); err != nil {
+		t.Fatalf("LoadHarveyYAML after save: %v", err)
+	}
+	if cfg2.Memory.KnowledgeDB != "custom/kb.db" {
+		t.Errorf("Memory.KnowledgeDB (via memory.knowledge_base.path:): got %q", cfg2.Memory.KnowledgeDB)
+	}
+}
+
+// TestLoadHarveyYAML_KnowledgeDBEmpty_KeepsDefault verifies that an absent
+// knowledge_db section leaves Memory.KnowledgeDB empty (use-default semantics).
+func TestLoadHarveyYAML_KnowledgeDBEmpty_KeepsDefault(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte("auto_record: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Memory.KnowledgeDB != "" {
+		t.Errorf("Memory.KnowledgeDB should be empty when not set, got %q", cfg.Memory.KnowledgeDB)
+	}
+}
+
+func TestSaveRAGConfig_AliasForSaveMemoryConfig(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Memory.RagStores = []RagStoreEntry{{Name: "kb", DBPath: "agents/rag/kb.db", EmbeddingModel: "nomic"}}
+	cfg.Memory.RagActive = "kb"
+	cfg.Memory.RagEnabled = true
+
+	if err := SaveRAGConfig(ws, cfg); err != nil {
+		t.Fatalf("SaveRAGConfig: %v", err)
+	}
+
+	cfg2 := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg2); err != nil {
+		t.Fatalf("LoadHarveyYAML after save: %v", err)
+	}
+	if cfg2.Memory.RagActive != "kb" {
+		t.Errorf("Memory.RagActive: got %q, want kb", cfg2.Memory.RagActive)
 	}
 }

@@ -170,6 +170,8 @@ type Agent struct {
 	ActiveSkillSet string        // name of the currently loaded skill-set bundle; "" when none
 	Tools         *ToolRegistry  // schema-based tool registry; nil when tools are disabled
 	memoryContextPending   bool         // true after ClearHistory until first user turn injects memories
+	sessionInjectedTokens  int          // tokens injected via UnifiedMemory this session
+	sessionCompressed      bool         // true if rolling summary fired at least once this session
 	commands               map[string]*Command
 	statHistory            []ChatStats  // rolling window of recent turn stats
 	AuditBuffer            *AuditBuffer // in-memory audit log ring buffer; nil until initialized
@@ -293,10 +295,9 @@ func (a *Agent) ClearHistory() {
 	a.ActiveSkill = ""
 }
 
-// injectMemoryContext performs a semantic search against the memory store using
-// query as the retrieval key. When no embedder is configured, or when the
-// semantic search returns no results, it falls back to the N most recent
-// memories. The result is added to History as a user message.
+// injectMemoryContext retrieves memories from all silos via UnifiedMemory and
+// injects the formatted context block as a user message. The token budget is
+// derived from OllamaContextLength * BudgetPct (fallback 512 when unconfigured).
 func (a *Agent) injectMemoryContext(query string) {
 	if !a.Config.Memory.Enabled || !a.Config.Memory.InjectOnStart || a.Workspace == nil {
 		return
@@ -307,36 +308,27 @@ func (a *Agent) injectMemoryContext(query string) {
 	}
 	defer store.Close()
 
-	topK := a.Config.Memory.TopK
-	if topK <= 0 {
-		topK = 5
+	var embedder Embedder
+	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+		embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
 	}
 
-	label := "relevant"
-	var docs []MemoryDoc
-	if entry := a.Config.ActiveRagStore(); entry != nil && query != "" {
-		embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)
-		docs, _ = store.Query(query, embedder, topK)
+	budget := 512
+	if a.Config.OllamaContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
+		budget = int(float64(a.Config.OllamaContextLength) * a.Config.Memory.BudgetPct)
 	}
-	if len(docs) == 0 {
-		label = "recent"
-		docs, _ = store.Recent(topK)
-	}
-	if len(docs) == 0 {
+
+	um := NewUnifiedMemory(store, &a.Config.Memory, a.Workspace)
+	results, err := um.Recall(query, embedder, budget)
+	if err != nil || len(results) == 0 {
 		return
 	}
-
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "[memory context — %d %s memories]\n\n", len(docs), label)
-	for _, doc := range docs {
-		fmt.Fprintf(&sb, "**[%s]** %s\n", doc.Meta.Type, doc.Meta.Description)
-		if doc.Meta.Summary != "" {
-			sb.WriteString(doc.Meta.Summary)
-			sb.WriteByte('\n')
-		}
-		sb.WriteByte('\n')
+	var totalTokens int
+	for _, r := range results {
+		totalTokens += r.Tokens
 	}
-	a.AddMessage("user", strings.TrimRight(sb.String(), "\n"))
+	a.sessionInjectedTokens += totalTokens
+	a.AddMessage("user", FormatContext(results))
 }
 
 /** HasPermission checks if the given permission is allowed for a path.
@@ -377,6 +369,23 @@ func (a *Agent) recordStats(s ChatStats) {
 	if len(a.statHistory) > maxStatHistory {
 		a.statHistory = a.statHistory[len(a.statHistory)-maxStatHistory:]
 	}
+}
+
+// avgToksPerSec returns the mean generation throughput across all recorded
+// turns this session. Returns 0 when no turns with throughput data exist.
+func (a *Agent) avgToksPerSec() float64 {
+	var sum float64
+	var n int
+	for _, s := range a.statHistory {
+		if s.TokensPerSec > 0 {
+			sum += s.TokensPerSec
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / float64(n)
 }
 
 /** estimateDuration returns a rough estimate of how long the next turn will

@@ -1922,7 +1922,7 @@ MEMORY — mine session recordings for memories and manage the memory store
 
 # SYNOPSIS
 
-/memory <mine|list|show|forget|status> [args...]
+/memory <mine|list|show|forget|status|recall> [args...]
 
 # DESCRIPTION
 
@@ -1941,7 +1941,7 @@ Fountain files in agents/memories/ inside the workspace.
 
   list [--type TYPE]
         List stored memories. Optional --type filters to one of:
-        tool_use, workflow, user_preference.
+        tool_use, workflow, user_preference, workspace_profile, project_fact.
 
   show ID
         Display the full Fountain source for one memory by its ID slug.
@@ -1952,19 +1952,33 @@ Fountain files in agents/memories/ inside the workspace.
   status
         Show memory store location, total count, and breakdown by type.
 
+  recall QUERY
+        Query all memory silos (workspace profile, project facts, experiential
+        memories, RAG chunks, and KB observations) and print grouped results.
+        Uses FTS5 full-text search plus cosine similarity when a RAG store is
+        configured. No token budget is applied — all matching results are shown.
+
 # MEMORY TYPES
 
-  tool_use        A tool or command trick that worked (e.g. a useful flag,
-                  a workaround for a known bug).
-  workflow        A repeatable multi-step process (e.g. how to publish a release).
-  user_preference A stated or demonstrated preference (e.g. preferred coding style).
+  tool_use          A tool or command trick that worked (e.g. a useful flag,
+                    a workaround for a known bug).
+  workflow          A repeatable multi-step process (e.g. how to publish a release).
+  user_preference   A stated or demonstrated preference (e.g. preferred coding style).
+  workspace_profile Factual description of the workspace: what it is, its purpose,
+                    its primary language and tools. Always injected first.
+  project_fact      A key fact about the current project: deadlines, conventions,
+                    constraints. Always injected second.
 
 # MEMORY INJECTION
 
-When a session starts, Harvey injects relevant memories into the system prompt
-context. With a RAG store configured, semantic similarity selects the top-K
-memories; without one, the most recent memories are used. The header line
-indicates which path was taken: "relevant memories" vs "recent memories".
+When a session starts, Harvey injects a [memory context] block into the
+conversation. Factual types (workspace_profile, project_fact) always appear
+first. Experiential memories (tool_use, workflow, user_preference) are ranked
+by FTS5 full-text search and optionally cosine similarity. RAG chunks and KB
+observations follow if token budget permits.
+
+The budget is controlled by memory.budget_pct in harvey.yaml (default 0.25 of
+the context window). Setting memory.inject_on_start: false disables injection.
 
 # PRIVACY
 
@@ -1978,9 +1992,11 @@ memory before the review card is displayed.
   /memory mine
   /memory mine agents/sessions/harvey-session-20260525-140251.spmd
   /memory list --type workflow
+  /memory list --type workspace_profile
   /memory show pipeline_confidence_extraction
   /memory forget old_pattern_a1b2c3
   /memory status
+  /memory recall git repository error
 `
 
 	PipelineHelpText = `%{app_name}(7) user manual | version {version} {release_hash}

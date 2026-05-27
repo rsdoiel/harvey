@@ -296,7 +296,7 @@ func deserialize(data []byte) ([]float64, error) {
  *   Embedder — the appropriate embedder for this entry.
  *
  * Example:
- *   emb := NewEmbedderForEntry(cfg.ActiveRagStore(), cfg.OllamaURL)
+ *   emb := NewEmbedderForEntry(cfg.Memory.ActiveRagStore(), cfg.OllamaURL)
  *   vec, err := emb.Embed("hello world")
  */
 func NewEmbedderForEntry(entry *RagStoreEntry, ollamaURL string) Embedder {

@@ -144,7 +144,7 @@ func permissionsSet(a *Agent, args []string, out io.Writer) error {
 	a.Config.SetPermission(path, perms)
 	// Persist to harvey.yaml
 	if a.Workspace != nil {
-		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not save permissions: %v\n", err)
 		}
 	}
@@ -156,7 +156,7 @@ func permissionsReset(a *Agent, out io.Writer) error {
 	a.Config.ResetPermissions()
 	// Persist to harvey.yaml
 	if a.Workspace != nil {
-		if err := SaveRAGConfig(a.Workspace, a.Config); err != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not save permissions: %v\n", err)
 		}
 	}

@@ -11,6 +11,43 @@
 - [ ] Increase the `/rag ingest` kilo byte limit that triggers a user prompt from 100K to 1000K
 - [ ] There is an alias of `/rag setup` for `/rag new`, we can drop the alias.
 
+## Unified Memory System
+
+Design: [memory-unified-design.md](memory-unified-design.md) | Plan: [memory-unified-plan.md](memory-unified-plan.md)
+
+### Phase 1 — Config restructure (split into safe sub-phases)
+- [x] Phase 1a: Add `BudgetPct` and `RollingSummaryConfig` to `MemoryConfig`; update defaults
+- [x] Phase 1b: Mirror RAG stores into `MemoryConfig`; add `memory.rag` YAML; add `SaveMemoryConfig`
+- [x] Phase 1c: Migrate RAG call sites in `commands.go` / `harvey.go` to `cfg.Memory.*`
+- [x] Phase 1d: Mirror KB (`KnowledgeDB`, `CurrentProjectID`) into `MemoryConfig`; migrate call sites
+- [x] Phase 1e: Remove old top-level `Config.Rag*` / `Config.KnowledgeDB` fields; final cleanup
+
+### Phase 2 — New types, unified retrieval, token budget
+- [x] Add `workspace_profile` and `project_fact` `MemoryType` constants
+- [x] Create `memory_unified.go`: `UnifiedResult`, `UnifiedMemory`, `Recall` with token budget
+- [x] Replace `injectMemoryContext` with budget-aware unified injection
+- [x] Add `/memory recall <query>` subcommand
+
+### Phase 2b — Adaptive budget tuning
+- [x] Add `memory_stats` table to `memories.db`; add `RecordSessionStats` to `MemoryStore`
+- [x] Surface budget utilisation and compression rate in `/memory status`
+
+### Phase 3 — Workspace profile onboarding
+- [ ] Create `memory_onboarding.go`: first-use detection, interview flow, `extractProjectFact`
+- [ ] Wire onboarding into session start (`Agent.Reset`)
+- [ ] Add `/memory profile show|update` subcommand
+
+### Phase 4 — Rolling summary (working memory)
+- [ ] Create `memory_rolling.go`: `ShouldCompress`, `CompressHistory`
+- [ ] Wire post-reply compression check into REPL loop
+- [ ] Add `rolling_summary:` to YAML load/save
+
+### Phase 5 — Auto-mine on session end
+- [ ] Add `MineAuto` to `memory_miner.go`
+- [ ] Trigger auto-mine on exit / `/clear` when session has >= 10 turns
+
+---
+
 ## Someday, maybe ideas
 
 ### Remote protocol integration

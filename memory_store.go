@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "github.com/glebarez/go-sqlite"
 )
@@ -38,6 +39,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
     description,
     summary,
     file_path UNINDEXED
+);
+`
+
+const memoriesStatsSchema = `
+CREATE TABLE IF NOT EXISTS memory_stats (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id         TEXT    NOT NULL DEFAULT '',
+    budget_tokens      INTEGER NOT NULL DEFAULT 0,
+    injected_tokens    INTEGER NOT NULL DEFAULT 0,
+    compressed         INTEGER NOT NULL DEFAULT 0,
+    avg_tokens_per_sec REAL    NOT NULL DEFAULT 0,
+    recorded_at        TEXT    NOT NULL
 );
 `
 
@@ -97,9 +110,13 @@ func NewMemoryStore(ws *Workspace) (*MemoryStore, error) {
 		string(MemoryTypeToolUse),
 		string(MemoryTypeWorkflow),
 		string(MemoryTypeUserPreference),
+		string(MemoryTypeWorkspaceProfile),
+		string(MemoryTypeProjectFact),
 		filepath.Join("archive", string(MemoryTypeToolUse)),
 		filepath.Join("archive", string(MemoryTypeWorkflow)),
 		filepath.Join("archive", string(MemoryTypeUserPreference)),
+		filepath.Join("archive", string(MemoryTypeWorkspaceProfile)),
+		filepath.Join("archive", string(MemoryTypeProjectFact)),
 	}
 	for _, sub := range subdirs {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
@@ -124,6 +141,12 @@ func NewMemoryStore(ws *Workspace) (*MemoryStore, error) {
 	if _, err := db.Exec(memoriesFTSSchema); err == nil {
 		s.ftsAvailable = true
 	}
+
+	// memory_stats is optional from the schema perspective but needed for
+	// Phase 2b budget tuning. Ignore the error so existing DBs without the
+	// table continue to work; the table is created on first NewMemoryStore
+	// call after the upgrade.
+	_, _ = db.Exec(memoriesStatsSchema)
 
 	if err := s.rebuildIfNeeded(); err != nil {
 		db.Close()
@@ -489,6 +512,211 @@ func (s *MemoryStore) Count() (int64, error) {
 	err := s.db.QueryRow(
 		`SELECT COUNT(*) FROM memories WHERE archived=0`,
 	).Scan(&n)
+	return n, err
+}
+
+/** ScoredDoc is a MemoryDoc paired with a retrieval score.
+ *
+ * Fields:
+ *   Doc   (MemoryDoc) — the parsed memory document.
+ *   Score (float64)   — relevance score; higher is a better match.
+ *
+ * Example:
+ *   docs, _ := store.SearchFTS("git repository", 5)
+ *   for _, d := range docs { fmt.Printf("[%.2f] %s\n", d.Score, d.Doc.Meta.Description) }
+ */
+type ScoredDoc struct {
+	Doc   MemoryDoc
+	Score float64
+}
+
+/** SearchFTS returns non-archived memories matching query using FTS5 full-text
+ * search. Results are ordered by relevance (best match first). Returns nil when
+ * FTS5 is unavailable or query is empty.
+ *
+ * Parameters:
+ *   query (string) — search text passed to the FTS5 MATCH operator.
+ *   topK  (int)    — maximum number of results to return.
+ *
+ * Returns:
+ *   []ScoredDoc — up to topK documents ordered by descending relevance.
+ *   error       — on database failure.
+ *
+ * Example:
+ *   docs, err := store.SearchFTS("git repository", 5)
+ */
+func (s *MemoryStore) SearchFTS(query string, topK int) ([]ScoredDoc, error) {
+	if !s.ftsAvailable || query == "" {
+		return nil, nil
+	}
+	rows, err := s.db.Query(`
+		SELECT m.file_path, -memories_fts.rank AS score
+		FROM memories_fts
+		JOIN memories m ON memories_fts.id = m.id
+		WHERE memories_fts MATCH ? AND m.archived = 0
+		ORDER BY memories_fts.rank
+		LIMIT ?`, query, topK)
+	if err != nil {
+		return nil, fmt.Errorf("memory store: search fts: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ScoredDoc
+	for rows.Next() {
+		var filePath string
+		var score float64
+		if err := rows.Scan(&filePath, &score); err != nil {
+			return nil, err
+		}
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+		doc, err := ParseMemoryDoc(data)
+		if err != nil {
+			continue
+		}
+		out = append(out, ScoredDoc{Doc: *doc, Score: score})
+	}
+	return out, rows.Err()
+}
+
+/** ListDocs returns full MemoryDoc objects for all non-archived memories.
+ * When typeFilter is non-empty only memories of that type are returned.
+ * Results are ordered by updated_at descending.
+ *
+ * Parameters:
+ *   typeFilter (string) — memory type to filter on, or "" for all types.
+ *
+ * Returns:
+ *   []MemoryDoc — documents with parsed front matter and Fountain body.
+ *   error       — on database or file read failure.
+ *
+ * Example:
+ *   docs, err := store.ListDocs("workspace_profile")
+ *   for _, d := range docs { fmt.Println(d.Meta.Description) }
+ */
+func (s *MemoryStore) ListDocs(typeFilter string) ([]MemoryDoc, error) {
+	metas, err := s.List(typeFilter)
+	if err != nil {
+		return nil, err
+	}
+	var out []MemoryDoc
+	for _, m := range metas {
+		path := filepath.Join(s.dir, string(m.Type), m.ID+".fountain")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		doc, err := ParseMemoryDoc(data)
+		if err != nil {
+			continue
+		}
+		out = append(out, *doc)
+	}
+	return out, nil
+}
+
+/** RecordSessionStats appends one row to the memory_stats table for the
+ * session that just ended. Called at session exit by the REPL.
+ *
+ * Parameters:
+ *   sessionID      (string)  — filename of the session .spmd file; may be empty.
+ *   budgetTokens   (int)     — token budget allocated for memory injection.
+ *   injectedTokens (int)     — tokens actually injected this session.
+ *   compressed     (bool)    — true if rolling summary fired at least once.
+ *   avgToksPerSec  (float64) — average generation throughput across all turns.
+ *
+ * Returns:
+ *   error — on database write failure.
+ *
+ * Example:
+ *   _ = store.RecordSessionStats("harvey-session-20260526.spmd", 512, 123, false, 14.2)
+ */
+func (s *MemoryStore) RecordSessionStats(sessionID string, budgetTokens, injectedTokens int, compressed bool, avgToksPerSec float64) error {
+	compressedInt := 0
+	if compressed {
+		compressedInt = 1
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := s.db.Exec(`
+		INSERT INTO memory_stats
+		    (session_id, budget_tokens, injected_tokens, compressed, avg_tokens_per_sec, recorded_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		sessionID, budgetTokens, injectedTokens, compressedInt, avgToksPerSec, now)
+	return err
+}
+
+/** BudgetStats computes aggregate memory budget statistics from the last n rows
+ * of memory_stats. Used by /memory status to generate tuning suggestions.
+ *
+ * Parameters:
+ *   n (int) — number of most-recent sessions to include; e.g. 10.
+ *
+ * Returns:
+ *   avgSaturation  (float64) — mean(injected_tokens/budget_tokens); 0 when budget was 0.
+ *   compressionRate (float64) — fraction of sessions where rolling summary fired.
+ *   avgToksPerSec  (float64) — mean generation throughput across sessions.
+ *   error          — on database failure.
+ *
+ * Example:
+ *   sat, compRate, tps, err := store.BudgetStats(10)
+ *   fmt.Printf("avg utilisation %.0f%%\n", sat*100)
+ */
+func (s *MemoryStore) BudgetStats(n int) (avgSaturation, compressionRate, avgToksPerSec float64, err error) {
+	rows, err := s.db.Query(`
+		SELECT budget_tokens, injected_tokens, compressed, avg_tokens_per_sec
+		FROM memory_stats
+		ORDER BY recorded_at DESC
+		LIMIT ?`, n)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("memory store: budget stats: %w", err)
+	}
+	defer rows.Close()
+
+	var count int
+	var totalSat, totalTps float64
+	var compCount int
+	for rows.Next() {
+		var budget, injected, comp int
+		var tps float64
+		if scanErr := rows.Scan(&budget, &injected, &comp, &tps); scanErr != nil {
+			return 0, 0, 0, scanErr
+		}
+		if budget > 0 {
+			totalSat += float64(injected) / float64(budget)
+		}
+		if comp > 0 {
+			compCount++
+		}
+		totalTps += tps
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, 0, err
+	}
+	if count == 0 {
+		return 0, 0, 0, nil
+	}
+	return totalSat / float64(count),
+		float64(compCount) / float64(count),
+		totalTps / float64(count),
+		nil
+}
+
+/** StatsCount returns the total number of rows in the memory_stats table.
+ *
+ * Returns:
+ *   int64 — row count.
+ *   error — on database failure.
+ *
+ * Example:
+ *   n, _ := store.StatsCount()
+ *   if n >= 10 { /* show advice *‌/ }
+ */
+func (s *MemoryStore) StatsCount() (int64, error) {
+	var n int64
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM memory_stats`).Scan(&n)
 	return n, err
 }
 
