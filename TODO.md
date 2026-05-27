@@ -3,6 +3,9 @@
 
 ## Bugs
 
+- [ ] The Onboarding for Harvey asks the name of the workspace. The workspace name is the  name of the directory where Harvey is running. No need to ask for the name.
+- [ ] When I use the Qwen and LLama small models I am getting embedded JSON back not the functions in TypeScript or CSS I ask for
+
 ## Next Release
 
 ### Remote protocol integration
