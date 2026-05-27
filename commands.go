@@ -184,7 +184,7 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdMemory,
 		},
 		"rag": {
-			Usage:       "/rag <list|new NAME|switch NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>",
+			Usage:       "/rag <list|new NAME|use NAME|drop NAME|ingest PATH|status|query TEXT|on|off>",
 			Description: "Manage named RAG knowledge stores for context-augmented generation",
 			Handler:     cmdRag,
 		},
@@ -547,6 +547,12 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintf(out, "  %-50s %s\n", cmd.Usage, cmd.Description)
 		}
 	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  Type /help TOPIC for a full guide. Topics: attach, audit, clear, compact,")
+	fmt.Fprintln(out, "  context, editing, file-tree, files, git, inspect, kb, memory, ollama,")
+	fmt.Fprintln(out, "  permissions, pipeline, rag, read, read-dir, read-pdf, record, rename,")
+	fmt.Fprintln(out, "  routing, run, safemode, search, security, session, skill-set, skills,")
+	fmt.Fprintln(out, "  status, summarize, write")
 	fmt.Fprintln(out)
 	return nil
 }
@@ -4354,7 +4360,7 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		return ragList(a, out)
 	case "on":
 		if a.Rag == nil {
-			fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
+			fmt.Fprintln(out, "RAG is not configured. Run /rag new NAME first.")
 			return nil
 		}
 		a.RagOn = true
@@ -4370,8 +4376,6 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "Warning: could not save config: %v\n", err)
 		}
-	case "setup":
-		return ragSetup(a, out)
 	case "new":
 		if len(args) < 2 {
 			fmt.Fprintln(out, "Usage: /rag new NAME [--embedder ollama|encoderfile] [--embedder-url URL]")
@@ -4419,7 +4423,7 @@ func ragStatus(a *Agent, out io.Writer) error {
 
 	entry := a.Config.Memory.ActiveRagStore()
 	if entry == nil {
-		fmt.Fprintln(out, "No store configured. Run /rag new NAME or /rag setup to get started.")
+		fmt.Fprintln(out, "No store configured. Run /rag new NAME to get started.")
 		return nil
 	}
 
@@ -4531,16 +4535,6 @@ func ragDrop(a *Agent, name string, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "Store %q removed. To delete the database: rm %s\n", name, entry.DBPath)
 	return nil
-}
-
-// ragSetup is the backward-compat /rag setup entry point. It re-runs the
-// wizard for the active store, or creates a "default" store when none exists.
-func ragSetup(a *Agent, out io.Writer) error {
-	name := a.Config.Memory.RagActive
-	if name == "" {
-		name = "default"
-	}
-	return ragWizard(a, name, "", "", out)
 }
 
 /** ParseEmbedderFlags extracts --embedder and --embedder-url values from args.
@@ -4665,7 +4659,7 @@ func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) 
 		fmt.Fprintln(out, "  bge-m3                  (~1.2 GB) — multilingual (good for SEA-LION)")
 		fmt.Fprintln(out, "  (avoid all-minilm — it is similarity-tuned, not retrieval-tuned)")
 		fmt.Fprintln(out, "")
-		fmt.Fprintln(out, "After pulling an embedding model, run /rag setup again.")
+		fmt.Fprintln(out, "After pulling an embedding model, run /rag new NAME again.")
 		fmt.Fprintln(out, "Or use an Encoderfile binary: /rag new NAME --embedder encoderfile --embedder-url URL")
 		return nil
 	}
@@ -4775,7 +4769,7 @@ func ragCommitEntry(a *Agent, entry RagStoreEntry, out io.Writer) error {
 // ragIngest chunks and embeds each path into the RAG store.
 // ragLargeFileThreshold is the file size above which /rag ingest shows the
 // document list and asks for confirmation before starting.
-const ragLargeFileThreshold = 100 * 1024 // 100 KB
+const ragLargeFileThreshold = 1000 * 1024 // 1000 KB
 
 // ragIngestableExts is the set of file extensions eligible for RAG ingestion.
 var ragIngestableExts = map[string]bool{
@@ -4833,7 +4827,7 @@ func ragCountLarge(files []string) int {
 
 func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	if a.Rag == nil {
-		fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
+		fmt.Fprintln(out, "RAG is not configured. Run /rag new NAME first.")
 		return nil
 	}
 	entry := a.Config.Memory.ActiveRagStore()
@@ -5034,7 +5028,7 @@ func ragChunk(text string) []string {
 // ragQuery runs a manual retrieval test against the RAG store.
 func ragQuery(a *Agent, query string, out io.Writer) error {
 	if a.Rag == nil {
-		fmt.Fprintln(out, "RAG is not configured. Run /rag setup first.")
+		fmt.Fprintln(out, "RAG is not configured. Run /rag new NAME first.")
 		return nil
 	}
 	entry := a.Config.Memory.ActiveRagStore()
@@ -5087,7 +5081,7 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
  */
 func cmdMemory(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status|recall> [args...]")
+		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status|recall|profile> [args...]")
 		return nil
 	}
 	store, err := NewMemoryStore(a.Workspace)
@@ -5109,9 +5103,11 @@ func cmdMemory(a *Agent, args []string, out io.Writer) error {
 		return cmdMemoryStatus(a, args[1:], out, store)
 	case "recall":
 		return cmdMemoryRecall(a, args[1:], out, store)
+	case "profile":
+		return cmdMemoryProfile(a, args[1:], out, store)
 	default:
 		fmt.Fprintf(out, "Unknown /memory subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status|recall> [args...]")
+		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status|recall|profile> [args...]")
 		return nil
 	}
 }
@@ -5339,5 +5335,56 @@ func cmdMemoryRecall(a *Agent, args []string, out io.Writer, store *MemoryStore)
 		}
 		fmt.Fprintf(out, "  [%.2f] %s\n", r.Score, r.Content)
 	}
+	return nil
+}
+
+// cmdMemoryProfile dispatches /memory profile show|update.
+func cmdMemoryProfile(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	sub := "show"
+	if len(args) > 0 {
+		sub = args[0]
+	}
+	switch sub {
+	case "show":
+		return cmdMemoryList(a, []string{"--type", string(MemoryTypeWorkspaceProfile)}, out, store)
+	case "update":
+		return cmdMemoryProfileUpdate(a, out, store)
+	default:
+		fmt.Fprintf(out, "Usage: /memory profile <show|update>\n")
+		return nil
+	}
+}
+
+// cmdMemoryProfileUpdate opens the most recent workspace_profile in $EDITOR and re-saves it.
+func cmdMemoryProfileUpdate(a *Agent, out io.Writer, store *MemoryStore) error {
+	metas, err := store.List(string(MemoryTypeWorkspaceProfile))
+	if err != nil {
+		return fmt.Errorf("profile update: %w", err)
+	}
+	if len(metas) == 0 {
+		fmt.Fprintln(out, "No workspace_profile memories found. Start Harvey in a fresh workspace to run onboarding.")
+		return nil
+	}
+	// List is ordered by updated_at DESC; first entry is most recent.
+	doc, err := store.ByID(metas[0].ID)
+	if err != nil {
+		return fmt.Errorf("profile update: load doc: %w", err)
+	}
+	if doc == nil {
+		fmt.Fprintln(out, "Profile document not found on disk.")
+		return nil
+	}
+	edited, err := editInEditor(doc, out)
+	if err != nil {
+		return fmt.Errorf("profile update: editor: %w", err)
+	}
+	var embedder Embedder
+	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+		embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+	}
+	if err := store.Save(edited, embedder); err != nil {
+		return fmt.Errorf("profile update: save: %w", err)
+	}
+	fmt.Fprintf(out, green("✓")+" Profile updated: %s\n", edited.Meta.ID)
 	return nil
 }

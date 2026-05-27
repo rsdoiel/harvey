@@ -582,6 +582,55 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			}
 		},
 	)
+
+	// ── whoami ────────────────────────────────────────────────────────────────
+	r.RegisterTool(
+		"whoami",
+		"Return the identity of the current user: OS username, git user name and email, and hostname. "+
+			"Useful when authoring reviews, commit messages, or project documents that need the author's name.",
+		map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		func(_ context.Context, _ map[string]any) (string, error) {
+			osUser := os.Getenv("USER")
+			if osUser == "" {
+				osUser = os.Getenv("USERNAME")
+			}
+			hostname, _ := os.Hostname()
+
+			gitName := gitConfigValue("user.name")
+			gitEmail := gitConfigValue("user.email")
+
+			var b strings.Builder
+			if osUser != "" {
+				fmt.Fprintf(&b, "OS user:    %s\n", osUser)
+			}
+			if hostname != "" {
+				fmt.Fprintf(&b, "Hostname:   %s\n", hostname)
+			}
+			if gitName != "" {
+				fmt.Fprintf(&b, "Git name:   %s\n", gitName)
+			}
+			if gitEmail != "" {
+				fmt.Fprintf(&b, "Git email:  %s\n", gitEmail)
+			}
+			if b.Len() == 0 {
+				return "No identity information available.", nil
+			}
+			return b.String(), nil
+		},
+	)
+}
+
+// gitConfigValue reads a single git config key from the global git config.
+// Returns "" when the key is absent or git is unavailable.
+func gitConfigValue(key string) string {
+	out, err := exec.Command("git", "config", "--global", key).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // parseDateTimeString tries a sequence of common datetime layouts and returns

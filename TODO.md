@@ -3,13 +3,13 @@
 
 ## Bugs
 
-- [ ] The keyboard/line edit handling does not appear as part of help guide suggested by `/help` command.
+- [x] The keyboard/line edit handling does not appear as part of help guide suggested by `/help` command.
 
 ## Up Next (features for v0.0.6)
 
-- [ ] Add built-in tool support for "whoami", this will be helpful in writing and project or writing review
-- [ ] Increase the `/rag ingest` kilo byte limit that triggers a user prompt from 100K to 1000K
-- [ ] There is an alias of `/rag setup` for `/rag new`, we can drop the alias.
+- [x] Add built-in tool support for "whoami", this will be helpful in writing and project or writing review
+- [x] Increase the `/rag ingest` kilo byte limit that triggers a user prompt from 100K to 1000K
+- [x] There is an alias of `/rag setup` for `/rag new`, we can drop the alias.
 
 ## Unified Memory System
 
@@ -33,18 +33,18 @@ Design: [memory-unified-design.md](memory-unified-design.md) | Plan: [memory-uni
 - [x] Surface budget utilisation and compression rate in `/memory status`
 
 ### Phase 3 — Workspace profile onboarding
-- [ ] Create `memory_onboarding.go`: first-use detection, interview flow, `extractProjectFact`
-- [ ] Wire onboarding into session start (`Agent.Reset`)
-- [ ] Add `/memory profile show|update` subcommand
+- [x] Create `memory_onboarding.go`: first-use detection, interview flow, `extractProjectFact`
+- [x] Wire onboarding into session start (`Agent.Reset`)
+- [x] Add `/memory profile show|update` subcommand
 
 ### Phase 4 — Rolling summary (working memory)
-- [ ] Create `memory_rolling.go`: `ShouldCompress`, `CompressHistory`
-- [ ] Wire post-reply compression check into REPL loop
-- [ ] Add `rolling_summary:` to YAML load/save
+- [x] Create `memory_rolling.go`: `ShouldCompress`, `CompressHistory`
+- [x] Wire post-reply compression check into REPL loop
+- [x] Add `rolling_summary:` to YAML load/save
 
 ### Phase 5 — Auto-mine on session end
-- [ ] Add `MineAuto` to `memory_miner.go`
-- [ ] Trigger auto-mine on exit / `/clear` when session has >= 10 turns
+- [x] Add `MineAuto` to `memory_miner.go`
+- [x] Trigger auto-mine on exit when session has >= 10 turns
 
 ---
 

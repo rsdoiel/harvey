@@ -374,6 +374,85 @@ func (m *Miner) nearDuplicates(doc *MemoryDoc, embedder Embedder) ([]MemoryMeta,
 	return out, rows.Err()
 }
 
+/** MineAuto runs non-interactive memory extraction on sessionPath. All
+ * proposed memories that are not near-duplicates of existing memories are
+ * saved without user review. The session is recorded in the manifest so that
+ * a subsequent /memory mine run skips it (or reports "already mined").
+ *
+ * Parameters:
+ *   ctx         (context.Context) — cancellation context.
+ *   sessionPath (string)          — absolute path to the session file.
+ *   agent       (*Agent)          — provides the LLM client for extraction.
+ *   embedder    (Embedder)        — used for near-duplicate detection; may be nil.
+ *   out         (io.Writer)       — status output.
+ *
+ * Returns:
+ *   error — on session read, LLM, or store failure.
+ *
+ * Example:
+ *   miner.MineAuto(ctx, "/agents/sessions/foo.spmd", agent, embedder, os.Stdout)
+ */
+func (m *Miner) MineAuto(ctx context.Context, sessionPath string, agent *Agent, embedder Embedder, out io.Writer) error {
+	if m.manifest.IsMined(sessionPath) {
+		return nil
+	}
+	if agent.Client == nil {
+		return nil
+	}
+
+	sessionData, err := os.ReadFile(sessionPath)
+	if err != nil {
+		return fmt.Errorf("auto-mine: read session: %w", err)
+	}
+
+	proposed, err := m.extract(ctx, string(sessionData), agent, out)
+	if err != nil {
+		return fmt.Errorf("auto-mine: extract: %w", err)
+	}
+
+	var accepted []string
+	skipped := 0
+	for i := range proposed {
+		doc := &proposed[i]
+
+		if scrubbed, _, scrubErr := ScrubDoc(doc, m.ws.Root); scrubErr == nil {
+			doc = scrubbed
+		}
+
+		if embedder != nil {
+			if dupes, _ := m.nearDuplicates(doc, embedder); len(dupes) > 0 {
+				skipped++
+				continue
+			}
+		}
+
+		if saveErr := m.store.Save(doc, embedder); saveErr != nil {
+			fmt.Fprintf(out, "%s auto-mine: save %s: %v\n", yellow("  ✗"), doc.Meta.ID, saveErr)
+		} else {
+			accepted = append(accepted, doc.Meta.ID)
+		}
+	}
+
+	m.manifest.Record(sessionPath, accepted, skipped)
+	if saveErr := m.manifest.Save(m.store.Dir()); saveErr != nil {
+		return fmt.Errorf("auto-mine: save manifest: %w", saveErr)
+	}
+
+	if len(accepted) > 0 {
+		fmt.Fprintln(out, dim(fmt.Sprintf("  [auto-mined %d %s from session]",
+			len(accepted), pluralise("memory", "memories", len(accepted)))))
+	}
+	return nil
+}
+
+// pluralise returns singular when n == 1, otherwise plural.
+func pluralise(singular, plural string, n int) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
 // findEditor returns the user's preferred editor command.
 func findEditor() string {
 	if e := os.Getenv("EDITOR"); e != "" {

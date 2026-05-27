@@ -172,6 +172,7 @@ type Agent struct {
 	memoryContextPending   bool         // true after ClearHistory until first user turn injects memories
 	sessionInjectedTokens  int          // tokens injected via UnifiedMemory this session
 	sessionCompressed      bool         // true if rolling summary fired at least once this session
+	sessionTurns           int          // total completed user turns in this session (never rolls off)
 	commands               map[string]*Command
 	statHistory            []ChatStats  // rolling window of recent turn stats
 	AuditBuffer            *AuditBuffer // in-memory audit log ring buffer; nil until initialized

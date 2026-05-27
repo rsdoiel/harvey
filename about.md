@@ -12,7 +12,7 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.5b
+version: 0.0.5c
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
@@ -25,10 +25,11 @@ date_released: 2026-05-19
 About this software
 ===================
 
-## harvey 0.0.5b
+## harvey 0.0.5c
 
 - Added `/memory` commands and "memory" implementation
 - Added `/pipeline` support and implementation
+- Unified memory, RAG and Knowledge base support
 - Bug fixes catching write_file failer in model responses
 
 ## Authors

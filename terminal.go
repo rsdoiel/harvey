@@ -382,6 +382,22 @@ func (a *Agent) Run(out io.Writer) error {
 	fmt.Fprintln(out, cyan(bold(sep)))
 	fmt.Fprintln(out)
 
+	// Workspace profile onboarding — runs once when workspace_profile/ is empty.
+	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.ReplayPath == "" {
+		if onboardStore, storeErr := NewMemoryStore(a.Workspace); storeErr == nil {
+			if NeedsOnboarding(onboardStore) {
+				var onboardEmbedder Embedder
+				if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+					onboardEmbedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+				}
+				if onboardErr := RunOnboarding(a, onboardStore, onboardEmbedder, out, reader); onboardErr != nil {
+					fmt.Fprintf(out, yellow("  ✗")+" Onboarding: %v\n", onboardErr)
+				}
+			}
+			onboardStore.Close()
+		}
+	}
+
 	// Attach completer now that all state (models, routes, aliases) is loaded.
 	le.Completer = a.buildCompleter()
 
@@ -718,6 +734,7 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats, a.effectiveContextLimit())))
 		a.recordStats(stats)
+		a.sessionTurns++
 
 		// Code-block extraction: when the model produced fenced code blocks
 		// but made no tool calls, offer to write each block to a file. This
@@ -771,9 +788,58 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}
 		a.autoExecuteReply(buf.String(), out, reader, chatCtx)
+
+		// Rolling summary: compress history when approaching the context limit.
+		if a.Config.Memory.RollingSummary.Enabled && a.Client != nil {
+			contextLen := a.effectiveContextLimit()
+			if contextLen > 0 {
+				histTokens := len(HistoryText(a.History)) / 4
+				if histTokens < 1 {
+					histTokens = 1
+				}
+				if ShouldCompress(histTokens, contextLen, a.Config.Memory.RollingSummary.WarnAtPct) {
+					pct := histTokens * 100 / contextLen
+					fmt.Fprintln(out, dim(fmt.Sprintf("  [context ~%d%% full — compressing older turns]", pct)))
+					if compErr := CompressHistory(a, a.Config.Memory.RollingSummary.KeepTurns, out); compErr != nil {
+						fmt.Fprintf(out, "%s Compression failed: %v\n", yellow("  ✗"), compErr)
+					} else {
+						a.sessionCompressed = true
+					}
+				}
+			}
+		}
 	}
 
 	fmt.Fprintln(out, dim("Goodbye."))
+
+	// Auto-mine on exit when the session had >= 10 user turns.
+	// Close the recorder here so the session file is complete before mining.
+	// The deferred recorder-close checks a.Recorder != nil, so setting it to
+	// nil here prevents a double-close.
+	const autoMineTurnThreshold = 10
+	if a.Config.Memory.Enabled && a.Workspace != nil &&
+		a.Recorder != nil && a.sessionTurns >= autoMineTurnThreshold {
+		sessionPath := a.Recorder.Path()
+		a.Recorder.Close()
+		a.Recorder = nil
+		fmt.Fprintf(out, dim("  Session saved to %s\n"), sessionPath)
+
+		fmt.Fprintln(out, dim("  [auto-mining session for memories — use /memory mine to review manually]"))
+		if memStore, storeErr := NewMemoryStore(a.Workspace); storeErr == nil {
+			manifest, mErr := LoadManifest(memStore.Dir())
+			if mErr == nil && !manifest.IsMined(sessionPath) {
+				var embedder Embedder
+				if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+					embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+				}
+				miner := NewMiner(memStore, manifest, a.Workspace)
+				if mineErr := miner.MineAuto(context.Background(), sessionPath, a, embedder, out); mineErr != nil {
+					fmt.Fprintf(out, "%s Auto-mine: %v\n", yellow("  ✗"), mineErr)
+				}
+			}
+			memStore.Close()
+		}
+	}
 
 	// Record session memory stats for adaptive budget tuning.
 	if a.Config.Memory.Enabled && a.Workspace != nil {

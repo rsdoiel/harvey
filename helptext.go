@@ -963,11 +963,6 @@ are all low (< 0.3) for a question you expect the store to answer, consider:
   Remove a store from the registry after confirmation. The .db file is NOT
   deleted automatically — the path is printed so you can remove it manually.
 
-/rag setup
-  Backward-compatible alias for /rag new using the current active store
-  name, or "default" when no store is configured. Use /rag new NAME to
-  give the store a meaningful name.
-
 /rag ingest PATH [PATH...]
   Reads each file or directory (recursively), splits text into
   paragraph-sized chunks (~500 characters each), embeds them using the
@@ -1922,7 +1917,7 @@ MEMORY — mine session recordings for memories and manage the memory store
 
 # SYNOPSIS
 
-/memory <mine|list|show|forget|status|recall> [args...]
+/memory <mine|list|show|forget|status|recall|profile> [args...]
 
 # DESCRIPTION
 
@@ -1958,6 +1953,11 @@ Fountain files in agents/memories/ inside the workspace.
         Uses FTS5 full-text search plus cosine similarity when a RAG store is
         configured. No token budget is applied — all matching results are shown.
 
+  profile show|update
+        Manage the workspace profile. "show" lists workspace_profile memories
+        (equivalent to /memory list --type workspace_profile). "update" opens
+        the most recent profile in $EDITOR for manual editing and re-saves it.
+
 # MEMORY TYPES
 
   tool_use          A tool or command trick that worked (e.g. a useful flag,
@@ -1980,6 +1980,24 @@ observations follow if token budget permits.
 The budget is controlled by memory.budget_pct in harvey.yaml (default 0.25 of
 the context window). Setting memory.inject_on_start: false disables injection.
 
+# ROLLING SUMMARY
+
+When a session grows long, Harvey automatically compresses older turns once the
+history token count reaches memory.rolling_summary.warn_at_pct of the context
+window (default 80%). Harvey prints:
+
+  [context ~82% full — compressing older turns]
+
+then asks the current model to produce a 150-token summary of the older turns.
+That summary replaces the older history; the last memory.rolling_summary.keep_turns
+turns (default 6) are preserved verbatim. The session recording on disk retains
+the full pre-compression history.
+
+  rolling_summary.enabled     — true (default) / false to disable
+  rolling_summary.warn_at_pct — fraction of context window that triggers
+                                 compression (default 0.80)
+  rolling_summary.keep_turns  — turns kept verbatim after compression (default 6)
+
 # PRIVACY
 
 Workspace paths are normalised to <workspace> before review. Credential
@@ -1997,6 +2015,8 @@ memory before the review card is displayed.
   /memory forget old_pattern_a1b2c3
   /memory status
   /memory recall git repository error
+  /memory profile show
+  /memory profile update
 `
 
 	PipelineHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
