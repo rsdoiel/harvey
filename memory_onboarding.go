@@ -64,19 +64,26 @@ func RunOnboarding(a *Agent, store *MemoryStore, embedder Embedder, out io.Write
 	sc := bufio.NewReader(in)
 	ts := time.Now().UTC().Format("2006-01-02 15:04:05")
 
+	// Auto-detect workspace name from the directory; no need to ask.
+	wsRoot := ""
+	if a.Workspace != nil {
+		wsRoot = a.Workspace.Root
+	}
+	name := filepath.Base(wsRoot)
+	if name == "" || name == "." {
+		name = "workspace"
+	}
+
 	fmt.Fprintln(out, "\nHarvey: I don't have a workspace profile yet. A few quick questions:")
 	fmt.Fprintln(out)
 
-	name := promptLine(sc, out, "> What should I call you in this workspace? ")
 	role := promptLine(sc, out, "> What is your role here? (developer / researcher / writer / other) ")
 	langs := promptLine(sc, out, "> Primary language(s) or tools? e.g. Go, TypeScript, Python ")
 	notes := promptLine(sc, out, "> Anything else I should know about this project? (Enter to skip) ")
 
 	// Build description and summary from answers.
 	var parts []string
-	if name != "" {
-		parts = append(parts, name)
-	}
+	parts = append(parts, name)
 	if role != "" {
 		parts = append(parts, role)
 	}
@@ -84,37 +91,23 @@ func RunOnboarding(a *Agent, store *MemoryStore, embedder Embedder, out io.Write
 		parts = append(parts, langs)
 	}
 	description := strings.Join(parts, " — ")
-	if description == "" {
-		description = "workspace profile"
-	}
 	summary := description
 	if notes != "" {
 		summary += ". " + notes
 	}
 
-	tags := []string{"workspace_profile", "onboarding"}
-	if name != "" {
-		if fields := strings.Fields(name); len(fields) > 0 {
-			tags = append(tags, strings.ToLower(fields[0]))
-		}
-	}
+	tags := []string{"workspace_profile", "onboarding", strings.ToLower(name)}
 
 	id := GenerateMemoryID(MemoryTypeWorkspaceProfile)
 	profileDoc := NewMemoryDoc(id, MemoryTypeWorkspaceProfile, description, summary, tags)
 	profileDoc.FountainBody = BuildFountainBody(ts, [][2]string{
 		{"HARVEY", "Workspace profile captured during onboarding."},
-		{"USER", fmt.Sprintf("Name: %s. Role: %s. Languages: %s. Notes: %s.", name, role, langs, notes)},
+		{"USER", fmt.Sprintf("Workspace: %s. Role: %s. Languages: %s. Notes: %s.", name, role, langs, notes)},
 	})
 	if err := store.Save(profileDoc, embedder); err != nil {
 		return fmt.Errorf("save workspace_profile: %w", err)
 	}
 	fmt.Fprintln(out, green("✓")+" Workspace profile saved.")
-
-	// Auto-extract project_fact or ask the user.
-	wsRoot := ""
-	if a.Workspace != nil {
-		wsRoot = a.Workspace.Root
-	}
 	projectFact := extractProjectFact(wsRoot)
 	if projectFact == "" {
 		projectFact = promptLine(sc, out, "> Brief project description (e.g. language, purpose) — Enter to skip: ")
@@ -124,8 +117,7 @@ func RunOnboarding(a *Agent, store *MemoryStore, embedder Embedder, out io.Write
 
 	if projectFact != "" {
 		pfID := GenerateMemoryID(MemoryTypeProjectFact)
-		wsName := filepath.Base(wsRoot)
-		pfDesc := "Project: " + wsName
+		pfDesc := "Project: " + name
 		pfDoc := NewMemoryDoc(pfID, MemoryTypeProjectFact, pfDesc, projectFact, []string{"project_fact", "auto"})
 		pfDoc.FountainBody = BuildFountainBody(ts, [][2]string{
 			{"HARVEY", "Project fact captured during onboarding."},

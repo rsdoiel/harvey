@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 // sensitiveCmdEnvVars contains environment variable names that should be
 // EXCLUDED from child processes to prevent sensitive data leakage.
 var sensitiveCmdEnvVars = []string{
+	// LLM provider API keys
 	"ANTHROPIC_API_KEY",
 	"COHERE_API_KEY",
 	"DEEPSEEK_API_KEY",
@@ -32,6 +34,19 @@ var sensitiveCmdEnvVars = []string{
 	"MISTRAL_API_KEY",
 	"OPENAI_API_KEY",
 	"PERPLEXITY_API_KEY",
+	// S3-compatible storage credentials (AWS, MinIO, Cloudflare R2)
+	"AWS_ACCESS_KEY_ID",
+	"AWS_SECRET_ACCESS_KEY",
+	"AWS_SESSION_TOKEN",
+	"AWS_SECURITY_TOKEN",
+	"MINIO_ACCESS_KEY",
+	"MINIO_SECRET_KEY",
+	// SFTP/SCP credentials
+	"SFTP_PASSWORD",
+	"SFTP_KEY_PATH",
+	// HTTP authentication credentials
+	"HTTP_BEARER_TOKEN",
+	"HTTP_BASIC_PASSWORD",
 }
 
 // safeCmdEnvPrefixes contains environment variable name prefixes that are
@@ -2192,6 +2207,30 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 
 	ok := 0
 	for _, rel := range args {
+		// Remote URI: bypass workspace permissions and read directly.
+		if parseURIScheme(rel) != "" {
+			rr, err := NewRemoteReader(rel)
+			if err != nil {
+				fmt.Fprintf(out, "  ✗ %s: %v\n", rel, err)
+				continue
+			}
+			var buf bytes.Buffer
+			if err := rr.Get(context.Background(), rel, &buf); err != nil {
+				fmt.Fprintf(out, "  ✗ %s: %v\n", rel, err)
+				continue
+			}
+			data := buf.Bytes()
+			fmt.Fprintf(out, "  ✓ %s (%d bytes)\n", rel, len(data))
+			sb.WriteString("\n```" + rel + "\n")
+			sb.Write(data)
+			if len(data) > 0 && data[len(data)-1] != '\n' {
+				sb.WriteByte('\n')
+			}
+			sb.WriteString("```\n")
+			ok++
+			continue
+		}
+
 		if !a.CheckReadPermission(rel) {
 			if a.AuditBuffer != nil {
 				a.AuditBuffer.Log(ActionFileRead, rel, StatusDenied)
@@ -2611,6 +2650,12 @@ func cmdAttach(a *Agent, args []string, out io.Writer) error {
 	}
 
 	filePath := args[0]
+
+	// Remote URI: download content and route through the same MIME detection.
+	if parseURIScheme(filePath) != "" {
+		return cmdAttachRemote(a, filePath, out)
+	}
+
 	absPath, err := resolvePDFPath(filePath)
 	if err != nil {
 		fmt.Fprintf(out, "  ✗ %s: %v\n", filePath, err)
@@ -2646,6 +2691,49 @@ func cmdAttach(a *Agent, args []string, out io.Writer) error {
 		return attachImage(a, filePath, base, data, mime, out)
 	}
 	return attachText(a, filePath, base, data, mime, out)
+}
+
+// cmdAttachRemote downloads a remote URI and attaches it using the same MIME
+// routing as cmdAttach for local files. PDFs are written to a temp file so
+// that the existing pdftotext pipeline can operate on them. The URI is shown
+// in output; credentials are never revealed.
+func cmdAttachRemote(a *Agent, uri string, out io.Writer) error {
+	rr, err := NewRemoteReader(uri)
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
+		return nil
+	}
+	var buf bytes.Buffer
+	if err := rr.Get(context.Background(), uri, &buf); err != nil {
+		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
+		return nil
+	}
+	data := buf.Bytes()
+	base := filepath.Base(uri)
+
+	// PDFs: write to temp file and route through the existing pdftotext pipeline.
+	if strings.ToLower(filepath.Ext(base)) == ".pdf" {
+		f, err := os.CreateTemp("", "harvey-remote-*.pdf")
+		if err != nil {
+			fmt.Fprintf(out, "  ✗ %s: create temp: %v\n", uri, err)
+			return nil
+		}
+		tmpPath := f.Name()
+		defer os.Remove(tmpPath)
+		if _, werr := f.Write(data); werr != nil {
+			f.Close()
+			fmt.Fprintf(out, "  ✗ %s: write temp: %v\n", uri, werr)
+			return nil
+		}
+		f.Close()
+		return cmdReadPDF(a, []string{tmpPath}, out)
+	}
+
+	mime := attachDetectMIME(base, data)
+	if attachIsImageMIME(mime) {
+		return attachImage(a, uri, base, data, mime, out)
+	}
+	return attachText(a, uri, base, data, mime, out)
 }
 
 // attachImage attaches an image file to the conversation. When the active
@@ -4837,8 +4925,25 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	}
 	embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)
 
-	// Collect all candidate files across all given paths.
-	files, err := ragCollectFiles(paths, a.Workspace.AbsPath)
+	// Separate remote URIs from local paths. Remote S3 prefixes are ingested
+	// directly (download → ingest → remove per object) without the large-file
+	// confirmation flow, since the user explicitly addressed them by URI.
+	var localPaths []string
+	for _, p := range paths {
+		if parseURIScheme(p) == "s3" {
+			ragIngestS3Prefix(a, p, embedder, out)
+		} else if parseURIScheme(p) != "" {
+			fmt.Fprintf(out, "  ⚠ remote ingest only supports s3:// URIs, skipping %s\n", p)
+		} else {
+			localPaths = append(localPaths, p)
+		}
+	}
+	if len(localPaths) == 0 {
+		return nil
+	}
+
+	// Collect all candidate files across all given local paths.
+	files, err := ragCollectFiles(localPaths, a.Workspace.AbsPath)
 	if err != nil {
 		fmt.Fprintf(out, "  error collecting files: %v\n", err)
 		return nil
@@ -4901,6 +5006,74 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "Ingested %d chunk(s) total from %d file(s).\n", total, len(files))
 	return nil
+}
+
+// ragIngestS3Prefix lists all ingestable objects under an S3 prefix URI and
+// ingests each one by downloading to a temp file, ingesting, and removing the
+// temp file immediately. This keeps peak disk usage bounded to a single object.
+func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) {
+	s3r, err := newS3Reader()
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
+		return
+	}
+	objects, err := s3r.List(context.Background(), uri)
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ list %s: %v\n", uri, err)
+		return
+	}
+	var ingested int
+	for _, obj := range objects {
+		if obj.IsDir {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(obj.URI))
+		if !ragIngestableExts[ext] {
+			continue
+		}
+		f, err := os.CreateTemp("", "harvey-s3-*"+ext)
+		if err != nil {
+			fmt.Fprintf(out, "  ✗ temp for %s: %v\n", obj.URI, err)
+			continue
+		}
+		tmpPath := f.Name()
+		if err := s3r.Get(context.Background(), obj.URI, f); err != nil {
+			f.Close()
+			os.Remove(tmpPath)
+			fmt.Fprintf(out, "  ✗ download %s: %v\n", obj.URI, err)
+			continue
+		}
+		f.Close()
+
+		fmt.Fprintf(out, "  %s", obj.URI)
+		var n int
+		if ext == ".pdf" {
+			var diagrams []int
+			n, diagrams, err = ragIngestPDF(a.Rag, embedder, tmpPath)
+			if err != nil {
+				fmt.Fprintf(out, " — error: %v\n", err)
+			} else {
+				fmt.Fprintf(out, " — %d chunk(s)", n)
+				if len(diagrams) > 0 {
+					fmt.Fprintf(out, " (%d diagram-only page(s) flagged)", len(diagrams))
+				}
+				fmt.Fprintln(out)
+				ingested += n
+			}
+		} else {
+			n, err = ragIngestFile(a.Rag, embedder, tmpPath)
+			if err != nil {
+				fmt.Fprintf(out, " — error: %v\n", err)
+			} else {
+				fmt.Fprintf(out, " — %d chunk(s)\n", n)
+				ingested += n
+			}
+		}
+		os.Remove(tmpPath) // immediate cleanup regardless of ingest outcome
+	}
+	if ingested > 0 {
+		fmt.Fprintf(out, "  S3: ingested %d chunk(s) from %s\n", ingested, uri)
+	}
 }
 
 // ragIngestFile reads a file, splits it into paragraph chunks, and ingests them.

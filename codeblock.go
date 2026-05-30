@@ -2,7 +2,10 @@ package harvey
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
+
+	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 /** CodeBlock holds a single fenced code block parsed from a markdown response.
@@ -40,6 +43,42 @@ func isToolCallBlock(b CodeBlock) bool {
 	_, hasArgs := obj["arguments"]
 	_, hasParams := obj["parameters"]
 	return hasArgs || hasParams
+}
+
+// ParseProseToolCalls converts tool-call code blocks into anyllm.ToolCall values.
+// It handles both qwen2.5 ("arguments") and llama3.2 ("parameters") key names.
+// Blocks that do not parse as tool calls are silently skipped.
+func ParseProseToolCalls(blocks []CodeBlock) []anyllm.ToolCall {
+	var calls []anyllm.ToolCall
+	for i, b := range blocks {
+		if !isToolCallBlock(b) {
+			continue
+		}
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(strings.TrimSpace(b.Content)), &obj); err != nil {
+			continue
+		}
+		var name string
+		if err := json.Unmarshal(obj["name"], &name); err != nil || name == "" {
+			continue
+		}
+		argsRaw, ok := obj["arguments"]
+		if !ok {
+			argsRaw, ok = obj["parameters"]
+		}
+		if !ok {
+			continue
+		}
+		calls = append(calls, anyllm.ToolCall{
+			ID:   fmt.Sprintf("prose_%d", i),
+			Type: "function",
+			Function: anyllm.FunctionCall{
+				Name:      name,
+				Arguments: string(argsRaw),
+			},
+		})
+	}
+	return calls
 }
 
 // extractCodeBlocks returns all triple-backtick fenced code blocks in text,

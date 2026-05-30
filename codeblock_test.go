@@ -99,3 +99,55 @@ func TestExtractCodeBlocks_langWithSpace(t *testing.T) {
 		t.Errorf("lang: got %q, want %q", blocks[0].Lang, "go")
 	}
 }
+
+func TestParseProseToolCalls_qwen(t *testing.T) {
+	// qwen2.5-style: "arguments" key
+	text := "```json\n{\"name\": \"write_file\", \"arguments\": {\"path\": \"foo.ts\", \"content\": \"export function foo(): void {}\"}}\n```"
+	blocks := extractCodeBlocks(text)
+	calls := ParseProseToolCalls(blocks)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Function.Name != "write_file" {
+		t.Errorf("name: got %q, want write_file", calls[0].Function.Name)
+	}
+	if calls[0].ID == "" {
+		t.Error("expected non-empty ID")
+	}
+	if calls[0].Function.Arguments == "" {
+		t.Error("expected non-empty arguments JSON")
+	}
+}
+
+func TestParseProseToolCalls_llama(t *testing.T) {
+	// llama3.2-style: "parameters" key
+	text := "```json\n{\"name\": \"read_file\", \"parameters\": {\"path\": \"main.go\"}}\n```"
+	blocks := extractCodeBlocks(text)
+	calls := ParseProseToolCalls(blocks)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Function.Name != "read_file" {
+		t.Errorf("name: got %q, want read_file", calls[0].Function.Name)
+	}
+}
+
+func TestParseProseToolCalls_nonToolBlock(t *testing.T) {
+	// A regular Go code block should not be parsed as a tool call.
+	text := "```go\npackage main\nfunc main() {}\n```"
+	blocks := extractCodeBlocks(text)
+	calls := ParseProseToolCalls(blocks)
+	if len(calls) != 0 {
+		t.Fatalf("expected 0 calls from Go block, got %d", len(calls))
+	}
+}
+
+func TestParseProseToolCalls_missingArgsKey(t *testing.T) {
+	// JSON with "name" but no arguments/parameters — should be skipped.
+	text := "```json\n{\"name\": \"do_something\", \"other\": \"value\"}\n```"
+	blocks := extractCodeBlocks(text)
+	calls := ParseProseToolCalls(blocks)
+	if len(calls) != 0 {
+		t.Fatalf("expected 0 calls, got %d", len(calls))
+	}
+}
