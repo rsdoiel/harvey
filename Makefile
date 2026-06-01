@@ -10,6 +10,8 @@ GIT_GROUP = rsdoiel
 
 PROGRAMS = harvey
 
+TOOLS = assay
+
 RELEASE_DATE = $(shell date +%Y-%m-%d)
 
 RELEASE_HASH=$(shell git log --pretty=format:'%h' -n 1)
@@ -44,7 +46,7 @@ ifeq ($(OS), Windows)
 	EXT = .exe
 endif
 
-build: version.go $(PROGRAMS) man CITATION.cff about.md installer.sh installer.ps1
+build: version.go $(PROGRAMS) $(TOOLS) man CITATION.cff about.md installer.sh installer.ps1
 
 version.go: .FORCE
 	cmt codemeta.json version.go
@@ -70,6 +72,10 @@ $(PROGRAMS): $(PACKAGE)
 	@mkdir -p bin
 	go build -o "bin/$@$(EXT)" cmd/$@/*.go
 	@./bin/$@ -help >$@.1.md
+
+$(TOOLS): $(PACKAGE)
+	@mkdir -p bin
+	go build -o "bin/$@$(EXT)" cmd/$@/*.go
 
 $(MAN_PAGES): .FORCE
 	mkdir -p man/man1
@@ -120,7 +126,7 @@ clean-website:
 
 install: build
 	@echo "Installing programs in $(PREFIX)/bin"
-	@for FNAME in $(PROGRAMS); do if [ -f "./bin/$${FNAME}$(EXT)" ]; then mv -v "./bin/$${FNAME}$(EXT)" "$(PREFIX)/bin/$${FNAME}$(EXT)"; fi; done
+	@for FNAME in $(PROGRAMS) $(TOOLS); do if [ -f "./bin/$${FNAME}$(EXT)" ]; then mv -v "./bin/$${FNAME}$(EXT)" "$(PREFIX)/bin/$${FNAME}$(EXT)"; fi; done
 	@echo ""
 	@echo "Make sure $(PREFIX)/bin is in your PATH"
 	@echo "Installing man page in $(PREFIX)/man"
@@ -135,7 +141,7 @@ install: build
 
 uninstall: .FORCE
 	@echo "Removing programs in $(PREFIX)/bin"
-	@for FNAME in $(PROGRAMS); do if [ -f "$(PREFIX)/bin/$${FNAME}$(EXT)" ]; then rm -v "$(PREFIX)/bin/$${FNAME}$(EXT)"; fi; done
+	@for FNAME in $(PROGRAMS) $(TOOLS); do if [ -f "$(PREFIX)/bin/$${FNAME}$(EXT)" ]; then rm -v "$(PREFIX)/bin/$${FNAME}$(EXT)"; fi; done
 	@echo "Removing man pages in $(PREFIX)/man"
 	@for FNAME in $(MAN_PAGES_1); do if [ -f "$(PREFIX)/man/man1/$${FNAME}" ]; then rm -v "$(PREFIX)/man/man1/$${FNAME}"; fi; done
 	@for FNAME in $(MAN_PAGES_3); do if [ -f "$(PREFIX)/man/man3/$${FNAME}" ]; then rm -v "$(PREFIX)/man/man3/$${FNAME}"; fi; done
