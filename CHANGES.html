@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="changes">CHANGES</h1>
+<h2 id="v0.0.5c-2026-05-30">v0.0.5c (2026-05-30)</h2>
+<h3 id="new-features">New features</h3>
+<p><strong>Remote protocol integration</strong> — Harvey can now read
+files from remote storage over <code>s3://</code>, <code>http://</code>,
+<code>https://</code>, <code>sftp://</code>, and <code>scp://</code>
+URIs anywhere a local path was accepted (<code>/read</code>,
+<code>/attach</code>, RAG ingest).</p>
+<ul>
+<li><code>RemoteReader</code> interface with URI-scheme factory
+(<code>NewRemoteReader</code>)</li>
+<li>S3-compatible backend via MinIO Go client (AWS S3, MinIO, Cloudflare
+R2)</li>
+<li>HTTP/HTTPS backend (stdlib <code>net/http</code>); HTTPS→HTTP
+downgrade protection</li>
+<li>SFTP/SCP backend (<code>golang.org/x/crypto/ssh</code>); strict
+host-key fingerprint verification required — anonymous connections are
+refused</li>
+<li>S3 RAG ingest: <code>/rag add s3://bucket/prefix/</code> ingests
+objects as RAG docs</li>
+<li>Tab completion extended to remote URI prefixes</li>
+</ul>
+<p><strong>Unified memory system</strong></p>
+<ul>
+<li><code>MemoryConfig</code> is now the single canonical owner of all
+RAG and knowledge-base configuration; <code>memory.rag:</code> and
+<code>memory.knowledge_base:</code> replace top-level <code>rag:</code>
+in <code>harvey.yaml</code> (old format still loaded for backward
+compatibility)</li>
+<li>Rolling summary: when conversation history exceeds
+<code>memory.budget_pct</code> (default 25 %) of the model context
+window, Harvey compresses all but the last six turns into a ~150-token
+summary with a warning</li>
+<li>Hybrid retrieval: FTS5 lexical fast-path combined with cosine
+similarity (when an embedder is active); <code>Recent()</code> fallback
+replaced by relevance ranking</li>
+<li>Session stats: <code>memory_stats</code> table in
+<code>memories.db</code> tracks token budget, injected tokens,
+compression events, and average tokens/sec per session</li>
+<li><code>/memory status</code> now shows budget utilisation and, after
+ten sessions, prints evidence-based advice to increase or reduce
+<code>budget_pct</code></li>
+<li><code>/memory recall QUERY</code> — on-demand semantic search across
+all memory types</li>
+<li>Workspace-profile onboarding: on first run Harvey prompts four
+questions and writes a <code>workspace_profile</code> memory document;
+no longer asks for workspace name (derived from the directory)</li>
+</ul>
+<p><strong>Pipeline support</strong></p>
+<ul>
+<li><code>/pipeline</code> command and implementation for multi-step
+prompt pipelines</li>
+<li>Pipeline steps can reference workspace files and inject their output
+into subsequent steps</li>
+</ul>
+<h3 id="security-fixes">Security fixes</h3>
+<ul>
+<li><strong>SFTP — OOM prevention</strong>: <code>sftpReadPacket</code>
+now rejects packets larger than 4 MB; <code>sftpReadStr</code> rejects
+strings larger than 256 KB. A malicious or misconfigured SFTP server
+could previously trigger a ~4 GB allocation.</li>
+<li><strong>HTTP — response body limit</strong>: <code>Get</code> caps
+the response body at 256 MB via <code>io.LimitReader</code>; responses
+that hit the cap return an error instead of exhausting process
+memory.</li>
+<li><strong>HTTP — client timeout</strong>:
+<code>http.Client.Timeout</code> is now 5 minutes, preventing indefinite
+hangs when a server stalls after accepting the connection.</li>
+<li><strong>Credential filtering</strong>:
+<code>filterCommandEnvironment</code> extended to strip
+<code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code>,
+<code>AWS_SESSION_TOKEN</code>, <code>AWS_SECURITY_TOKEN</code>,
+<code>MINIO_ACCESS_KEY</code>, <code>MINIO_SECRET_KEY</code>,
+<code>SFTP_PASSWORD</code>, <code>SFTP_KEY_PATH</code>,
+<code>HTTP_BEARER_TOKEN</code>, <code>HTTP_BASIC_PASSWORD</code> from
+child-process environments.</li>
+</ul>
+<h3 id="bug-fixes">Bug fixes</h3>
+<ul>
+<li>Fixed tools-loop processing problem where the model’s tool-call
+responses were not advancing the conversation correctly</li>
+<li>Fixed <code>write_file</code> tool failure: malformed JSON in model
+responses no longer silently drops the write; error is surfaced to the
+user</li>
+<li>Fixed missing help documentation for several commands added in
+v0.0.5</li>
+</ul>
+<h2 id="v0.0.5-2026-05-17">v0.0.5 (2026-05-17)</h2>
+<ul>
+<li>Initial public release</li>
+<li>Terminal REPL with Ollama backend</li>
+<li>Tool calling: <code>read_file</code>, <code>write_file</code>,
+<code>list_files</code>, <code>run_command</code>, <code>git</code></li>
+<li>RAG store support (SQLite-backed vector search)</li>
+<li>Knowledge-base integration (<code>/kb</code> commands)</li>
+<li>Session recording to Fountain screenplay format
+(<code>.spmd</code>)</li>
+<li>Safe mode with command allowlist</li>
+<li>Multi-model routing (<code>/route</code>, <code>@name</code>
+dispatch)</li>
+<li>Skill dispatch system</li>
+<li>Cross-platform installers (Linux x86-64/aarch64/armv7l, macOS,
+Windows)</li>
+</ul>
+</section>
+</body>
+</html>

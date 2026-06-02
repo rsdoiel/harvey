@@ -12,25 +12,26 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.5c
+version: 0.0.6
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go >= 1.26.2
 
 
-date_released: 2026-05-19
+date_released: 2026-05-30
 ---
 
 About this software
 ===================
 
-## harvey 0.0.5c
+## harvey 0.0.6
 
 - Added `/memory` commands and "memory" implementation
 - Added `/pipeline` support and implementation
 - Unified memory, RAG and Knowledge base support
 - Bug fixes catching write_file failer in model responses
+- Added support for remote access for S3, HTTP and SFTP for reading and inguesting content
 
 ## Authors
 

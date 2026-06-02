@@ -772,7 +772,10 @@ func (a *Agent) Run(out io.Writer) error {
 					}
 				}
 				if allToolCalls {
-					fmt.Fprintln(out, yellow("  ⚠")+" Model produced only tool-call syntax; it may not have answered the question. Try /tools off or a larger model.")
+					// Try to parse and execute the prose tool calls before warning.
+					if !tryExecuteProseToolCalls(a, blocks, out) {
+						fmt.Fprintln(out, yellow("  ⚠")+" Model produced only tool-call syntax; it may not have answered the question. Try /tools off or a larger model.")
+					}
 				}
 			}
 			for i, block := range blocks {
@@ -1337,6 +1340,11 @@ func (a *Agent) buildCompleter() func(string) []string {
 					currentPos = len(tokens)
 				}
 				if currentPos >= pathStart {
+					if strings.HasPrefix(word, "s3://") {
+						candidates := remotePathCandidates(word)
+						sortStrings(candidates)
+						return candidates
+					}
 					matches := workspacePathCandidates(a.Workspace.Root, word, onlyDirs, extFilter)
 					sortStrings(matches)
 					return matches
@@ -1509,4 +1517,92 @@ func (a *Agent) ragAugment(prompt string) string {
 	sb.WriteString("---\n\n")
 	sb.WriteString(prompt)
 	return sb.String()
+}
+
+// tryExecuteProseToolCalls parses tool-call-format JSON blocks from blocks and
+// executes them through the tool registry when tools are enabled. Returns true
+// if at least one tool was dispatched; false when tools are disabled, no calls
+// were found, or no registry is available.
+//
+// This handles small models (e.g. qwen2.5, llama3.2) that emit tool calls as
+// fenced JSON blocks in prose instead of using the structured function-calling
+// API path.
+func tryExecuteProseToolCalls(a *Agent, blocks []CodeBlock, out io.Writer) bool {
+	if a.Tools == nil || !a.Config.ToolsEnabled {
+		return false
+	}
+	calls := ParseProseToolCalls(blocks)
+	if len(calls) == 0 {
+		return false
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ex := NewToolExecutor(a.Tools, a.Client, a.Config)
+	ex.DebugLog = a.DebugLog
+	results, _ := ex.ExecuteToolCalls(ctx, calls)
+	for i, r := range results {
+		name := ""
+		if i < len(calls) {
+			name = calls[i].Function.Name
+		}
+		fmt.Fprintf(out, dim(fmt.Sprintf("  [%s]", name))+" %s\n", r.Content)
+	}
+	return len(results) > 0
+}
+
+/** remotePathCandidates returns tab-completion candidates for a partial s3:// URI.
+ * It lists objects under the directory portion of word using the S3 backend.
+ * Returns nil silently when credentials are absent, the URI is malformed, or
+ * the scheme is not s3://.
+ *
+ * Parameters:
+ *   word (string) — the partial URI being typed, e.g. "s3://bucket/docs/".
+ *
+ * Returns:
+ *   []string — full s3:// URIs of matching objects; nil when completion is unavailable.
+ *
+ * Example:
+ *   candidates := remotePathCandidates("s3://mybucket/docs/")
+ *   // returns ["s3://mybucket/docs/spec.md", "s3://mybucket/docs/guide.md"]
+ */
+func remotePathCandidates(word string) []string {
+	if !strings.HasPrefix(word, "s3://") {
+		return nil
+	}
+	rest := word[5:] // after "s3://"
+	slashIdx := strings.IndexByte(rest, '/')
+	if slashIdx < 0 {
+		return nil // still typing the bucket name
+	}
+	bucket := rest[:slashIdx]
+	if bucket == "" {
+		return nil
+	}
+	keyPart := rest[slashIdx+1:] // everything after s3://bucket/
+
+	// List under the directory portion (up to the last '/').
+	dir := ""
+	base := keyPart
+	if lastSlash := strings.LastIndexByte(keyPart, '/'); lastSlash >= 0 {
+		dir = keyPart[:lastSlash+1]
+		base = keyPart[lastSlash+1:]
+	}
+	listURI := "s3://" + bucket + "/" + dir
+
+	s3r, err := newS3Reader()
+	if err != nil {
+		return nil
+	}
+	objects, err := s3r.List(context.Background(), listURI)
+	if err != nil {
+		return nil
+	}
+	var results []string
+	for _, obj := range objects {
+		key := strings.TrimPrefix(obj.URI, "s3://"+bucket+"/")
+		if base == "" || strings.HasPrefix(key, dir+base) {
+			results = append(results, obj.URI)
+		}
+	}
+	return results
 }

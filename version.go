@@ -6,10 +6,10 @@ import (
 
 const (
     // Version number of release
-    Version = "0.0.5c"
+    Version = "0.0.6"
 
     // ReleaseDate, the date version.go was generated
-    ReleaseDate = "2026-05-26"
+    ReleaseDate = "2026-05-30"
 
     // ReleaseHash, the Git hash when version.go was generated
     ReleaseHash = "88504ea"
