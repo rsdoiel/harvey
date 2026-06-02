@@ -115,6 +115,7 @@ type Config struct {
 	ContinuePath        string          // session file to load as pre-history when starting the REPL
 	ReplayPath          string          // session file to replay instead of entering the REPL
 	ReplayOutputPath    string          // output path for replay recording; empty = auto-generated
+	ReplayContinue      bool            // when true, drop into the REPL after replay finishes
 	ModelCacheDB        string          // path to model_cache.db; empty = harvey/model_cache.db
 	// Security settings
 	SafeMode        bool     // when true, only commands in AllowedCommands can be executed via ! or /run

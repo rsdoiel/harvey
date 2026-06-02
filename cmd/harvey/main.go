@@ -87,12 +87,18 @@ func main() {
 					fmt.Print(fmtHelp(harvey.StatusHelpText, appName, version, releaseDate, releaseHash))
 				case "write":
 					fmt.Print(fmtHelp(harvey.WriteHelpText, appName, version, releaseDate, releaseHash))
+				case "attach":
+					fmt.Print(fmtHelp(harvey.AttachHelpText, appName, version, releaseDate, releaseHash))
+				case "read-pdf", "readpdf":
+					fmt.Print(fmtHelp(harvey.ReadPDFHelpText, appName, version, releaseDate, releaseHash))
 				case "memory":
 					fmt.Print(fmtHelp(harvey.MemoryHelpText, appName, version, releaseDate, releaseHash))
 				case "pipeline":
 					fmt.Print(fmtHelp(harvey.PipelineHelpText, appName, version, releaseDate, releaseHash))
+				case "learn":
+					fmt.Print(fmtHelp(harvey.LearnHelpText, appName, version, releaseDate, releaseHash))
 				default:
-					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, memory, ollama, permissions, pipeline, rag, read, read-dir, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
+					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, learn, memory, ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
 					os.Exit(1)
 				}
 			} else {
@@ -122,6 +128,8 @@ func main() {
 			cfg.ReplayPath = next()
 		case "--replay-output":
 			cfg.ReplayOutputPath = next()
+		case "--replay-continue":
+			cfg.ReplayContinue = true
 		case "--debug":
 			cfg.Debug = true
 			setDebugEnv()

@@ -2361,6 +2361,12 @@ are also available from the shell: harvey --help TOPIC.
 /read FILE [FILE...]
 : inject file contents into the conversation as context
 
+/attach FILE
+: attach a file (image, PDF, or text) to the next turn; chooses best representation for the active route
+
+/read-pdf FILE [PAGES]
+: extract text from a PDF and inject it into context (requires poppler; PAGES e.g. 1-10)
+
 /write PATH
 : save the last assistant reply (or its first code block) to a file
 
@@ -2404,6 +2410,9 @@ are also available from the shell: harvey --help TOPIC.
 /status
 : show active backend, token usage, routing, recording, and debug state
 
+/hint
+: show actionable suggestions for improving results (RAG, memory, KB)
+
 **Sessions**
 
 /record <start [FILE]|stop|status>
@@ -2423,6 +2432,12 @@ are also available from the shell: harvey --help TOPIC.
 /rag <list|new NAME|use NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
 : manage retrieval-augmented generation stores
 
+/memory <mine|list|show|forget|status|recall|profile> [args...]
+: manage the session-experience memory store; mine and recall typed patterns
+
+/recall QUERY
+: search all knowledge silos (alias for /memory recall)
+
 **Skills**
 
 /skill <list|load NAME|info NAME|status|new|run NAME>
@@ -2430,6 +2445,11 @@ are also available from the shell: harvey --help TOPIC.
 
 /skill-set <list|load NAME|info NAME|create NAME|status|unload>
 : manage named bundles of skills
+
+**Pipelines**
+
+/pipeline <CONFIDENCE%> FILE [FILE ...]
+: chain Markdown prompt files as discrete steps with confidence gating
 
 **Security**
 
@@ -2494,6 +2514,86 @@ Actions:
   Ctrl+X  Ctrl+E         open $EDITOR (then $VISUAL, then vi) to compose
                          a multi-line prompt; content is submitted when
                          the editor exits
+
+`
+
+	LearnHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+LEARN — how Harvey accumulates and retrieves knowledge
+
+# DESCRIPTION
+
+Harvey stores knowledge in three independent silos that are unified at
+retrieval time. Understanding which silo to use for which kind of content
+is the key to getting consistently good results.
+
+
+# THE ONE DECISION RULE
+
+  Have a text file or document?        →  /rag ingest <file>
+  Something useful happened in a session? →  /memory mine
+  Making an observation about an experiment? →  /kb observe
+
+
+# THE THREE SILOS
+
+  Silo            What belongs here          How to add       How it arrives
+  ─────────────── ─────────────────────────  ───────────────  ─────────────────────
+  RAG store       Reference docs, API specs, /rag ingest      Per-prompt via
+                  code examples, PDF papers  <file>           /rag on (context)
+
+  Memory store    Patterns observed during   /memory mine     Session-start via
+                  sessions: what worked,     (interactive)    /memory recall
+                  what the model got wrong,  auto-mines on
+                  user preferences           session exit
+
+  Knowledge base  Research notes, named      /kb observe      On-demand via
+                  experiments, cross-project /kb project      /memory recall
+                  concepts and hypotheses    /kb concept
+
+Retrieval from all three silos is unified:
+
+  /memory recall <query>   — search all three silos, print ranked results
+  /recall <query>          — alias for /memory recall
+
+
+# CHECKING WHAT YOU HAVE
+
+  /status          — shows active memories, unmined sessions, RAG chunk count
+  /hint            — prints actionable suggestions for improving results
+  /memory status   — detailed memory store stats and budget advice
+  /rag status      — RAG store details: active store, chunk count, on/off
+
+
+# COMMON WORKFLOWS
+
+Ingest a PDF reference before starting a coding session:
+
+  /rag ingest Reference/papers/oberon2.pdf
+  /rag on
+
+Mine learnings from last session before starting the next:
+
+  /memory mine
+
+Record an observation about a running experiment:
+
+  /kb observe "Qwen3.5 handles nil pointer chains correctly after explicit cast"
+
+Check what would improve the current session:
+
+  /hint
+
+
+# SEE ALSO
+
+  /help rag       — full RAG command reference
+  /help memory    — full memory command reference
+  /help kb        — full knowledge base reference
 
 `
 )

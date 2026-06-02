@@ -12,26 +12,32 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.6
+version: 0.0.7
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go >= 1.26.2
 
 
-date_released: 2026-05-30
+date_released: 2026-06-02
 ---
 
 About this software
 ===================
 
-## harvey 0.0.6
+## harvey 0.0.7
 
-- Added `/memory` commands and "memory" implementation
+- Added `assay` evaluation tool for running prompt corpus against Ollama models
+- Added `--rag-db` and `--rag-compare` flags to `assay` for side-by-side RAG vs baseline evaluation
+- Added `/attach` command for attaching images, PDFs, and text files with route-aware representation
+- Added `/read-pdf` command for page-range PDF text extraction (requires poppler)
+- Added `/hint` command for actionable improvement suggestions (RAG, memory, KB)
+- Added `/memory` commands and memory store implementation
 - Added `/pipeline` support and implementation
+- Added `/recall` alias for `/memory recall` (searches all three knowledge silos)
 - Unified memory, RAG and Knowledge base support
-- Bug fixes catching write_file failer in model responses
-- Added support for remote access for S3, HTTP and SFTP for reading and inguesting content
+- Bug fixes catching write_file failure in model responses
+- Added support for remote access for S3, HTTP and SFTP for reading and ingesting content
 
 ## Authors
 

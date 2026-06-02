@@ -12,8 +12,8 @@
     }
   ],
   "dateCreated": "2026-04-15",
-  "dateModified": "2026-05-30",
-  "datePublished": "2026-05-30",
+  "dateModified": "2026-06-02",
+  "datePublished": "2026-06-02",
   "description": "Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.\n\nThe Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.",
   "name": "harvey",
   "license": "https://www.gnu.org/licenses/agpl-3.0.txt",
@@ -28,9 +28,9 @@
     "Pandoc >= 3.9",
     "GNU Make >= 3.8"
   ],
-  "version": "0.0.6",
+  "version": "0.0.7",
   "developmentStatus": "active",
   "issueTracker": "https://github.com/rsdoiel/harvey/issues",
-  "releaseNotes": "- Added `/memory` commands and \"memory\" implementation\n- Added `/pipeline` support and implementation\n- Unified memory, RAG and Knowledge base support\n- Bug fixes catching write_file failer in model responses\n- Added support for remote access for S3, HTTP and SFTP for reading and inguesting content",
+  "releaseNotes": "- Added `assay` evaluation tool for running prompt corpus against Ollama models\n- Added `--rag-db` and `--rag-compare` flags to `assay` for side-by-side RAG vs baseline evaluation\n- Added `/attach` command for attaching images, PDFs, and text files with route-aware representation\n- Added `/read-pdf` command for page-range PDF text extraction (requires poppler)\n- Added `/hint` command for actionable improvement suggestions (RAG, memory, KB)\n- Added `/memory` commands and memory store implementation\n- Added `/pipeline` support and implementation\n- Added `/recall` alias for `/memory recall` (searches all three knowledge silos)\n- Unified memory, RAG and Knowledge base support\n- Bug fixes catching write_file failure in model responses\n- Added support for remote access for S3, HTTP and SFTP for reading and ingesting content",
   "copyrightHolder": "R. S. Doiel"
 }

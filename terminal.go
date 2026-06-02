@@ -233,6 +233,7 @@ func (a *Agent) Run(out io.Writer) error {
 	if err := a.initWorkspace(out); err != nil {
 		return err
 	}
+	loadCmdHistory(a.Workspace, le)
 
 	// harvey/harvey.yaml — apply path overrides before any path-dependent init.
 	if err := LoadHarveyYAML(a.Workspace, a.Config); err != nil {
@@ -321,8 +322,10 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 	}
 
-	// Auto-start recording.
-	if a.Config.AutoRecord {
+	// Auto-start recording — skipped during replay to prevent both recorders
+	// from writing to the same auto-generated path (same-second collision).
+	// When --replay-continue is set, the recorder is started after replay finishes.
+	if a.Config.AutoRecord && a.Config.ReplayPath == "" {
 		recPath := a.Config.RecordPath
 		if recPath == "" {
 			recPath = DefaultSessionPath(a.SessionsDir)
@@ -346,7 +349,9 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 	}
 
-	// Replay mode — run turns from a session file and return without entering REPL.
+	// Replay mode — re-send turns to the current backend.
+	// Without --replay-continue, returns after replay (no REPL).
+	// With --replay-continue, falls through to the REPL with replay history loaded.
 	if a.Config.ReplayPath != "" {
 		outPath := a.Config.ReplayOutputPath
 		if outPath == "" {
@@ -358,7 +363,30 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintf(out, "  Replay mode: %s\n", a.Config.ReplayPath)
 		fmt.Fprintln(out, cyan(bold(sep)))
 		fmt.Fprintln(out)
-		return a.ReplayFromFountain(replayCtx, a.Config.ReplayPath, outPath, out)
+		if err := a.ReplayFromFountain(replayCtx, a.Config.ReplayPath, outPath, out); err != nil {
+			return err
+		}
+		if !a.Config.ReplayContinue {
+			return nil
+		}
+		// --replay-continue: start a fresh recorder for the REPL session that follows.
+		if a.Config.AutoRecord {
+			contRecPath := DefaultSessionPath(a.SessionsDir)
+			model := "none"
+			if a.Client != nil {
+				model = a.Client.Name()
+			}
+			if rec, err := NewRecorder(contRecPath, model, a.Workspace.Root); err != nil {
+				fmt.Fprintf(out, yellow("  ✗")+" Auto-record failed: %v\n", err)
+			} else {
+				a.Recorder = rec
+				fmt.Fprintf(out, green("✓")+" Recording continuation to %s\n", contRecPath)
+			}
+		}
+		fmt.Fprintln(out, cyan(bold(sep)))
+		fmt.Fprintln(out, "  Replay complete — continuing in REPL with replay history loaded.")
+		fmt.Fprintln(out, cyan(bold(sep)))
+		fmt.Fprintln(out)
 	}
 
 	// --continue flag: pre-load history from a named session file.
@@ -381,6 +409,9 @@ func (a *Agent) Run(out io.Writer) error {
 	fmt.Fprintln(out, dim("  /help for commands · /exit to quit"))
 	fmt.Fprintln(out, cyan(bold(sep)))
 	fmt.Fprintln(out)
+
+	// Memory digest — dim hints about pending actions, only printed when actionable.
+	sessionMemoryDigest(a, out)
 
 	// Workspace profile onboarding — runs once when workspace_profile/ is empty.
 	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.ReplayPath == "" {
@@ -405,6 +436,7 @@ func (a *Agent) Run(out io.Writer) error {
 	for {
 		input, err := le.Prompt(a.prompt())
 		if err == io.EOF || err == termlib.ErrInterrupted {
+			saveCmdHistory(a.Workspace, le)
 			fmt.Fprintln(out, dim("Goodbye."))
 			return nil
 		}
@@ -754,11 +786,17 @@ func (a *Agent) Run(out io.Writer) error {
 		a.recordStats(stats)
 		a.sessionTurns++
 
+		// noToolCalls is true when the model did not invoke any tools this turn.
+		// Captured before AddMessage so the value is valid at both the code-block
+		// extraction guard below and the autoExecuteReply guard further down.
+		noToolCalls := len(a.History) == histLenBeforeChat
+
 		// Code-block extraction: when the model produced fenced code blocks
 		// but made no tool calls, offer to write each block to a file. This
 		// handles small local models that respond with prose + a code block
 		// instead of invoking the write_file tool.
-		if a.Workspace != nil && len(a.History) == histLenBeforeChat {
+		var proseUnknownTools []string
+		if a.Workspace != nil && noToolCalls {
 			blocks := extractCodeBlocks(buf.String())
 			// Warn when the model produced only tool-call-syntax blocks and no
 			// substantive content — a sign it ignored the prompt (common in
@@ -773,7 +811,9 @@ func (a *Agent) Run(out io.Writer) error {
 				}
 				if allToolCalls {
 					// Try to parse and execute the prose tool calls before warning.
-					if !tryExecuteProseToolCalls(a, blocks, out) {
+					dispatched, unknowns := tryExecuteProseToolCalls(a, blocks, out)
+					proseUnknownTools = unknowns
+					if !dispatched {
 						fmt.Fprintln(out, yellow("  ⚠")+" Model produced only tool-call syntax; it may not have answered the question. Try /tools off or a larger model.")
 					}
 				}
@@ -828,7 +868,28 @@ func (a *Agent) Run(out io.Writer) error {
 				fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
 			}
 		}
-		a.autoExecuteReply(buf.String(), out, reader, chatCtx)
+		// Feed unknown-tool errors back into history so the model can self-correct
+		// on the next turn (now that the assistant message is in place, the history
+		// order is correct: …, assistant: <hallucinated call>, user: <correction>).
+		if len(proseUnknownTools) > 0 && a.Tools != nil {
+			schemas := a.Tools.GetToolSchemas()
+			available := make([]string, len(schemas))
+			for i, s := range schemas {
+				available[i] = s.Function.Name
+			}
+			correction := "Your tool call(s) failed: the tool name(s) " +
+				strings.Join(proseUnknownTools, ", ") +
+				" do not exist. Available tools: " +
+				strings.Join(available, ", ") +
+				". Please retry using one of these exact tool names."
+			a.AddMessage("user", correction)
+		}
+		// Skip autoExecuteReply when the model already wrote files via tool calls —
+		// the response text may contain display-only code blocks (e.g. directory
+		// trees) that should not be offered as files to write.
+		if noToolCalls {
+			a.autoExecuteReply(buf.String(), out, reader, chatCtx)
+		}
 
 		// Rolling summary: compress history when approaching the context limit.
 		if a.Config.Memory.RollingSummary.Enabled && a.Client != nil {
@@ -851,6 +912,7 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 	}
 
+	saveCmdHistory(a.Workspace, le)
 	fmt.Fprintln(out, dim("Goodbye."))
 
 	// Auto-mine on exit when the session had >= 10 user turns.
@@ -900,6 +962,62 @@ func (a *Agent) Run(out io.Writer) error {
 	}
 
 	return nil
+}
+
+const (
+	cmdHistoryFile    = "agents/harvey_history"
+	cmdHistoryMaxSize = 1000
+)
+
+/** loadCmdHistory reads agents/harvey_history from the workspace and seeds the
+ * LineEditor's history list. Missing or unreadable files are silently ignored
+ * so a missing history file on first run is not an error.
+ *
+ * Parameters:
+ *   ws (*Workspace)         — workspace to resolve the history file path.
+ *   le (*termlib.LineEditor) — editor whose history is seeded.
+ *
+ * Example:
+ *   loadCmdHistory(a.Workspace, le)
+ */
+func loadCmdHistory(ws *Workspace, le *termlib.LineEditor) {
+	if ws == nil {
+		return
+	}
+	data, err := ws.ReadFile(cmdHistoryFile)
+	if err != nil {
+		return
+	}
+	var lines []string
+	for _, l := range strings.Split(string(data), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	le.SetHistory(lines)
+}
+
+/** saveCmdHistory writes the LineEditor's current history to agents/harvey_history
+ * in the workspace, keeping only the most recent cmdHistoryMaxSize entries.
+ * Errors are silently ignored so a write failure never crashes Harvey on exit.
+ *
+ * Parameters:
+ *   ws (*Workspace)         — workspace to resolve the history file path.
+ *   le (*termlib.LineEditor) — editor whose history is persisted.
+ *
+ * Example:
+ *   saveCmdHistory(a.Workspace, le)
+ */
+func saveCmdHistory(ws *Workspace, le *termlib.LineEditor) {
+	if ws == nil {
+		return
+	}
+	entries := le.History()
+	if len(entries) > cmdHistoryMaxSize {
+		entries = entries[len(entries)-cmdHistoryMaxSize:]
+	}
+	data := []byte(strings.Join(entries, "\n") + "\n")
+	_ = ws.WriteFile(cmdHistoryFile, data, 0o600)
 }
 
 // toolCallsFromHistory extracts ToolCallRecords from a slice of history
@@ -1455,6 +1573,61 @@ func (a *Agent) modelAndAliasCandidates(prefix string) []string {
 	return candidates
 }
 
+/** sessionMemoryDigest prints dim startup hints when any knowledge silo
+ * has an actionable state: unmined sessions, empty RAG store, or RAG disabled
+ * while chunks exist. Prints nothing when everything is healthy. Non-fatal —
+ * any failure loading the manifest or counting chunks is silently ignored.
+ *
+ * Parameters:
+ *   a   (*Agent)    — the running agent (workspace, Rag, RagOn, Config must be set).
+ *   out (io.Writer) — output destination.
+ *
+ * Returns:
+ *   nothing — all errors are swallowed so startup is never blocked.
+ *
+ * Example:
+ *   sessionMemoryDigest(a, out)  // called once after the ready line
+ */
+func sessionMemoryDigest(a *Agent, out io.Writer) {
+	if a.Workspace == nil || !a.Config.Memory.Enabled {
+		return
+	}
+
+	// Count unmined sessions via manifest.
+	store, err := NewMemoryStore(a.Workspace)
+	if err == nil {
+		defer store.Close()
+		manifest, err := LoadManifest(store.Dir())
+		if err == nil {
+			sessDir := a.SessionsDir
+			if sessDir == "" {
+				sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")
+			}
+			if unmined, err := manifest.UnminedSessions(sessDir); err == nil && len(unmined) > 0 {
+				fmt.Fprint(out, dim(fmt.Sprintf("  %d session(s) unmined — /memory mine to extract learnings\n", len(unmined))))
+			}
+		}
+	}
+
+	// RAG store hints.
+	entry := a.Config.Memory.ActiveRagStore()
+	if entry == nil {
+		return
+	}
+	if a.Rag == nil {
+		return
+	}
+	n, err := a.Rag.Count()
+	if err != nil {
+		return
+	}
+	if n == 0 {
+		fmt.Fprint(out, dim(fmt.Sprintf("  RAG store %q is empty — /rag ingest <files> to add knowledge\n", entry.Name)))
+	} else if !a.RagOn {
+		fmt.Fprint(out, dim(fmt.Sprintf("  RAG has %d chunk(s) but is off — /rag on to enable context injection\n", n)))
+	}
+}
+
 // ragAugment prepends relevant RAG chunks to prompt when RAG is enabled.
 // Returns the original prompt unchanged when RAG is off, unconfigured, or
 // when no chunks are retrieved. Errors are silently swallowed so a RAG
@@ -1520,20 +1693,23 @@ func (a *Agent) ragAugment(prompt string) string {
 }
 
 // tryExecuteProseToolCalls parses tool-call-format JSON blocks from blocks and
-// executes them through the tool registry when tools are enabled. Returns true
-// if at least one tool was dispatched; false when tools are disabled, no calls
-// were found, or no registry is available.
+// executes them through the tool registry when tools are enabled.
+//
+// Returns:
+//   - dispatched: true if at least one tool call succeeded (not just attempted).
+//   - unknownNames: names of tool calls that failed with "unknown tool" — the
+//     caller should feed these back to the LLM so it can self-correct.
 //
 // This handles small models (e.g. qwen2.5, llama3.2) that emit tool calls as
 // fenced JSON blocks in prose instead of using the structured function-calling
 // API path.
-func tryExecuteProseToolCalls(a *Agent, blocks []CodeBlock, out io.Writer) bool {
+func tryExecuteProseToolCalls(a *Agent, blocks []CodeBlock, out io.Writer) (dispatched bool, unknownNames []string) {
 	if a.Tools == nil || !a.Config.ToolsEnabled {
-		return false
+		return false, nil
 	}
 	calls := ParseProseToolCalls(blocks)
 	if len(calls) == 0 {
-		return false
+		return false, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1546,8 +1722,22 @@ func tryExecuteProseToolCalls(a *Agent, blocks []CodeBlock, out io.Writer) bool 
 			name = calls[i].Function.Name
 		}
 		fmt.Fprintf(out, dim(fmt.Sprintf("  [%s]", name))+" %s\n", r.Content)
+		if strings.Contains(r.Content, "unknown tool") {
+			unknownNames = append(unknownNames, name)
+		} else if !strings.HasPrefix(r.Content, "error:") {
+			dispatched = true
+		}
 	}
-	return len(results) > 0
+	if len(unknownNames) > 0 {
+		schemas := a.Tools.GetToolSchemas()
+		available := make([]string, len(schemas))
+		for i, s := range schemas {
+			available[i] = s.Function.Name
+		}
+		fmt.Fprintf(out, yellow("  ⚠")+" Unknown tool(s): %s. Available tools: %s\n",
+			strings.Join(unknownNames, ", "), strings.Join(available, ", "))
+	}
+	return dispatched, unknownNames
 }
 
 /** remotePathCandidates returns tab-completion candidates for a partial s3:// URI.

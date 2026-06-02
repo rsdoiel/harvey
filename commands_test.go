@@ -296,39 +296,6 @@ func TestCmdRun_truncation(t *testing.T) {
 	}
 }
 
-// ─── extractRunSuggestions ────────────────────────────────────────────────────
-
-func TestExtractRunSuggestions_none(t *testing.T) {
-	cmds := extractRunSuggestions("No commands here.")
-	if len(cmds) != 0 {
-		t.Errorf("expected 0 suggestions, got %d", len(cmds))
-	}
-}
-
-func TestExtractRunSuggestions_single(t *testing.T) {
-	cmds := extractRunSuggestions("First, run `/run mkdir testout` to create the directory.")
-	if len(cmds) != 1 {
-		t.Fatalf("expected 1 suggestion, got %d", len(cmds))
-	}
-	if len(cmds[0]) != 2 || cmds[0][0] != "mkdir" || cmds[0][1] != "testout" {
-		t.Errorf("unexpected command: %v", cmds[0])
-	}
-}
-
-func TestExtractRunSuggestions_multiple(t *testing.T) {
-	text := "Run `/run chmod +x testout/hello.bash` then `/run ./testout/hello.bash`."
-	cmds := extractRunSuggestions(text)
-	if len(cmds) != 2 {
-		t.Fatalf("expected 2 suggestions, got %d", len(cmds))
-	}
-	if cmds[0][0] != "chmod" {
-		t.Errorf("first command = %v, want chmod ...", cmds[0])
-	}
-	if cmds[1][0] != "./testout/hello.bash" {
-		t.Errorf("second command = %v, want ./testout/hello.bash", cmds[1])
-	}
-}
-
 // ─── autoExecuteReply ─────────────────────────────────────────────────────────
 
 // newReader wraps s in a bufio.Reader — used to supply "y\n" responses to

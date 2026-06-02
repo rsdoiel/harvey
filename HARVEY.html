@@ -29,9 +29,16 @@ include a fenced code block whose opening fence names a target file,
 Harvey proposes writing that file and asks the user to confirm (Y/n)
 before touching the filesystem. Parent directories are created as
 needed.</p>
+<p>Two fence formats are recognized — pick whichever reads more
+naturally:</p>
 <div class="sourceCode" id="cb1"><pre
 class="sourceCode bash:testout/helloworld.bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/bin/bash</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;Hello World&quot;</span></span></code></pre></div>
+<p><code>typescript libguides/auth.ts export async function authenticate(clientId: string): Promise&lt;string&gt; {   // ... }</code></p>
+<p>The <strong>file path must be on the opening fence line</strong>
+(after the language tag). A path in a comment inside the block
+(<code>// libguides/auth.ts</code>) is <strong>not</strong> picked up —
+Harvey only reads the fence tag.</p>
 <p>Use this format whenever you want to create or update a file. Do
 <strong>not</strong> tell the user to run <code>/apply</code> separately
 — Harvey presents the confirmation prompt automatically after your

@@ -11,10 +11,22 @@ block whose opening fence names a target file, Harvey proposes writing that file
 and asks the user to confirm (Y/n) before touching the filesystem. Parent
 directories are created as needed.
 
+Two fence formats are recognized — pick whichever reads more naturally:
+
 ```bash:testout/helloworld.bash
 #!/bin/bash
 echo "Hello World"
 ```
+
+```typescript libguides/auth.ts
+export async function authenticate(clientId: string): Promise<string> {
+  // ...
+}
+```
+
+The **file path must be on the opening fence line** (after the language tag).
+A path in a comment inside the block (`// libguides/auth.ts`) is **not** picked
+up — Harvey only reads the fence tag.
 
 Use this format whenever you want to create or update a file. Do **not** tell
 the user to run `/apply` separately — Harvey presents the confirmation prompt

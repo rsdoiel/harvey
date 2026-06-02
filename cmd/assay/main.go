@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	harvey "github.com/rsdoiel/harvey"
 	"gopkg.in/yaml.v3"
 )
 
@@ -61,12 +62,12 @@ type ollamaMessage struct {
 }
 
 type ollamaResponse struct {
-	Model             string        `json:"model"`
-	Message           ollamaMessage `json:"message"`
-	Done              bool          `json:"done"`
-	PromptEvalCount   int           `json:"prompt_eval_count"`
-	EvalCount         int           `json:"eval_count"`
-	EvalDuration      int64         `json:"eval_duration"` // nanoseconds
+	Model           string        `json:"model"`
+	Message         ollamaMessage `json:"message"`
+	Done            bool          `json:"done"`
+	PromptEvalCount int           `json:"prompt_eval_count"`
+	EvalCount       int           `json:"eval_count"`
+	EvalDuration    int64         `json:"eval_duration"` // nanoseconds
 }
 
 type ollamaTagsResponse struct {
@@ -83,23 +84,31 @@ type CheckResult struct {
 	Detail string `json:"detail,omitempty"`
 }
 
+// PromptResult holds the outcome of running one prompt against one model.
+// Variant is "base" (no RAG), "rag" (RAG context injected), or "" (RAG not
+// configured for this run).
 type PromptResult struct {
 	PromptID     string        `json:"prompt_id"`
 	Category     string        `json:"category"`
 	Model        string        `json:"model"`
+	Variant      string        `json:"variant,omitempty"`
 	Response     string        `json:"response"`
 	Elapsed      time.Duration `json:"elapsed_ns"`
 	PromptTokens int           `json:"prompt_tokens"`
 	ReplyTokens  int           `json:"reply_tokens"`
 	TokensPerSec float64       `json:"tokens_per_sec"`
 	Checks       []CheckResult `json:"checks"`
-	AutoPass     bool          `json:"auto_pass"` // true when all automated checks pass
+	AutoPass     bool          `json:"auto_pass"`
+	RagChunks    int           `json:"rag_chunks,omitempty"` // chunks injected; 0 = no RAG
 }
 
 type AssayResults struct {
-	RunAt     time.Time      `json:"run_at"`
-	OllamaURL string         `json:"ollama_url"`
-	Results   []PromptResult `json:"results"`
+	RunAt         time.Time      `json:"run_at"`
+	OllamaURL     string         `json:"ollama_url"`
+	RagDB         string         `json:"rag_db,omitempty"`
+	RagEmbedModel string         `json:"rag_embed_model,omitempty"`
+	RagCompare    bool           `json:"rag_compare,omitempty"`
+	Results       []PromptResult `json:"results"`
 }
 
 // ─── Corpus loading ───────────────────────────────────────────────────────────
@@ -163,6 +172,43 @@ func callOllama(baseURL, model, prompt string) (string, ollamaResponse, error) {
 		return "", ollamaResponse{}, fmt.Errorf("ollama decode: %w", err)
 	}
 	return or.Message.Content, or, nil
+}
+
+// ─── RAG helpers ─────────────────────────────────────────────────────────────
+
+// ragMinScore is the minimum cosine similarity for a chunk to be injected.
+// Matches the threshold used by Harvey's interactive chat loop.
+const ragMinScore = 0.3
+
+// buildRAGContext queries the RAG store for chunks relevant to promptText and
+// returns a formatted context prefix ready to prepend to the prompt, plus the
+// number of chunks included. Returns ("", 0) when no relevant chunks are found
+// or the store cannot be queried.
+func buildRAGContext(store *harvey.RagStore, embedder harvey.Embedder, promptText string, topK int) (string, int) {
+	chunks, err := store.Query(promptText, embedder, topK)
+	if err != nil || len(chunks) == 0 {
+		return "", 0
+	}
+	var relevant []harvey.Chunk
+	for _, c := range chunks {
+		if c.Score >= ragMinScore {
+			relevant = append(relevant, c)
+		}
+	}
+	if len(relevant) == 0 {
+		return "", 0
+	}
+	var sb strings.Builder
+	sb.WriteString("### Context (from knowledge base)\n\n")
+	for i, c := range relevant {
+		if c.Source != "" {
+			fmt.Fprintf(&sb, "[%d] (source: %s)\n%s\n\n", i+1, c.Source, c.Content)
+		} else {
+			fmt.Fprintf(&sb, "[%d] %s\n\n", i+1, c.Content)
+		}
+	}
+	sb.WriteString("---\n\n")
+	return sb.String(), len(relevant)
 }
 
 // ─── Code extraction ──────────────────────────────────────────────────────────
@@ -352,92 +398,243 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 		promptByID[p.ID] = p
 	}
 
-	// Group results by model.
-	byModel := make(map[string][]PromptResult)
+	// Group results by model, then by promptID, then by variant.
+	type variantKey struct {
+		model    string
+		promptID string
+		variant  string
+	}
+	byVariant := make(map[variantKey]PromptResult)
 	var modelOrder []string
-	seen := make(map[string]bool)
+	seenModel := make(map[string]bool)
 	for _, r := range ar.Results {
-		if !seen[r.Model] {
+		if !seenModel[r.Model] {
 			modelOrder = append(modelOrder, r.Model)
-			seen[r.Model] = true
+			seenModel[r.Model] = true
 		}
-		byModel[r.Model] = append(byModel[r.Model], r)
+		byVariant[variantKey{r.Model, r.PromptID, r.Variant}] = r
+	}
+
+	// Collect ordered prompt IDs from results (preserving corpus order).
+	promptIDOrder := make([]string, 0, len(corpus.Prompts))
+	seenPrompt := make(map[string]bool)
+	for _, p := range corpus.Prompts {
+		if !seenPrompt[p.ID] {
+			promptIDOrder = append(promptIDOrder, p.ID)
+			seenPrompt[p.ID] = true
+		}
 	}
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# Assay Report\n\n")
 	fmt.Fprintf(&sb, "Run at: %s  \n", ar.RunAt.Format(time.RFC3339))
 	fmt.Fprintf(&sb, "Ollama: %s\n\n", ar.OllamaURL)
+	if ar.RagDB != "" {
+		fmt.Fprintf(&sb, "RAG store: `%s` (embed: %s)\n\n", ar.RagDB, ar.RagEmbedModel)
+	}
 
 	// Summary table.
 	fmt.Fprintf(&sb, "## Summary\n\n")
-	fmt.Fprintf(&sb, "| Model | Prompts | Auto-pass | Avg tok/s |\n")
-	fmt.Fprintf(&sb, "|---|---|---|---|\n")
-	for _, model := range modelOrder {
-		results := byModel[model]
-		pass := 0
-		var totalTPS float64
-		for _, r := range results {
-			if r.AutoPass {
-				pass++
+	if ar.RagCompare {
+		fmt.Fprintf(&sb, "| Model | Base pass | RAG pass | Δ | Avg tok/s |\n")
+		fmt.Fprintf(&sb, "|---|---|---|---|---|\n")
+		for _, model := range modelOrder {
+			basePass, ragPass, total := 0, 0, 0
+			var totalTPS float64
+			count := 0
+			for _, pid := range promptIDOrder {
+				base, hasBase := byVariant[variantKey{model, pid, "base"}]
+				rag, hasRag := byVariant[variantKey{model, pid, "rag"}]
+				if hasBase {
+					total++
+					if base.AutoPass {
+						basePass++
+					}
+					totalTPS += base.TokensPerSec
+					count++
+				}
+				if hasRag && hasBase {
+					if rag.AutoPass {
+						ragPass++
+					}
+				}
 			}
-			totalTPS += r.TokensPerSec
+			delta := ragPass - basePass
+			deltaStr := fmt.Sprintf("%+d", delta)
+			avgTPS := 0.0
+			if count > 0 {
+				avgTPS = totalTPS / float64(count)
+			}
+			fmt.Fprintf(&sb, "| %s | %d/%d | %d/%d | %s | %.1f |\n",
+				model, basePass, total, ragPass, total, deltaStr, avgTPS)
 		}
-		avgTPS := 0.0
-		if len(results) > 0 {
-			avgTPS = totalTPS / float64(len(results))
+	} else {
+		fmt.Fprintf(&sb, "| Model | Prompts | Auto-pass | Avg tok/s |\n")
+		fmt.Fprintf(&sb, "|---|---|---|---|\n")
+		for _, model := range modelOrder {
+			pass := 0
+			var totalTPS float64
+			count := 0
+			for _, r := range ar.Results {
+				if r.Model != model {
+					continue
+				}
+				if r.AutoPass {
+					pass++
+				}
+				totalTPS += r.TokensPerSec
+				count++
+			}
+			total := count
+			avgTPS := 0.0
+			if count > 0 {
+				avgTPS = totalTPS / float64(count)
+			}
+			fmt.Fprintf(&sb, "| %s | %d | %d/%d | %.1f |\n",
+				model, total, pass, total, avgTPS)
 		}
-		fmt.Fprintf(&sb, "| %s | %d | %d/%d | %.1f |\n",
-			model, len(results), pass, len(results), avgTPS)
 	}
 	sb.WriteString("\n")
 
 	// Per-model detail.
 	for _, model := range modelOrder {
 		fmt.Fprintf(&sb, "---\n\n## Model: %s\n\n", model)
-		for _, r := range byModel[model] {
-			p := promptByID[r.PromptID]
-			fmt.Fprintf(&sb, "### %s\n\n", r.PromptID)
-			fmt.Fprintf(&sb, "**%s**  \n", p.Description)
 
-			elapsed := r.Elapsed.Round(time.Millisecond)
-			fmt.Fprintf(&sb, "**Timing**: %d prompt + %d reply tokens · %s · %.1f tok/s  \n",
-				r.PromptTokens, r.ReplyTokens, elapsed, r.TokensPerSec)
+		for _, pid := range promptIDOrder {
+			p, ok := promptByID[pid]
+			if !ok {
+				continue
+			}
 
-			// Check results inline.
-			passCount, total := 0, len(r.Checks)
-			for _, cr := range r.Checks {
-				if cr.Passed {
-					passCount++
+			if ar.RagCompare {
+				base, hasBase := byVariant[variantKey{model, pid, "base"}]
+				rag, hasRag := byVariant[variantKey{model, pid, "rag"}]
+				if !hasBase && !hasRag {
+					continue
 				}
-			}
-			autoLabel := "PASS"
-			if !r.AutoPass {
-				autoLabel = "FAIL"
-			}
-			fmt.Fprintf(&sb, "**Auto checks**: %s (%d/%d)\n\n", autoLabel, passCount, total)
-
-			if len(r.Checks) > 0 {
-				fmt.Fprintf(&sb, "| Check | Result | Detail |\n|---|---|---|\n")
-				for _, cr := range r.Checks {
-					mark := "✓"
-					if !cr.Passed {
-						mark = "✗"
+				fmt.Fprintf(&sb, "### %s\n\n", pid)
+				fmt.Fprintf(&sb, "**%s**\n\n", p.Description)
+				fmt.Fprintf(&sb, "| | Base | RAG |\n|---|---|---|\n")
+				baseLabel, ragLabel := "—", "—"
+				if hasBase {
+					if base.AutoPass {
+						baseLabel = "✓ PASS"
+					} else {
+						baseLabel = "✗ FAIL"
 					}
-					fmt.Fprintf(&sb, "| %s | %s | %s |\n", cr.Name, mark, cr.Detail)
+				}
+				if hasRag {
+					if rag.AutoPass {
+						ragLabel = "✓ PASS"
+					} else {
+						ragLabel = "✗ FAIL"
+					}
+				}
+				fmt.Fprintf(&sb, "| Auto checks | %s | %s |\n", baseLabel, ragLabel)
+				if hasBase && hasRag {
+					fmt.Fprintf(&sb, "| Chunks injected | — | %d |\n", rag.RagChunks)
+					fmt.Fprintf(&sb, "| Tokens/s | %.1f | %.1f |\n", base.TokensPerSec, rag.TokensPerSec)
+					fmt.Fprintf(&sb, "| Elapsed | %s | %s |\n",
+						base.Elapsed.Round(time.Millisecond),
+						rag.Elapsed.Round(time.Millisecond))
 				}
 				sb.WriteString("\n")
+
+				// Per-check delta table.
+				if hasBase && hasRag && len(base.Checks) > 0 {
+					fmt.Fprintf(&sb, "| Check | Base | RAG |\n|---|---|---|\n")
+					for i, cr := range base.Checks {
+						baseMark := "✓"
+						if !cr.Passed {
+							baseMark = "✗"
+						}
+						ragMark := "—"
+						if i < len(rag.Checks) {
+							if rag.Checks[i].Passed {
+								ragMark = "✓"
+							} else {
+								ragMark = "✗"
+							}
+						}
+						fmt.Fprintf(&sb, "| %s | %s | %s |\n", cr.Name, baseMark, ragMark)
+					}
+					sb.WriteString("\n")
+				}
+
+				// Collapsed responses.
+				lang := p.Language
+				if lang == "" {
+					lang = "text"
+				}
+				if hasBase {
+					fmt.Fprintf(&sb, "<details><summary>Base response</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
+						lang, strings.TrimSpace(base.Response))
+				}
+				if hasRag {
+					fmt.Fprintf(&sb, "<details><summary>RAG response (%d chunks)</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
+						rag.RagChunks, lang, strings.TrimSpace(rag.Response))
+				}
+			} else {
+				// Normal (non-compare) mode: show single result.
+				r, ok := byVariant[variantKey{model, pid, ar.Results[0].Variant}]
+				if !ok {
+					// Fall back to scanning by model+prompt.
+					for _, res := range ar.Results {
+						if res.Model == model && res.PromptID == pid {
+							r = res
+							ok = true
+							break
+						}
+					}
+				}
+				if !ok {
+					continue
+				}
+
+				fmt.Fprintf(&sb, "### %s\n\n", pid)
+				fmt.Fprintf(&sb, "**%s**  \n", p.Description)
+
+				variantNote := ""
+				if r.Variant == "rag" {
+					variantNote = fmt.Sprintf(" · RAG (%d chunks)", r.RagChunks)
+				}
+				elapsed := r.Elapsed.Round(time.Millisecond)
+				fmt.Fprintf(&sb, "**Timing**: %d prompt + %d reply tokens · %s · %.1f tok/s%s  \n",
+					r.PromptTokens, r.ReplyTokens, elapsed, r.TokensPerSec, variantNote)
+
+				passCount, total := 0, len(r.Checks)
+				for _, cr := range r.Checks {
+					if cr.Passed {
+						passCount++
+					}
+				}
+				autoLabel := "PASS"
+				if !r.AutoPass {
+					autoLabel = "FAIL"
+				}
+				fmt.Fprintf(&sb, "**Auto checks**: %s (%d/%d)\n\n", autoLabel, passCount, total)
+
+				if len(r.Checks) > 0 {
+					fmt.Fprintf(&sb, "| Check | Result | Detail |\n|---|---|---|\n")
+					for _, cr := range r.Checks {
+						mark := "✓"
+						if !cr.Passed {
+							mark = "✗"
+						}
+						fmt.Fprintf(&sb, "| %s | %s | %s |\n", cr.Name, mark, cr.Detail)
+					}
+					sb.WriteString("\n")
+				}
+
+				lang := p.Language
+				if lang == "" {
+					lang = "text"
+				}
+				fmt.Fprintf(&sb, "<details><summary>Response</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
+					lang, strings.TrimSpace(r.Response))
 			}
 
-			// Response (collapsed so the report stays readable).
-			lang := p.Language
-			if lang == "" {
-				lang = "text"
-			}
-			fmt.Fprintf(&sb, "<details><summary>Response</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
-				lang, strings.TrimSpace(r.Response))
-
-			// Human review questions as a checklist.
+			// Human review questions (same regardless of mode).
 			if len(p.Human) > 0 {
 				fmt.Fprintf(&sb, "**Human review**:\n\n")
 				for _, q := range p.Human {
@@ -464,11 +661,20 @@ func writeJSON(outDir string, ar AssayResults) error {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
-	corpusPath := flag.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
-	modelsFlag := flag.String("models", "", "comma-separated model list (default: all from Ollama)")
-	category := flag.String("category", "", "only run prompts from this category")
-	ollamaURL := flag.String("ollama", "http://localhost:11434", "Ollama base URL")
+	corpusPath   := flag.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
+	modelsFlag   := flag.String("models", "", "comma-separated model list (default: all from Ollama)")
+	category     := flag.String("category", "", "only run prompts from this category")
+	ollamaURL    := flag.String("ollama", "http://localhost:11434", "Ollama base URL")
+	ragDB        := flag.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
+	ragEmbedModel := flag.String("rag-embed-model", "nomic-embed-text", "embedding model for RAG queries")
+	ragTopK      := flag.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
+	ragCompare   := flag.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
 	flag.Parse()
+
+	if *ragCompare && *ragDB == "" {
+		fmt.Fprintln(os.Stderr, "assay: --rag-compare requires --rag-db")
+		os.Exit(1)
+	}
 
 	corpus, err := loadCorpus(*corpusPath)
 	if err != nil {
@@ -508,6 +714,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Open RAG store when requested.
+	var ragStore *harvey.RagStore
+	var ragEmbedder harvey.Embedder
+	if *ragDB != "" {
+		ragStore, err = harvey.NewRagStore(*ragDB, *ragEmbedModel)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "assay: open RAG store: %v\n", err)
+			os.Exit(1)
+		}
+		ragEmbedder = harvey.NewOllamaEmbedder(*ollamaURL, *ragEmbedModel)
+		fmt.Printf("RAG store: %s (embed: %s, top-k: %d)\n", *ragDB, *ragEmbedModel, *ragTopK)
+		if *ragCompare {
+			fmt.Println("Compare mode: each prompt runs twice (base + RAG)")
+		}
+	}
+
 	// Create output directory.
 	stamp := time.Now().Format("20060102-150405")
 	outDir := filepath.Join("testout", "assay-"+stamp)
@@ -516,9 +738,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	ar := AssayResults{RunAt: time.Now(), OllamaURL: *ollamaURL}
+	ar := AssayResults{
+		RunAt:         time.Now(),
+		OllamaURL:     *ollamaURL,
+		RagDB:         *ragDB,
+		RagEmbedModel: *ragEmbedModel,
+		RagCompare:    *ragCompare,
+	}
 
-	total := len(models) * len(prompts)
+	// Determine which variants to run per prompt.
+	// In compare mode: ["base", "rag"]. RAG-only: ["rag"]. Base-only: [""].
+	type variant struct {
+		name   string
+		useRAG bool
+	}
+	var variants []variant
+	switch {
+	case *ragCompare:
+		variants = []variant{{"base", false}, {"rag", true}}
+	case *ragDB != "":
+		variants = []variant{{"rag", true}}
+	default:
+		variants = []variant{{"", false}}
+	}
+
+	total := len(models) * len(prompts) * len(variants)
 	done := 0
 
 	for _, model := range models {
@@ -529,52 +773,77 @@ func main() {
 		}
 
 		for _, p := range prompts {
-			done++
-			fmt.Printf("[%d/%d] %s · %s ... ", done, total, model, p.ID)
+			for _, v := range variants {
+				done++
+				variantLabel := ""
+				if v.name != "" {
+					variantLabel = "[" + v.name + "] "
+				}
+				fmt.Printf("[%d/%d] %s%s · %s ... ", done, total, variantLabel, model, p.ID)
 
-			start := time.Now()
-			response, or, err := callOllama(*ollamaURL, model, p.PromptText)
-			elapsed := time.Since(start)
+				// Build prompt text, injecting RAG context when requested.
+				promptText := p.PromptText
+				ragChunks := 0
+				if v.useRAG && ragStore != nil {
+					ctx, n := buildRAGContext(ragStore, ragEmbedder, promptText, *ragTopK)
+					if n > 0 {
+						promptText = ctx + promptText
+						ragChunks = n
+					}
+				}
 
-			if err != nil {
-				fmt.Printf("ERROR: %v\n", err)
-				ar.Results = append(ar.Results, PromptResult{
-					PromptID: p.ID,
-					Category: p.Category,
-					Model:    model,
-					Response: "ERROR: " + err.Error(),
-					Elapsed:  elapsed,
-					Checks:   []CheckResult{{Name: "call", Passed: false, Detail: err.Error()}},
-				})
-				continue
+				start := time.Now()
+				response, or, callErr := callOllama(*ollamaURL, model, promptText)
+				elapsed := time.Since(start)
+
+				if callErr != nil {
+					fmt.Printf("ERROR: %v\n", callErr)
+					ar.Results = append(ar.Results, PromptResult{
+						PromptID: p.ID,
+						Category: p.Category,
+						Model:    model,
+						Variant:  v.name,
+						Response: "ERROR: " + callErr.Error(),
+						Elapsed:  elapsed,
+						Checks:   []CheckResult{{Name: "call", Passed: false, Detail: callErr.Error()}},
+					})
+					continue
+				}
+
+				checks, _ := runChecks(p, response, extractedDir)
+
+				tps := 0.0
+				if or.EvalDuration > 0 && or.EvalCount > 0 {
+					tps = float64(or.EvalCount) / (float64(or.EvalDuration) / 1e9)
+				}
+
+				pr := PromptResult{
+					PromptID:     p.ID,
+					Category:     p.Category,
+					Model:        model,
+					Variant:      v.name,
+					Response:     response,
+					Elapsed:      elapsed,
+					PromptTokens: or.PromptEvalCount,
+					ReplyTokens:  or.EvalCount,
+					TokensPerSec: tps,
+					Checks:       checks,
+					AutoPass:     allPassed(checks),
+					RagChunks:    ragChunks,
+				}
+				ar.Results = append(ar.Results, pr)
+
+				passLabel := "PASS"
+				if !pr.AutoPass {
+					passLabel = "FAIL"
+				}
+				chunkNote := ""
+				if ragChunks > 0 {
+					chunkNote = fmt.Sprintf(" · %d RAG chunks", ragChunks)
+				}
+				fmt.Printf("%s · %s · %.1f tok/s%s\n",
+					passLabel, elapsed.Round(time.Millisecond), tps, chunkNote)
 			}
-
-			checks, _ := runChecks(p, response, extractedDir)
-
-			tps := 0.0
-			if or.EvalDuration > 0 && or.EvalCount > 0 {
-				tps = float64(or.EvalCount) / (float64(or.EvalDuration) / 1e9)
-			}
-
-			pr := PromptResult{
-				PromptID:     p.ID,
-				Category:     p.Category,
-				Model:        model,
-				Response:     response,
-				Elapsed:      elapsed,
-				PromptTokens: or.PromptEvalCount,
-				ReplyTokens:  or.EvalCount,
-				TokensPerSec: tps,
-				Checks:       checks,
-				AutoPass:     allPassed(checks),
-			}
-			ar.Results = append(ar.Results, pr)
-
-			passLabel := "PASS"
-			if !pr.AutoPass {
-				passLabel = "FAIL"
-			}
-			fmt.Printf("%s · %s · %.1f tok/s\n", passLabel, elapsed.Round(time.Millisecond), tps)
 		}
 	}
 

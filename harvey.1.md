@@ -1,6 +1,6 @@
-%harvey(1) user manual | version 0.0.5c 88504ea
+%harvey(1) user manual | version 0.0.7 d9e71fc
 % R. S. Doiel
-% 2026-05-26
+% 2026-06-02
 
 # NAME
 
@@ -96,6 +96,12 @@ are also available from the shell: harvey --help TOPIC.
 /read FILE [FILE...]
 : inject file contents into the conversation as context
 
+/attach FILE
+: attach a file (image, PDF, or text) to the next turn; chooses best representation for the active route
+
+/read-pdf FILE [PAGES]
+: extract text from a PDF and inject it into context (requires poppler; PAGES e.g. 1-10)
+
 /write PATH
 : save the last assistant reply (or its first code block) to a file
 
@@ -139,6 +145,9 @@ are also available from the shell: harvey --help TOPIC.
 /status
 : show active backend, token usage, routing, recording, and debug state
 
+/hint
+: show actionable suggestions for improving results (RAG, memory, KB)
+
 **Sessions**
 
 /record <start [FILE]|stop|status>
@@ -158,6 +167,12 @@ are also available from the shell: harvey --help TOPIC.
 /rag <list|new NAME|use NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
 : manage retrieval-augmented generation stores
 
+/memory <mine|list|show|forget|status|recall|profile> [args...]
+: manage the session-experience memory store; mine and recall typed patterns
+
+/recall QUERY
+: search all knowledge silos (alias for /memory recall)
+
 **Skills**
 
 /skill <list|load NAME|info NAME|status|new|run NAME>
@@ -165,6 +180,11 @@ are also available from the shell: harvey --help TOPIC.
 
 /skill-set <list|load NAME|info NAME|create NAME|status|unload>
 : manage named bundles of skills
+
+**Pipelines**
+
+/pipeline <CONFIDENCE%> FILE [FILE ...]
+: chain Markdown prompt files as discrete steps with confidence gating
 
 **Security**
 

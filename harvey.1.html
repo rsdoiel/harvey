@@ -120,6 +120,16 @@ list directory contents inside the workspace
 <dd>
 inject file contents into the conversation as context
 </dd>
+<dt>/attach FILE</dt>
+<dd>
+attach a file (image, PDF, or text) to the next turn; chooses best
+representation for the active route
+</dd>
+<dt>/read-pdf FILE [PAGES]</dt>
+<dd>
+extract text from a PDF and inject it into context (requires poppler;
+PAGES e.g. 1-10)
+</dd>
 <dt>/write PATH</dt>
 <dd>
 save the last assistant reply (or its first code block) to a file
@@ -182,6 +192,10 @@ an alias)
 <dd>
 show active backend, token usage, routing, recording, and debug state
 </dd>
+<dt>/hint</dt>
+<dd>
+show actionable suggestions for improving results (RAG, memory, KB)
+</dd>
 </dl>
 <p><strong>Sessions</strong></p>
 <dl>
@@ -210,6 +224,16 @@ PATH|status|query TEXT|on|off&gt;</dt>
 <dd>
 manage retrieval-augmented generation stores
 </dd>
+<dt>/memory &lt;mine|list|show|forget|status|recall|profile&gt;
+[args…]</dt>
+<dd>
+manage the session-experience memory store; mine and recall typed
+patterns
+</dd>
+<dt>/recall QUERY</dt>
+<dd>
+search all knowledge silos (alias for /memory recall)
+</dd>
 </dl>
 <p><strong>Skills</strong></p>
 <dl>
@@ -221,6 +245,13 @@ discover, load, and run agent skills
 NAME|status|unload&gt;</dt>
 <dd>
 manage named bundles of skills
+</dd>
+</dl>
+<p><strong>Pipelines</strong></p>
+<dl>
+<dt>/pipeline &lt;CONFIDENCE%&gt; FILE [FILE …]</dt>
+<dd>
+chain Markdown prompt files as discrete steps with confidence gating
 </dd>
 </dl>
 <p><strong>Security</strong></p>

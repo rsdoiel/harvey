@@ -328,6 +328,18 @@ func (a *Agent) registerCommands() {
 			Description: "Chain Markdown prompt files through models with confidence gating",
 			Handler:     cmdPipeline,
 		},
+		"hint": {
+			Usage:       "/hint",
+			Description: "Show suggestions for improving results (RAG, memory, KB)",
+			Handler:     cmdHint,
+		},
+		"recall": {
+			Usage:       "/recall <query>",
+			Description: "Alias for /memory recall — search all knowledge silos",
+			Handler: func(a *Agent, args []string, out io.Writer) error {
+				return cmdMemory(a, append([]string{"recall"}, args...), out)
+			},
+		},
 		"exit": {
 			Usage:       "/exit",
 			Description: "Exit Harvey",
@@ -532,8 +544,11 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "memory":
 			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
 			return nil
+		case "learn", "memory-overview":
+			fmt.Fprint(out, FmtHelp(LearnHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, memory, ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, learn, memory, ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 
@@ -564,10 +579,10 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "  Type /help TOPIC for a full guide. Topics: attach, audit, clear, compact,")
-	fmt.Fprintln(out, "  context, editing, file-tree, files, git, inspect, kb, memory, ollama,")
-	fmt.Fprintln(out, "  permissions, pipeline, rag, read, read-dir, read-pdf, record, rename,")
-	fmt.Fprintln(out, "  routing, run, safemode, search, security, session, skill-set, skills,")
-	fmt.Fprintln(out, "  status, summarize, write")
+	fmt.Fprintln(out, "  context, editing, file-tree, files, git, inspect, kb, learn, memory,")
+	fmt.Fprintln(out, "  ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record,")
+	fmt.Fprintln(out, "  rename, routing, run, safemode, search, security, session, skill-set,")
+	fmt.Fprintln(out, "  skills, status, summarize, write")
 	fmt.Fprintln(out)
 	return nil
 }
@@ -625,6 +640,47 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 	} else {
 		fmt.Fprintln(out, "Recording: off")
 	}
+	// Memory store summary
+	if a.Config.Memory.Enabled && a.Workspace != nil {
+		if store, err := NewMemoryStore(a.Workspace); err == nil {
+			defer store.Close()
+			if n, err := store.Count(); err == nil {
+				sessDir := a.SessionsDir
+				if sessDir == "" {
+					sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")
+				}
+				unminedCount := 0
+				if manifest, err := LoadManifest(store.Dir()); err == nil {
+					if unmined, err := manifest.UnminedSessions(sessDir); err == nil {
+						unminedCount = len(unmined)
+					}
+				}
+				fmt.Fprintf(out, "Memory:    %d active", n)
+				if unminedCount > 0 {
+					fmt.Fprintf(out, "  (%d session(s) unmined)", unminedCount)
+				}
+				fmt.Fprintln(out)
+			}
+		}
+	}
+	// RAG summary
+	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+		ragState := "off"
+		if a.RagOn {
+			ragState = "on"
+		}
+		if a.Rag != nil {
+			if n, err := a.Rag.Count(); err == nil {
+				fmt.Fprintf(out, "RAG:       %s — store %q, %d chunk(s)\n", ragState, entry.Name, n)
+			} else {
+				fmt.Fprintf(out, "RAG:       %s — store %q\n", ragState, entry.Name)
+			}
+		} else {
+			fmt.Fprintf(out, "RAG:       %s — store %q (not open)\n", ragState, entry.Name)
+		}
+	} else {
+		fmt.Fprintln(out, "RAG:       not configured")
+	}
 	if a.Config.SafeMode {
 		fmt.Fprintln(out, "Safe mode: on")
 	} else {
@@ -636,6 +692,96 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 func cmdClear(a *Agent, _ []string, out io.Writer) error {
 	a.ClearHistory()
 	fmt.Fprintln(out, "Conversation history cleared.")
+	return nil
+}
+
+/** cmdHint prints on-demand suggestions for improving Harvey's results by
+ * auditing the three knowledge silos and surfacing actionable advice.
+ *
+ * Parameters:
+ *   a    (*Agent)    — the running agent.
+ *   args ([]string)  — unused.
+ *   out  (io.Writer) — output destination.
+ *
+ * Returns:
+ *   error — always nil; errors are printed inline.
+ *
+ * Example:
+ *   /hint
+ */
+func cmdHint(a *Agent, _ []string, out io.Writer) error {
+	hints := 0
+
+	// --- Memory store ---
+	if a.Config.Memory.Enabled && a.Workspace != nil {
+		store, err := NewMemoryStore(a.Workspace)
+		if err == nil {
+			defer store.Close()
+			sessDir := a.SessionsDir
+			if sessDir == "" {
+				sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")
+			}
+			manifest, err := LoadManifest(store.Dir())
+			if err == nil {
+				unmined, err := manifest.UnminedSessions(sessDir)
+				if err == nil && len(unmined) > 0 {
+					fmt.Fprintf(out, "  Sessions unmined: %d\n", len(unmined))
+					fmt.Fprintln(out, "    Harvey can extract learnings from these sessions.")
+					fmt.Fprintln(out, "    Run: /memory mine")
+					fmt.Fprintln(out)
+					hints++
+				}
+			}
+		}
+	}
+
+	// --- RAG store ---
+	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+		if a.Rag != nil {
+			if n, err := a.Rag.Count(); err == nil {
+				if n == 0 {
+					fmt.Fprintf(out, "  RAG store %q is empty.\n", entry.Name)
+					fmt.Fprintln(out, "    Ingest reference documents to give Harvey topic-specific knowledge.")
+					fmt.Fprintln(out, "    Run: /rag ingest <file>   (PDF, .md, .txt, .go, .ts, ...)")
+					fmt.Fprintln(out, "    See: /help rag")
+					fmt.Fprintln(out)
+					hints++
+				} else if !a.RagOn {
+					fmt.Fprintf(out, "  RAG is off but store %q has %d chunk(s).\n", entry.Name, n)
+					fmt.Fprintln(out, "    Enabling RAG prepends relevant chunks to each prompt.")
+					fmt.Fprintln(out, "    Run: /rag on")
+					fmt.Fprintln(out)
+					hints++
+				}
+			}
+		} else {
+			fmt.Fprintf(out, "  RAG store %q is configured but not open.\n", entry.Name)
+			fmt.Fprintln(out, "    Run: /rag status")
+			fmt.Fprintln(out)
+			hints++
+		}
+	} else {
+		fmt.Fprintln(out, "  No RAG store configured.")
+		fmt.Fprintln(out, "    Create one to give Harvey access to reference documents.")
+		fmt.Fprintln(out, "    Run: /rag new NAME   then   /rag ingest <file>")
+		fmt.Fprintln(out, "    See: /help learn")
+		fmt.Fprintln(out)
+		hints++
+	}
+
+	// --- Knowledge base ---
+	if a.KB == nil {
+		fmt.Fprintln(out, "  Knowledge base not open.")
+		fmt.Fprintln(out, "    Use /kb observe to record experiment findings that persist across sessions.")
+		fmt.Fprintln(out, "    See: /help kb")
+		fmt.Fprintln(out)
+		hints++
+	}
+
+	if hints == 0 {
+		fmt.Fprintln(out, "  Everything looks good — RAG is on with chunks, sessions are mined, KB is open.")
+		fmt.Fprintln(out, "  Use /help learn for the full memory overview.")
+	}
 	return nil
 }
 
@@ -4154,27 +4300,6 @@ func modelSwitch(a *Agent, name string, out io.Writer) error {
 
 // ─── auto-execute ─────────────────────────────────────────────────────────────
 
-// extractRunSuggestions scans text for backtick-wrapped /run commands that the
-// LLM suggests the user should run (e.g. "`/run mkdir testout`") and returns
-// each as a slice of arguments (the command and its arguments, without "run").
-//
-// Example:
-//
-//	cmds := extractRunSuggestions("Try `/run mkdir testout` first.")
-//	// cmds == [["mkdir", "testout"]]
-func extractRunSuggestions(text string) [][]string {
-	re := regexp.MustCompile("`/run ([^`]+)`")
-	matches := re.FindAllStringSubmatch(text, -1)
-	var cmds [][]string
-	for _, m := range matches {
-		parts := strings.Fields(m[1])
-		if len(parts) > 0 {
-			cmds = append(cmds, parts)
-		}
-	}
-	return cmds
-}
-
 // actionChoice represents the user's decision at an action confirmation prompt.
 type actionChoice int
 
@@ -4237,53 +4362,6 @@ func promptAction(r *bufio.Reader, out io.Writer, header, preview string) action
 	default: // "", "y", "yes" — Enter defaults to yes
 		return actionYes
 	}
-}
-
-// cmdRunCtx is like cmdRun but uses a context so the spawned process can be
-// cancelled (e.g. via Ctrl+C). Output is injected into conversation context.
-//
-// Security: Filters environment to prevent sensitive data leakage.
-func cmdRunCtx(a *Agent, ctx context.Context, args []string, out io.Writer) error {
-	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
-	}
-	if len(args) == 0 {
-		return nil
-	}
-
-	cmdLine := strings.Join(args, " ")
-	fmt.Fprintf(out, "  $ %s\n", cmdLine)
-
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	cmd.Dir = a.Workspace.Root
-	// Filter environment to prevent sensitive data leakage
-	cmd.Env = filterCommandEnvironment(os.Environ())
-	raw, _ := cmd.CombinedOutput()
-
-	truncated := false
-	output := raw
-	if len(output) > maxRunOutput {
-		output = output[:maxRunOutput]
-		truncated = true
-	}
-
-	exitNote := ""
-	if cmd.ProcessState != nil && cmd.ProcessState.ExitCode() != 0 {
-		exitNote = fmt.Sprintf(" (exit %d)", cmd.ProcessState.ExitCode())
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("[context: /run %s%s]\n\n```\n", cmdLine, exitNote))
-	sb.Write(output)
-	if truncated {
-		sb.WriteString("\n... (output truncated)")
-	}
-	sb.WriteString("\n```\n")
-
-	a.AddMessage("user", sb.String())
-	fmt.Fprintf(out, "  %d bytes of output added to context%s.\n", len(output), exitNote)
-	return nil
 }
 
 /** autoExecuteReply scans reply for tagged code blocks, previews each with an
