@@ -1,0 +1,193 @@
+
+  Four new flags:
+
+  --rag-db agents/rag/default.db   # open a RAG store and inject context
+  --rag-embed-model nomic-embed-text
+  --rag-top-k 3
+  --rag-compare                    # run each prompt twice and show delta
+
+  Three run modes:
+
+  ┌────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────┐
+  │                        Command                         │                             Behaviour                             │
+  ├────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────┤
+  │ bin/assay                                              │ Unchanged — bare prompt, no variant label                         │
+  ├────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────┤
+  │ bin/assay --rag-db agents/rag/default.db               │ Single pass with RAG context injected; results labelled rag       │
+  ├────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────┤
+  │ bin/assay --rag-db agents/rag/default.db --rag-compare │ Two passes per prompt (base then rag); report shows a delta table │
+  └────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────────┘
+
+  Compare-mode report format (per prompt):
+
+  | | Base | RAG |
+  |---|---|---|
+  | Auto checks | ✗ FAIL | ✓ PASS |
+  | Chunks injected | — | 2 |
+  | Tokens/s | 4.1 | 3.8 |
+
+  Plus a per-check delta table and both responses in collapsed <details> blocks. The summary table gains Base pass, RAG pass, and Δ columns so you can see the overall lift at a glance.
+
+  The RAG context is formatted identically to Harvey's interactive chat loop (same ### Context (from knowledge base) header, same 0.3 minimum score threshold, same prepend-before-prompt
+  placement).
+
+✻ Cooked for 4m 58s
+
+❯ I want to explore my assumptions about RAG implementation. Does it make sense to keep the custom RAG/Knowledge base or does it make more sense for their to be one that all models can   
+  use?                                                                                                                                                                                     
+  
+⏺ Good design question. Let me ground it in what Harvey actually does before working through the trade-offs.
+  
+⏺ Bash(ls -lh /Users/rsdoiel/Laboratory/agents/rag/ && sqlite3 agents/rag/default.db "SELECT COUNT(*) as chunks, AVG(LENGTH(content)) as avg_bytes FROM chunks;" 2>/dev…)
+  ⎿  Error: Exit code 1
+     total 112
+     -rw-r--r--  1 rsdoiel  staff   4.0K Jun  2 09:43 deno_typescript.db
+     -rw-r--r--  1 rsdoiel  staff    32K Jun  2 09:43 deno_typescript.db-shm
+     -rw-r--r--  1 rsdoiel  staff   8.1K Jun  2 09:43 deno_typescript.db-wal
+     -rw-r--r--  1 rsdoiel  staff   8.0K May 14 09:10 go.db
+     0|
+  
+⏺ Bash(sqlite3 /Users/rsdoiel/Laboratory/agents/rag/go.db "SELECT COUNT(*) as chunks, AVG(LENGTH(content)) as avg_bytes FROM chunks;" 2>/dev/null; sqlite3 /Users/rsdoi…)
+  ⎿  0|
+     0|
+
+⏺ Bash(sqlite3 /Users/rsdoiel/Laboratory/agents/rag/go.db ".tables" 2>/dev/null; sqlite3 /Users/rsdoiel/Laboratory/agents/rag/go.db ".schema" 2>/dev/null)
+  ⎿  chunks
+     CREATE TABLE chunks (
+            id        INTEGER PRIMARY KEY,
+     … +4 lines (ctrl+o to expand)
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Now I have the full picture. Here's the honest analysis:
+
+  ---
+  What the current design actually does
+  
+  The stores are topic-scoped, not model-scoped — default, deno_typescript, go correspond to content domains, not LLMs. All three are currently empty (0 chunks). The model_map
+  infrastructure exists to route different generation models to different embedding models, but in practice everything maps to nomic-embed-text. The one exception
+  (aisingapore/Apertus-SEA-LION → bge-m3:567m) is the only case where the distinction matters (multilingual model, multilingual embedder).
+
+  ---
+  The core question: one store vs many
+  
+  Multiple topic stores are the right call — but for a reason that has nothing to do with which LLM is chatting. The reason is retrieval precision:
+
+  A Go question sent to a store containing only Go content returns 3 high-relevance chunks. The same question sent to a mixed store (Go + TypeScript + SQL + session notes) returns 3
+  chunks of which maybe 1 is actually relevant. For large models this is merely inefficient. For small models (1.5b–7b) it's actively harmful — they struggle to ignore injected noise and
+  it burns their already-limited context window.
+  
+  The empirical way to test this assumption is exactly what the assay --rag-compare flag now enables: run the same prompt against a topic store vs a big mixed store and check whether more
+  relevant chunks actually flip FAILs to PASSes.
+
+  ---
+  Where the current design has unnecessary complexity
+
+  The model_map inside each store conflates two orthogonal things:
+
+  ┌───────────────────────────┬─────────────────────────────────────────┐
+  │          Concern          │           Should be driven by           │
+  ├───────────────────────────┼─────────────────────────────────────────┤
+  │ Embedding model choice    │ The content type — once, at ingest time │
+  ├───────────────────────────┼─────────────────────────────────────────┤
+  │ How results are presented │ Prompt formatting in the chat loop      │
+  └───────────────────────────┴─────────────────────────────────────────┘
+
+  Retrieval quality doesn't depend on which generation model reads the result. nomic-embed-text either captures the semantic meaning of a Go snippet well or it doesn't — that's
+  independent of whether qwen2.5-coder:3b or granite3.3:8b is consuming it. The model_map in each store adds configuration weight without actually changing retrieval behavior in practice
+  (everything already points to nomic-embed-text).
+  
+  ---
+  What would actually improve small model performance
+  
+  The leverage is in the content and threshold, not the architecture:
+
+  1. Populate the stores with the right content. Empty stores can't help anyone. The topic stores become valuable once they contain things like: the actual LibGuides API docs, Go stdlib
+  patterns you use regularly, TypeScript/Deno idioms. The assay comparison will tell you whether the content is actually lifting model quality.
+  2. The 0.3 score threshold is the real knob. For small models, raising it (say 0.4–0.45) reduces noise at the cost of occasionally returning nothing. The assay compare mode is a direct
+  way to find the sweet spot: run a category with different --rag-top-k values and see where precision/recall balance best.
+  3. Simplify the model_map. Drop it from the YAML entirely and just have one embedding_model per store. The only legitimate use of per-model embedding mapping is the multilingual case
+  (SEA-LION → bge-m3), which is better handled by a dedicated multilingual store with bge-m3 as its embedding model rather than a conditional per generation model.
+
+  ---
+  Short answer
+  
+  Keep the topic-scoped multi-store approach — that part is right. The design to question is the model_map: it's premature generalization that adds config overhead without practical
+  benefit. Simplify to one embedding model per store, shared by all generation models, and put the effort into populating the stores with actually relevant content and using the assay
+  compare runs to verify the RAG lift is real.
+
+✻ Brewed for 1m 38s
+
+❯ I'm still learning how our memory architecture works. Because we're doing development I have a sense of when to use `/rag` versus `/memory` commands but I would be hard pressed to      
+  explain it to anyone else. Does it make sense to make a more uniform approach in terms of learning to use Harvey effectively?                                                            
+  
+⏺ Let me read how both systems are explained and implemented before giving you a useful answer.
+  
+  Searched for 5 patterns, read 2 files (ctrl+o to expand)
+
+⏺ Now I have a clear enough picture of all three systems. Let me think through this carefully.
+
+  ---
+  The current landscape
+  
+  Harvey actually has three separate knowledge stores, not two:
+
+  ┌────────┬─────────────────────────┬───────────────────────────────────────────────────────────┬───────────────────────────────┬────────────────────────────────────────────────────┐
+  │ System │      Backing store      │                       Content shape                       │        How it gets in         │                   When it's used                   │
+  ├────────┼─────────────────────────┼───────────────────────────────────────────────────────────┼───────────────────────────────┼────────────────────────────────────────────────────┤
+  │ RAG    │ SQLite (vector chunks)  │ Paragraph-sized text from documents you explicitly ingest │ /rag ingest PATH              │ Silently, before every prompt when on              │
+  ├────────┼─────────────────────────┼───────────────────────────────────────────────────────────┼───────────────────────────────┼────────────────────────────────────────────────────┤
+  │ Memory │ Fountain/Markdown files │ Typed lessons extracted from session recordings           │ /memory mine (semi-automated) │ Once at session start, in a [memory context] block │
+  ├────────┼─────────────────────────┼───────────────────────────────────────────────────────────┼───────────────────────────────┼────────────────────────────────────────────────────┤
+  │ KB     │ SQLite (relational)     │ Hand-authored observations/facts linked to experiments    │ /kb observe                   │ On demand; optionally injected via UnifiedMemory   │
+  └────────┴─────────────────────────┴───────────────────────────────────────────────────────────┴───────────────────────────────┴────────────────────────────────────────────────────┘
+
+  They're already unified at retrieval — UnifiedMemory.Recall() (used by /memory recall) queries all three silos together plus workspace_profile and project_fact. The divergence is
+  entirely on the ingestion side.
+
+  ---
+  Why the split is justified
+  
+  The data shapes are genuinely different, and collapsing them would make each worse:
+
+  - RAG needs chunks. A 10-page API reference gets split into ~100 paragraph-sized pieces and embedded. That chunking strategy is wrong for a "lesson learned."
+  - Memory needs structure. Typed records (tool_use, workflow, user_preference) let Harvey prioritise what to inject and let you audit what it knows about you. Chunked embeddings can't
+  express that.
+  - KB needs relations. Linking an observation to a concept and an experiment is a relational query, not a similarity search.
+
+  Forcing everything into one store would mean either everything becomes untyped chunks (RAG wins, Memory loses) or everything becomes typed records (Memory wins, RAG loses).
+
+  ---
+  Where the real friction is
+  
+  The problem isn't the storage architecture — it's the ingestion decision. When something worth remembering comes up in a session, the question "where does this go?" breaks flow. The
+  answer requires knowing all three systems. That's the cognitive load worth reducing.
+
+  The UX could be made much more consistent without changing any storage by giving people one decision rule for ingestion:
+
+  ▎ - Have a text file or document? → /rag ingest
+  ▎ - Something useful happened in a session? → /memory mine (or it auto-mines on exit)
+  ▎ - Making an observation about an experiment? → /kb observe
+
+  That maps cleanly to three source types (document, experience, research) rather than three systems. The retrieval side is already unified — /memory recall already searches everything.
+
+  ---
+  Where it could genuinely be simplified
+  
+  The model_map in each RAG store (discussed earlier) adds configuration weight but the memory architecture could also be slightly tightened:
+
+  1. The separate /rag on//rag off toggle is redundant with /memory. Since UnifiedMemory.Recall() already includes RAG chunks, the per-prompt RAG injection in ragAugment and the
+  session-start memory injection are two separate channels that don't know about each other. A user enabling both gets RAG context twice — once at session start via UnifiedMemory, and
+  once per-prompt via ragAugment. That's worth auditing.
+  2. /memory recall is the unified interface that should be advertised more prominently. Most users will discover /rag query and /memory recall separately without realising they overlap.
+  A single /recall alias that maps to memory recall would make the unified view the obvious entry point.
+  3. The help text for each command cross-references the others, but there's no single "how Harvey learns" overview that shows all three systems together and explains when each one gets
+  populated. A /help learn or /help memory-overview that maps source types to stores would answer your "hard pressed to explain" problem directly.
+
+  ---
+  Short answer
+  
+  The architecture is sound — the split is justified by the different data shapes. The thing to fix is the onboarding story: one clear mental model (document / experience / research → RAG
+  / memory / KB), one prominent unified recall path (/memory recall), and an audit to make sure per-prompt RAG injection and session-start memory injection aren't duplicating context.
+  The complexity is in the seams between systems, not in the systems themselves.
+

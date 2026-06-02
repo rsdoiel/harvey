@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-architecture-ux-decision-log">Harvey — Architecture &amp;
+UX Decision Log</h1>
+<p>This file records significant architectural and UX decisions, their
+rationale, and known trade-offs. New decisions are added at the top.
+Each entry names the decision, the context that prompted it, the chosen
+approach, the rejected alternatives, and the consequences.</p>
+<hr />
+<h2 id="persistent-command-history-across-sessions">2026-06-02 —
+Persistent command history across sessions</h2>
+<p><strong>Context.</strong> Harvey’s <code>termlib.LineEditor</code>
+supports Up/Down arrow history navigation within a session, but the
+history is in-memory only and lost on exit. Users must retype slash
+commands, <code>!</code> shell commands, and prompts from prior
+sessions, which breaks flow — especially for repeated workflows like
+<code>/rag ingest</code>, <code>/memory mine</code>, or iterating on a
+prompt.</p>
+<p><strong>Decision.</strong> Persist the input history to
+<code>agents/harvey_history</code> inside the workspace (one entry per
+line, plain text). On startup Harvey loads this file and seeds the
+<code>LineEditor</code> before entering the REPL. On clean exit the
+in-memory history is written back, capped at <strong>1000
+entries</strong> (most recent kept). Consecutive duplicate suppression
+is already handled by <code>AppendHistory</code>; no further
+deduplication is applied at write time.</p>
+<p>The implementation requires two changes:</p>
+<ol type="1">
+<li><strong><code>termlib</code> (<code>lineeditor.go</code>)</strong> —
+add two methods to <code>LineEditor</code>:
+<ul>
+<li><code>SetHistory(lines []string)</code> — replaces the in-memory
+history slice wholesale (used at startup).</li>
+<li><code>History() []string</code> — returns a copy of the current
+history slice (used at exit to write back).</li>
+</ul></li>
+<li><strong>Harvey (<code>terminal.go</code>)</strong> — add
+<code>loadCmdHistory(ws, le)</code> called after <code>le</code> is
+created (line ~225), and <code>saveCmdHistory(ws, le)</code> called in
+the REPL exit path. Both functions resolve the path as
+<code>ws.AbsPath("agents/harvey_history")</code>.
+<code>saveCmdHistory</code> truncates to the last 1000 entries before
+writing.</li>
+</ol>
+<p>The history file path is not configurable in this iteration;
+<code>agents/</code> is Harvey’s conventional home for all runtime state
+(<code>harvey.yaml</code>, <code>sessions/</code>,
+<code>memories/</code>, <code>rag/</code>,
+<code>knowledge.db</code>).</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Global <code>~/.harvey_history</code></em> — shares history
+across workspaces, which leaks commands and paths between projects.
+Harvey’s workspace-boundary model makes per-workspace the correct
+scope.</li>
+<li><em>Storing history in <code>agents/harvey.yaml</code></em> — would
+pollute the config file with ephemeral runtime data and complicate
+config schema evolution.</li>
+<li><em>Parsing <code>.spmd</code> session files for history</em> —
+session recordings are conversation transcripts, not command logs;
+extraction would be fragile and slow.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>termlib/lineeditor.go</code> gains <code>SetHistory</code> and
+<code>History</code> methods.</li>
+<li><code>harvey/terminal.go</code> gains <code>loadCmdHistory</code>
+and <code>saveCmdHistory</code> helper functions wired into the REPL
+startup and exit.</li>
+<li>No changes to <code>harvey.yaml</code> schema, <code>Config</code>,
+or any other subsystem.</li>
+<li>Concurrent Harvey sessions in the same workspace will silently
+overwrite each other’s history on exit (last-writer-wins), consistent
+with bash’s behaviour without <code>HISTFILE</code> locking.</li>
+</ul>
+<hr />
+<h2 id="ux-nudge-system-for-memory-discoverability">2026-06-02 — UX
+nudge system for memory discoverability</h2>
+<p><strong>Context.</strong> Users who understand the three storage
+silos (RAG / Memory / Knowledge Base) can get significantly better
+results, but the ingestion decision (“where does this go?”) breaks flow.
+No built-in mechanism surfaced actionable hints about pending mining,
+empty RAG stores, or RAG being disabled.</p>
+<p><strong>Decision.</strong> Implement a four-part nudge system:</p>
+<ol type="1">
+<li><p><strong>Session-start digest</strong> — a
+<code>sessionMemoryDigest()</code> function called after the ready line
+that prints dim hints only when a condition is actionable:</p>
+<ul>
+<li>Unmined sessions pending → suggest <code>/memory mine</code></li>
+<li>Active RAG store is empty → suggest <code>/rag ingest</code></li>
+<li>RAG off but chunks exist → suggest <code>/rag on</code> No output is
+printed when everything looks healthy.</li>
+</ul></li>
+<li><p><strong>Enhanced <code>/status</code></strong> — extend
+<code>cmdStatus</code> with a Memory/RAG summary block (active memories,
+unmined sessions, active store, chunk count, RAG on/off). Keeps the
+one-stop status view complete.</p></li>
+<li><p><strong>New <code>/hint</code> command</strong> — on-demand
+improvement suggestions that aggregate all three silos and explain the
+decision rule. Verbose version of the session digest with context about
+<em>why</em> each suggestion matters.</p></li>
+<li><p><strong><code>/help learn</code> topic</strong> — a unified “How
+Harvey learns” help page with a three-column table (what to ingest →
+which command → where it goes) and the single decision rule:</p>
+<ul>
+<li>Have a text file or document? → <code>/rag ingest</code></li>
+<li>Something useful happened in a session? →
+<code>/memory mine</code></li>
+<li>Making an observation about an experiment? →
+<code>/kb observe</code></li>
+</ul></li>
+<li><p><strong><code>/recall</code> alias</strong> — routes to
+<code>/memory recall</code> to make the unified retrieval interface the
+obvious entry point.</p></li>
+</ol>
+<p><strong>Rejected alternatives.</strong> - <em>Single storage
+silo</em> — would reduce configuration but lose retrieval precision for
+small models. Topic-scoped RAG stores (e.g.,
+<code>deno_typescript</code>, <code>go</code>) give better recall than
+one large mixed store. - <em>Always-on verbose status</em> — printing
+all memory info on every startup is too noisy. Only surface hints when
+actionable. - <em>Merging <code>/rag on</code> +
+<code>/memory recall</code> into a single toggle</em> — the per-prompt
+RAG injection (<code>ragAugment</code>) and session-start injection
+(<code>UnifiedMemory.Recall</code>) are different channels. A single
+toggle would require auditing whether <code>UnifiedMemory</code> already
+includes RAG chunks. Deferred to a future audit.</p>
+<p><strong>Consequences.</strong> - <code>terminal.go</code> gains a
+<code>sessionMemoryDigest()</code> call after the ready line. -
+<code>commands.go</code> gains <code>cmdHint</code>, enhanced
+<code>cmdStatus</code>, and a <code>/recall</code> registration. -
+<code>helptext.go</code> gains <code>LearnHelpText</code>. -
+<code>cmdHelp</code> dispatches <code>"learn"</code> and
+<code>"memory-overview"</code> to <code>LearnHelpText</code>. -
+<code>help</code> topic list is updated to include
+<code>learn</code>.</p>
+<hr />
+<h2 id="model_map-in-rag-stores-deferred-simplification">2026-06-02 —
+model_map in RAG stores (deferred simplification)</h2>
+<p><strong>Context.</strong> Each RAG store entry in
+<code>harvey.yaml</code> has a <code>model_map</code> field that maps
+generation models to embedding models. In practice every store uses
+<code>nomic-embed-text</code> for all generation models, making the map
+redundant.</p>
+<p><strong>Decision.</strong> Deferred. Do not remove
+<code>model_map</code> now. The code is already correct and operational.
+Remove it when there is a concrete reason to simplify the config schema
+(e.g., adding a new embedder type that makes the override
+meaningful).</p>
+<p><strong>Consequences.</strong> <code>model_map</code> remains in the
+config and <code>ragAugment</code> continues to honour it. No
+user-visible change.</p>
+<hr />
+<h2 id="dual-rag-injection-audit-deferred">2026-06-02 — Dual RAG
+injection audit (deferred)</h2>
+<p><strong>Context.</strong> Harvey has two RAG injection paths that run
+independently: 1. Per-prompt via <code>ragAugment()</code> in
+<code>terminal.go</code> (when <code>a.RagOn</code>) 2. Session-start
+via <code>UnifiedMemory.Recall()</code> which also queries the RAG
+store</p>
+<p>A user with both <code>memory.enabled</code> and
+<code>rag.enabled</code> may receive RAG content twice per turn — once
+in the system prompt injection and once prepended to each prompt. This
+wastes context tokens and may confuse small models.</p>
+<p><strong>Decision.</strong> Deferred. Audit and fix when a user
+observes noticeably degraded context efficiency. The fix would be to
+either: (a) skip RAG chunks in <code>UnifiedMemory.Recall()</code> when
+<code>a.RagOn</code> is true, or (b) make <code>ragAugment</code> a
+no-op when <code>UnifiedMemory</code> already injected from the same
+store.</p>
+<p><strong>Consequences.</strong> Known overlap. No immediate action
+required.</p>
+<hr />
+<h2 id="prose-tool-call-correction-injection">2026-05-31 — prose tool
+call correction injection</h2>
+<p><strong>Context.</strong> Small models emit tool calls as JSON fenced
+blocks rather than structured API responses. The original
+<code>tryExecuteProseToolCalls</code> returned <code>bool</code> and
+could not distinguish “dispatched successfully” from “dispatched but
+every call errored”. When models hallucinated tool names the warning was
+suppressed because <code>len(results) &gt; 0</code> was always true.</p>
+<p><strong>Decision.</strong> Change
+<code>tryExecuteProseToolCalls</code> to return
+<code>(dispatched bool, unknownNames []string)</code>. Track a
+<code>succeeded</code> counter internally; set
+<code>dispatched = true</code> only when ≥1 call succeeded. When
+<code>unknownNames</code> is non-empty, inject a correction message into
+history <em>after</em> <code>a.AddMessage("assistant", ...)</code> so
+history ordering is: user → assistant → correction-user. This gives the
+model a chance to retry with the correct tool names.</p>
+<p><strong>Consequences.</strong> The <code>noToolCalls</code> guard
+also gates <code>autoExecuteReply</code> to prevent directory-tree code
+blocks from being offered as files to write after successful tool-call
+turns.</p>
+<hr />
+<h2 id="histlenbeforechat-pattern-for-notoolcalls-guard">2026-05-31 —
+histLenBeforeChat pattern for noToolCalls guard</h2>
+<p><strong>Context.</strong> Harvey needs to know whether a chat turn
+resulted in structured tool calls (via <code>RunToolLoop</code>) so it
+can skip <code>autoExecuteReply</code> when tool calls already handled
+file writing. The check <code>len(a.History) == histLenBeforeChat</code>
+correctly detects no tool calls only when captured before
+<code>a.AddMessage</code>.</p>
+<p><strong>Decision.</strong> Capture
+<code>histLenBeforeChat := len(a.History)</code> before the
+<code>Chat/RunToolLoop</code> call. Compute
+<code>noToolCalls := len(a.History) == histLenBeforeChat</code>
+<em>before</em> <code>a.AddMessage</code>. This invariant must be
+preserved: any refactor that moves <code>a.AddMessage</code> before the
+<code>noToolCalls</code> check will silently break the guard.</p>
+<p><strong>Consequences.</strong> Documented as a key invariant in
+<code>CLAUDE.md</code>.</p>
+<hr />
+<h2 id="three-silo-memory-architecture">2026-05-28 — Three-silo memory
+architecture</h2>
+<p><strong>Context.</strong> Harvey needs to accumulate knowledge across
+sessions without polluting the LLM context window on every turn. Three
+distinct content types require different ingestion and retrieval
+strategies: (1) external documents, (2) session experience, (3) research
+observations.</p>
+<p><strong>Decision.</strong> Three independent silos unified at
+retrieval time by <code>UnifiedMemory.Recall()</code>:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Silo</th>
+<th scope="col">Ingestion</th>
+<th scope="col">Retrieval</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAG store</td>
+<td><code>/rag ingest</code> (explicit)</td>
+<td>Per-prompt via <code>ragAugment()</code></td>
+</tr>
+<tr>
+<td>Memory store</td>
+<td><code>/memory mine</code> or auto-mine on exit</td>
+<td>Session-start via <code>UnifiedMemory</code></td>
+</tr>
+<tr>
+<td>Knowledge base</td>
+<td><code>/kb observe</code> (explicit)</td>
+<td>On-demand via <code>UnifiedMemory</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Consequences.</strong> Each silo has its own command
+namespace (<code>/rag</code>, <code>/memory</code>, <code>/kb</code>).
+The unified retrieval via <code>/memory recall</code> is the recommended
+entry point. All three silos share a token budget enforced at injection
+time.</p>
+</section>
+</body>
+</html>

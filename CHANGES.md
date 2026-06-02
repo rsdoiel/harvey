@@ -1,5 +1,65 @@
 # CHANGES
 
+## v0.0.7 (2026-06-02)
+
+### New features
+
+**`assay` evaluation harness** — a new `bin/assay` tool for running a prompt
+corpus against one or more Ollama models and producing a Markdown report plus
+JSON results for human review and automated checking.
+
+- Corpus defined in YAML (`agents/assay/corpus.yaml`); each prompt specifies
+  category, language, automated checks (`contains`, `not_contains`, `compiles`,
+  `go_vet`), and human-review questions
+- `--rag-db PATH` — opens a RAG store and injects retrieved context before
+  each prompt, enabling RAG-assisted evaluation
+- `--rag-compare` — runs each prompt twice (base + RAG) and writes a per-check
+  delta table alongside the main report
+- `--category NAME` — run only one category of prompts (e.g. `go-crosswalk`)
+- Summary table (model × prompts × auto-pass rate × average tok/s) at the top
+  of every report
+
+**File attachment commands**
+
+- `/attach FILE` — route-aware file injection: native image (JPEG, PNG, GIF,
+  WebP) for vision-capable routes, text extraction for PDFs, plain-text for
+  source files; not restricted to the workspace
+- `/read-pdf FILE [PAGES]` — extract text from a PDF using poppler utilities
+  (`pdfinfo`, `pdftotext`, `pdfimages`) and inject into context; accepts a
+  page range (e.g. `40-55`); cap of 20 pages per call; diagram-only pages are
+  flagged; not restricted to the workspace
+
+**Knowledge discoverability**
+
+- `/hint` — on-demand improvement suggestions: flags unmined sessions, empty or
+  disabled RAG stores, and empty knowledge base
+- `/recall QUERY` — alias for `/memory recall`; searches all three knowledge
+  silos (RAG, memory store, knowledge base) in one call
+- `/help learn` — new unified help topic explaining the three-silo architecture
+  and the single decision rule for where to put each type of content
+- Session-start memory digest: on REPL startup Harvey prints dim actionable
+  hints when sessions are unmined, the active RAG store is empty, or RAG is
+  off with chunks present
+- Enhanced `/status` — now includes a Memory/RAG summary block (active
+  memories injected, unmined session count, active RAG store, chunk count,
+  RAG on/off)
+
+**Persistent command history** — the REPL input history is saved to
+`agents/harvey_history` on exit (capped at 1000 entries, most recent kept)
+and reloaded on the next startup; history is per-workspace to avoid leaking
+commands and paths between projects.
+
+### Bug fixes
+
+- Removed unreachable dead code (`cmdRunCtx`, `extractRunSuggestions`) that
+  was missing the safe-mode allowlist check and would have bypassed it had
+  it ever been wired into an execution path
+- Help text overview (`/help`) was missing entries for `/attach`, `/read-pdf`,
+  `/hint`, `/memory`, `/recall`, and `/pipeline`; all are now listed under
+  their appropriate sections
+- `harvey --help attach`, `--help read-pdf`, and `--help learn` now work
+  correctly; topic was silently falling through to the unknown-topic error
+
 ## v0.0.5c (2026-05-30)
 
 ### New features
