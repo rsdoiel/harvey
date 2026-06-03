@@ -7,7 +7,7 @@ require (
 	github.com/minio/minio-go/v7 v7.2.0
 	github.com/mozilla-ai/any-llm-go v0.9.0
 	github.com/rsdoiel/fountain v1.0.2
-	github.com/rsdoiel/termlib v0.0.7
+	github.com/rsdoiel/termlib v0.0.9
 	gopkg.in/yaml.v3 v3.0.1
 )
 
