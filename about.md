@@ -12,32 +12,28 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.7
+version: 0.0.8
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go >= 1.26.2
 
 
-date_released: 2026-06-02
+date_released: 2026-06-05
 ---
 
 About this software
 ===================
 
-## harvey 0.0.7
+## harvey 0.0.8
 
-- Added `assay` evaluation tool for running prompt corpus against Ollama models
-- Added `--rag-db` and `--rag-compare` flags to `assay` for side-by-side RAG vs baseline evaluation
-- Added `/attach` command for attaching images, PDFs, and text files with route-aware representation
-- Added `/read-pdf` command for page-range PDF text extraction (requires poppler)
-- Added `/hint` command for actionable improvement suggestions (RAG, memory, KB)
-- Added `/memory` commands and memory store implementation
-- Added `/pipeline` support and implementation
-- Added `/recall` alias for `/memory recall` (searches all three knowledge silos)
-- Unified memory, RAG and Knowledge base support
-- Bug fixes catching write_file failure in model responses
-- Added support for remote access for S3, HTTP and SFTP for reading and ingesting content
+- Added profile template system: 5 developer role templates (back-end, front-end, dataset, data-scientist, technical-writer) plus blank, embedded in the binary via go:embed
+- Added `/profile use [name]` command for mid-session context switching: writes a handoff summary, archives the old profile, runs the template picker, and resets conversation history
+- Added `/profile` as a top-level alias for `/memory profile`
+- Added embedded help guides for Ollama setup and PDF tools (`/help getting-started`, `/help pdf-tools`)
+- `/status` now shows the active workspace profile name in the Memory section
+- Missing-backend and missing-poppler error messages now include pointers to the relevant help guides
+- Template picker replaces blank onboarding form: new users choose a role template and optionally edit it in `$EDITOR` before their first session
 
 ## Authors
 

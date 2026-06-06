@@ -19,8 +19,76 @@
 </nav>
 <section>
 <h1 id="changes">CHANGES</h1>
-<h2 id="v0.0.5c-2026-05-30">v0.0.5c (2026-05-30)</h2>
+<h2 id="v0.0.7-2026-06-02">v0.0.7 (2026-06-02)</h2>
 <h3 id="new-features">New features</h3>
+<p><strong><code>assay</code> evaluation harness</strong> — a new
+<code>bin/assay</code> tool for running a prompt corpus against one or
+more Ollama models and producing a Markdown report plus JSON results for
+human review and automated checking.</p>
+<ul>
+<li>Corpus defined in YAML (<code>agents/assay/corpus.yaml</code>); each
+prompt specifies category, language, automated checks
+(<code>contains</code>, <code>not_contains</code>,
+<code>compiles</code>, <code>go_vet</code>), and human-review
+questions</li>
+<li><code>--rag-db PATH</code> — opens a RAG store and injects retrieved
+context before each prompt, enabling RAG-assisted evaluation</li>
+<li><code>--rag-compare</code> — runs each prompt twice (base + RAG) and
+writes a per-check delta table alongside the main report</li>
+<li><code>--category NAME</code> — run only one category of prompts
+(e.g. <code>go-crosswalk</code>)</li>
+<li>Summary table (model × prompts × auto-pass rate × average tok/s) at
+the top of every report</li>
+</ul>
+<p><strong>File attachment commands</strong></p>
+<ul>
+<li><code>/attach FILE</code> — route-aware file injection: native image
+(JPEG, PNG, GIF, WebP) for vision-capable routes, text extraction for
+PDFs, plain-text for source files; not restricted to the workspace</li>
+<li><code>/read-pdf FILE [PAGES]</code> — extract text from a PDF using
+poppler utilities (<code>pdfinfo</code>, <code>pdftotext</code>,
+<code>pdfimages</code>) and inject into context; accepts a page range
+(e.g. <code>40-55</code>); cap of 20 pages per call; diagram-only pages
+are flagged; not restricted to the workspace</li>
+</ul>
+<p><strong>Knowledge discoverability</strong></p>
+<ul>
+<li><code>/hint</code> — on-demand improvement suggestions: flags
+unmined sessions, empty or disabled RAG stores, and empty knowledge
+base</li>
+<li><code>/recall QUERY</code> — alias for <code>/memory recall</code>;
+searches all three knowledge silos (RAG, memory store, knowledge base)
+in one call</li>
+<li><code>/help learn</code> — new unified help topic explaining the
+three-silo architecture and the single decision rule for where to put
+each type of content</li>
+<li>Session-start memory digest: on REPL startup Harvey prints dim
+actionable hints when sessions are unmined, the active RAG store is
+empty, or RAG is off with chunks present</li>
+<li>Enhanced <code>/status</code> — now includes a Memory/RAG summary
+block (active memories injected, unmined session count, active RAG
+store, chunk count, RAG on/off)</li>
+</ul>
+<p><strong>Persistent command history</strong> — the REPL input history
+is saved to <code>agents/harvey_history</code> on exit (capped at 1000
+entries, most recent kept) and reloaded on the next startup; history is
+per-workspace to avoid leaking commands and paths between projects.</p>
+<h3 id="bug-fixes">Bug fixes</h3>
+<ul>
+<li>Removed unreachable dead code (<code>cmdRunCtx</code>,
+<code>extractRunSuggestions</code>) that was missing the safe-mode
+allowlist check and would have bypassed it had it ever been wired into
+an execution path</li>
+<li>Help text overview (<code>/help</code>) was missing entries for
+<code>/attach</code>, <code>/read-pdf</code>, <code>/hint</code>,
+<code>/memory</code>, <code>/recall</code>, and <code>/pipeline</code>;
+all are now listed under their appropriate sections</li>
+<li><code>harvey --help attach</code>, <code>--help read-pdf</code>, and
+<code>--help learn</code> now work correctly; topic was silently falling
+through to the unknown-topic error</li>
+</ul>
+<h2 id="v0.0.5c-2026-05-30">v0.0.5c (2026-05-30)</h2>
+<h3 id="new-features-1">New features</h3>
 <p><strong>Remote protocol integration</strong> — Harvey can now read
 files from remote storage over <code>s3://</code>, <code>http://</code>,
 <code>https://</code>, <code>sftp://</code>, and <code>scp://</code>
@@ -95,7 +163,7 @@ hangs when a server stalls after accepting the connection.</li>
 <code>HTTP_BEARER_TOKEN</code>, <code>HTTP_BASIC_PASSWORD</code> from
 child-process environments.</li>
 </ul>
-<h3 id="bug-fixes">Bug fixes</h3>
+<h3 id="bug-fixes-1">Bug fixes</h3>
 <ul>
 <li>Fixed tools-loop processing problem where the model’s tool-call
 responses were not advancing the conversation correctly</li>

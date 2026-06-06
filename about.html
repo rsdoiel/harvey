@@ -19,27 +19,25 @@
 </nav>
 <section>
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.7">harvey 0.0.7</h2>
+<h2 id="harvey-0.0.8">harvey 0.0.8</h2>
 <ul>
-<li>Added <code>assay</code> evaluation tool for running prompt corpus
-against Ollama models</li>
-<li>Added <code>--rag-db</code> and <code>--rag-compare</code> flags to
-<code>assay</code> for side-by-side RAG vs baseline evaluation</li>
-<li>Added <code>/attach</code> command for attaching images, PDFs, and
-text files with route-aware representation</li>
-<li>Added <code>/read-pdf</code> command for page-range PDF text
-extraction (requires poppler)</li>
-<li>Added <code>/hint</code> command for actionable improvement
-suggestions (RAG, memory, KB)</li>
-<li>Added <code>/memory</code> commands and memory store
-implementation</li>
-<li>Added <code>/pipeline</code> support and implementation</li>
-<li>Added <code>/recall</code> alias for <code>/memory recall</code>
-(searches all three knowledge silos)</li>
-<li>Unified memory, RAG and Knowledge base support</li>
-<li>Bug fixes catching write_file failure in model responses</li>
-<li>Added support for remote access for S3, HTTP and SFTP for reading
-and ingesting content</li>
+<li>Added profile template system: 5 developer role templates (back-end,
+front-end, dataset, data-scientist, technical-writer) plus blank,
+embedded in the binary via go:embed</li>
+<li>Added <code>/profile use [name]</code> command for mid-session
+context switching: writes a handoff summary, archives the old profile,
+runs the template picker, and resets conversation history</li>
+<li>Added <code>/profile</code> as a top-level alias for
+<code>/memory profile</code></li>
+<li>Added embedded help guides for Ollama setup and PDF tools
+(<code>/help getting-started</code>, <code>/help pdf-tools</code>)</li>
+<li><code>/status</code> now shows the active workspace profile name in
+the Memory section</li>
+<li>Missing-backend and missing-poppler error messages now include
+pointers to the relevant help guides</li>
+<li>Template picker replaces blank onboarding form: new users choose a
+role template and optionally edit it in <code>$EDITOR</code> before
+their first session</li>
 </ul>
 <h2 id="authors">Authors</h2>
 <ul>

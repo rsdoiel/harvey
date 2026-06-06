@@ -1,11 +1,11 @@
 #!/bin/sh
-# generated with CMTools 0.0.7 f43f880
+# generated with CMTools 0.0.8 f2d2989
 
 #
 # Set the package name and version to install
 #
 PACKAGE="harvey"
-VERSION="0.0.7"
+VERSION="0.0.8"
 GIT_GROUP="rsdoiel"
 RELEASE="https://github.com/$GIT_GROUP/$PACKAGE/releases/tag/v$VERSION"
 if [ "$PKG_VERSION" != "" ]; then

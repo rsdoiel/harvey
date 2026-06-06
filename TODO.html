@@ -18,8 +18,48 @@
 </ul>
 </nav>
 <section>
-<h1 id="action-items">Action Items</h1>
-<h2 id="next-release">Next Release</h2>
+<h1 id="improvemet-ideas">Improvemet Ideas</h1>
+<ul class="task-list">
+<li><label><input type="checkbox" />The assay tool for doing model and
+RAG analysis leaves artifacts in <code>testout</code>, This gets
+confused by other language models as stale error test results. Maybe the
+model analysis should be stored at the workspace level not in the harvey
+code repository?</label></li>
+<li><label><input type="checkbox" />Improving Harvey’s ergonomics and
+user experience</label>
+<ul class="task-list">
+<li><label><input type="checkbox" />Improve status messages to let user
+informed of what is happening</label>
+<ul>
+<li>example the debug log type events could be change the spinner
+behavior to let the user know things are chugging long</li>
+<li>Harvey. Claude Code and Vibes do this I think people will expect
+Harvey to do this too.</li>
+</ul></li>
+<li><label><input type="checkbox" />Command tab complection needs to be
+better implemented to save user typing.</label></li>
+<li><label><input type="checkbox" checked="" /><code>/status</code>
+should show which memory profile is active ← Phase E of
+profile-templates-plan.md</label></li>
+<li><label><input type="checkbox" checked="" /><code>/profile</code>
+alias for <code>/memory profile</code> + <code>/profile use</code> for
+switching ← Phase C of profile-templates-plan.md</label></li>
+<li><label><input type="checkbox" checked="" />Profile templates shipped
+embedded in binary; template picker replaces blank onboarding ←
+profile-templates-plan.md</label></li>
+<li><label><input type="checkbox" checked="" />Help guides for Ollama
+and PDF tools embedded in binary (<code>/help ollama</code>,
+<code>/help pdf-tools</code>) ← Phase D of
+profile-templates-plan.md</label></li>
+<li><label><input type="checkbox" />We have the three tiered memory
+setup which I think it right for Harvey but I think users will think of
+memory and rag settings as going together in many cases. It would be
+nice to explore that in a way we did with using <code>/recall</code> as
+an alias for <code>/memory recall</code></label></li>
+<li><label><input type="checkbox" />It would be nice to beable to rename
+the workspace showing with <code>/memory profile</code></label></li>
+</ul></li>
+</ul>
 </section>
 </body>
 </html>
