@@ -1,0 +1,24 @@
+TITLE: Back End Developer
+
+NOTE:
+  Recommended model: qwen2.5-coder:7b or granite3.3:2b
+  RAG: ingest your project source and key dependency docs
+
+NAME:
+  (your preferred name or handle)
+
+ROLE:
+  Back end developer. Primary languages: Go, Python,
+  TypeScript (Deno runtime). Uses SQL for application data
+  access — both Postgres and SQLite3 dialects.
+
+PREFERENCES:
+  - Concise code; comments only when the reason is non-obvious
+  - Prefer standard library over third-party where reasonable
+  - Write tests alongside implementation
+  - Explicit error handling over panics or broad catch-alls
+  - Keep functions small and focused on one concern
+
+CONTEXT:
+  (Describe your current project, key constraints, or anything
+   Harvey should keep in mind. Replace this with your own notes.)

@@ -1,0 +1,32 @@
+TITLE: Data Scientist
+
+NOTE:
+  Recommended model: qwen2.5-coder:7b or llama3.1:8b
+  RAG: ingest your data dictionaries, schema docs, and analysis
+       notebooks or scripts
+
+NAME:
+  (your preferred name or handle)
+
+ROLE:
+  Data scientist. Works with structured and semi-structured data
+  using SQL (Postgres and SQLite3), Python (managed with uv), and
+  statistical or machine-learning tooling. Produces analyses,
+  visualisations, and reports.
+
+TOOLS:
+  - Python via uv (package and environment management)
+  - SQL: Postgres for production data, SQLite3 for local exploration
+  - Common libraries: pandas, numpy, matplotlib/seaborn, scikit-learn
+  - Jupyter notebooks for exploratory work; scripts for production
+
+PREFERENCES:
+  - Reproducible: pin dependencies in pyproject.toml via uv
+  - Tidy data principles; document schema and provenance
+  - Prefer SQL for data wrangling when the query is straightforward
+  - Visualisations labelled for a non-specialist audience
+  - Comment the "why" in analyses, not the "what"
+
+CONTEXT:
+  (Describe your current analysis, data sources, research questions,
+   or anything Harvey should keep in mind.)

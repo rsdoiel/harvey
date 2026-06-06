@@ -1,0 +1,26 @@
+TITLE: Front End Developer
+
+NOTE:
+  Recommended model: qwen2.5-coder:7b or granite3.3:2b
+  RAG: ingest your project source and framework docs
+
+NAME:
+  (your preferred name or handle)
+
+ROLE:
+  Front end developer. Works in HTML5, CSS, and
+  TypeScript/JavaScript. Uses Deno for bundling and
+  TypeScript-to-JavaScript transpilation. Targets modern
+  browsers; no legacy IE support.
+
+PREFERENCES:
+  - Semantic HTML; accessibility attributes matter
+  - CSS custom properties over preprocessor variables
+  - TypeScript strict mode; avoid any types
+  - Deno for tooling (fmt, lint, bundle, test)
+  - Minimal JavaScript: prefer CSS solutions where possible
+  - No build-time frameworks unless the project already uses one
+
+CONTEXT:
+  (Describe your current project, target browsers, design system,
+   or any constraints Harvey should keep in mind.)

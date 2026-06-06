@@ -17,8 +17,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
+	"golang.org/x/term"
 )
 
 // sensitiveCmdEnvVars contains environment variable names that should be
@@ -340,6 +342,13 @@ func (a *Agent) registerCommands() {
 				return cmdMemory(a, append([]string{"recall"}, args...), out)
 			},
 		},
+		"profile": {
+			Usage:       "/profile <use|show|update> [name]",
+			Description: "Alias for /memory profile — manage workspace profile; /profile use [name] switches context",
+			Handler: func(a *Agent, args []string, out io.Writer) error {
+				return cmdMemory(a, append([]string{"profile"}, args...), out)
+			},
+		},
 		"exit": {
 			Usage:       "/exit",
 			Description: "Exit Harvey",
@@ -547,8 +556,14 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "learn", "memory-overview":
 			fmt.Fprint(out, FmtHelp(LearnHelpText, "", "", "", ""))
 			return nil
+		case "pdf-tools", "pdftools", "pdf":
+			fmt.Fprint(out, PDFToolsHelpText)
+			return nil
+		case "getting-started", "gettingstarted", "install", "setup":
+			fmt.Fprint(out, GettingStartedHelpText)
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, learn, memory, ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, getting-started, git, inspect, kb, learn, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 
@@ -660,6 +675,14 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 					fmt.Fprintf(out, "  (%d session(s) unmined)", unminedCount)
 				}
 				fmt.Fprintln(out)
+			}
+			// Active workspace profile
+			if profiles, err := store.List(string(MemoryTypeWorkspaceProfile)); err == nil {
+				if len(profiles) > 0 {
+					fmt.Fprintf(out, "Profile:   %s (%s)\n", profiles[0].Description, profiles[0].ID)
+				} else {
+					fmt.Fprintln(out, "Profile:   (none — run /profile use to set one)")
+				}
 			}
 		}
 	}
@@ -5589,7 +5612,7 @@ func cmdMemoryRecall(a *Agent, args []string, out io.Writer, store *MemoryStore)
 	return nil
 }
 
-// cmdMemoryProfile dispatches /memory profile show|update.
+// cmdMemoryProfile dispatches /memory profile show|update|use.
 func cmdMemoryProfile(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
 	sub := "show"
 	if len(args) > 0 {
@@ -5600,10 +5623,137 @@ func cmdMemoryProfile(a *Agent, args []string, out io.Writer, store *MemoryStore
 		return cmdMemoryList(a, []string{"--type", string(MemoryTypeWorkspaceProfile)}, out, store)
 	case "update":
 		return cmdMemoryProfileUpdate(a, out, store)
+	case "use":
+		return cmdMemoryProfileUse(a, args[1:], out, store)
 	default:
-		fmt.Fprintf(out, "Usage: /memory profile <show|update>\n")
+		fmt.Fprintf(out, "Usage: /memory profile <show|update|use> [name]\n")
 		return nil
 	}
+}
+
+// cmdMemoryProfileUse switches to a new workspace profile:
+//  1. Writes a structural handoff document to agents/hand-off/.
+//  2. Archives the current active workspace_profile memories.
+//  3. Selects a template (by name or interactive picker) and saves it as the
+//     new workspace_profile.
+//  4. Calls ClearHistory() so the new profile is injected on the next turn.
+func cmdMemoryProfileUse(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	// Step 1 — write handoff (non-fatal).
+	if a.Workspace != nil {
+		if handoffDir, err := ResolveHandoffDir(a.Workspace); err == nil {
+			if path, err := a.WriteHandoff(store, handoffDir); err != nil {
+				fmt.Fprintf(out, yellow("  ✗")+" Handoff: %v\n", err)
+			} else {
+				fmt.Fprintf(out, dim("  Handoff saved: %s\n"), filepath.Base(path))
+			}
+		}
+	}
+
+	// Step 2 — archive existing active profiles (non-fatal).
+	if metas, err := store.List(string(MemoryTypeWorkspaceProfile)); err == nil {
+		for _, m := range metas {
+			if archErr := store.Archive(m.ID); archErr != nil {
+				fmt.Fprintf(out, yellow("  ✗")+" Archive %s: %v\n", m.ID, archErr)
+			}
+		}
+	}
+
+	// Step 3 — select template and save new profile.
+	wsRoot := ""
+	if a.Workspace != nil {
+		wsRoot = a.Workspace.Root
+	}
+	chosen, templateName := profileSelectTemplate(a, args, wsRoot, out)
+
+	var embedder Embedder
+	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+		embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+	}
+
+	wsName := filepath.Base(wsRoot)
+	if wsName == "" || wsName == "." {
+		wsName = "workspace"
+	}
+	id := GenerateMemoryID(MemoryTypeWorkspaceProfile)
+	description := templateName + " — " + wsName
+	summary := templateBodySummary(chosen)
+	if summary == "" {
+		summary = description
+	}
+	tags := []string{
+		"workspace_profile",
+		"template:" + strings.ToLower(strings.ReplaceAll(templateName, " ", "-")),
+		strings.ToLower(wsName),
+	}
+	ts := time.Now().UTC().Format("2006-01-02 15:04:05")
+	doc := NewMemoryDoc(id, MemoryTypeWorkspaceProfile, description, summary, tags)
+	doc.FountainBody = buildProfileFountainBody(ts, templateName, chosen)
+	if err := store.Save(doc, embedder); err != nil {
+		return fmt.Errorf("profile use: save: %w", err)
+	}
+	fmt.Fprintf(out, green("✓")+" Switched to %q. Type your first message to continue.\n", templateName)
+
+	// Step 4 — reset history so the new profile is injected on the next turn.
+	a.ClearHistory()
+	return nil
+}
+
+// profileSelectTemplate resolves the template to use for /profile use.
+// If args[0] is provided, it attempts to load by stem name or display name.
+// If not found, or if no name is given, it shows the interactive picker.
+// Returns raw template bytes and the display name.
+func profileSelectTemplate(a *Agent, args []string, wsRoot string, out io.Writer) ([]byte, string) {
+	if len(args) > 0 {
+		name := args[0]
+		templates := ListTemplates(wsRoot)
+		for _, t := range templates {
+			stem := strings.TrimSuffix(t.File, ".fountain")
+			if stem == name || strings.EqualFold(t.Name, name) {
+				var data []byte
+				var err error
+				if t.Source == "workspace" && wsRoot != "" {
+					localPath := filepath.Join(wsRoot, "agents", "templates", "profiles", t.File)
+					data, err = os.ReadFile(localPath)
+				}
+				if data == nil || err != nil {
+					data, err = LoadTemplate(t.File)
+				}
+				if err == nil {
+					return maybeEditTemplate(data, out), t.Name
+				}
+			}
+		}
+		fmt.Fprintf(out, "  Template %q not found — showing picker.\n", name)
+	}
+
+	// Interactive picker via a.In.
+	templates := ListTemplates(wsRoot)
+	fmt.Fprintf(out, "\nChoose a profile:\n\n")
+	for i, t := range templates {
+		fmt.Fprintf(out, "  [%d] %s\n", i+1, t.Name)
+		if t.Recommended != "" {
+			fmt.Fprintf(out, "      %s\n", t.Recommended)
+		}
+	}
+	fmt.Fprintln(out)
+	reader := bufio.NewReaderSize(a.In, 1)
+	line := promptLine(reader, out, fmt.Sprintf("Select [1-%d] or press Enter for Blank: ", len(templates)))
+	chosen, templateName := resolveTemplateChoice(line, templates, wsRoot)
+	return maybeEditTemplate(chosen, out), templateName
+}
+
+// maybeEditTemplate opens the template in $EDITOR when running interactively.
+// Returns the original content on error or when not interactive.
+func maybeEditTemplate(content []byte, out io.Writer) []byte {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return content
+	}
+	edited, err := editTemplateRaw(content, out)
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" Editor: %v — using template as-is.\n", err)
+		return content
+	}
+	return edited
 }
 
 // cmdMemoryProfileUpdate opens the most recent workspace_profile in $EDITOR and re-saves it.

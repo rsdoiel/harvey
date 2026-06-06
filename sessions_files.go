@@ -95,6 +95,28 @@ func ExtractModelFromSession(path string) (string, error) {
 	return model, nil
 }
 
+/** ResolveHandoffDir returns the absolute path to the hand-off directory
+ * (agents/hand-off/ inside the workspace), creating it if it does not exist.
+ * Hand-off documents are written there by /profile use when switching profiles.
+ *
+ * Parameters:
+ *   ws (*Workspace) — the Harvey workspace.
+ *
+ * Returns:
+ *   string — absolute path to the hand-off directory.
+ *   error  — if the directory cannot be created.
+ *
+ * Example:
+ *   dir, err := ResolveHandoffDir(ws)
+ */
+func ResolveHandoffDir(ws *Workspace) (string, error) {
+	dir := filepath.Join(ws.HarveyDir(), "hand-off")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
 /** ResolveSessionsDir returns the absolute path to the sessions directory,
  * creating it if it does not exist. customPath overrides the default location
  * (agents/sessions/ inside the workspace); pass an empty string for the default.

@@ -60,7 +60,8 @@ func checkPopplerTools() error {
 		"PDF extraction requires poppler utilities (%s).\n"+
 			"  macOS:         brew install poppler\n"+
 			"  Debian/Ubuntu: apt install poppler-utils\n"+
-			"  Fedora:        dnf install poppler-utils",
+			"  Fedora:        dnf install poppler-utils\n"+
+			"  Run /help pdf-tools for more detail.",
 		strings.Join(missing, ", "),
 	)
 }

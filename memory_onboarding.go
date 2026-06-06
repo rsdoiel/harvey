@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 /** NeedsOnboarding reports whether the workspace has no workspace_profile
@@ -40,17 +44,21 @@ func NeedsOnboarding(store *MemoryStore) bool {
 	return true
 }
 
-/** RunOnboarding prompts the user for workspace identity and project facts,
- * then writes a workspace_profile memory and, when detectable, a project_fact
- * memory. The flow is skipped automatically on subsequent starts because
- * NeedsOnboarding returns false once the profile exists.
+/** RunOnboarding presents a profile template picker, optionally opens the
+ * chosen template in $EDITOR, and saves the result as a workspace_profile
+ * memory document. A project_fact is also extracted and saved when the
+ * workspace contains a recognisable manifest file.
+ *
+ * The editor step is skipped when stdin is not an interactive terminal
+ * (e.g. replay mode, pipes, or test runners). The selected template is
+ * saved as-is in that case.
  *
  * Parameters:
- *   a        (*Agent)      — the Harvey agent (used for workspace root).
+ *   a        (*Agent)       — the Harvey agent (provides workspace root).
  *   store    (*MemoryStore) — the open memory store for the workspace.
- *   embedder (Embedder)    — used to compute embedding vectors; may be nil.
- *   out      (io.Writer)   — output writer for prompts and status.
- *   in       (io.Reader)   — input reader for user responses.
+ *   embedder (Embedder)     — used to compute embedding vectors; may be nil.
+ *   out      (io.Writer)    — output writer for prompts and status.
+ *   in       (io.Reader)    — input reader for user responses.
  *
  * Returns:
  *   error — if the workspace_profile cannot be saved.
@@ -61,64 +69,76 @@ func NeedsOnboarding(store *MemoryStore) bool {
  *   }
  */
 func RunOnboarding(a *Agent, store *MemoryStore, embedder Embedder, out io.Writer, in io.Reader) error {
-	sc := bufio.NewReader(in)
-	ts := time.Now().UTC().Format("2006-01-02 15:04:05")
-
-	// Auto-detect workspace name from the directory; no need to ask.
 	wsRoot := ""
 	if a.Workspace != nil {
 		wsRoot = a.Workspace.Root
 	}
-	name := filepath.Base(wsRoot)
-	if name == "" || name == "." {
-		name = "workspace"
+	wsName := filepath.Base(wsRoot)
+	if wsName == "" || wsName == "." {
+		wsName = "workspace"
 	}
 
-	fmt.Fprintln(out, "\nHarvey: I don't have a workspace profile yet. A few quick questions:")
+	templates := ListTemplates(wsRoot)
+
+	fmt.Fprintf(out, "\nHarvey: I don't have a workspace profile yet. Choose a starting point:\n\n")
+	for i, t := range templates {
+		fmt.Fprintf(out, "  [%d] %s\n", i+1, t.Name)
+		if t.Recommended != "" {
+			fmt.Fprintf(out, "      %s\n", t.Recommended)
+		}
+	}
 	fmt.Fprintln(out)
 
-	role := promptLine(sc, out, "> What is your role here? (developer / researcher / writer / other) ")
-	langs := promptLine(sc, out, "> Primary language(s) or tools? e.g. Go, TypeScript, Python ")
-	notes := promptLine(sc, out, "> Anything else I should know about this project? (Enter to skip) ")
+	sc := bufio.NewReader(in)
+	line := promptLine(sc, out, fmt.Sprintf("Select [1-%d] or press Enter for Blank: ", len(templates)))
 
-	// Build description and summary from answers.
-	var parts []string
-	parts = append(parts, name)
-	if role != "" {
-		parts = append(parts, role)
-	}
-	if langs != "" {
-		parts = append(parts, langs)
-	}
-	description := strings.Join(parts, " — ")
-	summary := description
-	if notes != "" {
-		summary += ". " + notes
+	// Resolve the chosen template content.
+	chosen, templateName := resolveTemplateChoice(line, templates, wsRoot)
+
+	// Open in $EDITOR only when running interactively.
+	interactive := term.IsTerminal(int(os.Stdin.Fd()))
+	if interactive {
+		edited, err := editTemplateRaw(chosen, out)
+		if err != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Editor: %v — saving template as-is.\n", err)
+		} else {
+			chosen = edited
+		}
 	}
 
-	tags := []string{"workspace_profile", "onboarding", strings.ToLower(name)}
-
+	// Build and save the workspace_profile MemoryDoc.
 	id := GenerateMemoryID(MemoryTypeWorkspaceProfile)
-	profileDoc := NewMemoryDoc(id, MemoryTypeWorkspaceProfile, description, summary, tags)
-	profileDoc.FountainBody = BuildFountainBody(ts, [][2]string{
-		{"HARVEY", "Workspace profile captured during onboarding."},
-		{"USER", fmt.Sprintf("Workspace: %s. Role: %s. Languages: %s. Notes: %s.", name, role, langs, notes)},
-	})
-	if err := store.Save(profileDoc, embedder); err != nil {
+	description := templateName + " — " + wsName
+	summary := templateBodySummary(chosen)
+	if summary == "" {
+		summary = description
+	}
+	tags := []string{
+		"workspace_profile",
+		"template:" + strings.ToLower(strings.ReplaceAll(templateName, " ", "-")),
+		strings.ToLower(wsName),
+	}
+
+	ts := time.Now().UTC().Format("2006-01-02 15:04:05")
+	doc := NewMemoryDoc(id, MemoryTypeWorkspaceProfile, description, summary, tags)
+	doc.FountainBody = buildProfileFountainBody(ts, templateName, chosen)
+
+	if err := store.Save(doc, embedder); err != nil {
 		return fmt.Errorf("save workspace_profile: %w", err)
 	}
 	fmt.Fprintln(out, green("✓")+" Workspace profile saved.")
+
+	// Auto-extract and save a project_fact.
 	projectFact := extractProjectFact(wsRoot)
-	if projectFact == "" {
+	if projectFact == "" && interactive {
 		projectFact = promptLine(sc, out, "> Brief project description (e.g. language, purpose) — Enter to skip: ")
-	} else {
+	} else if projectFact != "" {
 		fmt.Fprintf(out, "  Project fact auto-detected: %s\n", projectFact)
 	}
 
 	if projectFact != "" {
 		pfID := GenerateMemoryID(MemoryTypeProjectFact)
-		pfDesc := "Project: " + name
-		pfDoc := NewMemoryDoc(pfID, MemoryTypeProjectFact, pfDesc, projectFact, []string{"project_fact", "auto"})
+		pfDoc := NewMemoryDoc(pfID, MemoryTypeProjectFact, "Project: "+wsName, projectFact, []string{"project_fact", "auto"})
 		pfDoc.FountainBody = BuildFountainBody(ts, [][2]string{
 			{"HARVEY", "Project fact captured during onboarding."},
 			{"SYSTEM", projectFact},
@@ -130,8 +150,118 @@ func RunOnboarding(a *Agent, store *MemoryStore, embedder Embedder, out io.Write
 		}
 	}
 
-	fmt.Fprintln(out, dim("  Use /memory profile show to review or /memory profile update to edit."))
+	fmt.Fprintln(out, dim("  Use /profile show to review or /profile update to edit."))
 	return nil
+}
+
+// resolveTemplateChoice selects template content based on the user's line input.
+// Returns the raw template bytes and the display name of the chosen template.
+func resolveTemplateChoice(line string, templates []TemplateEntry, wsRoot string) ([]byte, string) {
+	n, err := strconv.Atoi(strings.TrimSpace(line))
+	if err == nil && n >= 1 && n <= len(templates) {
+		entry := templates[n-1]
+		var data []byte
+		if entry.Source == "workspace" && wsRoot != "" {
+			localPath := filepath.Join(wsRoot, "agents", "templates", "profiles", entry.File)
+			data, err = os.ReadFile(localPath)
+		}
+		if data == nil || err != nil {
+			data, err = LoadTemplate(entry.File)
+		}
+		if err == nil {
+			return data, entry.Name
+		}
+	}
+	// Invalid input or load error → blank.
+	data, _ := LoadTemplate("blank")
+	return data, "Blank"
+}
+
+// editTemplateRaw writes raw template bytes to a temp file, opens $EDITOR,
+// and returns the saved result. The caller is responsible for falling back
+// to the original content on error.
+func editTemplateRaw(content []byte, out io.Writer) ([]byte, error) {
+	tmp, err := os.CreateTemp("", "harvey-profile-*.fountain")
+	if err != nil {
+		return nil, err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmp.Write(content); err != nil {
+		tmp.Close()
+		return nil, err
+	}
+	tmp.Close()
+
+	editor := findEditor()
+	cmd := exec.Command(editor, tmpPath)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("editor %q: %w", editor, err)
+	}
+	return os.ReadFile(tmpPath)
+}
+
+// buildProfileFountainBody wraps edited template content in a Fountain scene.
+// The NOTE: block is stripped because it is template metadata, not profile content.
+func buildProfileFountainBody(ts, templateName string, content []byte) string {
+	body := stripTemplateNoteField(content)
+	return fmt.Sprintf(
+		"FADE IN:\n\nINT. WORKSPACE PROFILE - %s\n\nHARVEY\nWorkspace profile from template: %s.\n\nUSER\n%s\n\nTHE END.\n",
+		ts, templateName, strings.TrimSpace(body),
+	)
+}
+
+// stripTemplateNoteField returns the template content with the NOTE: block
+// removed. All other fields and their content are kept unchanged.
+func stripTemplateNoteField(content []byte) string {
+	lines := strings.Split(string(content), "\n")
+	var result []string
+	inNote := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "NOTE:") {
+			inNote = true
+			continue
+		}
+		if inNote {
+			if isTemplateField(line) {
+				inNote = false
+				result = append(result, line)
+			}
+			continue
+		}
+		result = append(result, line)
+	}
+	return strings.Join(result, "\n")
+}
+
+// templateBodySummary extracts a one-line summary from the ROLE: field of a
+// template document. Returns "" when no ROLE: field is present.
+func templateBodySummary(content []byte) string {
+	lines := strings.Split(string(content), "\n")
+	inRole := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "ROLE:") {
+			inRole = true
+			rest := strings.TrimSpace(strings.TrimPrefix(line, "ROLE:"))
+			if rest != "" {
+				return rest
+			}
+			continue
+		}
+		if inRole {
+			if isTemplateField(line) {
+				break
+			}
+			if trimmed := strings.TrimSpace(line); trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+	return ""
 }
 
 // promptLine writes prompt to out, then reads and trims one line from r.

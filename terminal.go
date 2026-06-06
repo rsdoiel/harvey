@@ -1173,6 +1173,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, dim("  No backend selected. Use /ollama start once inside."))
+	fmt.Fprintln(out, dim("  Run /help getting-started for Ollama installation instructions."))
 	return nil
 }
 

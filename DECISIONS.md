@@ -4,6 +4,112 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-05 — Profile templates and help guides ship embedded in the binary
+
+**Context.** Harvey installs by copying a single executable to `$HOME/bin`. Users on three OS / two CPU architectures should not need to install a separate asset package. Templates and help guides must therefore travel with the binary.
+
+**Decision.** Use Go's `//go:embed` directive (standard library since Go 1.16) to compile a `templates/` directory tree into the binary at build time. A single `EmbeddedTemplates embed.FS` variable in `templates.go` gives the rest of Harvey read access to template and help guide content at runtime. Workspace-local templates in `agents/templates/profiles/` are checked at runtime and merged with the built-in list, allowing organisations to add shared templates without patching Harvey.
+
+**Rejected alternatives.**
+
+- *Separate asset directory alongside the binary* — breaks the single-file install model.
+- *Download templates from the internet on first run* — requires network access, adds failure modes, complicates offline use on a Raspberry Pi.
+- *Templates in `harvey.yaml`* — templates are multi-line prose documents; embedding them in YAML is unreadable and fragile to edit.
+
+**Consequences.**
+
+- `templates/` directory added to the Harvey source tree; must be maintained alongside code.
+- Binary size increases modestly (six `.fountain` files and three Markdown guides are small).
+- `templates.go` is the single registration point for all embedded assets.
+
+---
+
+## 2026-06-05 — Initial developer/writer template set; library templates deferred
+
+**Context.** Harvey needs a useful starting set of profile templates but the full range of library staff roles requires domain expertise and UX review that is not yet available.
+
+**Decision.** Ship five developer/writer templates for v1:
+
+| Template | Role |
+|----------|------|
+| `backend-developer` | Go, Python, TypeScript+Deno, SQL for application work |
+| `frontend-developer` | HTML, CSS, TypeScript/JavaScript, Deno bundling |
+| `dataset-developer` | Front end plus SQL, dataset CLI, datasetd web service |
+| `data-scientist` | Data analysis, SQL for exploration, Python data tooling |
+| `technical-writer` | Documentation, man pages, tutorials, Markdown and Fountain |
+
+Library role templates (subject specialist, systems/digital, instruction/data literacy, support staff) are deferred until library staff and a UX colleague can define the categories and content correctly. Placeholder files are named in the plan but not authored.
+
+**Rejected alternatives.**
+
+- *Ship library templates based on external assumptions* — risks producing templates that do not match how library staff actually work, which would undermine trust in the feature.
+
+**Consequences.**
+
+- Library users who try Harvey before the library templates ship will use `blank.fountain` or one of the developer templates as a starting point. Acceptable short-term.
+
+---
+
+## 2026-06-05 — `/profile use` verb; `/profile` top-level alias
+
+**Context.** The profile switching command needed a name consistent with Harvey's existing command vocabulary. Two candidates were considered: `switch` and `use`.
+
+**Decision.** Use `use` as the subcommand verb because it matches the established pattern in Harvey: `/ollama use`, `/rag use`, and `/kb use` all select the active item from a list. Register `/profile` as a top-level alias delegating to `/memory profile`, following the same one-line handler pattern as `/recall` → `/memory recall`.
+
+**Rejected alternatives.**
+
+- *`/profile switch`* — `switch` does not appear elsewhere in Harvey's command vocabulary. `use` is already the selection verb.
+- *`/switch-profile` or `/change-profile`* — hyphenated commands are not the Harvey convention.
+
+**Consequences.**
+
+- `commands.go` gains a `"profile"` entry in the top-level command table (identical in structure to `"recall"`).
+- `cmdMemoryProfile` gains a `"use"` dispatch case.
+- `/memory profile use`, `/profile use`, and `/profile` (showing subcommand help) all work.
+
+---
+
+## 2026-06-05 — Profile switching writes a Fountain handoff document
+
+**Context.** When a user switches profiles mid-session with `/profile use`, the in-progress conversation context would be lost after `ClearHistory()`. The user may need to resume the previous context in a future session.
+
+**Decision.** Before clearing history, `/profile use` writes a `.fountain` summary file to `agents/hand-off/<timestamp>.spmd`. The handoff captures the last N assistant messages as bullet points and lists file paths and open questions from recent turns. No LLM call is required — the handoff is structural, not summarised. Because it is a `.fountain` file, the memory miner can extract facts from it in a later session, migrating context from the old role into the new session's experience memories over time.
+
+The previous `workspace_profile` document is archived (status set to `archived`) rather than deleted, preserving the history of who this workspace has been used as.
+
+**Rejected alternatives.**
+
+- *No handoff* — context is lost on profile switch; acceptable only if profiles are rarely switched.
+- *LLM-generated summary* — higher quality but requires a blocking model call during the switch, adding latency and a failure mode.
+- *Write handoff to the session file* — session files record conversation turns, not profile transitions; mixing them would complicate the memory miner.
+
+**Consequences.**
+
+- `agents/hand-off/` directory is created at workspace init alongside `agents/sessions/`.
+- `writeHandoff()` function added to `harvey.go`.
+- Memory miner learns to process files from `agents/hand-off/` as well as `agents/sessions/`.
+
+---
+
+## 2026-06-05 — Help guides for Ollama and PDF tools embedded in binary
+
+**Context.** New users frequently fail to install Ollama or PDF extraction tools before running Harvey. The error messages Harvey currently produces do not explain what is missing or how to fix it. Users on three operating systems need platform-specific install instructions.
+
+**Decision.** Embed short Markdown help guides (`templates/help/ollama.md`, `templates/help/pdf-tools.md`) in the binary using the same `//go:embed` infrastructure as profile templates. Surface them via `/help ollama` and `/help pdf-tools`. Print a one-line pointer to the relevant guide when a detection failure occurs at startup (Ollama unreachable) or during a command (PDF extraction fails). Guides are deliberately short: what it is, how to install on each platform, one troubleshooting line.
+
+**Rejected alternatives.**
+
+- *Link to external documentation only* — requires network access to get help; unhelpful in offline or restricted environments.
+- *Inline error messages only* — install instructions for three platforms embedded in Go string literals are unmaintainable; Markdown guides are editable without touching code.
+
+**Consequences.**
+
+- `templates/help/` directory contains three Markdown files maintained alongside the code.
+- `helptext.go` gains `OllamaHelpText` and `PDFToolsHelpText` helpers.
+- `terminal.go` and `pdf_extract.go` each gain one conditional pointer line.
+
+---
+
 ## 2026-06-02 — Persistent command history across sessions
 
 **Context.** Harvey's `termlib.LineEditor` supports Up/Down arrow history navigation within a session, but the history is in-memory only and lost on exit. Users must retype slash commands, `!` shell commands, and prompts from prior sessions, which breaks flow — especially for repeated workflows like `/rag ingest`, `/memory mine`, or iterating on a prompt.

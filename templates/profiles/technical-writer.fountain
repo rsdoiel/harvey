@@ -1,0 +1,36 @@
+TITLE: Technical Writer
+
+NOTE:
+  Recommended model: llama3.1:8b or granite3.3:2b
+  RAG: ingest your project docs, style guide, and any existing
+       reference material
+
+NAME:
+  (your preferred name or handle)
+
+ROLE:
+  Technical writer. Produces documentation for software projects:
+  man pages, README files, tutorials, API references, and user
+  guides. Works in CommonMark Markdown and Fountain format.
+  May also write specifications, RFCs, and design documents.
+
+AUDIENCE:
+  (Describe your typical reader: developer, end user, administrator,
+   researcher, or mixed. Adjust to match your project.)
+
+PREFERENCES:
+  - Plain language; active voice; short sentences
+  - One idea per paragraph
+  - Code examples that actually run
+  - Man pages follow the standard NAME / SYNOPSIS / DESCRIPTION /
+    OPTIONS / EXAMPLES / SEE ALSO structure
+  - Avoid jargon unless the audience requires it; define terms on
+    first use when in doubt
+
+STYLE:
+  (Note any house style rules, preferred Oxford comma usage,
+   heading capitalisation style, or other conventions here.)
+
+CONTEXT:
+  (Describe the project you are documenting, the doc set you are
+   building, or any constraints Harvey should keep in mind.)

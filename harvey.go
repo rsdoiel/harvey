@@ -332,6 +332,125 @@ func (a *Agent) injectMemoryContext(query string) {
 	a.AddMessage("user", FormatContext(results))
 }
 
+/** WriteHandoff extracts a structural summary from the current conversation
+ * history and writes it as a Fountain document to handoffDir. The file is
+ * named by timestamp and uses the .spmd extension so the memory miner can
+ * process it in a future session.
+ *
+ * No LLM call is made. The summary is built from three heuristics:
+ *   - Last topics:     first line of the last three assistant messages.
+ *   - Files touched:   path-like tokens (containing "/" but not "://") from
+ *                      the last twenty turns, capped at five unique paths.
+ *   - Open questions:  user messages whose first line ends with "?", capped
+ *                      at three.
+ *
+ * Parameters:
+ *   store      (*MemoryStore) — open memory store; used to read the current
+ *                              profile name. May be nil.
+ *   handoffDir (string)       — directory to write the file into.
+ *
+ * Returns:
+ *   string — absolute path of the file written.
+ *   error  — on write failure.
+ *
+ * Example:
+ *   path, err := a.WriteHandoff(store, handoffDir)
+ */
+func (a *Agent) WriteHandoff(store *MemoryStore, handoffDir string) (string, error) {
+	ts := time.Now().UTC()
+	filename := ts.Format("2006-01-02T150405Z") + ".spmd"
+	path := filepath.Join(handoffDir, filename)
+
+	profileName := "(unknown)"
+	if store != nil {
+		if metas, err := store.List(string(MemoryTypeWorkspaceProfile)); err == nil && len(metas) > 0 {
+			profileName = metas[0].Description
+		}
+	}
+
+	window := a.History
+	if len(window) > 20 {
+		window = window[len(window)-20:]
+	}
+
+	var lastTopics, openQuestions []string
+	fileSeen := map[string]bool{}
+	var filesTouched []string
+
+	// Reverse-scan for last topics (last 3 assistant replies).
+	for i := len(a.History) - 1; i >= 0 && len(lastTopics) < 3; i-- {
+		if a.History[i].Role != "assistant" {
+			continue
+		}
+		line := strings.SplitN(strings.TrimSpace(a.History[i].Content), "\n", 2)[0]
+		if line != "" {
+			lastTopics = append([]string{line}, lastTopics...)
+		}
+	}
+
+	for _, m := range window {
+		content := m.Content
+		// Open questions from user turns.
+		if m.Role == "user" && len(openQuestions) < 3 {
+			first := strings.SplitN(strings.TrimSpace(content), "\n", 2)[0]
+			if strings.HasSuffix(strings.TrimRight(first, " \t"), "?") {
+				openQuestions = append(openQuestions, first)
+			}
+		}
+		// Path-like tokens from any turn.
+		if len(filesTouched) < 5 {
+			for _, word := range strings.Fields(content) {
+				word = strings.Trim(word, ".,;:`\"'()")
+				if len(word) < 3 || len(word) > 80 {
+					continue
+				}
+				if !strings.Contains(word, "/") || strings.Contains(word, "://") {
+					continue
+				}
+				if !fileSeen[word] {
+					fileSeen[word] = true
+					filesTouched = append(filesTouched, word)
+					if len(filesTouched) >= 5 {
+						break
+					}
+				}
+			}
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("INT. HAND-OFF - %s\n\n", ts.Format(time.RFC3339)))
+	sb.WriteString(fmt.Sprintf("HARVEY\nProfile switched from: %s.\n\n", profileName))
+	if len(lastTopics) > 0 || len(filesTouched) > 0 || len(openQuestions) > 0 {
+		sb.WriteString("NOTE:\n")
+		if len(lastTopics) > 0 {
+			sb.WriteString("  Last topics:\n")
+			for _, t := range lastTopics {
+				sb.WriteString("    - " + t + "\n")
+			}
+		}
+		if len(filesTouched) > 0 {
+			sb.WriteString("  Files touched:\n")
+			for _, f := range filesTouched {
+				sb.WriteString("    - " + f + "\n")
+			}
+		}
+		if len(openQuestions) > 0 {
+			sb.WriteString("  Open questions:\n")
+			for _, q := range openQuestions {
+				sb.WriteString("    - " + q + "\n")
+			}
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("THE END.\n")
+
+	if err := os.WriteFile(path, []byte(sb.String()), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 /** HasPermission checks if the given permission is allowed for a path.
  * This delegates to the Config's permission system.
  *

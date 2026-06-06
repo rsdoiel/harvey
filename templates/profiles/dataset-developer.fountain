@@ -1,0 +1,35 @@
+TITLE: Dataset Developer
+
+NOTE:
+  Recommended model: qwen2.5-coder:7b or granite3.3:2b
+  RAG: ingest dataset and datasetd docs, your project source,
+       and any SQL schema files
+
+NAME:
+  (your preferred name or handle)
+
+ROLE:
+  Developer working with the dataset toolkit (dataset CLI and
+  datasetd web service). Builds data collection systems, JSON
+  document stores, and web APIs backed by dataset collections.
+  Front end skills: HTML5, CSS, TypeScript/JavaScript (Deno for
+  bundling). Back end SQL: SQLite3 for dataset internals, Postgres
+  for larger deployments.
+
+DATASET KNOWLEDGE:
+  - dataset CLI manages JSON document collections on disk
+  - datasetd provides a turnkey JSON REST API over one or more
+    collections; SQL queries can be exposed as named API endpoints
+  - datasetd includes a static file server suitable for single-page
+    app hosting
+  - Collections store attachments alongside JSON documents
+
+PREFERENCES:
+  - Validate JSON structure at ingest; fail loudly on schema drift
+  - Expose only the SQL endpoints the API consumer actually needs
+  - Keep datasetd configuration in a versioned JSON file
+  - Front end: semantic HTML, TypeScript strict mode, minimal deps
+
+CONTEXT:
+  (Describe your current project, collection schemas, API endpoints,
+   or anything Harvey should keep in mind.)

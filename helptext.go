@@ -1953,10 +1953,16 @@ Fountain files in agents/memories/ inside the workspace.
         Uses FTS5 full-text search plus cosine similarity when a RAG store is
         configured. No token budget is applied — all matching results are shown.
 
-  profile show|update
-        Manage the workspace profile. "show" lists workspace_profile memories
-        (equivalent to /memory list --type workspace_profile). "update" opens
-        the most recent profile in $EDITOR for manual editing and re-saves it.
+  profile show|update|use [name]
+        Manage the workspace profile.
+        "show"   — lists workspace_profile memories (equivalent to /memory list
+                   --type workspace_profile).
+        "update" — opens the most recent profile in $EDITOR and re-saves it.
+        "use"    — switches to a new profile: writes a handoff document to
+                   agents/hand-off/, archives the current profile, selects a
+                   template (by name or interactive picker), saves it as the
+                   new profile, and resets history so the new context injects
+                   on the next turn. Alias: /profile use [name].
 
 # MEMORY TYPES
 
@@ -2559,6 +2565,13 @@ Retrieval from all three silos is unified:
 
   /memory recall <query>   — search all three silos, print ranked results
   /recall <query>          — alias for /memory recall
+
+  /profile <use|show|update> [name]
+                           — alias for /memory profile (manage workspace profile)
+  /profile use [name]      — switch profile: saves handoff, archives old profile,
+                             selects new template, resets history
+  /profile show            — list active workspace_profile memories
+  /profile update          — open most recent profile in $EDITOR
 
 
 # CHECKING WHAT YOU HAVE
