@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-profile-templates-implementation-plan">Harvey Profile
+Templates — Implementation Plan</h1>
+<p>See <a
+href="profile-templates-design.html">profile-templates-design.md</a> for
+the full design rationale and decisions.</p>
+<p>Phases are ordered so each one compiles, passes tests, and delivers
+standalone value. No phase depends on a later phase being started.</p>
+<hr />
+<h2 id="phase-a-embedded-template-infrastructure">Phase A — Embedded
+Template Infrastructure</h2>
+<p><strong>Goal:</strong> Compile templates and help guides into the
+binary via <code>//go:embed</code>. Provide functions to list and load
+them. No UX change yet — this is the foundation the later phases build
+on.</p>
+<h3 id="files-to-create">Files to create</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>templates.go</code></td>
+<td><code>//go:embed templates</code> declaration,
+<code>EmbeddedTemplates embed.FS</code> var,
+<code>ListTemplates() []TemplateEntry</code>,
+<code>LoadTemplate(name string) ([]byte, error)</code>,
+<code>LoadHelpGuide(name string) ([]byte, error)</code></td>
+</tr>
+<tr>
+<td><code>templates/profiles/backend-developer.fountain</code></td>
+<td>Back end developer template</td>
+</tr>
+<tr>
+<td><code>templates/profiles/frontend-developer.fountain</code></td>
+<td>Front end developer template</td>
+</tr>
+<tr>
+<td><code>templates/profiles/dataset-developer.fountain</code></td>
+<td>Dataset/datasetd developer template</td>
+</tr>
+<tr>
+<td><code>templates/profiles/data-scientist.fountain</code></td>
+<td>Data scientist template</td>
+</tr>
+<tr>
+<td><code>templates/profiles/technical-writer.fountain</code></td>
+<td>Technical writer template</td>
+</tr>
+<tr>
+<td><code>templates/profiles/blank.fountain</code></td>
+<td>Minimal template (equivalent to current onboarding)</td>
+</tr>
+<tr>
+<td><code>templates/help/ollama.md</code></td>
+<td>Ollama install guide</td>
+</tr>
+<tr>
+<td><code>templates/help/pdf-tools.md</code></td>
+<td>PDF tools install guide</td>
+</tr>
+<tr>
+<td><code>templates/help/getting-started.md</code></td>
+<td>First-run orientation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Add <code>OllamaHelpText</code>, <code>PDFToolsHelpText</code>
+constants (loaded from embedded guides at init or on demand). Add
+<code>"ollama"</code> and <code>"pdf-tools"</code> to the
+<code>/help</code> topic list.</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>In <code>cmdHelp</code>, dispatch <code>"ollama"</code> and
+<code>"pdf-tools"</code> to the embedded guide text.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="templateentry-type"><code>TemplateEntry</code> type</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> TemplateEntry <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    Name        <span class="dt">string</span>  <span class="co">// display name, e.g. &quot;Back End Developer&quot;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    File        <span class="dt">string</span>  <span class="co">// filename without path, e.g. &quot;backend-developer.fountain&quot;</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    Source      <span class="dt">string</span>  <span class="co">// &quot;builtin&quot; or &quot;workspace&quot;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    Recommended <span class="dt">string</span>  <span class="co">// content of </span><span class="al">NOTE</span><span class="co">: field, or &quot;&quot;</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>ListTemplates</code> merges built-in templates with any
+<code>.fountain</code> files found in
+<code>agents/templates/profiles/</code> in the current workspace.
+Workspace-local entries appear after built-ins; same-name workspace
+entry shadows the built-in.</p>
+<h3 id="templatenotefield-helper"><code>TemplateNoteField</code>
+helper</h3>
+<p>Extract the <code>NOTE:</code> block from a <code>.fountain</code>
+file for display during selection without parsing the full document:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TemplateNoteField<span class="op">(</span>content <span class="op">[]</span><span class="dt">byte</span><span class="op">)</span> <span class="dt">string</span></span></code></pre></div>
+<p>Reads lines between <code>NOTE:</code> and the next all-caps scene
+heading or end of file. Returns empty string if no <code>NOTE:</code>
+field present.</p>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>ListTemplates()</code> returns all six built-in
+templates.</li>
+<li><code>LoadTemplate("backend-developer")</code> returns the file
+contents.</li>
+<li><code>LoadHelpGuide("ollama")</code> returns the Ollama guide
+text.</li>
+<li><code>/help ollama</code> and <code>/help pdf-tools</code> print the
+embedded guides.</li>
+<li>Adding a <code>.fountain</code> file to
+<code>agents/templates/profiles/</code> causes
+<code>ListTemplates()</code> to include it (integration test with temp
+dir).</li>
+</ul>
+<hr />
+<h2 id="phase-b-onboarding-upgrade">Phase B — Onboarding Upgrade</h2>
+<p><strong>Goal:</strong> Replace the blank-question onboarding with a
+template picker. The user selects a template (or blank), optionally
+edits it, and Harvey saves it as the <code>workspace_profile</code>
+memory. All subsequent logic (project_fact extraction, memory injection)
+is unchanged.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory_onboarding.go</code></td>
+<td>Replace <code>RunOnboarding</code> implementation. New flow: call
+<code>ListTemplates()</code>, display numbered list with
+<code>NOTE:</code> recommendations, read selection, open chosen template
+in <code>$EDITOR</code>, save result via <code>store.Save()</code>. Keep
+<code>NeedsOnboarding</code> and <code>extractProjectFact</code>
+unchanged.</td>
+</tr>
+<tr>
+<td><code>memory_onboarding_test.go</code></td>
+<td>Update <code>RunOnboarding</code> tests. Add test: selecting
+template 1 in a mock terminal produces a <code>workspace_profile</code>
+document whose content matches the template. Add test: selecting blank
+produces a minimal document.</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Update onboarding-related help text to mention templates.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="template-selection-display">Template selection display</h3>
+<pre><code>Harvey: I don&#39;t have a workspace profile yet. Choose a starting point:
+
+  [1] Back End Developer
+      Recommended: qwen2.5-coder:7b · ingest project source and deps
+  [2] Front End Developer
+  [3] Dataset Developer
+  [4] Data Scientist
+  [5] Technical Writer
+  [6] Blank (no pre-filled content)
+
+  (workspace templates from agents/templates/profiles/ listed after
+   built-ins if present)
+
+Select [1-N] or press Enter for Blank: _</code></pre>
+<p>If the terminal is non-interactive (replay or pipe), skip the picker
+and use <code>blank.fountain</code> silently — same behaviour as
+today.</p>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>First run in a workspace with no <code>workspace_profile</code>
+memories shows the picker.</li>
+<li>Selecting a numbered template opens it in <code>$EDITOR</code>.</li>
+<li>Saving the editor result writes a <code>workspace_profile</code>
+memory and skips onboarding on all subsequent starts.</li>
+<li>Non-interactive mode skips the picker without error.</li>
+</ul>
+<hr />
+<h2 id="phase-c-profile-use-command-and-profile-alias">Phase C —
+<code>/profile use</code> Command and <code>/profile</code> Alias</h2>
+<p><strong>Goal:</strong> Add profile switching with handoff
+preservation and the top-level <code>/profile</code> alias.</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td>Add <code>"use"</code> case to <code>cmdMemoryProfile</code>
+dispatch. Implement
+<code>cmdMemoryProfileUse(a, args, out, store)</code>: write handoff
+doc, run template picker or load named template, archive old profile,
+save new profile, call <code>a.ClearHistory()</code>. Register
+<code>"profile"</code> in the top-level command table as an alias
+delegating to
+<code>cmdMemory(a, append([]string{"profile"}, args...), out)</code>.</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>Add
+<code>writeHandoff(a *Agent, store *MemoryStore) (string, error)</code>
+— writes a brief <code>.fountain</code> summary of the current session
+to <code>agents/hand-off/&lt;timestamp&gt;.spmd</code>. The summary is
+Harvey’s last N assistant messages collapsed to bullet points (no LLM
+call required; purely structural).</td>
+</tr>
+<tr>
+<td><code>sessions_files.go</code></td>
+<td>Ensure <code>agents/hand-off/</code> is created alongside
+<code>agents/sessions/</code> at workspace init if it does not
+exist.</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Add <code>profile use</code> to <code>/memory</code> help text. Add
+<code>/profile</code> to the top-level command list and to
+<code>/help</code> dispatch. Document the handoff mechanism and the
+archive behaviour.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="handoff-document-format">Handoff document format</h3>
+<pre class="fountain"><code>INT. HAND-OFF - 2026-06-05T14:32:00Z
+
+HARVEY
+  Profile switched from [previous profile name] to [new profile name].
+
+NOTE:
+  Last topics: &lt;bullet list from assistant messages&gt;
+  Files touched: &lt;paths mentioned in last 10 turns&gt;
+  Open questions: &lt;user messages ending in ?&gt;</code></pre>
+<p>This is intentionally lightweight — no LLM call, no blocking. The
+memory miner can extract richer facts from it in a later session.</p>
+<h3 id="archive-behaviour">Archive behaviour</h3>
+<p>When <code>/profile use</code> saves a new
+<code>workspace_profile</code>, the previous profile document is updated
+in the store with <code>status: archived</code> (same mechanism as
+<code>/memory forget</code>). It remains visible in
+<code>/memory list workspace_profile --all</code> but is excluded from
+active injection. This preserves history without cluttering the active
+memory set.</p>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>/profile use backend-developer</code> writes a handoff file to
+<code>agents/hand-off/</code>, archives the old
+<code>workspace_profile</code>, saves the new one, and resets
+history.</li>
+<li><code>/profile use</code> with no argument shows the template
+picker.</li>
+<li><code>/profile show</code> lists active
+<code>workspace_profile</code> documents.</li>
+<li><code>/profile update</code> opens the most recent profile in
+<code>$EDITOR</code>.</li>
+<li>All three subcommands work equally via
+<code>/memory profile &lt;sub&gt;</code>.</li>
+<li><code>agents/hand-off/</code> directory is created at workspace
+init.</li>
+</ul>
+<hr />
+<h2 id="phase-d-proactive-help-triggers">Phase D — Proactive Help
+Triggers</h2>
+<p><strong>Goal:</strong> Print a short pointer to the relevant help
+guide when a prerequisite failure is detected at startup or during a
+command.</p>
+<h3 id="files-to-modify-3">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>terminal.go</code></td>
+<td>At startup, if the Ollama health check fails, print:
+<code>Run /help ollama for installation instructions.</code></td>
+</tr>
+<tr>
+<td><code>pdf_extract.go</code></td>
+<td>If <code>pdftotext</code> is not found or returns an error, include
+a pointer:
+<code>Run /help pdf-tools for installation instructions.</code></td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Ensure <code>/help getting-started</code> exists and covers both
+prerequisites.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>Starting Harvey when Ollama is not running prints the Ollama help
+pointer alongside the existing connection error.</li>
+<li>Attempting to read a PDF when <code>pdftotext</code> is absent
+prints the PDF tools help pointer.</li>
+<li><code>/help ollama</code>, <code>/help pdf-tools</code>, and
+<code>/help getting-started</code> all print their guides without
+error.</li>
+</ul>
+<hr />
+<h2 id="phase-e-status-shows-active-profile">Phase E — Status Shows
+Active Profile</h2>
+<p><strong>Goal:</strong> <code>/status</code> includes the name of the
+active workspace profile so the user knows which context Harvey is
+working from.</p>
+<h3 id="files-to-modify-4">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td>In <code>cmdStatus</code>, query the memory store for the most
+recent active <code>workspace_profile</code> document and print its
+title in the Memory section:
+<code>Profile: Back End Developer (workspace_profile_a1b2c3)</code>.
+Print <code>Profile: (none — run /profile use to set one)</code> when
+absent.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-4">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>/status</code> shows the active profile name when one
+exists.</li>
+<li><code>/status</code> shows a helpful nudge when none exists.</li>
+</ul>
+<hr />
+<h2 id="phase-f-library-role-templates-deferred">Phase F — Library Role
+Templates (deferred)</h2>
+<p><strong>Goal:</strong> Add library-oriented profile templates after
+UX review with library staff.</p>
+<p><strong>Blocked on:</strong> Consultation with library staff and UX
+colleague to define the right role categories and content.</p>
+<p><strong>Placeholder categories under consideration:</strong></p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>librarian-subject-specialist.fountain</code></td>
+<td>Subject librarian (general)</td>
+</tr>
+<tr>
+<td><code>librarian-systems-digital.fountain</code></td>
+<td>Library systems: FOLIO, ArchiveSpace, InvenioRDM, EPrints</td>
+</tr>
+<tr>
+<td><code>librarian-instruction-data-literacy.fountain</code></td>
+<td>Teaching, Data Carpentry, information literacy</td>
+</tr>
+<tr>
+<td><code>library-support-staff.fountain</code></td>
+<td>Circulation, patron services, general support</td>
+</tr>
+</tbody>
+</table>
+<p>No implementation work begins until the role definitions are
+agreed.</p>
+<hr />
+<h2 id="dependency-graph">Dependency Graph</h2>
+<pre><code>Phase A (embedded template infrastructure)
+    └─► Phase B (onboarding upgrade)
+    └─► Phase C (/profile use + alias)
+    └─► Phase D (proactive help triggers)
+    └─► Phase E (status shows profile)
+
+Phase F (library templates)
+    └─► blocked on UX review; can follow any phase after A</code></pre>
+<p>Phases B, C, D, and E each depend only on Phase A and are independent
+of each other. They can be developed in any order after Phase A is
+complete.</p>
+<hr />
+<h2 id="new-module-dependencies">New Module Dependencies</h2>
+<p>None. <code>embed</code> is in the Go standard library (Go 1.16+).
+All other implementation uses packages already imported by Harvey.</p>
+<hr />
+<h2 id="open-questions">Open Questions</h2>
+<p>None outstanding as of 2026-06-05. Record any new decisions or
+reversals here as implementation proceeds.</p>
+</section>
+</body>
+</html>

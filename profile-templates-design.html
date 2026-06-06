@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-profile-templates-design">Harvey Profile Templates —
+Design</h1>
+<p><strong>Status (2026-06-05):</strong> Design settled. See <a
+href="profile-templates-plan.html">profile-templates-plan.md</a> for the
+phased implementation plan.</p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>Harvey’s current onboarding presents a blank-slate prompt:</p>
+<pre><code>What should I call you?
+What is your role?
+Primary language(s) or tools?
+Anything else I should know?</code></pre>
+<p>This is adequate for a user who already knows what they want to tell
+a language model. For someone new to LLM tooling, these questions are
+too open. They do not know what kind of information changes Harvey’s
+behaviour, what level of detail is useful, or what a good answer looks
+like.</p>
+<p>A second problem: new users trying to install Harvey must discover on
+their own that Ollama and PDF tools are prerequisites. Harvey cannot
+tell them how to fix a failed start if it has no built-in guidance to
+offer.</p>
+<p>The goal of this design is to:</p>
+<ol type="1">
+<li>Replace the blank onboarding with <strong>template-driven profile
+selection</strong> — show the user what a good profile looks like before
+they write a word.</li>
+<li>Support a <strong>progressive personalisation</strong> path: start
+from a template, edit it, refine it over time.</li>
+<li>Add a <strong><code>/profile use</code></strong> workflow for
+switching context mid-session without losing conversation
+continuity.</li>
+<li>Embed <strong>help guides</strong> for Ollama and PDF tools directly
+in the binary so users get actionable help at the moment they need
+it.</li>
+</ol>
+<hr />
+<h2 id="principles">Principles</h2>
+<p><strong>Single binary.</strong> Harvey installs by copying one
+executable to <code>$HOME/bin</code>. No separate asset directory.
+Templates and help guides are compiled into the binary at build time via
+Go’s <code>//go:embed</code> directive.</p>
+<p><strong>Shallow-to-deep curve.</strong> A template gives the user an
+immediately useful starting point. Every field in the template is
+editable, and <code>/memory profile update</code> lets them refine it at
+any time. The onboarding flow never blocks progress.</p>
+<p><strong>Workspace-centric.</strong> All runtime state lives under
+<code>agents/</code>. The embedded templates are read-only defaults.
+Workspace-local templates in <code>agents/templates/</code> override or
+extend the built-in set, allowing organisations to ship their own
+starting points without modifying Harvey.</p>
+<p><strong>Same Fountain format.</strong> Profile templates are
+<code>.fountain</code> memory files — the same format as all other
+memory documents. No new parser, no new storage mechanism.</p>
+<hr />
+<h2 id="template-storage">Template Storage</h2>
+<h3 id="embedded-templates-built-into-the-binary">Embedded templates
+(built into the binary)</h3>
+<pre><code>harvey/
+  templates/
+    profiles/
+      backend-developer.fountain
+      frontend-developer.fountain
+      dataset-developer.fountain
+      data-scientist.fountain
+      technical-writer.fountain
+      blank.fountain
+    help/
+      ollama.md
+      pdf-tools.md
+      getting-started.md</code></pre>
+<p>Compiled in via a single directive in a new <code>templates.go</code>
+source file:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">//go:embed templates</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> EmbeddedTemplates embed<span class="op">.</span>FS</span></code></pre></div>
+<h3 id="workspace-local-templates">Workspace-local templates</h3>
+<p>Any <code>.fountain</code> files placed in
+<code>agents/templates/profiles/</code> by the user or their
+organisation appear alongside the built-in list. Workspace-local
+templates take precedence when names collide. This is how a team adds a
+shared “Library Systems Developer” template without patching Harvey.</p>
+<hr />
+<h2 id="template-format">Template Format</h2>
+<p>A profile template is a standard <code>.fountain</code> memory
+document with one addition: an optional <code>NOTE:</code> field that
+Harvey surfaces at selection time as a non-enforced recommendation.</p>
+<pre class="fountain"><code>INT. WORKSPACE PROFILE - TEMPLATE
+
+TITLE: Back End Developer
+
+NOTE: Recommended model: qwen2.5-coder:7b or granite3.3:2b
+      RAG: ingest project source and dependency docs
+
+ROLE:
+  Back end developer. Primary languages: Go, Python,
+  TypeScript (Deno runtime). Uses SQL for application
+  data access (Postgres and SQLite3).
+
+PREFERENCES:
+  Concise code with no unnecessary comments.
+  Prefer stdlib over third-party where reasonable.
+  Tests are written alongside implementation.
+
+CONTEXT:
+  Edit this section to describe your current project
+  and any context Harvey should keep in mind.</code></pre>
+<p>The <code>NOTE:</code> content is printed during template selection
+and not injected into the model context. All other fields become the
+<code>workspace_profile</code> memory document.</p>
+<hr />
+<h2 id="initial-template-list-v1">Initial Template List (v1)</h2>
+<p>Five templates ship with Harvey for the first release. Library roles
+are deferred pending input from library staff and UX review.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend-developer.fountain</code></td>
+<td>Go, Python, TypeScript+Deno, SQL for application work</td>
+</tr>
+<tr>
+<td><code>frontend-developer.fountain</code></td>
+<td>HTML, CSS, TypeScript/JavaScript, Deno for bundling and
+transpilation</td>
+</tr>
+<tr>
+<td><code>dataset-developer.fountain</code></td>
+<td>Front end skills plus SQL, dataset CLI and datasetd web service
+configuration</td>
+</tr>
+<tr>
+<td><code>data-scientist.fountain</code></td>
+<td>Data analysis, SQL for exploration, Python data tooling</td>
+</tr>
+<tr>
+<td><code>technical-writer.fountain</code></td>
+<td>Documentation, man pages, tutorials, Markdown and Fountain
+formats</td>
+</tr>
+<tr>
+<td><code>blank.fountain</code></td>
+<td>No pre-filled content; equivalent to current onboarding</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Library templates (deferred):</strong> A placeholder set of
+four broad categories will be defined after consultation with library
+staff and UX review. Broad placeholders under consideration:</p>
+<ul>
+<li><code>librarian-subject-specialist.fountain</code></li>
+<li><code>librarian-systems-digital.fountain</code></li>
+<li><code>librarian-instruction-data-literacy.fountain</code></li>
+<li><code>library-support-staff.fountain</code></li>
+</ul>
+<hr />
+<h2 id="onboarding-flow-revised">Onboarding Flow (revised)</h2>
+<p>When Harvey detects no <code>workspace_profile</code> documents in
+<code>agents/memories/workspace_profile/</code>, it runs onboarding
+before injecting memory context.</p>
+<p><strong>Current flow (replaced):</strong></p>
+<pre><code>Harvey: What should I call you? _</code></pre>
+<p><strong>New flow:</strong></p>
+<pre><code>Harvey: I don&#39;t have a workspace profile yet.
+        Choose a starting point:
+
+  [1] Back End Developer
+  [2] Front End Developer
+  [3] Dataset Developer
+  [4] Data Scientist
+  [5] Technical Writer
+  [6] Blank (start from scratch)
+
+  Also available in agents/templates/profiles/ (if any)
+
+&gt; _</code></pre>
+<p>After selection, Harvey shows the <code>NOTE:</code> recommendation
+(if present) and opens the template in <code>$EDITOR</code>. The user
+edits and saves; Harvey writes the result as a
+<code>workspace_profile</code> memory document and proceeds.</p>
+<p>If the user closes the editor without changes, the template is saved
+as-is — a reasonable default is always better than an empty profile.</p>
+<p><code>extractProjectFact</code> runs immediately after,
+auto-populating a <code>project_fact</code> document from
+<code>codemeta.json</code>, <code>go.mod</code>, or
+<code>package.json</code> as before.</p>
+<hr />
+<h2 id="profile-switching">Profile Switching</h2>
+<h3 id="the-problem">The problem</h3>
+<p>A user may legitimately want to work in different roles within one
+workspace. A data scientist might shift mid-week to writing
+documentation, or a developer might switch from back end to dataset
+work. The current model has no mechanism for this:
+<code>/memory profile update</code> edits the existing profile but does
+not preserve what came before.</p>
+<h3 id="solution-profile-use">Solution: <code>/profile use</code></h3>
+<pre><code>/profile use &lt;template-or-profile-name&gt;</code></pre>
+<p>Steps executed in order:</p>
+<ol type="1">
+<li><p><strong>Write handoff document.</strong> Harvey summarises the
+current session and writes a <code>.fountain</code> file to
+<code>agents/hand-off/&lt;timestamp&gt;.spmd</code>. The handoff is
+auto-mined on the next memory mining run, so context from the previous
+role is not lost — it migrates into experience memories.</p></li>
+<li><p><strong>Select new profile.</strong> If a template name is given,
+open that template in <code>$EDITOR</code>. If no name is given, show
+the template picker. The resulting document is saved as a new
+<code>workspace_profile</code> memory, archiving the old one (not
+deleting it).</p></li>
+<li><p><strong>Reset session.</strong> Call <code>ClearHistory()</code>
+which sets <code>memoryContextPending = true</code>. On the next user
+prompt, the new profile is injected automatically.</p></li>
+<li><p><strong>Confirm.</strong> Harvey prints:</p>
+<pre><code>✓ Switched to [Back End Developer]. Handoff saved to agents/hand-off/.
+  Type your first message to continue with the new profile.</code></pre></li>
+</ol>
+<h3 id="naming">Naming</h3>
+<p><code>use</code> is the established verb in Harvey:
+<code>/ollama use</code>, <code>/rag use</code>, <code>/kb use</code>
+all select the active item from a list. <code>/profile use</code>
+follows the same convention.</p>
+<hr />
+<h2 id="profile-alias"><code>/profile</code> Alias</h2>
+<p><code>/profile</code> is registered as a top-level alias that
+delegates entirely to <code>/memory profile</code>:</p>
+<pre><code>/profile use &lt;name&gt;     →  /memory profile use &lt;name&gt;
+/profile show           →  /memory profile show
+/profile update         →  /memory profile update</code></pre>
+<p>This matches the <code>/recall</code> alias pattern (a one-line
+handler in the command table). Users who discover memory via
+<code>/memory</code> and users who reach for <code>/profile</code> both
+arrive at the same functionality.</p>
+<hr />
+<h2 id="help-guides">Help Guides</h2>
+<p>Two embedded Markdown files, surfaced via <code>/help</code>:</p>
+<h3 id="help-ollama"><code>/help ollama</code></h3>
+<ul>
+<li>One sentence: what Ollama is.</li>
+<li>Download link (ollama.com).</li>
+<li>The two commands to run: install +
+<code>ollama pull &lt;model&gt;</code>.</li>
+<li>One troubleshooting line: “if Harvey can’t connect, make sure Ollama
+is running.”</li>
+</ul>
+<h3 id="help-pdf-tools"><code>/help pdf-tools</code></h3>
+<ul>
+<li>One sentence: what <code>pdftotext</code> is and why Harvey needs
+it.</li>
+<li>Install commands for all three platforms:
+<ul>
+<li>macOS: <code>brew install poppler</code></li>
+<li>Linux: <code>apt install poppler-utils</code></li>
+<li>Windows: link to poppler Windows build.</li>
+</ul></li>
+<li>One note: “Harvey works without PDF tools but cannot read PDF
+files.”</li>
+</ul>
+<p>Both guides are also printed proactively: if Ollama is unreachable at
+startup, Harvey prints a short pointer to <code>/help ollama</code>. If
+a PDF read fails, Harvey prints a pointer to
+<code>/help pdf-tools</code>.</p>
+<hr />
+<h2 id="relationship-to-existing-memory-architecture">Relationship to
+Existing Memory Architecture</h2>
+<p>Profile templates feed directly into the existing three-silo memory
+architecture. Nothing in the retrieval or injection path changes.</p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 23%" />
+<col style="width: 34%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Template field</th>
+<th scope="col">Becomes</th>
+<th scope="col">Injected as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ROLE:</code>, <code>PREFERENCES:</code>,
+<code>CONTEXT:</code></td>
+<td><code>workspace_profile</code> memory doc</td>
+<td>Always, score 1.0, first</td>
+</tr>
+<tr>
+<td>Auto-extracted workspace metadata</td>
+<td><code>project_fact</code> memory doc</td>
+<td>Always, score 1.0, second</td>
+</tr>
+<tr>
+<td>Handoff document from <code>/profile use</code></td>
+<td><code>.fountain</code> in <code>agents/hand-off/</code></td>
+<td>After mining: experience memory</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li><strong>Bundled RAG stores per template.</strong> Templates
+recommend a RAG strategy via the <code>NOTE:</code> field but do not
+ship pre-built indexes. Maintaining indexes for six roles across three
+OS / two CPU architectures is not sustainable.</li>
+<li><strong>Global profile across workspaces.</strong> Harvey is
+workspace-centric. A profile in workspace A has no effect on workspace
+B.</li>
+<li><strong>Profile versioning / diff.</strong> The archive mechanism
+(old profile is archived, not deleted) provides a basic history. Full
+versioning is deferred.</li>
+<li><strong>Library role templates (v1).</strong> Defined after UX
+review with library staff.</li>
+</ul>
+</section>
+</body>
+</html>
