@@ -12,8 +12,8 @@
     }
   ],
   "dateCreated": "2026-04-15",
-  "dateModified": "2026-06-02",
-  "datePublished": "2026-06-02",
+  "dateModified": "2026-06-05",
+  "datePublished": "2026-06-05",
   "description": "Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.\n\nThe Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.",
   "name": "harvey",
   "license": "https://www.gnu.org/licenses/agpl-3.0.txt",
@@ -28,9 +28,9 @@
     "Pandoc >= 3.9",
     "GNU Make >= 3.8"
   ],
-  "version": "0.0.7",
+  "version": "0.0.8",
   "developmentStatus": "active",
   "issueTracker": "https://github.com/rsdoiel/harvey/issues",
-  "releaseNotes": "- Added `assay` evaluation tool for running prompt corpus against Ollama models\n- Added `--rag-db` and `--rag-compare` flags to `assay` for side-by-side RAG vs baseline evaluation\n- Added `/attach` command for attaching images, PDFs, and text files with route-aware representation\n- Added `/read-pdf` command for page-range PDF text extraction (requires poppler)\n- Added `/hint` command for actionable improvement suggestions (RAG, memory, KB)\n- Added `/memory` commands and memory store implementation\n- Added `/pipeline` support and implementation\n- Added `/recall` alias for `/memory recall` (searches all three knowledge silos)\n- Unified memory, RAG and Knowledge base support\n- Bug fixes catching write_file failure in model responses\n- Added support for remote access for S3, HTTP and SFTP for reading and ingesting content",
+  "releaseNotes": "- Added profile template system: 5 developer role templates (back-end, front-end, dataset, data-scientist, technical-writer) plus blank, embedded in the binary via go:embed\n- Added `/profile use [name]` command for mid-session context switching: writes a handoff summary, archives the old profile, runs the template picker, and resets conversation history\n- Added `/profile` as a top-level alias for `/memory profile`\n- Added embedded help guides for Ollama setup and PDF tools (`/help getting-started`, `/help pdf-tools`)\n- `/status` now shows the active workspace profile name in the Memory section\n- Missing-backend and missing-poppler error messages now include pointers to the relevant help guides\n- Template picker replaces blank onboarding form: new users choose a role template and optionally edit it in `$EDITOR` before their first session",
   "copyrightHolder": "R. S. Doiel"
 }

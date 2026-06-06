@@ -8,10 +8,10 @@
     - example the debug log type events could be change the spinner behavior to let the user know things are chugging long
     - Harvey. Claude Code and Vibes do this I think people will expect Harvey to do this too.
   - [ ] Command tab complection needs to be better implemented to save user typing.
-  - [ ] `/status` should show which memory profile is active  ← Phase E of profile-templates-plan.md
-  - [ ] `/profile` alias for `/memory profile` + `/profile use` for switching  ← Phase C of profile-templates-plan.md
-  - [ ] Profile templates shipped embedded in binary; template picker replaces blank onboarding  ← profile-templates-plan.md
-  - [ ] Help guides for Ollama and PDF tools embedded in binary (`/help ollama`, `/help pdf-tools`)  ← Phase D of profile-templates-plan.md
+  - [x] `/status` should show which memory profile is active  ← Phase E of profile-templates-plan.md
+  - [x] `/profile` alias for `/memory profile` + `/profile use` for switching  ← Phase C of profile-templates-plan.md
+  - [x] Profile templates shipped embedded in binary; template picker replaces blank onboarding  ← profile-templates-plan.md
+  - [x] Help guides for Ollama and PDF tools embedded in binary (`/help ollama`, `/help pdf-tools`)  ← Phase D of profile-templates-plan.md
   - [ ] We have the three tiered memory setup which I think it right for Harvey but I think users will think of memory and rag
         settings as going together in many cases. It would be nice to explore that in a way we did with using `/recall` as an alias for `/memory recall`
   - [ ] It would be nice to beable to rename the workspace showing with `/memory profile`
