@@ -230,6 +230,11 @@ func (a *Agent) registerCommands() {
 			Description: "Write the last assistant reply (or its first code block) to a file",
 			Handler:     cmdWrite,
 		},
+		"loop": {
+			Usage:       "/loop INTERVAL [--count N] PROMPT|/COMMAND",
+			Description: "Repeat a prompt or command on an interval, up to N times (default 10, max 100)",
+			Handler:     cmdLoop,
+		},
 		"run": {
 			Usage:       "/run COMMAND [ARGS...]",
 			Description: "Run a command in the workspace and inject its output into context",
@@ -562,8 +567,14 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "getting-started", "gettingstarted", "install", "setup":
 			fmt.Fprint(out, GettingStartedHelpText)
 			return nil
+		case "loop":
+			fmt.Fprint(out, FmtHelp(LoopHelpText, "", "", "", ""))
+			return nil
+		case "profile":
+			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, getting-started, git, inspect, kb, learn, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, getting-started, git, inspect, kb, learn, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 
@@ -594,7 +605,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "  Type /help TOPIC for a full guide. Topics: attach, audit, clear, compact,")
-	fmt.Fprintln(out, "  context, editing, file-tree, files, git, inspect, kb, learn, memory,")
+	fmt.Fprintln(out, "  context, editing, file-tree, files, git, inspect, kb, learn, loop, memory,")
 	fmt.Fprintln(out, "  ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record,")
 	fmt.Fprintln(out, "  rename, routing, run, safemode, search, security, session, skill-set,")
 	fmt.Fprintln(out, "  skills, status, summarize, write")

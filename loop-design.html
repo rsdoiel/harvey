@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-loop-design">Harvey <code>/loop</code> — Design</h1>
+<h2 id="overview">Overview</h2>
+<p><code>/loop</code> repeats a prompt or slash command on a fixed
+interval, for a bounded number of iterations, entirely within the
+existing REPL. It exists for workflows like “check the build every 5
+minutes and tell me if it breaks” or “run /git status every 30 seconds
+while I refactor.”</p>
+<p>Harvey’s REPL (<code>terminal.go:Run</code>) is a single-threaded
+loop that blocks on each turn; there is no async wake-up mechanism
+comparable to Claude Code’s session scheduler. <code>/loop</code> is
+therefore a <strong>blocking, foreground</strong> command: it takes over
+the REPL for its duration, runs its iterations in-process, and returns
+control when it finishes, is cancelled, or hits its iteration cap.</p>
+<h2 id="command-syntax">Command Syntax</h2>
+<pre><code>/loop INTERVAL [--count N] PROMPT
+/loop INTERVAL [--count N] /COMMAND [ARGS...]</code></pre>
+<table>
+<colgroup>
+<col style="width: 37%" />
+<col style="width: 29%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Argument</th>
+<th scope="col">Format</th>
+<th scope="col">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INTERVAL</code></td>
+<td>Required, parsed by <code>parseDurationString</code></td>
+<td><code>30s</code>, <code>5m</code>, <code>1h</code>,
+<code>300</code></td>
+</tr>
+<tr>
+<td><code>--count N</code></td>
+<td>Optional, integer, default 10, max 100</td>
+<td><code>--count 5</code></td>
+</tr>
+<tr>
+<td><code>PROMPT</code></td>
+<td>Free text sent as a chat turn each iteration</td>
+<td><code>Summarize new log entries</code></td>
+</tr>
+<tr>
+<td><code>/COMMAND</code></td>
+<td>A slash command dispatched each iteration</td>
+<td><code>/git status</code>, <code>/run make test</code></td>
+</tr>
+</tbody>
+</table>
+<p>If the trailing text begins with <code>/</code>, <code>/loop</code>
+dispatches it as a command via <code>a.dispatch()</code>; otherwise it
+is sent as a chat prompt. This mirrors the existing distinction in the
+REPL between <code>/commands</code>, <code>!shell</code>,
+<code>@mentions</code>, and plain chat — <code>/loop</code> does not
+invent a new input grammar, it picks the existing path that matches the
+trailing text.</p>
+<p><code>--count</code> follows the <code>--depth N</code> convention
+already used by <code>/read-dir</code>.</p>
+<h2 id="why-a-required-interval-no-self-pacing">Why a Required Interval,
+No Self-Pacing</h2>
+<p>Claude Code’s <code>/loop</code> can omit the interval and let the
+agent self-pace via a wake-scheduling primitive. Harvey has no
+equivalent: it is a synchronous CLI process with no persistent
+scheduler, so “self-pacing” would have to mean either (a) Harvey guesses
+an interval once and runs at a fixed cadence anyway — which is just a
+worse version of asking the user — or (b) the process stays resident and
+wakes itself, a different program shape than Harvey is today. Requiring
+an explicit <code>INTERVAL</code> is the honest mapping of the feature
+onto Harvey’s architecture: the user picks the cadence, Harvey executes
+it reliably.</p>
+<h2 id="execution-model">Execution Model</h2>
+<p><code>cmdLoop</code> runs its own loop inside the command
+handler:</p>
+<pre><code>print plan summary (&quot;Looping every 5m, up to 10 times: &lt;prompt&gt;&quot;)
+for i := 1; i &lt;= count; i++ {
+    run one iteration (chat turn or command dispatch)
+    if cancelled { break }
+    if i &lt; count {
+        sleep(interval), interruptible by Ctrl+C
+    }
+}
+print summary (&quot;Loop finished after N iteration(s)&quot; | &quot;Loop cancelled after N iteration(s)&quot;)</code></pre>
+<h3 id="cancellation">Cancellation</h3>
+<p>Every long-running operation in <code>terminal.go</code> (chat,
+<code>!</code> commands, <code>@mention</code> dispatch) uses the same
+pattern: a cancellable <code>context.Context</code>, a goroutine
+watching <code>os.Signal</code> for <code>SIGINT</code>, and a
+<code>wasCancelled</code> flag checked after the operation returns.
+<code>/loop</code> builds <strong>one</strong> such context/watcher for
+the whole run — not one per iteration — so cancellation during either an
+iteration or the inter-iteration sleep (<code>time.NewTimer</code> raced
+against <code>ctx.Done()</code> in a <code>select</code>) surfaces the
+same way.</p>
+<p><strong>Any <code>Ctrl+C</code> stops the loop</strong>, whether it
+lands mid-iteration or during the sleep — it does not just cancel the
+current iteration and continue. This matches the existing convention
+(“Cancelled.” returns to the prompt) and avoids a second control surface
+(e.g. “press Ctrl+C twice to fully stop”) that nothing else in Harvey
+has.</p>
+<h2 id="iteration-cap">Iteration Cap</h2>
+<p><code>--count</code> defaults to 10 and is capped at 100. An
+unbounded <code>/loop</code> would be the first Harvey command that can
+run LLM calls — and, if tools are enabled, write files or execute shell
+commands — indefinitely without supervision. Bounding it by default,
+with a ceiling that still allows long unattended runs (100 × 5m ≈ 8
+hours) but blocks <code>--count 999999</code> typos, is a deliberate
+safety choice consistent with Harvey’s existing
+safe-mode/permissions/audit posture.</p>
+<h2 id="chat-mode-iteration-flow">Chat-Mode Iteration Flow</h2>
+<p>A chat-mode iteration performs the <em>same model call</em> a normal
+chat turn would — same RAG augmentation, same tool-loop-or-plain-chat
+branch, same recording — so that looping a prompt behaves predictably
+and consistently with typing it by hand repeatedly. To get this without
+duplicating ~150 lines of REPL loop body, the existing inline chat block
+in <code>terminal.go</code> (roughly lines 635-820) is factored into a
+shared helper:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> runChatTurn<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> input <span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span>reply <span class="dt">string</span><span class="op">,</span> stats ChatStats<span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p><code>/loop</code> calls this helper directly. It deliberately
+<strong>excludes</strong> two things that the REPL’s inline block does
+around the same call:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Excluded behaviour</th>
+<th scope="col">Why excluded from <code>/loop</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Skill auto-trigger dispatch (<code>MatchesTrigger</code>)</td>
+<td>Could silently redirect a looped prompt to a different skill on some
+iteration but not others — surprising in an unattended run</td>
+</tr>
+<tr>
+<td><code>autoExecuteReply</code> / code-block-to-file offers</td>
+<td>These are interactive Y/n prompts; they would block an unattended
+loop waiting on stdin that nothing will type</td>
+</tr>
+</tbody>
+</table>
+<p>(The one-time memory-context injection is also skipped, but only
+because it already fired once per session before <code>/loop</code>
+could run — not a deliberate exclusion.)</p>
+<p>Everything else — RAG augmentation, the tool-loop vs. plain-chat
+branch, token/context warnings, stats recording, Fountain recording — is
+identical to a normal turn, because those are properties of “how Harvey
+answers a prompt,” not properties of the REPL’s input-reading loop.</p>
+<h2 id="command-mode-iteration-flow">Command-Mode Iteration Flow</h2>
+<p>When the trailing text starts with <code>/</code>, each iteration is
+simply:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>_<span class="op">,</span> err <span class="op">:=</span> a<span class="op">.</span>dispatch<span class="op">(</span>commandLine<span class="op">,</span> out<span class="op">)</span></span></code></pre></div>
+<p>This is intentionally the <em>only</em> thing <code>/loop</code> does
+in command mode — the dispatched command already handles its own
+recording, audit logging, and safe-mode checks (e.g. <code>/run</code>
+checks <code>a.Config.IsCommandAllowed</code>). <code>/loop</code> adds
+no new execution surface; it just calls the same dispatcher the REPL
+calls, repeatedly.</p>
+<p>If the dispatched command would itself exit Harvey
+(<code>/exit</code>, <code>/quit</code>, <code>/bye</code>),
+<code>/loop</code> recognises this and stops the loop instead of
+forwarding the exit — exiting mid-loop from a scripted command would be
+surprising and hard to recover from.</p>
+<h2 id="session-recording">Session Recording</h2>
+<p>No changes to <code>recorder.go</code>. Chat-mode iterations are
+recorded via the same <code>RecordTurnWithStats</code> call a normal
+turn makes (through <code>runChatTurn</code>); command-mode iterations
+are recorded by whatever the dispatched command already does. The loop’s
+start/stop/cancellation is visible in the live terminal output but is
+<strong>not</strong> specially marked in the Fountain transcript — a
+reader sees N consecutive ordinary turns or command invocations, which
+is an accurate (if slightly repetitive) record of what happened. A
+dedicated loop-boundary marker is left as a future enhancement if
+transcript readability turns out to matter in practice (see “Out of
+Scope”).</p>
+<h2 id="safety-considerations">Safety Considerations</h2>
+<ul>
+<li><strong>Tool calls</strong>: if <code>a.Config.ToolsEnabled</code>,
+looped prompts go through <code>RunToolLoop</code> exactly as normal
+chat does, including any file writes or shell execution the model
+decides to perform. <code>/loop</code> does not suppress this — doing so
+would make looped chat behave differently from normal chat, which is
+more confusing than the (documented) risk of repetition. The printed
+plan summary before the first iteration is the user’s chance to Ctrl+C
+before anything runs.</li>
+<li><strong>Safe mode / audit</strong>: command-mode iterations go
+through <code>a.dispatch</code>, which already enforces
+<code>a.Config.SafeMode</code> / <code>IsCommandAllowed</code> and
+writes to <code>a.AuditBuffer</code>. No new checks are needed in
+<code>/loop</code> — it inherits them by reusing the dispatcher.</li>
+<li><strong>Iteration cap</strong>: see above.</li>
+</ul>
+<h2 id="error-conditions">Error Conditions</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Condition</th>
+<th scope="col">Message</th>
+<th scope="col">Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Missing/invalid interval</td>
+<td><code>loop: invalid interval %q — use e.g. 30s, 5m, 1h</code></td>
+<td>Print usage, no iterations run</td>
+</tr>
+<tr>
+<td>Interval ≤ 0</td>
+<td><code>loop: interval must be positive</code></td>
+<td>Print usage, no iterations run</td>
+</tr>
+<tr>
+<td><code>--count</code> not an integer, ≤ 0, or &gt; 100</td>
+<td><code>loop: --count must be an integer between 1 and 100</code></td>
+<td>Print usage, no iterations run</td>
+</tr>
+<tr>
+<td>Empty prompt/command</td>
+<td><code>Usage: /loop INTERVAL [--count N] PROMPT</code></td>
+<td>Print usage</td>
+</tr>
+<tr>
+<td><code>/exit</code>|<code>/quit</code>|<code>/bye</code> dispatched
+mid-loop</td>
+<td><code>loop: stopping — %q would exit Harvey</code></td>
+<td>Stop loop, do not exit</td>
+</tr>
+<tr>
+<td>Ctrl+C</td>
+<td><code>Cancelled. Loop stopped after N/M iteration(s).</code></td>
+<td>Stop loop, return to prompt</td>
+</tr>
+<tr>
+<td>Iteration error (chat or dispatch)</td>
+<td>printed inline by the iteration itself, exactly as it would be
+outside a loop</td>
+<td>Continue to the next iteration</td>
+</tr>
+</tbody>
+</table>
+<p>The last row is deliberate: a transient error in one iteration
+(e.g. a model timeout) does not stop the loop — only the user (Ctrl+C)
+or the count does. This matches “check on something periodically,” where
+an occasional miss is expected and shouldn’t end the monitoring.</p>
+<h2 id="rejected-alternatives">Rejected Alternatives</h2>
+<ul>
+<li><strong>Background goroutine loop</strong> — would require locking
+around <code>a.History</code>, <code>a.Recorder</code>, and the shared
+output writer, none of which exist today because Harvey has never needed
+them. The added concurrency-safety surface is large for a feature whose
+blocking version works fine.</li>
+<li><strong>Self-pacing (omit interval)</strong> — no wake-scheduling
+primitive exists in Harvey; faking it would either be a fixed interval
+in disguise or a different program shape. Honest mapping: require the
+interval.</li>
+<li><strong>Model-driven stop sentinel</strong> (e.g. reply contains
+<code>LOOP_DONE</code>) — adds prompt-engineering fragility (what if the
+model says it conversationally?) for a v1 feature whose primary controls
+are already the count and Ctrl+C. Could be layered on later behind an
+opt-in flag.</li>
+<li><strong>Confirmation prompt before starting</strong> — adds friction
+without much safety benefit; the user already typed the interval and
+count explicitly, and the printed plan summary plus immediate Ctrl+C
+give the same “are you sure” window without an extra keypress.</li>
+<li><strong>Unbounded iterations by default</strong> — rejected for the
+reasons in “Iteration Cap” above.</li>
+</ul>
+<h2 id="out-of-scope-future-enhancements">Out of Scope (Future
+Enhancements)</h2>
+<ul>
+<li>Dedicated Fountain recorder markers for loop
+start/stop/cancellation.</li>
+<li>Model-driven early termination (sentinel-based or confidence-based,
+akin to <code>/pipeline</code>’s confidence gating).</li>
+<li><code>/loop status</code> / <code>/loop stop</code> as separate
+commands — not reachable while the loop blocks the REPL; would only make
+sense if <code>/loop</code> ever became backgroundable, which this
+design deliberately avoids.</li>
+<li>Auto-<code>/clear</code> or auto-<code>/summarize</code> between
+iterations to bound history growth on short intervals — left to the
+user’s judgement on interval choice for v1; worth revisiting if long,
+tight-interval loops prove to blow context windows in practice.</li>
+</ul>
+</section>
+</body>
+</html>

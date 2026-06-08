@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-loop-implementation-plan">Harvey <code>/loop</code> —
+Implementation Plan</h1>
+<p>See <a href="loop-design.html">loop-design.md</a> for the full design
+rationale.</p>
+<h2 id="new-module-dependencies">New Module Dependencies</h2>
+<p>None. Implemented with existing Harvey packages, <code>time</code>,
+and the standard library signal-handling pattern already used three
+times in <code>terminal.go</code>.</p>
+<h2 id="files-to-create">Files to Create</h2>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/loop.go</code></td>
+<td><code>cmdLoop</code>, argument parsing, the iteration loop,
+sleep-with-cancellation</td>
+</tr>
+<tr>
+<td><code>harvey/loop_test.go</code></td>
+<td>Unit tests for parsing and the iteration loop (with
+<code>mockLLMClient</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="files-to-modify">Files to Modify</h2>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/terminal.go</code></td>
+<td>Factor the inline chat block (~lines 635-820) into
+<code>(a *Agent) runChatTurn(ctx, input, out) (reply string, stats ChatStats, err error)</code>;
+REPL loop becomes a thin wrapper around it</td>
+</tr>
+<tr>
+<td><code>harvey/commands.go</code></td>
+<td>Register <code>"loop"</code> in <code>registerCommands()</code>; add
+a <code>"loop"</code> case to <code>cmdHelp</code>’s topic switch and
+the two topic-list strings (commands.go:566 and 596-600)</td>
+</tr>
+<tr>
+<td><code>harvey/helptext.go</code></td>
+<td>Add <code>LoopHelpText</code> constant</td>
+</tr>
+</tbody>
+</table>
+<h2 id="implementation-phases">Implementation Phases</h2>
+<h3 id="phase-1-extract-runchatturn-from-the-repl-chat-block">Phase 1 —
+Extract <code>runChatTurn</code> from the REPL chat block</h3>
+<p>Pull the body of the REPL’s plain-chat branch (RAG augmentation
+through <code>RecordTurnWithStats</code>, roughly
+<code>terminal.go:681-830</code>) into:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> runChatTurn<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> input <span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span>reply <span class="dt">string</span><span class="op">,</span> stats ChatStats<span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li>Takes an already-built, cancellable <code>ctx</code>. Each call site
+(REPL, <code>/loop</code>) keeps owning its own SIGINT setup and
+“Cancelled.”/history-rollback framing — <code>runChatTurn</code> just
+makes the model call and returns.</li>
+<li>Returns the assembled reply text and stats.</li>
+<li>The REPL’s plain-chat branch becomes a thin wrapper: build
+ctx/signal watcher → <code>runChatTurn</code> → existing
+display/skill-trigger/<code>autoExecuteReply</code> logic,
+unchanged.</li>
+<li>This phase is a pure refactor. Run <code>go test -race</code> in
+isolation afterward — no existing test’s behaviour should change.</li>
+</ul>
+<h3 id="phase-2-argument-parsing">Phase 2 — Argument Parsing</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> parseLoopArgs<span class="op">(</span>args <span class="op">[]</span><span class="dt">string</span><span class="op">)</span> <span class="op">(</span>interval time<span class="op">.</span>Duration<span class="op">,</span> count <span class="dt">int</span><span class="op">,</span> rest <span class="dt">string</span><span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li><code>args[0]</code> → <code>parseDurationString</code>
+(config.go:650); error if parse fails or result ≤ 0</li>
+<li>Optional <code>--count N</code>: if
+<code>args[1] == "--count"</code>, parse <code>args[2]</code> as an
+integer in <code>[1, 100]</code>; default 10 when the flag is
+absent</li>
+<li>Remaining tokens joined with spaces → <code>rest</code>; error if
+empty</li>
+<li>No workspace path validation here — <code>rest</code> is either free
+text or a command line that <code>a.dispatch</code> validates
+itself</li>
+</ul>
+<h3 id="phase-3-iteration-dispatch">Phase 3 — Iteration Dispatch</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> runLoopIteration<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> a <span class="op">*</span>Agent<span class="op">,</span> rest <span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span>exitRequested <span class="dt">bool</span><span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li>If <code>strings.HasPrefix(rest, "/")</code>: extract the command
+name; if it is <code>exit</code>/<code>quit</code>/<code>bye</code>,
+return <code>(true, nil)</code> without dispatching; otherwise
+<code>a.dispatch(rest, out)</code></li>
+<li>Else: <code>a.runChatTurn(ctx, rest, out)</code>, print the reply
+and stat line — same shape as the REPL’s display, minus the
+skill-trigger/<code>autoExecuteReply</code> exclusions documented in the
+design</li>
+</ul>
+<h3 id="phase-4-sleep-with-cancellation">Phase 4 — Sleep With
+Cancellation</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> sleepInterruptible<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> d time<span class="op">.</span>Duration<span class="op">)</span> <span class="op">(</span>cancelled <span class="dt">bool</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li><code>select</code> on <code>time.NewTimer(d).C</code> and
+<code>ctx.Done()</code></li>
+<li>Reuses the same SIGINT-watcher-goroutine pattern as the rest of
+<code>terminal.go</code> — the orchestrator owns one cancellable context
+for the whole run and passes it down, so cancellation during either the
+iteration or the sleep surfaces identically</li>
+</ul>
+<h3 id="phase-5-orchestrator">Phase 5 — Orchestrator</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> cmdLoop<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> args <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span></code></pre></div>
+<ol type="1">
+<li><code>parseLoopArgs</code> — on error, print usage and return
+<code>nil</code> (matches other commands’ “print usage, don’t error”
+convention, e.g. <code>/pipeline</code> with no threshold)</li>
+<li>Print plan summary:
+<code>Looping every %s, up to %d time(s): %s</code></li>
+<li>Build one cancellable <code>context.Context</code> + SIGINT watcher
+for the whole run</li>
+<li>Loop <code>i := 1..count</code>:
+<ul>
+<li><code>runLoopIteration</code></li>
+<li>if it reports <code>exitRequested</code>, print
+<code>loop: stopping — %q would exit Harvey</code> and break</li>
+<li>if cancelled, break</li>
+<li>if <code>i &lt; count</code>, <code>sleepInterruptible</code>; if it
+reports cancellation, break</li>
+</ul></li>
+<li>Print summary: <code>Loop finished after %d/%d iteration(s)</code>
+or <code>Loop cancelled after %d/%d iteration(s)</code></li>
+</ol>
+<h3 id="phase-6-help-text-registration">Phase 6 — Help Text &amp;
+Registration</h3>
+<ul>
+<li><p><code>LoopHelpText</code> in <code>helptext.go</code>, following
+the existing <code>%{app_name}(7) user manual...</code> template (see
+<code>RunHelpText</code> for a similarly single-purpose command’s
+guide)</p></li>
+<li><p><code>registerCommands()</code>:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;loop&quot;</span><span class="op">:</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    Usage<span class="op">:</span>       <span class="st">&quot;/loop INTERVAL [--count N] PROMPT|/COMMAND&quot;</span><span class="op">,</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    Description<span class="op">:</span> <span class="st">&quot;Repeat a prompt or command on an interval, up to N times&quot;</span><span class="op">,</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    Handler<span class="op">:</span>     cmdLoop<span class="op">,</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="op">},</span></span></code></pre></div></li>
+<li><p><code>cmdHelp</code>: add
+<code>case "loop": fmt.Fprint(out, FmtHelp(LoopHelpText, ...))</code>
+and add <code>loop</code> to both topic-listing strings</p></li>
+</ul>
+<h3 id="phase-7-tests-loop_test.go">Phase 7 — Tests
+(<code>loop_test.go</code>)</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Test</th>
+<th scope="col">Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TestParseLoopArgs_valid</code></td>
+<td><code>5m</code>, <code>30s</code>, <code>300</code>, with and
+without <code>--count</code></td>
+</tr>
+<tr>
+<td><code>TestParseLoopArgs_invalid</code></td>
+<td>Bad duration, zero/negative interval, <code>--count</code> out of
+range or non-numeric, empty prompt</td>
+</tr>
+<tr>
+<td><code>TestCmdLoop_chatMode</code></td>
+<td>N iterations of a plain prompt against <code>mockLLMClient</code>;
+asserts <code>a.History</code> grows by 2×N messages</td>
+</tr>
+<tr>
+<td><code>TestCmdLoop_commandMode</code></td>
+<td>Loops a harmless built-in (<code>/status</code>) N times; asserts no
+chat call is made</td>
+</tr>
+<tr>
+<td><code>TestCmdLoop_exitSentinel</code></td>
+<td>Looping <code>/exit</code> stops the loop without exiting
+Harvey</td>
+</tr>
+<tr>
+<td><code>TestCmdLoop_countCap</code></td>
+<td><code>--count 0</code> and <code>--count 101</code> rejected with
+usage messages</td>
+</tr>
+<tr>
+<td><code>TestSleepInterruptible_cancel</code></td>
+<td>Cancelling the context returns promptly without waiting the full
+duration</td>
+</tr>
+<tr>
+<td><code>TestRunChatTurn_*</code></td>
+<td>Coverage for the extracted helper — add minimal tests in Phase 1 if
+the inline block had none</td>
+</tr>
+</tbody>
+</table>
+<h2 id="acceptance-criteria">Acceptance Criteria</h2>
+<ul class="task-list">
+<li><label><input
+type="checkbox" /><code>/loop 5m Check the build</code> sends the prompt
+every 5 minutes, up to the default 10 times, displaying replies exactly
+as normal chat would</label></li>
+<li><label><input
+type="checkbox" /><code>/loop 30s --count 3 /git status</code>
+dispatches <code>/git status</code> three times, 30 seconds
+apart</label></li>
+<li><label><input type="checkbox" />Ctrl+C during an iteration or during
+the sleep stops the loop and prints a count-aware “Cancelled”
+message</label></li>
+<li><label><input type="checkbox" /><code>--count</code> outside
+<code>[1, 100]</code> is rejected with a usage message before any
+iteration runs</label></li>
+<li><label><input type="checkbox" />Looping
+<code>/exit</code>/<code>/quit</code>/<code>/bye</code> stops the loop
+without exiting Harvey</label></li>
+<li><label><input type="checkbox" /><code>a.Recorder</code> (when
+active) records every iteration exactly as it would record the
+equivalent typed-by-hand turn or command</label></li>
+<li><label><input type="checkbox" /><code>/help loop</code> prints
+<code>LoopHelpText</code>; <code>/loop</code> appears in
+<code>/help</code>’s command table and topic list</label></li>
+<li><label><input type="checkbox" /><code>go test ./...</code> and
+<code>go test -race</code> pass, including the Phase 1 refactor of the
+REPL chat block</label></li>
+</ul>
+</section>
+</body>
+</html>

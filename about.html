@@ -19,25 +19,10 @@
 </nav>
 <section>
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.8">harvey 0.0.8</h2>
+<h2 id="harvey-0.0.9">harvey 0.0.9</h2>
 <ul>
-<li>Added profile template system: 5 developer role templates (back-end,
-front-end, dataset, data-scientist, technical-writer) plus blank,
-embedded in the binary via go:embed</li>
-<li>Added <code>/profile use [name]</code> command for mid-session
-context switching: writes a handoff summary, archives the old profile,
-runs the template picker, and resets conversation history</li>
-<li>Added <code>/profile</code> as a top-level alias for
-<code>/memory profile</code></li>
-<li>Added embedded help guides for Ollama setup and PDF tools
-(<code>/help getting-started</code>, <code>/help pdf-tools</code>)</li>
-<li><code>/status</code> now shows the active workspace profile name in
-the Memory section</li>
-<li>Missing-backend and missing-poppler error messages now include
-pointers to the relevant help guides</li>
-<li>Template picker replaces blank onboarding form: new users choose a
-role template and optionally edit it in <code>$EDITOR</code> before
-their first session</li>
+<li>Added <code>/loop</code> command similar to that found in other
+Agent REPL</li>
 </ul>
 <h2 id="authors">Authors</h2>
 <ul>
@@ -64,11 +49,11 @@ Tracker</a></li>
 </ul>
 <h2 id="programming-languages">Programming languages</h2>
 <ul>
-<li>Go &gt;= 1.26.2</li>
+<li>Go &gt;= 1.26</li>
 </ul>
 <h2 id="software-requirements">Software Requirements</h2>
 <ul>
-<li>Go &gt;= 1.26.2</li>
+<li>Go &gt;= 1.26.3</li>
 </ul>
 <h2 id="software-suggestions">Software Suggestions</h2>
 <ul>

@@ -4,6 +4,146 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-08 — `/loop` chat iterations use a shared `runChatTurn` helper that skips skill auto-trigger and `autoExecuteReply`
+
+**Context.** The REPL's plain-chat path does more than call the model: it
+checks whether the input matches a skill trigger pattern (auto-dispatching to
+a different flow entirely), and after the reply, offers to write fenced code
+blocks to disk via an interactive Y/n prompt (`autoExecuteReply`). Both make
+sense for a human typing one message at a time; both are problematic when the
+same prompt is sent N times unattended — a skill could fire on iteration 3
+but not iteration 1, and a Y/n prompt would block forever waiting on stdin
+that nothing will type.
+
+**Decision.** Factor the REPL's inline chat block (`terminal.go`, roughly
+lines 635-820) into a shared `(a *Agent) runChatTurn(ctx, input, out) (reply
+string, stats ChatStats, err error)`. It keeps everything that defines "how
+Harvey answers a prompt" — RAG augmentation, the tool-loop-or-plain-chat
+branch, token/context warnings, stats, Fountain recording — and excludes
+skill auto-trigger matching and `autoExecuteReply`, both of which belong to
+"how the REPL reacts to a typed line." `/loop` calls this helper directly for
+its chat-mode iterations; the REPL becomes a thin wrapper around the same
+helper plus its own skill-trigger/`autoExecuteReply` handling.
+
+**Rejected alternatives.**
+
+- *Reuse the REPL's inline chat block as-is* — a looped prompt could silently
+  jump to a different skill mid-run, or stall on iteration 1 waiting for a
+  keypress that never comes.
+- *Duplicate the chat block inside `cmdLoop`* — roughly 150 lines of
+  copy-paste that would drift from the REPL's version on the next change to
+  the chat path.
+
+**Consequences.**
+
+- `terminal.go`'s plain-chat branch is refactored but behaviourally unchanged
+  for normal typed input — verified with `go test -race` after extraction.
+- `/loop` behaves predictably: the same prompt produces the same kind of
+  exchange every time, with no surprise skill redirects or stalled prompts.
+- If `a.Config.ToolsEnabled`, looped prompts can still cause the model to
+  write files or run commands via the normal tool loop — `/loop` does not
+  suppress this, since doing so would make looped chat behave differently
+  from normal chat (see `loop-design.md`, "Safety Considerations").
+
+---
+
+## 2026-06-08 — `/loop` caps iterations at 100 and defaults to 10
+
+**Context.** `/loop` is the first Harvey command that can run LLM calls — and,
+with tools enabled, write files or execute shell commands — repeatedly and
+unattended. Harvey's existing security posture (safe mode, permission system,
+audit log) is built around bounding and surfacing risky actions rather than
+trusting the user to always type the right thing.
+
+**Decision.** `/loop` takes an optional `--count N` (following the
+`--depth N` convention already established by `/read-dir`), defaulting to 10
+and capped at 100. There is no "run forever" option.
+
+**Rejected alternatives.**
+
+- *Unbounded by default* — the one command that could turn a typo
+  (`/loop 1s tell me a joke`) into thousands of unattended LLM calls before
+  the user notices.
+- *Confirmation prompt before starting* — adds a keypress without adding much
+  safety; the printed plan summary (`Looping every 5m, up to 10 times: ...`)
+  gives the same "last chance to Ctrl+C" moment without an extra interaction
+  step, consistent with how `/pipeline` announces its plan before running.
+
+**Consequences.**
+
+- A fully unattended `/loop` run is bounded to at most 100 iterations — e.g.
+  roughly 8 hours at a 5-minute interval — which still covers realistic
+  "check on this periodically" use cases.
+- Users who need more must re-invoke `/loop`, a deliberate speed bump rather
+  than an oversight.
+
+---
+
+## 2026-06-08 — `/loop` requires an explicit interval; no self-pacing mode
+
+**Context.** Claude Code's `/loop` can omit the interval and let the agent
+self-pace via a wake-scheduling primitive. Harvey has no equivalent — it is a
+synchronous CLI process with no persistent scheduler or "wake me up later"
+mechanism.
+
+**Decision.** `INTERVAL` is a required first argument to `/loop`, parsed with
+the existing `parseDurationString` helper (`config.go:650`, already used for
+`run_timeout`/`ollama_timeout` in `harvey.yaml`). There is no self-pacing
+mode.
+
+**Rejected alternatives.**
+
+- *Have Harvey "guess" an interval once and run at that fixed cadence* — just
+  a worse version of asking the user, with an extra layer of
+  unpredictability.
+- *Keep the process resident and let it wake itself* — a fundamentally
+  different program shape than Harvey's synchronous REPL; far outside the
+  scope of adding one command.
+
+**Consequences.**
+
+- `/loop`'s usage string and help text always show `INTERVAL` as required.
+- Users coming from Claude Code's `/loop` will notice the difference; the
+  help text explains why (no async scheduler in Harvey).
+
+---
+
+## 2026-06-08 — `/loop` runs as a blocking foreground command, not a background goroutine
+
+**Context.** Harvey's REPL (`terminal.go:Run`) is a single-threaded loop that
+blocks on each turn, mutating `a.History`, `a.Recorder`, and the shared output
+writer with no locking — because nothing has ever run concurrently with it.
+Adding a command that repeats a prompt on an interval raises the question of
+whether it should run in the background while the user keeps typing, or take
+over the REPL until it finishes.
+
+**Decision.** `/loop` runs in the foreground inside its own command handler,
+reusing the SIGINT-cancellation pattern already used three times in
+`terminal.go` (chat, `!` commands, `@mention` dispatch): one cancellable
+context for the whole run, a goroutine watching `os.Signal`, and a
+`wasCancelled` check. Any Ctrl+C — mid-iteration or during the
+inter-iteration sleep — stops the whole loop and returns to the prompt.
+
+**Rejected alternatives.**
+
+- *Background goroutine* — would require introducing locking around
+  `a.History`, `a.Recorder`, and `out`, none of which exist today. The
+  concurrency-safety surface this opens is large relative to the value of
+  letting the user type while the loop runs.
+- *"Ctrl+C cancels the iteration; a second Ctrl+C stops the loop"* — a second
+  control surface nothing else in Harvey has; rejected for consistency with
+  the existing single-Ctrl+C-aborts convention.
+
+**Consequences.**
+
+- `/loop` blocks the REPL for its duration — communicated up front via a
+  printed plan summary before the first iteration runs.
+- `/loop status` / `/loop stop` subcommands aren't meaningful (the REPL can't
+  read them while blocked) and are not implemented.
+- No new synchronization primitives are introduced anywhere in Harvey.
+
+---
+
 ## 2026-06-05 — Profile templates and help guides ship embedded in the binary
 
 **Context.** Harvey installs by copying a single executable to `$HOME/bin`. Users on three OS / two CPU architectures should not need to install a separate asset package. Templates and help guides must therefore travel with the binary.

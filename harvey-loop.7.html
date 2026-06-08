@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>LOOP — repeat a prompt or slash command at a fixed interval</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/loop INTERVAL [–count N] PROMPT /loop INTERVAL [–count N] /COMMAND
+[ARGS…]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/loop repeats PROMPT or /COMMAND every INTERVAL for up to N
+iterations, blocking the REPL until finished or cancelled. It is
+designed for workflows like “check the build every 5 minutes” or “run
+/git status every 30 seconds while I refactor.”</p>
+<p>A single Ctrl+C cancels the current iteration and any pending sleep,
+then returns to the Harvey prompt.</p>
+<h1 id="arguments">ARGUMENTS</h1>
+<p>INTERVAL Required. Parsed by parseDurationString: a plain integer is
+treated as seconds (e.g. 300 → 5 minutes); Go duration strings such as
+30s, 5m, and 1h30m are also accepted. Must be positive.</p>
+<p>–count N Optional. Number of iterations, integer in [1, 100].
+Default: 10.</p>
+<p>PROMPT Free text sent as a chat turn each iteration. The same RAG
+augmentation, tool-loop execution, and recording that apply to normal
+chat apply here.</p>
+<p>/COMMAND A slash command dispatched each iteration, exactly as if
+typed at the prompt. The command’s own safe-mode checks, audit logging,
+and recording are preserved. /exit, /quit, and /bye are recognised and
+stop the loop rather than exiting Harvey.</p>
+<h1 id="iteration-behaviour">ITERATION BEHAVIOUR</h1>
+<p>Chat iterations use the same model call as normal chat — same RAG
+augmentation, same tool-loop-or-plain-chat branch, same stats recording
+and Fountain recording — so looping a prompt behaves identically to
+typing it by hand repeatedly. Two things are deliberately excluded:</p>
+<p>Interactive write-offers — the fenced-code-block “write to file?”
+prompts and autoExecuteReply are skipped, because an unattended loop
+must never block waiting for stdin input.</p>
+<p>Skill auto-trigger — the trigger-word dispatch that redirects prompts
+to registered skills is skipped, because a looped prompt should reach
+the model directly and consistently on every iteration.</p>
+<p>A transient error in one iteration (e.g. a model timeout) is printed
+inline but does not stop the loop — only Ctrl+C or the count limit
+does.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Check the build every five minutes, up to the default 10 times: /loop
+5m Check the build and summarise any failures.</p>
+<p>Run git status every 30 seconds, 3 times: /loop 30s –count 3 /git
+status</p>
+<p>Ask the model to review recent log entries once per minute, 20 times:
+/loop 60s –count 20 Summarise any new errors in the log.</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/help pipeline — chain prompts with confidence gating /help run —
+execute shell commands from the REPL</p>
+</section>
+</body>
+</html>

@@ -671,244 +671,34 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}
 
-		// Semantic memory injection — fires once per session (or after /clear).
-		if a.memoryContextPending {
-			a.injectMemoryContext(input)
-			a.memoryContextPending = false
-		}
-
-		// RAG context injection — prepend relevant chunks before sending.
-		augmented := a.ragAugment(input)
-		a.AddMessage("user", augmented)
-
-		// Token-count warning — runs only when the backend is Ollama.
-		if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
-			histText := HistoryText(a.History)
-			n, exact := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), histText)
-			limit := a.Config.OllamaContextLength
-			qualifier := "~"
-			if exact {
-				qualifier = ""
-			}
-			if limit > 0 {
-				pct := n * 100 / limit
-				switch {
-				case pct >= 100:
-					fmt.Fprintf(out, red("  ✗ Context full: %s%d / %d tokens (%d%%) — reply may be truncated\n"), qualifier, n, limit, pct)
-				case pct >= 80:
-					fmt.Fprintf(out, yellow("  ⚠ Context %d%% full: %s%d / %d tokens\n"), pct, qualifier, n, limit)
-				}
-			}
-		}
-		var modelsUsed []string
-		if a.Client != nil {
-			modelsUsed = []string{a.Client.Name()}
-		}
-		fmt.Fprintln(out)
-
-		// Spinner label: when routing escalated, name the full model and note it is working.
-		spLabel := a.spinnerLabel()
-		if len(modelsUsed) > 1 {
-			spLabel = a.Client.Name() + " · working on it"
-			if a.ActiveSkill != "" {
-				spLabel += " · " + a.ActiveSkill
-			}
-		}
-
-		// Build a cancellable context; Ctrl+C cancels the LLM call.
+		// Send the prompt through Harvey's shared chat pipeline. runChatTurn
+		// owns RAG augmentation, the tool-loop-or-plain-chat branch, display,
+		// recording, and rolling-summary compression — see its definition
+		// below (also used by /loop, with interactive write-offers disabled).
 		chatCtx, cancelChat := context.WithCancel(context.Background())
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt)
-		wasCancelled := false
 		watchDone := make(chan struct{})
 		go func() {
 			defer signal.Stop(sigCh)
 			select {
 			case <-sigCh:
-				wasCancelled = true
 				cancelChat()
 			case <-watchDone:
 			}
 		}()
 
-		histLenBeforeChat := len(a.History)
-		var buf strings.Builder
-		sp := newSpinner(out, a.estimateDuration(), spLabel)
-		var stats ChatStats
-		var chatErr error
-		var toolCallRecords []ToolCallRecord
-		if a.Tools != nil && a.Config.ToolsEnabled {
-			ex := NewToolExecutor(a.Tools, a.Client, a.Config)
-			ex.DebugLog = a.DebugLog
-			var updatedHistory []Message
-			updatedHistory, stats, chatErr = ex.RunToolLoop(chatCtx, a.History, &buf)
-			if chatErr == nil {
-				// Preserve any intermediate tool-call/result messages added by the loop.
-				a.History = updatedHistory
-				toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:])
-			}
-		} else {
-			stats, chatErr = a.Client.Chat(chatCtx, a.History, &buf)
-		}
-		sp.stop()
-		close(watchDone) // stop the signal-watcher goroutine
-		cancelChat()     // release context resources (idempotent)
+		_, _, turnErr := a.runChatTurn(chatCtx, input, out, reader, true)
+		close(watchDone)
+		cancelChat()
 
-		if wasCancelled || errors.Is(chatErr, context.Canceled) {
+		if errors.Is(turnErr, context.Canceled) {
 			fmt.Fprintln(out, dim("  Cancelled."))
-			a.History = a.History[:len(a.History)-1]
 			continue
 		}
-		if errors.Is(chatErr, ErrToolLoopExceeded) {
-			// Small models (e.g. llama3.2:3b) sometimes call tools indefinitely
-			// and never produce a text response. Warn and retry without tools.
-			// Use a fresh context — chatCtx was already cancelled above.
-			fmt.Fprintln(out, yellow("  ⚠")+" Model entered a tool-calling loop; retrying without tools.")
-			fmt.Fprintln(out, dim("  Tip: /tools off disables tools for this model permanently in this session."))
-			buf.Reset()
-			fallbackCtx, cancelFallback := context.WithCancel(context.Background())
-			stats, chatErr = a.Client.Chat(fallbackCtx, a.History, &buf)
-			cancelFallback()
-			if chatErr != nil {
-				fmt.Fprintf(out, red("Error (fallback): ")+"%v\n", chatErr)
-				a.History = a.History[:len(a.History)-1]
-				continue
-			}
-			// Fall through to the normal display and recording path.
-		} else if chatErr != nil {
-			fmt.Fprintf(out, red("Error: ")+"%v\n", chatErr)
-			a.History = a.History[:len(a.History)-1]
+		if turnErr != nil {
+			fmt.Fprintf(out, red("Error: ")+"%v\n", turnErr)
 			continue
-		}
-		fmt.Fprint(out, buf.String())
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats, a.effectiveContextLimit())))
-		a.recordStats(stats)
-		a.sessionTurns++
-
-		// noToolCalls is true when the model did not invoke any tools this turn.
-		// Captured before AddMessage so the value is valid at both the code-block
-		// extraction guard below and the autoExecuteReply guard further down.
-		noToolCalls := len(a.History) == histLenBeforeChat
-
-		// Code-block extraction: when the model produced fenced code blocks
-		// but made no tool calls, offer to write each block to a file. This
-		// handles small local models that respond with prose + a code block
-		// instead of invoking the write_file tool.
-		var proseUnknownTools []string
-		if a.Workspace != nil && noToolCalls {
-			blocks := extractCodeBlocks(buf.String())
-			// Warn when the model produced only tool-call-syntax blocks and no
-			// substantive content — a sign it ignored the prompt (common in
-			// small models like llama3.2 when tools are enabled).
-			if len(blocks) > 0 {
-				allToolCalls := true
-				for _, b := range blocks {
-					if !isToolCallBlock(b) {
-						allToolCalls = false
-						break
-					}
-				}
-				if allToolCalls {
-					// Try to parse and execute the prose tool calls before warning.
-					dispatched, unknowns := tryExecuteProseToolCalls(a, blocks, out)
-					proseUnknownTools = unknowns
-					if !dispatched {
-						fmt.Fprintln(out, yellow("  ⚠")+" Model produced only tool-call syntax; it may not have answered the question. Try /tools off or a larger model.")
-					}
-				}
-			}
-			for i, block := range blocks {
-				// Skip JSON blocks that look like tool call invocations — small
-				// models sometimes write these as prose instead of structured calls.
-				if isToolCallBlock(block) {
-					continue
-				}
-				label := "code block"
-				if block.Lang != "" {
-					label = block.Lang + " block"
-				}
-				if len(blocks) > 1 {
-					label += fmt.Sprintf(" %d/%d", i+1, len(blocks))
-				}
-				fmt.Fprintf(out, dim("\n[Write %s to file? Path (or Enter to skip)]: "), label)
-				pathLine, _ := reader.ReadString('\n')
-				pathLine = strings.TrimSpace(pathLine)
-				if pathLine == "" {
-					continue
-				}
-				if _, pathErr := resolveWorkspacePath(a.Workspace.Root, pathLine); pathErr != nil {
-					fmt.Fprintf(out, red("  ✗")+" %v\n", pathErr)
-					continue
-				}
-				if !a.CheckWritePermission(pathLine) {
-					fmt.Fprintf(out, red("  ✗")+" write permission denied for %q\n", pathLine)
-					if a.AuditBuffer != nil {
-						a.AuditBuffer.Log(ActionFileWrite, pathLine, StatusDenied)
-					}
-					continue
-				}
-				if writeErr := a.Workspace.WriteFile(pathLine, []byte(block.Content), 0o644); writeErr != nil {
-					fmt.Fprintf(out, red("  ✗")+" write failed: %v\n", writeErr)
-					if a.AuditBuffer != nil {
-						a.AuditBuffer.Log(ActionFileWrite, pathLine, StatusError)
-					}
-				} else {
-					fmt.Fprintf(out, green("✓")+" wrote %d bytes to %s\n", len(block.Content), pathLine)
-					if a.AuditBuffer != nil {
-						a.AuditBuffer.Log(ActionFileWrite, pathLine, StatusSuccess)
-					}
-				}
-			}
-		}
-
-		a.AddMessage("assistant", buf.String())
-		if a.Recorder != nil {
-			if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, "", toolCallRecords); recErr != nil {
-				fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
-			}
-		}
-		// Feed unknown-tool errors back into history so the model can self-correct
-		// on the next turn (now that the assistant message is in place, the history
-		// order is correct: …, assistant: <hallucinated call>, user: <correction>).
-		if len(proseUnknownTools) > 0 && a.Tools != nil {
-			schemas := a.Tools.GetToolSchemas()
-			available := make([]string, len(schemas))
-			for i, s := range schemas {
-				available[i] = s.Function.Name
-			}
-			correction := "Your tool call(s) failed: the tool name(s) " +
-				strings.Join(proseUnknownTools, ", ") +
-				" do not exist. Available tools: " +
-				strings.Join(available, ", ") +
-				". Please retry using one of these exact tool names."
-			a.AddMessage("user", correction)
-		}
-		// Skip autoExecuteReply when the model already wrote files via tool calls —
-		// the response text may contain display-only code blocks (e.g. directory
-		// trees) that should not be offered as files to write.
-		if noToolCalls {
-			a.autoExecuteReply(buf.String(), out, reader, chatCtx)
-		}
-
-		// Rolling summary: compress history when approaching the context limit.
-		if a.Config.Memory.RollingSummary.Enabled && a.Client != nil {
-			contextLen := a.effectiveContextLimit()
-			if contextLen > 0 {
-				histTokens := len(HistoryText(a.History)) / 4
-				if histTokens < 1 {
-					histTokens = 1
-				}
-				if ShouldCompress(histTokens, contextLen, a.Config.Memory.RollingSummary.WarnAtPct) {
-					pct := histTokens * 100 / contextLen
-					fmt.Fprintln(out, dim(fmt.Sprintf("  [context ~%d%% full — compressing older turns]", pct)))
-					if compErr := CompressHistory(a, a.Config.Memory.RollingSummary.KeepTurns, out); compErr != nil {
-						fmt.Fprintf(out, "%s Compression failed: %v\n", yellow("  ✗"), compErr)
-					} else {
-						a.sessionCompressed = true
-					}
-				}
-			}
 		}
 	}
 
@@ -963,6 +753,265 @@ func (a *Agent) Run(out io.Writer) error {
 
 	return nil
 }
+
+/** runChatTurn sends input through Harvey's chat pipeline — RAG augmentation,
+ * the tool-loop-or-plain-chat branch, reply display, stats recording, and
+ * rolling-summary compression — and returns the assembled reply. It is shared
+ * by the REPL's chat path and /loop, which is why the interactive write-offers
+ * (the fenced-code-block "write to file?" prompts and autoExecuteReply) are
+ * gated by the interactive flag: an unattended /loop run must never block on
+ * stdin waiting for a Y/n answer that nothing will type.
+ *
+ * Parameters:
+ *   ctx (context.Context) — cancelled by the caller's SIGINT watcher; checked
+ *     both during and after the model call
+ *   input (string) — the raw user prompt for this turn
+ *   out (io.Writer) — destination for displayed output (reply, stats, warnings)
+ *   reader (*bufio.Reader) — stdin reader, used only when interactive is true
+ *   interactive (bool) — when true, offers to write fenced code blocks to
+ *     files and runs autoExecuteReply; when false (e.g. /loop), both are skipped
+ *
+ * Returns:
+ *   string — the assistant's reply text (empty on error or cancellation)
+ *   ChatStats — token/timing stats for the turn (zero value on error or cancellation)
+ *   error — context.Canceled if the turn was cancelled, otherwise any chat error
+ *
+ * Example:
+ *   reply, stats, err := a.runChatTurn(ctx, "Summarize the diff", out, reader, true)
+ *   if err == nil {
+ *       fmt.Fprintln(out, reply)
+ *   }
+ */
+func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool) (string, ChatStats, error) {
+	// Semantic memory injection — fires once per session (or after /clear).
+	if a.memoryContextPending {
+		a.injectMemoryContext(input)
+		a.memoryContextPending = false
+	}
+
+	// RAG context injection — prepend relevant chunks before sending.
+	augmented := a.ragAugment(input)
+	a.AddMessage("user", augmented)
+
+	// Token-count warning — runs only when the backend is Ollama.
+	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
+		histText := HistoryText(a.History)
+		n, exact := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), histText)
+		limit := a.Config.OllamaContextLength
+		qualifier := "~"
+		if exact {
+			qualifier = ""
+		}
+		if limit > 0 {
+			pct := n * 100 / limit
+			switch {
+			case pct >= 100:
+				fmt.Fprintf(out, red("  ✗ Context full: %s%d / %d tokens (%d%%) — reply may be truncated\n"), qualifier, n, limit, pct)
+			case pct >= 80:
+				fmt.Fprintf(out, yellow("  ⚠ Context %d%% full: %s%d / %d tokens\n"), pct, qualifier, n, limit)
+			}
+		}
+	}
+	var modelsUsed []string
+	if a.Client != nil {
+		modelsUsed = []string{a.Client.Name()}
+	}
+	fmt.Fprintln(out)
+
+	// Spinner label: when routing escalated, name the full model and note it is working.
+	spLabel := a.spinnerLabel()
+	if len(modelsUsed) > 1 {
+		spLabel = a.Client.Name() + " · working on it"
+		if a.ActiveSkill != "" {
+			spLabel += " · " + a.ActiveSkill
+		}
+	}
+
+	histLenBeforeChat := len(a.History)
+	var buf strings.Builder
+	sp := newSpinner(out, a.estimateDuration(), spLabel)
+	var stats ChatStats
+	var chatErr error
+	var toolCallRecords []ToolCallRecord
+	if a.Tools != nil && a.Config.ToolsEnabled {
+		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
+		ex.DebugLog = a.DebugLog
+		var updatedHistory []Message
+		updatedHistory, stats, chatErr = ex.RunToolLoop(ctx, a.History, &buf)
+		if chatErr == nil {
+			// Preserve any intermediate tool-call/result messages added by the loop.
+			a.History = updatedHistory
+			toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:])
+		}
+	} else {
+		stats, chatErr = a.Client.Chat(ctx, a.History, &buf)
+	}
+	sp.stop()
+
+	if ctx.Err() != nil || errors.Is(chatErr, context.Canceled) {
+		a.History = a.History[:len(a.History)-1]
+		return "", ChatStats{}, context.Canceled
+	}
+	if errors.Is(chatErr, ErrToolLoopExceeded) {
+		// Small models (e.g. llama3.2:3b) sometimes call tools indefinitely
+		// and never produce a text response. Warn and retry without tools.
+		// Use a fresh context — ctx may already be near the end of its life,
+		// and this fallback call should not inherit that.
+		fmt.Fprintln(out, yellow("  ⚠")+" Model entered a tool-calling loop; retrying without tools.")
+		fmt.Fprintln(out, dim("  Tip: /tools off disables tools for this model permanently in this session."))
+		buf.Reset()
+		fallbackCtx, cancelFallback := context.WithCancel(context.Background())
+		stats, chatErr = a.Client.Chat(fallbackCtx, a.History, &buf)
+		cancelFallback()
+		if chatErr != nil {
+			a.History = a.History[:len(a.History)-1]
+			return "", ChatStats{}, fmt.Errorf("fallback: %w", chatErr)
+		}
+		// Fall through to the normal display and recording path.
+	} else if chatErr != nil {
+		a.History = a.History[:len(a.History)-1]
+		return "", ChatStats{}, chatErr
+	}
+	fmt.Fprint(out, buf.String())
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats, a.effectiveContextLimit())))
+	a.recordStats(stats)
+	a.sessionTurns++
+
+	// noToolCalls is true when the model did not invoke any tools this turn.
+	// Captured before AddMessage so the value is valid at both the code-block
+	// extraction guard below and the autoExecuteReply guard further down.
+	noToolCalls := len(a.History) == histLenBeforeChat
+
+	var proseUnknownTools []string
+	if a.Workspace != nil && noToolCalls {
+		blocks := extractCodeBlocks(buf.String())
+		// Warn when the model produced only tool-call-syntax blocks and no
+		// substantive content — a sign it ignored the prompt (common in
+		// small models like llama3.2 when tools are enabled). This detection
+		// and dispatch runs regardless of interactivity — it is a correction
+		// mechanism, not a user prompt.
+		if len(blocks) > 0 {
+			allToolCalls := true
+			for _, b := range blocks {
+				if !isToolCallBlock(b) {
+					allToolCalls = false
+					break
+				}
+			}
+			if allToolCalls {
+				// Try to parse and execute the prose tool calls before warning.
+				dispatched, unknowns := tryExecuteProseToolCalls(a, blocks, out)
+				proseUnknownTools = unknowns
+				if !dispatched {
+					fmt.Fprintln(out, yellow("  ⚠")+" Model produced only tool-call syntax; it may not have answered the question. Try /tools off or a larger model.")
+				}
+			}
+		}
+		// Code-block extraction: when the model produced fenced code blocks
+		// but made no tool calls, offer to write each block to a file. This
+		// handles small local models that respond with prose + a code block
+		// instead of invoking the write_file tool. Interactive only — an
+		// unattended /loop run must never block on stdin for a Y/n answer.
+		if interactive {
+			for i, block := range blocks {
+				// Skip JSON blocks that look like tool call invocations — small
+				// models sometimes write these as prose instead of structured calls.
+				if isToolCallBlock(block) {
+					continue
+				}
+				label := "code block"
+				if block.Lang != "" {
+					label = block.Lang + " block"
+				}
+				if len(blocks) > 1 {
+					label += fmt.Sprintf(" %d/%d", i+1, len(blocks))
+				}
+				fmt.Fprintf(out, dim("\n[Write %s to file? Path (or Enter to skip)]: "), label)
+				pathLine, _ := reader.ReadString('\n')
+				pathLine = strings.TrimSpace(pathLine)
+				if pathLine == "" {
+					continue
+				}
+				if _, pathErr := resolveWorkspacePath(a.Workspace.Root, pathLine); pathErr != nil {
+					fmt.Fprintf(out, red("  ✗")+" %v\n", pathErr)
+					continue
+				}
+				if !a.CheckWritePermission(pathLine) {
+					fmt.Fprintf(out, red("  ✗")+" write permission denied for %q\n", pathLine)
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileWrite, pathLine, StatusDenied)
+					}
+					continue
+				}
+				if writeErr := a.Workspace.WriteFile(pathLine, []byte(block.Content), 0o644); writeErr != nil {
+					fmt.Fprintf(out, red("  ✗")+" write failed: %v\n", writeErr)
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileWrite, pathLine, StatusError)
+					}
+				} else {
+					fmt.Fprintf(out, green("✓")+" wrote %d bytes to %s\n", len(block.Content), pathLine)
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileWrite, pathLine, StatusSuccess)
+					}
+				}
+			}
+		}
+	}
+
+	a.AddMessage("assistant", buf.String())
+	if a.Recorder != nil {
+		if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, "", toolCallRecords); recErr != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
+		}
+	}
+	// Feed unknown-tool errors back into history so the model can self-correct
+	// on the next turn (now that the assistant message is in place, the history
+	// order is correct: …, assistant: <hallucinated call>, user: <correction>).
+	if len(proseUnknownTools) > 0 && a.Tools != nil {
+		schemas := a.Tools.GetToolSchemas()
+		available := make([]string, len(schemas))
+		for i, s := range schemas {
+			available[i] = s.Function.Name
+		}
+		correction := "Your tool call(s) failed: the tool name(s) " +
+			strings.Join(proseUnknownTools, ", ") +
+			" do not exist. Available tools: " +
+			strings.Join(available, ", ") +
+			". Please retry using one of these exact tool names."
+		a.AddMessage("user", correction)
+	}
+	// Skip autoExecuteReply when the model already wrote files via tool calls —
+	// the response text may contain display-only code blocks (e.g. directory
+	// trees) that should not be offered as files to write. Interactive only,
+	// for the same stdin-blocking reason as the code-block-write offers above.
+	if interactive && noToolCalls {
+		a.autoExecuteReply(buf.String(), out, reader, ctx)
+	}
+
+	// Rolling summary: compress history when approaching the context limit.
+	if a.Config.Memory.RollingSummary.Enabled && a.Client != nil {
+		contextLen := a.effectiveContextLimit()
+		if contextLen > 0 {
+			histTokens := len(HistoryText(a.History)) / 4
+			if histTokens < 1 {
+				histTokens = 1
+			}
+			if ShouldCompress(histTokens, contextLen, a.Config.Memory.RollingSummary.WarnAtPct) {
+				pct := histTokens * 100 / contextLen
+				fmt.Fprintln(out, dim(fmt.Sprintf("  [context ~%d%% full — compressing older turns]", pct)))
+				if compErr := CompressHistory(a, a.Config.Memory.RollingSummary.KeepTurns, out); compErr != nil {
+					fmt.Fprintf(out, "%s Compression failed: %v\n", yellow("  ✗"), compErr)
+				} else {
+					a.sessionCompressed = true
+				}
+			}
+		}
+	}
+
+	return buf.String(), stats, nil
+}
+
 
 const (
 	cmdHistoryFile    = "agents/harvey_history"
