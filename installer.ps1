@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# generated with CMTools 0.0.9 54994d3
+# generated with CMTools 0.0.9 261685a
 
 #
 # Set the package name and version to install
