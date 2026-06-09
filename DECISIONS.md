@@ -159,7 +159,7 @@ inter-iteration sleep — stops the whole loop and returns to the prompt.
 **Consequences.**
 
 - `templates/` directory added to the Harvey source tree; must be maintained alongside code.
-- Binary size increases modestly (six `.fountain` files and three Markdown guides are small).
+- Binary size increases modestly (six `.spmd` files and three Markdown guides are small).
 - `templates.go` is the single registration point for all embedded assets.
 
 ---
@@ -186,7 +186,7 @@ Library role templates (subject specialist, systems/digital, instruction/data li
 
 **Consequences.**
 
-- Library users who try Harvey before the library templates ship will use `blank.fountain` or one of the developer templates as a starting point. Acceptable short-term.
+- Library users who try Harvey before the library templates ship will use `blank.spmd` or one of the developer templates as a starting point. Acceptable short-term.
 
 ---
 
@@ -213,7 +213,7 @@ Library role templates (subject specialist, systems/digital, instruction/data li
 
 **Context.** When a user switches profiles mid-session with `/profile use`, the in-progress conversation context would be lost after `ClearHistory()`. The user may need to resume the previous context in a future session.
 
-**Decision.** Before clearing history, `/profile use` writes a `.fountain` summary file to `agents/hand-off/<timestamp>.spmd`. The handoff captures the last N assistant messages as bullet points and lists file paths and open questions from recent turns. No LLM call is required — the handoff is structural, not summarised. Because it is a `.fountain` file, the memory miner can extract facts from it in a later session, migrating context from the old role into the new session's experience memories over time.
+**Decision.** Before clearing history, `/profile use` writes a `.spmd` summary file to `agents/hand-off/<timestamp>.spmd`. The handoff captures the last N assistant messages as bullet points and lists file paths and open questions from recent turns. No LLM call is required — the handoff is structural, not summarised. Because it is a `.spmd` file, the memory miner can extract facts from it in a later session, migrating context from the old role into the new session's experience memories over time.
 
 The previous `workspace_profile` document is archived (status set to `archived`) rather than deleted, preserving the history of who this workspace has been used as.
 

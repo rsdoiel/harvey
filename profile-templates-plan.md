@@ -19,12 +19,12 @@ yet — this is the foundation the later phases build on.
 | File | Purpose |
 |------|---------|
 | `templates.go` | `//go:embed templates` declaration, `EmbeddedTemplates embed.FS` var, `ListTemplates() []TemplateEntry`, `LoadTemplate(name string) ([]byte, error)`, `LoadHelpGuide(name string) ([]byte, error)` |
-| `templates/profiles/backend-developer.fountain` | Back end developer template |
-| `templates/profiles/frontend-developer.fountain` | Front end developer template |
-| `templates/profiles/dataset-developer.fountain` | Dataset/datasetd developer template |
-| `templates/profiles/data-scientist.fountain` | Data scientist template |
-| `templates/profiles/technical-writer.fountain` | Technical writer template |
-| `templates/profiles/blank.fountain` | Minimal template (equivalent to current onboarding) |
+| `templates/profiles/backend-developer.spmd` | Back end developer template |
+| `templates/profiles/frontend-developer.spmd` | Front end developer template |
+| `templates/profiles/dataset-developer.spmd` | Dataset/datasetd developer template |
+| `templates/profiles/data-scientist.spmd` | Data scientist template |
+| `templates/profiles/technical-writer.spmd` | Technical writer template |
+| `templates/profiles/blank.spmd` | Minimal template (equivalent to current onboarding) |
 | `templates/help/ollama.md` | Ollama install guide |
 | `templates/help/pdf-tools.md` | PDF tools install guide |
 | `templates/help/getting-started.md` | First-run orientation |
@@ -41,20 +41,20 @@ yet — this is the foundation the later phases build on.
 ```go
 type TemplateEntry struct {
     Name        string  // display name, e.g. "Back End Developer"
-    File        string  // filename without path, e.g. "backend-developer.fountain"
+    File        string  // filename without path, e.g. "backend-developer.spmd"
     Source      string  // "builtin" or "workspace"
     Recommended string  // content of NOTE: field, or ""
 }
 ```
 
-`ListTemplates` merges built-in templates with any `.fountain` files
+`ListTemplates` merges built-in templates with any `.spmd` files
 found in `agents/templates/profiles/` in the current workspace.
 Workspace-local entries appear after built-ins; same-name workspace
 entry shadows the built-in.
 
 ### `TemplateNoteField` helper
 
-Extract the `NOTE:` block from a `.fountain` file for display during
+Extract the `NOTE:` block from a `.spmd` file for display during
 selection without parsing the full document:
 
 ```go
@@ -71,7 +71,7 @@ end of file. Returns empty string if no `NOTE:` field present.
 - `LoadTemplate("backend-developer")` returns the file contents.
 - `LoadHelpGuide("ollama")` returns the Ollama guide text.
 - `/help ollama` and `/help pdf-tools` print the embedded guides.
-- Adding a `.fountain` file to `agents/templates/profiles/` causes
+- Adding a `.spmd` file to `agents/templates/profiles/` causes
   `ListTemplates()` to include it (integration test with temp dir).
 
 ---
@@ -111,7 +111,7 @@ Select [1-N] or press Enter for Blank: _
 ```
 
 If the terminal is non-interactive (replay or pipe), skip the picker
-and use `blank.fountain` silently — same behaviour as today.
+and use `blank.spmd` silently — same behaviour as today.
 
 ### Acceptance criteria
 
@@ -135,7 +135,7 @@ top-level `/profile` alias.
 | File | Change |
 |------|--------|
 | `commands.go` | Add `"use"` case to `cmdMemoryProfile` dispatch. Implement `cmdMemoryProfileUse(a, args, out, store)`: write handoff doc, run template picker or load named template, archive old profile, save new profile, call `a.ClearHistory()`. Register `"profile"` in the top-level command table as an alias delegating to `cmdMemory(a, append([]string{"profile"}, args...), out)`. |
-| `harvey.go` | Add `writeHandoff(a *Agent, store *MemoryStore) (string, error)` — writes a brief `.fountain` summary of the current session to `agents/hand-off/<timestamp>.spmd`. The summary is Harvey's last N assistant messages collapsed to bullet points (no LLM call required; purely structural). |
+| `harvey.go` | Add `writeHandoff(a *Agent, store *MemoryStore) (string, error)` — writes a brief `.spmd` summary of the current session to `agents/hand-off/<timestamp>.spmd`. The summary is Harvey's last N assistant messages collapsed to bullet points (no LLM call required; purely structural). |
 | `sessions_files.go` | Ensure `agents/hand-off/` is created alongside `agents/sessions/` at workspace init if it does not exist. |
 | `helptext.go` | Add `profile use` to `/memory` help text. Add `/profile` to the top-level command list and to `/help` dispatch. Document the handoff mechanism and the archive behaviour. |
 
@@ -235,10 +235,10 @@ define the right role categories and content.
 
 | File | Role |
 |------|------|
-| `librarian-subject-specialist.fountain` | Subject librarian (general) |
-| `librarian-systems-digital.fountain` | Library systems: FOLIO, ArchiveSpace, InvenioRDM, EPrints |
-| `librarian-instruction-data-literacy.fountain` | Teaching, Data Carpentry, information literacy |
-| `library-support-staff.fountain` | Circulation, patron services, general support |
+| `librarian-subject-specialist.spmd` | Subject librarian (general) |
+| `librarian-systems-digital.spmd` | Library systems: FOLIO, ArchiveSpace, InvenioRDM, EPrints |
+| `librarian-instruction-data-literacy.spmd` | Teaching, Data Carpentry, information literacy |
+| `library-support-staff.spmd` | Circulation, patron services, general support |
 
 No implementation work begins until the role definitions are agreed.
 

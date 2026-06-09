@@ -44,7 +44,7 @@ When Harvey starts it:
 1. Prints the banner and resolves the workspace root.
 2. Opens (or creates) `agents/knowledge.db` in the workspace.
 3. Loads `agents/harvey.yaml` if present (overrides paths for KB, sessions, agents).
-4. Scans `agents/sessions/` for prior `.spmd` / `.fountain` session files and
+4. Scans `agents/sessions/` for prior `.spmd` session files and
    offers to resume one (default: No). If a session is chosen, the model it
    used is pre-selected in the next step.
 5. Reads `HARVEY.md` from the workspace root, expands any
@@ -522,35 +522,35 @@ format that Harvey can replay or resume later.
 
 ```
 harvey > /record start
-Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.fountain
+Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.spmd
 
 harvey > /record stop
-Recording stopped. Session saved to harvey-session-20260415-142300.fountain
+Recording stopped. Session saved to harvey-session-20260415-142300.spmd
 ```
 
 You can also start recording automatically at launch:
 
 ```bash
 harvey --record                          # auto-named timestamped file
-harvey --record-file mysession.fountain  # explicit path
+harvey --record-file mysession.spmd  # explicit path
 ```
 
 ### Resuming or replaying a Fountain file
 
-There are two ways to use a recorded `.fountain` file in a later session:
+There are two ways to use a recorded `.spmd` file in a later session:
 
 **Continue** — loads the Fountain file's conversation history into context and
 drops you into the interactive REPL, so you can pick up exactly where you left
 off:
 
 ```bash
-harvey --continue mysession.fountain
+harvey --continue mysession.spmd
 ```
 
 Or from inside a running Harvey session:
 
 ```
-harvey > /session continue mysession.fountain
+harvey > /session continue mysession.spmd
 ```
 
 **Replay** — re-sends every user turn from the Fountain file to the currently
@@ -558,15 +558,15 @@ connected model and records the fresh responses to a new file. Useful for
 re-running a session against a different model:
 
 ```bash
-harvey --replay mysession.fountain
-harvey --replay mysession.fountain --replay-output newresponses.fountain
+harvey --replay mysession.spmd
+harvey --replay mysession.spmd --replay-output newresponses.spmd
 ```
 
 Or from inside a running Harvey session:
 
 ```
-harvey > /session replay mysession.fountain
-harvey > /session replay mysession.fountain newresponses.fountain
+harvey > /session replay mysession.spmd
+harvey > /session replay mysession.spmd newresponses.spmd
 ```
 
 | Startup flag | Description |

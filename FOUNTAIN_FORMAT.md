@@ -494,7 +494,7 @@ Reading agents/sessions/session.spmd for analysis.
 
 Memory documents stored in `agents/memories/` use an `INT. MEMORY <TIMESTAMP>`
 scene heading in place of the standard session heading. This scene type is
-**never recorded in live sessions** — it appears only in `.fountain` files under
+**never recorded in live sessions** — it appears only in `.spmd` files under
 `agents/memories/{type}/` that were produced by `/memory mine`.
 
 The file begins with a YAML front matter block (replacing the Fountain title
@@ -855,7 +855,7 @@ THE END.
 
 ### Claude Code Compatibility
 
-Harvey accepts `.fountain` files created by Claude Code. These files may use
+Harvey accepts `.spmd` files created by Claude Code. These files may use
 slightly different formatting but follow the same fundamental structure:
 
 - Scene headings with character names

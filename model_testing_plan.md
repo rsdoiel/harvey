@@ -882,7 +882,7 @@ Results from test
 	  </skill>
 	  <skill>
 	    <name>fountain-analysis</name>
-	    <description>Read and actively monitor a Harvey Fountain screenplay file, parsing its structure and delivering incremental analysis as new content arrives. Use when the user asks to analyse, watch, tail, or summarise a .fountain session file. Prompts for the filename if not provided in the request.</description>
+	    <description>Read and actively monitor a Harvey Fountain screenplay file, parsing its structure and delivering incremental analysis as new content arrives. Use when the user asks to analyse, watch, tail, or summarise a .spmd session file. Prompts for the filename if not provided in the request.</description>
 	    <location>/home/user/workspace/agents/skills/fountain-analysis/SKILL.md</location>
 	  </skill>
 	</available_skills>
@@ -938,7 +938,7 @@ Results from test
 	  </skill>
 	  <skill>
 	    <name>fountain-analysis</name>
-	    <description>Read and actively monitor a Harvey Fountain screenplay file, parsing its structure and delivering incremental analysis as new content arrives. Use when the user asks to analyse, watch, tail, or summarise a .fountain session file. Prompts for the filename if not provided in the request.</description>
+	    <description>Read and actively monitor a Harvey Fountain screenplay file, parsing its structure and delivering incremental analysis as new content arrives. Use when the user asks to analyse, watch, tail, or summarise a .spmd session file. Prompts for the filename if not provided in the request.</description>
 	    <location>/home/user/workspace/agents/skills/fountain-analysis/SKILL.md</location>
 	  </skill>
 	</available_skills>

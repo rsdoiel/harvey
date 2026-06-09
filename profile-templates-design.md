@@ -60,7 +60,7 @@ templates in `agents/templates/` override or extend the built-in set,
 allowing organisations to ship their own starting points without
 modifying Harvey.
 
-**Same Fountain format.** Profile templates are `.fountain` memory
+**Same Fountain format.** Profile templates are `.spmd` memory
 files — the same format as all other memory documents. No new parser,
 no new storage mechanism.
 
@@ -74,12 +74,12 @@ no new storage mechanism.
 harvey/
   templates/
     profiles/
-      backend-developer.fountain
-      frontend-developer.fountain
-      dataset-developer.fountain
-      data-scientist.fountain
-      technical-writer.fountain
-      blank.fountain
+      backend-developer.spmd
+      frontend-developer.spmd
+      dataset-developer.spmd
+      data-scientist.spmd
+      technical-writer.spmd
+      blank.spmd
     help/
       ollama.md
       pdf-tools.md
@@ -96,7 +96,7 @@ var EmbeddedTemplates embed.FS
 
 ### Workspace-local templates
 
-Any `.fountain` files placed in `agents/templates/profiles/` by the
+Any `.spmd` files placed in `agents/templates/profiles/` by the
 user or their organisation appear alongside the built-in list.
 Workspace-local templates take precedence when names collide.
 This is how a team adds a shared "Library Systems Developer" template
@@ -106,7 +106,7 @@ without patching Harvey.
 
 ## Template Format
 
-A profile template is a standard `.fountain` memory document with one
+A profile template is a standard `.spmd` memory document with one
 addition: an optional `NOTE:` field that Harvey surfaces at selection
 time as a non-enforced recommendation.
 
@@ -146,21 +146,21 @@ roles are deferred pending input from library staff and UX review.
 
 | File | Role |
 |------|------|
-| `backend-developer.fountain` | Go, Python, TypeScript+Deno, SQL for application work |
-| `frontend-developer.fountain` | HTML, CSS, TypeScript/JavaScript, Deno for bundling and transpilation |
-| `dataset-developer.fountain` | Front end skills plus SQL, dataset CLI and datasetd web service configuration |
-| `data-scientist.fountain` | Data analysis, SQL for exploration, Python data tooling |
-| `technical-writer.fountain` | Documentation, man pages, tutorials, Markdown and Fountain formats |
-| `blank.fountain` | No pre-filled content; equivalent to current onboarding |
+| `backend-developer.spmd` | Go, Python, TypeScript+Deno, SQL for application work |
+| `frontend-developer.spmd` | HTML, CSS, TypeScript/JavaScript, Deno for bundling and transpilation |
+| `dataset-developer.spmd` | Front end skills plus SQL, dataset CLI and datasetd web service configuration |
+| `data-scientist.spmd` | Data analysis, SQL for exploration, Python data tooling |
+| `technical-writer.spmd` | Documentation, man pages, tutorials, Markdown and Fountain formats |
+| `blank.spmd` | No pre-filled content; equivalent to current onboarding |
 
 **Library templates (deferred):** A placeholder set of four broad
 categories will be defined after consultation with library staff and
 UX review. Broad placeholders under consideration:
 
-- `librarian-subject-specialist.fountain`
-- `librarian-systems-digital.fountain`
-- `librarian-instruction-data-literacy.fountain`
-- `library-support-staff.fountain`
+- `librarian-subject-specialist.spmd`
+- `librarian-systems-digital.spmd`
+- `librarian-instruction-data-literacy.spmd`
+- `library-support-staff.spmd`
 
 ---
 
@@ -226,7 +226,7 @@ before.
 Steps executed in order:
 
 1. **Write handoff document.** Harvey summarises the current session
-   and writes a `.fountain` file to `agents/hand-off/<timestamp>.spmd`.
+   and writes a `.spmd` file to `agents/hand-off/<timestamp>.spmd`.
    The handoff is auto-mined on the next memory mining run, so context
    from the previous role is not lost — it migrates into experience
    memories.
@@ -308,7 +308,7 @@ architecture. Nothing in the retrieval or injection path changes.
 |----------------|---------|-------------|
 | `ROLE:`, `PREFERENCES:`, `CONTEXT:` | `workspace_profile` memory doc | Always, score 1.0, first |
 | Auto-extracted workspace metadata | `project_fact` memory doc | Always, score 1.0, second |
-| Handoff document from `/profile use` | `.fountain` in `agents/hand-off/` | After mining: experience memory |
+| Handoff document from `/profile use` | `.spmd` in `agents/hand-off/` | After mining: experience memory |
 
 ---
 

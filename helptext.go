@@ -1922,7 +1922,7 @@ MEMORY — mine session recordings for memories and manage the memory store
 # DESCRIPTION
 
 /memory provides a semi-manual system for extracting useful knowledge from
-Harvey's Fountain session recordings (.spmd / .fountain files) and injecting
+Harvey's Fountain session recordings (.spmd files) and injecting
 that knowledge into future sessions. Memories persist across sessions as
 Fountain files in agents/memories/ inside the workspace.
 

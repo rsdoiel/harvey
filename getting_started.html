@@ -56,10 +56,9 @@ overridden in <code>&lt;workspace&gt;/agents/harvey.yaml</code>.</p>
 workspace.</li>
 <li>Loads <code>agents/harvey.yaml</code> if present (overrides paths
 for KB, sessions, agents).</li>
-<li>Scans <code>agents/sessions/</code> for prior <code>.spmd</code> /
-<code>.fountain</code> session files and offers to resume one (default:
-No). If a session is chosen, the model it used is pre-selected in the
-next step.</li>
+<li>Scans <code>agents/sessions/</code> for prior <code>.spmd</code>
+session files and offers to resume one (default: No). If a session is
+chosen, the model it used is pre-selected in the next step.</li>
 <li>Reads <code>HARVEY.md</code> from the workspace root, expands any <a
 href="#dynamic-markers">dynamic markers</a>, and injects it as the
 system prompt.</li>
@@ -665,35 +664,35 @@ workspace</td>
 </tbody>
 </table>
 <pre><code>harvey &gt; /record start
-Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.fountain
+Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.spmd
 
 harvey &gt; /record stop
-Recording stopped. Session saved to harvey-session-20260415-142300.fountain</code></pre>
+Recording stopped. Session saved to harvey-session-20260415-142300.spmd</code></pre>
 <p>You can also start recording automatically at launch:</p>
 <div class="sourceCode" id="cb21"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record</span>                          <span class="co"># auto-named timestamped file</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.fountain  <span class="co"># explicit path</span></span></code></pre></div>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.spmd  <span class="co"># explicit path</span></span></code></pre></div>
 <h3 id="resuming-or-replaying-a-fountain-file">Resuming or replaying a
 Fountain file</h3>
-<p>There are two ways to use a recorded <code>.fountain</code> file in a
+<p>There are two ways to use a recorded <code>.spmd</code> file in a
 later session:</p>
 <p><strong>Continue</strong> — loads the Fountain file’s conversation
 history into context and drops you into the interactive REPL, so you can
 pick up exactly where you left off:</p>
 <div class="sourceCode" id="cb22"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> mysession.fountain</span></code></pre></div>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> mysession.spmd</span></code></pre></div>
 <p>Or from inside a running Harvey session:</p>
-<pre><code>harvey &gt; /session continue mysession.fountain</code></pre>
+<pre><code>harvey &gt; /session continue mysession.spmd</code></pre>
 <p><strong>Replay</strong> — re-sends every user turn from the Fountain
 file to the currently connected model and records the fresh responses to
 a new file. Useful for re-running a session against a different
 model:</p>
 <div class="sourceCode" id="cb24"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.fountain</span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.fountain <span class="at">--replay-output</span> newresponses.fountain</span></code></pre></div>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd <span class="at">--replay-output</span> newresponses.spmd</span></code></pre></div>
 <p>Or from inside a running Harvey session:</p>
-<pre><code>harvey &gt; /session replay mysession.fountain
-harvey &gt; /session replay mysession.fountain newresponses.fountain</code></pre>
+<pre><code>harvey &gt; /session replay mysession.spmd
+harvey &gt; /session replay mysession.spmd newresponses.spmd</code></pre>
 <table>
 <colgroup>
 <col style="width: 50%" />

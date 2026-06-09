@@ -566,7 +566,7 @@ action line</p>
 <p>Memory documents stored in <code>agents/memories/</code> use an
 <code>INT. MEMORY &lt;TIMESTAMP&gt;</code> scene heading in place of the
 standard session heading. This scene type is <strong>never recorded in
-live sessions</strong> — it appears only in <code>.fountain</code> files
+live sessions</strong> — it appears only in <code>.spmd</code> files
 under <code>agents/memories/{type}/</code> that were produced by
 <code>/memory mine</code>.</p>
 <p>The file begins with a YAML front matter block (replacing the
@@ -1022,8 +1022,8 @@ changes</li>
 </ol>
 <h2 id="compatibility-notes">Compatibility Notes</h2>
 <h3 id="claude-code-compatibility">Claude Code Compatibility</h3>
-<p>Harvey accepts <code>.fountain</code> files created by Claude Code.
-These files may use slightly different formatting but follow the same
+<p>Harvey accepts <code>.spmd</code> files created by Claude Code. These
+files may use slightly different formatting but follow the same
 fundamental structure:</p>
 <ul>
 <li>Scene headings with character names</li>

@@ -32,7 +32,7 @@ Use this format whenever you want to create or update a file. Do **not** tell
 the user to run `/apply` separately — Harvey presents the confirmation prompt
 automatically after your reply.
 
-**Session recording** produces a `.fountain` screenplay script when active
+**Session recording** produces a `.spmd` screenplay script when active
 (`-r` flag at startup or `/record start`). Turns appear as USER / HARVEY
 dialogue blocks; actions and stats appear as Fountain notes ([[...]]).
 

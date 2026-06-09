@@ -69,8 +69,8 @@ Workspace-local templates in <code>agents/templates/</code> override or
 extend the built-in set, allowing organisations to ship their own
 starting points without modifying Harvey.</p>
 <p><strong>Same Fountain format.</strong> Profile templates are
-<code>.fountain</code> memory files — the same format as all other
-memory documents. No new parser, no new storage mechanism.</p>
+<code>.spmd</code> memory files — the same format as all other memory
+documents. No new parser, no new storage mechanism.</p>
 <hr />
 <h2 id="template-storage">Template Storage</h2>
 <h3 id="embedded-templates-built-into-the-binary">Embedded templates
@@ -78,12 +78,12 @@ memory documents. No new parser, no new storage mechanism.</p>
 <pre><code>harvey/
   templates/
     profiles/
-      backend-developer.fountain
-      frontend-developer.fountain
-      dataset-developer.fountain
-      data-scientist.fountain
-      technical-writer.fountain
-      blank.fountain
+      backend-developer.spmd
+      frontend-developer.spmd
+      dataset-developer.spmd
+      data-scientist.spmd
+      technical-writer.spmd
+      blank.spmd
     help/
       ollama.md
       pdf-tools.md
@@ -93,16 +93,16 @@ source file:</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">//go:embed templates</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> EmbeddedTemplates embed<span class="op">.</span>FS</span></code></pre></div>
 <h3 id="workspace-local-templates">Workspace-local templates</h3>
-<p>Any <code>.fountain</code> files placed in
+<p>Any <code>.spmd</code> files placed in
 <code>agents/templates/profiles/</code> by the user or their
 organisation appear alongside the built-in list. Workspace-local
 templates take precedence when names collide. This is how a team adds a
 shared “Library Systems Developer” template without patching Harvey.</p>
 <hr />
 <h2 id="template-format">Template Format</h2>
-<p>A profile template is a standard <code>.fountain</code> memory
-document with one addition: an optional <code>NOTE:</code> field that
-Harvey surfaces at selection time as a non-enforced recommendation.</p>
+<p>A profile template is a standard <code>.spmd</code> memory document
+with one addition: an optional <code>NOTE:</code> field that Harvey
+surfaces at selection time as a non-enforced recommendation.</p>
 <pre class="fountain"><code>INT. WORKSPACE PROFILE - TEMPLATE
 
 TITLE: Back End Developer
@@ -143,30 +143,30 @@ are deferred pending input from library staff and UX review.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>backend-developer.fountain</code></td>
+<td><code>backend-developer.spmd</code></td>
 <td>Go, Python, TypeScript+Deno, SQL for application work</td>
 </tr>
 <tr>
-<td><code>frontend-developer.fountain</code></td>
+<td><code>frontend-developer.spmd</code></td>
 <td>HTML, CSS, TypeScript/JavaScript, Deno for bundling and
 transpilation</td>
 </tr>
 <tr>
-<td><code>dataset-developer.fountain</code></td>
+<td><code>dataset-developer.spmd</code></td>
 <td>Front end skills plus SQL, dataset CLI and datasetd web service
 configuration</td>
 </tr>
 <tr>
-<td><code>data-scientist.fountain</code></td>
+<td><code>data-scientist.spmd</code></td>
 <td>Data analysis, SQL for exploration, Python data tooling</td>
 </tr>
 <tr>
-<td><code>technical-writer.fountain</code></td>
+<td><code>technical-writer.spmd</code></td>
 <td>Documentation, man pages, tutorials, Markdown and Fountain
 formats</td>
 </tr>
 <tr>
-<td><code>blank.fountain</code></td>
+<td><code>blank.spmd</code></td>
 <td>No pre-filled content; equivalent to current onboarding</td>
 </tr>
 </tbody>
@@ -175,10 +175,10 @@ formats</td>
 four broad categories will be defined after consultation with library
 staff and UX review. Broad placeholders under consideration:</p>
 <ul>
-<li><code>librarian-subject-specialist.fountain</code></li>
-<li><code>librarian-systems-digital.fountain</code></li>
-<li><code>librarian-instruction-data-literacy.fountain</code></li>
-<li><code>library-support-staff.fountain</code></li>
+<li><code>librarian-subject-specialist.spmd</code></li>
+<li><code>librarian-systems-digital.spmd</code></li>
+<li><code>librarian-instruction-data-literacy.spmd</code></li>
+<li><code>library-support-staff.spmd</code></li>
 </ul>
 <hr />
 <h2 id="onboarding-flow-revised">Onboarding Flow (revised)</h2>
@@ -225,7 +225,7 @@ not preserve what came before.</p>
 <p>Steps executed in order:</p>
 <ol type="1">
 <li><p><strong>Write handoff document.</strong> Harvey summarises the
-current session and writes a <code>.fountain</code> file to
+current session and writes a <code>.spmd</code> file to
 <code>agents/hand-off/&lt;timestamp&gt;.spmd</code>. The handoff is
 auto-mined on the next memory mining run, so context from the previous
 role is not lost — it migrates into experience memories.</p></li>
@@ -318,7 +318,7 @@ architecture. Nothing in the retrieval or injection path changes.</p>
 </tr>
 <tr>
 <td>Handoff document from <code>/profile use</code></td>
-<td><code>.fountain</code> in <code>agents/hand-off/</code></td>
+<td><code>.spmd</code> in <code>agents/hand-off/</code></td>
 <td>After mining: experience memory</td>
 </tr>
 </tbody>

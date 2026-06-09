@@ -93,7 +93,7 @@ The survey organises agent memory along three axes.
 
 | Form | Harvey | Notes |
 |------|--------|-------|
-| Token-level Flat (1D) | `.fountain` files + SQLite/FTS5/cosine | Core storage; keep as-is |
+| Token-level Flat (1D) | `.spmd` files + SQLite/FTS5/cosine | Core storage; keep as-is |
 | Token-level Planar (2D) | — | Out of scope for this design |
 | Parametric | — | Not applicable; Harvey does not fine-tune |
 | Latent | — | Not applicable; no KV-cache control |
@@ -338,7 +338,7 @@ workflow: <description>. <summary>
 ## Workspace Profile Onboarding
 
 At `Agent.Reset()` (session start), check whether
-`agents/memories/workspace_profile/` contains any `.fountain` files.
+`agents/memories/workspace_profile/` contains any `.spmd` files.
 If not, and if the session is interactive (not replay), run the
 onboarding flow before injecting memory context:
 
@@ -361,7 +361,7 @@ workspace in this order:
 4. `.git/config` `remote.origin.url`
 5. Ask if nothing was found
 
-Both documents are written as `.fountain` memory files and saved to
+Both documents are written as `.spmd` memory files and saved to
 the store. Onboarding is detected purely by file presence; no config
 flag is needed.
 

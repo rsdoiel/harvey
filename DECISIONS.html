@@ -213,7 +213,7 @@ fragile to edit.</li>
 <ul>
 <li><code>templates/</code> directory added to the Harvey source tree;
 must be maintained alongside code.</li>
-<li>Binary size increases modestly (six <code>.fountain</code> files and
+<li>Binary size increases modestly (six <code>.spmd</code> files and
 three Markdown guides are small).</li>
 <li><code>templates.go</code> is the single registration point for all
 embedded assets.</li>
@@ -274,7 +274,7 @@ work, which would undermine trust in the feature.</li>
 <p><strong>Consequences.</strong></p>
 <ul>
 <li>Library users who try Harvey before the library templates ship will
-use <code>blank.fountain</code> or one of the developer templates as a
+use <code>blank.spmd</code> or one of the developer templates as a
 starting point. Acceptable short-term.</li>
 </ul>
 <hr />
@@ -318,13 +318,13 @@ with <code>/profile use</code>, the in-progress conversation context
 would be lost after <code>ClearHistory()</code>. The user may need to
 resume the previous context in a future session.</p>
 <p><strong>Decision.</strong> Before clearing history,
-<code>/profile use</code> writes a <code>.fountain</code> summary file
-to <code>agents/hand-off/&lt;timestamp&gt;.spmd</code>. The handoff
+<code>/profile use</code> writes a <code>.spmd</code> summary file to
+<code>agents/hand-off/&lt;timestamp&gt;.spmd</code>. The handoff
 captures the last N assistant messages as bullet points and lists file
 paths and open questions from recent turns. No LLM call is required —
 the handoff is structural, not summarised. Because it is a
-<code>.fountain</code> file, the memory miner can extract facts from it
-in a later session, migrating context from the old role into the new
+<code>.spmd</code> file, the memory miner can extract facts from it in a
+later session, migrating context from the old role into the new
 session’s experience memories over time.</p>
 <p>The previous <code>workspace_profile</code> document is archived
 (status set to <code>archived</code>) rather than deleted, preserving

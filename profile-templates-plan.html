@@ -54,27 +54,27 @@ on.</p>
 <code>LoadHelpGuide(name string) ([]byte, error)</code></td>
 </tr>
 <tr>
-<td><code>templates/profiles/backend-developer.fountain</code></td>
+<td><code>templates/profiles/backend-developer.spmd</code></td>
 <td>Back end developer template</td>
 </tr>
 <tr>
-<td><code>templates/profiles/frontend-developer.fountain</code></td>
+<td><code>templates/profiles/frontend-developer.spmd</code></td>
 <td>Front end developer template</td>
 </tr>
 <tr>
-<td><code>templates/profiles/dataset-developer.fountain</code></td>
+<td><code>templates/profiles/dataset-developer.spmd</code></td>
 <td>Dataset/datasetd developer template</td>
 </tr>
 <tr>
-<td><code>templates/profiles/data-scientist.fountain</code></td>
+<td><code>templates/profiles/data-scientist.spmd</code></td>
 <td>Data scientist template</td>
 </tr>
 <tr>
-<td><code>templates/profiles/technical-writer.fountain</code></td>
+<td><code>templates/profiles/technical-writer.spmd</code></td>
 <td>Technical writer template</td>
 </tr>
 <tr>
-<td><code>templates/profiles/blank.fountain</code></td>
+<td><code>templates/profiles/blank.spmd</code></td>
 <td>Minimal template (equivalent to current onboarding)</td>
 </tr>
 <tr>
@@ -121,19 +121,19 @@ constants (loaded from embedded guides at init or on demand). Add
 <h3 id="templateentry-type"><code>TemplateEntry</code> type</h3>
 <div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> TemplateEntry <span class="kw">struct</span> <span class="op">{</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    Name        <span class="dt">string</span>  <span class="co">// display name, e.g. &quot;Back End Developer&quot;</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    File        <span class="dt">string</span>  <span class="co">// filename without path, e.g. &quot;backend-developer.fountain&quot;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    File        <span class="dt">string</span>  <span class="co">// filename without path, e.g. &quot;backend-developer.spmd&quot;</span></span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    Source      <span class="dt">string</span>  <span class="co">// &quot;builtin&quot; or &quot;workspace&quot;</span></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    Recommended <span class="dt">string</span>  <span class="co">// content of </span><span class="al">NOTE</span><span class="co">: field, or &quot;&quot;</span></span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p><code>ListTemplates</code> merges built-in templates with any
-<code>.fountain</code> files found in
+<code>.spmd</code> files found in
 <code>agents/templates/profiles/</code> in the current workspace.
 Workspace-local entries appear after built-ins; same-name workspace
 entry shadows the built-in.</p>
 <h3 id="templatenotefield-helper"><code>TemplateNoteField</code>
 helper</h3>
-<p>Extract the <code>NOTE:</code> block from a <code>.fountain</code>
-file for display during selection without parsing the full document:</p>
+<p>Extract the <code>NOTE:</code> block from a <code>.spmd</code> file
+for display during selection without parsing the full document:</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> TemplateNoteField<span class="op">(</span>content <span class="op">[]</span><span class="dt">byte</span><span class="op">)</span> <span class="dt">string</span></span></code></pre></div>
 <p>Reads lines between <code>NOTE:</code> and the next all-caps scene
 heading or end of file. Returns empty string if no <code>NOTE:</code>
@@ -150,7 +150,7 @@ contents.</li>
 text.</li>
 <li><code>/help ollama</code> and <code>/help pdf-tools</code> print the
 embedded guides.</li>
-<li>Adding a <code>.fountain</code> file to
+<li>Adding a <code>.spmd</code> file to
 <code>agents/templates/profiles/</code> causes
 <code>ListTemplates()</code> to include it (integration test with temp
 dir).</li>
@@ -213,8 +213,7 @@ produces a minimal document.</td>
 
 Select [1-N] or press Enter for Blank: _</code></pre>
 <p>If the terminal is non-interactive (replay or pipe), skip the picker
-and use <code>blank.fountain</code> silently — same behaviour as
-today.</p>
+and use <code>blank.spmd</code> silently — same behaviour as today.</p>
 <h3 id="acceptance-criteria-1">Acceptance criteria</h3>
 <ul>
 <li><code>go build ./...</code> and <code>go test ./...</code>
@@ -259,8 +258,8 @@ delegating to
 <td><code>harvey.go</code></td>
 <td>Add
 <code>writeHandoff(a *Agent, store *MemoryStore) (string, error)</code>
-— writes a brief <code>.fountain</code> summary of the current session
-to <code>agents/hand-off/&lt;timestamp&gt;.spmd</code>. The summary is
+— writes a brief <code>.spmd</code> summary of the current session to
+<code>agents/hand-off/&lt;timestamp&gt;.spmd</code>. The summary is
 Harvey’s last N assistant messages collapsed to bullet points (no LLM
 call required; purely structural).</td>
 </tr>
@@ -426,19 +425,19 @@ colleague to define the right role categories and content.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>librarian-subject-specialist.fountain</code></td>
+<td><code>librarian-subject-specialist.spmd</code></td>
 <td>Subject librarian (general)</td>
 </tr>
 <tr>
-<td><code>librarian-systems-digital.fountain</code></td>
+<td><code>librarian-systems-digital.spmd</code></td>
 <td>Library systems: FOLIO, ArchiveSpace, InvenioRDM, EPrints</td>
 </tr>
 <tr>
-<td><code>librarian-instruction-data-literacy.fountain</code></td>
+<td><code>librarian-instruction-data-literacy.spmd</code></td>
 <td>Teaching, Data Carpentry, information literacy</td>
 </tr>
 <tr>
-<td><code>library-support-staff.fountain</code></td>
+<td><code>library-support-staff.spmd</code></td>
 <td>Circulation, patron services, general support</td>
 </tr>
 </tbody>
