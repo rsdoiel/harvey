@@ -136,7 +136,7 @@ Harvey mapping)</h2>
 <tbody>
 <tr>
 <td>Token-level Flat (1D)</td>
-<td><code>.fountain</code> files + SQLite/FTS5/cosine</td>
+<td><code>.spmd</code> files + SQLite/FTS5/cosine</td>
 <td>Core storage; keep as-is</td>
 </tr>
 <tr>
@@ -466,9 +466,8 @@ workflow: &lt;description&gt;. &lt;summary&gt;
 <h2 id="workspace-profile-onboarding">Workspace Profile Onboarding</h2>
 <p>At <code>Agent.Reset()</code> (session start), check whether
 <code>agents/memories/workspace_profile/</code> contains any
-<code>.fountain</code> files. If not, and if the session is interactive
-(not replay), run the onboarding flow before injecting memory
-context:</p>
+<code>.spmd</code> files. If not, and if the session is interactive (not
+replay), run the onboarding flow before injecting memory context:</p>
 <pre><code>Harvey: I don&#39;t have a workspace profile yet. A few quick questions:
 
 &gt; What should I call you in this workspace? _
@@ -485,7 +484,7 @@ developmentStatus</li>
 <li><code>.git/config</code> <code>remote.origin.url</code></li>
 <li>Ask if nothing was found</li>
 </ol>
-<p>Both documents are written as <code>.fountain</code> memory files and
+<p>Both documents are written as <code>.spmd</code> memory files and
 saved to the store. Onboarding is detected purely by file presence; no
 config flag is needed.</p>
 <p>The onboarding flow is a separate function
