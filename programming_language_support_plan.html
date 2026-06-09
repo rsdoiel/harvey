@@ -1,0 +1,1929 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="programming-language-support-implementation-plan">Programming
+Language Support Implementation Plan</h1>
+<h2 id="overview">Overview</h2>
+<p>This document outlines the phased implementation plan for
+comprehensive programming language support in Harvey, based on the
+design specified in <a
+href="programming_language_support_design.html">programming_language_support_design.md</a>.</p>
+<p><strong>Status:</strong> Active<br />
+<strong>Created:</strong> 2026-06-09<br />
+<strong>Related Documents:</strong> - <a
+href="programming_language_support_design.html">programming_language_support_design.md</a>
+- <a href="DECISIONS.html">DECISIONS.md</a> - <a
+href="Using_RAGs_with_Harvey.html">Using_RAGs_with_Harvey.md</a></p>
+<hr />
+<h2 id="quick-fix-applied">Quick Fix Applied</h2>
+<p><strong>Date:</strong> 2026-06-09<br />
+<strong>File:</strong> <code>commands.go</code><br />
+<strong>Function:</strong> <code>looksLikePath</code> (lines
+3463-3472)</p>
+<p><strong>Change:</strong> Added missing programming language
+extensions to the <code>knownExts</code> slice: - <code>.c</code>,
+<code>.cpp</code>, <code>.h</code>, <code>.hpp</code> (C/C++) -
+<code>.pas</code> (Pascal) - <code>.Mod</code>, <code>.obn</code>
+(Oberon) - <code>.lisp</code> (Lisp) - <code>.bas</code> (Basic)</p>
+<p><strong>Impact:</strong> Tagged code blocks like
+<code>c:program.c` or</code>pascal:module.pas` are now correctly
+recognized as file paths, enabling auto-write functionality for these
+languages.</p>
+<hr />
+<h2 id="implementation-phases">Implementation Phases</h2>
+<p>The implementation is divided into <strong>6 phases</strong> with
+clear milestones, deliverables, and success criteria. Each phase builds
+on the previous one and includes testing and documentation.</p>
+<hr />
+<h2 id="phase-1-language-registry-core-infrastructure">Phase 1: Language
+Registry &amp; Core Infrastructure</h2>
+<p><strong>Duration:</strong> 1-2 weeks<br />
+<strong>Priority:</strong> High<br />
+<strong>Dependencies:</strong> None (foundational)</p>
+<h3 id="objectives">Objectives</h3>
+<ul>
+<li>Create the central language registry</li>
+<li>Implement core interfaces (LanguageDetector, CodeChunker,
+DocExtractor, CodeFormatter, SyntaxHighlighter)</li>
+<li>Register all supported languages with basic metadata</li>
+<li>Update <code>looksLikePath</code> to use the registry</li>
+</ul>
+<h3 id="tasks">Tasks</h3>
+<h4 id="task-1.1-create-core-types-and-interfaces">Task 1.1: Create Core
+Types and Interfaces</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>language_registry.go</code> with <code>LanguageRegistry</code>
+struct</label></li>
+<li><label><input type="checkbox" checked="" />Define
+<code>LanguageInfo</code> struct with metadata</label></li>
+<li><label><input type="checkbox" checked="" />Define all core
+interfaces:</label>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>LanguageDetector</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>CodeChunker</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>DocExtractor</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>CodeFormatter</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>SyntaxHighlighter</code></label></li>
+</ul></li>
+<li><label><input type="checkbox" checked="" />Define supporting
+types:</label>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>EnrichedChunk</code> (with StartCol/EndCol for source
+re-location)</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>DocumentationBlock</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>FormatIssue</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>HighlightStyle</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>FormatterMode</code> (PipeFormatter /
+FileFormatter)</label></li>
+</ul></li>
+</ul>
+<p><strong>File:</strong> <code>language_registry.go</code> (new)</p>
+<h4 id="task-1.2-implement-language-registry">Task 1.2: Implement
+Language Registry</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Implement
+<code>NewLanguageRegistry()</code> constructor</label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>RegisterLanguage()</code> method</label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>GetChunker()</code>, <code>GetExtractor()</code>,
+<code>GetFormatter()</code>, <code>GetHighlighter()</code>,
+<code>GetDetector()</code> methods</label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>DetectFromExtension()</code> (exact then case-insensitive
+fallback)</label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>HasExtension()</code> (case-insensitive membership
+test)</label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>GetLanguageInfo()</code> and
+<code>LanguageIDs()</code></label></li>
+<li><label><input type="checkbox" checked="" />Registry is read-only
+after init(); no mutex required for reads</label></li>
+</ul>
+<p><strong>File:</strong> <code>language_registry.go</code></p>
+<h4 id="task-1.3-define-language-metadata">Task 1.3: Define Language
+Metadata</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Define
+<code>LanguageInfo</code> for all 21 supported languages:</label>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Go, TypeScript,
+JavaScript, Python, Rust</label></li>
+<li><label><input type="checkbox" checked="" />C, C++</label></li>
+<li><label><input type="checkbox" checked="" />Pascal</label></li>
+<li><label><input type="checkbox" checked="" />Oberon —
+<code>.Mod</code> (exact), <code>.obn</code>; <code>.mod</code>
+lowercase maps to Go (first-wins); <code>HasExtension</code> is
+case-insensitive so both <code>.mod</code> and <code>.Mod</code> return
+true</label></li>
+<li><label><input type="checkbox" checked="" />Lisp</label></li>
+<li><label><input type="checkbox" checked="" />Basic</label></li>
+<li><label><input type="checkbox" checked="" />JSON, Markdown, Text,
+CSS, YAML, TOML, SQL, HTML, Shell, Environment</label></li>
+</ul></li>
+<li><label><input type="checkbox" checked="" />Set capabilities flags
+(HasChunking, HasExtraction, etc.)</label></li>
+</ul>
+<p><strong>File:</strong> <code>language_registry.go</code></p>
+<h4 id="task-1.4-initialize-registry-at-startup">Task 1.4: Initialize
+Registry at Startup</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>initLanguages(r *LanguageRegistry)</code> function</label></li>
+<li><label><input type="checkbox" checked="" />Register all 21 languages
+with nil handlers (Phase 1)</label></li>
+<li><label><input type="checkbox" checked="" />Initialize
+<code>globalRegistry</code> via package <code>init()</code> — runs
+before any test or main function, no change to <code>NewAgent()</code>
+required</label></li>
+</ul>
+<p><strong>File:</strong> <code>language_registry.go</code></p>
+<h4 id="task-1.5-update-lookslikepath-function">Task 1.5: Update
+looksLikePath Function</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />✅ DONE: Added missing
+extensions (2026-06-09)</label></li>
+<li><label><input type="checkbox" checked="" />Refactored to use
+<code>registryHasExt()</code> (delegates to
+<code>globalRegistry.HasExtension</code>)</label></li>
+<li><label><input type="checkbox" checked="" />All existing tests pass;
+new extension tests added</label></li>
+</ul>
+<p><strong>File:</strong> <code>commands.go</code> (modified)</p>
+<h4 id="task-1.6-add-unit-tests-for-registry">Task 1.6: Add Unit Tests
+for Registry</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Test language detection
+by extension (all 21 languages)</label></li>
+<li><label><input type="checkbox" checked="" />Test case-insensitive
+HasExtension</label></li>
+<li><label><input type="checkbox" checked="" />Test exact vs lowercase
+precedence (.Mod → oberon, .mod → go)</label></li>
+<li><label><input type="checkbox" checked="" />Test retrieval of
+handlers (all nil in Phase 1)</label></li>
+<li><label><input type="checkbox" checked="" />Test GetLanguageInfo
+known/unknown</label></li>
+<li><label><input type="checkbox" checked="" />Test RegisterLanguage
+overwrite</label></li>
+<li><label><input type="checkbox" checked="" />Test looksLikePath for
+all new extensions (C, Pascal, Oberon, Lisp, Basic)</label></li>
+<li><label><input type="checkbox" checked="" />Race-detector run
+passes</label></li>
+</ul>
+<p><strong>File:</strong> <code>language_registry_test.go</code>
+(new)</p>
+<h3 id="deliverables">Deliverables</h3>
+<ol type="1">
+<li>✅ <code>language_registry.go</code> — core registry, all types and
+interfaces</li>
+<li>✅ <code>language_registry_test.go</code> — 35 tests, 0
+failures</li>
+<li>✅ Updated <code>commands.go</code> — <code>looksLikePath</code>
+uses registry</li>
+<li><code>harvey.go</code> — no change needed (registry uses
+<code>init()</code>)</li>
+</ol>
+<h3 id="success-criteria">Success Criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />All 21 language metadata
+entries defined</label></li>
+<li><label><input type="checkbox" checked="" />Registry correctly
+detects all languages by extension</label></li>
+<li><label><input type="checkbox" checked="" />Registry correctly
+returns nil for unregistered languages</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>looksLikePath</code> uses registry and passes all
+existing tests</label></li>
+<li><label><input type="checkbox" checked="" />Unit test coverage &gt;
+90% for registry</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>go test -race</code> passes</label></li>
+</ul>
+<hr />
+<h2 id="phase-2-basic-language-detection">Phase 2: Basic Language
+Detection</h2>
+<p><strong>Duration:</strong> 1 week<br />
+<strong>Priority:</strong> High<br />
+<strong>Dependencies:</strong> Phase 1 complete</p>
+<h3 id="objectives-1">Objectives</h3>
+<ul>
+<li>Implement basic language detectors for all supported languages</li>
+<li>Ensure accurate detection by extension</li>
+<li>Add content-based detection as fallback</li>
+</ul>
+<h3 id="tasks-1">Tasks</h3>
+<h4 id="task-2.1-implement-languagedetector-interface">Task 2.1:
+Implement LanguageDetector Interface</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>language_detector.go</code></label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>LanguageDetector</code> for each language group:</label>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>ExtensionDetector</code> - Base detector using file
+extension</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>ContentDetector</code> - Fallback detector using file
+content</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>CombinedDetector</code> - Combines both
+approaches</label></li>
+</ul></li>
+</ul>
+<p><strong>File:</strong> <code>language_detector.go</code> (new)</p>
+<h4 id="task-2.2-create-language-specific-detectors">Task 2.2: Create
+Language-Specific Detectors</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Implement detectors
+for:</label>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />C/C++ (<code>.c</code>,
+<code>.h</code>, <code>.cpp</code>, <code>.hpp</code>, <code>.cc</code>,
+<code>.cxx</code>, <code>.hh</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Pascal
+(<code>.pas</code>, <code>.p</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Oberon
+(<code>.Mod</code>, <code>.obn</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Lisp (<code>.lisp</code>,
+<code>.lsp</code>, <code>.cl</code>, <code>.el</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Basic (<code>.bas</code>,
+<code>.bi</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Existing languages (Go,
+TypeScript, JavaScript, Python, Rust, etc.)</label></li>
+<li><label><input type="checkbox" checked="" />All 21 languages register
+<code>CombinedDetector</code> in <code>initLanguages</code></label></li>
+</ul></li>
+</ul>
+<p><strong>File:</strong> <code>language_detector.go</code></p>
+<h4 id="task-2.3-add-shebang-detection">Task 2.3: Add Shebang
+Detection</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Detect language from
+shebang lines (e.g., <code>#!/usr/bin/env python3</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Handle common shebang
+patterns: python3, python2, /python, node, bash, /sh, clisp, sbcl,
+/tcc</label></li>
+<li><label><input type="checkbox" checked="" />Added to
+<code>ContentDetector.Detect</code> and
+<code>LanguageRegistry.DetectLanguage</code> (0.9
+confidence)</label></li>
+</ul>
+<p><strong>File:</strong> <code>language_detector.go</code></p>
+<h4 id="task-2.4-add-magic-number-detection">Task 2.4: Add Magic Number
+Detection</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Detect binary files and
+reject them (<code>isBinary</code> null-byte check in first 512
+bytes)</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>isTextContent</code> wraps <code>!isBinary</code> for
+API clarity</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>DetectLanguage</code> returns (““, 0.0) immediately
+for binary content</label></li>
+<li><label><input type="checkbox" checked="" />Keyword detection limited
+to first <code>maxKeywordScan</code> (4096) bytes</label></li>
+</ul>
+<p><strong>File:</strong> <code>language_detector.go</code></p>
+<h4 id="task-2.5-add-unit-tests">Task 2.5: Add Unit Tests</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Test
+<code>isTextContent</code> (text, binary, empty)</label></li>
+<li><label><input type="checkbox" checked="" />Test
+<code>detectShebang</code> (python3/2/abs, bash/sh, node, clisp/sbcl,
+no-shebang, empty, no-newline)</label></li>
+<li><label><input type="checkbox" checked="" />Test
+<code>detectKeywords</code> (go, oberon, pascal, lisp, c, cpp, basic,
+html, sql, no-match, large-file truncation)</label></li>
+<li><label><input type="checkbox" checked="" />Test
+<code>ExtensionDetector</code> (exact, no-match, case-insensitive,
+DetectFromExtension)</label></li>
+<li><label><input type="checkbox" checked="" />Test
+<code>ContentDetector</code> (shebang match, wrong-lang, keyword match,
+binary, DetectFromExtension always false)</label></li>
+<li><label><input type="checkbox" checked="" />Test
+<code>CombinedDetector</code> (extension priority, content fallback,
+no-match)</label></li>
+<li><label><input type="checkbox" checked="" />Test
+<code>LanguageRegistry.DetectLanguage</code> (extension, .Mod, shebang
+fallback, keyword fallback, binary, unknown ext, unregistered shebang,
+all detectors registered)</label></li>
+</ul>
+<p><strong>File:</strong> <code>language_detector_test.go</code>
+(new)</p>
+<h3 id="deliverables-1">Deliverables</h3>
+<ol type="1">
+<li>✅ <code>language_detector.go</code> —
+<code>ExtensionDetector</code>, <code>ContentDetector</code>,
+<code>CombinedDetector</code>, <code>detectShebang</code>,
+<code>detectKeywords</code>, <code>isTextContent</code></li>
+<li>✅ <code>language_detector_test.go</code> — 45 tests, 0
+failures</li>
+<li>✅ Updated <code>language_registry.go</code> —
+<code>DetectLanguage</code> method; all 21 languages wired with
+<code>CombinedDetector</code></li>
+</ol>
+<h3 id="success-criteria-1">Success Criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />All 21 languages detected
+correctly by extension</label></li>
+<li><label><input type="checkbox" checked="" />Content-based detection
+works for shebang lines</label></li>
+<li><label><input type="checkbox" checked="" />Binary files correctly
+rejected</label></li>
+<li><label><input type="checkbox" checked="" />Detection accuracy &gt;
+99% for known file types</label></li>
+<li><label><input type="checkbox" checked="" />Unit test coverage &gt;
+95%</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>go test -race</code> passes</label></li>
+</ul>
+<hr />
+<h2 id="phase-3-code-aware-chunking-for-rag">Phase 3: Code-Aware
+Chunking for RAG</h2>
+<p><strong>Duration:</strong> 2-3 weeks<br />
+<strong>Priority:</strong> High<br />
+<strong>Dependencies:</strong> Phases 1-2 complete</p>
+<h3 id="objectives-2">Objectives</h3>
+<ul>
+<li>Implement language-specific chunkers for C, C++, Pascal, Oberon,
+Lisp, Basic</li>
+<li>Integrate chunkers with RAG ingestion pipeline</li>
+<li>Preserve code structure in chunks (functions, procedures,
+classes)</li>
+</ul>
+<h3 id="tasks-2">Tasks</h3>
+<h4 id="task-3.1-implement-codechunker-interface">Task 3.1: Implement
+CodeChunker Interface</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>code_chunkers.go</code></label></li>
+<li><label><input type="checkbox" checked="" /><code>CodeChunker</code>
+interface already defined in
+<code>language_registry.go</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>EnrichedChunk</code> already defined with
+<code>StartLine</code>, <code>StartCol</code>, <code>EndLine</code>,
+<code>EndCol</code></label></li>
+<li><label><input type="checkbox" checked="" /><code>findLineCol</code>
+helper: returns 1-indexed line + 0-indexed byte-offset from line
+start</label></li>
+<li><label><input type="checkbox" checked="" /><code>makeChunk</code>
+helper: byte-range → <code>EnrichedChunk</code> with trimmed content and
+precise location</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_chunkers.go</code> (new)</p>
+<h4 id="task-3.2-implement-cc-chunker">Task 3.2: Implement C/C++
+Chunker</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" /><code>CChunker</code>
+struct; shared for “c” and “cpp” via
+<code>NewCChunker(langID)</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>findCCutPoints</code>: byte-by-byte state machine
+tracking <code>//',</code>/*
+*/<code>,</code>“…”<code>,</code>‘…’<code>,</code>`</label></li>
+<li><label><input type="checkbox" checked="" />Splits at <code>}</code>
+returning depth to 0 and at blank lines at depth 0</label></li>
+<li><label><input type="checkbox" checked="" />Includes/declarations in
+their own chunk; function precedes its block in same chunk</label></li>
+<li><label><input type="checkbox" checked="" /><code>classifyC</code>:
+extracts first <code>identifier(</code> pattern that is not a keyword →
+“function”; checks for
+<code>STRUCT</code>/<code>ENUM</code>/<code>TYPEDEF</code>/<code>CLASS</code>
+→ “type”; else “code”</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>StartLine</code>/<code>StartCol</code>/<code>EndLine</code>/<code>EndCol</code>
+via <code>makeChunk</code> + <code>findLineCol</code></label></li>
+<li><label><input type="checkbox" checked="" />Strings and comments with
+braces correctly ignored</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_chunkers.go</code></p>
+<h4 id="task-3.3-implement-pascal-chunker">Task 3.3: Implement Pascal
+Chunker</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>PascalChunker</code> wraps <code>chunkBeginEnd</code>
+with <code>isPascalProcStart</code> +
+<code>extractPascalSymbol</code></label></li>
+<li><label><input type="checkbox" checked="" />PROCEDURE/FUNCTION
+blocks: line-by-line BEGIN/END depth tracking</label></li>
+<li><label><input type="checkbox" checked="" />Nested BEGIN/END handled:
+depth only returns to 0 at outermost END;</label></li>
+<li><label><input type="checkbox" checked="" />CONST/VAR/USES/PROGRAM
+sections accumulate in <code>pending</code> → “code” chunks</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>extractPascalSymbol</code> strips PROCEDURE/FUNCTION
+keyword, extracts first identifier</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>stripBlockLineComment</code> removes <code>//</code>,
+<code>{ }</code>, <code>(* *)</code> from lines before keyword
+scan</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_chunkers.go</code></p>
+<h4 id="task-3.4-implement-oberon-chunker">Task 3.4: Implement Oberon
+Chunker</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>OberonChunker</code> wraps <code>chunkBeginEnd</code>
+with <code>isOberonProcStart</code> +
+<code>extractOberonSymbol</code></label></li>
+<li><label><input type="checkbox" checked="" />MODULE header and
+IMPORT/TYPE/VAR sections → “code” chunks via
+<code>pending</code></label></li>
+<li><label><input type="checkbox" checked="" />PROCEDURE blocks tracked
+via BEGIN/END depth</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>extractOberonSymbol</code> strips
+<code>PROCEDURE</code> prefix and export <code>*</code>
+marker</label></li>
+<li><label><input type="checkbox" checked="" />Known approximation:
+nested <code>(* (* *) *)</code> comments treated as
+non-nested</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_chunkers.go</code></p>
+<h4 id="task-3.5-implement-lisp-chunker">Task 3.5: Implement Lisp
+Chunker</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" /><code>LispChunker</code>
+byte-by-byte paren-depth tracker</label></li>
+<li><label><input type="checkbox" checked="" />State: normal,
+<code>;</code> line comment, <code>"..."</code> string</label></li>
+<li><label><input type="checkbox" checked="" />Each depth-0
+<code>(...)</code> top-level form is one chunk</label></li>
+<li><label><input type="checkbox" checked="" /><code>findLineCol</code>
+used for StartLine/StartCol via <code>makeChunk</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>classifyLisp</code>: matches
+<code>defun</code>/<code>defmacro</code> → “function”;
+<code>defvar</code> → “variable”;
+<code>defclass</code>/<code>defstruct</code> → “type”</label></li>
+<li><label><input type="checkbox" checked="" />Extracts symbol name as
+second token of the top-level form</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_chunkers.go</code></p>
+<h4 id="task-3.6-implement-basic-chunker">Task 3.6: Implement Basic
+Chunker</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" /><code>BasicChunker</code>
+line-by-line SUB/FUNCTION scanner</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>SUB name(...)</code> /
+<code>FUNCTION name(...)</code> → start of function chunk</label></li>
+<li><label><input type="checkbox" checked="" /><code>END SUB</code> /
+<code>END FUNCTION</code> → closes chunk; emits “function”
+ChunkType</label></li>
+<li><label><input type="checkbox" checked="" />Lines between subs
+accumulate in <code>pending</code> → “code” chunks (split at blank
+lines)</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>extractBasicSymbol</code> extracts name token after
+SUB/FUNCTION keyword</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_chunkers.go</code></p>
+<h4 id="task-3.7-integrate-with-rag-ingestion">Task 3.7: Integrate with
+RAG Ingestion</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>ragIngestFile()</code> now: read → binary check →
+extension detect → chunker lookup</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>isTextContent</code> check: binary files return (0,
+nil) silently</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>filepath.Ext(path)</code> used directly
+(case-preserving) for <code>.Mod</code>/<code>.mod</code></label></li>
+<li><label><input type="checkbox" checked="" />Language-aware chunks via
+<code>globalRegistry.GetChunker(langID)</code></label></li>
+<li><label><input type="checkbox" checked="" />Fallback to
+<code>ragChunk()</code> wrapped as <code>[]EnrichedChunk</code> with
+zero location fields</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>store.Ingest()</code> replaced with
+<code>store.IngestEnriched()</code></label></li>
+</ul>
+<p><strong>File:</strong> <code>commands.go</code> (modified)</p>
+<h4 id="task-3.8-update-ragstore-for-enriched-chunks-required">Task 3.8:
+Update RagStore for Enriched Chunks (Required)</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>IngestEnriched(source string, chunks []EnrichedChunk, embedder Embedder) error</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>enrichedAlterStmts</code>: 7 lazy
+<code>ALTER TABLE … ADD COLUMN</code> statements run at call
+time</label></li>
+<li><label><input type="checkbox" checked="" />Existing stores without
+new columns continue to work (defaults to 0/““)</label></li>
+<li><label><input type="checkbox" checked="" /><code>symbols</code>
+stored as comma-joined string via
+<code>strings.Join(chunk.Symbols, ",")</code></label></li>
+</ul>
+<p><strong>File:</strong> <code>rag_support.go</code> (modified)</p>
+<h4 id="task-3.9-add-unit-tests">Task 3.9: Add Unit Tests</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" /><code>findLineCol</code>:
+first line, second line, at newline, offset 0, clamp</label></li>
+<li><label><input type="checkbox" checked="" /><code>CChunker</code>:
+empty, single function, two functions, includes section,
+string-with-brace, line-comment-with-brace, block-comment-not-split,
+location metadata</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>PascalChunker</code>: procedure, function symbol,
+header+procedure, nested BEGIN/END</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>OberonChunker</code>: procedure, module header as
+code, language()</label></li>
+<li><label><input type="checkbox" checked="" /><code>LispChunker</code>:
+defun, multiple forms, line comment, nested parens, defmacro
+type</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>BasicChunker</code>: SUB, FUNCTION, header+sub,
+language()</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>IngestEnriched</code>: basic, model mismatch, lazy
+migration, symbols as CSV</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>ragIngestFile</code>: binary skip, C file uses
+chunker, markdown fallback</label></li>
+<li><label><input type="checkbox" checked="" />Registry: all 6 chunkers
+registered in freshRegistry + globalRegistry</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_chunkers_test.go</code> (new)</p>
+<h3 id="deliverables-2">Deliverables</h3>
+<ol type="1">
+<li>✅ <code>code_chunkers.go</code> — <code>CChunker</code>,
+<code>PascalChunker</code>, <code>OberonChunker</code>,
+<code>LispChunker</code>, <code>BasicChunker</code>; helpers
+<code>findLineCol</code>, <code>makeChunk</code>;
+<code>SetChunker</code>/<code>initChunkers</code></li>
+<li>✅ <code>code_chunkers_test.go</code> — 42 tests, 0 failures</li>
+<li>✅ Updated <code>commands.go</code> — <code>ragIngestFile</code>
+uses code-aware chunking + binary skip</li>
+<li>✅ Updated <code>rag_support.go</code> — <code>IngestEnriched</code>
++ lazy schema migration</li>
+<li>✅ Updated <code>language_registry.go</code> — <code>init()</code>
+calls <code>initChunkers</code></li>
+</ol>
+<h3 id="success-criteria-2">Success Criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />All 6 language chunkers
+implemented (C, C++, Pascal, Oberon, Lisp, Basic)</label></li>
+<li><label><input type="checkbox" checked="" />Functions/procedures not
+split across chunks</label></li>
+<li><label><input type="checkbox" checked="" />Every chunk records
+<code>StartLine</code>/<code>StartCol</code>/<code>EndLine</code>/<code>EndCol</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>IngestEnriched</code> stores location metadata in
+SQLite</label></li>
+<li><label><input type="checkbox" checked="" />Existing RAG stores
+without the new columns continue to work</label></li>
+<li><label><input type="checkbox" checked="" />Binary files skipped
+silently (no error returned)</label></li>
+<li><label><input type="checkbox" checked="" />Symbol extraction
+accuracy &gt; 90%</label></li>
+<li><label><input type="checkbox" checked="" />RAG ingestion works with
+code-aware chunks</label></li>
+<li><label><input type="checkbox" checked="" />Generic chunking still
+works as fallback</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>go test -race</code> passes</label></li>
+</ul>
+<hr />
+<h2 id="phase-4-documentation-extraction">Phase 4: Documentation
+Extraction</h2>
+<p><strong>Duration:</strong> 1-2 weeks<br />
+<strong>Priority:</strong> Medium<br />
+<strong>Dependencies:</strong> Phases 1-3 complete</p>
+<h3 id="objectives-3">Objectives</h3>
+<ul>
+<li>Extract comments and docstrings from source code</li>
+<li>Associate documentation with code chunks</li>
+<li>Improve embedding quality for code files</li>
+</ul>
+<h3 id="tasks-3">Tasks</h3>
+<h4 id="task-4.1-implement-docextractor-interface">Task 4.1: Implement
+DocExtractor Interface</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>doc_extractors.go</code></label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>DocExtractor</code> interface (already in
+<code>language_registry.go</code> from Phase 1)</label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>DocumentationBlock</code> struct (already in
+<code>language_registry.go</code> from Phase 1)</label></li>
+</ul>
+<p><strong>File:</strong> <code>doc_extractors.go</code> (new)</p>
+<h4 id="task-4.2-implement-cc-docextractor">Task 4.2: Implement C/C++
+DocExtractor</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>CDocExtractor</code> struct</label></li>
+<li><label><input type="checkbox" checked="" />Extract line comments
+(<code>//</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Extract block comments
+(<code>/* */</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Extract Doxygen-style
+comments (<code>/** */</code> and <code>/*! */</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Associate comments with
+following code</label></li>
+<li><label><input type="checkbox" checked="" />Extract function
+documentation (symbol via <code>classifyC</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Fixed
+<code>classifyC</code> to strip leading
+<code>*</code>/<code>&amp;</code> from function name (pointer return
+types)</label></li>
+</ul>
+<p><strong>File:</strong> <code>doc_extractors.go</code></p>
+<h4 id="task-4.3-implement-pascal-docextractor">Task 4.3: Implement
+Pascal DocExtractor</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>PascalDocExtractor</code> struct</label></li>
+<li><label><input type="checkbox" checked="" />Extract line comments
+(<code>//</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Extract block comments
+(<code>(* *)</code>, <code>{ }</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Associate comments with
+procedures/functions</label></li>
+<li><label><input type="checkbox" checked="" />Skip <code>{$...}</code>
+compiler directives</label></li>
+</ul>
+<p><strong>File:</strong> <code>doc_extractors.go</code></p>
+<h4 id="task-4.4-implement-oberon-docextractor">Task 4.4: Implement
+Oberon DocExtractor</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>OberonDocExtractor</code> struct</label></li>
+<li><label><input type="checkbox" checked="" />Extract block comments
+(<code>(* *)</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Associate comments with
+modules/procedures</label></li>
+<li><label><input type="checkbox" checked="" />Note: nested
+<code>(* (* *) *)</code> treated as non-nested (same as
+OberonChunker)</label></li>
+</ul>
+<p><strong>File:</strong> <code>doc_extractors.go</code></p>
+<h4 id="task-4.5-implement-lisp-docextractor">Task 4.5: Implement Lisp
+DocExtractor</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>LispDocExtractor</code> struct</label></li>
+<li><label><input type="checkbox" checked="" />Extract line comments
+(<code>;</code>, <code>;;</code>, <code>;;;</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Extract block comments
+(<code>#| |#</code>)</label></li>
+<li><label><input type="checkbox" checked="" />Extract docstrings from
+DEFUN/DEFMACRO/DEFMETHOD (heuristic: first <code>"</code> on line after
+def header)</label></li>
+<li><label><input type="checkbox" checked="" />Associate documentation
+with symbols via <code>classifyLisp</code></label></li>
+</ul>
+<p><strong>File:</strong> <code>doc_extractors.go</code></p>
+<h4 id="task-4.6-implement-basic-docextractor">Task 4.6: Implement Basic
+DocExtractor</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>BasicDocExtractor</code> struct</label></li>
+<li><label><input type="checkbox" checked="" />Extract REM comments
+(case-insensitive)</label></li>
+<li><label><input type="checkbox" checked="" />Extract single-quote
+(<code>'</code>) comments</label></li>
+<li><label><input type="checkbox" checked="" />Associate with
+SUB/FUNCTION via <code>extractBasicSymbol</code></label></li>
+</ul>
+<p><strong>File:</strong> <code>doc_extractors.go</code></p>
+<h4 id="task-4.7-integrate-with-chunkers">Task 4.7: Integrate with
+Chunkers</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>ragIngestFile</code> runs
+<code>extractor.ExtractSymbols</code> after chunking</label></li>
+<li><label><input type="checkbox" checked="" />Chunks whose
+<code>Symbols[0]</code> matches an extracted symbol get their
+<code>Docs</code> populated</label></li>
+<li><label><input type="checkbox" checked="" />Integration is at the
+ingest level (not inside chunkers), keeping them decoupled</label></li>
+</ul>
+<p><strong>File:</strong> <code>commands.go</code> (modified)</p>
+<h4 id="task-4.8-add-unit-tests">Task 4.8: Add Unit Tests</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Test doc extraction for
+each language (all 5 extractors)</label></li>
+<li><label><input type="checkbox" checked="" />Test comment detection
+for each comment style</label></li>
+<li><label><input type="checkbox" checked="" />Test symbol association
+(preceding comment → function/symbol name)</label></li>
+<li><label><input type="checkbox" checked="" />Test edge cases: compiler
+directives skipped, free-standing comments, multiline
+blocks</label></li>
+<li><label><input type="checkbox" checked="" />Test
+<code>lispStringContent</code> helper</label></li>
+<li><label><input type="checkbox" checked="" />Test registry wiring (6
+extractors in globalRegistry)</label></li>
+<li><label><input type="checkbox" checked="" />Integration test:
+<code>ragIngestFile</code> populates Docs field in SQLite
+store</label></li>
+</ul>
+<p><strong>File:</strong> <code>doc_extractors_test.go</code> (new)</p>
+<h3 id="deliverables-3">Deliverables</h3>
+<ol type="1">
+<li>✅ <code>doc_extractors.go</code> — <code>CDocExtractor</code>,
+<code>PascalDocExtractor</code>, <code>OberonDocExtractor</code>,
+<code>LispDocExtractor</code>, <code>BasicDocExtractor</code>;
+<code>docsToSymbolMap</code>; <code>lispStringContent</code>;
+<code>SetExtractor</code>/<code>initExtractors</code></li>
+<li>✅ <code>doc_extractors_test.go</code> — 34 tests, 0 failures</li>
+<li>✅ Updated <code>commands.go</code> — <code>ragIngestFile</code>
+uses doc extractors to populate <code>Docs</code> field</li>
+<li>✅ Updated <code>language_registry.go</code> — <code>init()</code>
+calls <code>initExtractors</code></li>
+<li>✅ Updated <code>code_chunkers.go</code> — fixed
+<code>flushCurrent</code> nil-access bug; fixed
+<code>extractPascalSymbol</code>/<code>extractOberonSymbol</code>
+leading-whitespace; fixed <code>classifyC</code> pointer return
+type</li>
+</ol>
+<h3 id="success-criteria-3">Success Criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />All 5 language extractors
+implemented (C/C++ shared, Pascal, Oberon, Lisp, Basic)</label></li>
+<li><label><input type="checkbox" checked="" />&gt; 90% of comments
+extracted correctly</label></li>
+<li><label><input type="checkbox" checked="" />Documentation correctly
+associated with code</label></li>
+<li><label><input type="checkbox" checked="" />Unit test coverage &gt;
+90%</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>go test -race</code> passes</label></li>
+</ul>
+<hr />
+<h2 id="phase-5-syntax-highlighting">Phase 5: Syntax Highlighting</h2>
+<p><strong>Duration:</strong> 1 week<br />
+<strong>Priority:</strong> Medium<br />
+<strong>Dependencies:</strong> Phases 1-2 complete</p>
+<h3 id="objectives-4">Objectives</h3>
+<ul>
+<li>Add color syntax highlighting for code blocks in terminal
+output</li>
+<li>Support all programming languages</li>
+<li>Use ANSI color codes</li>
+</ul>
+<h3 id="tasks-4">Tasks</h3>
+<h4 id="task-5.1-implement-syntaxhighlighter-interface">Task 5.1:
+Implement SyntaxHighlighter Interface</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create
+<code>syntax_highlighters.go</code></label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>SyntaxHighlighter</code> interface</label></li>
+<li><label><input type="checkbox" checked="" />Implement
+<code>HighlightStyle</code> struct</label></li>
+<li><label><input type="checkbox" checked="" />Define ANSI color
+constants</label></li>
+</ul>
+<p><strong>File:</strong> <code>syntax_highlighters.go</code> (new)</p>
+<h4 id="task-5.2-create-base-highlighter">Task 5.2: Create Base
+Highlighter</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Implement
+<code>TerminalHighlighter</code> with single byte-level state-machine
+scanner</label></li>
+<li><label><input type="checkbox" checked="" />Handle ANSI color
+escaping (reset after each colored token)</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>langHighlighter</code> struct parameterises all
+tokenisation per language</label></li>
+</ul>
+<p><strong>File:</strong> <code>syntax_highlighters.go</code></p>
+<h4 id="task-5.3-implement-language-specific-highlighters">Task 5.3:
+Implement Language-Specific Highlighters</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />Create highlighters
+for:</label>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />C/C++</label></li>
+<li><label><input type="checkbox" checked="" />Pascal
+(incl. <code>{$...}</code> compiler-directive guard)</label></li>
+<li><label><input type="checkbox" checked="" />Oberon</label></li>
+<li><label><input type="checkbox" checked="" />Lisp
+(<code>#|...|#</code> block, <code>;</code> line)</label></li>
+<li><label><input type="checkbox" checked="" />Basic (<code>REM</code> +
+<code>'</code> comments)</label></li>
+<li><label><input type="checkbox" checked="" />Go, Python, JavaScript,
+TypeScript, Rust, Shell, SQL</label></li>
+</ul></li>
+<li><label><input type="checkbox" checked="" />Language keyword sets;
+byte-level tokeniser handles strings, comments, numbers</label></li>
+</ul>
+<p><strong>File:</strong> <code>syntax_highlighters.go</code></p>
+<h4 id="task-5.4-integrate-with-terminal-output">Task 5.4: Integrate
+with Terminal Output</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>highlightCodeBlocks(text)</code> post-processes full
+response text</label></li>
+<li><label><input type="checkbox" checked="" /><code>terminal.go</code>
+applies highlighting before <code>fmt.Fprint(out, displayText)</code>
+(line ~875)</label></li>
+<li><label><input type="checkbox" checked="" />Gated by
+<code>a.Config.SyntaxHighlight</code>; <code>buf.String()</code>
+unchanged for history/recording</label></li>
+</ul>
+<p><strong>Files:</strong> <code>terminal.go</code> (modified),
+<code>syntax_highlighters.go</code> (new)</p>
+<h4 id="task-5.5-add-configuration">Task 5.5: Add Configuration</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>Config.SyntaxHighlight bool</code> field (default
+<code>true</code>)</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>syntax_highlight</code> YAML field
+(<code>*bool</code>, <code>omitempty</code>) in
+<code>harveyYAML</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>LoadHarveyYAML</code> and
+<code>SaveMemoryConfig</code> load/save the field</label></li>
+</ul>
+<p><strong>File:</strong> <code>config.go</code> (modified)</p>
+<h4 id="task-5.6-add-unit-tests">Task 5.6: Add Unit Tests</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />30 tests covering each
+language, comment styles, string literals, numbers</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>highlightCodeBlocks</code> round-trip, fence
+preservation, multi-block, aliases</label></li>
+<li><label><input type="checkbox" checked="" />Registry wiring: all 13
+languages registered in <code>globalRegistry</code></label></li>
+</ul>
+<p><strong>File:</strong> <code>syntax_highlighters_test.go</code>
+(new)</p>
+<h3 id="deliverables-4">Deliverables</h3>
+<ol type="1">
+<li>✅ <code>syntax_highlighters.go</code> —
+<code>TerminalHighlighter</code>, 13 language specs,
+<code>highlightCodeBlocks</code>, <code>initHighlighters</code></li>
+<li>✅ <code>syntax_highlighters_test.go</code> — 30 tests; all
+pass</li>
+<li>✅ <code>terminal.go</code> — <code>highlightCodeBlocks</code>
+applied before display</li>
+<li>✅ <code>config.go</code> — <code>SyntaxHighlight bool</code> with
+YAML load/save</li>
+<li>✅ <code>language_registry.go</code> — <code>init()</code> calls
+<code>initHighlighters</code></li>
+</ol>
+<h3 id="success-criteria-4">Success Criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />13 languages have syntax
+highlighting (C, C++, Pascal, Oberon, Lisp, Basic, Go, Python, JS, TS,
+Rust, Shell, SQL)</label></li>
+<li><label><input type="checkbox" checked="" />Correct ANSI color codes
+generated (keywords bold-blue, strings green, comments dim, numbers
+yellow)</label></li>
+<li><label><input type="checkbox" checked="" />Unknown languages pass
+through unchanged (graceful degradation)</label></li>
+<li><label><input type="checkbox" checked="" />Performance: byte-level
+scanner with no regex; sub-millisecond for typical blocks</label></li>
+<li><label><input type="checkbox" checked="" />All tests pass
+(<code>go test ./...</code>)</label></li>
+</ul>
+<hr />
+<h2 id="phase-6-code-formatting-final-integration">Phase 6: Code
+Formatting &amp; Final Integration</h2>
+<p><strong>Duration:</strong> 1-2 weeks<br />
+<strong>Priority:</strong> Medium<br />
+<strong>Dependencies:</strong> Phases 1-2 complete</p>
+<h3 id="objectives-5">Objectives</h3>
+<ul>
+<li>Add automatic code formatting on file write</li>
+<li>Support both pipe-mode (stdin/stdout) and file-mode (path-in-place)
+formatters</li>
+<li>Implement built-in formatters for languages without external
+tools</li>
+</ul>
+<h3 id="tasks-5">Tasks</h3>
+<h4 id="task-6.1-implement-codeformatter-interface">Task 6.1: Implement
+CodeFormatter Interface</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>CodeFormatter</code>, <code>FormatterMode</code>,
+<code>FormatIssue</code> defined in Phase 1
+(<code>language_registry.go</code>)</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>code_formatters.go</code> created with all formatter
+structs</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_formatters.go</code> (new)</p>
+<h4 id="task-6.2a-implement-pipe-mode-external-formatters">Task 6.2a:
+Implement Pipe-Mode External Formatters</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>PipeExternalFormatter</code>:
+<code>exec.CommandContext</code> (30 s default timeout), stdin→stdout,
+<code>filterCommandEnvironment()</code>, <code>{{filepath}}</code>
+placeholder interpolation, graceful degradation when tool
+absent</label></li>
+<li><label><input type="checkbox" checked="" />Wired: Go
+(<code>gofmt</code>), C/C++ (<code>clang-format -</code>), Python
+(<code>black -</code>), Rust (<code>rustfmt</code>), JS/TS
+(<code>prettier --stdin-filepath {{filepath}}</code>)</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_formatters.go</code></p>
+<h4 id="task-6.2b-implement-file-mode-external-formatters">Task 6.2b:
+Implement File-Mode External Formatters</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>FileExternalFormatter</code>: writes file first (done
+by caller), runs tool on path, re-reads result,
+<code>filterCommandEnvironment()</code>, graceful degradation; safe-mode
+block enforced at call site</label></li>
+<li><label><input type="checkbox" checked="" /><code>{{filepath}}</code>
+placeholder interpolated in args</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_formatters.go</code></p>
+<h4 id="task-6.3-implement-built-in-formatters">Task 6.3: Implement
+Built-in Formatters</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>BuiltinFormatter</code> wraps a pure-Go
+<code>func(string) string</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>normaliseText</code>: strips trailing whitespace,
+normalises CRLF→LF, ensures single trailing newline</label></li>
+<li><label><input type="checkbox" checked="" />Pascal, Oberon, Basic all
+use <code>normaliseText</code> (safe: no indentation
+mutation)</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_formatters.go</code></p>
+<h4 id="task-6.4-integrate-with-write_file-tool">Task 6.4: Integrate
+with write_file Tool</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>applyAutoFormat(a, relPath, original)</code> helper:
+detects language, looks up formatter, skips file-mode in safe mode,
+rewrites file on change, returns status note</label></li>
+<li><label><input type="checkbox" checked="" /><code>write_file</code>
+calls <code>applyAutoFormat</code> when <code>Config.AutoFormat</code>
+is true</label></li>
+<li><label><input type="checkbox" checked="" />Errors silently
+suppressed — original write always succeeds</label></li>
+</ul>
+<p><strong>File:</strong> <code>builtin_tools.go</code> (modified)</p>
+<h4 id="task-6.5-add-configuration">Task 6.5: Add Configuration</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>Config.AutoFormat bool</code> (default
+<code>true</code>)</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>auto_format *bool</code> YAML field in
+<code>harveyYAML</code> with load/save in <code>LoadHarveyYAML</code> /
+<code>SaveMemoryConfig</code></label></li>
+<li><label><input type="checkbox"
+checked="" /><code>/format FILE [FILE...]</code> command added to
+<code>commands.go</code></label></li>
+</ul>
+<p><strong>Files:</strong> <code>config.go</code> (modified),
+<code>commands.go</code> (modified)</p>
+<h4 id="task-6.6-add-unit-tests">Task 6.6: Add Unit Tests</h4>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>normaliseText</code>: trailing whitespace, CRLF,
+trailing newlines, idempotency</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>BuiltinFormatter</code>: format, check, language,
+mode</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>PipeExternalFormatter</code>: missing-exe
+passthrough, <code>cat</code> identity, check</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>FileExternalFormatter</code>: missing-exe
+passthrough, <code>{{filepath}}</code> script interpolation</label></li>
+<li><label><input type="checkbox" checked="" />Registry:
+<code>initFormatters</code> wires all 10 languages;
+<code>SetFormatter</code> round-trip</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>applyAutoFormat</code>: Pascal built-in,
+already-formatted, unknown ext, safe-mode block</label></li>
+<li><label><input type="checkbox" checked="" /><code>cmdFormat</code>:
+no-workspace, no-args, already-formatted, formats-file,
+unknown-ext</label></li>
+</ul>
+<p><strong>File:</strong> <code>code_formatters_test.go</code> (new)</p>
+<h3 id="deliverables-5">Deliverables</h3>
+<ol type="1">
+<li>✅ <code>code_formatters.go</code> —
+<code>PipeExternalFormatter</code>, <code>FileExternalFormatter</code>,
+<code>BuiltinFormatter</code>, <code>normaliseText</code>,
+<code>SetFormatter</code>, <code>initFormatters</code></li>
+<li>✅ <code>code_formatters_test.go</code> — 33 tests; all pass</li>
+<li>✅ <code>builtin_tools.go</code> — <code>applyAutoFormat</code>
+wired into <code>write_file</code></li>
+<li>✅ <code>config.go</code> — <code>AutoFormat bool</code> with YAML
+load/save</li>
+<li>✅ <code>commands.go</code> — <code>/format FILE [FILE...]</code>
+command</li>
+<li>✅ <code>language_registry.go</code> — <code>init()</code> calls
+<code>initFormatters</code></li>
+</ol>
+<h3 id="success-criteria-5">Success Criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" />10 languages have
+formatter support (Go, C, C++, Python, Rust, JS, TS via external pipe;
+Pascal, Oberon, Basic via built-in)</label></li>
+<li><label><input type="checkbox" checked="" />Pipe-mode formatters work
+with safe mode on (no safe-mode check in formatter)</label></li>
+<li><label><input type="checkbox" checked="" />File-mode formatters
+correctly refused when safe mode is on (blocked in
+<code>applyAutoFormat</code> and <code>cmdFormat</code>)</label></li>
+<li><label><input type="checkbox" checked="" />All external formatters
+invoked via <code>exec.CommandContext</code> — no shell</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>filterCommandEnvironment()</code> applied to all
+formatter subprocesses</label></li>
+<li><label><input type="checkbox" checked="" />Auto-formatting wired
+through <code>write_file</code> when
+<code>AutoFormat=true</code></label></li>
+<li><label><input type="checkbox" checked="" />Formatter errors handled
+gracefully — original write is never rolled back</label></li>
+<li><label><input type="checkbox" checked="" />Original content
+preserved on failure (error path returns early without
+rewrite)</label></li>
+<li><label><input type="checkbox" checked="" />All tests pass
+(<code>go test ./...</code>)</label></li>
+</ul>
+<hr />
+<h2 id="cross-cutting-tasks">Cross-Cutting Tasks</h2>
+<h3 id="testing-infrastructure">Testing Infrastructure</h3>
+<h4 id="task-t.1-create-test-data">Task T.1: Create Test Data</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" />Create sample files for each
+language:</label>
+<ul class="task-list">
+<li><label><input type="checkbox" />C: functions.c, structures.c,
+preprocessor.c</label></li>
+<li><label><input type="checkbox" />C++: classes.cpp,
+templates.cpp</label></li>
+<li><label><input type="checkbox" />Pascal: procedures.pas, types.pas,
+units.pas</label></li>
+<li><label><input type="checkbox" />Oberon: module.Mod, procedures.Mod
+(and module.mod for POSIX case test)</label></li>
+<li><label><input type="checkbox" />Lisp: functions.lisp, macros.lisp,
+classes.lisp</label></li>
+<li><label><input type="checkbox" />Basic: subroutines.bas,
+functions.bas</label></li>
+</ul></li>
+<li><label><input type="checkbox" />Include edge cases (nested
+structures, large files, special characters)</label></li>
+<li><label><input type="checkbox" />Include files with multi-line
+comments to verify block extraction</label></li>
+<li><label><input type="checkbox" />Include a binary file with a
+<code>.c</code> extension to test binary rejection</label></li>
+</ul>
+<p><strong>Directory:</strong>
+<code>testdata/language_support/</code></p>
+<h4 id="task-t.2-integration-tests">Task T.2: Integration Tests</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" />Test RAG ingestion for each
+language</label></li>
+<li><label><input type="checkbox" />Test retrieval quality with code
+queries</label></li>
+<li><label><input type="checkbox" />Test code block path
+detection</label></li>
+<li><label><input type="checkbox" />Test syntax
+highlighting</label></li>
+<li><label><input type="checkbox" />Test auto-formatting</label></li>
+</ul>
+<p><strong>File:</strong> <code>language_integration_test.go</code>
+(new)</p>
+<h4 id="task-t.3-benchmark-tests">Task T.3: Benchmark Tests</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" />Benchmark chunking
+performance</label></li>
+<li><label><input type="checkbox" />Benchmark retrieval quality
+(vs. generic chunking)</label></li>
+<li><label><input type="checkbox" />Benchmark formatting
+performance</label></li>
+<li><label><input type="checkbox" />Establish baseline
+metrics</label></li>
+</ul>
+<p><strong>File:</strong> <code>language_benchmark_test.go</code>
+(new)</p>
+<h3 id="documentation">Documentation</h3>
+<h4 id="task-d.1-update-user-documentation">Task D.1: Update User
+Documentation</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" />Update <a
+href="Using_RAGs_with_Harvey.html">Using_RAGs_with_Harvey.md</a></label>
+<ul class="task-list">
+<li><label><input type="checkbox" />Add section on language-specific
+features</label></li>
+<li><label><input type="checkbox" />Document code-aware
+chunking</label></li>
+<li><label><input type="checkbox" />Document syntax
+highlighting</label></li>
+<li><label><input type="checkbox" />Document
+auto-formatting</label></li>
+</ul></li>
+<li><label><input type="checkbox" />Create examples for each
+language</label></li>
+</ul>
+<p><strong>File:</strong> <code>Using_RAGs_with_Harvey.md</code>
+(modified)</p>
+<h4 id="task-d.2-create-language-specific-guides">Task D.2: Create
+Language-Specific Guides</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" />Create
+<code>RAG_Language_Support.md</code> with:</label>
+<ul class="task-list">
+<li><label><input type="checkbox" />Configuration guide</label></li>
+<li><label><input type="checkbox" />Best practices for each
+language</label></li>
+<li><label><input type="checkbox" />Troubleshooting</label></li>
+<li><label><input type="checkbox" />Known limitations</label></li>
+</ul></li>
+</ul>
+<p><strong>File:</strong> <code>RAG_Language_Support.md</code> (new)</p>
+<h4 id="task-d.3-update-help-text">Task D.3: Update Help Text</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" />Update <code>/help</code> output
+with new language features</label></li>
+<li><label><input type="checkbox" />Add language-specific help
+commands</label></li>
+<li><label><input type="checkbox" />Document new commands
+(<code>/format</code>, etc.)</label></li>
+</ul>
+<p><strong>File:</strong> <code>helptext.go</code> (modified)</p>
+<h4 id="task-d.4-update-architecture-documentation">Task D.4: Update
+Architecture Documentation</h4>
+<ul class="task-list">
+<li><label><input type="checkbox" />Update <a
+href="ARCHITECTURE.html">ARCHITECTURE.md</a> with language support
+components</label></li>
+<li><label><input type="checkbox" />Add component diagrams</label></li>
+<li><label><input type="checkbox" />Document integration
+points</label></li>
+</ul>
+<p><strong>File:</strong> <code>ARCHITECTURE.md</code> (modified)</p>
+<hr />
+<h2 id="milestone-summary">Milestone Summary</h2>
+<h3 id="milestone-1-foundation-complete-week-2-3">Milestone 1:
+Foundation Complete (Week 2-3)</h3>
+<p><strong>Includes:</strong> Phases 1-2<br />
+<strong>Deliverables:</strong> - Language registry with all 17 languages
+- Language detection by extension and content - Updated
+<code>looksLikePath</code> using registry - Comprehensive unit tests</p>
+<p><strong>Success Criteria:</strong> - All languages detected correctly
+- Registry functional and tested - No regressions in existing
+functionality</p>
+<hr />
+<h3 id="milestone-2-code-aware-rag-week-4-6">Milestone 2: Code-Aware RAG
+(Week 4-6)</h3>
+<p><strong>Includes:</strong> Phase 3<br />
+<strong>Deliverables:</strong> - Code-aware chunkers for all programming
+languages - Integration with RAG ingestion - Improved retrieval quality
+for code</p>
+<p><strong>Success Criteria:</strong> - Code structures preserved in
+chunks - Retrieval quality improved (measurable) - All existing RAG
+functionality preserved</p>
+<hr />
+<h3 id="milestone-3-enhanced-experience-week-7-9">Milestone 3: Enhanced
+Experience (Week 7-9)</h3>
+<p><strong>Includes:</strong> Phases 4-6<br />
+<strong>Deliverables:</strong> - Documentation extraction - Syntax
+highlighting - Auto-formatting - Full integration</p>
+<p><strong>Success Criteria:</strong> - Documentation extracted and
+associated with code - Code blocks colorized in terminal -
+Auto-formatting works when enabled - All features configurable</p>
+<hr />
+<h3 id="milestone-4-testing-polish-week-10">Milestone 4: Testing &amp;
+Polish (Week 10)</h3>
+<p><strong>Includes:</strong> Cross-cutting tasks<br />
+<strong>Deliverables:</strong> - Comprehensive test suite - Updated
+documentation - Performance benchmarks - Bug fixes and polish</p>
+<p><strong>Success Criteria:</strong> - All tests passing -
+Documentation complete - Performance acceptable - Ready for release</p>
+<hr />
+<h2 id="resource-requirements">Resource Requirements</h2>
+<h3 id="human-resources">Human Resources</h3>
+<ul>
+<li><strong>Lead Developer:</strong> 1 FTE (oversight, architecture,
+critical code)</li>
+<li><strong>Developers:</strong> 1-2 FTE (implementation)</li>
+<li><strong>Test Engineer:</strong> 0.5 FTE (test development, QA)</li>
+<li><strong>Technical Writer:</strong> 0.25 FTE (documentation)</li>
+</ul>
+<h3 id="time-estimates">Time Estimates</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Phase</th>
+<th scope="col">Duration</th>
+<th scope="col">Person-Days</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phase 1</td>
+<td>1-2 weeks</td>
+<td>10-20</td>
+</tr>
+<tr>
+<td>Phase 2</td>
+<td>1 week</td>
+<td>5-10</td>
+</tr>
+<tr>
+<td>Phase 3</td>
+<td>2-3 weeks</td>
+<td>15-30</td>
+</tr>
+<tr>
+<td>Phase 4</td>
+<td>1-2 weeks</td>
+<td>10-20</td>
+</tr>
+<tr>
+<td>Phase 5</td>
+<td>1 week</td>
+<td>5-10</td>
+</tr>
+<tr>
+<td>Phase 6</td>
+<td>1-2 weeks</td>
+<td>10-20</td>
+</tr>
+<tr>
+<td>Cross-cutting</td>
+<td>2 weeks</td>
+<td>20-30</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>10-14 weeks</strong></td>
+<td><strong>75-150</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="external-dependencies">External Dependencies</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Dependency</th>
+<th scope="col">Purpose</th>
+<th scope="col">License</th>
+<th scope="col">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>clang-format</td>
+<td>C/C++ formatting</td>
+<td>Apache 2.0</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td>black</td>
+<td>Python formatting</td>
+<td>MIT</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td>prettier</td>
+<td>JS/TS formatting</td>
+<td>MIT</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td>rustfmt</td>
+<td>Rust formatting</td>
+<td>Apache 2.0/MIT</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td>sly</td>
+<td>Lisp formatting</td>
+<td>MIT</td>
+<td>Optional</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="risk-management">Risk Management</h2>
+<h3 id="technical-risks">Technical Risks</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 33%" />
+<col style="width: 20%" />
+<col style="width: 30%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Risk</th>
+<th scope="col">Probability</th>
+<th scope="col">Impact</th>
+<th scope="col">Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chunker bugs break code across chunks</td>
+<td>Medium</td>
+<td>High</td>
+<td>Extensive testing, fallback to generic chunking</td>
+</tr>
+<tr>
+<td>Performance regression</td>
+<td>Low</td>
+<td>Medium</td>
+<td>Benchmark before/after, optimize if needed</td>
+</tr>
+<tr>
+<td>Embedding model limitations</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Test with multiple models, document limitations</td>
+</tr>
+<tr>
+<td>Memory usage increase</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Profile memory, optimize data structures</td>
+</tr>
+<tr>
+<td>Backward compatibility issues</td>
+<td>Low</td>
+<td>High</td>
+<td>Maintain generic chunking as fallback, migration guide</td>
+</tr>
+<tr>
+<td>External formatter dependencies</td>
+<td>Low</td>
+<td>Medium</td>
+<td>Use built-in fallbacks, document requirements</td>
+</tr>
+</tbody>
+</table>
+<h3 id="schedule-risks">Schedule Risks</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 33%" />
+<col style="width: 20%" />
+<col style="width: 30%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Risk</th>
+<th scope="col">Probability</th>
+<th scope="col">Impact</th>
+<th scope="col">Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scope creep</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Strict phase definitions, defer nice-to-haves</td>
+</tr>
+<tr>
+<td>Resource availability</td>
+<td>Medium</td>
+<td>High</td>
+<td>Prioritize critical features, defer optional</td>
+</tr>
+<tr>
+<td>Testing complexity</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Automate testing, create good test data</td>
+</tr>
+<tr>
+<td>Integration issues</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Early integration testing, continuous integration</td>
+</tr>
+</tbody>
+</table>
+<h3 id="quality-risks">Quality Risks</h3>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 33%" />
+<col style="width: 20%" />
+<col style="width: 30%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Risk</th>
+<th scope="col">Probability</th>
+<th scope="col">Impact</th>
+<th scope="col">Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bugs in production</td>
+<td>Medium</td>
+<td>High</td>
+<td>Comprehensive testing, code reviews</td>
+</tr>
+<tr>
+<td>Poor user experience</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>User testing, iterate on feedback</td>
+</tr>
+<tr>
+<td>Incomplete documentation</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Documentation as part of each task</td>
+</tr>
+<tr>
+<td>Performance issues</td>
+<td>Low</td>
+<td>Medium</td>
+<td>Performance testing, profiling</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="monitoring-metrics">Monitoring &amp; Metrics</h2>
+<h3 id="implementation-metrics">Implementation Metrics</h3>
+<ol type="1">
+<li><strong>Code Coverage:</strong> Target &gt; 80% for new code</li>
+<li><strong>Test Pass Rate:</strong> Target 100% for all tests</li>
+<li><strong>Build Success:</strong> All builds must pass</li>
+<li><strong>Performance:</strong> No &gt;10% regression in critical
+paths</li>
+</ol>
+<h3 id="quality-metrics">Quality Metrics</h3>
+<ol type="1">
+<li><strong>RAG Retrieval Quality:</strong>
+<ul>
+<li>Measure precision/recall for code queries</li>
+<li>Compare code-aware vs. generic chunking</li>
+<li>Target: 20%+ improvement over generic</li>
+</ul></li>
+<li><strong>Chunk Quality:</strong>
+<ul>
+<li>% of functions not split across chunks: Target &gt; 95%</li>
+<li>% of documentation extracted: Target &gt; 90%</li>
+</ul></li>
+<li><strong>User Satisfaction:</strong>
+<ul>
+<li>Feedback on syntax highlighting</li>
+<li>Feedback on auto-formatting</li>
+<li>Bug reports and feature requests</li>
+</ul></li>
+</ol>
+<h3 id="performance-metrics">Performance Metrics</h3>
+<ol type="1">
+<li><strong>Startup Time:</strong> &lt; 100ms increase</li>
+<li><strong>Chunking Time:</strong> &lt; 100ms per file for typical
+sizes</li>
+<li><strong>Formatting Time:</strong> &lt; 500ms per file for typical
+sizes</li>
+<li><strong>Memory Usage:</strong> &lt; 10MB additional memory</li>
+</ol>
+<hr />
+<h2 id="communication-plan">Communication Plan</h2>
+<h3 id="stakeholders">Stakeholders</h3>
+<ul>
+<li><strong>Harvey Team:</strong> Core development team</li>
+<li><strong>Users:</strong> Harvey users interested in programming
+language support</li>
+<li><strong>Maintainers:</strong> Repository maintainers</li>
+</ul>
+<h3 id="communication-channels">Communication Channels</h3>
+<ol type="1">
+<li><strong>GitHub Issues:</strong> Feature tracking, bug reports</li>
+<li><strong>Discussions:</strong> Design discussions, feedback</li>
+<li><strong>Changelog:</strong> Release notes, new features</li>
+<li><strong>Documentation:</strong> Updated docs with new features</li>
+</ol>
+<h3 id="key-messages">Key Messages</h3>
+<ol type="1">
+<li><strong>Phase 1 Complete:</strong> “Harvey now has a language
+registry supporting all file types”</li>
+<li><strong>Phase 3 Complete:</strong> “Code-aware RAG chunking improves
+code search quality”</li>
+<li><strong>Phase 5 Complete:</strong> “Syntax highlighting and
+auto-formatting now available”</li>
+<li><strong>Final Release:</strong> “Comprehensive programming language
+support in Harvey”</li>
+</ol>
+<hr />
+<h2 id="contingency-plans">Contingency Plans</h2>
+<h3 id="if-behind-schedule">If Behind Schedule</h3>
+<ol type="1">
+<li><strong>Prioritize:</strong> Focus on Phases 1-3 (registry,
+detection, chunking)</li>
+<li><strong>Defer:</strong> Syntax highlighting and formatting can be
+deferred</li>
+<li><strong>Simplify:</strong> Reduce scope (fewer languages, simpler
+chunkers)</li>
+<li><strong>Parallelize:</strong> More developers on independent
+tasks</li>
+</ol>
+<h3 id="if-quality-issues">If Quality Issues</h3>
+<ol type="1">
+<li><strong>Stop:</strong> Halt development, fix critical issues</li>
+<li><strong>Isolate:</strong> Identify problematic components</li>
+<li><strong>Rollback:</strong> Revert to last known good state if
+necessary</li>
+<li><strong>Test:</strong> Add more tests to prevent regression</li>
+</ol>
+<h3 id="if-resource-constraints">If Resource Constraints</h3>
+<ol type="1">
+<li><strong>Reduce Scope:</strong> Implement for fewer languages
+initially</li>
+<li><strong>Simplify:</strong> Use simpler implementations (regex-based
+instead of parser)</li>
+<li><strong>Externalize:</strong> Defer some formatters to external
+tools</li>
+<li><strong>Community:</strong> Seek community contributions</li>
+</ol>
+<hr />
+<h2 id="approval-sign-off">Approval &amp; Sign-off</h2>
+<h3 id="reviewers">Reviewers</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><strong>Architecture
+Review:</strong> <span class="citation"
+data-cites="rsdoiel">@rsdoiel</span> (Harvey maintainer)</label></li>
+<li><label><input type="checkbox" /><strong>Code Review:</strong> Harvey
+team members</label></li>
+<li><label><input type="checkbox" /><strong>Testing Review:</strong> QA
+team</label></li>
+<li><label><input type="checkbox" /><strong>Documentation
+Review:</strong> Technical writers</label></li>
+</ul>
+<h3 id="approval-checklist">Approval Checklist</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Design document
+approved</label></li>
+<li><label><input type="checkbox" />This plan document
+approved</label></li>
+<li><label><input type="checkbox" />Resource allocation
+confirmed</label></li>
+<li><label><input type="checkbox" />Timeline agreed</label></li>
+<li><label><input type="checkbox" />Success criteria
+accepted</label></li>
+</ul>
+<hr />
+<h2 id="appendix-a-file-changes-summary">Appendix A: File Changes
+Summary</h2>
+<h3 id="new-files">New Files</h3>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 20%" />
+<col style="width: 37%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Phase</th>
+<th scope="col">Size (est.)</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>language_registry.go</code></td>
+<td>1</td>
+<td>~500 lines</td>
+<td>Language registry and metadata</td>
+</tr>
+<tr>
+<td><code>language_registry_test.go</code></td>
+<td>1</td>
+<td>~300 lines</td>
+<td>Registry tests</td>
+</tr>
+<tr>
+<td><code>language_detector.go</code></td>
+<td>2</td>
+<td>~400 lines</td>
+<td>Language detection</td>
+</tr>
+<tr>
+<td><code>language_detector_test.go</code></td>
+<td>2</td>
+<td>~250 lines</td>
+<td>Detection tests</td>
+</tr>
+<tr>
+<td><code>code_chunkers.go</code></td>
+<td>3</td>
+<td>~800 lines</td>
+<td>Code-aware chunkers</td>
+</tr>
+<tr>
+<td><code>code_chunkers_test.go</code></td>
+<td>3</td>
+<td>~500 lines</td>
+<td>Chunker tests</td>
+</tr>
+<tr>
+<td><code>doc_extractors.go</code></td>
+<td>4</td>
+<td>~600 lines</td>
+<td>Documentation extractors</td>
+</tr>
+<tr>
+<td><code>doc_extractors_test.go</code></td>
+<td>4</td>
+<td>~400 lines</td>
+<td>Extractor tests</td>
+</tr>
+<tr>
+<td><code>syntax_highlighters.go</code></td>
+<td>5</td>
+<td>~600 lines</td>
+<td>Syntax highlighting</td>
+</tr>
+<tr>
+<td><code>syntax_highlighters_test.go</code></td>
+<td>5</td>
+<td>~400 lines</td>
+<td>Highlighter tests</td>
+</tr>
+<tr>
+<td><code>code_formatters.go</code></td>
+<td>6</td>
+<td>~500 lines</td>
+<td>Code formatters</td>
+</tr>
+<tr>
+<td><code>code_formatters_test.go</code></td>
+<td>6</td>
+<td>~300 lines</td>
+<td>Formatter tests</td>
+</tr>
+<tr>
+<td><code>language_integration_test.go</code></td>
+<td>T</td>
+<td>~400 lines</td>
+<td>Integration tests</td>
+</tr>
+<tr>
+<td><code>language_benchmark_test.go</code></td>
+<td>T</td>
+<td>~200 lines</td>
+<td>Benchmark tests</td>
+</tr>
+<tr>
+<td><code>RAG_Language_Support.md</code></td>
+<td>D</td>
+<td>~500 lines</td>
+<td>User documentation</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td></td>
+<td><strong>~7,000 lines</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="modified-files">Modified Files</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 23%" />
+<col style="width: 30%" />
+<col style="width: 26%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Phase</th>
+<th scope="col">Changes</th>
+<th scope="col">Impact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td>1, 3, 5</td>
+<td>Add registry usage, update chunking, add formatting</td>
+<td>Core</td>
+</tr>
+<tr>
+<td><code>config.go</code></td>
+<td>5, 6</td>
+<td>Add language settings, formatter config</td>
+<td>Core</td>
+</tr>
+<tr>
+<td><code>builtin_tools.go</code></td>
+<td>6</td>
+<td>Add auto-formatting to write_file</td>
+<td>Core</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>5</td>
+<td>Add syntax highlighting</td>
+<td>UI</td>
+</tr>
+<tr>
+<td><code>codeblock.go</code></td>
+<td>3</td>
+<td>Extend for language metadata</td>
+<td>Core</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>1</td>
+<td>Initialize registry</td>
+<td>Core</td>
+</tr>
+<tr>
+<td><code>Using_RAGs_with_Harvey.md</code></td>
+<td>D</td>
+<td>Update with new features</td>
+<td>Docs</td>
+</tr>
+<tr>
+<td><code>ARCHITECTURE.md</code></td>
+<td>D</td>
+<td>Update with new components</td>
+<td>Docs</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>D</td>
+<td>Update help text</td>
+<td>UI</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="appendix-b-test-data-requirements">Appendix B: Test Data
+Requirements</h2>
+<h3 id="sample-files-needed">Sample Files Needed</h3>
+<pre><code>testdata/language_support/
+├── c/
+│   ├── functions.c
+│   ├── structures.c
+│   ├── preprocessor.c
+│   └── complex.c
+├── cpp/
+│   ├── classes.cpp
+│   ├── templates.cpp
+│   └── inheritance.cpp
+├── pascal/
+│   ├── procedures.pas
+│   ├── types.pas
+│   └── units.pas
+├── oberon/
+│   ├── module.Mod
+│   └── procedures.Mod
+├── lisp/
+│   ├── functions.lisp
+│   ├── macros.lisp
+│   └── classes.lisp
+├── basic/
+│   ├── subroutines.bas
+│   └── functions.bas
+└── expected/
+    ├── c_chunks.json
+    ├── pascal_chunks.json
+    └── ...</code></pre>
+<h3 id="test-file-sizes">Test File Sizes</h3>
+<ul>
+<li>Small: &lt; 100 lines (unit tests)</li>
+<li>Medium: 100-500 lines (integration tests)</li>
+<li>Large: 500-2000 lines (performance tests)</li>
+</ul>
+<hr />
+<h2 id="appendix-c-configuration-examples">Appendix C: Configuration
+Examples</h2>
+<h3 id="agentsharvey.yaml">agents/harvey.yaml</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Language support configuration</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">language</span><span class="kw">:</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">  # Enable auto-formatting on file write</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">auto_format</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">  # Enable syntax highlighting in terminal</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">syntax_highlight</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="at">  </span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co">  # Per-language settings</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">languages</span><span class="kw">:</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">c</span><span class="kw">:</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;clang-format&quot;</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter_args</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="st">&quot;-&quot;</span><span class="kw">]</span><span class="co">             # stdin mode; clang-format - reads from stdin</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter_mode</span><span class="kw">:</span><span class="at"> pipe</span><span class="co">              # pipe (default) or file</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">chunking</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;function&quot;</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">cpp</span><span class="kw">:</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;clang-format&quot;</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter_args</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="st">&quot;-style=google&quot;</span><span class="kw">,</span><span class="at"> </span><span class="st">&quot;-&quot;</span><span class="kw">]</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter_mode</span><span class="kw">:</span><span class="at"> pipe</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">pascal</span><span class="kw">:</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;builtin&quot;</span><span class="co">             # built-in Go formatter, no subprocess</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter_mode</span><span class="kw">:</span><span class="at"> pipe</span><span class="co">             # built-in always uses pipe mode</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">oberon</span><span class="kw">:</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;builtin&quot;</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter_mode</span><span class="kw">:</span><span class="at"> pipe</span></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a><span class="co">      # Example of a hypothetical file-mode-only formatter:</span></span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a><span class="co">      # formatter: &quot;oberon-format&quot;</span></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a><span class="co">      # formatter_mode: file           # requires safe_mode: false in harvey.yaml</span></span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">lisp</span><span class="kw">:</span></span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;builtin&quot;</span><span class="co">  # or &quot;sly&quot; if installed</span></span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">basic</span><span class="kw">:</span></span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;builtin&quot;</span></span>
+<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a><span class="co">    # Existing languages</span></span>
+<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">go</span><span class="kw">:</span></span>
+<span id="cb2-47"><a href="#cb2-47" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-48"><a href="#cb2-48" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;gofmt&quot;</span></span>
+<span id="cb2-49"><a href="#cb2-49" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb2-50"><a href="#cb2-50" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">python</span><span class="kw">:</span></span>
+<span id="cb2-51"><a href="#cb2-51" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-52"><a href="#cb2-52" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;black&quot;</span></span>
+<span id="cb2-53"><a href="#cb2-53" aria-hidden="true" tabindex="-1"></a><span class="at">      </span></span>
+<span id="cb2-54"><a href="#cb2-54" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">javascript</span><span class="kw">:</span></span>
+<span id="cb2-55"><a href="#cb2-55" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb2-56"><a href="#cb2-56" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;prettier&quot;</span></span>
+<span id="cb2-57"><a href="#cb2-57" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">formatter_args</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="st">&quot;--tab-width=2&quot;</span><span class="kw">,</span><span class="at"> </span><span class="st">&quot;--single-quote&quot;</span><span class="kw">]</span></span></code></pre></div>
+<hr />
+<h2 id="appendix-d-command-examples">Appendix D: Command Examples</h2>
+<h3 id="new-commands">New Commands</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable/disable auto-formatting</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /config set language.auto_format true</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /config set language.auto_format false</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Set formatter for a language</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /config set language.c.formatter clang-format</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /config set language.c.formatter_args <span class="st">&quot;-style=llvm&quot;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable/disable syntax highlighting</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /config set language.syntax_highlight true</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Manually format a file</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /format path/to/file.c</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Show supported languages</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /languages list</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Show language info</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /languages info c</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Test highlighting</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /highlight c path/to/file.c</span></code></pre></div>
+<hr />
+<p><em>This plan is a living document. It will be updated as
+implementation progresses and as new requirements or constraints
+emerge.</em></p>
+</section>
+</body>
+</html>

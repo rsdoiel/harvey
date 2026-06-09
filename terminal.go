@@ -872,7 +872,11 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		a.History = a.History[:len(a.History)-1]
 		return "", ChatStats{}, chatErr
 	}
-	fmt.Fprint(out, buf.String())
+	displayText := buf.String()
+	if a.Config.SyntaxHighlight {
+		displayText = highlightCodeBlocks(displayText)
+	}
+	fmt.Fprint(out, displayText)
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats, a.effectiveContextLimit())))
 	a.recordStats(stats)

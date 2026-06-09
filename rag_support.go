@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	_ "github.com/glebarez/go-sqlite"
 )
@@ -158,6 +159,82 @@ func (r *RagStore) Ingest(source string, texts []string, embedder Embedder) erro
 		}
 	}
 
+	return tx.Commit()
+}
+
+// enrichedAlterStmts are the lazy-migration ALTER TABLE statements that add
+// source-location and semantic columns to pre-existing RAG stores.
+// SQLite ignores "duplicate column name" errors via _, _ = db.Exec(...).
+var enrichedAlterStmts = []string{
+	`ALTER TABLE chunks ADD COLUMN start_line INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE chunks ADD COLUMN start_col  INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE chunks ADD COLUMN end_line   INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE chunks ADD COLUMN end_col    INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE chunks ADD COLUMN chunk_type TEXT    NOT NULL DEFAULT ''`,
+	`ALTER TABLE chunks ADD COLUMN symbols    TEXT    NOT NULL DEFAULT ''`,
+	`ALTER TABLE chunks ADD COLUMN docs       TEXT    NOT NULL DEFAULT ''`,
+}
+
+/** IngestEnriched embeds each EnrichedChunk using embedder and stores the
+ * resulting vectors alongside source-location and semantic metadata.  The
+ * chunks table is lazily migrated with ALTER TABLE … ADD COLUMN on first use,
+ * so existing RAG stores without the new columns continue to work.
+ * Returns an error if the embedder's name does not match the store's model.
+ *
+ * Parameters:
+ *   source   (string)         — file path or identifier recorded with each chunk.
+ *   chunks   ([]EnrichedChunk)— enriched chunks to embed and store.
+ *   embedder (Embedder)       — must satisfy embedder.Name() == store's model name.
+ *
+ * Returns:
+ *   error — on model mismatch, embedding failure, or database write failure.
+ *
+ * Example:
+ *   err := store.IngestEnriched("main.c", chunks, embedder)
+ */
+func (r *RagStore) IngestEnriched(source string, chunks []EnrichedChunk, embedder Embedder) error {
+	if embedder.Name() != r.embeddingModel {
+		return errors.New("embedding model mismatch")
+	}
+	// Lazy schema migration — ignore "duplicate column name" errors.
+	for _, stmt := range enrichedAlterStmts {
+		_, _ = r.db.Exec(stmt)
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	const q = `INSERT INTO chunks(content, embedding, source,
+		start_line, start_col, end_line, end_col, chunk_type, symbols, docs)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	stmt, err := tx.Prepare(q)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, chunk := range chunks {
+		vec, err := embedder.Embed(chunk.Content)
+		if err != nil {
+			return err
+		}
+		blob, err := serialize(vec)
+		if err != nil {
+			return err
+		}
+		syms := strings.Join(chunk.Symbols, ",")
+		if _, err = stmt.Exec(
+			chunk.Content, blob, source,
+			chunk.StartLine, chunk.StartCol,
+			chunk.EndLine, chunk.EndCol,
+			chunk.ChunkType, syms, chunk.Docs,
+		); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 

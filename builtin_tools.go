@@ -141,7 +141,15 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			if a.AuditBuffer != nil {
 				a.AuditBuffer.Log(ActionFileWrite, p, StatusSuccess)
 			}
-			return fmt.Sprintf("wrote %d bytes to %s", len(content), p), nil
+			note := ""
+			if a.Config.AutoFormat {
+				note = applyAutoFormat(a, p, content)
+			}
+			msg := fmt.Sprintf("wrote %d bytes to %s", len(content), p)
+			if note != "" {
+				msg += " (" + note + ")"
+			}
+			return msg, nil
 		},
 	)
 
@@ -683,4 +691,50 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// applyAutoFormat runs the registered formatter for the file extension of p,
+// rewrites the file on disk when the formatter produces different content, and
+// returns a short status note ("formatted", "already formatted", or "").
+// Errors are silently suppressed so that a missing or failing formatter never
+// breaks a write_file call.
+func applyAutoFormat(a *Agent, relPath string, original string) string {
+	ext := filepath.Ext(relPath)
+	if ext == "" {
+		return ""
+	}
+	langID, ok := globalRegistry.DetectFromExtension(ext)
+	if !ok {
+		return ""
+	}
+	f := globalRegistry.GetFormatter(langID)
+	if f == nil {
+		return ""
+	}
+	// File-mode formatters require safe_mode=false.
+	if f.Mode() == FileFormatter && a.Config.SafeMode {
+		return ""
+	}
+	var absPath string
+	if a.Workspace != nil {
+		p, err := a.Workspace.AbsPath(relPath)
+		if err != nil {
+			return ""
+		}
+		absPath = p
+	} else {
+		absPath = relPath
+	}
+	formatted, err := f.Format(original, absPath)
+	if err != nil || formatted == original {
+		if err != nil {
+			return ""
+		}
+		return "already formatted"
+	}
+	// Rewrite only when something changed.
+	if werr := os.WriteFile(absPath, []byte(formatted), 0o644); werr != nil {
+		return ""
+	}
+	return "formatted"
 }

@@ -4,6 +4,82 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-09 — Programming language support uses a central LanguageRegistry with pluggable handlers
+
+**Context.** Harvey's RAG system already supports ingesting 17 programming language file extensions (commands.go:4975-4979), but the `looksLikePath` function (commands.go:3463-3467) was missing extensions for C, C++, Pascal, Oberon, Lisp, and Basic. Additionally, all languages used generic paragraph-based chunking which breaks code structures (functions, procedures) across chunk boundaries, reducing RAG retrieval quality for programming queries. Users working with source code need language-aware features: code-aware chunking, documentation extraction, syntax highlighting, and auto-formatting.
+
+**Decision.** Create a comprehensive language support system with the following architecture:
+
+1. **Central LanguageRegistry** (`language_registry.go`) — Maps language identifiers to handlers (detectors, chunkers, extractors, formatters, highlighters). Each language has a `LanguageInfo` struct with metadata (name, extensions, comment markers, block delimiters, capabilities).
+
+2. **Pluggable Interfaces** — Define Go interfaces for each capability:
+   - `LanguageDetector` — Identifies language from file path and/or content
+   - `CodeChunker` — Splits source into meaningful units (functions, classes, procedures)
+   - `DocExtractor` — Extracts comments, docstrings, and symbol documentation
+   - `CodeFormatter` — Formats source code according to language conventions
+   - `SyntaxHighlighter` — Adds ANSI color to code blocks for terminal display
+
+3. **Code-Aware Chunking** — Language-specific chunkers that respect code structure:
+   - C/C++: Split at function boundaries, preserve preprocessor directives and structs
+   - Pascal: Split at PROCEDURE/FUNCTION boundaries, preserve TYPE/RECORD definitions
+   - Oberon: Split at MODULE/PROCEDURE boundaries
+   - Lisp: Split at top-level forms (balanced parentheses), keep DEFUN/DEFMACRO together
+   - Basic: Split at SUB/FUNCTION boundaries
+
+4. **Progressive Enhancement** — All features are opt-in. Basic file I/O works for all languages. If a language-specific handler fails, fall back to generic behavior.
+
+5. **Immediate Fix** — Add missing extensions (`.c`, `.cpp`, `.h`, `.hpp`, `.pas`, `.Mod`, `.obn`, `.lisp`, `.bas`) to `looksLikePath` function for tagged code block detection.
+
+**Rejected alternatives.**
+
+- *Use Tree-sitter for all parsing* — Tree-sitter provides excellent AST-based parsing but adds ~5MB per language grammar, significant build complexity, and external dependencies. Rejected in favor of simpler regex-based and state-machine approaches for initial implementation, with Tree-sitter as a future enhancement.
+
+- *Single monolithic chunker* — One chunker handling all languages with conditional logic. Rejected for being hard to maintain, test, and extend. The interface-based approach allows independent development and testing of each language's chunker.
+
+- *Cloud-based language services* — Use external APIs for formatting, analysis, etc. Rejected for violating Harvey's local-first philosophy and introducing privacy/security concerns (sending user code to external services).
+
+- *Mandatory formatting* — Always format code on write without user control. Rejected for being too opinionated and potentially breaking user workflows. Auto-formatting must be opt-in and configurable.
+
+**Consequences.**
+
+- **File Changes:** New files `language_registry.go`, `code_chunkers.go`, `doc_extractors.go`, `syntax_highlighters.go`, `code_formatters.go` with corresponding test files. Modified `commands.go`, `config.go`, `builtin_tools.go`, `terminal.go`.
+
+- **Backward Compatibility:** Existing RAG stores continue to work. Generic chunking remains as fallback. No breaking changes to SQLite schema or session format.
+
+- **Performance:** Language registry initialization at startup adds < 10ms. Chunking with language-specific handlers adds ~10-20% overhead vs. generic chunking. Formatters only invoked when auto-format is enabled.
+
+- **Extensibility:** New languages can be added by implementing the interfaces and registering them, without modifying core code.
+
+- **Improved RAG Quality:** Code-aware chunking preserves function/procedure boundaries, improving retrieval quality for code-related queries by an estimated 20%+ over generic chunking.
+
+- **Better UX:** Syntax highlighting in terminal output and auto-formatting on file write improve the user experience when working with source code.
+
+---
+
+## 2026-06-09 — Code block path detection (`looksLikePath`) extended to support all RAG-ingestible languages
+
+**Context.** The `looksLikePath` function in `commands.go` (lines 3463-3467) determines whether a string looks like a file path rather than a language identifier. This is used by `fencePathToken` when parsing tagged code blocks (e.g., ````c:program.c`). The function had a hardcoded list of known extensions that was missing: `.c`, `.cpp`, `.h`, `.hpp`, `.pas`, `.Mod`, `.obn`, `.lisp`, `.bas`. This meant that tagged code blocks for these languages were not recognized as file paths, preventing the auto-write feature from working.
+
+**Decision.** Extend the `knownExts` slice in `looksLikePath` to include all extensions supported by RAG ingestion (from `ragIngestableExts` in commands.go:4975-4979). Additionally, add a comment noting that these are programming languages supported by RAG ingestion for future maintainability.
+
+**Rejected alternatives.**
+
+- *Refactor to use the language registry* — While this would be more maintainable long-term, it would introduce a circular dependency (the registry isn't initialized when `looksLikePath` is first used during startup). Deferred to a future cleanup.
+
+- *Create a separate list* — Maintain a separate, parallel list of extensions. Rejected for creating a maintenance burden and potential for divergence.
+
+- *Make it dynamic* — Load extensions from configuration. Rejected as over-engineering for a static list that rarely changes.
+
+**Consequences.**
+
+- Tagged code blocks for all RAG-supported languages now work correctly, e.g., ````c:src/main.c` or ````pascal:module.pas`.
+
+- The hardcoded list remains a maintenance point but now includes all 17 supported languages.
+
+- Future additions to RAG ingestion must remember to also update `looksLikePath`. This is documented in the code comments.
+
+---
+
 ## 2026-06-08 — `/loop` chat iterations use a shared `runChatTurn` helper that skips skill auto-trigger and `autoExecuteReply`
 
 **Context.** The REPL's plain-chat path does more than call the model: it

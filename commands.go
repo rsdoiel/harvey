@@ -354,6 +354,11 @@ func (a *Agent) registerCommands() {
 				return cmdMemory(a, append([]string{"profile"}, args...), out)
 			},
 		},
+		"format": {
+			Usage:       "/format FILE [FILE...]",
+			Description: "Format source file(s) in-place using the registered formatter for each file's language",
+			Handler:     cmdFormat,
+		},
 		"exit": {
 			Usage:       "/exit",
 			Description: "Exit Harvey",
@@ -3456,21 +3461,13 @@ func fencePathToken(fence string) string {
 // looksLikePath reports whether s looks like a file path rather than a
 // language identifier. A token is treated as a path if it contains a
 // directory separator or ends with a recognised file extension.
+// Extension recognition is delegated to the language registry so that adding
+// new languages automatically extends this function.
 func looksLikePath(s string) bool {
 	if strings.Contains(s, "/") {
 		return true
 	}
-	knownExts := []string{
-		".go", ".ts", ".js", ".py", ".rs", ".md", ".txt",
-		".json", ".yaml", ".yml", ".sh", ".bash", ".sql", ".html",
-		".css", ".toml", ".mod", ".sum", ".env",
-	}
-	for _, ext := range knownExts {
-		if strings.HasSuffix(s, ext) {
-			return true
-		}
-	}
-	return false
+	return registryHasExt(s)
 }
 
 // ─── /summarize ──────────────────────────────────────────────────────────────
@@ -5189,20 +5186,63 @@ func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) {
 	}
 }
 
-// ragIngestFile reads a file, splits it into paragraph chunks, and ingests them.
+// ragIngestFile reads a file, splits it into chunks (language-aware when a
+// chunker is registered, paragraph-based otherwise), and ingests them.
+// Binary files are silently skipped (returns 0, nil).
 func ragIngestFile(store *RagStore, embedder Embedder, path string) (int, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
 	}
-	chunks := ragChunk(string(data))
-	if len(chunks) == 0 {
+
+	// Skip binary files silently.
+	if !isTextContent(data) {
 		return 0, nil
 	}
-	if err := store.Ingest(path, chunks, embedder); err != nil {
+
+	// Use filepath.Ext directly (case-preserving) so .Mod → oberon and .mod → go.
+	ext := filepath.Ext(path)
+	langID, _ := globalRegistry.DetectFromExtension(ext)
+
+	var enriched []EnrichedChunk
+	if langID != "" {
+		if chunker := globalRegistry.GetChunker(langID); chunker != nil {
+			enriched = chunker.Chunk(string(data), path)
+		}
+	}
+
+	// Fallback: generic paragraph chunking wrapped as EnrichedChunks.
+	if len(enriched) == 0 {
+		for _, text := range ragChunk(string(data)) {
+			enriched = append(enriched, EnrichedChunk{
+				Content:   text,
+				ChunkType: "code",
+			})
+		}
+	}
+
+	if len(enriched) == 0 {
+		return 0, nil
+	}
+
+	// Populate Docs fields using documentation extractor when available.
+	if langID != "" {
+		if extractor := globalRegistry.GetExtractor(langID); extractor != nil {
+			symDocs := extractor.ExtractSymbols(string(data))
+			for i := range enriched {
+				if len(enriched[i].Symbols) > 0 {
+					if doc, ok := symDocs[enriched[i].Symbols[0]]; ok {
+						enriched[i].Docs = doc
+					}
+				}
+			}
+		}
+	}
+
+	if err := store.IngestEnriched(path, enriched, embedder); err != nil {
 		return 0, err
 	}
-	return len(chunks), nil
+	return len(enriched), nil
 }
 
 // ragIngestPDF extracts text from a PDF with pdfExtract and ingests it into
@@ -5799,5 +5839,64 @@ func cmdMemoryProfileUpdate(a *Agent, out io.Writer, store *MemoryStore) error {
 		return fmt.Errorf("profile update: save: %w", err)
 	}
 	fmt.Fprintf(out, green("✓")+" Profile updated: %s\n", edited.Meta.ID)
+	return nil
+}
+
+// ─── /format ─────────────────────────────────────────────────────────────────
+
+// cmdFormat formats one or more workspace files in-place using the registered
+// formatter for each file's language.  File-mode (external, in-place) formatters
+// are skipped when safe mode is enabled.
+func cmdFormat(a *Agent, args []string, out io.Writer) error {
+	if a.Workspace == nil {
+		fmt.Fprintln(out, "  /format requires a workspace.")
+		return nil
+	}
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /format FILE [FILE...]")
+		return nil
+	}
+	for _, relPath := range args {
+		data, err := a.Workspace.ReadFile(relPath)
+		if err != nil {
+			fmt.Fprintf(out, "  %s: read error: %v\n", relPath, err)
+			continue
+		}
+		ext := filepath.Ext(relPath)
+		langID, ok := globalRegistry.DetectFromExtension(ext)
+		if !ok {
+			fmt.Fprintf(out, "  %s: no language registered for extension %q\n", relPath, ext)
+			continue
+		}
+		f := globalRegistry.GetFormatter(langID)
+		if f == nil {
+			fmt.Fprintf(out, "  %s: no formatter registered for %q\n", relPath, langID)
+			continue
+		}
+		if f.Mode() == FileFormatter && a.Config.SafeMode {
+			fmt.Fprintf(out, "  %s: file-mode formatter requires safe mode off (/safemode off)\n", relPath)
+			continue
+		}
+		absPath, err := a.Workspace.AbsPath(relPath)
+		if err != nil {
+			fmt.Fprintf(out, "  %s: path error: %v\n", relPath, err)
+			continue
+		}
+		original := string(data)
+		formatted, err := f.Format(original, absPath)
+		if err != nil {
+			fmt.Fprintf(out, "  %s: formatter error: %v\n", relPath, err)
+			continue
+		}
+		if formatted == original {
+			fmt.Fprintf(out, "  %s: already formatted\n", relPath)
+			continue
+		}
+		if err := os.WriteFile(absPath, []byte(formatted), 0o644); err != nil {
+			fmt.Fprintf(out, "  %s: write error: %v\n", relPath, err)
+			continue
+		}
+		fmt.Fprintf(out, "  %s: formatted (%d → %d bytes)\n", relPath, len(original), len(formatted))
+	}
 	return nil
 }

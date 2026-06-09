@@ -2,6 +2,7 @@
 
 # Improvemet Ideas
 
+- [ ] `-resume` option that resumes the most recent session 
 - [ ] The assay tool for doing model and RAG analysis leaves artifacts in `testout`, This gets confused by other language models as stale error test results. Maybe the model analysis should be stored at the workspace level not in the harvey code repository?
 - [ ] Improving Harvey's ergonomics and user experience
   - [ ] Improve status messages to let user informed of what is happening

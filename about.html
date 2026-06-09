@@ -19,10 +19,23 @@
 </nav>
 <section>
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.9">harvey 0.0.9</h2>
+<h2 id="harvey-0.0.10">harvey 0.0.10</h2>
 <ul>
-<li>Added <code>/loop</code> command similar to that found in other
-Agent REPL</li>
+<li>Added multi-language code-aware chunking for RAG ingestion (C, C++,
+Pascal, Oberon, Lisp, Basic)</li>
+<li>Added documentation extraction: comment and docstring association
+with symbols for C, C++, Pascal, Oberon, Lisp, Basic</li>
+<li>Added ANSI syntax highlighting of code blocks in LLM responses (13
+languages: C, C++, Pascal, Oberon, Lisp, Basic, Go, Python, JavaScript,
+TypeScript, Rust, Shell, SQL); configurable via
+<code>syntax_highlight</code> in harvey.yaml</li>
+<li>Added automatic code formatting on <code>write_file</code>: built-in
+formatters for Pascal, Oberon, Basic; external pipe-mode formatters for
+Go (gofmt), C/C++ (clang-format), Python (black), Rust (rustfmt),
+JavaScript/TypeScript (prettier); configurable via
+<code>auto_format</code> in harvey.yaml</li>
+<li>Added <code>/format FILE [FILE...]</code> command to manually format
+workspace source files in-place</li>
 </ul>
 <h2 id="authors">Authors</h2>
 <ul>

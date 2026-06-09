@@ -133,6 +133,10 @@ type Config struct {
 	MaxOutputBytes      int  // cap on tool output injected into context; 0 = defaultMaxOutputBytes
 	// Debug mode: set by --debug at startup; enables JSONL debug log and OLLAMA_DEBUG
 	Debug bool
+	// SyntaxHighlight enables ANSI colour highlighting of code blocks in responses.
+	SyntaxHighlight bool
+	// AutoFormat enables automatic code formatting after write_file writes a source file.
+	AutoFormat bool
 	// Memory system: RAG stores, knowledge base, and retrieval settings
 	Memory MemoryConfig
 }
@@ -172,6 +176,8 @@ func DefaultConfig() *Config {
 		ModelAliases:          make(map[string]string),
 		RunTimeout:            5 * time.Minute,
 		OllamaTimeout:         0, // no timeout — local inference can take minutes on slow hardware
+		SyntaxHighlight:       true,
+		AutoFormat:            true,
 		ToolsEnabled:          true,
 		MaxToolCallsPerTurn:   defaultMaxToolCallsPerTurn,
 		MaxOutputBytes:        defaultMaxOutputBytes,
@@ -607,7 +613,9 @@ type harveyYAML struct {
 	ModelCacheDB    string              `yaml:"model_cache_db"`
 	RAG             ragYAML             `yaml:"rag,omitempty"`
 	Permissions     map[string][]string `yaml:"permissions,omitempty"`
-	SafeMode        *bool               `yaml:"safe_mode,omitempty"` // nil = not set (keep default)
+	SafeMode        *bool               `yaml:"safe_mode,omitempty"`        // nil = not set (keep default)
+	SyntaxHighlight *bool               `yaml:"syntax_highlight,omitempty"` // nil = not set (keep default)
+	AutoFormat      *bool               `yaml:"auto_format,omitempty"`      // nil = not set (keep default)
 	AllowedCommands []string            `yaml:"allowed_commands,omitempty"`
 	RunTimeout      string              `yaml:"run_timeout,omitempty"`    // e.g. "5m", "300s", "1m 30s", "300"
 	OllamaTimeout   string              `yaml:"ollama_timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
@@ -769,6 +777,12 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.SafeMode != nil {
 		cfg.SafeMode = *y.SafeMode
 	}
+	if y.SyntaxHighlight != nil {
+		cfg.SyntaxHighlight = *y.SyntaxHighlight
+	}
+	if y.AutoFormat != nil {
+		cfg.AutoFormat = *y.AutoFormat
+	}
 	if len(y.AllowedCommands) > 0 {
 		cfg.AllowedCommands = y.AllowedCommands
 	}
@@ -885,6 +899,8 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 		y.Permissions = cfg.Permissions
 	}
 	y.SafeMode = &cfg.SafeMode
+	y.SyntaxHighlight = &cfg.SyntaxHighlight
+	y.AutoFormat = &cfg.AutoFormat
 	if len(cfg.AllowedCommands) > 0 {
 		y.AllowedCommands = cfg.AllowedCommands
 	}
