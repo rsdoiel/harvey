@@ -15,7 +15,7 @@ directory.
 
 Work through these documents in order to understand Harvey completely.
 
-1. [Overview](README.md) — what Harvey is and the philosophy behind it
+1. [Overview](index.html) — what Harvey is and the philosophy behind it
 2. [Installation](INSTALL.md) — get Harvey installed on your system
 3. [Getting Started](getting_started.md) — first session, keyboard shortcuts, slash commands, and security features
 4. [System Prompt](HARVEY.md) — the default system prompt and how to customize it
@@ -37,7 +37,7 @@ Work through these documents in order to understand Harvey completely.
 
 ### Getting Started
 
-- [README.md](README.md) — project overview, features, and philosophy
+- [README.md](index.html) — project overview, features, and philosophy
 - [INSTALL.md](INSTALL.md) — installation for all platforms
 - [about.md](about.md) — project metadata and author information
 - [getting_started.md](getting_started.md) — session walkthrough, keyboard shortcuts, slash commands, security
