@@ -99,7 +99,7 @@ harvey> How do I set up a RAG store?
 |         |                       ▲                       |             |
 │         │ Ingest                │ Query                 │ Generate    │
 │         │ (embedding)           │ (similarity)          │ (response)  │
-│         ▼                       |                       ▼             │
+│         ▼                       │                       ▼             │
 │  ┌─────────────────┐     ┌─────────────────┐                          │
 │  │  Chunking       │     │  Vector Search  │                          │
 │  │  (~500 chars)   │     │  (cosine sim)   │                          │

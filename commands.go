@@ -3461,7 +3461,7 @@ func looksLikePath(s string) bool {
 		return true
 	}
 	knownExts := []string{
-		".go", ".ts", ".js", ".py", ".rb", ".md", ".txt",
+		".go", ".ts", ".js", ".py", ".rs", ".md", ".txt",
 		".json", ".yaml", ".yml", ".sh", ".bash", ".sql", ".html",
 		".css", ".toml", ".mod", ".sum", ".env",
 	}
@@ -4973,8 +4973,8 @@ const ragLargeFileThreshold = 1000 * 1024 // 1000 KB
 
 // ragIngestableExts is the set of file extensions eligible for RAG ingestion.
 var ragIngestableExts = map[string]bool{
-	".md": true, ".txt": true, ".go": true, ".ts": true, ".py": true,
-	".yaml": true, ".yml": true, ".toml": true, ".sql": true, ".pdf": true,
+	".md": true, ".txt": true, ".go": true, ".ts": true, ".js": true, ".css": true, ".py": true,
+	".rs": true, ".yaml": true, ".yml": true, ".toml": true, ".sql": true, ".pdf": true,
 }
 
 // ragCollectFiles expands a list of paths (files and directories) into the
