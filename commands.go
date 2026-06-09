@@ -557,6 +557,12 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "write":
 			fmt.Fprint(out, FmtHelp(WriteHelpText, "", "", "", ""))
 			return nil
+		case "format":
+			fmt.Fprint(out, FmtHelp(FormatHelpText, "", "", "", ""))
+			return nil
+		case "hint":
+			fmt.Fprint(out, FmtHelp(HintHelpText, "", "", "", ""))
+			return nil
 		case "pipeline":
 			fmt.Fprint(out, FmtHelp(PipelineHelpText, "", "", "", ""))
 			return nil
@@ -578,8 +584,11 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "profile":
 			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
 			return nil
+		case "recall":
+			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
+			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, getting-started, git, inspect, kb, learn, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 
@@ -610,10 +619,11 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "  Type /help TOPIC for a full guide. Topics: attach, audit, clear, compact,")
-	fmt.Fprintln(out, "  context, editing, file-tree, files, git, inspect, kb, learn, loop, memory,")
-	fmt.Fprintln(out, "  ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record,")
-	fmt.Fprintln(out, "  rename, routing, run, safemode, search, security, session, skill-set,")
-	fmt.Fprintln(out, "  skills, status, summarize, write")
+	fmt.Fprintln(out, "  context, editing, file-tree, files, format, getting-started, git, hint,")
+	fmt.Fprintln(out, "  inspect, kb, learn, loop, memory, ollama, pdf-tools, permissions, pipeline,")
+	fmt.Fprintln(out, "  profile, rag, read, read-dir, read-pdf, recall, record, rename, routing,")
+	fmt.Fprintln(out, "  run, safemode, search, security, session, skill-set, skills, status,")
+	fmt.Fprintln(out, "  summarize, write")
 	fmt.Fprintln(out)
 	return nil
 }

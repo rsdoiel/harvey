@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>FORMAT — format source files in-place using language-specific
+tools</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/format FILE [FILE…]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/format reads each FILE from the workspace, detects its language from
+the file extension, runs the registered formatter for that language, and
+writes the result back to FILE if formatting changed it.</p>
+<p>Each file is processed independently and reported on its own line, so
+a single /format call can format files in several languages at once.</p>
+<h1 id="supported-languages">SUPPORTED LANGUAGES</h1>
+<pre><code>  Language    Extensions               Formatter
+  ─────────── ──────────────────────── ─────────────────────────────
+  Go          .go .mod .sum            gofmt
+  C           .c .h                    clang-format
+  C++         .cpp .cc .cxx .hpp .hh   clang-format
+  Python      .py                      black
+  Rust        .rs                      rustfmt
+  JavaScript  .js                      prettier
+  TypeScript  .ts                      prettier
+  Pascal      .pas .p                  built-in normaliser
+  Oberon      .obn (.Mod)              built-in normaliser
+  BASIC       .bas .bi                 built-in normaliser</code></pre>
+<p>External formatters (gofmt, clang-format, black, rustfmt, prettier)
+read the file’s content on stdin and write the formatted result on
+stdout — Harvey only overwrites the file on disk after the formatter
+succeeds. If the tool is not installed, /format reports the file as
+already formatted rather than failing.</p>
+<p>The Pascal, Oberon, and BASIC formatters are built into Harvey and
+only normalise whitespace and line endings; no external tool is
+required.</p>
+<h1 id="output">OUTPUT</h1>
+<p>For each FILE, /format prints one of:</p>
+<p>FILE: formatted (N → M bytes) The formatter changed the file; it was
+rewritten with the new size.</p>
+<p>FILE: already formatted The formatter ran but produced identical
+output, or the formatter’s external tool is not installed.</p>
+<p>FILE: no language registered for extension “.ext” The file extension
+is not recognised by Harvey’s language registry.</p>
+<p>FILE: no formatter registered for “LANG” The language is recognised
+but has no formatter configured.</p>
+<p>FILE: read error: … FILE: path error: … FILE: write error: … A
+filesystem error occurred; the file is left unchanged.</p>
+<h1 id="safe-mode">SAFE MODE</h1>
+<p>A formatter that rewrites a file in place (rather than via
+stdin/stdout) is blocked while Safe Mode is on, and /format reports:</p>
+<p>FILE: file-mode formatter requires safe mode off (/safemode off)</p>
+<p>None of the default formatters listed above use this mode, so /format
+behaves the same with Safe Mode on or off. See /help security for
+details.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Format a single Go file:</p>
+<pre><code>  harvey &gt; /format harvey/spinner.go
+    harvey/spinner.go: formatted (4312 → 4298 bytes)</code></pre>
+<p>Format several files across languages in one call:</p>
+<pre><code>  harvey &gt; /format cmd/harvey/main.go agents/scripts/build.py
+    cmd/harvey/main.go: already formatted
+    agents/scripts/build.py: formatted (1820 → 1795 bytes)</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/write PATH — save the last assistant reply to a file /run COMMAND —
+run a shell command (e.g. a formatter not yet wired up) /help security —
+Safe Mode and file-mode formatter restrictions</p>
+</section>
+</body>
+</html>

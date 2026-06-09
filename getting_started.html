@@ -168,18 +168,23 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><
 <span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a>  26 prompt + 58 reply tokens · 11.2s · 5.2 tok/s</span>
 <span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a>harvey &gt; /apply</span>
-<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a>  Found 1 tagged block(s):</span>
-<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a>    internal/parser/parser.go (1847 bytes)</span>
-<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a>  Apply all? <span class="co">[</span><span class="ot">Y/n</span><span class="co">]</span> y</span>
-<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>  ✓ internal/parser/parser.go</span>
-<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a>harvey &gt; /run go test ./internal/parser/...</span>
-<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a>  $ go test ./internal/parser/...</span>
-<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>  312 bytes of output added to context.</span>
-<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a>harvey &gt; All tests pass now. /bye</span>
-<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a>Goodbye.</span></code></pre></div>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a>  ┌─ Write: internal/parser/parser.go ─────────────────────────┐</span>
+<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a>  │  func ParseExpr(src string) (Expr, error) {</span>
+<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a>  │      if src == &quot;&quot; {</span>
+<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a>  │          return nil, fmt.Errorf(&quot;parseExpr: empty input&quot;)</span>
+<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>  │      }</span>
+<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a>  │      // ... rest of function</span>
+<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a>  │  }</span>
+<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a>  └──────────────────────────────────────────────────────────────┘</span>
+<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>  <span class="co">[</span><span class="ot">y</span><span class="co">]</span>es  <span class="co">[</span><span class="ot">n</span><span class="co">]</span>o  <span class="co">[</span><span class="ot">A</span><span class="co">]</span>ll  <span class="co">[</span><span class="ot">q</span><span class="co">]</span>uit &gt; y</span>
+<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a>  ✓ wrote internal/parser/parser.go (847 bytes)</span>
+<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a>harvey &gt; /run go test ./internal/parser/...</span>
+<span id="cb4-50"><a href="#cb4-50" aria-hidden="true" tabindex="-1"></a>  $ go test ./internal/parser/...</span>
+<span id="cb4-51"><a href="#cb4-51" aria-hidden="true" tabindex="-1"></a>  312 bytes of output added to context.</span>
+<span id="cb4-52"><a href="#cb4-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-53"><a href="#cb4-53" aria-hidden="true" tabindex="-1"></a>harvey &gt; All tests pass now. /bye</span>
+<span id="cb4-54"><a href="#cb4-54" aria-hidden="true" tabindex="-1"></a>Goodbye.</span></code></pre></div>
 <p>After each assistant response Harvey prints a stats line showing
 prompt tokens, reply tokens, elapsed time, and generation speed. While
 the model is thinking, an animated spinner with an estimated completion
@@ -380,10 +385,6 @@ terminal)</td>
 </tr>
 </tbody>
 </table>
-<blockquote>
-<p><strong>Note:</strong> publicai.co support has been removed. These
-commands are no longer available.</p>
-</blockquote>
 <h2 id="file-operations">File operations</h2>
 <p>These commands move information between the workspace and the
 conversation.</p>
@@ -519,26 +520,28 @@ are passed through.</p>
 harvey &gt; /git diff HEAD~1
 harvey &gt; /git log --oneline -10
 harvey &gt; /git blame internal/parser/parser.go</code></pre>
-<h3 id="apply"><code>/apply</code></h3>
-<p>Scans the last assistant reply for fenced code blocks whose opening
-fence line includes a file path
-(e.g. <code>```go harvey/spinner.go</code>), lists the files found, asks
-for a single Y/n confirmation, then writes all of them.</p>
-<pre><code>harvey &gt; /apply
-  Found 2 tagged block(s):
-    harvey/spinner.go (4312 bytes)
-    harvey/terminal.go (7891 bytes)
-  Apply all? [Y/n] y
-  ✓ harvey/spinner.go
-  ✓ harvey/terminal.go</code></pre>
-<p>For Harvey to auto-detect a file, tag the fence line with the target
-path:</p>
-<div class="sourceCode" id="cb16"><pre
-class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="in">```go harvey/spinner.go</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="in">func (s *Spinner) run() {</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="in">    ...</span></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span></code></pre></div>
+<h3 id="auto-apply-tagged-code-blocks">Auto-apply tagged code
+blocks</h3>
+<p>When the model produces a fenced code block tagged with a file path,
+Harvey automatically previews the content and prompts you to write it —
+no explicit command needed. Tag the fence line with the target path:</p>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="in">```go harvey/spinner.go</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="in">func (s *Spinner) run() {</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="in">    ...</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span></code></pre></div>
+<p>Harvey will show a box preview and ask for confirmation:</p>
+<pre><code>  ┌─ Write: harvey/spinner.go ──────────────────────────────────┐
+  │  func (s *Spinner) run() {
+  │      ...
+  │  }
+  └──────────────────────────────────────────────────────────────┘
+  [y]es  [n]o  [A]ll  [q]uit &gt; y
+  ✓ wrote harvey/spinner.go (4312 bytes)</code></pre>
+<p>Press <code>Enter</code> or <code>y</code> to write the file,
+<code>n</code> to skip, <code>A</code> to write all remaining files
+without further prompts, or <code>q</code> to cancel.</p>
 <h2 id="session-quality">Session quality</h2>
 <h3 id="summarize"><code>/summarize</code></h3>
 <p>Asks the connected LLM to condense the current conversation into a
@@ -734,7 +737,7 @@ test</h3>
 <pre><code>harvey &gt; /run go test ./...
 harvey &gt; /read internal/parser/parser_test.go internal/parser/parser.go
 harvey &gt; The TestParseExpr test is failing on empty input. Please fix parser.go.
-harvey &gt; /apply
+  (Harvey shows the fix; prompts to write the tagged code block — press Enter to accept)
 harvey &gt; /run go test ./internal/parser/...</code></pre>
 <h3 id="explore-an-unfamiliar-codebase">Explore an unfamiliar
 codebase</h3>

@@ -87,6 +87,10 @@ func main() {
 					fmt.Print(fmtHelp(harvey.StatusHelpText, appName, version, releaseDate, releaseHash))
 				case "write":
 					fmt.Print(fmtHelp(harvey.WriteHelpText, appName, version, releaseDate, releaseHash))
+				case "format":
+					fmt.Print(fmtHelp(harvey.FormatHelpText, appName, version, releaseDate, releaseHash))
+				case "hint":
+					fmt.Print(fmtHelp(harvey.HintHelpText, appName, version, releaseDate, releaseHash))
 				case "attach":
 					fmt.Print(fmtHelp(harvey.AttachHelpText, appName, version, releaseDate, releaseHash))
 				case "read-pdf", "readpdf":
@@ -99,10 +103,16 @@ func main() {
 					fmt.Print(fmtHelp(harvey.LearnHelpText, appName, version, releaseDate, releaseHash))
 				case "loop":
 					fmt.Print(fmtHelp(harvey.LoopHelpText, appName, version, releaseDate, releaseHash))
+				case "getting-started", "gettingstarted", "install", "setup":
+					fmt.Print(harvey.GettingStartedHelpText)
+				case "pdf-tools", "pdftools", "pdf":
+					fmt.Print(harvey.PDFToolsHelpText)
 				case "profile":
 					fmt.Print(fmtHelp(harvey.MemoryHelpText, appName, version, releaseDate, releaseHash))
+				case "recall":
+					fmt.Print(fmtHelp(harvey.MemoryHelpText, appName, version, releaseDate, releaseHash))
 				default:
-					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: attach, audit, clear, compact, context, editing, file-tree, files, git, inspect, kb, learn, loop, memory, ollama, permissions, pipeline, rag, read, read-dir, read-pdf, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
+					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: attach, audit, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
 					os.Exit(1)
 				}
 			} else {

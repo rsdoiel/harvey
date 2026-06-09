@@ -97,6 +97,7 @@ Work through these documents in order to understand Harvey completely.
   - [editing](harvey-editing.7.md)
   - [file-tree](harvey-file-tree.7.md)
   - [files](harvey-files.7.md)
+  - [format](harvey-format.7.md)
   - [git](harvey-git.7.md)
   - [inspect](harvey-inspect.7.md)
   - [knowledge base](harvey-kb.7.md)
@@ -128,3 +129,5 @@ Work through these documents in order to understand Harvey completely.
 ## External
 
 - [GitHub Issues](https://github.com/rsdoiel/harvey/issues) — bug reports and feature requests
+
+

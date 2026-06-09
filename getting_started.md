@@ -143,11 +143,16 @@ func ParseExpr(src string) (Expr, error) {
 
   26 prompt + 58 reply tokens · 11.2s · 5.2 tok/s
 
-harvey > /apply
-  Found 1 tagged block(s):
-    internal/parser/parser.go (1847 bytes)
-  Apply all? [Y/n] y
-  ✓ internal/parser/parser.go
+  ┌─ Write: internal/parser/parser.go ─────────────────────────┐
+  │  func ParseExpr(src string) (Expr, error) {
+  │      if src == "" {
+  │          return nil, fmt.Errorf("parseExpr: empty input")
+  │      }
+  │      // ... rest of function
+  │  }
+  └──────────────────────────────────────────────────────────────┘
+  [y]es  [n]o  [A]ll  [q]uit > y
+  ✓ wrote internal/parser/parser.go (847 bytes)
 
 harvey > /run go test ./internal/parser/...
   $ go test ./internal/parser/...
@@ -228,8 +233,6 @@ Type `/help` at any prompt for a live command list. All commands begin with `/`.
 | `/ollama use MODEL` | Switch to a different installed model mid-session |
 | `/ollama logs` | Tail the Ollama service log |
 | `/ollama env` | Show Ollama environment variables as seen by Harvey |
-
-> **Note:** publicai.co support has been removed. These commands are no longer available.
 
 ## File operations
 
@@ -407,23 +410,11 @@ harvey > /git log --oneline -10
 harvey > /git blame internal/parser/parser.go
 ```
 
-### `/apply`
+### Auto-apply tagged code blocks
 
-Scans the last assistant reply for fenced code blocks whose opening fence
-line includes a file path (e.g. `` ```go harvey/spinner.go ``), lists the
-files found, asks for a single Y/n confirmation, then writes all of them.
-
-```
-harvey > /apply
-  Found 2 tagged block(s):
-    harvey/spinner.go (4312 bytes)
-    harvey/terminal.go (7891 bytes)
-  Apply all? [Y/n] y
-  ✓ harvey/spinner.go
-  ✓ harvey/terminal.go
-```
-
-For Harvey to auto-detect a file, tag the fence line with the target path:
+When the model produces a fenced code block tagged with a file path, Harvey
+automatically previews the content and prompts you to write it — no explicit
+command needed. Tag the fence line with the target path:
 
 ~~~markdown
 ```go harvey/spinner.go
@@ -432,6 +423,21 @@ func (s *Spinner) run() {
 }
 ```
 ~~~
+
+Harvey will show a box preview and ask for confirmation:
+
+```
+  ┌─ Write: harvey/spinner.go ──────────────────────────────────┐
+  │  func (s *Spinner) run() {
+  │      ...
+  │  }
+  └──────────────────────────────────────────────────────────────┘
+  [y]es  [n]o  [A]ll  [q]uit > y
+  ✓ wrote harvey/spinner.go (4312 bytes)
+```
+
+Press `Enter` or `y` to write the file, `n` to skip, `A` to write all
+remaining files without further prompts, or `q` to cancel.
 
 ## Session quality
 
@@ -597,7 +603,7 @@ paths before using `/read` or `/write`.
 harvey > /run go test ./...
 harvey > /read internal/parser/parser_test.go internal/parser/parser.go
 harvey > The TestParseExpr test is failing on empty input. Please fix parser.go.
-harvey > /apply
+  (Harvey shows the fix; prompts to write the tagged code block — press Enter to accept)
 harvey > /run go test ./internal/parser/...
 ```
 
