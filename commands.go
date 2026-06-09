@@ -4974,6 +4974,7 @@ const ragLargeFileThreshold = 1000 * 1024 // 1000 KB
 // ragIngestableExts is the set of file extensions eligible for RAG ingestion.
 var ragIngestableExts = map[string]bool{
 	".md": true, ".txt": true, ".go": true, ".ts": true, ".js": true, ".css": true, ".py": true,
+	".Mod": true, ".obn": true, ".pas": true, ".lisp": true, ".bas": true, ".c": true, ".cpp": true,
 	".rs": true, ".yaml": true, ".yml": true, ".toml": true, ".sql": true, ".pdf": true,
 }
 

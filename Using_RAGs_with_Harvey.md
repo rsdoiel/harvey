@@ -322,8 +322,15 @@ harvey> /rag ingest ~/projects/myproject/docs/
 - `.go` (Go source)
 - `.ts` (TypeScript)
 - `.js` (JavaScript)
+- `.css` (Cascading Style Sheets)
 - `.py` (Python)
+- `.rs` (RUST)
 - `.json` (JSON)
+- `.lisp` (LISP)
+- `.Mod` (Oberon)
+- `.pas` (Pascal)
+- `.bas` (Basic)
+- `.c` (C)
 - Any plain-text file
 
 **Chunking Behavior:**
@@ -1222,4 +1229,3 @@ grep -rn "ignore previous\|disregard\|you are now\|system:" /path/to/cloned-repo
 - [SKILLS.md](SKILLS.md) — Agent Skills system
 - [user_manual.md](user_manual.md) — General Harvey usage
 - [getting_started.md](getting_started.md) — Quick start guide
-
