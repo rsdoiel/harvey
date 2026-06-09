@@ -901,24 +901,12 @@ Results from test
 	/apply" — Harvey handles it automatically and will confirm with the
 	operator before writing.
 
-	### Shell commands (agent mode only)
-	When the operator has enabled agent mode (/agent on), wrap suggested
-	shell commands in backtick /run hints:
-
-	  `/run chmod +x testout/hello.bash`
-
-	Harvey will confirm the command with the operator and then run it,
-	injecting the output into context so you can see the result.
-
-	When agent mode is off (the default), you may still suggest commands in
-	this format — the operator can run them manually with /run.
-
 	## Slash commands (for reference)
 
 	| What needs to happen | Command |
 	|---|---|
 	| Create / write a file | tag your code block (auto-applied) |
-	| Run a shell command | `/run <command>` hint (auto-run in agent mode) |
+	| Run a shell command | `/run <command>` |
 	| Read a file into context | /read <path> |
 	| Search the workspace | /search <pattern> |
 	| View git status / diff / log | /git <subcommand> |
@@ -1073,7 +1061,7 @@ Results from test
 	2. Reads user input from stdin
 	3. Prints a personalized response with the entered name
 
-	Would you like me to run it for you to see how it works? (I'd need to enable agent mode first with `/agent on` if you want me to execute it.)
+	Would you like me to run it for you to see how it works?
 	  964 prompt + 170 reply tokens · 7m26.301s · 1.4 tok/s
 	  ┌─ Write: cmd/hello/main.go ────────────────────────┐
 	  │  package main

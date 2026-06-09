@@ -84,18 +84,23 @@ picture of the project:
 Example `HARVEY.md` with all three markers:
 
 ~~~markdown
+
 You are a coding assistant for this Go project.
 Today: <!-- @date -->
 
 ## Workspace files
+
 <!-- @files -->
 
 ## Current git status
+
 <!-- @git-status -->
 
 ## Conventions
+
 - All exported symbols need /** ... */ doc comments.
 - Use `t.TempDir()` in tests; no global state.
+
 ~~~
 
 ## Session walkthrough
@@ -302,10 +307,9 @@ harvey > /safemode off
 
 > **When to keep safe mode on:** The default allowlist is a reasonable starting
 > point for read-only workflows (browsing, reviewing, querying). Only run
-> `/safemode off` when you understand what commands the model may attempt —
-> particularly when using unfamiliar models or enabling agent mode. The current
-> safe mode state is always visible in the REPL prompt (`harvey >` = safe,
-> `harvey [unsafe] >` in red = off).
+> `/safemode off` when you understand what commands the model may attempt.
+> The current safe mode state is always visible in the REPL prompt
+> (`harvey >` = safe, `harvey [unsafe] >` in red = off).
 
 Subcommands: `on`, `off`, `status`, `allow CMD`, `deny CMD`, `reset`.
 

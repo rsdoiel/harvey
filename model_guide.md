@@ -8,7 +8,7 @@ M1 Mac is the primary machine; Raspberry Pi 500+ runs a subset.*
 ## Capability legend
 
 **Tools** — model sends `tool_call` responses that Harvey's tool executor can
-dispatch (required for `/run`, `/git`, file-write operations in agent mode).
+dispatch (required for `/run`, `/git`, file-write operations).
 
 **Tagged** — model respects Harvey's ` ```path ` fenced-block syntax so
 autoExecute can write files without a `/apply` prompt. `-1` = not yet probed.

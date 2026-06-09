@@ -576,16 +576,6 @@ err := r.RecordTurnWithStats(
 )
 ```
 
-### Recording Agent Actions
-
-```go
-// Start agent mode scene
-err := r.StartAgentScene("Harvey proposes to write 1 file.")
-
-// Record write action
-err := r.RecordAgentAction("write", "hello.txt", "yes", "ok")
-```
-
 ### Recording Shell Commands
 
 ```go

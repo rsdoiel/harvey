@@ -113,18 +113,22 @@ an up-to-date picture of the project:</p>
 </table>
 <p>Example <code>HARVEY.md</code> with all three markers:</p>
 <div class="sourceCode" id="cb3"><pre
-class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>You are a coding assistant for this Go project.</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>Today: <span class="co">&lt;!-- @date --&gt;</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="fu">## Workspace files</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @files --&gt;</span></span>
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>You are a coding assistant for this Go project.</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>Today: <span class="co">&lt;!-- @date --&gt;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="fu">## Workspace files</span></span>
 <span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="fu">## Current git status</span></span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @git-status --&gt;</span></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="fu">## Conventions</span></span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>All exported symbols need /** ... */ doc comments.</span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use <span class="in">`t.TempDir()`</span> in tests; no global state.</span></code></pre></div>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @files --&gt;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="fu">## Current git status</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @git-status --&gt;</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="fu">## Conventions</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>All exported symbols need /** ... */ doc comments.</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use <span class="in">`t.TempDir()`</span> in tests; no global state.</span></code></pre></div>
 <h2 id="session-walkthrough">Session walkthrough</h2>
 <div class="sourceCode" id="cb4"><pre
 class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>$ harvey -m llama3:latest</span>
@@ -440,10 +444,9 @@ harvey &gt; /safemode off
 <p><strong>When to keep safe mode on:</strong> The default allowlist is
 a reasonable starting point for read-only workflows (browsing,
 reviewing, querying). Only run <code>/safemode off</code> when you
-understand what commands the model may attempt — particularly when using
-unfamiliar models or enabling agent mode. The current safe mode state is
-always visible in the REPL prompt (<code>harvey &gt;</code> = safe,
-<code>harvey [unsafe] &gt;</code> in red = off).</p>
+understand what commands the model may attempt. The current safe mode
+state is always visible in the REPL prompt (<code>harvey &gt;</code> =
+safe, <code>harvey [unsafe] &gt;</code> in red = off).</p>
 </blockquote>
 <p>Subcommands: <code>on</code>, <code>off</code>, <code>status</code>,
 <code>allow CMD</code>, <code>deny CMD</code>, <code>reset</code>.</p>

@@ -716,26 +716,19 @@ class="sourceCode go"><code class="sourceCode go"><span id="cb27-1"><a href="#cb
 <span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;Ollama (llama3.1:8b)&quot;</span><span class="op">},</span></span>
 <span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;&quot;</span><span class="op">,</span></span>
 <span id="cb27-17"><a href="#cb27-17" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
-<h3 id="recording-agent-actions">Recording Agent Actions</h3>
-<div class="sourceCode" id="cb28"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Start agent mode scene</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>StartAgentScene<span class="op">(</span><span class="st">&quot;Harvey proposes to write 1 file.&quot;</span><span class="op">)</span></span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Record write action</span></span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordAgentAction<span class="op">(</span><span class="st">&quot;write&quot;</span><span class="op">,</span> <span class="st">&quot;hello.txt&quot;</span><span class="op">,</span> <span class="st">&quot;yes&quot;</span><span class="op">,</span> <span class="st">&quot;ok&quot;</span><span class="op">)</span></span></code></pre></div>
 <h3 id="recording-shell-commands">Recording Shell Commands</h3>
-<div class="sourceCode" id="cb29"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordShellCommand<span class="op">(</span><span class="st">&quot;ls -la&quot;</span><span class="op">,</span> <span class="st">&quot;file1.txt</span><span class="ch">\n</span><span class="st">file2.txt</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> <span class="dv">0</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordShellCommand<span class="op">(</span><span class="st">&quot;ls -la&quot;</span><span class="op">,</span> <span class="st">&quot;file1.txt</span><span class="ch">\n</span><span class="st">file2.txt</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> <span class="dv">0</span><span class="op">)</span></span></code></pre></div>
 <h3 id="recording-skill-execution">Recording Skill Execution</h3>
-<div class="sourceCode" id="cb30"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordSkillLoad<span class="op">(</span></span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;fountain-analysis&quot;</span><span class="op">,</span></span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Read and analyze a Fountain session file&quot;</span><span class="op">,</span></span>
-<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    skillBody<span class="op">,</span></span>
-<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb29"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>RecordSkillLoad<span class="op">(</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;fountain-analysis&quot;</span><span class="op">,</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Read and analyze a Fountain session file&quot;</span><span class="op">,</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>    skillBody<span class="op">,</span></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
 <h3 id="closing-the-recorder">Closing the Recorder</h3>
-<div class="sourceCode" id="cb31"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>Close<span class="op">()</span> <span class="co">// Writes &quot;THE </span><span class="re">END</span><span class="co">.&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb30"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>err <span class="op">:=</span> r<span class="op">.</span>Close<span class="op">()</span> <span class="co">// Writes &quot;THE </span><span class="re">END</span><span class="co">.&quot;</span></span></code></pre></div>
 <h2 id="session-replay">Session Replay</h2>
 <h3 id="how-replay-works">How Replay Works</h3>
 <ol type="1">
@@ -972,9 +965,9 @@ but you may have manual backups</p></li>
 <li><p><strong>Reconstruct manually:</strong> Create a new session file
 with the important exchanges</p></li>
 <li><p><strong>Validate with Fountain parser:</strong></p>
-<div class="sourceCode" id="cb35"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="co"># If fountain CLI is available</span></span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="ex">fountain</span> validate session.spmd</span></code></pre></div></li>
+<div class="sourceCode" id="cb34"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="co"># If fountain CLI is available</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a><span class="ex">fountain</span> validate session.spmd</span></code></pre></div></li>
 </ol>
 <h3 id="missing-title-page">Missing Title Page</h3>
 <p>If a session file is missing the title page: - Harvey will still
@@ -988,49 +981,49 @@ dialogue line - Ensure the session was recorded with Harvey (not
 manually created)</p>
 <h2 id="advanced-usage">Advanced Usage</h2>
 <h3 id="programmatic-session-access">Programmatic Session Access</h3>
-<div class="sourceCode" id="cb36"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Open a session file</span></span>
-<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>user<span class="op">,</span> model<span class="op">,</span> turns<span class="op">,</span> err <span class="op">:=</span> parseFountainSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
-<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Process turns</span></span>
-<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i<span class="op">,</span> turn <span class="op">:=</span> <span class="kw">range</span> turns <span class="op">{</span></span>
-<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Turn %d:</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> i<span class="op">+</span><span class="dv">1</span><span class="op">)</span></span>
-<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  User: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>UserInput<span class="op">)</span></span>
-<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  Model: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>ModelReply<span class="op">)</span></span>
-<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
-<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Create a custom session file</span></span>
-<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a>r<span class="op">,</span> _ <span class="op">:=</span> NewRecorder<span class="op">(</span><span class="st">&quot;custom.spmd&quot;</span><span class="op">,</span> <span class="st">&quot;Custom Model&quot;</span><span class="op">,</span> <span class="st">&quot;/path/to/workspace&quot;</span><span class="op">)</span></span>
-<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>StartAgentScene<span class="op">(</span><span class="st">&quot;Custom scene&quot;</span><span class="op">)</span></span>
-<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>RecordAgentAction<span class="op">(</span><span class="st">&quot;custom&quot;</span><span class="op">,</span> <span class="st">&quot;target&quot;</span><span class="op">,</span> <span class="st">&quot;yes&quot;</span><span class="op">,</span> <span class="st">&quot;ok&quot;</span><span class="op">)</span></span>
-<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
+<div class="sourceCode" id="cb35"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Open a session file</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>user<span class="op">,</span> model<span class="op">,</span> turns<span class="op">,</span> err <span class="op">:=</span> parseFountainSession<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Process turns</span></span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i<span class="op">,</span> turn <span class="op">:=</span> <span class="kw">range</span> turns <span class="op">{</span></span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Turn %d:</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> i<span class="op">+</span><span class="dv">1</span><span class="op">)</span></span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  User: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>UserInput<span class="op">)</span></span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  Model: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> turn<span class="op">.</span>ModelReply<span class="op">)</span></span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Create a custom session file</span></span>
+<span id="cb35-12"><a href="#cb35-12" aria-hidden="true" tabindex="-1"></a>r<span class="op">,</span> _ <span class="op">:=</span> NewRecorder<span class="op">(</span><span class="st">&quot;custom.spmd&quot;</span><span class="op">,</span> <span class="st">&quot;Custom Model&quot;</span><span class="op">,</span> <span class="st">&quot;/path/to/workspace&quot;</span><span class="op">)</span></span>
+<span id="cb35-13"><a href="#cb35-13" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>StartAgentScene<span class="op">(</span><span class="st">&quot;Custom scene&quot;</span><span class="op">)</span></span>
+<span id="cb35-14"><a href="#cb35-14" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>RecordAgentAction<span class="op">(</span><span class="st">&quot;custom&quot;</span><span class="op">,</span> <span class="st">&quot;target&quot;</span><span class="op">,</span> <span class="st">&quot;yes&quot;</span><span class="op">,</span> <span class="st">&quot;ok&quot;</span><span class="op">)</span></span>
+<span id="cb35-15"><a href="#cb35-15" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
 <h3 id="custom-session-parsing">Custom Session Parsing</h3>
 <p>For advanced analysis, use the Fountain library directly:</p>
-<div class="sourceCode" id="cb37"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="st">&quot;github.com/rsdoiel/fountain&quot;</span></span>
-<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> err <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
-<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
-<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">switch</span> elem<span class="op">.</span>Type <span class="op">{</span></span>
-<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>SceneHeadingType<span class="op">:</span></span>
-<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Scene: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
-<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>CharacterType<span class="op">:</span></span>
-<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Character: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> fountain<span class="op">.</span>CharacterName<span class="op">(</span>elem<span class="op">))</span></span>
-<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>DialogueType<span class="op">:</span></span>
-<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Dialogue: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
-<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
-<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb36"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="st">&quot;github.com/rsdoiel/fountain&quot;</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> err <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">switch</span> elem<span class="op">.</span>Type <span class="op">{</span></span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>SceneHeadingType<span class="op">:</span></span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Scene: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>CharacterType<span class="op">:</span></span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Character: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> fountain<span class="op">.</span>CharacterName<span class="op">(</span>elem<span class="op">))</span></span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> fountain<span class="op">.</span>DialogueType<span class="op">:</span></span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Dialogue: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> elem<span class="op">.</span>Content<span class="op">)</span></span>
+<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <h3 id="session-file-transformation">Session File Transformation</h3>
 <p>Convert sessions to other formats:</p>
-<div class="sourceCode" id="cb38"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to plain text</span></span>
-<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> _ <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
-<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
-<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Println<span class="op">(</span>fountainSrc<span class="op">(&amp;</span>elem<span class="op">))</span></span>
-<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
-<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to JSON</span></span>
-<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a><span class="co">// (Would need custom marshaling of fountain.Element)</span></span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to plain text</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>doc<span class="op">,</span> _ <span class="op">:=</span> fountain<span class="op">.</span>ParseFile<span class="op">(</span><span class="st">&quot;session.spmd&quot;</span><span class="op">)</span></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> elem <span class="op">:=</span> <span class="kw">range</span> doc<span class="op">.</span>Elements <span class="op">{</span></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Println<span class="op">(</span>fountainSrc<span class="op">(&amp;</span>elem<span class="op">))</span></span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a><span class="co">// Convert to JSON</span></span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a><span class="co">// (Would need custom marshaling of fountain.Element)</span></span></code></pre></div>
 <h2 id="fountain-format-specification">Fountain Format
 Specification</h2>
 <p>For complete Fountain syntax, see: - <strong><a

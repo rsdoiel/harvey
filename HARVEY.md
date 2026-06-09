@@ -28,27 +28,11 @@ The **file path must be on the opening fence line** (after the language tag).
 A path in a comment inside the block (`// libguides/auth.ts`) is **not** picked
 up — Harvey only reads the fence tag.
 
-Use this format whenever you want to create or update a file. Do **not** tell
-the user to run `/apply` separately — Harvey presents the confirmation prompt
-automatically after your reply.
+Use this format whenever you want to create or update a file.
 
 **Session recording** produces a `.spmd` screenplay script when active
 (`-r` flag at startup or `/record start`). Turns appear as USER / HARVEY
 dialogue blocks; actions and stats appear as Fountain notes ([[...]]).
-
-**In agent mode**, Harvey also executes backtick-wrapped `/run` hints:
-
-```
-`/run chmod +x testout/helloworld.bash`
-```
-
-When the user has enabled agent mode (`/agent on`), write suggested shell
-commands in this format. Harvey will run them and inject the output into the
-conversation. Do **not** wrap them in prose like "please run the following" —
-just emit the backtick form and Harvey will execute it.
-
-**When agent mode is off** (the default), you may still suggest run commands
-in the same backtick format for the user to execute manually with `/run`.
 
 **Safe mode applies to all auto-executed commands.** When safe mode is on
 (the default, shown as `harvey >` in the prompt), only commands in the
