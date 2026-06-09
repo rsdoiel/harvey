@@ -91,6 +91,7 @@ Work through these documents in order to understand Harvey completely.
 
 - [harvey.1.md](harvey.1.md) — primary man page
 - [harvey.7.md](harvey.7.md) — general concepts
+  - [attach](harvey-attach.7.md)
   - [clear](harvey-clear.7.md)
   - [context](harvey-context.7.md)
   - [editing](harvey-editing.7.md)
@@ -99,10 +100,16 @@ Work through these documents in order to understand Harvey completely.
   - [git](harvey-git.7.md)
   - [inspect](harvey-inspect.7.md)
   - [knowledge base](harvey-kb.7.md)
+  - [learn](harvey-learn.7.md)
+  - [loop](harvey-loop.7.md)
+  - [memory](harvey-memory.7.md)
   - [ollama](harvey-ollama.7.md)
+    - [model alias](harvey-model-alias.7.md)
+  - [pipeline](harvey-pipeline.7.md)
   - [RAG](harvey-rag.7.md)
   - [read](harvey-read.7.md)
     - [read directory](harvey-read-dir.7.md)
+    - [read PDF](harvey-read-pdf.7.md)
   - [record](harvey-record.7.md)
   - [rename](harvey-rename.7.md)
   - [routing](harvey-routing.7.md)

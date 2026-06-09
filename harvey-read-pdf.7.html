@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>READ-PDF — extract text from a PDF and inject it into the
+conversation context</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/read-pdf FILE [PAGES]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/read-pdf extracts text from a PDF file using the poppler utilities
+(pdfinfo, pdftotext, pdfimages) and injects the result into the
+conversation as a user-role context message. The model can then reason
+about the content immediately.</p>
+<p>FILE may be an absolute path, a path relative to the workspace root,
+or a home-relative path beginning with ~/. Unlike /read, /read-pdf is
+not restricted to workspace files.</p>
+<p>PAGES is an optional page range in the form FIRST-LAST (e.g. 40-55)
+or a single page number (e.g. 10). When omitted, the entire document is
+extracted. A hard limit of 20 pages per call applies to keep the context
+window manageable; specify a range if the document is larger.</p>
+<p>Three poppler tools are used in sequence:</p>
+<p>pdfinfo — document metadata (title, author, page count, creation
+date) pdftotext — text extraction preserving spatial layout (-layout
+flag) pdfimages — raster-image inventory used to detect diagram-only
+pages</p>
+<p>Pages that have sparse text and no raster images are flagged as
+likely vector-diagram pages. Those pages cannot be extracted by any text
+tool; the output will note them so you can follow up with a
+vision-capable model.</p>
+<p>The injected content is ephemeral — it is added to the current
+conversation and is not written to disk or stored in the RAG database.
+Use /rag ingest if you want to index a PDF for retrieval.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Read the first ten pages of a PDF:</p>
+<pre><code>  harvey &gt; /read-pdf ~/docs/oberon2.pdf 1-10</code></pre>
+<p>Read a specific section by page range:</p>
+<pre><code>  harvey &gt; /read-pdf ~/docs/oberon2.pdf 49-63
+  harvey &gt; Summarise the module system described in those pages.</code></pre>
+<p>Read a short PDF (≤ 20 pages) in full:</p>
+<pre><code>  harvey &gt; /read-pdf project/spec.pdf</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/read FILE… — inject plain-text workspace files into context /rag
+ingest PATH — index a file into the RAG store for retrieval /status —
+check remaining context window space /help read /help rag</p>
+</section>
+</body>
+</html>

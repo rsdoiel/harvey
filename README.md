@@ -80,4 +80,4 @@ For building Harvey and documentation from source.
 - [LICENSE](https://www.gnu.org/licenses/agpl-3.0.txt)
 - [Installation](INSTALL.md)
 - [About](about.md)
-- [Documentation Index](DOCUMENTATION.md) — Complete list of all Harvey documentation
+- [User Manual](user_manual.md) — Complete list of all Harvey documentation

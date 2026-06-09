@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>ATTACH — attach a file to the conversation in the most useful
+form</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/attach FILE</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/attach reads FILE and injects it into the conversation as a
+user-role message, choosing the representation that best matches what
+the active route can accept:</p>
+<p>Image files (JPEG, PNG, GIF, WebP) If the active route reports vision
+capability, the image is encoded as a base64 data-URL ContentPart and
+sent natively — the model sees the actual pixels. If the route has no
+vision capability, a text description (filename, MIME type, file size)
+is injected instead so the turn still records that an attachment was
+attempted, and a tip is printed suggesting an <span class="citation"
+data-cites="mention">@mention</span> route for vision.</p>
+<p>PDF files Text is extracted using the poppler utilities (pdfinfo,
+pdftotext, pdfimages) and injected into the conversation. A 20-page cap
+applies to keep context window usage reasonable; specify /read-pdf FILE
+PAGES for a specific range. Diagram-only pages are flagged as
+incomplete.</p>
+<p>Text and source-code files (≤ 256 KB) The file content is injected as
+plain text, identical to /read. Files larger than 256 KB are rejected;
+use /rag ingest for large text corpora.</p>
+<p>Binary files Rejected with a clear error. Use an appropriate
+converter first.</p>
+<p>FILE may be an absolute path, a home-relative path (~/…), or a path
+relative to the current working directory. Unlike /read, /attach is not
+restricted to the workspace.</p>
+<h1 id="examples">EXAMPLES</h1>
+<p>Attach an image to the next turn on a vision-capable route:</p>
+<pre><code>  harvey &gt; /route add claude https://api.anthropic.com claude-opus-4-7
+  harvey &gt; /attach ~/screenshots/error.png
+  harvey &gt; @claude What does this error message say?</code></pre>
+<p>Attach a PDF for the model to reason about:</p>
+<pre><code>  harvey &gt; /attach ~/docs/spec.pdf
+  harvey &gt; Summarise the module system described in this document.</code></pre>
+<p>Attach a local source file:</p>
+<pre><code>  harvey &gt; /attach src/main.go
+  harvey &gt; What does the main function do?</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/read FILE… — inject workspace text files (workspace-scoped)
+/read-pdf FILE PAGES — inject a specific page range from a PDF /rag
+ingest PATH — index a file into the RAG store for retrieval /route —
+manage named remote endpoints /help read-pdf /help rag</p>
+</section>
+</body>
+</html>

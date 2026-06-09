@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>LEARN — how Harvey accumulates and retrieves knowledge</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>Harvey stores knowledge in three independent silos that are unified
+at retrieval time. Understanding which silo to use for which kind of
+content is the key to getting consistently good results.</p>
+<h1 id="the-one-decision-rule">THE ONE DECISION RULE</h1>
+<p>Have a text file or document? → /rag ingest <file> Something useful
+happened in a session? → /memory mine Making an observation about an
+experiment? → /kb observe</p>
+<h1 id="the-three-silos">THE THREE SILOS</h1>
+<p>Silo What belongs here How to add How it arrives ───────────────
+───────────────────────── ─────────────── ───────────────────── RAG
+store Reference docs, API specs, /rag ingest Per-prompt via code
+examples, PDF papers <file> /rag on (context)</p>
+<p>Memory store Patterns observed during /memory mine Session-start via
+sessions: what worked, (interactive) /memory recall what the model got
+wrong, auto-mines on user preferences session exit</p>
+<p>Knowledge base Research notes, named /kb observe On-demand via
+experiments, cross-project /kb project /memory recall concepts and
+hypotheses /kb concept</p>
+<p>Retrieval from all three silos is unified:</p>
+<p>/memory recall <query> — search all three silos, print ranked results
+/recall <query> — alias for /memory recall</p>
+<p>/profile &lt;use|show|update&gt; <a href="#name">name</a> — alias for
+/memory profile (manage workspace profile) /profile use <a
+href="#name">name</a> — switch profile: saves handoff, archives old
+profile, selects new template, resets history /profile show — list
+active workspace_profile memories /profile update — open most recent
+profile in $EDITOR</p>
+<h1 id="checking-what-you-have">CHECKING WHAT YOU HAVE</h1>
+<p>/status — shows active memories, unmined sessions, RAG chunk count
+/hint — prints actionable suggestions for improving results /memory
+status — detailed memory store stats and budget advice /rag status — RAG
+store details: active store, chunk count, on/off</p>
+<h1 id="common-workflows">COMMON WORKFLOWS</h1>
+<p>Ingest a PDF reference before starting a coding session:</p>
+<p>/rag ingest Reference/papers/oberon2.pdf /rag on</p>
+<p>Mine learnings from last session before starting the next:</p>
+<p>/memory mine</p>
+<p>Record an observation about a running experiment:</p>
+<p>/kb observe “Qwen3.5 handles nil pointer chains correctly after
+explicit cast”</p>
+<p>Check what would improve the current session:</p>
+<p>/hint</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/help rag — full RAG command reference /help memory — full memory
+command reference /help kb — full knowledge base reference</p>
+</section>
+</body>
+</html>
