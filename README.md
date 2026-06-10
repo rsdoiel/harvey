@@ -1,83 +1,111 @@
-
-
-# Harvey
+# harvey
 
 ![Harvey, a six foot six invisible rabbit](media/harvey.svg "project mascot, a Púca")
 
-Harvey is an agent REPL. It is written in Go and designed to use Ollama server to access language models. These can be run locally or remotely since Harvey uses Ollama's web service as the integration point. Harvey is a terminal based application. It will run on Raspberry Pi OS (Raspberry Pi 5 hardware), Linux (arm64 and amd64), Windows (arm64, amd64) and macOS (M1 and above). It is designed to specifically run on a Raspberry Pi 500+ computer.
-
-## Features
-
-- integrated knowledge base
-- support for SKILL.md (and extending Harvey by using "compiled" SKILL.md files)
-- knowledge base with [RAG](https://en.wikipedia.org/wiki/Retrieval-augmented_generation "retrieval-augmented generation") support
-- includes an innovative session file format based on Fountain screenplay markup. Session files  are both human readable (like reading a screenplay) and machine consumable
-- friendly with other data processing tools and through shared skills with other coding agents
-
-The name Harvey is inspired by the Mary Chase play of the same name. My little agent runs on small computers but is available to those who choose to see its value. Harvey in the play was a Púca, a mythic Celtic spirit who at times was prone to mischief. The Púca chose who could see it but even then the person doing the seeing had to be willing to see it too.
-
-## Motivation (Spring 2026)
-
-I think the **current AI hype cycle** will likely end with a bang and a crash. Since I started working on Harvey we've already seen the token expenses sky rocket. Many flat rate plans ration tokens. Of course if you opt to pay by tokens those services have every reason to encourage more token consumption. That leads me to believe that things will not get cheaper. Add to that the investor's interest in aggressive cost recovery and we have a looming problem. There is now digital divide of resource availability based on wealth.
-
-Where does this leave us? The commercial platforms are just too expensive. There are problematic downsides in additional to costs (example energy consumption, model biases and data privacy issues). We need off ramps. I think one off ramp is bringing the models back in house. The trouble is that model development has been running on an assumption about ever expanding compute resources. That's not sustainable. It doesn't match the reality today where memory pricing has gone through the ceiling and other computing components are rising too. The external GPUs relied on by medium and larger models have never been affordable. Time to change course. Time to revisit small models and get efficient.
-
-Harvey is an exploration of what is possible when we bring models home. This is about local control of the model system and running models on hardware that doesn't have a GPU. Harvey enables me to get useful work done with small models run via Ollama on my Raspberry Pi 500+ desktop. The Pi is a relatively low cost, low power machine. It is enough to run small models. If you have more horse power available Harvey will not mind or stand in your way.
-
-## Where I think things are going
-
-I see language models on a continuum like computers. In the beginning computers were large and unaffordable except by governments and the largest of corporations. They took up floors of buildings for a single machine. Eventually they became much smaller and much cheaper.  Right now Large Language models are like the huge mainframes of the 1950s and 1960s. Everyone is still thinking in terms of building sized computers. The seeds for a different approach already exist. Ollama is only one example of that. I think real innovation can happen with small models that focus on specific domains and tuned to specific application needs. We've built extremely large general purpose models in part because of a collective desire to see how far we could take these concepts. I think their is a plateau in creating ever larger models. Time to take a step back and see how small models can be while being really helpful. To move things forward I believe we will need a personal sized model. I think this could open interesting doors much as personal computing opened the door to what we have today. I think the pieces are there. They just need to be assembled in a simpler configuration. (2026-05, RSD)
-
-## Open Models, Small Models combined with generalized REPLs
-
-The language model system space has enough maturity that we can pick the features that matter and ignore much of the initial growing pains. There is an opportunity ripe for creating tooling around fitness of use and purpose. The current crop of model systems (May 2026) layout base line features which are straight forward to implement. Coding agents are centered around concepts like sessions, skills, knowledge bases and retrieval augmented generation (RAG). There are plenty of papers and blog posts that describe these features, how they work and how to use them and importantly how to build them.
-
-The [SKILL.md](https://agentskills.io) is a good example. It was proposed by Anthropic and adopted by others (example Mistral Vibe, OpenClaw). It is also pretty easy to implement using Ollama server. The concept of [RAG](https://en.wikipedia.org/wiki/Retrieval-augmented_generation "Retrieval-augmented generation") was easy to implement. Some trends like [MCP](https://en.wikipedia.org/wiki/Model_Context_Protocol "Model Context Protocol") strike me as a way to run up token usage. I remain on the fence about it's usefulness. Pick the proven trends that favor limited resource availability and implement them is the approach I'm taking with Harvey. Harvey isn't being developed in a vacuum. Mozilla AI is working on implementing a way to unify many implementation elements. An example is their [any-llm](https://www.mozilla.ai/open-tools/choice-first-stack/any-llm) project. [Ollama](https://github.com/ollama/ollama) project. Harvey can take advantage of that too. This approach let's me evolve Harvey as a small project while allowing me to explore the domain of small model computing on small computers. That's how Harvey started.
-
-### Wait, wait, why Harvey? You should use OpenClaw!
-
-OpenClaw is interesting but it is very easy to mis-configure. I wasn't comfortable with that myself. I felt like OpenClaw opened my computing environment up to a whole lot of hurt. I don't want agents running around my personal communication. I don't want them messing with my editor. I want my code agent to stick to a project directory. I want it focused on what I am working on. I want a safe tool as convenient as Claude Code, GitHub CoPilot or Mistral Vibe. It should be transparent in how in works. It should document what it does. It should let me work with the models I chose for a specific task. It should be human scale and not put tentacles into everything else. I am working with language models on my local machine and my private network. Harvey should let me be able to easily direct appropriate material to a remote service while keeping everything else local so I can continue the processing with models in my local workspace. Harvey came about because I didn't see other applications approaching model systems this way. Safety and locality first.
+Harvey is a terminal-based coding agent written in Go. It connects to an Ollama server (or other supported providers) to provide an interactive REPL for working with language models, with all operations sandboxed to a workspace directory. The name comes from Mary Chase's play about a Púca — Harvey is a small, local agent for small computers. See [Vision](vision.md) for the philosophy behind the project.
 
 ## Security Note
 
-I have attempted to keep safety and locality as top priorities as I've designed and implement the Harvey prototype. Harvey avoids secrets. How Harvey is configured and it's operating data is visible to me as a human. There is risk in using language model agents because you are allowing a probabilistic text model to direct the execution of commands. It is an attack surface ripe for mischief even with mitigating efforts. While I've tried to minimize the risk. **I believe the risk will always be non-zero**. I use language models in the security reviews I conduct with each round of development. Typically models from different providers. I use them in an effort to both identify and mitigate the worst safety issues. Again, I think there will always a risks. As a result I have deliberately limited what Harvey can do in both where it can operate and the built-in tools. In spite of this you should keep in mind that **Harvey is experimental**. Harvey is only a **working proof of concept**. You should NOT consider it complete or production ready. **Don't use Harvey where the risks might endanger your data, people or planet.** See [SECURITY.md](SECURITY.md) for more details.
+Harvey is **experimental** — a **working proof of concept**, not production-ready software. Letting a probabilistic model direct command execution is an inherently risky attack surface; Harvey mitigates this with safe mode, workspace sandboxing, permission checks, audit logging, and security reviews with each release, but the risk is never zero. **Don't use Harvey where the risks might endanger your data, people, or planet.** See [SECURITY.md](SECURITY.md) for details.
 
-## What is a model? What is infrastructure?
+## Features
 
-Commercial SaaS language model services need to keep you engaged. They've done a good job of building up the human user interface. The conversations use technique that seem similar to the [BITE](https://freedomofmind.com/cult-mind-control/bite-model-pdf-download/) cult recruitment methodology described by Steven Hassan over the last many decades. When you step back and look at actual implementations the ecosystems like those of OpenAI, Anthropic and others are not just the latest frontier model they include considerable effort in implementing the human user interface to keep engagement up. The frontier models are important but their not mysterious when you look at how everything is wrapped up traditional web services. They've baked in the engagement business model. This is true weather they used a language model to generate the code or not. It's telling. The model is important but the user interface and the infrastructure under it is important too. The engagement wrappings are make the contact with us humans. It's important to keep that in mind.
+### Core Capabilities
+- Interactive terminal REPL for language models, sandboxed to a workspace directory
+- Auto-execute: tagged code blocks in model replies are written to files automatically
+- `HARVEY.md` provides a customizable system prompt per workspace
 
-On a small scale we can build our own language model system. Like the SaaS services we can take advantage of traditional software programs and methods too. That is the core of Harvey. It's just a REPL that is designed to use modeling services through web protocols. Unlike the SaaS offerings it under our control running on our hardware. It takes advantage of our limit resources and single user orientation. Harvey does less so what would be done in parallel by a SaaS service is done sequentially in Harvey. **There is an opportunity on a locally run language model system to scale down instead of up.**
+### Knowledge, Memory & Sessions
+- Three-silo memory: RAG vector stores, session-experience memory with rolling summaries, and a SQLite knowledge base
+- Sessions recorded as human-readable Fountain screenplay (`.spmd`) files — replay, continue, or mine them for memories
+- Pinned context and conversation summarization to manage the context window
 
-## What's next 
+### Multi-Model & Routing
+- Ollama integration (primary), with cloud routes for Anthropic, DeepSeek, Gemini, Mistral, and OpenAI
+- Multi-model routing via `@mention` dispatch and model aliasing
 
-I believe useful small open models are hear [today](model_guide.md). The trick will be is identifying those the models that are mature enough to use day in and day out safely. In the hype that focuses on bigger and more generalized the small specialized models seem undervalued. We can leverage the value if it is [easily to run them locally](llamafile_notes.md "LLamafile is a form Mozilla AI is experimenting with that looks promising"). This is true especially if there are some key additional features like good session management, knowledge bases and RAG. Harvey shows we can have some of those bells and whistles while running on small affordable hardware. Hardware that doesn't require new data centers and power plants to be built. I think smaller models, ones that can run at the edge will be the ones that carry weight in the long wrong. To explore the idea of small models on small computers I dreamed up Harvey. We'll have to wait to see where that adventure could leads.
+### Security
+- Safe mode with a command allowlist and fine-grained workspace permissions
+- API key filtering from child processes and an in-memory audit log
 
-## Release Notes
+### File & Code Support
+- Code-aware RAG chunking, doc extraction, and ANSI syntax highlighting (13 languages)
+- Automatic code formatting on `write_file` (gofmt, clang-format, black, rustfmt, prettier, and built-in Pascal/Oberon/Basic formatters)
+- Git integration and PDF text extraction
 
-- version: 0.0.5
-- status: working proof of concept
+### Extensibility
+- SKILL.md skills, bundled skill sets, and multi-step prompt pipelines
 
-### Authors
+## Quick Start
 
-- Doiel, R. S.
+1. **Install**: Run the installer for your platform
+   - Linux/macOS: `./installer.sh`
+   - Windows: Run `installer.ps1` in PowerShell
 
+2. **Run**: `harvey`
+
+3. **Try it**:
+   ```
+harvey > /read LICENSE
+harvey > /help
+   ```
+
+See [Installation](INSTALL.md) for detailed instructions.
+
+## Platform Support
+
+Harvey runs on:
+- Linux: x86_64, aarch64, armv7l
+- macOS: Intel and Apple Silicon (M1 and above)
+- Windows: x86_64
+- Raspberry Pi OS
 
 ## Software Requirements
 
-- Go >= 1.26.2
+- Go >= 1.26.3
+- Ollama (recommended)
 
 ### Software Suggestions
 
-For building Harvey and documentation from source.
-
-- CMTools >= 0.0.45
+For building Harvey and documentation from source:
+- CMTools >= 0.0.45b
 - Pandoc >= 3.9
 - GNU Make >= 3.8
 
-## Related resources
+## Documentation
 
-- [Getting Help, Reporting bugs](https://github.com/rsdoiel/harvey/issues)
-- [LICENSE](https://www.gnu.org/licenses/agpl-3.0.txt)
-- [Installation](INSTALL.md)
-- [About](about.md)
-- [User Manual](user_manual.md) — Complete list of all Harvey documentation
+- [GitHub Repository](https://github.com/rsdoiel/harvey) — Source code
+- [User Manual](user_manual.md) — Main documentation index
+- [Overview](overview.md) — What Harvey is, why you might use it, and how to get started
+- [Developer Guide](developer_guide.md) — Architecture, conventions, and contributing
+- [Reference Manual](reference.md) — Command and configuration reference
+- [Installation](INSTALL.md) — Get Harvey installed on your system
+- [Getting Started](getting_started.md) — First session, keyboard shortcuts, slash commands
+- [About](about.md) — Project metadata and version information
+- [Vision](vision.md) — Philosophy, motivation, and future direction
+
+## Release Notes
+
+- version: 0.0.10
+- status: active
+- released: 2026-06-09
+
+- Added multi-language code-aware chunking for RAG ingestion (C, C++, Pascal, Oberon, Lisp, Basic)
+- Added documentation extraction: comment and docstring association with symbols for C, C++, Pascal, Oberon, Lisp, Basic
+- Added ANSI syntax highlighting of code blocks in LLM responses (13 languages: C, C++, Pascal, Oberon, Lisp, Basic, Go, Python, JavaScript, TypeScript, Rust, Shell, SQL); configurable via `syntax_highlight` in harvey.yaml
+- Added automatic code formatting on `write_file`: built-in formatters for Pascal, Oberon, Basic; external pipe-mode formatters for Go (gofmt), C/C++ (clang-format), Python (black), Rust (rustfmt), JavaScript/TypeScript (prettier); configurable via `auto_format` in harvey.yaml
+- Added `/format FILE [FILE...]` command to manually format workspace source files in-place
+
+See [CHANGES.md](CHANGES.md) for detailed release history.
+
+### Authors
+
+- [R. S. Doiel](https://orcid.org/0000-0003-0900-6903)
+
+## License
+
+[AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt)
+
+## Getting Help
+
+- [GitHub Issues](https://github.com/rsdoiel/harvey/issues) — Bug reports and feature requests

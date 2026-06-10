@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-developer-guide">Harvey Developer Guide</h1>
+<p>This guide is for developers who want to understand Harvey’s
+internals, contribute to the project, or extend its functionality.</p>
+<hr />
+<h2 id="architecture-design">🏗️ Architecture &amp; Design</h2>
+<h3 id="core-architecture">Core Architecture</h3>
+<ul>
+<li><strong><a href="ARCHITECTURE.html">ARCHITECTURE.md</a></strong> —
+Component map, core types (Agent, LLMClient, Message, Workspace), and
+how they interact</li>
+</ul>
+<h3 id="design-documents">Design Documents</h3>
+<ul>
+<li><strong><a href="DECISIONS.html">DECISIONS.md</a></strong> — Key
+design decisions and their rationale</li>
+<li><strong><a href="RAG_Support_Design.html">RAG Support
+Design</a></strong> — Design document for retrieval-augmented generation
+support</li>
+<li><strong><a href="Harvey_Skill-Set_Design.html">Harvey Skill-Set
+Design</a></strong> — Design for the <code>/skill-set</code> command and
+skill bundling system</li>
+<li><strong><a href="improved_tool_handling_with_schemas.html">Improved
+Tool Handling with Schemas</a></strong> — Tool schema validation and
+handling design</li>
+<li><strong><a href="memory-unified-design.html">Memory Unified
+Design</a></strong> — Unified memory system architecture</li>
+<li><strong><a href="memory-unified-plan.html">Memory Unified
+Plan</a></strong> — Implementation plan for memory system
+unification</li>
+<li><strong><a href="profile-templates-design.html">Profile Templates
+Design</a></strong> — Profile-based configuration templates</li>
+<li><strong><a href="profile-templates-plan.html">Profile Templates
+Plan</a></strong> — Implementation plan for profile templates</li>
+<li><strong><a
+href="programming_language_support_design.html">Programming Language
+Support Design</a></strong> — Multi-language support architecture</li>
+<li><strong><a href="programming_language_support_plan.html">Programming
+Language Support Plan</a></strong> — Implementation roadmap for language
+support</li>
+<li><strong><a href="pipeline-design.html">Pipeline Design</a></strong>
+— Multi-step prompt pipeline architecture</li>
+<li><strong><a href="pipeline-plan.html">Pipeline Plan</a></strong> —
+Implementation plan for pipeline support</li>
+<li><strong><a href="loop-design.html">Loop Design</a></strong> — REPL
+loop architecture</li>
+<li><strong><a href="loop-plan.html">Loop Plan</a></strong> —
+Implementation plan for the REPL loop</li>
+</ul>
+<hr />
+<h2 id="development-setup">🛠️ Development Setup</h2>
+<h3 id="prerequisites">Prerequisites</h3>
+<ul>
+<li><strong><a href="about.html">about.md</a></strong> — Project
+metadata, requirements (Go &gt;= 1.26.3), and author information</li>
+</ul>
+<h3 id="building-harvey">Building Harvey</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build all programs</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> build</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a single program</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build <span class="at">-o</span> bin/<span class="op">&lt;</span>name<span class="op">&gt;</span> cmd/<span class="op">&lt;</span>name<span class="op">&gt;</span>/<span class="pp">*</span>.go</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate version.go from codemeta.json</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">cmt</span> codemeta.json version.go</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Build website (HTML from Markdown via pandoc)</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> website</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Clean build artifacts</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="fu">make</span> clean</span></code></pre></div>
+<hr />
+<h2 id="testing">🧪 Testing</h2>
+<ul>
+<li><strong><a href="TESTING.html">TESTING.md</a></strong> — Running
+tests, test architecture, writing tests, and CI/CD setup</li>
+<li><strong><a
+href="agent_integration_test.go">agent_integration_test.go</a></strong>
+— Integration tests for agent functionality</li>
+<li><strong><a
+href="anyllm_client_test.go">anyllm_client_test.go</a></strong> — Tests
+for the AnyLLM client wrapper</li>
+<li><strong><a href="commands_test.go">commands_test.go</a></strong> —
+Tests for slash command handlers</li>
+<li><strong><a href="config_test.go">config_test.go</a></strong> —
+Configuration loading and validation tests</li>
+<li><strong><a href="knowledge_test.go">knowledge_test.go</a></strong> —
+Knowledge base functionality tests</li>
+<li><strong><a href="memory_*_test.go">memory_*_test.go</a></strong> —
+Memory system tests (manifest, miner, onboarding, rolling, store,
+unified)</li>
+<li><strong><a
+href="ollama_probe_test.go">ollama_probe_test.go</a></strong> — Ollama
+probing tests</li>
+<li><strong><a href="pipeline_test.go">pipeline_test.go</a></strong> —
+Pipeline functionality tests</li>
+<li><strong><a
+href="rag_support_test.go">rag_support_test.go</a></strong> — RAG
+support tests</li>
+</ul>
+<hr />
+<h2 id="code-organization">📦 Code Organization</h2>
+<h3 id="main-package-harvey">Main Package (<code>harvey/</code>)</h3>
+<ul>
+<li><strong><a href="harvey.go">harvey.go</a></strong> — Core types:
+Agent, LLMClient, Message, ChatStats</li>
+<li><strong><a href="commands.go">commands.go</a></strong> — All
+slash-command handlers and dispatch logic</li>
+<li><strong><a href="config.go">config.go</a></strong> — Configuration
+struct, loading, and validation</li>
+<li><strong><a href="terminal.go">terminal.go</a></strong> — REPL loop,
+startup sequence, backend selection</li>
+<li><strong><a href="workspace.go">workspace.go</a></strong> — Sandboxed
+file I/O operations</li>
+<li><strong><a href="knowledge.go">knowledge.go</a></strong> — SQLite
+knowledge base implementation</li>
+<li><strong><a href="audit.go">audit.go</a></strong> — In-memory
+ring-buffer audit log</li>
+<li><strong><a href="permissions.go">permissions.go</a></strong> —
+Permission check helpers</li>
+<li><strong><a href="ollama.go">ollama.go</a></strong> — OllamaClient
+helpers and probing utilities</li>
+<li><strong><a href="anyllm_client.go">anyllm_client.go</a></strong> —
+AnyLLMClient wrapper for mozilla-ai/any-llm-go</li>
+<li><strong><a href="routing.go">routing.go</a></strong> —
+RouteRegistry, named remote endpoints, <span class="citation"
+data-cites="mention">@mention</span> dispatch</li>
+<li><strong><a href="recorder.go">recorder.go</a></strong> — Fountain
+(.spmd) session recorder</li>
+<li><strong><a href="spinner.go">spinner.go</a></strong> — Animated
+spinner with Edward Lear messages</li>
+</ul>
+<h3 id="command-entry-points-cmd">Command Entry Points
+(<code>cmd/</code>)</h3>
+<ul>
+<li>Each subdirectory contains a CLI entry point</li>
+<li>Built using
+<code>go build -o bin/&lt;name&gt; cmd/&lt;name&gt;/*.go</code></li>
+</ul>
+<h3 id="built-in-tools-builtin_tools.go">Built-in Tools
+(<code>builtin_tools.go</code>)</h3>
+<ul>
+<li>Schema-based tools: read_file, write_file, run_command, list_files,
+git_command</li>
+<li>All tools enforce workspace boundary and permission checks</li>
+</ul>
+<hr />
+<h2 id="conventions-style">🎨 Conventions &amp; Style</h2>
+<h3 id="documentation-conventions">Documentation Conventions</h3>
+<p>All exported functions, structs/types, interfaces, and constants must
+be documented with a <code>/** ... */</code> block comment including: -
+Description of what the symbol is or does - Parameters — name, type, and
+purpose for each - Return values — type and meaning - An embedded usage
+example</p>
+<h3 id="code-conventions">Code Conventions</h3>
+<ul>
+<li><strong><code>version.go</code></strong> is generated by
+<code>cmt</code> — do not edit by hand</li>
+<li><strong><code>bin/</code>, <code>dist/</code>, <code>man/</code>,
+<code>testout/</code></strong> are gitignored build artifacts</li>
+<li>Source lives at the package level (<code>harvey/*.go</code>)</li>
+<li>CLI entry points go under <code>cmd/&lt;program&gt;/</code></li>
+<li>See <strong><a href="HARVEY.html">HARVEY.md</a></strong> for full
+toolchain dependencies and release targets</li>
+</ul>
+<hr />
+<h2 id="additional-resources">📚 Additional Resources</h2>
+<h3 id="for-contributors">For Contributors</h3>
+<ul>
+<li><strong><a href="https://github.com/rsdoiel/harvey/issues">GitHub
+Issues</a></strong> — Bug reports and feature requests</li>
+<li><strong><a href="CONTRIBUTING.html">CONTRIBUTING.md</a></strong> —
+Contribution guidelines (if available)</li>
+<li><strong><a href="CHANGES.html">CHANGES.md</a></strong> — Version
+history and release notes</li>
+</ul>
+<h3 id="related-documentation">Related Documentation</h3>
+<ul>
+<li><strong><a href="SECURITY.html">Security</a></strong> — Security
+model and protections (also relevant for developers)</li>
+<li><strong><a href="CONFIGURATION.html">Configuration</a></strong> —
+Workspace configuration reference</li>
+</ul>
+</section>
+</body>
+</html>

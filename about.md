@@ -16,7 +16,7 @@ version: 0.0.10
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
-  - Go >= 1.26
+  - Go >= 1.26.3
 
 
 date_released: 2026-06-09
@@ -52,7 +52,7 @@ The Harvey name was inspired by the play of that name by Mary Chase. I saw paral
 
 ## Programming languages
 
-- Go >= 1.26
+- Go >= 1.26.3
 
 
 

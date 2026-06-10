@@ -32,177 +32,114 @@ where you chat with a large language model while also reading files,
 running commands, searching code, and applying suggested changes, all
 sandboxed to a single workspace directory.</p>
 <hr />
-<h2 id="suggested-reading-order">Suggested Reading Order</h2>
-<p>Work through these documents in order to understand Harvey
-completely.</p>
-<ol type="1">
-<li><a href="index.html">Overview</a> — what Harvey is and the
-philosophy behind it</li>
-<li><a href="INSTALL.html">Installation</a> — get Harvey installed on
-your system</li>
-<li><a href="getting_started.html">Getting Started</a> — first session,
-keyboard shortcuts, slash commands, and security features</li>
-<li><a href="HARVEY.html">System Prompt</a> — the default system prompt
-and how to customize it</li>
-<li><a href="CONFIGURATION.html">Configuration</a> — workspace
-configuration in <code>agents/harvey.yaml</code></li>
-<li><a href="SECURITY.html">Security</a> — safe mode, permissions, audit
-log, and threat model</li>
-<li><a href="SKILLS.html">Skills</a> — extend Harvey with custom
-skills</li>
-<li><a href="ROUTING.html">Routing</a> — connect to remote model
-endpoints via <span class="citation"
-data-cites="mention">@mention</span></li>
-<li><a href="Using_RAGs_with_Harvey.html">Retrieval-Augmented
-Generation</a> — retrieval-augmented generation</li>
-<li><a href="KNOWLEDGE_BASE.html">Knowledge Base</a> — SQLite-backed
-knowledge base</li>
-<li><a href="SESSIONS.html">Sessions</a> — session recording and the
-Fountain format</li>
-<li><a href="FOUNTAIN_FORMAT.html">Fountain files</a> — Fountain
-screenplay format as related to describing human model system
-interactions</li>
-<li><a href="MODEL_CACHE.html">Model Cache</a> — model capability
-caching</li>
-<li><a href="ARCHITECTURE.html">Architecture</a> — component map and
-internal design</li>
-<li><a href="TESTING.html">Testing</a> — writing and running tests</li>
-</ol>
+<h2 id="quick-start-guide">🚀 Quick Start Guide</h2>
+<p><em>For users who want to get Harvey running immediately</em></p>
+<h3 id="installation">1. Installation</h3>
+<p><a href="INSTALL.html">INSTALL.md</a> — Step-by-step instructions to
+install Harvey on Linux, macOS, or Windows</p>
+<h3 id="first-session">2. First Session</h3>
+<p><a href="getting_started.html">getting_started.md</a> — Launch
+Harvey, connect to Ollama, and run your first commands</p>
+<h3 id="system-prompt-customization">3. System Prompt Customization</h3>
+<p><a href="HARVEY.html">HARVEY.md</a> — The default system prompt and
+how to customize it for your project</p>
 <hr />
-<h2 id="reference">Reference</h2>
-<h3 id="getting-started">Getting Started</h3>
+<h2 id="core-user-guide">📚 Core User Guide</h2>
+<p><em>For daily Harvey usage</em></p>
+<h3 id="working-with-harvey">Working with Harvey</h3>
 <ul>
-<li><a href="index.html">README.md</a> — project overview, features, and
-philosophy</li>
-<li><a href="INSTALL.html">INSTALL.md</a> — installation for all
-platforms</li>
-<li><a href="about.html">about.md</a> — project metadata and author
-information</li>
-<li><a href="getting_started.html">getting_started.md</a> — session
-walkthrough, keyboard shortcuts, slash commands, security</li>
-<li><a href="HARVEY.html">HARVEY.md</a> — default system prompt</li>
+<li><strong><a href="overview.html">Overview</a></strong> — What Harvey
+is, its philosophy, and core features</li>
+<li><strong><a href="CONFIGURATION.html">Configuration</a></strong> —
+Workspace configuration in <code>agents/harvey.yaml</code>, including
+permissions, timeouts, and memory settings</li>
 </ul>
-<h3 id="user-guides">User Guides</h3>
+<h3 id="commands-and-workflows">Commands and Workflows</h3>
 <ul>
-<li><a href="Using_RAGs_with_Harvey.html">Using_RAGs_with_Harvey.md</a>
-— RAG setup, named stores, commands, and configuration</li>
-<li><a href="SKILLS.html">SKILLS.md</a> — SKILL.md format, discovery
-paths, compiled skills, triggers, and skill wizard</li>
-<li><a href="ROUTING.html">ROUTING.md</a> — <span class="citation"
-data-cites="mention">@mention</span> syntax, endpoint types, and
-configuration</li>
-<li><a href="KNOWLEDGE_BASE.html">KNOWLEDGE_BASE.md</a> — schema, FTS5
-search, CLI commands, and Go API</li>
-<li><a href="SESSIONS.html">SESSIONS.md</a> — session recording, file
-structure, and programmatic access</li>
-<li><a href="MODEL_CACHE.html">MODEL_CACHE.md</a> — architecture,
-database schema, Go API, and probing mechanisms</li>
-<li><a href="search.html">search.md</a> — search functionality</li>
-<li><a href="further_reading.html">further_reading.md</a> — additional
-reading and resources</li>
+<li><strong><a href="harvey.1.html">Command Reference</a></strong> —
+Primary man page with all available commands and flags</li>
+<li><strong><a href="getting_started.html">Getting Started</a></strong>
+— Detailed session walkthrough, keyboard shortcuts, and slash
+commands</li>
 </ul>
-<h3 id="configuration-and-architecture">Configuration and
-Architecture</h3>
+<h3 id="security-features">Security Features</h3>
 <ul>
-<li><a href="CONFIGURATION.html">CONFIGURATION.md</a> —
-<code>agents/harvey.yaml</code>, <code>agents/routes.json</code>, and
-environment variables</li>
-<li><a href="ARCHITECTURE.html">ARCHITECTURE.md</a> — component map,
-core types, security system, and backend implementations</li>
-<li><a href="FOUNTAIN_FORMAT.html">FOUNTAIN_FORMAT.md</a> — Fountain
-screenplay session format specification</li>
-</ul>
-<h3 id="security">Security</h3>
-<ul>
-<li><a href="SECURITY.html">SECURITY.md</a> — security model,
-protections, and known limitations</li>
-<li><a href="SECURITY_REVIEW.html">SECURITY_REVIEW.md</a> — pre-release
-security assessment</li>
-</ul>
-<h3 id="models">Models</h3>
-<ul>
-<li><a href="models.html">models.md</a> — models in use and evaluation
-status</li>
-<li><a href="model_guide.html">model_guide.md</a> — model selection
-guide from <code>/ollama probe</code></li>
-<li><a href="Llamafile_notes.html">Llamafile_notes.md</a> — Mozilla AI’s
-single-file runnable models (not integrated with Harvey)</li>
-</ul>
-<h3 id="development-and-design">Development and Design</h3>
-<ul>
-<li><a href="TESTING.html">TESTING.md</a> — running tests, test
-architecture, writing tests, and CI</li>
-<li><a href="model_testing_plan.html">model_testing_plan.md</a> — model
-evaluation methodologies</li>
-<li><a href="RAG_Support_Design.html">RAG_Support_Design.md</a> — RAG
-support design document</li>
-<li><a
-href="Harvey_Skill-Set_Design.html">Harvey_Skill-Set_Design.md</a> —
-<code>/skill-set</code> command design</li>
-<li><a
-href="improved_tool_handling_with_schemas.html">improved_tool_handling_with_schemas.md</a>
-— tool handling with schemas design</li>
-<li><a href="TODO.html">TODO.md</a> — current action items and known
-bugs</li>
-</ul>
-<h3 id="installation-notes">Installation Notes</h3>
-<ul>
-<li><a href="INSTALL_NOTES_macOS.html">INSTALL_NOTES_macOS.md</a> —
-macOS-specific notes</li>
-<li><a href="INSTALL_NOTES_Windows.html">INSTALL_NOTES_Windows.md</a> —
-Windows-specific notes</li>
+<li><strong><a href="SECURITY.html">Security Guide</a></strong> — Safe
+mode, command allowlists, workspace permissions, audit logging, and
+threat model</li>
+<li><strong><a href="SECURITY_REVIEW.html">Security Review</a></strong>
+— Pre-release security assessment and known limitations</li>
 </ul>
 <hr />
-<h2 id="man-pages">Man Pages</h2>
+<h2 id="advanced-features">🎯 Advanced Features</h2>
+<h3 id="retrieval-augmented-generation">Retrieval-Augmented
+Generation</h3>
 <ul>
-<li><a href="harvey.1.html">harvey.1.md</a> — primary man page</li>
-<li><a href="harvey.7.html">harvey.7.md</a> — general concepts
+<li><strong><a href="Using_RAGs_with_Harvey.html">RAG Setup &amp;
+Usage</a></strong> — Complete guide to retrieval-augmented generation,
+including named stores, ingest commands, and configuration</li>
+<li><strong><a href="harvey-rag.7.html">RAG Commands</a></strong> —
+Detailed reference for all RAG-related slash commands</li>
+</ul>
+<h3 id="knowledge-management">Knowledge Management</h3>
 <ul>
-<li><a href="harvey-attach.7.html">attach</a></li>
-<li><a href="harvey-clear.7.html">clear</a></li>
-<li><a href="harvey-context.7.html">context</a></li>
-<li><a href="harvey-editing.7.html">editing</a></li>
-<li><a href="harvey-file-tree.7.html">file-tree</a></li>
-<li><a href="harvey-files.7.html">files</a></li>
-<li><a href="harvey-format.7.html">format</a></li>
-<li><a href="harvey-git.7.html">git</a></li>
-<li><a href="harvey-inspect.7.html">inspect</a></li>
-<li><a href="harvey-kb.7.html">knowledge base</a></li>
-<li><a href="harvey-learn.7.html">learn</a></li>
-<li><a href="harvey-loop.7.html">loop</a></li>
-<li><a href="harvey-memory.7.html">memory</a></li>
-<li><a href="harvey-ollama.7.html">ollama</a>
+<li><strong><a href="KNOWLEDGE_BASE.html">Knowledge Base</a></strong> —
+SQLite-backed knowledge base schema, FTS5 search, CLI commands, and Go
+API</li>
+<li><strong><a href="memory-unified-design.html">Memory
+System</a></strong> — Unified memory architecture with rolling summaries
+and token budget tracking</li>
+</ul>
+<h3 id="model-management">Model Management</h3>
 <ul>
-<li><a href="harvey-model-alias.7.html">model alias</a></li>
-</ul></li>
-<li><a href="harvey-pipeline.7.html">pipeline</a></li>
-<li><a href="harvey-rag.7.html">RAG</a></li>
-<li><a href="harvey-read.7.html">read</a>
+<li><strong><a href="model_guide.html">Model Guide</a></strong> — Model
+selection guide based on <code>/ollama probe</code> results</li>
+<li><strong><a href="MODEL_CACHE.html">Model Cache</a></strong> — Model
+capability caching architecture, database schema, and probing
+mechanisms</li>
+<li><strong><a href="ROUTING.html">Routing</a></strong> — Connect to
+remote model endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI)
+via <span class="citation" data-cites="mention">@mention</span>
+syntax</li>
+<li><strong><a href="Llamafile_notes.html">Llamafile Notes</a></strong>
+— Mozilla AI’s single-file runnable models (note: not currently
+integrated with Harvey)</li>
+</ul>
+<h3 id="sessions-recording">Sessions &amp; Recording</h3>
 <ul>
-<li><a href="harvey-read-dir.7.html">read directory</a></li>
-<li><a href="harvey-read-pdf.7.html">read PDF</a></li>
-</ul></li>
-<li><a href="harvey-record.7.html">record</a></li>
-<li><a href="harvey-rename.7.html">rename</a></li>
-<li><a href="harvey-routing.7.html">routing</a></li>
-<li><a href="harvey-run.7.html">run</a></li>
-<li><a href="harvey-search.7.html">search</a></li>
-<li><a href="harvey-security.7.html">security</a></li>
-<li><a href="harvey-session.7.html">session</a></li>
-<li><a href="harvey-skills.7.html">skills</a>
-<ul>
-<li><a href="harvey-skill-set.7.html">skill sets</a></li>
-</ul></li>
-<li><a href="harvey-status.7.html">status</a></li>
-<li><a href="harvey-summarize.7.html">summarize</a></li>
-<li><a href="harvey-write.7.html">write</a></li>
-</ul></li>
+<li><strong><a href="SESSIONS.html">Sessions</a></strong> — Session
+recording, file structure, replay functionality, and programmatic
+access</li>
+<li><strong><a href="FOUNTAIN_FORMAT.html">Fountain Format</a></strong>
+— Fountain screenplay format specification for conversation
+recordings</li>
 </ul>
 <hr />
-<h2 id="external">External</h2>
+<h2 id="extending-harvey">🔧 Extending Harvey</h2>
+<h3 id="skills-system">Skills System</h3>
 <ul>
-<li><a href="https://github.com/rsdoiel/harvey/issues">GitHub Issues</a>
-— bug reports and feature requests</li>
+<li><strong><a href="SKILLS.html">Skills Overview</a></strong> — Extend
+Harvey with custom skills, including SKILL.md format, discovery paths,
+compiled skills, triggers, and the skill wizard</li>
+<li><strong><a href="harvey-skill-set.7.html">Skill Sets</a></strong> —
+Manage named bundles of skills for specific workflows</li>
+</ul>
+<hr />
+<h2 id="whats-new">📖 What’s New</h2>
+<ul>
+<li>See <strong><a href="CHANGES.html">CHANGES.md</a></strong> for
+version history and new features in each release</li>
+</ul>
+<hr />
+<h2 id="cant-find-what-you-need">🔍 Can’t Find What You Need?</h2>
+<ul>
+<li>Use <code>/help</code> inside Harvey for a live command list</li>
+<li>Use <code>/help &lt;command&gt;</code> for specific command
+help</li>
+<li>See <strong><a href="developer_guide.html">Developer
+Guide</a></strong> for development and contribution information</li>
+<li>See <strong><a href="reference.html">Reference</a></strong> for
+complete command and configuration reference</li>
 </ul>
 </section>
 </body>

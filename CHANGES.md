@@ -1,5 +1,26 @@
 # CHANGES
 
+## v0.0.10 (2026-06-09)
+
+### New features
+
+- Added multi-language code-aware chunking for RAG ingestion (C, C++, Pascal, Oberon, Lisp, Basic)
+- Added documentation extraction: comment and docstring association with symbols for C, C++, Pascal, Oberon, Lisp, Basic
+- Added ANSI syntax highlighting of code blocks in LLM responses (13 languages: C, C++, Pascal, Oberon, Lisp, Basic, Go, Python, JavaScript, TypeScript, Rust, Shell, SQL); configurable via `syntax_highlight` in harvey.yaml
+- Added automatic code formatting on `write_file`: built-in formatters for Pascal, Oberon, Basic; external pipe-mode formatters for Go (gofmt), C/C++ (clang-format), Python (black), Rust (rustfmt), JavaScript/TypeScript (prettier); configurable via `auto_format` in harvey.yaml
+- Added `/format FILE [FILE...]` command to manually format workspace source files in-place
+
+## v0.0.9 (2026-06-09)
+
+Added `/loop` command
+
+## v0.0.8 (2026-06-05)
+
+*Initial profile template system*
+
+- Added `/profile use` command for workspace profile management
+- Added help guides and `/status profile` display
+
 ## v0.0.7 (2026-06-02)
 
 ### New features
@@ -60,7 +81,7 @@ commands and paths between projects.
 - `harvey --help attach`, `--help read-pdf`, and `--help learn` now work
   correctly; topic was silently falling through to the unknown-topic error
 
-## v0.0.5c (2026-05-30)
+## v0.0.6 (2026-05-30)
 
 ### New features
 

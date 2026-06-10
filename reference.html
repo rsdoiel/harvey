@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-reference-manual">Harvey Reference Manual</h1>
+<p>This document provides a comprehensive reference for all Harvey
+commands, configuration options, and platform-specific information.</p>
+<hr />
+<h2 id="command-reference">📖 Command Reference</h2>
+<p>All Harvey commands are organized into logical categories. Each
+command has its own man page with detailed usage information.</p>
+<h3 id="core-commands">Core Commands</h3>
+<ul>
+<li><strong><a href="harvey.1.html">harvey.1.md</a></strong> — Primary
+man page: name, synopsis, description, options, environment variables,
+and all available slash commands</li>
+<li><strong><a href="harvey.7.html">harvey.7.md</a></strong> — General
+concepts and overview of Harvey’s design philosophy</li>
+</ul>
+<h3 id="file-operations">File Operations</h3>
+<ul>
+<li><strong><a href="harvey-read.7.html">harvey-read.7.md</a></strong> —
+Read file contents into the conversation context</li>
+<li><strong><a href="harvey-write.7.html">harvey-write.7.md</a></strong>
+— Write assistant output to a file</li>
+<li><strong><a
+href="harvey-attach.7.html">harvey-attach.7.md</a></strong> — Attach a
+file (image, PDF, or text) to the next turn</li>
+<li><strong><a href="harvey-files.7.html">harvey-files.7.md</a></strong>
+— List directory contents in the workspace</li>
+<li><strong><a
+href="harvey-file-tree.7.html">harvey-file-tree.7.md</a></strong> —
+Display a recursive directory tree</li>
+<li><strong><a
+href="harvey-read-dir.7.html">harvey-read-dir.7.md</a></strong> — Read
+all eligible files in a directory tree into context</li>
+<li><strong><a
+href="harvey-read-pdf.7.html">harvey-read-pdf.7.md</a></strong> —
+Extract text from a PDF using poppler utilities</li>
+<li><strong><a
+href="harvey-editing.7.html">harvey-editing.7.md</a></strong> — Edit
+files using the configured editor</li>
+<li><strong><a
+href="harvey-format.7.html">harvey-format.7.md</a></strong> — Format
+workspace source files in-place</li>
+</ul>
+<h3 id="context-and-search">Context and Search</h3>
+<ul>
+<li><strong><a
+href="harvey-search.7.html">harvey-search.7.md</a></strong> — Regex
+search across workspace files</li>
+<li><strong><a
+href="harvey-context.7.html">harvey-context.7.md</a></strong> — Manage
+pinned context that survives /clear</li>
+<li><strong><a href="harvey-git.7.html">harvey-git.7.md</a></strong> —
+Read-only git commands (status, diff, log, show, blame)</li>
+</ul>
+<h3 id="rag-retrieval-augmented-generation">RAG (Retrieval-Augmented
+Generation)</h3>
+<ul>
+<li><strong><a href="harvey-rag.7.html">harvey-rag.7.md</a></strong> —
+Manage retrieval-augmented generation stores</li>
+<li><strong><a href="harvey-learn.7.html">harvey-learn.7.md</a></strong>
+— Learn from context and build knowledge</li>
+<li><strong><a
+href="harvey-inspect.7.html">harvey-inspect.7.md</a></strong> — Inspect
+model capabilities and metadata</li>
+</ul>
+<h3 id="session-management">Session Management</h3>
+<ul>
+<li><strong><a
+href="harvey-session.7.html">harvey-session.7.md</a></strong> — Session
+management commands</li>
+<li><strong><a
+href="harvey-record.7.html">harvey-record.7.md</a></strong> — Start,
+stop, and manage session recordings</li>
+<li><strong><a
+href="harvey-rename.7.html">harvey-rename.7.md</a></strong> — Rename the
+active session file</li>
+<li><strong><a
+href="harvey-summarize.7.html">harvey-summarize.7.md</a></strong> —
+Condense conversation history to free context window space</li>
+<li><strong><a href="harvey-clear.7.html">harvey-clear.7.md</a></strong>
+— Reset conversation history</li>
+<li><strong><a href="harvey-loop.7.html">harvey-loop.7.md</a></strong> —
+Manage the REPL loop</li>
+</ul>
+<h3 id="memory-system">Memory System</h3>
+<ul>
+<li><strong><a
+href="harvey-memory.7.html">harvey-memory.7.md</a></strong> — Manage the
+session-experience memory store</li>
+</ul>
+<h3 id="knowledge-base">Knowledge Base</h3>
+<ul>
+<li><strong><a href="harvey-kb.7.html">harvey-kb.7.md</a></strong> —
+Query and update the SQLite knowledge base</li>
+</ul>
+<h3 id="ollama-integration">Ollama Integration</h3>
+<ul>
+<li><strong><a
+href="harvey-ollama.7.html">harvey-ollama.7.md</a></strong> — Manage the
+local Ollama server and installed models</li>
+<li><strong><a
+href="harvey-model-alias.7.html">harvey-model-alias.7.md</a></strong> —
+Create and manage model aliases</li>
+</ul>
+<h3 id="routing">Routing</h3>
+<ul>
+<li><strong><a
+href="harvey-routing.7.html">harvey-routing.7.md</a></strong> — Manage
+named remote LLM endpoints for <span class="citation"
+data-cites="mention">@mention</span> routing</li>
+</ul>
+<h3 id="skills">Skills</h3>
+<ul>
+<li><strong><a
+href="harvey-skills.7.html">harvey-skills.7.md</a></strong> — Discover
+and load SKILL.md-format skills into context</li>
+<li><strong><a
+href="harvey-skill-set.7.html">harvey-skill-set.7.md</a></strong> — Load
+and manage named bundles of skills</li>
+</ul>
+<h3 id="pipelines">Pipelines</h3>
+<ul>
+<li><strong><a
+href="harvey-pipeline.7.html">harvey-pipeline.7.md</a></strong> — Chain
+Markdown prompt files as discrete steps</li>
+</ul>
+<h3 id="security">Security</h3>
+<ul>
+<li><strong><a
+href="harvey-security.7.html">harvey-security.7.md</a></strong> —
+Unified security posture overview</li>
+</ul>
+<h3 id="execution">Execution</h3>
+<ul>
+<li><strong><a href="harvey-run.7.html">harvey-run.7.md</a></strong> —
+Run shell commands safely within the workspace</li>
+</ul>
+<h3 id="system-status">System Status</h3>
+<ul>
+<li><strong><a
+href="harvey-status.7.html">harvey-status.7.md</a></strong> — Show
+active backend, token usage, routing, and debug state</li>
+<li><strong><a href="harvey-hint.7.html">harvey-hint.7.md</a></strong> —
+Show actionable suggestions for improving results (RAG, memory, KB)</li>
+</ul>
+<hr />
+<h2 id="configuration-reference">🔧 Configuration Reference</h2>
+<h3 id="main-configuration">Main Configuration</h3>
+<ul>
+<li><strong><a href="CONFIGURATION.html">CONFIGURATION.md</a></strong> —
+Complete workspace configuration reference for
+<code>agents/harvey.yaml</code>, <code>agents/routes.json</code>, and
+environment variables</li>
+</ul>
+<h3 id="workspace-configuration-files">Workspace Configuration
+Files</h3>
+<ul>
+<li><code>agents/harvey.yaml</code> — Main configuration file</li>
+<li><code>agents/routes.json</code> — Named route definitions for
+multi-backend support</li>
+<li><code>agents/knowledge.db</code> — SQLite knowledge base</li>
+<li><code>HARVEY.md</code> — System prompt for the workspace</li>
+</ul>
+<h3 id="environment-variables">Environment Variables</h3>
+<p>See <strong><a
+href="harvey.1.html#environment">harvey.1.md</a></strong> for complete
+list: - <code>ANTHROPIC_API_KEY</code> — API key for Anthropic Claude -
+<code>DEEPSEEK_API_KEY</code> — API key for DeepSeek -
+<code>GEMINI_API_KEY</code> — API key for Google Gemini (also accepts
+<code>GOOGLE_API_KEY</code>) - <code>MISTRAL_API_KEY</code> — API key
+for Mistral - <code>OPENAI_API_KEY</code> — API key for OpenAI</p>
+<p><em>Note: All API key variables are filtered from child process
+environments</em></p>
+<hr />
+<h2 id="platform-specific-information">🌍 Platform-Specific
+Information</h2>
+<h3 id="installation-notes">Installation Notes</h3>
+<ul>
+<li><strong><a href="INSTALL.html">INSTALL.md</a></strong> — Main
+installation guide for all platforms</li>
+<li><strong><a
+href="INSTALL_NOTES_macOS.html">INSTALL_NOTES_macOS.md</a></strong> —
+macOS-specific installation notes and requirements</li>
+<li><strong><a
+href="INSTALL_NOTES_Windows.html">INSTALL_NOTES_Windows.md</a></strong>
+— Windows-specific installation notes and requirements</li>
+</ul>
+<h3 id="supported-architectures">Supported Architectures</h3>
+<ul>
+<li>Linux: x86_64, aarch64, armv7l</li>
+<li>macOS: x86_64, arm64</li>
+<li>Windows: x86_64</li>
+</ul>
+<hr />
+<h2 id="additional-reference">📚 Additional Reference</h2>
+<h3 id="models">Models</h3>
+<ul>
+<li><strong><a href="models.html">models.md</a></strong> — Models in use
+and evaluation status</li>
+<li><strong><a href="model_guide.html">model_guide.md</a></strong> —
+Model selection guide based on <code>/ollama probe</code> results</li>
+<li><strong><a
+href="Llamafile_notes.html">Llamafile_notes.md</a></strong> — Mozilla
+AI’s single-file runnable models (note: not currently integrated with
+Harvey)</li>
+</ul>
+<h3 id="development">Development</h3>
+<ul>
+<li><strong><a href="TESTING.html">TESTING.md</a></strong> — Running
+tests, test architecture, and CI/CD setup</li>
+<li><strong><a href="CHANGES.html">CHANGES.md</a></strong> — Version
+history and release notes</li>
+<li><strong><a href="TODO.html">TODO.md</a></strong> — Current action
+items, known bugs, and planned features</li>
+<li><strong><a
+href="further_reading.html">further_reading.md</a></strong> — Additional
+reading and resources</li>
+</ul>
+<h3 id="formatting">Formatting</h3>
+<ul>
+<li><strong><a href="page.tmpl">page.tmpl</a></strong> — Template for
+HTML page generation</li>
+</ul>
+<hr />
+<h2 id="quick-command-lookup">🎯 Quick Command Lookup</h2>
+<h3 id="most-common-commands">Most Common Commands</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Task</th>
+<th scope="col">Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Start Harvey</td>
+<td><code>harvey</code></td>
+</tr>
+<tr>
+<td>Start with specific model</td>
+<td><code>harvey -m &lt;model&gt;</code></td>
+</tr>
+<tr>
+<td>Start with recording</td>
+<td><code>harvey --record</code></td>
+</tr>
+<tr>
+<td>Read a file</td>
+<td><code>/read &lt;path&gt;</code></td>
+</tr>
+<tr>
+<td>Write to file</td>
+<td><code>/write &lt;path&gt;</code></td>
+</tr>
+<tr>
+<td>Run shell command</td>
+<td><code>/run &lt;command&gt;</code></td>
+</tr>
+<tr>
+<td>Search files</td>
+<td><code>/search &lt;pattern&gt;</code></td>
+</tr>
+<tr>
+<td>Git status</td>
+<td><code>/git status</code></td>
+</tr>
+<tr>
+<td>List files</td>
+<td><code>/files [path]</code></td>
+</tr>
+<tr>
+<td>Attach file</td>
+<td><code>/attach &lt;path&gt;</code></td>
+</tr>
+<tr>
+<td>Show help</td>
+<td><code>/help</code></td>
+</tr>
+<tr>
+<td>Show status</td>
+<td><code>/status</code></td>
+</tr>
+<tr>
+<td>Clear history</td>
+<td><code>/clear</code></td>
+</tr>
+<tr>
+<td>Exit</td>
+<td><code>/exit</code>, <code>/quit</code>, or <code>/bye</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="model-management">Model Management</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Task</th>
+<th scope="col">Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>List models</td>
+<td><code>/ollama list</code></td>
+</tr>
+<tr>
+<td>Pull a model</td>
+<td><code>/ollama pull &lt;model&gt;</code></td>
+</tr>
+<tr>
+<td>Use a model</td>
+<td><code>/ollama use &lt;model&gt;</code></td>
+</tr>
+<tr>
+<td>Show model info</td>
+<td><code>/ollama show &lt;model&gt;</code></td>
+</tr>
+<tr>
+<td>Start Ollama</td>
+<td><code>/ollama start</code></td>
+</tr>
+<tr>
+<td>Check Ollama status</td>
+<td><code>/ollama status</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="rag-operations">RAG Operations</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Task</th>
+<th scope="col">Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Create RAG store</td>
+<td><code>/rag new &lt;name&gt;</code></td>
+</tr>
+<tr>
+<td>List RAG stores</td>
+<td><code>/rag list</code></td>
+</tr>
+<tr>
+<td>Use RAG store</td>
+<td><code>/rag use &lt;name&gt;</code></td>
+</tr>
+<tr>
+<td>Ingest files</td>
+<td><code>/rag ingest &lt;path&gt;</code></td>
+</tr>
+<tr>
+<td>Enable RAG</td>
+<td><code>/rag on</code></td>
+</tr>
+<tr>
+<td>Disable RAG</td>
+<td><code>/rag off</code></td>
+</tr>
+<tr>
+<td>Query RAG</td>
+<td><code>/rag query &lt;text&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="knowledge-base-1">Knowledge Base</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Task</th>
+<th scope="col">Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Show status</td>
+<td><code>/kb status</code></td>
+</tr>
+<tr>
+<td>Search</td>
+<td><code>/kb search &lt;text&gt;</code></td>
+</tr>
+<tr>
+<td>List projects</td>
+<td><code>/kb project list</code></td>
+</tr>
+<tr>
+<td>Add project</td>
+<td><code>/kb project add &lt;name&gt; [desc]</code></td>
+</tr>
+<tr>
+<td>Record observation</td>
+<td><code>/kb observe &lt;kind&gt; &lt;text&gt;</code></td>
+</tr>
+<tr>
+<td>List concepts</td>
+<td><code>/kb concept list</code></td>
+</tr>
+<tr>
+<td>Add concept</td>
+<td><code>/kb concept add &lt;name&gt; [desc]</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="security-1">Security</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Task</th>
+<th scope="col">Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Toggle safe mode</td>
+<td><code>/safemode on\|off</code></td>
+</tr>
+<tr>
+<td>Safe mode status</td>
+<td><code>/safemode status</code></td>
+</tr>
+<tr>
+<td>Allow command</td>
+<td><code>/safemode allow &lt;cmd&gt;</code></td>
+</tr>
+<tr>
+<td>Set permissions</td>
+<td><code>/permissions set &lt;path&gt; &lt;perms&gt;</code></td>
+</tr>
+<tr>
+<td>Show permissions</td>
+<td><code>/permissions list</code></td>
+</tr>
+<tr>
+<td>View audit log</td>
+<td><code>/audit show [n]</code></td>
+</tr>
+<tr>
+<td>Security overview</td>
+<td><code>/security status</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+</body>
+</html>

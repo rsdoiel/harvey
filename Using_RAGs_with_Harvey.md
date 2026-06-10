@@ -1227,5 +1227,5 @@ grep -rn "ignore previous\|disregard\|you are now\|system:" /path/to/cloned-repo
 - [SESSIONS.md](SESSIONS.md) — Session recording and Fountain format
 - [ROUTING.md](ROUTING.md) — Remote endpoint routing
 - [SKILLS.md](SKILLS.md) — Agent Skills system
-- [user_manual.md](user_manual.md) — General Harvey usage
+- [user_manual.md](user_manual.md) — Complete Harvey documentation index
 - [getting_started.md](getting_started.md) — Quick start guide

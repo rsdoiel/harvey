@@ -18,7 +18,7 @@
   "name": "harvey",
   "license": "https://www.gnu.org/licenses/agpl-3.0.txt",
   "programmingLanguage": [
-    "Go >= 1.26"
+    "Go >= 1.26.3"
   ],
   "softwareRequirements": [
     "Go >= 1.26.3"

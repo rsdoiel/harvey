@@ -1,6 +1,6 @@
 module github.com/rsdoiel/harvey
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/glebarez/go-sqlite v1.22.0

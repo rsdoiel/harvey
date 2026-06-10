@@ -764,6 +764,6 @@ Foreign key constraints are enabled:
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration file reference
 - [ROUTING.md](ROUTING.md) — Remote endpoint routing guide
 - [SKILLS.md](SKILLS.md) — Agent Skills system documentation
-- [User Manual](user_manual.md) — General Harvey usage
+- [User Manual](user_manual.md) — General Harvey usage, user guide, and developer documentation
 
 *Documentation generated from knowledge.go source code. Version 1.0.*

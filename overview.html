@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-a-terminalbased-ai-interaction-layer">Harvey – A
+Terminal‑Based AI Interaction Layer</h1>
+<h2 id="what-harvey-is">What Harvey Is</h2>
+<p>Harvey is an open‑source, cross‑platform terminal REPL
+(Read‑Eval‑Print Loop) that lets you interact with large language models
+(LLMs) through a simple, tool‑rich command interface. Built primarily on
+Ollama with support for cloud providers via named routes, Harvey
+provides an interactive coding agent experience focused on local model
+execution.</p>
+<h2 id="why-you-might-want-to-use-it">Why You Might Want to Use It</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Feature</th>
+<th scope="col">Benefit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Unified Command Set</strong> (<code>/read</code>,
+<code>/write</code>, <code>/run</code>, <code>/attach</code>,
+<code>/search</code>, <code>/git</code>, <code>/rag</code>,
+<code>/memory</code>, <code>/kb</code>, etc.)</td>
+<td>Interact with models without remembering separate API calls.</td>
+</tr>
+<tr>
+<td><strong>RAG Integration</strong></td>
+<td>Inject context from local files, PDFs, or remote storage (S3, HTTP,
+HTTPS, SFTP, SCP) into your prompts. Create and query SQLite‑backed
+vector stores with <code>/rag</code> commands.</td>
+</tr>
+<tr>
+<td><strong>Tool Calling &amp; Schema Support</strong></td>
+<td>Harvey provides built-in tools (read_file, write_file, run_command,
+etc.) with validated schemas for safe operation.</td>
+</tr>
+<tr>
+<td><strong>Multi‑Model &amp; Multi‑Backend Routing</strong></td>
+<td>Dispatch prompts to specific models (<code>@model_name</code>) or
+route to different backends (Ollama, Anthropic, DeepSeek, Gemini,
+Mistral, OpenAI) via <code>/route add</code>.</td>
+</tr>
+<tr>
+<td><strong>Session Recording (Fountain screenplay)</strong></td>
+<td>Sessions can be recorded as Fountain‑compatible <code>.spmd</code>
+files using <code>/record start</code> or <code>--record</code> flag,
+enabling later review, summarization, or replay.</td>
+</tr>
+<tr>
+<td><strong>Knowledge Base &amp; Memory</strong></td>
+<td>Persistent knowledge base (<code>agents/knowledge.db</code>) plus a
+unified memory system with rolling summaries and token budget
+tracking.</td>
+</tr>
+<tr>
+<td><strong>Secure Safe Mode</strong></td>
+<td>Execution is limited to a whitelisted set of shell commands; remote
+file reads enforce size limits and host‑key verification. API keys are
+filtered from child processes.</td>
+</tr>
+<tr>
+<td><strong>Installer Scripts</strong></td>
+<td>Installer scripts for Linux (x86_64/aarch64/armv7l), macOS, and
+Windows.</td>
+</tr>
+<tr>
+<td><strong>Extensible Skill System</strong></td>
+<td>Load specialized skills via <code>/skill load &lt;name&gt;</code> to
+add domain‑specific tooling.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="getting-started">Getting Started</h2>
+<ol type="1">
+<li><p><strong>Install Harvey</strong> – Run the installer script for
+your OS (<code>installer.sh</code> for Linux/macOS,
+<code>installer.ps1</code> for Windows).<br />
+</p></li>
+<li><p><strong>Launch the REPL</strong></p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span></code></pre></div>
+<p>You’ll be greeted with a prompt like
+<code>harvey &gt;</code>.</p></li>
+<li><p><strong>Basic Commands</strong></p>
+<ul>
+<li><strong>Read a file</strong> –
+<code>/read &lt;path&gt;</code>.<br />
+</li>
+<li><strong>Write output</strong> – <code>/write &lt;path&gt;</code>
+(writes last assistant reply to a file).<br />
+</li>
+<li><strong>Run shell commands safely</strong> –
+<code>/run ls -l</code>.<br />
+</li>
+<li><strong>Query the knowledge base</strong> –
+<code>/kb search &lt;text&gt;</code>.<br />
+</li>
+<li><strong>Attach a file for this turn</strong> –
+<code>/attach docs/manual.pdf</code> (image, PDF text extraction, or
+plain text; not stored in RAG).</li>
+</ul></li>
+<li><p><strong>Using RAG</strong></p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">/rag</span> new my_store</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">/rag</span> use my_store</span></code></pre></div></li>
+<li><p><strong>Recording a Session</strong></p>
+<p>Harvey can record sessions to Fountain files. To start recording:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">/record</span> start</span></code></pre></div></li>
+</ol>
+<h2 id="design-decisions-three-core-principles">Design Decisions (Three
+Core Principles)</h2>
+<ol type="1">
+<li><p><strong>Tool‑First Architecture</strong> – All user actions are
+exposed as first‑class <em>tools</em> (<code>read_file</code>,
+<code>write_file</code>, <code>run_command</code>, etc.). This makes the
+system extensible: new capabilities can be added by registering a tool
+with its schema, without touching core logic.</p></li>
+<li><p><strong>Unified Memory &amp; Knowledge Base</strong> – Harvey
+separates three storage layers:</p>
+<ul>
+<li><strong>RAG Store</strong> (vector DB for fast semantic
+search).<br />
+</li>
+<li><strong>Memory System</strong> (rolling summary and token‑budget
+tracking).<br />
+</li>
+<li><strong>Knowledge Base</strong> (structured SQLite tables for
+experiments, concepts, observations).<br />
+A single <code>MemoryConfig</code> configuration drives budgeting and
+switching between them.</li>
+</ul></li>
+<li><p><strong>Secure Safe Mode with Remote Protocol Support</strong> –
+Execution is gated by a whitelist; remote file reads
+(<code>s3://</code>, <code>http://</code>, <code>https://</code>,
+<code>sftp://</code>, <code>scp://</code>) enforce strict size caps and
+host-key verification, preventing accidental data leakage or
+denial-of-service attacks.</p></li>
+</ol>
+<hr />
+<h3 id="next-steps">Next Steps</h3>
+<ul>
+<li><p>Run the installer (if you haven’t already).<br />
+</p></li>
+<li><p>Try a few commands to see tool responses:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="op">&gt;</span> /read LICENSE</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="op">&gt;</span> /kb status</span></code></pre></div></li>
+<li><p>Explore available skills and load any that interest you</p></li>
+</ul>
+<p>Feel free to ask for more detailed examples or to tailor the document
+further!</p>
+</section>
+</body>
+</html>

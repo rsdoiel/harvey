@@ -19,8 +19,36 @@
 </nav>
 <section>
 <h1 id="changes">CHANGES</h1>
-<h2 id="v0.0.7-2026-06-02">v0.0.7 (2026-06-02)</h2>
+<h2 id="v0.0.10-2026-06-09">v0.0.10 (2026-06-09)</h2>
 <h3 id="new-features">New features</h3>
+<ul>
+<li>Added multi-language code-aware chunking for RAG ingestion (C, C++,
+Pascal, Oberon, Lisp, Basic)</li>
+<li>Added documentation extraction: comment and docstring association
+with symbols for C, C++, Pascal, Oberon, Lisp, Basic</li>
+<li>Added ANSI syntax highlighting of code blocks in LLM responses (13
+languages: C, C++, Pascal, Oberon, Lisp, Basic, Go, Python, JavaScript,
+TypeScript, Rust, Shell, SQL); configurable via
+<code>syntax_highlight</code> in harvey.yaml</li>
+<li>Added automatic code formatting on <code>write_file</code>: built-in
+formatters for Pascal, Oberon, Basic; external pipe-mode formatters for
+Go (gofmt), C/C++ (clang-format), Python (black), Rust (rustfmt),
+JavaScript/TypeScript (prettier); configurable via
+<code>auto_format</code> in harvey.yaml</li>
+<li>Added <code>/format FILE [FILE...]</code> command to manually format
+workspace source files in-place</li>
+</ul>
+<h2 id="v0.0.9-2026-06-09">v0.0.9 (2026-06-09)</h2>
+<p>Added <code>/loop</code> command</p>
+<h2 id="v0.0.8-2026-06-05">v0.0.8 (2026-06-05)</h2>
+<p><em>Initial profile template system</em></p>
+<ul>
+<li>Added <code>/profile use</code> command for workspace profile
+management</li>
+<li>Added help guides and <code>/status profile</code> display</li>
+</ul>
+<h2 id="v0.0.7-2026-06-02">v0.0.7 (2026-06-02)</h2>
+<h3 id="new-features-1">New features</h3>
 <p><strong><code>assay</code> evaluation harness</strong> — a new
 <code>bin/assay</code> tool for running a prompt corpus against one or
 more Ollama models and producing a Markdown report plus JSON results for
@@ -87,8 +115,8 @@ all are now listed under their appropriate sections</li>
 <code>--help learn</code> now work correctly; topic was silently falling
 through to the unknown-topic error</li>
 </ul>
-<h2 id="v0.0.5c-2026-05-30">v0.0.5c (2026-05-30)</h2>
-<h3 id="new-features-1">New features</h3>
+<h2 id="v0.0.6-2026-05-30">v0.0.6 (2026-05-30)</h2>
+<h3 id="new-features-2">New features</h3>
 <p><strong>Remote protocol integration</strong> — Harvey can now read
 files from remote storage over <code>s3://</code>, <code>http://</code>,
 <code>https://</code>, <code>sftp://</code>, and <code>scp://</code>
