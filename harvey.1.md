@@ -1,4 +1,4 @@
-%harvey(1) user manual | version 0.0.10 8c8d863
+%harvey(1) user manual | version 0.0.10 b2b3cad
 % R. S. Doiel
 % 2026-06-09
 

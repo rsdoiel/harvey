@@ -19,7 +19,7 @@ programming_language:
   - Go >= 1.26.3
 
 
-date_released: 2026-06-09
+date_released: 2026-06-10
 ---
 
 About this software
