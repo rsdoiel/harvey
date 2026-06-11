@@ -16,4 +16,4 @@
   - [ ] We have the three tiered memory setup which I think it right for Harvey but I think users will think of memory and rag
         settings as going together in many cases. It would be nice to explore that in a way we did with using `/recall` as an alias for `/memory recall`
   - [ ] It would be nice to beable to rename the workspace showing with `/memory profile`
-
+- [ ] Min.io has been taken closed source, evalaute Go module alternatives for support S3 protocol services.
