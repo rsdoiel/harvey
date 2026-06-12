@@ -19,23 +19,24 @@
 </nav>
 <section>
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.10">harvey 0.0.10</h2>
+<h2 id="harvey-0.0.11">harvey 0.0.11</h2>
 <ul>
-<li>Added multi-language code-aware chunking for RAG ingestion (C, C++,
-Pascal, Oberon, Lisp, Basic)</li>
-<li>Added documentation extraction: comment and docstring association
-with symbols for C, C++, Pascal, Oberon, Lisp, Basic</li>
-<li>Added ANSI syntax highlighting of code blocks in LLM responses (13
-languages: C, C++, Pascal, Oberon, Lisp, Basic, Go, Python, JavaScript,
-TypeScript, Rust, Shell, SQL); configurable via
-<code>syntax_highlight</code> in harvey.yaml</li>
-<li>Added automatic code formatting on <code>write_file</code>: built-in
-formatters for Pascal, Oberon, Basic; external pipe-mode formatters for
-Go (gofmt), C/C++ (clang-format), Python (black), Rust (rustfmt),
-JavaScript/TypeScript (prettier); configurable via
-<code>auto_format</code> in harvey.yaml</li>
-<li>Added <code>/format FILE [FILE...]</code> command to manually format
-workspace source files in-place</li>
+<li>Added scholarly identifier extraction and normalization for 14
+identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN,
+ISNI, PMID, PMCID, VIAF, SNAC, LCNAF) via
+<code>scholarly_identifiers.go</code> and
+<code>github.com/caltechlibrary/metadatatools</code></li>
+<li>Added scholarly-aware PDF ingest: papers are chunked by section
+(abstract, introduction, methods, results, discussion, conclusion,
+references) and tagged with the document’s own identifiers and any cited
+works’ identifiers</li>
+<li>Extended the knowledge base schema so observations can record a
+source DOI and concepts can represent scholarly entities (people,
+papers, institutions, funders) via an identifier type/value pair</li>
+<li>Workspace onboarding now scans
+<code>codemeta.json</code>/<code>CITATION.cff</code> for identifiers
+(e.g. author ORCID iDs, release DOIs) and records them in the project’s
+<code>project_fact</code> memory metadata</li>
 </ul>
 <h2 id="authors">Authors</h2>
 <ul>

@@ -12,26 +12,25 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.10
+version: 0.0.11
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go >= 1.26.3
 
 
-date_released: 2026-06-10
+date_released: 2026-06-11
 ---
 
 About this software
 ===================
 
-## harvey 0.0.10
+## harvey 0.0.11
 
-- Added multi-language code-aware chunking for RAG ingestion (C, C++, Pascal, Oberon, Lisp, Basic)
-- Added documentation extraction: comment and docstring association with symbols for C, C++, Pascal, Oberon, Lisp, Basic
-- Added ANSI syntax highlighting of code blocks in LLM responses (13 languages: C, C++, Pascal, Oberon, Lisp, Basic, Go, Python, JavaScript, TypeScript, Rust, Shell, SQL); configurable via `syntax_highlight` in harvey.yaml
-- Added automatic code formatting on `write_file`: built-in formatters for Pascal, Oberon, Basic; external pipe-mode formatters for Go (gofmt), C/C++ (clang-format), Python (black), Rust (rustfmt), JavaScript/TypeScript (prettier); configurable via `auto_format` in harvey.yaml
-- Added `/format FILE [FILE...]` command to manually format workspace source files in-place
+- Added scholarly identifier extraction and normalization for 14 identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN, ISNI, PMID, PMCID, VIAF, SNAC, LCNAF) via `scholarly_identifiers.go` and `github.com/caltechlibrary/metadatatools`
+- Added scholarly-aware PDF ingest: papers are chunked by section (abstract, introduction, methods, results, discussion, conclusion, references) and tagged with the document's own identifiers and any cited works' identifiers
+- Extended the knowledge base schema so observations can record a source DOI and concepts can represent scholarly entities (people, papers, institutions, funders) via an identifier type/value pair
+- Workspace onboarding now scans `codemeta.json`/`CITATION.cff` for identifiers (e.g. author ORCID iDs, release DOIs) and records them in the project's `project_fact` memory metadata
 
 ## Authors
 

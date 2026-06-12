@@ -1,6 +1,6 @@
-%harvey(1) user manual | version 0.0.10 b2b3cad
+%harvey(1) user manual | version 0.0.11 cc349ec
 % R. S. Doiel
-% 2026-06-09
+% 2026-06-11
 
 # NAME
 

@@ -1,11 +1,11 @@
 #!/bin/sh
-# generated with CMTools 0.0.10 b2b3cad
+# generated with CMTools 0.0.11 cc349ec
 
 #
 # Set the package name and version to install
 #
 PACKAGE="harvey"
-VERSION="0.0.10"
+VERSION="0.0.11"
 GIT_GROUP="rsdoiel"
 RELEASE="https://github.com/$GIT_GROUP/$PACKAGE/releases/tag/v$VERSION"
 if [ "$PKG_VERSION" != "" ]; then
