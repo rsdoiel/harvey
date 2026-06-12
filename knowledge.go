@@ -116,7 +116,9 @@ type Project struct {
 }
 
 /** Observation represents a single timestamped note, finding, decision,
- * question, or hypothesis attached to a project.
+ * question, or hypothesis attached to a project. SourceDOI records the
+ * normalized DOI of the paper the observation was extracted from, if any;
+ * it is "" for observations not tied to a specific source document.
  *
  * Example:
  *   obs, err := kb.Observations(projectID)
@@ -129,22 +131,44 @@ type Observation struct {
 	ProjectID int64
 	Kind      string
 	Body      string
+	SourceDOI string
 	CreatedAt time.Time
 }
 
 /** Concept represents a named idea or term that can be linked to projects and
- * observations.
+ * observations. A concept may also represent a scholarly entity — a paper,
+ * person, institution, or funder — in which case IdentifierType is one of
+ * the IdentifierType values (e.g. "doi", "orcid", "ror", "fundref") and
+ * IdentifierValue is that identifier's normalized (extended) form. Both
+ * fields are "" for concepts that are plain ideas/terms, not entities.
  *
  * Example:
  *   concepts, err := kb.Concepts()
  *   for _, c := range concepts {
  *       fmt.Println(c.Name, "-", c.Description)
+ *       if c.IdentifierType != "" {
+ *           fmt.Printf("  %s: %s\n", c.IdentifierType, c.IdentifierValue)
+ *       }
  *   }
  */
 type Concept struct {
-	ID          int64
-	Name        string
-	Description string
+	ID              int64
+	Name            string
+	Description     string
+	IdentifierType  string
+	IdentifierValue string
+}
+
+// kbAlterStmts are lazy-migration ALTER TABLE statements that add
+// scholarly-identifier columns to pre-existing knowledge bases: a paper's
+// DOI for observations extracted from it, and an identifier type/value pair
+// (e.g. ORCID, ROR, FundRef — see IdentifierType) for concepts that
+// represent scholarly entities. SQLite ignores "duplicate column name"
+// errors via _, _ = db.Exec(...).
+var kbAlterStmts = []string{
+	`ALTER TABLE observations ADD COLUMN source_doi TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE concepts ADD COLUMN identifier_type TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE concepts ADD COLUMN identifier_value TEXT NOT NULL DEFAULT ''`,
 }
 
 /** OpenKnowledgeBase opens (or creates) the SQLite knowledge base. customPath
@@ -195,6 +219,9 @@ func OpenKnowledgeBase(ws *Workspace, customPath string) (*KnowledgeBase, error)
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("knowledge: apply schema: %w", err)
+	}
+	for _, stmt := range kbAlterStmts {
+		_, _ = db.Exec(stmt)
 	}
 	kb := &KnowledgeBase{db: db, path: dbPath}
 	if _, err := db.Exec(ftsSchema); err == nil {
@@ -298,6 +325,7 @@ func (kb *KnowledgeBase) Projects() ([]Project, error) {
 var ValidObservationKinds = []string{"note", "finding", "decision", "question", "hypothesis"}
 
 /** AddObservation inserts a new observation for a project and returns its ID.
+ * It is equivalent to calling AddObservationWithSource with sourceDOI = "".
  *
  * Parameters:
  *   projectID (int64)  — ID of the owning project.
@@ -312,13 +340,35 @@ var ValidObservationKinds = []string{"note", "finding", "decision", "question", 
  *   id, err := kb.AddObservation(1, "finding", "WAL mode doubles write throughput")
  */
 func (kb *KnowledgeBase) AddObservation(projectID int64, kind, body string) (int64, error) {
+	return kb.AddObservationWithSource(projectID, kind, body, "")
+}
+
+/** AddObservationWithSource inserts a new observation for a project,
+ * recording the normalized DOI of the paper it was extracted from, and
+ * returns its ID.
+ *
+ * Parameters:
+ *   projectID (int64)  — ID of the owning project.
+ *   kind      (string) — one of: note, finding, decision, question, hypothesis.
+ *   body      (string) — the observation text.
+ *   sourceDOI (string) — normalized DOI of the source paper, or "" if none.
+ *
+ * Returns:
+ *   int64 — ID of the new observation.
+ *   error — if kind is invalid or the insert fails.
+ *
+ * Example:
+ *   id, err := kb.AddObservationWithSource(1, "finding",
+ *       "This paper found X", "https://doi.org/10.1234/abcd.5678")
+ */
+func (kb *KnowledgeBase) AddObservationWithSource(projectID int64, kind, body, sourceDOI string) (int64, error) {
 	if !isValidKind(kind) {
 		return 0, fmt.Errorf("knowledge: invalid kind %q; must be one of: %s",
 			kind, strings.Join(ValidObservationKinds, ", "))
 	}
 	res, err := kb.db.Exec(
-		`INSERT INTO observations (project_id, kind, body) VALUES (?, ?, ?)`,
-		projectID, kind, body,
+		`INSERT INTO observations (project_id, kind, body, source_doi) VALUES (?, ?, ?, ?)`,
+		projectID, kind, body, sourceDOI,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("knowledge: add observation: %w", err)
@@ -353,7 +403,7 @@ func (kb *KnowledgeBase) AddObservation(projectID int64, kind, body string) (int
  */
 func (kb *KnowledgeBase) Observations(projectID int64) ([]Observation, error) {
 	rows, err := kb.db.Query(
-		`SELECT id, project_id, kind, body, created_at
+		`SELECT id, project_id, kind, body, source_doi, created_at
 		 FROM   observations
 		 WHERE  project_id = ?
 		 ORDER  BY created_at DESC`,
@@ -367,7 +417,7 @@ func (kb *KnowledgeBase) Observations(projectID int64) ([]Observation, error) {
 	for rows.Next() {
 		var o Observation
 		var ts string
-		if err := rows.Scan(&o.ID, &o.ProjectID, &o.Kind, &o.Body, &ts); err != nil {
+		if err := rows.Scan(&o.ID, &o.ProjectID, &o.Kind, &o.Body, &o.SourceDOI, &ts); err != nil {
 			return nil, err
 		}
 		o.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", ts)
@@ -382,7 +432,9 @@ func (kb *KnowledgeBase) Observations(projectID int64) ([]Observation, error) {
 // ─── Concepts ────────────────────────────────────────────────────────────────
 
 /** AddConcept inserts a new concept or, if a concept with the same name exists,
- * returns its ID unchanged.
+ * returns its ID unchanged. It is equivalent to calling AddConceptWithIdentifier
+ * with identifierType = identifierValue = "", which leaves any identifier
+ * already recorded for an existing concept untouched.
  *
  * Parameters:
  *   name        (string) — unique concept name.
@@ -396,10 +448,38 @@ func (kb *KnowledgeBase) Observations(projectID int64) ([]Observation, error) {
  *   id, err := kb.AddConcept("WAL mode", "SQLite write-ahead logging for concurrency")
  */
 func (kb *KnowledgeBase) AddConcept(name, description string) (int64, error) {
+	return kb.AddConceptWithIdentifier(name, description, "", "")
+}
+
+/** AddConceptWithIdentifier inserts a new concept, or updates an existing
+ * concept with the same name, optionally recording a scholarly identifier
+ * (e.g. a paper's DOI, a person's ORCID, an institution's ROR) that the
+ * concept represents. If identifierType or identifierValue is "" on an
+ * update, the existing stored value (if any) is preserved rather than
+ * cleared.
+ *
+ * Parameters:
+ *   name            (string) — unique concept name.
+ *   description     (string) — human-readable explanation of the concept.
+ *   identifierType  (string) — one of the IdentifierType values (e.g. "doi", "orcid"), or "".
+ *   identifierValue (string) — normalized (extended) identifier value, or "".
+ *
+ * Returns:
+ *   int64 — ID of the inserted or existing concept.
+ *   error — on database failure.
+ *
+ * Example:
+ *   id, err := kb.AddConceptWithIdentifier("Jane Doe", "paper author",
+ *       string(IdentifierORCID), "0000-0003-0900-6903")
+ */
+func (kb *KnowledgeBase) AddConceptWithIdentifier(name, description, identifierType, identifierValue string) (int64, error) {
 	res, err := kb.db.Exec(
-		`INSERT INTO concepts (name, description) VALUES (?, ?)
-		 ON CONFLICT(name) DO UPDATE SET description = excluded.description`,
-		name, description,
+		`INSERT INTO concepts (name, description, identifier_type, identifier_value) VALUES (?, ?, ?, ?)
+		 ON CONFLICT(name) DO UPDATE SET
+		     description = excluded.description,
+		     identifier_type = CASE WHEN excluded.identifier_type = '' THEN concepts.identifier_type ELSE excluded.identifier_type END,
+		     identifier_value = CASE WHEN excluded.identifier_value = '' THEN concepts.identifier_value ELSE excluded.identifier_value END`,
+		name, description, identifierType, identifierValue,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("knowledge: add concept: %w", err)
@@ -432,7 +512,7 @@ func (kb *KnowledgeBase) AddConcept(name, description string) (int64, error) {
  *   }
  */
 func (kb *KnowledgeBase) Concepts() ([]Concept, error) {
-	rows, err := kb.db.Query(`SELECT id, name, description FROM concepts ORDER BY name`)
+	rows, err := kb.db.Query(`SELECT id, name, description, identifier_type, identifier_value FROM concepts ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +520,7 @@ func (kb *KnowledgeBase) Concepts() ([]Concept, error) {
 	var out []Concept
 	for rows.Next() {
 		var c Concept
-		if err := rows.Scan(&c.ID, &c.Name, &c.Description); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.IdentifierType, &c.IdentifierValue); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -568,7 +648,7 @@ func (kb *KnowledgeBase) Summary() (string, error) {
 // recentObservations returns the n most recent observations for a project.
 func (kb *KnowledgeBase) recentObservations(projectID int64, n int) ([]Observation, error) {
 	rows, err := kb.db.Query(
-		`SELECT id, project_id, kind, body, created_at
+		`SELECT id, project_id, kind, body, source_doi, created_at
 		 FROM   observations
 		 WHERE  project_id = ?
 		 ORDER  BY created_at DESC
@@ -583,7 +663,7 @@ func (kb *KnowledgeBase) recentObservations(projectID int64, n int) ([]Observati
 	for rows.Next() {
 		var o Observation
 		var ts string
-		if err := rows.Scan(&o.ID, &o.ProjectID, &o.Kind, &o.Body, &ts); err != nil {
+		if err := rows.Scan(&o.ID, &o.ProjectID, &o.Kind, &o.Body, &o.SourceDOI, &ts); err != nil {
 			return nil, err
 		}
 		o.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", ts)
@@ -776,7 +856,7 @@ func (kb *KnowledgeBase) projectByID(id int64) (*Project, error) {
  */
 func (kb *KnowledgeBase) ProjectConcepts(projectID int64) ([]Concept, error) {
 	rows, err := kb.db.Query(`
-		SELECT c.id, c.name, c.description
+		SELECT c.id, c.name, c.description, c.identifier_type, c.identifier_value
 		FROM   concepts c
 		JOIN   project_concepts pc ON pc.concept_id = c.id
 		WHERE  pc.project_id = ?
@@ -789,7 +869,7 @@ func (kb *KnowledgeBase) ProjectConcepts(projectID int64) ([]Concept, error) {
 	var out []Concept
 	for rows.Next() {
 		var c Concept
-		if err := rows.Scan(&c.ID, &c.Name, &c.Description); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.IdentifierType, &c.IdentifierValue); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

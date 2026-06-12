@@ -123,6 +123,42 @@ func TestKnowledgeBase_invalidKind(t *testing.T) {
 	}
 }
 
+func TestKnowledgeBase_observationSourceDOI(t *testing.T) {
+	kb := openTestKB(t)
+	pid, _ := kb.AddProject("proj", "")
+
+	// AddObservation leaves SourceDOI empty.
+	id1, err := kb.AddObservation(pid, "note", "no source")
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	doi := "https://doi.org/10.1234/abcd.5678"
+	id2, err := kb.AddObservationWithSource(pid, "finding", "from a paper", doi)
+	if err != nil {
+		t.Fatalf("AddObservationWithSource: %v", err)
+	}
+
+	obs, err := kb.Observations(pid)
+	if err != nil {
+		t.Fatalf("Observations: %v", err)
+	}
+	if len(obs) != 2 {
+		t.Fatalf("expected 2 observations, got %d", len(obs))
+	}
+
+	byID := map[int64]Observation{}
+	for _, o := range obs {
+		byID[o.ID] = o
+	}
+	if got := byID[id1].SourceDOI; got != "" {
+		t.Errorf("observation %d SourceDOI = %q, want \"\"", id1, got)
+	}
+	if got := byID[id2].SourceDOI; got != doi {
+		t.Errorf("observation %d SourceDOI = %q, want %q", id2, got, doi)
+	}
+}
+
 // ─── Concepts ────────────────────────────────────────────────────────────────
 
 func TestKnowledgeBase_concepts(t *testing.T) {
@@ -156,6 +192,52 @@ func TestKnowledgeBase_concepts(t *testing.T) {
 	}
 	if len(concepts) != 1 {
 		t.Errorf("expected 1 concept, got %d", len(concepts))
+	}
+}
+
+func TestKnowledgeBase_conceptIdentifier(t *testing.T) {
+	kb := openTestKB(t)
+
+	orcid := "0000-0003-0900-6903"
+	id, err := kb.AddConceptWithIdentifier("Jane Doe", "paper author", string(IdentifierORCID), orcid)
+	if err != nil {
+		t.Fatalf("AddConceptWithIdentifier: %v", err)
+	}
+
+	concepts, err := kb.Concepts()
+	if err != nil {
+		t.Fatalf("Concepts: %v", err)
+	}
+	var got Concept
+	for _, c := range concepts {
+		if c.ID == id {
+			got = c
+		}
+	}
+	if got.IdentifierType != string(IdentifierORCID) || got.IdentifierValue != orcid {
+		t.Errorf("concept identifier = (%q, %q), want (%q, %q)",
+			got.IdentifierType, got.IdentifierValue, string(IdentifierORCID), orcid)
+	}
+
+	// A plain AddConcept on the same name must not clear the identifier.
+	if _, err := kb.AddConcept("Jane Doe", "updated description"); err != nil {
+		t.Fatalf("AddConcept: %v", err)
+	}
+	concepts, err = kb.Concepts()
+	if err != nil {
+		t.Fatalf("Concepts after update: %v", err)
+	}
+	for _, c := range concepts {
+		if c.ID == id {
+			got = c
+		}
+	}
+	if got.Description != "updated description" {
+		t.Errorf("description = %q, want %q", got.Description, "updated description")
+	}
+	if got.IdentifierType != string(IdentifierORCID) || got.IdentifierValue != orcid {
+		t.Errorf("identifier was cleared by AddConcept: got (%q, %q), want (%q, %q)",
+			got.IdentifierType, got.IdentifierValue, string(IdentifierORCID), orcid)
 	}
 }
 
