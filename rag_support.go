@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"math"
 	"os"
@@ -173,6 +174,8 @@ var enrichedAlterStmts = []string{
 	`ALTER TABLE chunks ADD COLUMN chunk_type TEXT    NOT NULL DEFAULT ''`,
 	`ALTER TABLE chunks ADD COLUMN symbols    TEXT    NOT NULL DEFAULT ''`,
 	`ALTER TABLE chunks ADD COLUMN docs       TEXT    NOT NULL DEFAULT ''`,
+	`ALTER TABLE chunks ADD COLUMN identifiers TEXT NOT NULL DEFAULT '{}'`,
+	`ALTER TABLE chunks ADD COLUMN citations   TEXT NOT NULL DEFAULT ''`,
 }
 
 /** IngestEnriched embeds each EnrichedChunk using embedder and stores the
@@ -208,8 +211,9 @@ func (r *RagStore) IngestEnriched(source string, chunks []EnrichedChunk, embedde
 	defer tx.Rollback()
 
 	const q = `INSERT INTO chunks(content, embedding, source,
-		start_line, start_col, end_line, end_col, chunk_type, symbols, docs)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		start_line, start_col, end_line, end_col, chunk_type, symbols, docs,
+		identifiers, citations)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	stmt, err := tx.Prepare(q)
 	if err != nil {
 		return err
@@ -226,11 +230,21 @@ func (r *RagStore) IngestEnriched(source string, chunks []EnrichedChunk, embedde
 			return err
 		}
 		syms := strings.Join(chunk.Symbols, ",")
+		identifiers := "{}"
+		if chunk.Identifiers != nil {
+			b, err := json.Marshal(chunk.Identifiers)
+			if err != nil {
+				return err
+			}
+			identifiers = string(b)
+		}
+		citations := strings.Join(chunk.Citations, ",")
 		if _, err = stmt.Exec(
 			chunk.Content, blob, source,
 			chunk.StartLine, chunk.StartCol,
 			chunk.EndLine, chunk.EndCol,
 			chunk.ChunkType, syms, chunk.Docs,
+			identifiers, citations,
 		); err != nil {
 			return err
 		}

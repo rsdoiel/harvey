@@ -502,6 +502,49 @@ func TestIngestEnriched_symbolsStoredAsCsv(t *testing.T) {
 	}
 }
 
+func TestIngestEnriched_identifiersAndCitations(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewRagStore(filepath.Join(dir, "s.db"), "stub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.db.Close()
+
+	chunks := []EnrichedChunk{
+		{
+			Content:     "with metadata",
+			ChunkType:   "references",
+			Identifiers: map[string][]string{"doi": {"https://doi.org/10.1234/abcd.5678"}},
+			Citations:   []string{"https://doi.org/10.5555/9999.0001", "arxiv:2412.03631"},
+		},
+		{Content: "without metadata", ChunkType: "body"},
+	}
+	if err := store.IngestEnriched("paper.pdf", chunks, stubEmbedder{"stub"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var identifiers, citations string
+	if err := store.db.QueryRow(`SELECT identifiers, citations FROM chunks WHERE content='with metadata'`).Scan(&identifiers, &citations); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"doi":["https://doi.org/10.1234/abcd.5678"]}`; identifiers != want {
+		t.Errorf("identifiers = %q, want %q", identifiers, want)
+	}
+	if want := "https://doi.org/10.5555/9999.0001,arxiv:2412.03631"; citations != want {
+		t.Errorf("citations = %q, want %q", citations, want)
+	}
+
+	if err := store.db.QueryRow(`SELECT identifiers, citations FROM chunks WHERE content='without metadata'`).Scan(&identifiers, &citations); err != nil {
+		t.Fatal(err)
+	}
+	if identifiers != "{}" {
+		t.Errorf("identifiers = %q, want \"{}\"", identifiers)
+	}
+	if citations != "" {
+		t.Errorf("citations = %q, want \"\"", citations)
+	}
+}
+
 // ─── ragIngestFile integration ────────────────────────────────────────────────
 
 func TestRagIngestFile_binarySkipped(t *testing.T) {

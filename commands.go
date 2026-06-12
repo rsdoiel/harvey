@@ -1750,10 +1750,11 @@ func ollamaModelTable(a *Agent, summaries []ModelSummary, out io.Writer, numbere
 }
 
 // ollamaListTable prints the capability table for /ollama list, grouped by tier:
-//   Tier 1 — full (tools + tagged blocks)
-//   Tier 2 — tools only
-//   Tier 3 — embed only
-//   Tier 4 — base / unprobed
+//
+//	Tier 1 — full (tools + tagged blocks)
+//	Tier 2 — tools only
+//	Tier 3 — embed only
+//	Tier 4 — base / unprobed
 func ollamaListTable(a *Agent, summaries []ModelSummary, out io.Writer) {
 	type tier struct {
 		label  string
@@ -5256,10 +5257,14 @@ func ragIngestFile(store *RagStore, embedder Embedder, path string) (int, error)
 }
 
 // ragIngestPDF extracts text from a PDF with pdfExtract and ingests it into
-// store as per-page chunks. Each chunk is prefixed with the document title and
-// page number so retrieved context always carries its provenance. Diagram-only
-// pages (sparse text, no raster images) are stored with an incomplete-content
-// marker so retrieval results can surface the caveat.
+// store. If the document looks like a scholarly paper (isPaperLike), it is
+// chunked by section via scholarlyChunk and ingested with IngestEnriched so
+// each chunk carries its section type and the document's scholarly
+// identifiers/citations. Otherwise it falls back to flat per-page chunks,
+// each prefixed with the document title and page number so retrieved context
+// always carries its provenance. Diagram-only pages (sparse text, no raster
+// images) are stored with an incomplete-content marker so retrieval results
+// can surface the caveat.
 // Returns (chunkCount, diagramPageNumbers, error).
 func ragIngestPDF(store *RagStore, embedder Embedder, path string) (int, []int, error) {
 	result, err := pdfExtract(path, "")
@@ -5282,6 +5287,17 @@ func ragIngestPDF(store *RagStore, embedder Embedder, path string) (int, []int, 
 		pageTexts = pageTexts[:len(pageTexts)-1]
 	}
 
+	if isPaperLike(pageTexts) {
+		chunks := scholarlyChunk(pageTexts, title, diagramSet)
+		if len(chunks) == 0 {
+			return 0, result.DiagramPages, nil
+		}
+		if err := store.IngestEnriched(path, chunks, embedder); err != nil {
+			return 0, nil, err
+		}
+		return len(chunks), result.DiagramPages, nil
+	}
+
 	totalPages := result.Info.Pages
 	if totalPages == 0 {
 		totalPages = len(pageTexts)
@@ -5294,7 +5310,7 @@ func ragIngestPDF(store *RagStore, embedder Embedder, path string) (int, []int, 
 
 		header := fmt.Sprintf("[PDF: %q, page %d of %d]", title, pageNum, totalPages)
 		if isDiagram {
-			header += "\n[DIAGRAM PAGE: vector graphics detected — text extraction is incomplete. Use a vision-capable model for this page.]"
+			header += diagramPageWarning
 		}
 
 		chunks := ragChunk(pageText)

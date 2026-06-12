@@ -62,42 +62,54 @@ type LanguageInfo struct {
 	BlockEnd       string
 	Shebang        string
 
-	HasChunking    bool
-	HasExtraction  bool
-	HasFormatting  bool
+	HasChunking     bool
+	HasExtraction   bool
+	HasFormatting   bool
 	HasHighlighting bool
 }
 
 // ─── Chunk and documentation types ───────────────────────────────────────────
 
-/** EnrichedChunk is a fragment of source code with location and semantic
- * metadata.  StartLine/StartCol and EndLine/EndCol give a precise re-location
- * address so a reader can jump directly to the chunk in the source file.
- * Columns are 0-indexed byte offsets from the start of the line.
+/** EnrichedChunk is a fragment of source code or document text with location
+ * and semantic metadata.  StartLine/StartCol and EndLine/EndCol give a precise
+ * re-location address so a reader can jump directly to the chunk in the source
+ * file. Columns are 0-indexed byte offsets from the start of the line.
  *
  * Fields:
- *   Content   (string)   — the text of this chunk.
- *   StartLine (int)      — first line of the chunk, 1-indexed.
- *   StartCol  (int)      — byte offset from the start of StartLine, 0-indexed.
- *   EndLine   (int)      — last line of the chunk, 1-indexed.
- *   EndCol    (int)      — byte offset from the start of EndLine, 0-indexed.
- *   ChunkType (string)   — "function", "class", "procedure", "comment", "code", etc.
- *   Symbols   ([]string) — identifiers defined in this chunk.
- *   Docs      (string)   — extracted comment/docstring text associated with the chunk.
+ *   Content     (string)              — the text of this chunk.
+ *   StartLine   (int)                 — first line of the chunk, 1-indexed.
+ *   StartCol    (int)                 — byte offset from the start of StartLine, 0-indexed.
+ *   EndLine     (int)                 — last line of the chunk, 1-indexed.
+ *   EndCol      (int)                 — byte offset from the start of EndLine, 0-indexed.
+ *   ChunkType   (string)              — "function", "class", "procedure", "comment", "code",
+ *                                        or for scholarly documents: "abstract", "introduction",
+ *                                        "methods", "results", "discussion", "conclusion",
+ *                                        "references", "body".
+ *   Symbols     ([]string)            — identifiers defined in this chunk.
+ *   Docs        (string)              — extracted comment/docstring text associated with the chunk.
+ *   Identifiers (map[string][]string) — the source document's own scholarly identifiers
+ *                                        (DOI, ORCID, ROR, FundRef, etc.), keyed by
+ *                                        IdentifierType string; shared across every chunk
+ *                                        from the same document. Empty/nil for non-scholarly chunks.
+ *   Citations   ([]string)            — scholarly identifiers found in this chunk's text that
+ *                                        point to OTHER works (e.g. DOIs cited in a references
+ *                                        section). Empty/nil for non-scholarly chunks.
  *
  * Example:
  *   chunk := EnrichedChunk{Content: "func Foo() {}", StartLine: 10, StartCol: 0,
  *       EndLine: 10, EndCol: 14, ChunkType: "function", Symbols: []string{"Foo"}}
  */
 type EnrichedChunk struct {
-	Content   string
-	StartLine int
-	StartCol  int
-	EndLine   int
-	EndCol    int
-	ChunkType string
-	Symbols   []string
-	Docs      string
+	Content     string
+	StartLine   int
+	StartCol    int
+	EndLine     int
+	EndCol      int
+	ChunkType   string
+	Symbols     []string
+	Docs        string
+	Identifiers map[string][]string
+	Citations   []string
 }
 
 /** DocumentationBlock represents a comment or docstring extracted from source.
@@ -570,13 +582,13 @@ func (r *LanguageRegistry) GetHighlighter(id string) SyntaxHighlighter {
 // Programming languages with planned code-aware features.
 
 var langGo = LanguageInfo{
-	ID:              "go",
-	Name:            "Go",
-	Extensions:      []string{".go", ".mod", ".sum"},
-	CommentMarkers:  []string{"//", "/*", "*/"},
-	BlockStart:      "{",
-	BlockEnd:        "}",
-	HasFormatting:   true, // gofmt (Phase 6)
+	ID:             "go",
+	Name:           "Go",
+	Extensions:     []string{".go", ".mod", ".sum"},
+	CommentMarkers: []string{"//", "/*", "*/"},
+	BlockStart:     "{",
+	BlockEnd:       "}",
+	HasFormatting:  true, // gofmt (Phase 6)
 }
 
 var langTypeScript = LanguageInfo{
@@ -754,11 +766,11 @@ var langHTML = LanguageInfo{
 }
 
 var langShell = LanguageInfo{
-	ID:         "shell",
-	Name:       "Shell",
-	Extensions: []string{".sh", ".bash"},
+	ID:             "shell",
+	Name:           "Shell",
+	Extensions:     []string{".sh", ".bash"},
 	CommentMarkers: []string{"#"},
-	Shebang:    "#!/usr/bin/env bash",
+	Shebang:        "#!/usr/bin/env bash",
 }
 
 var langEnv = LanguageInfo{
