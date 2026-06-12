@@ -139,6 +139,9 @@ func RunOnboarding(a *Agent, store *MemoryStore, embedder Embedder, out io.Write
 	if projectFact != "" {
 		pfID := GenerateMemoryID(MemoryTypeProjectFact)
 		pfDoc := NewMemoryDoc(pfID, MemoryTypeProjectFact, "Project: "+wsName, projectFact, []string{"project_fact", "auto"})
+		if ids := extractWorkspaceIdentifiers(wsRoot); ids != nil {
+			pfDoc.Meta.Metadata = map[string]any{"identifiers": ids}
+		}
 		pfDoc.FountainBody = BuildFountainBody(ts, [][2]string{
 			{"HARVEY", "Project fact captured during onboarding."},
 			{"SYSTEM", projectFact},
@@ -302,6 +305,42 @@ func extractProjectFact(wsRoot string) string {
 		return s
 	}
 	return ""
+}
+
+/** extractWorkspaceIdentifiers scans codemeta.json and CITATION.cff in the
+ * workspace root for scholarly identifiers (DOI, ORCID, ROR, FundRef, ...)
+ * via FindIdentifiers — e.g. an author's ORCID iD or a release DOI. Files
+ * that do not exist are skipped silently.
+ *
+ * Parameters:
+ *   wsRoot (string) — absolute path to the workspace root.
+ *
+ * Returns:
+ *   map[string][]string — identifiers found, keyed by IdentifierType string
+ *                          (e.g. "doi", "orcid"); nil if neither file is
+ *                          present or no identifiers are found.
+ *
+ * Example:
+ *   ids := extractWorkspaceIdentifiers("/home/user/harvey")
+ *   // ids["orcid"] == []string{"0000-0003-0900-6903"}
+ */
+func extractWorkspaceIdentifiers(wsRoot string) map[string][]string {
+	if wsRoot == "" {
+		return nil
+	}
+	var text strings.Builder
+	for _, name := range []string{"codemeta.json", "CITATION.cff"} {
+		data, err := os.ReadFile(filepath.Join(wsRoot, name))
+		if err != nil {
+			continue
+		}
+		text.Write(data)
+		text.WriteByte('\n')
+	}
+	if text.Len() == 0 {
+		return nil
+	}
+	return convertIdentifierMap(FindIdentifiers(text.String()))
 }
 
 // codemetaDoc mirrors the relevant fields from a codemeta.json file.

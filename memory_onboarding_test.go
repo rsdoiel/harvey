@@ -205,6 +205,81 @@ func TestRunOnboarding_ProjectFactFromCodemeta(t *testing.T) {
 	}
 }
 
+// TestRunOnboarding_ProjectFactIdentifiers verifies that an author ORCID iD
+// in codemeta.json is extracted and stored in the project_fact's
+// Meta.Metadata["identifiers"].
+func TestRunOnboarding_ProjectFactIdentifiers(t *testing.T) {
+	a, store := newOnboardingAgent(t)
+	defer store.Close()
+
+	codemeta := `{
+		"name": "testapp",
+		"description": "A test application",
+		"author": [{"id": "https://orcid.org/0000-0003-0900-6903"}]
+	}`
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "codemeta.json"), []byte(codemeta), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	input := strings.NewReader("1\n")
+	var out bytes.Buffer
+
+	if err := RunOnboarding(a, store, nil, &out, input); err != nil {
+		t.Fatalf("RunOnboarding: %v", err)
+	}
+
+	pfMetas, err := store.List(string(MemoryTypeProjectFact))
+	if err != nil || len(pfMetas) == 0 {
+		t.Fatal("no project_fact memory saved despite codemeta.json being present")
+	}
+	pfDoc, _ := store.ByID(pfMetas[0].ID)
+	if pfDoc == nil {
+		t.Fatal("could not load project_fact doc")
+	}
+
+	idsRaw, ok := pfDoc.Meta.Metadata["identifiers"]
+	if !ok {
+		t.Fatalf("project_fact Metadata missing \"identifiers\": %#v", pfDoc.Meta.Metadata)
+	}
+
+	// YAML round-trips map[string][]string as map[string]interface{}.
+	ids, ok := idsRaw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("identifiers has unexpected type %T: %#v", idsRaw, idsRaw)
+	}
+	orcids, ok := ids["orcid"].([]interface{})
+	if !ok || len(orcids) != 1 || orcids[0] != "0000-0003-0900-6903" {
+		t.Errorf("identifiers[\"orcid\"] = %#v, want [\"0000-0003-0900-6903\"]", ids["orcid"])
+	}
+}
+
+// TestExtractWorkspaceIdentifiers covers extractWorkspaceIdentifiers directly.
+func TestExtractWorkspaceIdentifiers(t *testing.T) {
+	// No codemeta.json or CITATION.cff present.
+	if ids := extractWorkspaceIdentifiers(t.TempDir()); ids != nil {
+		t.Errorf("expected nil identifiers for empty workspace, got %#v", ids)
+	}
+
+	// codemeta.json with an author ORCID and a DOI in CITATION.cff.
+	dir := t.TempDir()
+	codemeta := `{"name":"testapp","author":[{"id":"https://orcid.org/0000-0003-0900-6903"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "codemeta.json"), []byte(codemeta), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	citation := "identifiers:\n  - type: doi\n    value: 10.5281/zenodo.1234567\n"
+	if err := os.WriteFile(filepath.Join(dir, "CITATION.cff"), []byte(citation), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ids := extractWorkspaceIdentifiers(dir)
+	if got := ids["orcid"]; len(got) != 1 || got[0] != "0000-0003-0900-6903" {
+		t.Errorf("identifiers[\"orcid\"] = %v, want [\"0000-0003-0900-6903\"]", got)
+	}
+	if got := ids["doi"]; len(got) != 1 || got[0] != "https://doi.org/10.5281/zenodo.1234567" {
+		t.Errorf("identifiers[\"doi\"] = %v, want [\"https://doi.org/10.5281/zenodo.1234567\"]", got)
+	}
+}
+
 // TestRunOnboarding_WorkspaceLocalTemplate verifies that a template in
 // agents/templates/profiles/ is included in the picker and selectable.
 func TestRunOnboarding_WorkspaceLocalTemplate(t *testing.T) {
