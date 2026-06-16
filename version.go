@@ -12,7 +12,7 @@ const (
     ReleaseDate = "2026-06-11"
 
     // ReleaseHash, the Git hash when version.go was generated
-    ReleaseHash = "6253e0b"
+    ReleaseHash = "c92ea98"
     LicenseText = `
 harvey is a agent used with local large language models
 Copyright (C) 2026 R. S. Doiel

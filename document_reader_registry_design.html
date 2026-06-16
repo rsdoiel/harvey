@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1
+id="document-reader-registry-read-dispatch-design-for-harvey">Document
+Reader Registry &amp; <code>/read</code> Dispatch Design for Harvey</h1>
+<p><strong>Status:</strong> Draft (v1) <strong>Date:</strong>
+2026-06-12</p>
+<h2 id="overview">Overview</h2>
+<p>Harvey’s <code>/read</code> command (<code>cmdRead</code>,
+<code>commands.go:2387</code>) currently has <strong>no type
+awareness</strong>: it reads raw bytes and wraps them in a fenced code
+block, regardless of file type. For text/code/Markdown this is fine. For
+a PDF, it would inject raw binary bytes into the conversation — which is
+presumably why <code>/read-pdf</code> exists as a <em>separate</em>
+command with its own extraction pipeline (<code>pdfExtract</code>).
+<code>/attach</code> (<code>cmdAttach</code>,
+<code>commands.go:2839</code>) has its own hardcoded <code>.pdf</code>
+special case for the same reason.</p>
+<p>This is a smaller-scale version of the same problem
+<code>jats_support_design.md</code> is solving for JATS: every new
+structured document type (JATS now; Final Draft, Open Screenplay Format,
+FadeIn, ODT, … over time) would otherwise need its own
+<code>/read-X</code> command and its own special case in
+<code>/attach</code>.</p>
+<p>This design proposes a <strong><code>DocumentReader</code></strong>
+handler — registered per-language in the existing
+<code>LanguageRegistry</code> (<code>language_registry.go</code>),
+following the exact
+<code>SetExtractor</code>/<code>GetExtractor</code>/<code>initExtractors</code>
+pattern already established in <code>doc_extractors.go</code> for
+<code>CodeChunker</code>’s sibling, <code>DocExtractor</code>.
+<code>/read</code> and <code>/attach</code> both look up a
+<code>DocumentReader</code> for the detected file type before falling
+back to today’s behavior. PDF (retrofitting <code>cmdReadPDF</code>) and
+JATS (<code>jats_support_design.md</code>) become the first two
+registered readers; the interface is the contract future formats
+implement.</p>
+<h2 id="grounding-in-current-architecture">Grounding in current
+architecture</h2>
+<ol type="1">
+<li><p><strong><code>LanguageRegistry</code></strong>
+(<code>language_registry.go</code>) already does extension-keyed
+dispatch: <code>DetectFromExtension(ext) (langID, ok)</code>, then
+<code>GetChunker</code>/<code>GetExtractor</code>/<code>GetFormatter</code>/<code>GetHighlighter</code>.
+Adding <code>GetReader</code> is the same shape.</p></li>
+<li><p><strong><code>SetExtractor</code>/<code>initExtractors</code></strong>
+(<code>doc_extractors.go</code>) is the precedent for adding a handler
+<em>without</em> changing <code>RegisterLanguage</code>’s signature
+(which has ~17 call sites, all currently passing positional
+<code>nil</code>s for unused handlers):</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>LanguageRegistry<span class="op">)</span> SetExtractor<span class="op">(</span>id <span class="dt">string</span><span class="op">,</span> e DocExtractor<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>extractors<span class="op">[</span>id<span class="op">]</span> <span class="op">=</span> e</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> initExtractors<span class="op">(</span>r <span class="op">*</span>LanguageRegistry<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>SetExtractor<span class="op">(</span><span class="st">&quot;c&quot;</span><span class="op">,</span> NewCDocExtractor<span class="op">(</span><span class="st">&quot;c&quot;</span><span class="op">))</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ...</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>SetReader</code>/<code>GetReader</code>/<code>initReaders</code>
+follow this exact shape — no changes to <code>RegisterLanguage</code> or
+its call sites.</p></li>
+<li><p><strong><code>cmdRead</code></strong>
+(<code>commands.go:2387</code>): for each argument, reads bytes
+(workspace-relative or via <code>NewRemoteReader</code> for URIs), wraps
+in a fenced <code>```path\n...\n```</code> block, appends to one
+<code>user</code>-role context message. This is the <strong>fallback
+path</strong> for types with no registered reader — it stays as-is for
+source/Markdown/text.</p></li>
+<li><p><strong><code>cmdReadPDF</code></strong>
+(<code>commands.go:2677</code>) +
+<strong><code>pdfExtract</code></strong> (<code>pdf_extract.go</code>):
+the existing PDF-specific pipeline — page-range selection
+(<code>readPDFMaxPages</code> cap), poppler-based extraction,
+diagram-page detection. This logic becomes
+<code>PDFReader.Render</code>.</p></li>
+<li><p><strong><code>cmdAttach</code></strong>
+(<code>commands.go:2839</code>): has an explicit
+<code>if strings.ToLower(filepath.Ext(absPath)) == ".pdf" { return cmdReadPDF(...) }</code>
+branch (line 2873) before its generic MIME-based image/text routing
+(<code>attachDetectMIME</code>/<code>attachIsImageMIME</code>/<code>attachImage</code>/<code>attachText</code>).
+This branch becomes a <code>GetReader</code> lookup; image handling is
+unaffected (images aren’t “documents with renderable text” — they stay
+on the vision/MIME path).</p></li>
+<li><p><strong><code>jats_support_design.md</code> §6</strong> proposed
+a JATS-specific <code>/read-jats</code> + <code>read_jats</code> tool.
+Under this design, JATS instead registers a <code>JATSReader</code> via
+<code>SetReader("jats", ...)</code> —
+<code>/read FILE.nxml [SECTION]</code> reaches it through the same
+dispatch as PDF. (§6 of that doc is updated to point here.)</p></li>
+<li><p><strong><code>LanguageDetector.Detect(filePath, content) (lang string, confidence float64)</code></strong>
+(<code>language_registry.go</code>) already exists as a
+<em>content-based</em> detection interface for code, used when extension
+alone is ambiguous. This is the natural extension point for formats that
+share an extension (see §7 below) — no new interface needed, just new
+implementations.</p></li>
+</ol>
+<h2 id="proposed-design">Proposed design</h2>
+<h3 id="documentreader-interface">1. <code>DocumentReader</code>
+interface</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ReadOptions carries format-specific selection/limits for DocumentReader.Render.</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co">// Selector is free-form per format: a PDF page range (&quot;40-55&quot;), a JATS</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">// section type or title, etc. MaxBytes of 0 means &quot;use the reader&#39;s default&quot;.</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ReadOptions <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    Selector <span class="dt">string</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    MaxBytes <span class="dt">int</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co">// DocumentReader renders a structured document&#39;s raw bytes into a</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co">// human/LLM-readable string suitable for injection as conversation context.</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Render does not touch the filesystem or workspace — path is used only for</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co">// provenance text (e.g. &quot;[PDF: \&quot;path\&quot;, page 1-10 of 42]&quot;).</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> DocumentReader <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    Render<span class="op">(</span>data <span class="op">[]</span><span class="dt">byte</span><span class="op">,</span> path <span class="dt">string</span><span class="op">,</span> opts ReadOptions<span class="op">)</span> <span class="op">(</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Language returns the language/format ID this reader handles,</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="co">// matching the ID it was registered under.</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    Language<span class="op">()</span> <span class="dt">string</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="registry-wiring">2. Registry wiring</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>LanguageRegistry<span class="op">)</span> SetReader<span class="op">(</span>id <span class="dt">string</span><span class="op">,</span> dr DocumentReader<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>readers<span class="op">[</span>id<span class="op">]</span> <span class="op">=</span> dr</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>LanguageRegistry<span class="op">)</span> GetReader<span class="op">(</span>id <span class="dt">string</span><span class="op">)</span> DocumentReader <span class="op">{</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> r<span class="op">.</span>readers<span class="op">[</span>id<span class="op">]</span> <span class="co">// nil if absent</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">// initReaders wires DocumentReaders for registered formats.</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> initReaders<span class="op">(</span>r <span class="op">*</span>LanguageRegistry<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>SetReader<span class="op">(</span><span class="st">&quot;pdf&quot;</span><span class="op">,</span> NewPDFReader<span class="op">())</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>SetReader<span class="op">(</span><span class="st">&quot;jats&quot;</span><span class="op">,</span> NewJATSReader<span class="op">())</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>LanguageRegistry.readers map[string]DocumentReader</code> is
+added to the struct and initialized in <code>NewLanguageRegistry</code>,
+mirroring <code>extractors</code>.</p>
+<p><code>.pdf</code> and <code>.nxml</code> need entries in
+<code>LanguageRegistry</code>’s extension table even though PDF/JATS
+aren’t “programming languages” — <code>RegisterLanguage</code> is
+already used for non-code formats (Markdown, JSON, YAML, etc.), so:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> langPDF  <span class="op">=</span> LanguageInfo<span class="op">{</span>ID<span class="op">:</span> <span class="st">&quot;pdf&quot;</span><span class="op">,</span>  Name<span class="op">:</span> <span class="st">&quot;PDF&quot;</span><span class="op">,</span>  Extensions<span class="op">:</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;.pdf&quot;</span><span class="op">}}</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> langJATS <span class="op">=</span> LanguageInfo<span class="op">{</span>ID<span class="op">:</span> <span class="st">&quot;jats&quot;</span><span class="op">,</span> Name<span class="op">:</span> <span class="st">&quot;JATS&quot;</span><span class="op">,</span> Extensions<span class="op">:</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;.nxml&quot;</span><span class="op">}}</span></span></code></pre></div>
+<h3 id="read-dispatch-cmdread">3. <code>/read</code> dispatch
+(<code>cmdRead</code>)</h3>
+<p>For each file argument: 1. Resolve path, check read permission
+(unchanged). 2. <code>ext := filepath.Ext(rel)</code>;
+<code>langID, ok := globalRegistry.DetectFromExtension(ext)</code>. 3.
+If <code>ok</code> and
+<code>reader := globalRegistry.GetReader(langID)</code> is non-nil: -
+Read raw bytes, call
+<code>reader.Render(data, rel, ReadOptions{Selector: optionalArg})</code>.
+- Append the rendered string directly (it already carries its own
+provenance header — no extra fenced-block wrapping). 4. Otherwise
+(today’s behavior, with one fix): read raw bytes; - if
+<code>isTextContent(data)</code> (already used by
+<code>ragIngestFile</code>), wrap in a fenced <code>```path</code> block
+as today; - if <strong>not</strong> text and no reader is registered,
+print
+<code>✗ path: binary file, no reader registered for "&lt;ext&gt;"</code>
+instead of injecting raw bytes — this is the concrete bug
+<code>/read foo.pdf</code> has today (before PDF gets
+<code>PDFReader</code>, and for any future binary format without a
+reader yet).</p>
+<p><code>SECTION</code>/<code>PAGES</code>-style optional arguments:
+<code>/read FILE.pdf 40-55</code> and
+<code>/read FILE.nxml "Methods"</code> both pass their trailing argument
+as <code>ReadOptions.Selector</code> — each reader interprets it in its
+own format (page range vs. section name/type). <code>/read FILE</code>
+with no selector means “whole document” (subject to the reader’s own
+size caps, e.g. PDF’s 20-page limit).</p>
+<h3 id="attach-simplification-cmdattach">4. <code>/attach</code>
+simplification (<code>cmdAttach</code>)</h3>
+<p>Replace the hardcoded:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> strings<span class="op">.</span>ToLower<span class="op">(</span>filepath<span class="op">.</span>Ext<span class="op">(</span>absPath<span class="op">))</span> <span class="op">==</span> <span class="st">&quot;.pdf&quot;</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> cmdReadPDF<span class="op">(</span>a<span class="op">,</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span>absPath<span class="op">},</span> out<span class="op">)</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>with:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> langID<span class="op">,</span> ok <span class="op">:=</span> globalRegistry<span class="op">.</span>DetectFromExtension<span class="op">(</span>filepath<span class="op">.</span>Ext<span class="op">(</span>absPath<span class="op">));</span> ok <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> reader <span class="op">:=</span> globalRegistry<span class="op">.</span>GetReader<span class="op">(</span>langID<span class="op">);</span> reader <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>        data<span class="op">,</span> err <span class="op">:=</span> os<span class="op">.</span>ReadFile<span class="op">(</span>absPath<span class="op">)</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>        <span class="co">// ... render via reader, inject, return</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>falling through to the existing MIME-based image/text routing when no
+reader matches — unchanged for images and plain text/code attachments.
+<code>cmdAttachRemote</code> gets the analogous change (currently has
+its own <code>.pdf</code> special case at line 2911).</p>
+<h3 id="pdf-retrofit-pdfreader">5. PDF retrofit —
+<code>PDFReader</code></h3>
+<p><code>PDFReader.Render</code> wraps the existing
+<code>cmdReadPDF</code> logic almost verbatim: parse
+<code>opts.Selector</code> as a page range (or “whole doc” up to
+<code>readPDFMaxPages</code>), call
+<code>pdfExtract(path-derived-tempfile-or-data, pages)</code>, return
+the same formatted text <code>cmdReadPDF</code> currently writes to
+<code>out</code> and injects via <code>a.AddMessage</code>.</p>
+<p>One wrinkle: <code>pdfExtract</code>
+(<code>pdf_extract.go:171</code>) takes a <strong>file path</strong>,
+not bytes (it shells out to
+<code>pdftotext</code>/<code>pdfinfo</code>/<code>pdfimages</code>).
+<code>Render(data []byte, path string, ...)</code> would need either (a)
+<code>pdfExtract</code> to accept a path directly when available (the
+common case — <code>/read</code>/<code>/attach</code> operate on
+workspace/local files) with <code>data</code> unused for PDF, or (b)
+write <code>data</code> to a temp file when <code>path</code> isn’t a
+real filesystem path (e.g. the remote-download case
+<code>cmdAttachRemote</code> already temp-files PDFs for this reason).
+Proposal: <strong><code>DocumentReader.Render</code> receives both
+<code>data</code> and <code>path</code></strong>; PDF’s implementation
+uses <code>path</code> when it’s a real file and falls back to a temp
+file from <code>data</code> otherwise (same as
+<code>cmdAttachRemote</code> does today) — no interface change needed,
+just documented in <code>PDFReader</code>’s implementation.</p>
+<p><strong><code>/read-pdf</code> is removed</strong> once
+<code>/read FILE.pdf [PAGES]</code> works via the registry dispatch —
+<code>/read</code> fully replaces it (decided, see “Decisions” below).
+<code>harvey-read-pdf.7.md</code> is folded into <code>/read</code>’s
+man page/help text rather than kept as a separate page.</p>
+<h3 id="jats-reader-jatsreader">6. JATS reader —
+<code>JATSReader</code></h3>
+<p>Per <code>jats_support_design.md</code> §1/§6:
+<code>JATSReader.Render</code> calls <code>ParseJATS</code>;
+<code>opts.Selector</code>, if non-empty, is resolved in two passes —
+first against <code>sec-type</code> (e.g. <code>"methods"</code>), then
+against <code>&lt;title&gt;</code> text
+(e.g. <code>"Materials and Methods"</code>), case-insensitive —
+returning that section’s full flattened text. If
+<code>opts.Selector</code> is empty, <code>Render</code> returns the
+structured summary (title/authors/identifiers/abstract/section
+outline/keywords/funding/ reference count) — the JATS analog of PDF’s
+page range. No <code>/read-jats</code> command needed;
+<code>/read FILE.nxml ["Methods"]</code> is the entry point.</p>
+<h3 id="ambiguous-extensions-e.g.-.xml">7. Ambiguous extensions
+(e.g. <code>.xml</code>)</h3>
+<p><code>.nxml</code> (JATS) and (per the roadmap below) likely
+<code>.fdx</code> (Final Draft / Open Screenplay Format) are distinct
+enough to register directly. Plain <code>.xml</code> is ambiguous —
+JATS, FDX-family, or generic config/data XML could all use it.
+<strong>Confirmed deferred</strong> (decided, see “Decisions” below):
+<code>DetectFromExtension(".xml")</code> stays unregistered (falls to
+today’s fallback) until a format that commonly ships as
+<code>.xml</code> is actually designed. At that point, the existing
+<code>LanguageDetector.Detect</code> content-sniffing interface (root
+element / namespace / DOCTYPE check) is the extension point —
+<code>cmdRead</code>’s dispatch in §3 would need to call
+<code>Detect</code> as a tiebreaker when
+<code>DetectFromExtension</code> returns an ID with no reader, or
+returns an ambiguous/generic ID.</p>
+<h2 id="roadmap-future-document-readers">Roadmap — future document
+readers</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Format</th>
+<th scope="col">Typical extension(s)</th>
+<th scope="col">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PDF</td>
+<td><code>.pdf</code></td>
+<td>this design — retrofit of
+<code>pdfExtract</code>/<code>cmdReadPDF</code></td>
+</tr>
+<tr>
+<td>JATS</td>
+<td><code>.nxml</code></td>
+<td><code>jats_support_design.md</code></td>
+</tr>
+<tr>
+<td>Final Draft</td>
+<td><code>.fdx</code></td>
+<td>XML-based screenplay format — verify current schema/version before
+design</td>
+</tr>
+<tr>
+<td>Open Screenplay Format</td>
+<td>likely <code>.fdx</code> or <code>.osf</code> (verify)</td>
+<td>possible extension collision with Final Draft and/or generic
+<code>.xml</code> — needs §7</td>
+</tr>
+<tr>
+<td>Fade In</td>
+<td><code>.fadein</code></td>
+<td>verify container format (zip vs. flat XML/JSON) before design</td>
+</tr>
+<tr>
+<td>OpenDocument Text</td>
+<td><code>.odt</code></td>
+<td>zip-based ODF package (<code>content.xml</code> + manifest) — first
+format in this list that isn’t flat text/XML;
+<code>Render(data []byte, ...)</code> is confirmed sufficient (decided),
+implementation unzips <code>data</code> in-memory via
+<code>archive/zip.NewReader(bytes.NewReader(data), len(data))</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each future format gets its own <code>*_support_design.md</code> (per
+the <code>jats_support_design.md</code> precedent) defining its
+<code>DocumentReader</code> implementation against this shared
+interface/dispatch. Given Harvey’s existing Fountain
+(<code>.spmd</code>) screenplay format and
+<code>FOUNTAIN_FORMAT.md</code>, the screenplay-format readers
+(FDX/OSF/FadeIn) may eventually be interesting as <em>conversion</em>
+sources (→ Fountain) — noted for context, not designed here.</p>
+<h2 id="decisions-resolved-2026-06-12">Decisions (resolved
+2026-06-12)</h2>
+<ol type="1">
+<li><strong><code>/read-pdf</code> fate</strong> —
+<code>/read FILE [SELECTOR]</code> fully replaces it.
+<code>/read-pdf</code> is removed (§5);
+<code>harvey-read-pdf.7.md</code> is folded into <code>/read</code>’s
+docs. No JATS-specific <code>/read-jats</code> command was ever
+introduced (§6).</li>
+<li><strong>ODT / archive formats</strong> —
+<code>Render(data []byte, path string, opts) (string, error)</code> is
+unchanged; <code>archive/zip.NewReader</code> works directly against
+<code>bytes.NewReader(data)</code>, so no path-based variant is needed
+(§ roadmap).</li>
+<li><strong>Binary-file warning</strong> (§3, item 4) — bundled into the
+<code>/read</code> dispatch rewrite (same <code>cmdRead</code> edit),
+not shipped as a separate fix.</li>
+<li><strong><code>.xml</code> disambiguation</strong> (§7) — confirmed
+deferred until a format that needs it is actually designed.</li>
+<li><strong>Selector syntax &amp; <code>ReadOptions</code>
+shape</strong> (§1, §3) — superseded by
+<code>document_reader_registry_plan.md</code>’s “Plan-level decisions” A
+and B, discovered while grounding the plan in <code>cmdRead</code>’s
+actual code: <code>/read</code> selectors use <code>FILE#SELECTOR</code>
+fragment syntax (not §3’s trailing argument — ambiguous with
+<code>/read</code>’s multi-file form), and <code>ReadOptions</code> has
+only <code>Selector</code> (<code>MaxBytes</code> from §1 dropped as
+unused by both PDF and JATS readers). §1 and §3’s prose below are left
+as the original v1 proposal for context; the plan is authoritative.</li>
+</ol>
+<p><code>jats_support_design.md</code>’s own five open questions
+(front_matter chunk type, MathML/TeX handling, <code>JATSReader</code>
+selector matching, citation/affiliation linkage deferral, test fixtures)
+were resolved in the same pass — see that doc’s “Decisions” section.</p>
+<h2 id="next-steps">Next steps</h2>
+<ol type="1">
+<li><del>Resolve open questions above</del> — done (see “Decisions”
+above).</li>
+<li><del>Update <code>jats_support_design.md</code> §6 (and the
+registry-integration section)</del> — done; JATS registers
+<code>JATSReader</code> via <code>SetReader</code> (no
+<code>/read-jats</code> command/<code>read_jats</code> tool).</li>
+<li>Both design docs are now reconciled and fully resolved. Next: write
+an implementation plan covering the sequencing below (e.g. as part of,
+or alongside, <code>jats_support_plan.md</code>):
+<code>DocumentReader</code> interface +
+<code>SetReader</code>/<code>GetReader</code>/<code>initReaders</code>
+(+ tests) → <code>PDFReader</code> retrofit (+ tests;
+<code>/read-pdf</code> removed, behavior moves to
+<code>/read FILE.pdf [PAGES]</code>) → <code>/read</code> dispatch in
+<code>cmdRead</code> (+ tests, including the binary-file-warning fix) →
+<code>/attach</code>/<code>cmdAttachRemote</code> simplification (+
+tests) → <code>JATSReader</code> (per
+<code>jats_support_design.md</code>, sequenced after its own
+<code>jats_extract.go</code>/<code>jats_chunker.go</code> steps).</li>
+</ol>
+</section>
+</body>
+</html>

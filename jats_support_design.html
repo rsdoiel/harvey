@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="jats-document-support-design-for-harvey">JATS Document Support
+Design for Harvey</h1>
+<p><strong>Status:</strong> Draft (v1) <strong>Date:</strong>
+2026-06-12</p>
+<h2 id="overview">Overview</h2>
+<p><a href="https://jats.nlm.nih.gov/">JATS</a> (Journal Article Tag
+Suite, NISO Z39.96) is the XML vocabulary used to represent journal
+articles for archiving, publishing, and authoring. PubMed Central’s Open
+Access subset distributes full-text articles as JATS XML (commonly with
+a <code>.nxml</code> extension), and many publishers and repositories
+produce JATS or JATS-derived XML (BITS for books uses the same element
+vocabulary).</p>
+<p>For Harvey, JATS is the most <em>structured</em> scholarly source it
+will encounter — more so than PDF. Where <code>scholarly_pdf.go</code>
+has to <strong>infer</strong> section boundaries
+(<code>classifySectionHeader</code>) and <strong>scan</strong> for
+identifiers with regex (<code>FindIdentifiers</code>), a JATS document
+<strong>declares</strong> its sections
+(<code>&lt;sec sec-type="..."&gt;</code>), its identifiers
+(<code>&lt;article-id pub-id-type="doi"&gt;</code>,
+<code>&lt;contrib-id contrib-id-type="orcid"&gt;</code>,
+<code>&lt;institution-id institution-id-type="ror"&gt;</code>, …), and
+its references
+(<code>&lt;ref-list&gt;/&lt;ref&gt;/&lt;pub-id&gt;</code>) as explicit,
+machine-readable tags.</p>
+<p>This design proposes JATS as a <strong>new entry in Harvey’s existing
+chunker/extractor → <code>EnrichedChunk</code> pattern</strong> (per
+<code>towards_a_scholarly_memory_design.md</code>, “next step #6”), plus
+a new ephemeral read surface reached through <code>/read</code>’s
+type-aware dispatch (see
+<code>document_reader_registry_design.md</code>, a companion design
+covering the <code>DocumentReader</code> interface and
+<code>/read</code>/<code>/attach</code> dispatch shared by JATS, PDF,
+and future document formats). No new storage engine, no new memory silo
+— same <code>chunks</code> table, same
+<code>Identifiers</code>/<code>Citations</code>/<code>ChunkType</code>
+columns already added in the v3 scholarly-memory work.</p>
+<h2 id="grounding-in-harveys-current-architecture">Grounding in Harvey’s
+current architecture</h2>
+<ol type="1">
+<li><p><strong>Chunker/extractor registry</strong>
+(<code>language_registry.go</code>): each language has a
+<code>CodeChunker</code> producing <code>[]EnrichedChunk</code> and an
+optional <code>DocExtractor</code>. <code>ragIngestFile</code>
+dispatches on <code>globalRegistry.DetectFromExtension(ext)</code> →
+<code>GetChunker(langID)</code>. JATS becomes language ID
+<code>"jats"</code>, registered for <code>.nxml</code>.</p></li>
+<li><p><strong><code>EnrichedChunk</code></strong>
+(<code>language_registry.go</code>) already has everything this design
+needs:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> EnrichedChunk <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    Content     <span class="dt">string</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    StartLine<span class="op">,</span> StartCol<span class="op">,</span> EndLine<span class="op">,</span> EndCol <span class="dt">int</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    ChunkType   <span class="dt">string</span>               <span class="co">// &quot;front_matter&quot;, &quot;abstract&quot;, &quot;introduction&quot;, ... &quot;references&quot;, &quot;body&quot;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    Symbols     <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    Docs        <span class="dt">string</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    Identifiers <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">][]</span><span class="dt">string</span>  <span class="co">// this document&#39;s own identifiers, keyed by IdentifierType</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    Citations   <span class="op">[]</span><span class="dt">string</span>             <span class="co">// identifiers found in this chunk pointing to OTHER works</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>JATS populates <code>ChunkType</code>, <code>Identifiers</code>, and
+<code>Citations</code> <strong>structurally</strong> (from tags) rather
+than heuristically (from regex/section-header text).</p></li>
+<li><p><strong><code>scholarly_pdf.go</code></strong> is the closest
+analog and is directly reusable:</p>
+<ul>
+<li><code>classifySectionHeader(line string) (chunkType string, ok bool)</code>
+and the <code>sectionHeaders</code> map become the
+<strong>fallback</strong> for JATS <code>&lt;sec&gt;</code> elements
+that have no recognized <code>sec-type</code> attribute — JATS authors
+frequently omit <code>sec-type</code> and rely on
+<code>&lt;title&gt;Introduction&lt;/title&gt;</code> text alone.</li>
+<li><code>ragChunk(text string) []string</code> (the ~500-char splitter)
+is reused to split long <code>&lt;sec&gt;</code> text into multiple
+<code>EnrichedChunk</code>s, same as <code>scholarlyChunk</code> does
+per PDF section.</li>
+<li><code>diagramPageWarning</code>-style inline placeholders are the
+model for how to handle MathML (see “MathML handling” below).</li>
+<li><code>isPaperLike</code>/PDF “paper detection” has <strong>no JATS
+equivalent</strong> — a <code>.nxml</code> file with an
+<code>&lt;article&gt;</code> root <em>is</em> the structure signal.
+Every JATS document goes through section-aware chunking; there’s no flat
+fallback path.</li>
+</ul></li>
+<li><p><strong><code>scholarly_identifiers.go</code></strong>:
+<code>FindIdentifiers(text) map[IdentifierType][]string</code> plus
+<code>Normalize*</code>/<code>Validate*</code> (via
+<code>github.com/caltechlibrary/metadatatools</code> v0.1.1) remain
+useful as a <strong>supplementary</strong> pass over free text
+(abstract, body paragraphs) for in-text identifier mentions not captured
+by <code>&lt;article-id&gt;</code>/<code>&lt;pub-id&gt;</code> tags. But
+for JATS, the <strong>primary</strong> identifier source is structural
+extraction straight from tags, normalized through the same
+<code>Normalize*</code> functions for canonical-form consistency with
+the PDF path.</p></li>
+<li><p><strong><code>pdf_extract.go</code> + <code>ragIngestPDF</code>
+(<code>commands.go</code>) + <code>/read-pdf</code>
+(<code>cmdReadPDF</code>)</strong> establish the dual-path pattern this
+design mirrors:</p>
+<ul>
+<li>A pure parsing function (<code>pdfExtract</code> → here,
+<code>jatsExtract</code>) with no workspace/agent dependencies, easy to
+unit-test against fixtures.</li>
+<li><code>ragIngestX(store, embedder, path)</code> — parse → chunk →
+<code>IngestEnriched</code>.</li>
+<li><code>cmdReadX</code> — parse → render a human/LLM-readable summary
+→ inject as a <code>user</code>-role context message (ephemeral, not
+indexed).</li>
+</ul></li>
+<li><p><strong><code>ragIngestableExts</code> /
+<code>ragCollectFiles</code> / <code>ragIngest</code></strong>
+(<code>commands.go</code>): the extension-keyed map that gates
+<code>/rag ingest</code> and directory walks. <code>.pdf</code> is
+special-cased to <code>ragIngestPDF</code>; <code>.nxml</code> will be
+special-cased to <code>ragIngestJATS</code> the same way.</p></li>
+</ol>
+<h2 id="jats-structural-primer-the-subset-harvey-parses">JATS structural
+primer (the subset Harvey parses)</h2>
+<pre><code>&lt;article&gt;
+  &lt;front&gt;
+    &lt;journal-meta&gt;
+      &lt;issn pub-type=&quot;...&quot;&gt;...&lt;/issn&gt;
+      &lt;journal-title-group&gt;&lt;journal-title&gt;...&lt;/journal-title&gt;&lt;/journal-title-group&gt;
+    &lt;/journal-meta&gt;
+    &lt;article-meta&gt;
+      &lt;article-id pub-id-type=&quot;doi|pmid|pmc|...&quot;&gt;...&lt;/article-id&gt;          (repeatable)
+      &lt;title-group&gt;&lt;article-title&gt;...&lt;/article-title&gt;&lt;/title-group&gt;
+      &lt;contrib-group&gt;
+        &lt;contrib contrib-type=&quot;author&quot;&gt;
+          &lt;name&gt;&lt;surname/&gt;&lt;given-names/&gt;&lt;/name&gt;
+          &lt;contrib-id contrib-id-type=&quot;orcid&quot;&gt;...&lt;/contrib-id&gt;
+          &lt;xref ref-type=&quot;aff&quot; rid=&quot;aff1&quot;/&gt;
+        &lt;/contrib&gt;
+      &lt;/contrib-group&gt;
+      &lt;aff id=&quot;aff1&quot;&gt;
+        &lt;institution-wrap&gt;&lt;institution-id institution-id-type=&quot;ror&quot;&gt;...&lt;/institution-id&gt;&lt;/institution-wrap&gt;
+      &lt;/aff&gt;
+      &lt;pub-date&gt;...&lt;/pub-date&gt;
+      &lt;abstract&gt;...&lt;p&gt;...&lt;/p&gt;&lt;/abstract&gt;
+      &lt;kwd-group&gt;&lt;kwd&gt;...&lt;/kwd&gt;&lt;/kwd-group&gt;
+      &lt;funding-group&gt;
+        &lt;award-group&gt;
+          &lt;funding-source&gt;&lt;institution-wrap&gt;&lt;institution-id institution-id-type=&quot;fundref|doi&quot;&gt;...&lt;/institution-id&gt;&lt;/institution-wrap&gt;&lt;/funding-source&gt;
+          &lt;award-id&gt;...&lt;/award-id&gt;
+        &lt;/award-group&gt;
+      &lt;/funding-group&gt;
+    &lt;/article-meta&gt;
+  &lt;/front&gt;
+  &lt;body&gt;
+    &lt;sec sec-type=&quot;intro&quot; id=&quot;sec1&quot;&gt;&lt;title&gt;Introduction&lt;/title&gt;&lt;p&gt;...&lt;/p&gt;
+      &lt;sec&gt;...nested subsection...&lt;/sec&gt;
+    &lt;/sec&gt;
+    &lt;sec sec-type=&quot;methods&quot;&gt;...&lt;/sec&gt;
+    &lt;sec sec-type=&quot;results&quot;&gt;...&lt;/sec&gt;
+    &lt;sec sec-type=&quot;discussion&quot;&gt;...&lt;/sec&gt;
+  &lt;/body&gt;
+  &lt;back&gt;
+    &lt;ack&gt;&lt;title&gt;Acknowledgements&lt;/title&gt;&lt;p&gt;...&lt;/p&gt;&lt;/ack&gt;
+    &lt;ref-list&gt;
+      &lt;ref id=&quot;bib1&quot;&gt;
+        &lt;element-citation&gt;  &lt;!-- or &lt;mixed-citation&gt; --&gt;
+          &lt;article-title&gt;...&lt;/article-title&gt;
+          &lt;pub-id pub-id-type=&quot;doi&quot;&gt;...&lt;/pub-id&gt;
+          &lt;pub-id pub-id-type=&quot;pmid&quot;&gt;...&lt;/pub-id&gt;
+        &lt;/element-citation&gt;
+      &lt;/ref&gt;
+    &lt;/ref-list&gt;
+  &lt;/back&gt;
+&lt;/article&gt;</code></pre>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">JATS element</th>
+<th scope="col">Harvey concept</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;article-id pub-id-type="doi\|pmid\|pmc\|..."&gt;</code></td>
+<td><code>Identifiers["doi"\|"pmid"\|"pmcid"\|...]</code> (document’s
+own)</td>
+</tr>
+<tr>
+<td><code>&lt;contrib-id contrib-id-type="orcid"&gt;</code></td>
+<td><code>Identifiers["orcid"]</code> (one per author, deduped)</td>
+</tr>
+<tr>
+<td><code>&lt;institution-id institution-id-type="ror"&gt;</code></td>
+<td><code>Identifiers["ror"]</code> (one per affiliation, deduped)</td>
+</tr>
+<tr>
+<td><code>&lt;institution-id institution-id-type="fundref"\|"doi"&gt;</code>
+(in <code>funding-group</code>)</td>
+<td><code>Identifiers["fundref"]</code></td>
+</tr>
+<tr>
+<td><code>&lt;issn&gt;</code></td>
+<td><code>Identifiers["issn"]</code></td>
+</tr>
+<tr>
+<td><code>&lt;title-group&gt;</code>,
+<code>&lt;contrib-group&gt;</code>, <code>&lt;journal-meta&gt;</code>,
+<code>&lt;kwd-group&gt;</code>, <code>&lt;funding-group&gt;</code>,
+<code>&lt;pub-date&gt;</code></td>
+<td><code>ChunkType = "front_matter"</code> (synthetic summary chunk,
+§2)</td>
+</tr>
+<tr>
+<td><code>&lt;abstract&gt;</code></td>
+<td><code>ChunkType = "abstract"</code> (structural — no heuristic
+needed)</td>
+</tr>
+<tr>
+<td><code>&lt;sec sec-type="..."&gt;</code> /
+<code>&lt;sec&gt;&lt;title&gt;...</code></td>
+<td><code>ChunkType</code> via mapping table +
+<code>classifySectionHeader</code> fallback</td>
+</tr>
+<tr>
+<td><code>&lt;ack&gt;</code></td>
+<td><code>ChunkType = "body"</code> (matches existing
+<code>sectionHeaders["acknowledgements"]</code>)</td>
+</tr>
+<tr>
+<td><code>&lt;ref-list&gt;/&lt;ref&gt;</code></td>
+<td><code>ChunkType = "references"</code>; each
+<code>&lt;pub-id&gt;</code> → <code>Citations</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="proposed-design">Proposed design</h2>
+<h3 id="jats_extract.go-pure-stdlib-xml-parser">1.
+<code>jats_extract.go</code> — pure stdlib XML parser</h3>
+<p>A new file mirroring <code>pdf_extract.go</code>’s shape: no
+workspace/agent dependencies, <code>encoding/xml</code> only (zero new
+dependencies, consistent with the v3 “pure stdlib + metadatatools”
+theme).</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// JATSDocument is the parsed structure of a JATS article, holding the subset</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">// of front/body/back content Harvey&#39;s chunker and identifier extraction need.</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> JATSDocument <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    Title        <span class="dt">string</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    Journal      <span class="dt">string</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    ArticleIDs   <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span><span class="dt">string</span>   <span class="co">// pub-id-type -&gt; value, e.g. &quot;doi&quot; -&gt; &quot;10.1234/...&quot;</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    AuthorORCIDs <span class="op">[]</span><span class="dt">string</span>            <span class="co">// deduped, normalized</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    AffiliationRORs <span class="op">[]</span><span class="dt">string</span>         <span class="co">// deduped, normalized</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    FunderIDs    <span class="op">[]</span><span class="dt">string</span>            <span class="co">// deduped, normalized (fundref/DOI form)</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    ISSNs        <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    Abstract     <span class="dt">string</span>              <span class="co">// flattened text</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    Keywords     <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    Sections     <span class="op">[]</span>JATSSection       <span class="co">// body, in document order, recursively nested</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    References   <span class="op">[]</span>JATSReference</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="co">// JATSSection is one &lt;sec&gt; (or &lt;abstract&gt;/&lt;ack&gt;), with nested subsections</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="co">// flattened by jatsChunk (see below) rather than here.</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> JATSSection <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>    SecType  <span class="dt">string</span>   <span class="co">// raw sec-type attribute, &quot;&quot; if absent</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>    Title    <span class="dt">string</span>   <span class="co">// &lt;title&gt; text, &quot;&quot; if absent</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>    Text     <span class="dt">string</span>   <span class="co">// flattened &lt;p&gt; text for this section only (not children)</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>    Children <span class="op">[]</span>JATSSection</span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a><span class="co">// JATSReference is one &lt;ref&gt;, with any &lt;pub-id&gt; values extracted.</span></span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> JATSReference <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a>    ID      <span class="dt">string</span>            <span class="co">// &lt;ref id=&quot;...&quot;&gt;</span></span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a>    Text    <span class="dt">string</span>            <span class="co">// flattened citation text (best-effort, for display)</span></span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>    PubIDs  <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span><span class="dt">string</span> <span class="co">// pub-id-type -&gt; value, e.g. &quot;doi&quot;, &quot;pmid&quot;</span></span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-33"><a href="#cb3-33" aria-hidden="true" tabindex="-1"></a><span class="co">// ParseJATS parses JATS XML into a JATSDocument. It does not validate against</span></span>
+<span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a><span class="co">// any DTD/schema — encoding/xml ignores DOCTYPE — and tolerates missing</span></span>
+<span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a><span class="co">// optional elements throughout.</span></span>
+<span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> ParseJATS<span class="op">(</span>data <span class="op">[]</span><span class="dt">byte</span><span class="op">)</span> <span class="op">(*</span>JATSDocument<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p><strong>Text flattening for <code>&lt;p&gt;</code>,
+<code>&lt;title&gt;</code>, <code>&lt;abstract&gt;</code>:</strong> JATS
+inline markup (<code>&lt;italic&gt;</code>, <code>&lt;bold&gt;</code>,
+<code>&lt;sub&gt;</code>, <code>&lt;sup&gt;</code>,
+<code>&lt;xref&gt;</code>, <code>&lt;mml:math&gt;</code>,
+<code>&lt;tex-math&gt;</code>, …) is mixed with text content. A small
+helper (<code>flattenJATSText(innerXML []byte) string</code>) walks the
+XML tokens, keeps text content and drops markup tags. For
+<code>&lt;disp-formula&gt;</code>/<code>&lt;inline-formula&gt;</code>
+(commonly an <code>&lt;alternatives&gt;</code> wrapping both
+<code>&lt;mml:math&gt;</code> and <code>&lt;tex-math&gt;</code>): if a
+<code>&lt;tex-math&gt;</code> sibling is present, its LaTeX source is
+embedded directly (e.g. <code>$E=mc^2$</code>) — compact and legible to
+embeddings and LLMs alike; if only <code>&lt;mml:math&gt;</code> is
+present (no TeX alternative), it falls back to a <code>[MATH]</code>
+placeholder — the same “don’t lose the reader, flag what’s missing”
+approach as <code>diagramPageWarning</code> for PDF diagram pages.</p>
+<p><strong>Author/affiliation linkage is <em>not</em> resolved in
+v1.</strong> <code>&lt;contrib-id contrib-id-type="orcid"&gt;</code> and
+<code>&lt;institution-id institution-id-type="ror"&gt;</code> values are
+collected as flat deduped lists (<code>AuthorORCIDs</code>,
+<code>AffiliationRORs</code>) regardless of which
+<code>&lt;contrib&gt;</code>/<code>&lt;aff&gt;</code> they belong to.
+Resolving <code>&lt;xref ref-type="aff" rid="aff1"&gt;</code> →
+<code>&lt;aff id="aff1"&gt;</code> to produce per-author affiliation
+links is real complexity with no current consumer (Harvey’s
+<code>Identifiers</code> map has no per-person structure) — confirmed
+deferred as a future “Open research item,” same pattern as the v3 doc’s
+C2PA spike.</p>
+<h3 id="section-aware-chunking-jats_chunker.go">2. Section-aware
+chunking — <code>jats_chunker.go</code></h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// jatsSectionTypes maps JATS sec-type attribute values to EnrichedChunk.ChunkType.</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co">// Sections with an unrecognized or absent sec-type fall back to</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co">// classifySectionHeader(section.Title) (from scholarly_pdf.go), then to &quot;body&quot;.</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> jatsSectionTypes <span class="op">=</span> <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span><span class="dt">string</span><span class="op">{</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;intro&quot;</span><span class="op">:</span>                 <span class="st">&quot;introduction&quot;</span><span class="op">,</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;methods&quot;</span><span class="op">:</span>               <span class="st">&quot;methods&quot;</span><span class="op">,</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;materials|methods&quot;</span><span class="op">:</span>     <span class="st">&quot;methods&quot;</span><span class="op">,</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;materials&quot;</span><span class="op">:</span>             <span class="st">&quot;methods&quot;</span><span class="op">,</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;results&quot;</span><span class="op">:</span>               <span class="st">&quot;results&quot;</span><span class="op">,</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;discussion&quot;</span><span class="op">:</span>            <span class="st">&quot;discussion&quot;</span><span class="op">,</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;conclusions&quot;</span><span class="op">:</span>           <span class="st">&quot;conclusion&quot;</span><span class="op">,</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;supplementary-material&quot;</span><span class="op">:</span> <span class="st">&quot;body&quot;</span><span class="op">,</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;data-availability&quot;</span><span class="op">:</span>      <span class="st">&quot;body&quot;</span><span class="op">,</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;abbreviations&quot;</span><span class="op">:</span>          <span class="st">&quot;body&quot;</span><span class="op">,</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="co">// jatsChunk converts a parsed JATSDocument into section-tagged EnrichedChunks,</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a><span class="co">// in document order: a synthetic front_matter chunk, abstract, body sections</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a><span class="co">// (flattened, nested sections inherit the parent&#39;s ChunkType unless their own</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a><span class="co">// sec-type/title resolves to something else), acknowledgements, then</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a><span class="co">// references. Every chunk shares docIdentifiers (the document&#39;s own</span></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a><span class="co">// DOI/ORCID/ROR/FundRef/ISSN/PMID/PMCID). Reference-list chunks get Citations</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a><span class="co">// from each &lt;ref&gt;&#39;s PubIDs.</span></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> jatsChunk<span class="op">(</span>doc <span class="op">*</span>JATSDocument<span class="op">,</span> title <span class="dt">string</span><span class="op">)</span> <span class="op">[]</span>EnrichedChunk</span></code></pre></div>
+<ul>
+<li><strong>Nesting</strong>: a <code>&lt;sec&gt;</code> with no
+recognized type <strong>inherits its parent’s</strong>
+<code>ChunkType</code> (e.g., a “Statistical analysis” subsection under
+“Methods” with no <code>sec-type</code> of its own stays
+<code>"methods"</code>). This mirrors how PDF subsections between two
+recognized headings fall into the preceding section’s type.</li>
+<li><strong>Splitting</strong>: each resolved section’s flattened text
+is passed through <code>ragChunk</code> (≤ ~500 chars/piece), same as
+<code>scholarlyChunk</code>.</li>
+<li><strong>Provenance header</strong>: each chunk’s
+<code>Content</code> is prefixed
+<code>[JATS: %q, journal: %s, section: %s]\n\n%s</code> (parallel to
+PDF’s <code>[PDF: %q, section: %s, page %d-%d of %d]</code>).</li>
+<li><strong><code>front_matter</code> chunk</strong> (decided):
+<code>jatsChunk</code> emits one leading chunk with
+<code>ChunkType = "front_matter"</code>,
+<code>section: front_matter</code> in the provenance header, containing
+a rendered summary — title, author names (+ORCID), journal/ISSN, pub
+date, keywords, and funding sources/award IDs — built the same way as
+<code>JATSReader</code>’s default summary (§6) but scoped to front
+matter only. This has no PDF equivalent; it exists because JATS makes
+this metadata structurally available, and makes “who wrote / who funded
+this” directly retrievable without pulling the abstract chunk. It shares
+<code>docIdentifiers</code> like every other chunk, so
+DOI/ORCID/ROR/FundRef/ISSN/PMID/PMCID are all searchable from it.</li>
+</ul>
+<h3 id="identifier-and-citation-extraction-structural-first">3.
+Identifier and citation extraction — structural-first</h3>
+<ul>
+<li><code>doc.ArticleIDs["doi"|"pmid"|"pmcid"|...]</code>,
+<code>doc.AuthorORCIDs</code>, <code>doc.AffiliationRORs</code>,
+<code>doc.FunderIDs</code>, <code>doc.ISSNs</code> are normalized via
+the same <code>metadatatools.Normalize*</code> functions
+<code>scholarly_identifiers.go</code> already wraps
+(e.g. <code>NormalizeDOI</code>, <code>NormalizeORCID</code>,
+<code>NormalizeROR</code>, <code>NormalizeFundRef</code>,
+<code>NormalizeISSN</code>), then merged into
+<code>EnrichedChunk.Identifiers map[string][]string</code> — same shape
+as the PDF path, so no schema changes.</li>
+<li><strong>Supplementary regex pass</strong>:
+<code>FindIdentifiers</code> still runs over <code>Abstract</code> and
+each section’s flattened text, in case an in-text DOI/arXiv mention
+isn’t also present as a structured <code>&lt;pub-id&gt;</code> (e.g., a
+dataset DOI mentioned only in a “Data availability” paragraph). Results
+are merged into <code>docIdentifiers</code>, deduped via
+<code>appendUnique</code> (already exported from
+<code>scholarly_identifiers.go</code>).</li>
+<li><strong>Citations</strong>: for “references”-type chunks, each
+<code>&lt;ref&gt;</code>’s <code>PubIDs</code> values (normalized)
+populate <code>Citations</code> directly — no regex needed, and notably
+<strong>more reliable</strong> than the PDF path’s
+regex-over-reference-list-text, since
+<code>&lt;pub-id pub-id-type="doi"&gt;</code> is unambiguous.</li>
+<li><strong>In-text citation linkage</strong> (confirmed deferred): JATS
+body text contains <code>&lt;xref ref-type="bibr" rid="bib12"&gt;</code>
+pointing into <code>&lt;ref-list&gt;</code>. Resolving these would let a
+<em>body</em> chunk’s <code>Citations</code> include the specific works
+it cites (richer than today’s “citations only appear in the references
+chunk”). Same “Open research item” treatment as author/affiliation
+linkage (§1); both are KB-linkage-shaped problems best tackled together
+in a later cycle.</li>
+</ul>
+<h3 id="registry-integration-language_registry.go">4. Registry
+integration (<code>language_registry.go</code>)</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> langJATS <span class="op">=</span> LanguageInfo<span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    ID<span class="op">:</span>          <span class="st">&quot;jats&quot;</span><span class="op">,</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    Name<span class="op">:</span>        <span class="st">&quot;JATS&quot;</span><span class="op">,</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    Extensions<span class="op">:</span>  <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;.nxml&quot;</span><span class="op">},</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    HasChunking<span class="op">:</span> <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Registered via
+<code>r.RegisterLanguage(langJATS, nil, NewJATSChunker(), nil, nil, nil)</code>
+in <code>initChunkers</code> (or a new <code>initJATS</code>, following
+the existing per-phase init function convention). No
+<code>DocExtractor</code>, <code>CodeFormatter</code>, or
+<code>SyntaxHighlighter</code> — those concepts don’t map to JATS.</p>
+<p>In addition, <code>initReaders</code> (see
+<code>document_reader_registry_design.md</code>) registers
+<code>r.SetReader("jats", NewJATSReader())</code> against the same
+<code>langJATS</code> ID — this is what makes
+<code>/read FILE.nxml [SECTION]</code> work (§6 below). The two
+registrations are independent: the chunker drives RAG ingest (§5), the
+reader drives ephemeral <code>/read</code>/<code>/attach</code>.</p>
+<p><strong><code>.xml</code> is deliberately out of scope for
+v1.</strong> Generic <code>.xml</code> is ambiguous (could be anything);
+<code>.nxml</code> is the de facto PMC/JATS convention and requires no
+content-sniffing. Recognizing <code>.xml</code> files that happen to be
+JATS (via root-element/DOCTYPE sniffing, similar to how
+<code>isPaperLike</code> sniffs PDF text) is a natural v2 extension once
+<code>.nxml</code> handling is proven.</p>
+<h3 id="rag-ingest-wiring-commands.go">5. RAG ingest wiring
+(<code>commands.go</code>)</h3>
+<ul>
+<li>Add <code>".nxml": true</code> to
+<code>ragIngestableExts</code>.</li>
+<li><code>ragIngestJATS(store *RagStore, embedder Embedder, path string) (int, error)</code>:
+read file → <code>ParseJATS</code> → <code>jatsChunk</code> →
+<code>store.IngestEnriched(path, chunks, embedder)</code>. Parallel
+structure to <code>ragIngestPDF</code>, but simpler — no diagram-page
+tracking, no <code>isPaperLike</code> branch (every JATS file is
+“paper-like” by definition).</li>
+<li>In <code>ragIngest</code>’s per-file loop, branch on
+<code>filepath.Ext(absFile) == ".nxml"</code> →
+<code>ragIngestJATS</code>, same as the existing <code>.pdf</code>
+branch.</li>
+<li><strong>No new <code>chunks</code> columns</strong> —
+<code>identifiers</code>/<code>citations</code>/<code>chunk_type</code>
+already exist from the v3 <code>enrichedAlterStmts</code>
+migration.</li>
+</ul>
+<h3 id="ephemeral-read-surface-jatsreader">6. Ephemeral read surface —
+<code>JATSReader</code></h3>
+<p>JATS’s ephemeral read surface is <strong>not</strong> a JATS-specific
+command. Per <code>document_reader_registry_design.md</code>, JATS
+registers a <code>JATSReader</code> — implementing the shared
+<code>DocumentReader</code> interface — via
+<code>SetReader("jats", NewJATSReader())</code>.
+<code>/read FILE.nxml [SECTION]</code> and
+<code>/attach FILE.nxml</code> reach it through the same dispatch as PDF
+and any future format; no <code>/read-jats</code> command, man page, or
+JATS-specific builtin tool is needed.</p>
+<p><code>JATSReader.Render(data, path, opts)</code>: - parses
+<code>data</code> with <code>ParseJATS</code>; - if
+<code>opts.Selector</code> is empty, calls
+<code>renderJATSSummary(doc *JATSDocument)   string</code> — a
+structured Markdown-ish summary: title, authors (+ORCID), journal/ISSN,
+identifiers (DOI/PMID/PMCID), abstract, section outline (type + title
+for each top-level section), keyword list, funding, and reference count
+(the JATS analog of <code>PDFReader</code>’s default whole-document
+summary); - if <code>opts.Selector</code> is non-empty,
+<code>Render</code> resolves it against sections in two passes — first a
+case-insensitive match against <code>jatsSectionTypes</code>-style
+<code>sec-type</code> values (e.g. <code>"methods"</code>), then, if
+nothing matches, a case-insensitive match against each section’s
+<code>&lt;title&gt;</code> text (e.g.
+<code>"Materials and Methods"</code>) — and returns that section’s full
+flattened text instead of the summary. This is the JATS analog of
+<code>PDFReader</code>’s page-range selector, and reuses the same
+normalization as <code>jatsSectionTypes</code>/
+<code>classifySectionHeader</code> (§2).</p>
+<p><code>/attach</code> and <code>cmdAttachRemote</code> need no
+JATS-specific branch: the <code>DetectFromExtension</code> +
+<code>GetReader</code> lookup in
+<code>document_reader_registry_design.md</code> §4 covers
+<code>.nxml</code> the same way it covers <code>.pdf</code>.</p>
+<h2 id="decisions-resolved-2026-06-12">Decisions (resolved
+2026-06-12)</h2>
+<p>All open questions from this design pass, plus the companion
+<code>document_reader_registry_design.md</code>’s, were resolved in one
+pass:</p>
+<ol type="1">
+<li><strong><code>front_matter</code> chunk type</strong> (§2) — added.
+A new <code>ChunkType = "front_matter"</code> synthetic chunk carries
+title/authors/journal/keywords/ funding, emitted first by
+<code>jatsChunk</code>.</li>
+<li><strong>MathML placeholder</strong> (§1) — prefer
+<code>&lt;tex-math&gt;</code> (embed LaTeX source directly) when present
+in an <code>&lt;alternatives&gt;</code> block; fall back to
+<code>[MATH]</code> for <code>&lt;mml:math&gt;</code>-only
+formulas.</li>
+<li><strong><code>JATSReader</code> selector matching</strong> (§6) —
+both: <code>sec-type</code> match first, then <code>&lt;title&gt;</code>
+text match (case-insensitive, reusing
+<code>jatsSectionTypes</code>/<code>classifySectionHeader</code>-style
+normalization).</li>
+<li><strong>In-text citation / author-affiliation linkage</strong> (§3,
+§1) — confirmed deferred as an “Open research item,” consistent with how
+the v3 doc handled C2PA.</li>
+<li><strong>Test fixtures</strong> — both: hand-crafted
+<code>.nxml</code> snippets covering each element in the structural
+primer table, plus 1-2 real PMC OA articles for integration tests.</li>
+</ol>
+<p>From <code>document_reader_registry_design.md</code>:</p>
+<ol start="6" type="1">
+<li><strong><code>/read-pdf</code> fate</strong> — removed entirely once
+<code>/read FILE.pdf [PAGES]</code> works via the registry dispatch;
+<code>harvey-read-pdf.7.md</code> is folded into <code>/read</code>’s
+docs.</li>
+<li><strong>ODT/archive formats and
+<code>Render(data []byte, ...)</code></strong> — interface unchanged;
+<code>archive/zip.NewReader</code> works directly against
+<code>bytes.NewReader (data)</code>, no path-based variant needed.</li>
+<li><strong>Binary-file warning fix</strong> — bundled into the
+<code>/read</code> dispatch rewrite (same <code>cmdRead</code> edit, not
+a separate change).</li>
+<li><strong><code>.xml</code> disambiguation</strong> — confirmed
+deferred; <code>DetectFromExtension(".xml")</code> stays unregistered
+until a future format’s design needs content-sniffing.</li>
+</ol>
+<h2 id="testing-strategy-for-the-implementation-plan">Testing strategy
+(for the implementation plan)</h2>
+<ul>
+<li><code>testdata/jats/*.nxml</code> — both hand-crafted snippets and
+1-2 real PMC OA articles:
+<ul>
+<li>hand-crafted, covering each element precisely:
+<ul>
+<li>minimal <code>&lt;article-meta&gt;</code> exercising every
+<code>&lt;article-id&gt;</code>/<code>&lt;contrib-id&gt;</code>/
+<code>&lt;institution-id&gt;</code> type Harvey extracts (DOI, PMID,
+PMCID, ORCID, ROR, FundRef, ISSN);</li>
+<li>nested <code>&lt;sec&gt;</code> with mixed <code>sec-type</code>
+presence/absence (recognized type, title-only, neither — to exercise the
+inheritance fallback);</li>
+<li><code>&lt;ref-list&gt;</code> with
+<code>&lt;element-citation&gt;</code> and
+<code>&lt;mixed-citation&gt;</code> variants, each with
+<code>&lt;pub-id&gt;</code> DOI/PMID;</li>
+<li>a <code>&lt;p&gt;</code> containing
+<code>&lt;disp-formula&gt;</code>/<code>&lt;inline-formula&gt;</code>
+with
+<code>&lt;alternatives&gt;{&lt;mml:math&gt;, &lt;tex-math&gt;}</code>
+and <code>&lt;mml:math&gt;</code>-only, plus
+<code>&lt;italic&gt;</code>/<code>&lt;xref&gt;</code>, for the
+text-flattening helper;</li>
+</ul></li>
+<li>1-2 real PMC OA <code>.nxml</code> articles (CC-licensed), used as
+integration-test fixtures for
+<code>ragIngestJATS</code>/<code>JATSReader</code> end-to-end.</li>
+</ul></li>
+<li><code>jats_extract_test.go</code> — <code>ParseJATS</code> against
+fixtures; <code>flattenJATSText</code> unit cases.</li>
+<li><code>jats_chunker_test.go</code> — <code>jatsChunk</code> →
+<code>ChunkType</code>/<code>Identifiers</code>/<code>Citations</code>
+assertions, including the nesting-inheritance and front-matter
+cases.</li>
+<li><code>ragIngestJATS</code> integration test (mirrors
+<code>pdf_extract_test.go</code>’s ingest tests) — verifies
+<code>IngestEnriched</code> round-trip with the existing
+<code>identifiers</code>/<code>citations</code> columns.</li>
+<li><code>JATSReader.Render</code> tests
+(<code>jats_reader_test.go</code> or alongside
+<code>jats_extract_test.go</code>) — summary output for a fixture with
+no <code>Selector</code>, full section text for a fixture with
+<code>Selector</code> set, and error handling for malformed input;
+mirrors however <code>PDFReader.Render</code> is tested per
+<code>document_reader_registry_design.md</code>.</li>
+</ul>
+<h2 id="next-steps">Next steps</h2>
+<ol type="1">
+<li><del>Resolve the open questions above</del> — done (see “Decisions”
+above).</li>
+<li>Write <code>jats_support_plan.md</code> — an implementation plan
+sequencing: <code>jats_extract.go</code> (+ tests against fixtures) →
+<code>jats_chunker.go</code> + registry integration (+ tests) → RAG
+ingest wiring (+ tests) → <code>JATSReader</code> (+ tests), slotted
+into <code>document_reader_registry_design.md</code>’s overall
+sequencing (<code>DocumentReader</code> interface/registry →
+<code>PDFReader</code> retrofit →
+<code>/read</code>/<code>/attach</code> dispatch →
+<code>JATSReader</code>).</li>
+<li>Build <code>testdata/jats/*.nxml</code> fixtures alongside step 1,
+so later steps’ tests have real data to work against from the start
+(same approach the v3 scholarly-memory work used).</li>
+</ol>
+</section>
+</body>
+</html>

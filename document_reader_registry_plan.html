@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1
+id="document-reader-registry-read-dispatch-implementation-plan">Document
+Reader Registry &amp; <code>/read</code> Dispatch — Implementation
+Plan</h1>
+<p><strong>Status:</strong> Plan (v1) <strong>Date:</strong> 2026-06-12
+<strong>Implements:</strong>
+<code>document_reader_registry_design.md</code> (all “Decisions”
+resolved 2026-06-12)</p>
+<p>This plan sequences the registry/dispatch work into five steps, each
+ending in a buildable, tested state. <code>jats_support_plan.md</code>
+depends on Step 1 (the <code>DocumentReader</code> interface) for its
+own final step (<code>JATSReader</code>); the two plans otherwise
+proceed independently — see “Cross-plan sequencing” at the end of this
+document.</p>
+<h2 id="plan-level-decisions-not-covered-by-the-design-docs">Plan-level
+decisions (not covered by the design docs)</h2>
+<p>Two implementation details came up while grounding this plan in the
+current code (<code>cmdRead</code> at <code>commands.go:2387</code>,
+<code>cmdReadPDF</code> at <code>commands.go:2677</code>,
+<code>resolvePDFPath</code> at <code>commands.go:2789</code>) that the
+design docs didn’t pin down:</p>
+<h3 id="a.-selector-syntax-fileselector">A. Selector syntax:
+<code>FILE#SELECTOR</code></h3>
+<p><code>/read</code> currently takes <code>FILE [FILE...]</code> —
+multiple files, no per-file selector. A trailing-argument selector
+(<code>/read FILE.pdf 40-55</code>) is ambiguous with
+<code>/read a.pdf b.pdf</code> (is <code>b.pdf</code> a second file or a
+selector for <code>a.pdf</code>?). <strong>Decided:</strong> selectors
+use a <code>#</code> fragment, e.g. <code>/read paper.pdf#40-55</code>
+or <code>/read paper.nxml#Methods</code>. This is unambiguous, works
+per-file even in multi-file mode
+(<code>/read a.pdf#1-5 b.pdf#10-15</code>), and needs no quoting for
+multi-word JATS section titles (spaces after <code>#</code> are fine).
+Each arg is parsed via
+<code>path, selector, _ := strings.Cut(arg, "#")</code>.</p>
+<h3
+id="b.-readoptions.maxbytes-dropped-deviation-from-designs-draft-interface">B.
+<code>ReadOptions.MaxBytes</code> dropped (deviation from design’s draft
+interface)</h3>
+<p>The design doc’s draft interface
+(<code>document_reader_registry_design.md</code> §1) included
+<code>MaxBytes int</code> (“0 means use the reader’s default”) alongside
+<code>Selector</code>. Neither reader planned here needs it:
+<code>PDFReader</code> caps by <em>pages</em>
+(<code>readPDFMaxPages</code>, driven by <code>opts.Selector</code>’s
+page range), and <code>JATSReader</code> (per
+<code>jats_support_plan.md</code>) has no byte-cap requirement —
+<code>ParseJATS</code> operates on the whole document and
+<code>Render</code> returns either one section or a bounded summary. Per
+the “no speculative fields” convention, <code>ReadOptions</code> in this
+plan has only <code>Selector</code>. If a future reader (e.g. ODT) needs
+a byte cap, add <code>MaxBytes</code> then.</p>
+<h3
+id="c.-path-resolution-for-reader-backed-files-stays-arbitrary-path">C.
+Path resolution for reader-backed files stays arbitrary-path</h3>
+<p><code>cmdRead</code>’s fallback path uses
+<code>a.CheckReadPermission</code>/<code>a.Workspace.ReadFile</code>
+(workspace-scoped). <code>/read-pdf</code>/<code>/attach</code> use
+<code>resolvePDFPath</code> (arbitrary filesystem paths, <code>~</code>
+expansion, <strong>no</strong> workspace-boundary check — see its doc
+comment at <code>commands.go:2789</code>). <strong>Decided:</strong>
+files whose extension has a registered <code>DocumentReader</code> keep
+<code>resolvePDFPath</code>-style resolution — this preserves
+<code>/read-pdf ~/Documents/paper.pdf</code>’s existing behavior once it
+becomes <code>/read ~/Documents/paper.pdf</code>. Only the fallback
+(text/code) path keeps
+<code>CheckReadPermission</code>/workspace-relative resolution. This is
+a preservation of existing behavior, not a new permission
+relaxation.</p>
+<h2 id="step-1-documentreader-interface-registry-plumbing">Step 1 —
+<code>DocumentReader</code> interface + registry plumbing</h2>
+<p><strong>New file <code>doc_readers.go</code></strong>, mirroring
+<code>doc_extractors.go</code>’s
+<code>SetExtractor</code>/<code>GetExtractor</code>/<code>initExtractors</code>
+shape:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ReadOptions carries format-specific selection for DocumentReader.Render.</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">// Selector is free-form per format: a PDF page range (&quot;40-55&quot;), a JATS</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co">// section sec-type or title, etc. Empty means &quot;whole document / default view&quot;.</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ReadOptions <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    Selector <span class="dt">string</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co">// DocumentReader renders a structured document&#39;s raw bytes into a</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="co">// human/LLM-readable string suitable for injection as conversation context.</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co">// path is used only for provenance text and, for formats that shell out to</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="co">// external tools (e.g. PDF/poppler), as a real filesystem path when one</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="co">// exists — Render must fall back to writing data to a temp file when path is</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="co">// not a real file (e.g. content downloaded via /read on a remote URI).</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> DocumentReader <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    Render<span class="op">(</span>data <span class="op">[]</span><span class="dt">byte</span><span class="op">,</span> path <span class="dt">string</span><span class="op">,</span> opts ReadOptions<span class="op">)</span> <span class="op">(</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    Language<span class="op">()</span> <span class="dt">string</span> <span class="co">// language ID this reader is registered under</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>LanguageRegistry<span class="op">)</span> SetReader<span class="op">(</span>id <span class="dt">string</span><span class="op">,</span> dr DocumentReader<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>readers<span class="op">[</span>id<span class="op">]</span> <span class="op">=</span> dr</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>LanguageRegistry<span class="op">)</span> GetReader<span class="op">(</span>id <span class="dt">string</span><span class="op">)</span> DocumentReader <span class="op">{</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> r<span class="op">.</span>readers<span class="op">[</span>id<span class="op">]</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a><span class="co">// initReaders wires DocumentReaders for registered formats. Called last in</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a><span class="co">// init() (language_registry.go) so PDF&#39;s own RegisterLanguage call here and</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a><span class="co">// JATS&#39;s RegisterLanguage call (in initChunkers, jats_support_plan.md step 2)</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a><span class="co">// have both already run.</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> initReaders<span class="op">(</span>r <span class="op">*</span>LanguageRegistry<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Step 2 of this plan adds: r.RegisterLanguage(langPDF, nil, nil, nil, nil, nil)</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    <span class="co">//                            r.SetReader(&quot;pdf&quot;, NewPDFReader())</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>    <span class="co">// jats_support_plan.md step 4 adds: r.SetReader(&quot;jats&quot;, NewJATSReader())</span></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Edits to <code>language_registry.go</code>:</strong> - Add
+<code>readers map[string]DocumentReader</code> to the
+<code>LanguageRegistry</code> struct (286-299), alongside
+<code>extractors</code>. - Initialize
+<code>readers: make(map[string]DocumentReader)</code> in
+<code>NewLanguageRegistry</code> (310-321). - Add
+<code>initReaders(globalRegistry)</code> as the <strong>last</strong>
+call in <code>init()</code> (789-796), after
+<code>initFormatters</code>.</p>
+<p><strong>Tests — <code>doc_readers_test.go</code>:</strong> -
+<code>TestSetReader_GetReader</code> — register a stub
+<code>DocumentReader</code> (returns a fixed string from
+<code>Render</code>), verify <code>GetReader</code> returns it and
+<code>Render</code>/<code>Language</code> work through the interface. -
+<code>TestGetReader_unregistered</code> —
+<code>GetReader("nonexistent")</code> returns <code>nil</code>. -
+<code>TestNewLanguageRegistry_readersInitialized</code> —
+<code>r.readers</code> is non-nil and empty on a fresh registry.</p>
+<h2 id="step-2-pdfreader-retrofit-of-cmdreadpdfpdfextract">Step 2 —
+<code>PDFReader</code> (retrofit of
+<code>cmdReadPDF</code>/<code>pdfExtract</code>)</h2>
+<p><strong>New file <code>pdf_reader.go</code></strong>, extracting the
+body of <code>cmdReadPDF</code> (<code>commands.go:2677-2787</code>)
+into a reusable <code>Render</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> langPDF <span class="op">=</span> LanguageInfo<span class="op">{</span>ID<span class="op">:</span> <span class="st">&quot;pdf&quot;</span><span class="op">,</span> Name<span class="op">:</span> <span class="st">&quot;PDF&quot;</span><span class="op">,</span> Extensions<span class="op">:</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;.pdf&quot;</span><span class="op">}}</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> PDFReader <span class="kw">struct</span><span class="op">{}</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> NewPDFReader<span class="op">()</span> <span class="op">*</span>PDFReader <span class="op">{</span> <span class="cf">return</span> <span class="op">&amp;</span>PDFReader<span class="op">{}</span> <span class="op">}</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>p <span class="op">*</span>PDFReader<span class="op">)</span> Language<span class="op">()</span> <span class="dt">string</span> <span class="op">{</span> <span class="cf">return</span> <span class="st">&quot;pdf&quot;</span> <span class="op">}</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co">// Render extracts text from a PDF via pdfExtract and formats it exactly as</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co">// cmdReadPDF did: Title/Author/Pages/Date header, diagram-page note, then</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="co">// extracted text. opts.Selector carries the PAGES range (&quot;40-55&quot;), passed</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co">// straight to pdfExtract/parsePDFPageRange. If path is not a real file (e.g.</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co">// data came from a remote /read), data is written to a temp *.pdf file first</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="co">// (same pattern cmdAttachRemote uses today at commands.go:2911-2926).</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>p <span class="op">*</span>PDFReader<span class="op">)</span> Render<span class="op">(</span>data <span class="op">[]</span><span class="dt">byte</span><span class="op">,</span> path <span class="dt">string</span><span class="op">,</span> opts ReadOptions<span class="op">)</span> <span class="op">(</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p><code>readPDFMaxPages = 20</code> and the page-cap enforcement logic
+(2701-2727) move into <code>Render</code> unchanged.
+<code>checkPopplerTools</code>/<code>parsePDFPageRange</code>/
+<code>parsePDFInfo</code>/<code>pdfExtract</code>
+(<code>pdf_extract.go</code>) are reused as-is — no changes to that
+file.</p>
+<p><code>initReaders</code> (Step 1) gains:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>RegisterLanguage<span class="op">(</span>langPDF<span class="op">,</span> <span class="ot">nil</span><span class="op">,</span> <span class="ot">nil</span><span class="op">,</span> <span class="ot">nil</span><span class="op">,</span> <span class="ot">nil</span><span class="op">,</span> <span class="ot">nil</span><span class="op">)</span> <span class="co">// registers &quot;.pdf&quot; -&gt; &quot;pdf&quot;</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>r<span class="op">.</span>SetReader<span class="op">(</span><span class="st">&quot;pdf&quot;</span><span class="op">,</span> NewPDFReader<span class="op">())</span></span></code></pre></div>
+<p><strong>Tests — <code>pdf_reader_test.go</code></strong> (use
+<code>skipIfNoPopplerTools</code>, reuse
+<code>pdf_extract_test.go</code>’s fixture-generation approach): -
+<code>TestPDFReader_Render_wholeDocument</code> —
+<code>opts.Selector=""</code> on a small fixture (≤
+<code>readPDFMaxPages</code> pages); output contains
+<code>Title:</code>/<code>Pages:</code> header and extracted text,
+matches <code>cmdReadPDF</code>’s format byte-for-byte on the same
+fixture (regression check). -
+<code>TestPDFReader_Render_pageRange</code> —
+<code>opts.Selector="1-1"</code>. -
+<code>TestPDFReader_Render_pageCapExceeded</code> — fixture with more
+than <code>readPDFMaxPages</code> pages and
+<code>opts.Selector=""</code> returns the same “specify a range”
+guidance <code>cmdReadPDF</code> prints today. -
+<code>TestPDFReader_Render_dataOnly</code> — <code>path</code> is a
+non-existent path (simulating a remote download); <code>Render</code>
+still succeeds via the temp-file fallback.</p>
+<h2 id="step-3-read-dispatch-rewrite-cmdread-commands.go2387">Step 3 —
+<code>/read</code> dispatch rewrite (<code>cmdRead</code>,
+<code>commands.go:2387</code>)</h2>
+<p>Per-argument parsing:
+<code>path, selector, _ := strings.Cut(arg, "#")</code> (decision A
+above).</p>
+<p>Factor a shared helper used by both the local-workspace and
+remote-URI branches of <code>cmdRead</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// readRenderFile renders one file&#39;s bytes for /read injection.</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co">// If a DocumentReader is registered for path&#39;s extension, it returns</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co">// reader.Render(data, path, ReadOptions{Selector: selector}) directly (no</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co">// fence — the reader supplies its own provenance header).</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co">// Otherwise: if isTextContent(data), wraps data in a fenced ```path block</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co">// (today&#39;s behavior, selector ignored with no warning — plain files don&#39;t</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co">// support selectors); if data is binary, returns an error so cmdRead can</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co">// print &quot;binary file, no reader registered for %q&quot; instead of injecting</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co">// raw bytes (fixes the latent bug flagged in document_reader_registry_design.md).</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> readRenderFile<span class="op">(</span>data <span class="op">[]</span><span class="dt">byte</span><span class="op">,</span> path<span class="op">,</span> selector <span class="dt">string</span><span class="op">)</span> <span class="op">(</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p><code>cmdRead</code>’s per-argument loop (both the remote-URI branch
+at 2407-2428 and the workspace branch at 2430-2456) becomes:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>rendered<span class="op">,</span> err <span class="op">:=</span> readRenderFile<span class="op">(</span>data<span class="op">,</span> path<span class="op">,</span> selector<span class="op">)</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  ✗ %s: %v</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> path<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">continue</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  ✓ %s (%d bytes)</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> path<span class="op">,</span> <span class="bu">len</span><span class="op">(</span>data<span class="op">))</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>sb<span class="op">.</span>WriteString<span class="op">(</span>rendered<span class="op">)</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>ok<span class="op">++</span></span></code></pre></div>
+<p><strong>Path resolution per decision B</strong>: before calling
+<code>readRenderFile</code>, check
+<code>globalRegistry.DetectFromExtension(filepath.Ext(path))</code> →
+<code>globalRegistry.GetReader(langID)</code>. If non-nil, resolve
+<code>path</code> via <code>resolvePDFPath</code> (arbitrary path, no
+workspace check) and read with <code>os.ReadFile</code>. If nil, keep
+today’s <code>CheckReadPermission</code> +
+<code>a.Workspace.ReadFile</code> (workspace-scoped). Remote-URI args
+(<code>parseURIScheme (path) != ""</code>) are unaffected by this check
+— they already bypass workspace permissions via
+<code>NewRemoteReader</code>.</p>
+<p>Update the <code>"read"</code> command table entry
+(<code>commands.go:213-217</code>):</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;read&quot;</span><span class="op">:</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    Usage<span class="op">:</span>       <span class="st">&quot;/read FILE[#SELECTOR] [FILE[#SELECTOR]...]&quot;</span><span class="op">,</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    Description<span class="op">:</span> <span class="st">&quot;Inject file(s) into context; PDF/JATS/etc. render via their reader, others as fenced text&quot;</span><span class="op">,</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    Handler<span class="op">:</span>     cmdRead<span class="op">,</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="op">},</span></span></code></pre></div>
+<p><strong>Tests — extend <code>commands_test.go</code></strong> (or new
+<code>cmd_read_test.go</code>): - <code>TestCmdRead_textFile</code> —
+<code>/read foo.go</code> unchanged (fenced block). -
+<code>TestCmdRead_multiFile</code> — <code>/read foo.go bar.go</code>
+unchanged. - <code>TestCmdRead_pdfWholeDoc</code> —
+<code>/read foo.pdf</code> dispatches to <code>PDFReader</code>, no
+fence, contains <code>Title:</code>. -
+<code>TestCmdRead_pdfSelector</code> — <code>/read foo.pdf#1-1</code>
+passes <code>Selector: "1-1"</code>. -
+<code>TestCmdRead_binaryNoReader</code> — <code>/read foo.bin</code>
+(non-text, no reader) prints
+<code>binary file, no reader registered for ".bin"</code>, not injected.
+- <code>TestCmdRead_remotePDF</code> —
+<code>/read https://example.com/paper.pdf</code> (mock
+<code>RemoteReader</code>) dispatches to <code>PDFReader</code> via the
+temp-file fallback in <code>Render</code>.</p>
+<h2 id="step-4-attachcmdattachremote-simplification">Step 4 —
+<code>/attach</code>/<code>cmdAttachRemote</code> simplification</h2>
+<p>Replace <code>cmdAttach</code>’s hardcoded <code>.pdf</code> branch
+(<code>commands.go:2873-2875</code>):</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> langID<span class="op">,</span> ok <span class="op">:=</span> globalRegistry<span class="op">.</span>DetectFromExtension<span class="op">(</span>filepath<span class="op">.</span>Ext<span class="op">(</span>absPath<span class="op">));</span> ok <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> reader <span class="op">:=</span> globalRegistry<span class="op">.</span>GetReader<span class="op">(</span>langID<span class="op">);</span> reader <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>        data<span class="op">,</span> err <span class="op">:=</span> os<span class="op">.</span>ReadFile<span class="op">(</span>absPath<span class="op">)</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>            fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  ✗ %s: %v</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> filePath<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>        rendered<span class="op">,</span> err <span class="op">:=</span> reader<span class="op">.</span>Render<span class="op">(</span>data<span class="op">,</span> absPath<span class="op">,</span> ReadOptions<span class="op">{})</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>            fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  ✗ %s: %v</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> filePath<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>        a<span class="op">.</span>AddMessage<span class="op">(</span><span class="st">&quot;user&quot;</span><span class="op">,</span> rendered<span class="op">)</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  ✓ %s attached (%s)</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> filePath<span class="op">,</span> langID<span class="op">)</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>cmdAttachRemote</code>’s analogous <code>.pdf</code> branch
+(<code>commands.go:2911-2926</code>) gets the same replacement, using
+<code>data</code> directly — <code>PDFReader.Render</code>’s temp-file
+fallback (Step 2) handles the non-path case, so the manual
+<code>os.CreateTemp</code>/<code>f.Write</code>/<code>defer os.Remove</code>
+block (2912-2924) is deleted.</p>
+<p>Update <code>cmdAttach</code>’s usage text
+(<code>commands.go:2841-2844</code>): replace the PDF-specific line with
+“Documents with a registered reader (PDF, JATS, …): rendered via the
+same pipeline as /read.”</p>
+<p><strong>Tests:</strong> - <code>TestCmdAttach_pdf</code> —
+regression: <code>/attach foo.pdf</code> still produces the same
+injected content as before (now via <code>PDFReader.Render</code>). -
+<code>TestCmdAttach_remotePdf</code> — regression for
+<code>cmdAttachRemote</code>’s <code>.pdf</code> path. -
+<code>TestCmdAttach_image</code>, <code>TestCmdAttach_text</code> —
+unaffected (no reader for <code>.png</code>/<code>.txt</code>, fall
+through to <code>attachImage</code>/<code>attachText</code>
+unchanged).</p>
+<h2 id="step-5-remove-read-pdf">Step 5 — Remove
+<code>/read-pdf</code></h2>
+<p>Per decision 6 (<code>/read FILE.pdf[#PAGES]</code> fully replaces
+it):</p>
+<ul>
+<li>Delete the <code>"read-pdf"</code> command-table entry
+(<code>commands.go:223-227</code>) and the
+<code>case "read-pdf", "readpdf":</code> alias
+(<code>commands.go:512-516</code>).</li>
+<li>Delete <code>cmdReadPDF</code> (<code>commands.go:2677-2787</code>)
+— its logic now lives in <code>PDFReader.Render</code> (Step 2). By this
+point <code>cmdAttach</code>/<code>cmdAttachRemote</code> (Step 4) no
+longer call it, so it has zero remaining callers.</li>
+<li><code>readPDFMaxPages</code> and <code>resolvePDFPath</code> move to
+(or stay reachable from)
+<code>pdf_reader.go</code>/<code>commands.go</code> as needed by
+<code>PDFReader.Render</code> and Step 3’s path resolution
+respectively.</li>
+<li>Delete <code>harvey-read-pdf.7.md</code> (its <code>dist/</code>
+copy regenerates via <code>make</code>; <code>MAN_PAGES_7</code> in the
+Makefile auto-discovers <code>*.7.md</code> via <code>ls</code>, no
+Makefile edit needed). Fold its content — PDF extraction details,
+page-range syntax, poppler requirement — into
+<code>harvey-read.7.md</code>, documenting the new
+<code>FILE[#SELECTOR]</code> syntax and the PDF/JATS dispatch.</li>
+<li>Update <code>/help</code> output (generated from the command table)
+— no separate edit needed beyond Step 3’s table update.</li>
+</ul>
+<p><strong>Tests:</strong> - <code>TestCmdDispatch_readPdfRemoved</code>
+— <code>/read-pdf foo.pdf</code> is no longer recognized (returns
+“unknown command” per the existing dispatch error path). - Remove/update
+any existing tests that call <code>cmdReadPDF</code> directly or assert
+on <code>/read-pdf</code> dispatch.</p>
+<h2 id="cross-plan-sequencing">Cross-plan sequencing</h2>
+<p><code>jats_support_plan.md</code> step 4 (<code>JATSReader</code>)
+needs only this plan’s <strong>Step 1</strong>
+(<code>DocumentReader</code> interface,
+<code>SetReader</code>/<code>GetReader</code>, <code>initReaders</code>)
+to exist — it does not depend on Steps 2-5. Steps 2-5 here and
+<code>jats_support_plan.md</code> steps 1-3
+(jats_extract/jats_chunker/RAG ingest) are otherwise independent and can
+proceed in any order once Step 1 lands. Recommended order, since it
+keeps <code>/read</code>/<code>/attach</code> working end-to-end at
+every step:</p>
+<ol type="1">
+<li><strong>This plan, Step 1</strong> (interface + plumbing, no
+behavior change)</li>
+<li><strong>This plan, Steps 2-5</strong> (PDF retrofit through
+<code>/read-pdf</code> removal) — <em>or</em> in parallel,
+<strong><code>jats_support_plan.md</code> steps 1-3</strong>
+(extract/chunker/RAG ingest — no <code>DocumentReader</code>
+dependency)</li>
+<li><strong><code>jats_support_plan.md</code> step 4</strong>
+(<code>JATSReader</code>, registered in <code>initReaders</code>
+alongside PDF) — needs Step 1 here; best tested once this plan’s Step 3
+(<code>/read</code> dispatch) also exists, so
+<code>/read paper.nxml</code> and <code>/read paper.nxml#Methods</code>
+can be exercised end-to-end.</li>
+</ol>
+</section>
+</body>
+</html>
