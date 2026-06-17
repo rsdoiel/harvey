@@ -38,22 +38,38 @@ var ValidMemoryTypes = []MemoryType{
  * It replaces the standard Fountain title block, so the file begins with
  * a --- delimited YAML section followed by a proper Fountain body.
  *
+ * Kind classifies why the knowledge matters: "pitfall" (permanent gotcha),
+ * "workaround" (useful now, may be superseded), "recommendation" (preferred
+ * approach), "pattern" (recurring success), or "" (unclassified).
+ *
+ * Action is the imperative step a future agent should take. Empty when no
+ * clear action applies.
+ *
+ * Confidence is a reliability score in [0.0, 1.0]. New memories default to
+ * 0.5. Memories that fall to or below 0.2 are auto-archived.
+ *
  * Example:
  *   meta := MemoryMeta{
  *       ID:          "git_fix_a3f891",
  *       Type:        MemoryTypeToolUse,
+ *       Kind:        "pitfall",
  *       Description: "Fixed 'fatal: not a git repository' with git init",
+ *       Action:      "Run `git init` in project root, then retry.",
+ *       Confidence:  0.5,
  *   }
  */
 type MemoryMeta struct {
 	ID            string         `yaml:"id"`
 	Type          MemoryType     `yaml:"type"`
+	Kind          string         `yaml:"kind,omitempty"`
 	CreatedAt     string         `yaml:"created_at"`
 	UpdatedAt     string         `yaml:"updated_at"`
 	Supersedes    []string       `yaml:"supersedes"`
 	Tags          []string       `yaml:"tags"`
 	Description   string         `yaml:"description"`
 	Summary       string         `yaml:"summary"`
+	Action        string         `yaml:"action,omitempty"`
+	Confidence    float64        `yaml:"confidence,omitempty"`
 	SourceSession string         `yaml:"source_session,omitempty"`
 	Metadata      map[string]any `yaml:"metadata,omitempty"`
 }
@@ -119,6 +135,9 @@ func ParseMemoryDoc(data []byte) (*MemoryDoc, error) {
 	if meta.Tags == nil {
 		meta.Tags = []string{}
 	}
+	if meta.Confidence == 0 {
+		meta.Confidence = 0.5
+	}
 	return &MemoryDoc{Meta: meta, FountainBody: body}, nil
 }
 
@@ -182,8 +201,8 @@ func (m *MemoryDoc) ArchivePath(baseDir string) string {
 }
 
 /** EmbedText returns the text used to generate the embedding for this
- * memory. It combines description, tags, and summary to produce a compact,
- * semantically rich representation.
+ * memory. It combines description, tags, summary, and action (when present)
+ * to produce a compact, semantically rich representation.
  *
  * Returns:
  *   string — the text to pass to the embedder.
@@ -199,26 +218,32 @@ func (m *MemoryDoc) EmbedText() string {
 	if m.Meta.Summary != "" {
 		parts = append(parts, m.Meta.Summary)
 	}
+	if m.Meta.Action != "" {
+		parts = append(parts, m.Meta.Action)
+	}
 	return strings.Join(parts, " ")
 }
 
 /** NewMemoryDoc creates a new MemoryDoc with the given fields and sets
- * CreatedAt, UpdatedAt, and empty Supersedes. The caller is responsible
- * for populating FountainBody before saving.
+ * CreatedAt, UpdatedAt, empty Supersedes, and default Confidence of 0.5.
+ * The caller is responsible for populating FountainBody, Kind, and Action
+ * before saving.
  *
  * Parameters:
  *   id          (string)     — unique identifier (see GenerateMemoryID).
  *   memType     (MemoryType) — one of MemoryTypeToolUse, etc.
  *   description (string)     — one-sentence human summary.
- *   summary     (string)     — 2-3 sentence text optimised for embedding.
+ *   summary     (string)     — 2-3 sentence explanation of what happened and why it matters.
  *   tags        ([]string)   — keyword tags for filtering.
  *
  * Returns:
- *   *MemoryDoc — new document with empty FountainBody.
+ *   *MemoryDoc — new document with empty FountainBody, Kind, Action and Confidence 0.5.
  *
  * Example:
  *   doc := NewMemoryDoc("git_fix_a3f891", MemoryTypeToolUse,
  *       "Fixed fatal: not a git repository", "...", []string{"git","fix"})
+ *   doc.Meta.Kind   = "pitfall"
+ *   doc.Meta.Action = "Run `git init` in project root, then retry."
  */
 func NewMemoryDoc(id string, memType MemoryType, description, summary string, tags []string) *MemoryDoc {
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -235,6 +260,7 @@ func NewMemoryDoc(id string, memType MemoryType, description, summary string, ta
 			Tags:        tags,
 			Description: description,
 			Summary:     summary,
+			Confidence:  0.5,
 		},
 	}
 }

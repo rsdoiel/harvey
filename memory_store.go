@@ -3,41 +3,60 @@ package harvey
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/glebarez/go-sqlite"
 )
 
+// ErrAutoArchived is returned by SetConfidence when the memory's confidence
+// fell to or below the auto-archive threshold (0.2) and Archive was called.
+var ErrAutoArchived = errors.New("memory auto-archived: confidence below threshold")
+
 const memoriesSubdir = "memories"
 
 const memoriesSchema = `
 CREATE TABLE IF NOT EXISTS memories (
-    id             TEXT PRIMARY KEY,
-    type           TEXT NOT NULL,
-    description    TEXT NOT NULL,
-    summary        TEXT NOT NULL,
-    tags           TEXT NOT NULL DEFAULT '[]',
-    source_session TEXT NOT NULL DEFAULT '',
-    file_path      TEXT NOT NULL,
-    created_at     TEXT NOT NULL,
-    updated_at     TEXT NOT NULL,
+    id             TEXT    PRIMARY KEY,
+    type           TEXT    NOT NULL,
+    kind           TEXT    NOT NULL DEFAULT '',
+    description    TEXT    NOT NULL,
+    summary        TEXT    NOT NULL,
+    action         TEXT    NOT NULL DEFAULT '',
+    tags           TEXT    NOT NULL DEFAULT '[]',
+    source_session TEXT    NOT NULL DEFAULT '',
+    file_path      TEXT    NOT NULL,
+    created_at     TEXT    NOT NULL,
+    updated_at     TEXT    NOT NULL,
     archived       INTEGER NOT NULL DEFAULT 0,
-    embedding      BLOB NOT NULL
+    confidence     REAL    NOT NULL DEFAULT 0.5,
+    embedding      BLOB    NOT NULL
 );
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
 `
 
+// memoriesEnrichAlterStmts adds the three enrichment columns to databases
+// created before this change. SQLite silently ignores duplicate-column errors.
+var memoriesEnrichAlterStmts = []string{
+	`ALTER TABLE memories ADD COLUMN kind       TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE memories ADD COLUMN action     TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE memories ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5`,
+}
+
 const memoriesFTSSchema = `
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
     id,
     type,
+    kind,
     tags,
     description,
     summary,
+    action,
     file_path UNINDEXED
 );
 `
@@ -136,11 +155,15 @@ func NewMemoryStore(ws *Workspace) (*MemoryStore, error) {
 		return nil, fmt.Errorf("memory store: apply schema: %w", err)
 	}
 
+	// Lazy-migrate existing databases to add the three enrichment columns.
+	for _, stmt := range memoriesEnrichAlterStmts {
+		_, _ = db.Exec(stmt)
+	}
+
 	s := &MemoryStore{db: db, dir: dir}
 
-	if _, err := db.Exec(memoriesFTSSchema); err == nil {
-		s.ftsAvailable = true
-	}
+	// Ensure FTS table exists with the current schema, migrating if needed.
+	s.ftsAvailable = s.ensureFTS()
 
 	// memory_stats is optional from the schema perspective but needed for
 	// Phase 2b budget tuning. Ignore the error so existing DBs without the
@@ -154,6 +177,40 @@ func NewMemoryStore(ws *Workspace) (*MemoryStore, error) {
 	}
 
 	return s, nil
+}
+
+// ensureFTS ensures memories_fts exists with the current schema (including
+// kind and action columns). If the table exists with the old schema, it is
+// dropped and recreated, then repopulated from the memories table.
+func (s *MemoryStore) ensureFTS() bool {
+	// Probe for the new columns by running a no-op query.
+	if _, err := s.db.Exec(`SELECT kind FROM memories_fts LIMIT 0`); err == nil {
+		return true // Already up to date.
+	}
+	// Table is absent or has old schema — drop and recreate.
+	_, _ = s.db.Exec(`DROP TABLE IF EXISTS memories_fts`)
+	if _, err := s.db.Exec(memoriesFTSSchema); err != nil {
+		return false
+	}
+	// Repopulate FTS from the memories table (embeddings are not in FTS).
+	rows, err := s.db.Query(`
+		SELECT id, type, kind, tags, description, summary, action, file_path
+		FROM memories WHERE archived=0`)
+	if err != nil {
+		return true // Table created but empty; acceptable.
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, typ, kind, tags, desc, summary, action, fp string
+		if err := rows.Scan(&id, &typ, &kind, &tags, &desc, &summary, &action, &fp); err != nil {
+			continue
+		}
+		_, _ = s.db.Exec(`
+			INSERT INTO memories_fts (id, type, kind, tags, description, summary, action, file_path)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, typ, kind, tags, desc, summary, action, fp)
+	}
+	return true
 }
 
 /** Close releases the database connection.
@@ -225,20 +282,28 @@ func (s *MemoryStore) Save(doc *MemoryDoc, embedder Embedder) error {
 		return fmt.Errorf("memory store: save: marshal tags: %w", err)
 	}
 
+	conf := doc.Meta.Confidence
+	if conf == 0 {
+		conf = 0.5
+	}
+
 	_, err = s.db.Exec(`
 		INSERT OR REPLACE INTO memories
-		    (id, type, description, summary, tags, source_session,
-		     file_path, created_at, updated_at, archived, embedding)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+		    (id, type, kind, description, summary, action, tags, source_session,
+		     file_path, created_at, updated_at, archived, confidence, embedding)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
 		doc.Meta.ID,
 		string(doc.Meta.Type),
+		doc.Meta.Kind,
 		doc.Meta.Description,
 		doc.Meta.Summary,
+		doc.Meta.Action,
 		string(tagsJSON),
 		doc.Meta.SourceSession,
 		path,
 		doc.Meta.CreatedAt,
 		doc.Meta.UpdatedAt,
+		conf,
 		blob,
 	)
 	if err != nil {
@@ -248,17 +313,20 @@ func (s *MemoryStore) Save(doc *MemoryDoc, embedder Embedder) error {
 	if s.ftsAvailable {
 		_, _ = s.db.Exec(`DELETE FROM memories_fts WHERE id = ?`, doc.Meta.ID)
 		_, _ = s.db.Exec(`
-			INSERT INTO memories_fts (id, type, tags, description, summary, file_path)
-			VALUES (?, ?, ?, ?, ?, ?)`,
+			INSERT INTO memories_fts (id, type, kind, tags, description, summary, action, file_path)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			doc.Meta.ID,
 			string(doc.Meta.Type),
+			doc.Meta.Kind,
 			string(tagsJSON),
 			doc.Meta.Description,
 			doc.Meta.Summary,
+			doc.Meta.Action,
 			path,
 		)
 	}
 
+	_ = s.WriteDigest(filepath.Join(s.dir, "DIGEST.md"))
 	return nil
 }
 
@@ -304,6 +372,7 @@ func (s *MemoryStore) Archive(id string) error {
 	if s.ftsAvailable {
 		_, _ = s.db.Exec(`DELETE FROM memories_fts WHERE id = ?`, id)
 	}
+	_ = s.WriteDigest(filepath.Join(s.dir, "DIGEST.md"))
 	return nil
 }
 
@@ -329,7 +398,7 @@ func (s *MemoryStore) Query(query string, embedder Embedder, topK int) ([]Memory
 	}
 
 	rows, err := s.db.Query(
-		`SELECT id, file_path, embedding FROM memories WHERE archived=0`,
+		`SELECT id, file_path, embedding, confidence FROM memories WHERE archived=0`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("memory store: query: scan: %w", err)
@@ -345,17 +414,21 @@ func (s *MemoryStore) Query(query string, embedder Embedder, topK int) ([]Memory
 	for rows.Next() {
 		var id, filePath string
 		var blob []byte
-		if err := rows.Scan(&id, &filePath, &blob); err != nil {
+		var conf float64
+		if err := rows.Scan(&id, &filePath, &blob, &conf); err != nil {
 			return nil, err
 		}
 		vec, err := deserialize(blob)
 		if err != nil {
 			continue
 		}
+		if conf == 0 {
+			conf = 0.5
+		}
 		candidates = append(candidates, scored{
 			id:       id,
 			filePath: filePath,
-			score:    cosineSimilarity(queryVec, vec),
+			score:    cosineSimilarity(queryVec, vec) * conf,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -409,12 +482,14 @@ func (s *MemoryStore) List(typeFilter string) ([]MemoryMeta, error) {
 	var err error
 	if typeFilter != "" {
 		rows, err = s.db.Query(`
-			SELECT id, type, description, summary, tags, source_session, created_at, updated_at
+			SELECT id, type, kind, description, summary, action, tags, source_session,
+			       created_at, updated_at, confidence
 			FROM memories WHERE archived=0 AND type=?
 			ORDER BY updated_at DESC`, typeFilter)
 	} else {
 		rows, err = s.db.Query(`
-			SELECT id, type, description, summary, tags, source_session, created_at, updated_at
+			SELECT id, type, kind, description, summary, action, tags, source_session,
+			       created_at, updated_at, confidence
 			FROM memories WHERE archived=0
 			ORDER BY updated_at DESC`)
 	}
@@ -550,7 +625,7 @@ func (s *MemoryStore) SearchFTS(query string, topK int) ([]ScoredDoc, error) {
 		return nil, nil
 	}
 	rows, err := s.db.Query(`
-		SELECT m.file_path, -memories_fts.rank AS score
+		SELECT m.file_path, -memories_fts.rank AS score, m.confidence
 		FROM memories_fts
 		JOIN memories m ON memories_fts.id = m.id
 		WHERE memories_fts MATCH ? AND m.archived = 0
@@ -564,10 +639,14 @@ func (s *MemoryStore) SearchFTS(query string, topK int) ([]ScoredDoc, error) {
 	var out []ScoredDoc
 	for rows.Next() {
 		var filePath string
-		var score float64
-		if err := rows.Scan(&filePath, &score); err != nil {
+		var score, conf float64
+		if err := rows.Scan(&filePath, &score, &conf); err != nil {
 			return nil, err
 		}
+		if conf == 0 {
+			conf = 0.5
+		}
+		score *= conf
 		data, err := os.ReadFile(filePath)
 		if err != nil {
 			continue
@@ -720,6 +799,169 @@ func (s *MemoryStore) StatsCount() (int64, error) {
 	return n, err
 }
 
+/** SetConfidence adjusts the confidence of an active memory by delta and
+ * clamps the result to [0.0, 1.0]. Both the database row and the on-disk
+ * .fountain file are updated so that a database rebuild preserves the value.
+ * If the resulting confidence is <= 0.2 the memory is automatically archived
+ * and ErrAutoArchived is returned alongside the final confidence value.
+ *
+ * Parameters:
+ *   id    (string)  — ID of the memory to adjust.
+ *   delta (float64) — positive to increase, negative to decrease confidence.
+ *
+ * Returns:
+ *   float64 — the clamped confidence value after adjustment.
+ *   error   — ErrAutoArchived when auto-archival triggered; other errors on
+ *             database or file failure; nil on success.
+ *
+ * Example:
+ *   newConf, err := store.SetConfidence("git_fix_a3f891", -0.1)
+ *   if errors.Is(err, ErrAutoArchived) {
+ *       fmt.Println("memory archived due to low confidence")
+ *   }
+ */
+func (s *MemoryStore) SetConfidence(id string, delta float64) (float64, error) {
+	var current float64
+	err := s.db.QueryRow(
+		`SELECT confidence FROM memories WHERE id=? AND archived=0`, id,
+	).Scan(&current)
+	if err == sql.ErrNoRows {
+		return 0, fmt.Errorf("memory store: set confidence: memory %q not found", id)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("memory store: set confidence: %w", err)
+	}
+
+	newConf := current + delta
+	if newConf > 1.0 {
+		newConf = 1.0
+	}
+	if newConf < 0.0 {
+		newConf = 0.0
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := s.db.Exec(
+		`UPDATE memories SET confidence=?, updated_at=? WHERE id=?`,
+		newConf, now, id,
+	); err != nil {
+		return 0, fmt.Errorf("memory store: set confidence: update db: %w", err)
+	}
+
+	// Mirror confidence change into the .fountain file so rebuilds preserve it.
+	if doc, ferr := s.ByID(id); ferr == nil && doc != nil {
+		doc.Meta.Confidence = newConf
+		doc.Meta.UpdatedAt = now
+		if data, merr := doc.Bytes(); merr == nil {
+			_ = os.WriteFile(doc.FilePath(s.dir), data, 0o644)
+		}
+	}
+
+	if newConf <= 0.2 {
+		if archErr := s.Archive(id); archErr != nil {
+			return newConf, fmt.Errorf("%w: %v", ErrAutoArchived, archErr)
+		}
+		return newConf, ErrAutoArchived
+	}
+
+	return newConf, nil
+}
+
+/** WriteDigest renders a Markdown summary of all active memories to path.
+ * Memories are grouped by kind (pitfall → workaround → recommendation →
+ * pattern → unclassified) and sorted by confidence descending within each
+ * group. The file is not written when there are no active memories.
+ *
+ * Parameters:
+ *   path (string) — absolute path to write the digest file.
+ *
+ * Returns:
+ *   error — on database query or file write failure.
+ *
+ * Example:
+ *   _ = store.WriteDigest(filepath.Join(store.Dir(), "DIGEST.md"))
+ */
+func (s *MemoryStore) WriteDigest(path string) error {
+	type digestEntry struct {
+		id          string
+		memType     string
+		kind        string
+		description string
+		action      string
+		tags        string
+		confidence  float64
+	}
+
+	rows, err := s.db.Query(`
+		SELECT id, type, kind, description, action, tags, confidence
+		FROM memories WHERE archived=0
+		ORDER BY confidence DESC`)
+	if err != nil {
+		return fmt.Errorf("write digest: query: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []digestEntry
+	for rows.Next() {
+		var e digestEntry
+		if err := rows.Scan(
+			&e.id, &e.memType, &e.kind, &e.description, &e.action, &e.tags, &e.confidence,
+		); err != nil {
+			continue
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("write digest: scan: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+
+	kindOrder := []string{"pitfall", "workaround", "recommendation", "pattern", ""}
+	kindLabel := map[string]string{
+		"pitfall":        "Pitfalls",
+		"workaround":     "Workarounds",
+		"recommendation": "Recommendations",
+		"pattern":        "Patterns",
+		"":               "Unclassified",
+	}
+	groups := make(map[string][]digestEntry)
+	for _, e := range entries {
+		groups[e.kind] = append(groups[e.kind], e)
+	}
+
+	var buf strings.Builder
+	now := time.Now().UTC().Format(time.RFC3339)
+	fmt.Fprintf(&buf, "# Harvey Memory Digest\n*Updated: %s — %d active memories*\n",
+		now, len(entries))
+
+	for _, k := range kindOrder {
+		items := groups[k]
+		if len(items) == 0 {
+			continue
+		}
+		fmt.Fprintf(&buf, "\n## %s\n", kindLabel[k])
+		for _, e := range items {
+			fmt.Fprintf(&buf, "- **[%s]** `%s` (confidence: %.1f) — %s\n",
+				e.memType, e.id, e.confidence, e.description)
+			if e.action != "" {
+				fmt.Fprintf(&buf, "  **Action:** %s\n", e.action)
+			}
+			var tags []string
+			if jsonErr := json.Unmarshal([]byte(e.tags), &tags); jsonErr == nil && len(tags) > 0 {
+				quoted := make([]string, len(tags))
+				for i, t := range tags {
+					quoted[i] = "`" + t + "`"
+				}
+				fmt.Fprintf(&buf, "  Tags: %s\n", strings.Join(quoted, " "))
+			}
+		}
+	}
+
+	return os.WriteFile(path, []byte(buf.String()), 0o644)
+}
+
 // rebuildIfNeeded populates memories.db from .fountain files when the
 // database is empty but files exist on disk. This handles the case where
 // memories.db was deleted.
@@ -755,32 +997,41 @@ func (s *MemoryStore) rebuildIfNeeded() error {
 			// Insert without embedding (use zero vector as placeholder).
 			tagsJSON, _ := json.Marshal(doc.Meta.Tags)
 			zeroBlob, _ := serialize(make([]float64, 1))
+			conf := doc.Meta.Confidence
+			if conf == 0 {
+				conf = 0.5
+			}
 			_, _ = s.db.Exec(`
 				INSERT OR IGNORE INTO memories
-				    (id, type, description, summary, tags, source_session,
-				     file_path, created_at, updated_at, archived, embedding)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+				    (id, type, kind, description, summary, action, tags, source_session,
+				     file_path, created_at, updated_at, archived, confidence, embedding)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
 				doc.Meta.ID,
 				string(doc.Meta.Type),
+				doc.Meta.Kind,
 				doc.Meta.Description,
 				doc.Meta.Summary,
+				doc.Meta.Action,
 				string(tagsJSON),
 				doc.Meta.SourceSession,
 				path,
 				doc.Meta.CreatedAt,
 				doc.Meta.UpdatedAt,
+				conf,
 				zeroBlob,
 			)
 			if s.ftsAvailable {
 				_, _ = s.db.Exec(`
 					INSERT OR IGNORE INTO memories_fts
-					    (id, type, tags, description, summary, file_path)
-					VALUES (?, ?, ?, ?, ?, ?)`,
+					    (id, type, kind, tags, description, summary, action, file_path)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 					doc.Meta.ID,
 					string(doc.Meta.Type),
+					doc.Meta.Kind,
 					string(tagsJSON),
 					doc.Meta.Description,
 					doc.Meta.Summary,
+					doc.Meta.Action,
 					path,
 				)
 			}
@@ -790,15 +1041,17 @@ func (s *MemoryStore) rebuildIfNeeded() error {
 }
 
 // scanMemoryMetas reads rows from a query that selects
-// id, type, description, summary, tags, source_session, created_at, updated_at.
+// id, type, kind, description, summary, action, tags, source_session,
+// created_at, updated_at, confidence.
 func scanMemoryMetas(rows *sql.Rows) ([]MemoryMeta, error) {
 	var out []MemoryMeta
 	for rows.Next() {
 		var m MemoryMeta
 		var tagsJSON string
 		if err := rows.Scan(
-			&m.ID, (*string)(&m.Type), &m.Description, &m.Summary,
-			&tagsJSON, &m.SourceSession, &m.CreatedAt, &m.UpdatedAt,
+			&m.ID, (*string)(&m.Type), &m.Kind, &m.Description, &m.Summary,
+			&m.Action, &tagsJSON, &m.SourceSession, &m.CreatedAt, &m.UpdatedAt,
+			&m.Confidence,
 		); err != nil {
 			return nil, err
 		}

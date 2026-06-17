@@ -159,6 +159,62 @@ func TestEmbedText(t *testing.T) {
 	}
 }
 
+func TestEmbedText_IncludesAction(t *testing.T) {
+	doc := NewMemoryDoc("x", MemoryTypeToolUse, "desc", "summary", []string{"tag"})
+	doc.Meta.Action = "Run git init in project root."
+	text := doc.EmbedText()
+	if !strings.Contains(text, "Run git init in project root.") {
+		t.Error("EmbedText should contain action when non-empty")
+	}
+}
+
+func TestEmbedText_EmptyActionOmitted(t *testing.T) {
+	doc := NewMemoryDoc("x", MemoryTypeToolUse, "desc", "summary", []string{"tag"})
+	// Action is empty by default; EmbedText should not contain trailing whitespace
+	// or an empty token from a blank action.
+	text := doc.EmbedText()
+	if strings.HasSuffix(text, " ") {
+		t.Error("EmbedText should not have trailing space when action is empty")
+	}
+}
+
+func TestParseMemoryDoc_DefaultConfidence(t *testing.T) {
+	input := `---
+id: conf_test_001
+type: tool_use
+created_at: "2026-06-01T00:00:00Z"
+updated_at: "2026-06-01T00:00:00Z"
+supersedes: []
+tags: []
+description: Test memory without confidence field
+summary: Verifies that confidence defaults to 0.5 when absent.
+---
+
+FADE IN:
+
+INT. MEMORY 2026-06-01 00:00:00
+
+HARVEY
+No confidence field in front matter.
+
+THE END.
+`
+	doc, err := ParseMemoryDoc([]byte(input))
+	if err != nil {
+		t.Fatalf("ParseMemoryDoc: %v", err)
+	}
+	if doc.Meta.Confidence != 0.5 {
+		t.Errorf("Confidence: got %v, want 0.5", doc.Meta.Confidence)
+	}
+}
+
+func TestNewMemoryDoc_DefaultConfidence(t *testing.T) {
+	doc := NewMemoryDoc("x", MemoryTypeToolUse, "desc", "summary", []string{"tag"})
+	if doc.Meta.Confidence != 0.5 {
+		t.Errorf("NewMemoryDoc Confidence: got %v, want 0.5", doc.Meta.Confidence)
+	}
+}
+
 // ── GenerateMemoryID ──────────────────────────────────────────────────────────
 
 func TestGenerateMemoryID_UniqueAndPrefixed(t *testing.T) {

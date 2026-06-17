@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,17 +9,18 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
-
-	"bufio"
 )
 
 // proposedMemory is the JSON shape the LLM returns for each proposed memory.
 type proposedMemory struct {
 	Type         string   `json:"type"`
+	Kind         string   `json:"kind"`
 	Description  string   `json:"description"`
 	Summary      string   `json:"summary"`
+	Action       string   `json:"action"`
 	Tags         []string `json:"tags"`
 	FountainBody string   `json:"fountain_body"`
 }
@@ -26,19 +28,29 @@ type proposedMemory struct {
 const minerSystemPrompt = `You are a memory extraction assistant for Harvey, a terminal coding agent.
 
 Your task: read the session transcript and propose 0-5 memories worth saving.
-Each memory captures one reusable insight: a tool_use trick, a workflow, or a user_preference.
+Each memory captures one reusable insight: a tool_use trick, a workflow, a user_preference, a workspace_profile fact, or a project_fact.
 
 Return a JSON array of objects with these fields:
-  type          string  — one of: "tool_use", "workflow", "user_preference"
+  type          string  — one of: "tool_use", "workflow", "user_preference", "workspace_profile", "project_fact"
+  kind          string  — one of: "pitfall", "workaround", "recommendation", "pattern", or ""
   description   string  — one sentence, action-oriented (e.g. "Run git init when git reports 'not a repository'")
-  summary       string  — 2-3 sentences optimised for semantic search
+  summary       string  — 2-3 sentences explaining what happened and why it matters
+  action        string  — imperative sentence: the concrete step a future agent should take
+                          (use "" when no clear action applies)
   tags          array   — 3-7 lowercase keywords
   fountain_body string  — Fountain dialogue: FADE IN:\n\nINT. MEMORY <YYYY-MM-DD HH:MM:SS>\n\nCHARACTER\nDialogue.\n\nTHE END.\n
+
+Kind values:
+  pitfall        — a permanent gotcha (API quirk, undocumented behaviour, subtle invariant that no tool abstracts away)
+  workaround     — useful now but may become obsolete when better tooling or docs exist
+  recommendation — points to the right approach, tool, or pattern; "prefer X over Y for Z"
+  pattern        — a recurring successful approach worth repeating
+  ""             — leave empty when the memory does not clearly fit any category
 
 Rules:
 - Return [] when nothing reusable is found.
 - Only include things a future session would actually benefit from knowing.
-- Avoid one-off debugging; focus on durable knowledge.
+- Avoid one-off debugging details; focus on durable, transferable knowledge.
 - Output ONLY the JSON array — no explanation, no markdown fences.`
 
 // extractJSON pulls a JSON array out of possibly-fenced LLM output.
@@ -204,6 +216,9 @@ func (m *Miner) extract(ctx context.Context, sessionText string, agent *Agent, o
 		}
 		id := GenerateMemoryID(mt)
 		doc := NewMemoryDoc(id, mt, p.Description, p.Summary, p.Tags)
+		doc.Meta.Kind = p.Kind
+		doc.Meta.Action = p.Action
+		doc.Meta.Confidence = 0.5
 		if p.FountainBody != "" {
 			doc.FountainBody = p.FountainBody
 		} else {
@@ -237,7 +252,13 @@ func (m *Miner) reviewInteractive(proposed []MemoryDoc, embedder Embedder, works
 		fmt.Fprintf(out, " Proposed memory %d of %d\n", i+1, total)
 		fmt.Fprintf(out, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 		fmt.Fprintf(out, " Type:        %s\n", doc.Meta.Type)
+		if doc.Meta.Kind != "" {
+			fmt.Fprintf(out, " Kind:        %s\n", doc.Meta.Kind)
+		}
 		fmt.Fprintf(out, " Description: %s\n", doc.Meta.Description)
+		if doc.Meta.Action != "" {
+			fmt.Fprintf(out, " Action:      %s\n", doc.Meta.Action)
+		}
 		fmt.Fprintf(out, " Tags:        %s\n", strings.Join(doc.Meta.Tags, ", "))
 		if doc.Meta.Summary != "" {
 			fmt.Fprintf(out, " Summary:     %s\n", doc.Meta.Summary)
@@ -439,6 +460,7 @@ func (m *Miner) MineAuto(ctx context.Context, sessionPath string, agent *Agent, 
 	}
 
 	if len(accepted) > 0 {
+		_ = m.store.WriteDigest(filepath.Join(m.store.Dir(), "DIGEST.md"))
 		fmt.Fprintln(out, dim(fmt.Sprintf("  [auto-mined %d %s from session]",
 			len(accepted), pluralise("memory", "memories", len(accepted)))))
 	}

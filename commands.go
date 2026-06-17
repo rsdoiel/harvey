@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -5435,7 +5436,8 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 
 // ── /memory ──────────────────────────────────────────────────────────────────
 
-/** cmdMemory dispatches /memory subcommands: mine, list, show, forget, status.
+/** cmdMemory dispatches /memory subcommands: mine, list, show, flag, forget,
+ * status, recall, profile.
  *
  * Parameters:
  *   a    (*Agent)    — Harvey agent.
@@ -5447,14 +5449,15 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
  *
  * Example:
  *   /memory mine
- *   /memory list --type tool_use
+ *   /memory list --type tool_use --kind pitfall
  *   /memory show git_fix_a3f891
+ *   /memory flag git_fix_a3f891
  *   /memory forget git_fix_a3f891
  *   /memory status
  */
 func cmdMemory(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status|recall|profile> [args...]")
+		fmt.Fprintln(out, "Usage: /memory <mine|list|show|flag|forget|status|recall|profile> [args...]")
 		return nil
 	}
 	store, err := NewMemoryStore(a.Workspace)
@@ -5470,6 +5473,8 @@ func cmdMemory(a *Agent, args []string, out io.Writer) error {
 		return cmdMemoryList(a, args[1:], out, store)
 	case "show":
 		return cmdMemoryShow(a, args[1:], out, store)
+	case "flag":
+		return cmdMemoryFlag(a, args[1:], out, store)
 	case "forget":
 		return cmdMemoryForget(a, args[1:], out, store)
 	case "status":
@@ -5480,7 +5485,7 @@ func cmdMemory(a *Agent, args []string, out io.Writer) error {
 		return cmdMemoryProfile(a, args[1:], out, store)
 	default:
 		fmt.Fprintf(out, "Unknown /memory subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "Usage: /memory <mine|list|show|forget|status|recall|profile> [args...]")
+		fmt.Fprintln(out, "Usage: /memory <mine|list|show|flag|forget|status|recall|profile> [args...]")
 		return nil
 	}
 }
@@ -5548,12 +5553,16 @@ func cmdMemoryMine(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 	return miner.Mine(context.Background(), sessionPath, a, embedder, out, a.In)
 }
 
-// cmdMemoryList lists non-archived memories, optionally filtered by type.
+// cmdMemoryList lists non-archived memories, optionally filtered by type or kind.
 func cmdMemoryList(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
 	typeFilter := ""
+	kindFilter := ""
 	for i, arg := range args {
 		if arg == "--type" && i+1 < len(args) {
 			typeFilter = args[i+1]
+		}
+		if arg == "--kind" && i+1 < len(args) {
+			kindFilter = args[i+1]
 		}
 	}
 	metas, err := store.List(typeFilter)
@@ -5565,7 +5574,15 @@ func cmdMemoryList(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 		return nil
 	}
 	for _, m := range metas {
-		fmt.Fprintf(out, "%-30s  %-16s  %s\n", m.ID, m.Type, m.Description)
+		if kindFilter != "" && m.Kind != kindFilter {
+			continue
+		}
+		kind := m.Kind
+		if kind == "" {
+			kind = "-"
+		}
+		fmt.Fprintf(out, "%-30s  %-16s  %-14s  %.1f  %s\n",
+			m.ID, m.Type, kind, m.Confidence, m.Description)
 	}
 	return nil
 }
@@ -5592,7 +5609,7 @@ func cmdMemoryShow(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 	return nil
 }
 
-// cmdMemoryForget archives a memory by ID.
+// cmdMemoryForget archives a memory by ID immediately.
 func cmdMemoryForget(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
 	if len(args) == 0 {
 		fmt.Fprintln(out, "Usage: /memory forget <id>")
@@ -5602,6 +5619,27 @@ func cmdMemoryForget(a *Agent, args []string, out io.Writer, store *MemoryStore)
 		return fmt.Errorf("memory forget: %w", err)
 	}
 	fmt.Fprintf(out, "Memory %q archived.\n", args[0])
+	return nil
+}
+
+// cmdMemoryFlag reduces a memory's confidence by 0.1. When confidence falls
+// to or below 0.2 the memory is auto-archived. Use /memory forget for
+// immediate archival without the confidence step.
+func cmdMemoryFlag(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /memory flag <id>")
+		return nil
+	}
+	id := args[0]
+	newConf, err := store.SetConfidence(id, -0.1)
+	if errors.Is(err, ErrAutoArchived) {
+		fmt.Fprintf(out, "%s: confidence → %.1f — auto-archived (below threshold)\n", id, newConf)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("memory flag: %w", err)
+	}
+	fmt.Fprintf(out, "%s: confidence → %.1f\n", id, newConf)
 	return nil
 }
 
