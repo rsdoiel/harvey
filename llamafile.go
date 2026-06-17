@@ -231,13 +231,50 @@ func llamafilePickFromDir(a *Agent, out io.Writer) (string, error) {
 	return "", nil
 }
 
-// cmdLlamafileUse switches to a named registered model.
-func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /llamafile use NAME")
-		return nil
+// llamafilePickFromRegistered shows a numbered picker of registered models
+// and returns the selected name. Returns ("", nil) if the user cancels.
+func llamafilePickFromRegistered(a *Agent, out io.Writer) (string, error) {
+	models := a.Config.LlamafileModels
+	if len(models) == 0 {
+		fmt.Fprintln(out, "  No llamafile models registered. Use /llamafile add first.")
+		return "", nil
 	}
-	name := args[0]
+	fmt.Fprintln(out, "  Registered llamafile models:")
+	for i, e := range models {
+		arrow := "  "
+		if e.Name == a.Config.LlamafileActive {
+			arrow = "→ "
+		}
+		fmt.Fprintf(out, "  %s[%d] %s\n", arrow, i+1, e.Name)
+	}
+	fmt.Fprintf(out, "  Select [1-%d] or enter a name: ", len(models))
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	line = strings.TrimSpace(line)
+	if line == "" {
+		fmt.Fprintln(out, "  No selection.")
+		return "", nil
+	}
+	idx := 0
+	fmt.Sscanf(line, "%d", &idx)
+	if idx >= 1 && idx <= len(models) {
+		return models[idx-1].Name, nil
+	}
+	return line, nil
+}
+
+// cmdLlamafileUse switches to a named registered model.
+// When no NAME is given, shows a numbered picker of registered models.
+func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	} else {
+		selected, err := llamafilePickFromRegistered(a, out)
+		if err != nil || selected == "" {
+			return err
+		}
+		name = selected
+	}
 	entry := a.Config.LlamafileEntryByName(name)
 	if entry == nil {
 		return fmt.Errorf("no llamafile registered as %q — use /llamafile list to see registered models", name)

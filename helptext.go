@@ -124,10 +124,22 @@ HARVEY_* environment variables set before each script run:
   HARVEY_WORKDIR     absolute path to the workspace root
   HARVEY_MODEL       the name of the currently active LLM model
   HARVEY_SESSION_ID  the current session ID as a string
+  HARVEY_API_BASE    base URL of the currently active LLM backend
+                     (e.g. http://localhost:11434 for Ollama,
+                     https://api.anthropic.com for Anthropic)
+                     Use this to make LLM API calls from a compiled
+                     script without hard-coding a provider URL.
 
 Staleness: if SKILL.md is modified after the scripts were compiled, Harvey
 warns you when the skill is invoked and runs the old compiled version.
 Recompile the skill on a capable system to pick up the changes.
+
+Dispatch fallback: if a compiled skill's script cannot be executed (e.g.
+the script was compiled on a different OS or was not committed), Harvey
+falls back to the LLM context-injection path — the skill body is injected
+into the conversation and the model is asked to respond — instead of
+erroring out. The fallback triggers a model response turn so the session
+continues without interruption.
 
 TRIGGER field: add an optional trigger field to SKILL.md frontmatter to enable
 automatic skill dispatch when user input matches:
@@ -279,23 +291,29 @@ The /llamafile command manages llamafile model backends. A llamafile is a
 self-contained executable that bundles a GGUF model and an HTTP inference
 server into a single file — no separate server installation required.
 
-Download pre-built llamafiles from:
-  https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles
+Llamafile is a project by Mozilla that makes it easy to distribute and run
+local LLMs on any platform. Learn more at:
+  <https://github.com/mozilla-ai/llamafile>
 
-Place them anywhere on your filesystem (~/Models is the default discovery
-directory) and use /llamafile add to register and connect to them.
+Harvey assumes models are stored in $HOME/Models by default. Place
+.llamafile executables there and use /llamafile add to register and
+connect to them.
+
+Pre-built models are available at:
+  <https://huggingface.co/Mozilla/llamafile-models>
 
 # SUBCOMMANDS
 
   /llamafile add [PATH] [NAME]
     Register a model and connect to it immediately. If PATH is omitted,
-    Harvey scans the discovery directory (~/Models by default) and shows
-    a numbered picker. NAME is derived from the filename if not given.
-    The choice is saved to agents/harvey.yaml so Harvey connects
+    Harvey scans the discovery directory ($HOME/Models by default) and
+    shows a numbered picker. NAME is derived from the filename if not
+    given. The choice is saved to agents/harvey.yaml so Harvey connects
     automatically on next start.
 
-  /llamafile use NAME
-    Switch to a named registered model. The current server is stopped
+  /llamafile use [NAME]
+    Switch to a named registered model. If NAME is omitted, Harvey shows
+    a numbered picker of registered models. The current server is stopped
     (if Harvey started it) and the new one is launched.
 
   /llamafile list
@@ -318,6 +336,11 @@ In agents/harvey.yaml:
     models_dir: ~/Models           # optional; $HOME/Models is the default
     active: qwen-coding
     url: http://localhost:8080     # optional; this is the default
+    gpu_layers: 99                 # optional; layers to offload to GPU via -ngl
+                                   # default 99 maximises Metal/CUDA offload
+                                   # set to -1 to force CPU-only inference
+    startup_timeout: 120s          # optional; time to wait for server ready
+                                   # default is 120 seconds
     models:
       - name: qwen-coding
         path: /home/user/Models/Qwen3.5-4B-Q5_K_S.llamafile
@@ -336,10 +359,29 @@ In agents/harvey.yaml:
   --llamafile-url URL     Override the API base URL (default: http://localhost:8080).
   --llamafile-dir PATH    Override the discovery directory.
 
+# NOTES
+
+macOS: llamafile binaries use the APE (Actually Portable Executable) format,
+which macOS cannot exec directly via execve. Harvey launches them via
+/bin/sh, which mirrors what the terminal does when you double-click or
+run the file directly. No extra setup is required.
+
+GPU offload: on macOS (Apple Silicon) llamafile uses Metal; on Linux it
+uses CUDA or ROCm when available. The gpu_layers config option controls
+how many transformer layers are offloaded to the GPU. The default of 99
+offloads everything that fits; lower it if you run out of VRAM, or set
+it to -1 for CPU-only inference.
+
+Startup: Harvey waits up to startup_timeout for the llamafile HTTP server
+to become ready. If the process exits before the server responds, Harvey
+reports the error and prints any stderr output to help diagnose the
+failure.
+
 # SEE ALSO
 
-/ollama — Ollama model backend management.
-/help getting-started — Getting started with Harvey.
+  /ollama              — Ollama model backend management
+  /help routing        — add a llamafile:// server as a named route
+  /help getting-started — Getting started with Harvey
 
 `
 
@@ -2103,7 +2145,7 @@ MEMORY — mine session recordings for memories and manage the memory store
 
 # SYNOPSIS
 
-/memory <mine|list|show|forget|status|recall|profile> [args...]
+/memory <mine|list|show|flag|forget|status|recall|profile> [args...]
 
 # DESCRIPTION
 
@@ -2120,15 +2162,25 @@ Fountain files in agents/memories/ inside the workspace.
         (accept / edit / replace / skip / quit). Use --force to re-mine
         sessions that have already been processed.
 
-  list [--type TYPE]
-        List stored memories. Optional --type filters to one of:
+  list [--type TYPE] [--kind KIND]
+        List stored memories. Optional --type filters by memory type:
         tool_use, workflow, user_preference, workspace_profile, project_fact.
+        Optional --kind filters by enrichment kind:
+        pitfall, workaround, recommendation, pattern.
+        Output shows type, kind, and confidence for each memory.
 
   show ID
         Display the full Fountain source for one memory by its ID slug.
 
+  flag ID
+        Reduce a memory's confidence by 0.1. When confidence falls to or
+        below 0.2 the memory is automatically archived. Use this to signal
+        that a memory has turned out to be wrong or outdated without
+        permanently deleting it.
+
   forget ID
-        Archive a memory (moves it to agents/memories/archive/ — not deleted).
+        Archive a memory immediately (moves it to agents/memories/archive/
+        — not deleted).
 
   status
         Show memory store location, total count, and breakdown by type.
@@ -2161,16 +2213,47 @@ Fountain files in agents/memories/ inside the workspace.
   project_fact      A key fact about the current project: deadlines, conventions,
                     constraints. Always injected second.
 
+# MEMORY ENRICHMENT FIELDS
+
+Each memory carries three enrichment fields set at mining time:
+
+  kind          Why this knowledge matters. One of:
+                  pitfall        — a mistake to avoid
+                  workaround     — a fix for a known limitation
+                  recommendation — a practice that consistently works well
+                  pattern        — a repeatable structure or approach
+
+  action        An imperative step a future agent should take when this
+                memory is relevant. Included in the embedding text so
+                semantic search retrieves it for related prompts.
+
+  confidence    A score from 0.0 to 1.0 (default 0.5 at mining time).
+                Retrieval scores are weighted multiplicatively:
+                  final_score = cosine_similarity × confidence
+                Use /memory flag ID to lower confidence when a memory
+                proves wrong. Memories at or below 0.2 are auto-archived.
+
 # MEMORY INJECTION
 
 When a session starts, Harvey injects a [memory context] block into the
 conversation. Factual types (workspace_profile, project_fact) always appear
 first. Experiential memories (tool_use, workflow, user_preference) are ranked
-by FTS5 full-text search and optionally cosine similarity. RAG chunks and KB
-observations follow if token budget permits.
+by FTS5 full-text search and optionally cosine similarity weighted by the
+memory's confidence score. RAG chunks and KB observations follow if token
+budget permits.
 
 The budget is controlled by memory.budget_pct in harvey.yaml (default 0.25 of
 the context window). Setting memory.inject_on_start: false disables injection.
+
+# DIGEST
+
+Harvey automatically writes agents/memories/DIGEST.md every time a memory
+is saved, archived, or auto-mined. The digest is a plain Markdown index of
+all active memories — readable by any LLM without a SQLite client.
+
+Other agents (Claude Code, Vibe, etc.) can use this digest via the
+agents/skills/harvey-memory/SKILL.md cross-agent skill, which explains when
+and how to consult it. See /help skills for skill loading.
 
 # ROLLING SUMMARY
 
@@ -2203,7 +2286,10 @@ memory before the review card is displayed.
   /memory mine agents/sessions/harvey-session-20260525-140251.spmd
   /memory list --type workflow
   /memory list --type workspace_profile
+  /memory list --kind pitfall
+  /memory list --type tool_use --kind workaround
   /memory show pipeline_confidence_extraction
+  /memory flag old_pattern_a1b2c3
   /memory forget old_pattern_a1b2c3
   /memory status
   /memory recall git repository error
@@ -2356,6 +2442,7 @@ SECURITY — Safe Mode, workspace permissions, and audit logging
 # SYNOPSIS
 
 /safemode <on|off|status|allow CMD|deny CMD|reset>
+/safe <on|off|status|allow CMD|deny CMD|reset>    (alias for /safemode)
 /permissions <list [PATH]|set PATH PERMS|reset>
 /audit <show [N]|clear|status>
 /security status
@@ -2374,26 +2461,29 @@ and /run. When enabled, only commands in the allowlist are permitted.
 Default allowlist: ls, cat, grep, head, tail, wc, find, stat, jq, htmlq,
 bat, batcat.
 
+Alias: /safe is an exact alias for /safemode. Both names accept the same
+subcommands and behave identically. Use whichever you prefer.
+
 Subcommands:
 
-  /safemode on
+  /safemode on   (or: /safe on)
     Enable Safe Mode. Commands not in the allowlist are blocked and
     audit-logged.
 
-  /safemode off
+  /safemode off   (or: /safe off)
     Disable Safe Mode. All commands accepted by the shell metacharacter
     filter are permitted.
 
-  /safemode status
+  /safemode status   (or: /safe status)
     Show whether Safe Mode is on or off and list the current allowlist.
 
-  /safemode allow CMD
+  /safemode allow CMD   (or: /safe allow CMD)
     Add CMD to the allowlist. Persisted to agents/harvey.yaml.
 
-  /safemode deny CMD
+  /safemode deny CMD   (or: /safe deny CMD)
     Remove CMD from the allowlist. Persisted to agents/harvey.yaml.
 
-  /safemode reset
+  /safemode reset   (or: /safe reset)
     Restore the default allowlist.
 
 ## WORKSPACE PERMISSIONS (/permissions)
@@ -2872,6 +2962,195 @@ inline but does not stop the loop — only Ctrl+C or the count limit does.
 
   /help pipeline  — chain prompts with confidence gating
   /help run       — execute shell commands from the REPL
+`
+
+	PlanHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+PLAN — generate and execute step-by-step task plans with bounded context
+
+# SYNOPSIS
+
+/plan TASK
+/plan next
+/plan status
+/plan show
+/plan clear
+
+# DESCRIPTION
+
+/plan breaks a complex task into a numbered GFM checklist, saves it to
+agents/plan.md, and executes each step using a bounded context — only the
+system prompt and the current plan state are sent to the model per step.
+This keeps per-step turn times constant regardless of conversation length
+and allows large multi-step tasks without filling the context window.
+
+The plan persists to agents/plan.md across /clear and Harvey restarts.
+Use /plan status at any time to review progress.
+
+# SUBCOMMANDS
+
+  /plan TASK
+    Ask the model to generate a step-by-step GFM checklist for TASK and
+    save it to agents/plan.md. Each step becomes a checkbox item:
+      - [ ] Step description
+    An existing plan is overwritten; use /plan clear first if you want
+    a clean start on a different task.
+
+  /plan next
+    Execute the next uncompleted step. Harvey sends only the system
+    prompt and the current plan state — not the full conversation
+    history — keeping context usage bounded. When a step's tool calls
+    are blocked or fail, the step is NOT auto-marked complete; fix
+    the underlying issue and run /plan next again.
+
+  /plan status
+    Print the plan checklist with completion markers, showing which
+    steps are done and which remain.
+
+  /plan show
+    Print the raw agents/plan.md file.
+
+  /plan clear
+    Delete agents/plan.md. Does not affect conversation history.
+
+# BOUNDED CONTEXT MODEL
+
+Each /plan next call sends only:
+  1. The system prompt (HARVEY.md).
+  2. The current agents/plan.md content.
+
+The full conversation history is NOT included. This means:
+  - Per-step token usage is constant regardless of plan length.
+  - The model has no memory of earlier steps beyond the plan file.
+  - For steps that need context from prior steps, inject that context
+    explicitly via /context add before running /plan next, or note it
+    directly in agents/plan.md.
+
+# WORKFLOW EXAMPLE
+
+~~~
+  # Break a large task into a plan
+  /plan Refactor the auth package to use short-lived JWT tokens
+
+  # Review the generated steps
+  /plan status
+
+  # Execute one step at a time
+  /plan next
+  /plan next
+
+  # Check progress
+  /plan status
+
+  # If a step gets stuck, investigate and retry
+  /plan next
+~~~
+
+# FILES
+
+  agents/plan.md   — persisted plan checklist; human-editable
+
+# SEE ALSO
+
+  /help pipeline   — chain Markdown prompt files with confidence gating
+  /help context    — inject context that persists across /plan next calls
+  /help skills     — skills for structured multi-step task automation
+
+`
+
+	BuiltinToolsHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+BUILT-IN TOOLS — tools Harvey exposes to capable LLM models
+
+# DESCRIPTION
+
+Harvey registers a set of built-in tools that are made available to
+models with structured tool-calling support. The model may invoke these
+tools during a conversation turn; Harvey executes them and returns results
+before the next LLM call. All file operations are constrained to the
+workspace root; paths outside the workspace are rejected.
+
+Workspace permissions (/permissions) and Safe Mode (/safemode) apply
+where noted below.
+
+# FILE TOOLS
+
+read_file PATH [pages]
+  Read a file and return its contents. PATH is relative to the workspace
+  root. PDF files (.pdf) are automatically extracted to plain text using
+  the poppler utilities; use the optional pages parameter to limit
+  extraction (e.g. "1-10"). Binary files return an error.
+
+write_file PATH CONTENT
+  Write CONTENT to PATH inside the workspace. The file is created or
+  overwritten. Parent directories must already exist. Respects workspace
+  write permissions.
+
+create_dir PATH
+  Create a directory (and any missing parents) at PATH inside the
+  workspace. Equivalent to mkdir -p but constrained to the workspace.
+  Use this when a task requires creating a new directory tree without
+  dropping to run_command.
+
+list_files [PATH]
+  List the entries in a workspace directory. Directories are shown with
+  a trailing "/". PATH defaults to the workspace root.
+
+file_tree [PATH]
+  Display a recursive tree of the workspace (or a subdirectory), skipping
+  hidden files and directories.
+
+search_files PATTERN [PATH]
+  Search workspace files for lines matching PATTERN (Go regexp syntax).
+  Results are capped at 200 matches.
+
+# COMMAND TOOLS
+
+run_command COMMAND [ARGS...]
+  Execute a command in the workspace root. Subject to Safe Mode: when
+  Safe Mode is on, only allowlisted commands are permitted. Shell
+  metacharacters are rejected. Output is capped at 64 KiB.
+
+git_command SUBCOMMAND [ARGS...]
+  Run a read-only git subcommand (status, diff, log, show, blame).
+  Write operations are blocked regardless of Safe Mode.
+
+# DATE AND TIME TOOLS
+
+current_datetime [format]
+  Return the current local date, time, timezone, and UTC equivalent.
+  Optional format: "human" (default), "rfc3339", or "unix".
+
+datetime_diff FROM [TO]
+  Compute the duration between two datetime strings. TO defaults to now.
+  Accepted input formats: RFC3339, YYYY-MM-DD HH:MM:SS, YYYY-MM-DD,
+  "Jan 2 2006", "January 2 2006".
+
+format_datetime DATETIME FORMAT
+  Parse a datetime string and reformat it. Output formats: "rfc3339",
+  "human", "unix", "date" (YYYY-MM-DD), "time" (HH:MM:SS).
+
+# IDENTITY TOOLS
+
+whoami
+  Return the current OS username, git user name and email, and hostname.
+  Useful when the model is authoring commit messages or project documents
+  that need the author's identity.
+
+# SEE ALSO
+
+  /help security   — Safe Mode and workspace permissions
+  /help run        — running shell commands interactively
+  /tools           — toggle tool calling on/off for the current session
+
 `
 
 	HintHelpText = `%{app_name}(7) user manual | version {version} {release_hash}

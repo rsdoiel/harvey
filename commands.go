@@ -557,7 +557,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "search":
 			fmt.Fprint(out, FmtHelp(SearchHelpText, "", "", "", ""))
 			return nil
-		case "security", "safemode", "safe-mode", "permissions", "audit":
+		case "security", "safemode", "safe", "safe-mode", "permissions", "audit":
 			fmt.Fprint(out, FmtHelp(SecurityHelpText, "", "", "", ""))
 			return nil
 		case "session", "sessions":
@@ -590,6 +590,12 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		case "memory":
 			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
 			return nil
+		case "plan":
+			fmt.Fprint(out, FmtHelp(PlanHelpText, "", "", "", ""))
+			return nil
+		case "tools", "builtin-tools", "builtins":
+			fmt.Fprint(out, FmtHelp(BuiltinToolsHelpText, "", "", "", ""))
+			return nil
 		case "learn", "memory-overview":
 			fmt.Fprint(out, FmtHelp(LearnHelpText, "", "", "", ""))
 			return nil
@@ -609,7 +615,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
 			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, llamafile, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, builtin-tools, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, llamafile, loop, memory, ollama, pdf-tools, permissions, pipeline, plan, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safe, safemode, search, security, session, skill-set, skills, status, summarize, tools, write\n\n", args[0])
 		}
 	}
 

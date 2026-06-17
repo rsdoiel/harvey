@@ -27,6 +27,15 @@ About this software
 
 ## harvey 0.0.12
 
+- memory enrichment: added `kind` field to memory documents classifying why knowledge matters (pitfall/workaround/recommendation/pattern)
+- memory enrichment: added `action` field — the imperative step a future agent should take; included in embedding text for better semantic retrieval
+- memory enrichment: added `confidence` field (default 0.5); retrieval scores are weighted multiplicatively (score = cosine × confidence)
+- `/memory flag <id>`: new command reduces confidence by 0.1 per call; auto-archives when confidence falls to or below 0.2
+- `/memory list`: new `--kind` filter; output now shows kind and confidence columns alongside type
+- miner prompt updated to elicit `kind` and `action` for each extracted memory; all five memory types now listed
+- `WriteDigest()`: MemoryStore auto-writes `agents/memories/DIGEST.md` on every Save, Archive, and MineAuto — plain Markdown readable by any LLM without a SQLite client
+- `agents/skills/harvey-memory/SKILL.md`: new cross-agent skill teaching Vibe and Claude Code when and how to use the memory digest
+- memories database lazily migrated: existing `memories.db` files gain kind, action, confidence columns on first open; FTS5 table rebuilt with new columns
 - added `create_dir` built-in tool so models can create directories without `run_command mkdir`
 - added `/safe` and `/safe_mode` as aliases for `/safemode`
 - unknown slash commands now highlighted in yellow
