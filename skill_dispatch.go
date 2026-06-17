@@ -209,12 +209,15 @@ func SortedSkillNames(cat SkillCatalog) []string {
  *   out    (io.Writer)       — destination for status messages and script output.
  *
  * Returns:
+ *   bool  — true when the skill used the LLM fallback path and the caller should
+ *            send the enriched history to the LLM to generate a response.
+ *            false when a compiled script handled everything autonomously.
  *   error — on unexpected I/O or execution failure; non-zero script exit is reported but not returned.
  *
  * Example:
- *   err := DispatchSkill(ctx, agent, skill, input, reader, os.Stdout)
+ *   llmNeeded, err := DispatchSkill(ctx, agent, skill, input, reader, os.Stdout)
  */
-func DispatchSkill(ctx context.Context, a *Agent, skill *SkillMeta, prompt string, reader *bufio.Reader, out io.Writer) error {
+func DispatchSkill(ctx context.Context, a *Agent, skill *SkillMeta, prompt string, reader *bufio.Reader, out io.Writer) (bool, error) {
 	a.DebugLog.LogSkillDispatch(skill.Name, "dispatch")
 	bashPath := CompiledBashPath(skill.Path)
 	ps1Path := CompiledPS1Path(skill.Path)
@@ -232,40 +235,40 @@ func DispatchSkill(ctx context.Context, a *Agent, skill *SkillMeta, prompt strin
 	if !hasScripts {
 		fmt.Fprintf(out, "  Skill %q has not been compiled yet.\n", skill.Name)
 		if !askYesNo(reader, out, "  Compile now? [Y/n] ", true) {
-			// Fall back: load skill body into LLM context.
-			return skillLoadByMeta(a, skill, out)
+			// Fall back: load skill body into LLM context; caller should call LLM.
+			return true, skillLoadByMeta(a, skill, out)
 		}
 		fmt.Fprintln(out)
 		if err := CompileSkill(ctx, a.Client, skill, out); err != nil {
-			return err
+			return false, err
 		}
 		fmt.Fprintln(out)
 		fmt.Fprintf(out, green("✓")+" Compiled %q.\n", skill.Name)
 		if !askYesNo(reader, out, "  Run now? [Y/n] ", true) {
-			return nil
+			return false, nil
 		}
-		return runCompiledScript(ctx, a, skill, scriptPath, prompt, out)
+		return false, runCompiledScript(ctx, a, skill, scriptPath, prompt, out)
 	}
 
 	// State 2 — scripts exist but may be stale.
 	stale, err := IsStale(skill)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if stale {
 		fmt.Fprintf(out, "  SKILL.md has changed since last compilation of %q.\n", skill.Name)
 		if askYesNo(reader, out, "  Recompile? [Y/n] ", true) {
 			fmt.Fprintln(out)
 			if err := CompileSkill(ctx, a.Client, skill, out); err != nil {
-				return err
+				return false, err
 			}
 			fmt.Fprintln(out)
 			fmt.Fprintf(out, green("✓")+" Recompiled %q.\n", skill.Name)
 		}
 	}
 
-	// State 3 (or stale but user declined recompile) — run scripts.
-	return runCompiledScript(ctx, a, skill, scriptPath, prompt, out)
+	// State 3 (or stale but user declined recompile) — run scripts autonomously.
+	return false, runCompiledScript(ctx, a, skill, scriptPath, prompt, out)
 }
 
 // runCompiledScript executes the compiled script at scriptPath with HARVEY_*
@@ -282,6 +285,11 @@ func runCompiledScript(ctx context.Context, a *Agent, skill *SkillMeta, scriptPa
 		modelName = a.Client.Name()
 	}
 	sessionID := ""
+	// Derive API base URL from the active backend.
+	apiBase := a.Config.OllamaURL
+	if a.Config.LlamafileActive != "" {
+		apiBase = a.Config.LlamafileURL
+	}
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
@@ -298,6 +306,7 @@ func runCompiledScript(ctx context.Context, a *Agent, skill *SkillMeta, scriptPa
 		"HARVEY_WORKDIR="+workDir,
 		"HARVEY_MODEL="+modelName,
 		"HARVEY_SESSION_ID="+sessionID,
+		"HARVEY_API_BASE="+apiBase,
 	)
 
 	var buf strings.Builder

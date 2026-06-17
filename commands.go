@@ -447,7 +447,8 @@ func (a *Agent) registerSkillCommands() {
 				warnIfSkillStale(captured, out)
 				prompt := strings.Join(args, " ")
 				reader := bufio.NewReaderSize(ag.In, 1)
-				return DispatchSkill(context.Background(), ag, captured, prompt, reader, out)
+				_, err := DispatchSkill(context.Background(), ag, captured, prompt, reader, out)
+				return err
 			},
 		}
 	}
@@ -3942,7 +3943,8 @@ func skillRun(a *Agent, name string, out io.Writer) error {
 	}
 	warnIfSkillStale(skill, out)
 	reader := bufio.NewReaderSize(a.In, 1)
-	return DispatchSkill(context.Background(), a, skill, "", reader, out)
+	_, err := DispatchSkill(context.Background(), a, skill, "", reader, out)
+	return err
 }
 
 // warnIfSkillStale prints a warning when SKILL.md is newer than the compiled scripts.

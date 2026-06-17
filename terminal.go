@@ -652,6 +652,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 		// Auto-dispatch compiled skills whose trigger pattern matches the input.
 		// Iterate sorted names for deterministic first-match semantics.
+		skillWantsLLM := false
 		if len(a.Skills) > 0 {
 			triggered := false
 			for _, name := range SortedSkillNames(a.Skills) {
@@ -659,14 +660,18 @@ func (a *Agent) Run(out io.Writer) error {
 				if MatchesTrigger(skill, input) {
 					fmt.Fprintf(out, dim("  (trigger matched skill %q)\n"), name)
 					triggerReader := bufio.NewReaderSize(a.In, 1)
-					if err := DispatchSkill(context.Background(), a, skill, input, triggerReader, out); err != nil {
+					var err error
+					skillWantsLLM, err = DispatchSkill(context.Background(), a, skill, input, triggerReader, out)
+					if err != nil {
 						fmt.Fprintf(out, red("  ✗ skill dispatch error: ")+"%v\n", err)
 					}
 					triggered = true
 					break
 				}
 			}
-			if triggered {
+			// Compiled scripts are self-contained — skip the LLM call.
+			// LLM-fallback skills inject context and need the LLM to respond.
+			if triggered && !skillWantsLLM {
 				continue
 			}
 		}
@@ -688,9 +693,21 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}()
 
-		_, _, turnErr := a.runChatTurn(chatCtx, input, out, reader, true)
+		reply, _, turnErr := a.runChatTurn(chatCtx, input, out, reader, true)
 		close(watchDone)
 		cancelChat()
+
+		// When a skill used the LLM-fallback path and the model responded with a
+		// parseable plan checklist, auto-save it to agents/plan.md so the user
+		// can immediately run /plan next without any extra steps.
+		if skillWantsLLM && reply != "" && a.Workspace != nil {
+			if p, err := PlanFromLLMResponse(reply, input); err == nil && len(p.Steps) > 0 {
+				if saveErr := SavePlan(a.Workspace, p); saveErr == nil {
+					fmt.Fprintf(out, green("  ✓")+" Plan saved to agents/plan.md (%d steps). Run %s to start.\n",
+						len(p.Steps), cyan("/plan next"))
+				}
+			}
+		}
 
 		if errors.Is(turnErr, context.Canceled) {
 			fmt.Fprintln(out, dim("  Cancelled."))
