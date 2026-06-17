@@ -27,8 +27,22 @@ About this software
 
 ## harvey 0.0.12
 
-- fixed bug where tools didn't explain PDF reading was available using `/read`
-- added support for newer LLamafile based on updates to any-llm module
+- added `create_dir` built-in tool so models can create directories without `run_command mkdir`
+- added `/safe` and `/safe_mode` as aliases for `/safemode`
+- unknown slash commands now highlighted in yellow
+- llamafile: fixed exec format error on macOS (APE binaries now launched via `/bin/sh`)
+- llamafile: added `--server` flag for headless mode (llamafile v0.10.3 API change)
+- llamafile: added `-ngl` GPU layer offload support with `gpu_layers` config option (default 99, maximises Metal/CUDA)
+- llamafile: `startup_timeout` config option (default 120s); fast-fail on process exit with stderr surfaced in error
+- llamafile: debug log now wired to new client after `/llamafile use` model switch
+- tool result compaction: prior tool-call rounds are compacted in `RunToolLoop` before each new LLM turn, keeping context bounded during multi-step tasks
+- `/plan` command: generate a GFM checklist plan, execute each step with fresh bounded context, track progress in `agents/plan.md`
+- `multi-file` skill: auto-detects multi-file creation requests and generates a plan via the compiled script path
+- skill trigger regex: fixed `/pattern/flags` format (trailing flag suffix no longer breaks regex mode)
+- skill dispatch: compilation failure now falls back to LLM context-injection path instead of erroring out
+- skill dispatch: `HARVEY_API_BASE` env var added to compiled script environment
+- skill dispatch: LLM-fallback skills now trigger an LLM response turn instead of silently continuing
+- plan execution: steps with blocked or failed tool calls are no longer auto-marked complete
 
 ## Authors
 
