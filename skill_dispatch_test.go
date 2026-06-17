@@ -62,6 +62,36 @@ func TestMatchesTrigger_malformedRegexp(t *testing.T) {
 	}
 }
 
+func TestMatchesTrigger_regexpWithFlag(t *testing.T) {
+	// /pattern/i — trailing flag after closing slash must still match.
+	skill := &SkillMeta{Trigger: `/\bpdf\b/i`}
+	if !MatchesTrigger(skill, "process a PDF now") {
+		t.Error("want true: regexp with trailing /i flag should match")
+	}
+}
+
+func TestMatchesTrigger_multiFilePattern(t *testing.T) {
+	trigger := `/creat.*\b(demo|component|module|package|project|app|site|page|api)\b|write.*\b(files?|components?|modules?)\b|build.*\b(demo|component|project|app)\b/`
+	skill := &SkillMeta{Trigger: trigger}
+	cases := []struct {
+		prompt string
+		want   bool
+	}{
+		{"Create a web component demo for schema.org Person type", true},
+		{"create a new module for the project", true},
+		{"build a REST API demo with Go", true},
+		{"write the component files for me", true},
+		{"what is a web component?", false},
+		{"how do I edit this file?", false},
+	}
+	for _, c := range cases {
+		got := MatchesTrigger(skill, c.prompt)
+		if got != c.want {
+			t.Errorf("MatchesTrigger(%q) = %v, want %v", c.prompt, got, c.want)
+		}
+	}
+}
+
 // ─── SortedSkillNames ────────────────────────────────────────────────────────
 
 func TestSortedSkillNames(t *testing.T) {

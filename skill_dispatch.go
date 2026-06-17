@@ -151,13 +151,17 @@ func MatchesTrigger(skill *SkillMeta, prompt string) bool {
 	lower := strings.ToLower(prompt)
 	t := strings.TrimSpace(skill.Trigger)
 
-	if strings.HasPrefix(t, "/") && strings.HasSuffix(t, "/") {
-		pattern := t[1 : len(t)-1]
-		re, err := regexp.Compile("(?i)" + pattern)
-		if err != nil {
-			return false
+	if strings.HasPrefix(t, "/") {
+		// Support /pattern/ and /pattern/flags — find the closing slash.
+		lastSlash := strings.LastIndex(t[1:], "/")
+		if lastSlash >= 0 {
+			pattern := t[1 : lastSlash+1]
+			re, err := regexp.Compile("(?i)" + pattern)
+			if err != nil {
+				return false
+			}
+			return re.MatchString(lower)
 		}
-		return re.MatchString(lower)
 	}
 
 	for _, kw := range strings.Fields(strings.ToLower(t)) {
