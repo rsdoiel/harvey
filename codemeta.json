@@ -12,7 +12,7 @@
     }
   ],
   "dateCreated": "2026-04-15",
-  "dateModified": "2026-06-16",
+  "dateModified": "2026-06-17",
   "datePublished": "2026-06-11",
   "description": "Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.\n\nThe Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.",
   "name": "harvey",
@@ -28,9 +28,9 @@
     "Pandoc >= 3.9",
     "GNU Make >= 3.8"
   ],
-  "version": "0.0.11b",
+  "version": "0.0.12",
   "developmentStatus": "active",
   "issueTracker": "https://github.com/rsdoiel/harvey/issues",
-  "releaseNotes": "- Added scholarly identifier extraction and normalization for 14 identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN, ISNI, PMID, PMCID, VIAF, SNAC, LCNAF) via `scholarly_identifiers.go` and `github.com/caltechlibrary/metadatatools`\n- Added scholarly-aware PDF ingest: papers are chunked by section (abstract, introduction, methods, results, discussion, conclusion, references) and tagged with the document's own identifiers and any cited works' identifiers\n- Extended the knowledge base schema so observations can record a source DOI and concepts can represent scholarly entities (people, papers, institutions, funders) via an identifier type/value pair\n- Workspace onboarding now scans `codemeta.json`/`CITATION.cff` for identifiers (e.g. author ORCID iDs, release DOIs) and records them in the project's `project_fact` memory metadata",
+  "releaseNotes": "- fixed bug where tools didn't explain PDF reading was available using `/read`\n- added support for newer LLamafile based on updates to any-llm module",
   "copyrightHolder": "R. S. Doiel"
 }

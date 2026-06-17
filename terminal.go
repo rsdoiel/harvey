@@ -1208,6 +1208,9 @@ func resolveLlamafilePath(p, root string) string {
  */
 func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
 	a.Client = newLlamafileLLMClient(a.Config.LlamafileURL+"/v1", name, a.Config.OllamaTimeout)
+	if ac, ok := a.Client.(*AnyLLMClient); ok && a.DebugLog != nil {
+		ac.DebugLog = a.DebugLog
+	}
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(name))
 	return nil
 }
@@ -1240,7 +1243,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 		fmt.Fprintf(out, yellow("  ✗")+" Llamafile (%s) is not running\n", entry.Name)
 		if askYesNo(reader, out, fmt.Sprintf("    Start %s now? [Y/n] ", entry.Name), true) {
 			fmt.Fprintln(out, "  Starting llamafile...")
-			proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "")
+			proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
 			if err != nil {
 				fmt.Fprintf(out, red("  Failed: ")+"%v\n", err)
 			} else {

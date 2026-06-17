@@ -128,14 +128,17 @@ type Config struct {
 	// Llamafile backend settings
 	LlamafileModels    []LlamafileEntry // registered llamafile models
 	LlamafileActive    string           // name of the active model; "" = none
-	LlamafileURL       string           // API base URL; default "http://localhost:8080"
-	LlamafileModelsDir string           // discovery directory; default "$HOME/Models"
+	LlamafileURL            string        // API base URL; default "http://localhost:8080"
+	LlamafileModelsDir      string        // discovery directory; default "$HOME/Models"
+	LlamafileStartupTimeout time.Duration // how long to wait for the server to respond; default 120s
+	LlamafileGPULayers      int           // layers to offload to GPU via -ngl; -1 = let llamafile decide (CPU), 99 = maximise GPU
 	// Model aliases: short name → full Ollama model identifier
 	ModelAliases map[string]string
 	// Tool settings
-	ToolsEnabled        bool // when true, send tool schemas to models that support it
-	MaxToolCallsPerTurn int  // hard limit on tool call rounds per user turn; 0 = defaultMaxToolCallsPerTurn
-	MaxOutputBytes      int  // cap on tool output injected into context; 0 = defaultMaxOutputBytes
+	ToolsEnabled         bool // when true, send tool schemas to models that support it
+	MaxToolCallsPerTurn  int  // hard limit on tool call rounds per user turn; 0 = defaultMaxToolCallsPerTurn
+	MaxOutputBytes       int  // cap on tool output injected into context; 0 = defaultMaxOutputBytes
+	ToolResultCompaction bool // when true, prior tool-call rounds are compacted before each new LLM turn
 	// Debug mode: set by --debug at startup; enables JSONL debug log and OLLAMA_DEBUG
 	Debug bool
 	// SyntaxHighlight enables ANSI colour highlighting of code blocks in responses.
@@ -181,13 +184,16 @@ func DefaultConfig() *Config {
 		ModelAliases:          make(map[string]string),
 		RunTimeout:            5 * time.Minute,
 		OllamaTimeout:         0, // no timeout — local inference can take minutes on slow hardware
-		LlamafileURL:       "http://localhost:8080",
-		LlamafileModelsDir: llamafileDefaultModelsDir(),
+		LlamafileURL:            "http://localhost:8080",
+		LlamafileModelsDir:      llamafileDefaultModelsDir(),
+		LlamafileStartupTimeout: 120 * time.Second,
+		LlamafileGPULayers:      99,
 		SyntaxHighlight:       true,
 		AutoFormat:            true,
 		ToolsEnabled:          true,
 		MaxToolCallsPerTurn:   defaultMaxToolCallsPerTurn,
 		MaxOutputBytes:        defaultMaxOutputBytes,
+		ToolResultCompaction:  true,
 		Memory: MemoryConfig{
 			Enabled:       true,
 			TopK:          5,
@@ -633,9 +639,10 @@ type harveyYAML struct {
 }
 
 type toolsYAML struct {
-	Enabled             *bool `yaml:"enabled,omitempty"`
-	MaxToolCallsPerTurn int   `yaml:"max_tool_calls_per_turn,omitempty"`
-	MaxOutputBytes      int   `yaml:"max_output_bytes,omitempty"`
+	Enabled              *bool `yaml:"enabled,omitempty"`
+	MaxToolCallsPerTurn  int   `yaml:"max_tool_calls_per_turn,omitempty"`
+	MaxOutputBytes       int   `yaml:"max_output_bytes,omitempty"`
+	ToolResultCompaction *bool `yaml:"tool_result_compaction,omitempty"`
 }
 
 type llamafileEntryYAML struct {
@@ -644,10 +651,12 @@ type llamafileEntryYAML struct {
 }
 
 type llamafileYAML struct {
-	ModelsDir string               `yaml:"models_dir,omitempty"`
-	Active    string               `yaml:"active,omitempty"`
-	URL       string               `yaml:"url,omitempty"`
-	Models    []llamafileEntryYAML `yaml:"models,omitempty"`
+	ModelsDir      string               `yaml:"models_dir,omitempty"`
+	Active         string               `yaml:"active,omitempty"`
+	URL            string               `yaml:"url,omitempty"`
+	StartupTimeout string               `yaml:"startup_timeout,omitempty"` // e.g. "120s", "2m"
+	GPULayers      *int                 `yaml:"gpu_layers,omitempty"`      // -ngl value; nil = use default (99)
+	Models         []llamafileEntryYAML `yaml:"models,omitempty"`
 }
 
 type rollingSummaryYAML struct {
@@ -836,6 +845,14 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.Llamafile.URL != "" {
 		cfg.LlamafileURL = y.Llamafile.URL
 	}
+	if y.Llamafile.StartupTimeout != "" {
+		if d, err := parseDurationString(y.Llamafile.StartupTimeout); err == nil {
+			cfg.LlamafileStartupTimeout = d
+		}
+	}
+	if y.Llamafile.GPULayers != nil {
+		cfg.LlamafileGPULayers = *y.Llamafile.GPULayers
+	}
 	for _, m := range y.Llamafile.Models {
 		cfg.LlamafileModels = append(cfg.LlamafileModels, LlamafileEntry{
 			Name: m.Name, Path: m.Path,
@@ -850,6 +867,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	if y.Tools.MaxOutputBytes > 0 {
 		cfg.MaxOutputBytes = y.Tools.MaxOutputBytes
+	}
+	if y.Tools.ToolResultCompaction != nil {
+		cfg.ToolResultCompaction = *y.Tools.ToolResultCompaction
 	}
 	// Load memory settings
 	if y.Memory.Enabled != nil {
@@ -936,6 +956,10 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	y.SafeMode = &cfg.SafeMode
 	y.SyntaxHighlight = &cfg.SyntaxHighlight
 	y.AutoFormat = &cfg.AutoFormat
+	if !cfg.ToolResultCompaction {
+		f := false
+		y.Tools.ToolResultCompaction = &f
+	}
 	if len(cfg.AllowedCommands) > 0 {
 		y.AllowedCommands = cfg.AllowedCommands
 	}
@@ -1139,11 +1163,21 @@ func SaveLlamafileConfig(ws *Workspace, cfg *Config) error {
 	for i, e := range cfg.LlamafileModels {
 		entries[i] = llamafileEntryYAML{Name: e.Name, Path: e.Path}
 	}
+	startupTO := ""
+	if cfg.LlamafileStartupTimeout > 0 && cfg.LlamafileStartupTimeout != 120*time.Second {
+		startupTO = cfg.LlamafileStartupTimeout.String()
+	}
+	var gpuLayers *int
+	if cfg.LlamafileGPULayers != 99 { // only persist when overriding the default
+		gpuLayers = &cfg.LlamafileGPULayers
+	}
 	y.Llamafile = llamafileYAML{
-		ModelsDir: cfg.LlamafileModelsDir,
-		Active:    cfg.LlamafileActive,
-		URL:       cfg.LlamafileURL,
-		Models:    entries,
+		ModelsDir:      cfg.LlamafileModelsDir,
+		Active:         cfg.LlamafileActive,
+		URL:            cfg.LlamafileURL,
+		StartupTimeout: startupTO,
+		GPULayers:      gpuLayers,
+		Models:         entries,
 	}
 	out, err := yaml.Marshal(&y)
 	if err != nil {

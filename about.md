@@ -12,7 +12,7 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.11b
+version: 0.0.12
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
@@ -25,12 +25,10 @@ date_released: 2026-06-11
 About this software
 ===================
 
-## harvey 0.0.11b
+## harvey 0.0.12
 
-- Added scholarly identifier extraction and normalization for 14 identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN, ISNI, PMID, PMCID, VIAF, SNAC, LCNAF) via `scholarly_identifiers.go` and `github.com/caltechlibrary/metadatatools`
-- Added scholarly-aware PDF ingest: papers are chunked by section (abstract, introduction, methods, results, discussion, conclusion, references) and tagged with the document's own identifiers and any cited works' identifiers
-- Extended the knowledge base schema so observations can record a source DOI and concepts can represent scholarly entities (people, papers, institutions, funders) via an identifier type/value pair
-- Workspace onboarding now scans `codemeta.json`/`CITATION.cff` for identifiers (e.g. author ORCID iDs, release DOIs) and records them in the project's `project_fact` memory metadata
+- fixed bug where tools didn't explain PDF reading was available using `/read`
+- added support for newer LLamafile based on updates to any-llm module
 
 ## Authors
 

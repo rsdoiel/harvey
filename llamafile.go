@@ -143,17 +143,22 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 		return fmt.Errorf("llamafile not found: %s", absPath)
 	}
 
-	// Start the server if not already running.
-	if !ProbeLlamafile(a.Config.LlamafileURL) {
-		fmt.Fprintln(out, "  Starting llamafile...")
-		proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "")
-		if err != nil {
-			return fmt.Errorf("failed to start llamafile: %w", err)
-		}
+	// Stop whatever is currently running so the new model can bind the port.
+	if a.llamafileProc != nil {
+		fmt.Fprintln(out, "  Stopping current llamafile...")
 		a.stopLlamafileProc()
-		a.llamafileProc = proc
-		fmt.Fprintln(out, green("  ✓")+" Llamafile started")
+	} else if ProbeLlamafile(a.Config.LlamafileURL) {
+		fmt.Fprintf(out, yellow("  ⚠ A llamafile server is already running at %s but was not started by this session.\n"), a.Config.LlamafileURL)
+		fmt.Fprintln(out, "  Stop it manually (e.g. via htop), then run /llamafile use to start the new model.")
+		return nil
 	}
+	fmt.Fprintln(out, "  Starting llamafile...")
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
+	if err != nil {
+		return fmt.Errorf("failed to start llamafile: %w", err)
+	}
+	a.llamafileProc = proc
+	fmt.Fprintln(out, green("  ✓")+" Llamafile started")
 
 	if err := a.useLlamafileEntry(name, out); err != nil {
 		return err
@@ -247,7 +252,7 @@ func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
 	}
 
 	fmt.Fprintf(out, "  Starting %s...\n", name)
-	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "")
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
 	if err != nil {
 		return fmt.Errorf("failed to start llamafile: %w", err)
 	}
@@ -308,7 +313,7 @@ func cmdLlamafileStart(a *Agent, args []string, out io.Writer) error {
 
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 	fmt.Fprintf(out, "  Starting %s...\n", name)
-	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "")
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
 	if err != nil {
 		return fmt.Errorf("failed to start llamafile: %w", err)
 	}

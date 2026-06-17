@@ -192,6 +192,52 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 		},
 	)
 
+	// ── create_dir ───────────────────────────────────────────────────────────
+	r.RegisterTool(
+		"create_dir",
+		"Create a directory (and any missing parent directories) in the workspace. "+
+			"Path must be relative to the workspace root. "+
+			"Use this instead of run_command mkdir.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{
+					"type":        "string",
+					"description": "Relative path of the directory to create within the workspace",
+				},
+			},
+			"required": []string{"path"},
+		},
+		func(ctx context.Context, args map[string]any) (string, error) {
+			p, ok := args["path"].(string)
+			if !ok || p == "" {
+				return "", fmt.Errorf("create_dir: 'path' is required and must be a non-empty string")
+			}
+			if len(p) > maxInputPath {
+				return "", fmt.Errorf("create_dir: path exceeds maximum length of %d bytes", maxInputPath)
+			}
+			if _, err := resolveWorkspacePath(root, p); err != nil {
+				return "", fmt.Errorf("create_dir: %w", err)
+			}
+			if !a.CheckWritePermission(p) {
+				if a.AuditBuffer != nil {
+					a.AuditBuffer.Log(ActionFileWrite, p, StatusDenied)
+				}
+				return "", fmt.Errorf("create_dir: write permission denied for %q", p)
+			}
+			if err := a.Workspace.MkdirAll(p); err != nil {
+				if a.AuditBuffer != nil {
+					a.AuditBuffer.Log(ActionFileWrite, p, StatusError)
+				}
+				return "", fmt.Errorf("create_dir: %w", err)
+			}
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionFileWrite, p, StatusSuccess)
+			}
+			return fmt.Sprintf("created directory %s", p), nil
+		},
+	)
+
 	// ── list_files ───────────────────────────────────────────────────────────
 	r.RegisterTool(
 		"list_files",

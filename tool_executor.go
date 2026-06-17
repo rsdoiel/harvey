@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
@@ -43,11 +44,12 @@ type ToolCapable interface {
  *   stats, err := ex.RunToolLoop(ctx, agent.History, os.Stdout)
  */
 type ToolExecutor struct {
-	Registry       *ToolRegistry
-	Client         LLMClient
-	MaxIterations  int
-	MaxOutputBytes int
-	DebugLog       *DebugLog
+	Registry             *ToolRegistry
+	Client               LLMClient
+	MaxIterations        int
+	MaxOutputBytes       int
+	DebugLog             *DebugLog
+	ToolResultCompaction bool // when true, compact prior tool rounds before each new LLM turn
 }
 
 /** NewToolExecutor creates a ToolExecutor from the agent's tool registry,
@@ -74,10 +76,11 @@ func NewToolExecutor(registry *ToolRegistry, client LLMClient, cfg *Config) *Too
 		maxOut = defaultMaxOutputBytes
 	}
 	return &ToolExecutor{
-		Registry:       registry,
-		Client:         client,
-		MaxIterations:  maxIter,
-		MaxOutputBytes: maxOut,
+		Registry:             registry,
+		Client:               client,
+		MaxIterations:        maxIter,
+		MaxOutputBytes:       maxOut,
+		ToolResultCompaction: cfg.ToolResultCompaction,
 	}
 }
 
@@ -148,8 +151,16 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 
 	schemas := e.Registry.GetToolSchemas()
 	history := messages
+	prevRoundStart := -1 // index where the previous round's messages begin; -1 = none yet
 
 	for iter := 0; iter < e.MaxIterations; iter++ {
+		// Compact the previous round's messages now that the LLM has consumed them.
+		// We wait until the next iteration so the current round's full results are
+		// always available when the LLM needs them.
+		if e.ToolResultCompaction && prevRoundStart >= 0 {
+			compactToolRound(history, prevRoundStart)
+		}
+
 		stats, calls, err := tc.ChatWithTools(ctx, history, schemas, out)
 		if err != nil {
 			return history, stats, err
@@ -159,6 +170,9 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 			// LLM returned a plain text response — we're done.
 			return history, stats, nil
 		}
+
+		// Record where this round begins so we can compact it next iteration.
+		prevRoundStart = len(history)
 
 		// Append the assistant's tool-call turn to history.
 		history = append(history, Message{
@@ -175,4 +189,30 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 	}
 
 	return history, ChatStats{}, fmt.Errorf("tool loop exceeded %d iterations without a final response: %w", e.MaxIterations, ErrToolLoopExceeded)
+}
+
+// compactToolRound replaces the assistant and tool messages from a completed
+// tool-call round with compact placeholders. This is called before the next
+// LLM turn so the model does not re-process verbose tool outputs from prior
+// rounds. ToolCallID is preserved for protocol correctness; Content is replaced.
+func compactToolRound(history []Message, roundStart int) {
+	if roundStart < 0 || roundStart >= len(history) {
+		return
+	}
+	// Collect tool names from the assistant message at roundStart.
+	var toolNames []string
+	if history[roundStart].Role == "assistant" {
+		for _, tc := range history[roundStart].ToolCalls {
+			toolNames = append(toolNames, tc.Function.Name)
+		}
+		history[roundStart].ToolCalls = nil
+		history[roundStart].Content = "[called: " + strings.Join(toolNames, ", ") + "]"
+	}
+	// Compact each tool-result message in this round.
+	for i := roundStart + 1; i < len(history); i++ {
+		if history[i].Role != "tool" {
+			break
+		}
+		history[i].Content = "[done]"
+	}
 }

@@ -335,10 +335,20 @@ func (a *Agent) registerCommands() {
 			Description: "Enable/disable safe mode or manage the command allowlist",
 			Handler:     cmdSafeMode,
 		},
+		"safe": {
+			Usage:       "/safe <on|off|status|allow CMD|deny CMD|reset>",
+			Description: "Alias for /safemode",
+			Handler:     cmdSafeMode,
+		},
 		"pipeline": {
 			Usage:       "/pipeline <CONFIDENCE%> FILE [FILE ...]",
 			Description: "Chain Markdown prompt files through models with confidence gating",
 			Handler:     cmdPipeline,
+		},
+		"plan": {
+			Usage:       "/plan <TASK | next | status | show | clear>",
+			Description: "Generate a step-by-step plan and execute it with bounded context per step",
+			Handler:     cmdPlan,
 		},
 		"hint": {
 			Usage:       "/hint",
@@ -471,7 +481,7 @@ func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 	}
 	cmd, ok := a.commands[name]
 	if !ok {
-		fmt.Fprintf(out, "Unknown command: /%s  (type /help for a list)\n", name)
+		fmt.Fprintf(out, yellow("Unknown command: ")+"/%s  (type /help for a list)\n", name)
 		return false, nil
 	}
 	if cmd.Handler != nil {

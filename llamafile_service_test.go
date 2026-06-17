@@ -28,7 +28,8 @@ func TestProbeLlamafile_reachable(t *testing.T) {
 }
 
 func TestStartLlamafileService_badPath(t *testing.T) {
-	proc, err := StartLlamafileService("/nonexistent/model.llamafile", "http://localhost:8080", "")
+	// Use a port unlikely to be occupied so ProbeLlamafile never returns true.
+	proc, err := StartLlamafileService("/nonexistent/model.llamafile", "http://localhost:19876", "", 0, -1, nil)
 	if err == nil {
 		t.Fatal("expected error for nonexistent binary path")
 	}
