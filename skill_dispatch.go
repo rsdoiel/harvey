@@ -244,7 +244,8 @@ func DispatchSkill(ctx context.Context, a *Agent, skill *SkillMeta, prompt strin
 		}
 		fmt.Fprintln(out)
 		if err := CompileSkill(ctx, a.Client, skill, out); err != nil {
-			return false, err
+			fmt.Fprintf(out, yellow("  ⚠ Compilation failed: %v — falling back to LLM mode.\n"), err)
+			return true, skillLoadByMeta(a, skill, out)
 		}
 		fmt.Fprintln(out)
 		fmt.Fprintf(out, green("✓")+" Compiled %q.\n", skill.Name)

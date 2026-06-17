@@ -155,6 +155,7 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 	defer cancel()
 
 	var buf strings.Builder
+	toolErrors := false
 	if a.Tools != nil && a.Config.ToolsEnabled {
 		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 		ex.DebugLog = a.DebugLog
@@ -162,8 +163,7 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("step execution failed: %w", err)
 		}
-		// Show any tool call results Harvey printed and any final text.
-		_ = updatedHistory
+		toolErrors = planStepHadErrors(updatedHistory)
 	} else {
 		if _, err := a.Client.Chat(ctx, freshHistory, &buf); err != nil {
 			return fmt.Errorf("step execution failed: %w", err)
@@ -172,6 +172,12 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 
 	if txt := strings.TrimSpace(buf.String()); txt != "" {
 		fmt.Fprintln(out, txt)
+	}
+
+	if toolErrors {
+		fmt.Fprintln(out, yellow("  ⚠")+" One or more tool calls failed — step not marked done.")
+		fmt.Fprintln(out, dim("  Fix the issue and run /plan next to retry, or edit agents/plan.md to skip."))
+		return nil
 	}
 
 	p.MarkDone(step.Index)
@@ -186,6 +192,25 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 		fmt.Fprintln(out, dim("  Next: "+next.Title+"  (run /plan next to continue)"))
 	}
 	return nil
+}
+
+// planStepHadErrors reports whether any uncompacted tool messages in history
+// contain an error string — indicating the step did not complete cleanly.
+// Compacted messages ([done]) are skipped since prior errors were handled.
+func planStepHadErrors(history []Message) bool {
+	for _, m := range history {
+		if m.Role != "tool" || m.Content == "[done]" {
+			continue
+		}
+		c := m.Content
+		if strings.HasPrefix(c, "error:") ||
+			strings.Contains(c, "allowlist") ||
+			strings.Contains(c, "permission denied") ||
+			strings.Contains(c, "no such file") {
+			return true
+		}
+	}
+	return false
 }
 
 // cmdPlanStatus prints the current plan checklist with completion markers.
