@@ -190,6 +190,11 @@ func (a *Agent) registerCommands() {
 			Description: "Control the local Ollama service and manage models",
 			Handler:     cmdOllama,
 		},
+		"llamafile": {
+			Usage:       "/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status>",
+			Description: "Manage llamafile model backends",
+			Handler:     cmdLlamafile,
+		},
 		"kb": {
 			Usage:       "/kb <status|search|inject|project|observe|concept> [args...]",
 			Description: "Manage and query the workspace knowledge base",
@@ -461,6 +466,7 @@ func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 	args := parts[1:]
 
 	if name == "exit" || name == "quit" || name == "bye" {
+		a.stopLlamafileProc()
 		return true, nil
 	}
 	cmd, ok := a.commands[name]
@@ -502,6 +508,9 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			return nil
 		case "ollama":
 			fmt.Fprint(out, FmtHelp(OllamaHelpText, "", "", "", ""))
+			return nil
+		case "llamafile":
+			fmt.Fprint(out, FmtHelp(LlamafileHelpText, "", "", "", ""))
 			return nil
 		case "rag":
 			fmt.Fprint(out, FmtHelp(RagHelpText, "", "", "", ""))
@@ -588,7 +597,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
 			return nil
 		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, llamafile, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n\n", args[0])
 		}
 	}
 

@@ -44,13 +44,21 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 	r.RegisterTool(
 		"read_file",
 		"Read the contents of a file in the workspace. "+
-			"Path must be relative to the workspace root.",
+			"Path must be relative to the workspace root. "+
+			"PDF files (.pdf) are automatically extracted to plain text using poppler utilities — "+
+			"no manual conversion is needed. Use the optional 'pages' parameter to read a subset "+
+			"of a PDF (e.g. \"1-10\" or \"5\"). Text, Markdown, source code, and other plain-text "+
+			"formats are returned as-is.",
 		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"path": map[string]any{
 					"type":        "string",
 					"description": "Relative path to the file within the workspace",
+				},
+				"pages": map[string]any{
+					"type":        "string",
+					"description": "PDF only: page range to extract, e.g. \"1-10\" or \"5\". Omit to read the entire document.",
 				},
 			},
 			"required": []string{"path"},
@@ -72,6 +80,37 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 					a.AuditBuffer.Log(ActionFileRead, p, StatusDenied)
 				}
 				return "", fmt.Errorf("read_file: read permission denied for %q", p)
+			}
+			if strings.ToLower(filepath.Ext(resolved)) == ".pdf" {
+				pages, _ := args["pages"].(string)
+				result, err := pdfExtract(resolved, pages)
+				if err != nil {
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileRead, p, StatusError)
+					}
+					return "", fmt.Errorf("read_file: %w", err)
+				}
+				if a.AuditBuffer != nil {
+					a.AuditBuffer.Log(ActionFileRead, p, StatusSuccess)
+				}
+				var sb strings.Builder
+				if result.Info.Title != "" {
+					fmt.Fprintf(&sb, "Title: %s\n", result.Info.Title)
+				}
+				if result.Info.Author != "" {
+					fmt.Fprintf(&sb, "Author: %s\n", result.Info.Author)
+				}
+				if result.Info.Pages > 0 {
+					fmt.Fprintf(&sb, "Pages: %d\n", result.Info.Pages)
+				}
+				if len(result.DiagramPages) > 0 {
+					fmt.Fprintf(&sb, "Diagram-only pages (text extraction incomplete): %v\n", result.DiagramPages)
+				}
+				if sb.Len() > 0 {
+					sb.WriteString("\n")
+				}
+				sb.WriteString(result.Text)
+				return capOutput(sb.String(), maxBytes), nil
 			}
 			data, err := os.ReadFile(resolved)
 			if err != nil {

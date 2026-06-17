@@ -261,6 +261,88 @@ Registered endpoints and the on/off state persist across sessions in
 
 `
 
+	LlamafileHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+LLAMAFILE COMMANDS
+
+# SYNOPSIS
+
+/llamafile SUBCOMMAND [ARGS...]
+
+# DESCRIPTION
+
+The /llamafile command manages llamafile model backends. A llamafile is a
+self-contained executable that bundles a GGUF model and an HTTP inference
+server into a single file — no separate server installation required.
+
+Download pre-built llamafiles from:
+  https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles
+
+Place them anywhere on your filesystem (~/Models is the default discovery
+directory) and use /llamafile add to register and connect to them.
+
+# SUBCOMMANDS
+
+  /llamafile add [PATH] [NAME]
+    Register a model and connect to it immediately. If PATH is omitted,
+    Harvey scans the discovery directory (~/Models by default) and shows
+    a numbered picker. NAME is derived from the filename if not given.
+    The choice is saved to agents/harvey.yaml so Harvey connects
+    automatically on next start.
+
+  /llamafile use NAME
+    Switch to a named registered model. The current server is stopped
+    (if Harvey started it) and the new one is launched.
+
+  /llamafile list
+    List all registered models. The active model is marked with an arrow.
+    The discovery directory is shown at the bottom.
+
+  /llamafile start [NAME]
+    Start the active (or named) model's server without changing the
+    active setting. Useful after Harvey restarts.
+
+  /llamafile status
+    Show the active model, API URL, reachability, process ownership,
+    discovery directory, and number of registered models.
+
+# CONFIGURATION
+
+In agents/harvey.yaml:
+
+  llamafile:
+    models_dir: ~/Models           # optional; $HOME/Models is the default
+    active: qwen-coding
+    url: http://localhost:8080     # optional; this is the default
+    models:
+      - name: qwen-coding
+        path: /home/user/Models/Qwen3.5-4B-Q5_K_S.llamafile
+      - name: apertus
+        path: /home/user/Models/Apertus-8B-Instruct-2509.llamafile
+
+# ENVIRONMENT
+
+  HARVEY_LLAMAFILE_DIR
+    Override the discovery directory. Takes precedence over the YAML
+    value but is itself overridden by the --llamafile-dir flag.
+
+# COMMAND LINE FLAGS
+
+  --llamafile PATH        Connect to PATH for this session (not persisted).
+  --llamafile-url URL     Override the API base URL (default: http://localhost:8080).
+  --llamafile-dir PATH    Override the discovery directory.
+
+# SEE ALSO
+
+/ollama — Ollama model backend management.
+/help getting-started — Getting started with Harvey.
+
+`
+
 	OllamaHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
 % R. S. Doiel
 % {release_date}

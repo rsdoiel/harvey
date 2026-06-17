@@ -12,7 +12,7 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.11
+version: 0.0.11b
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
@@ -25,7 +25,7 @@ date_released: 2026-06-11
 About this software
 ===================
 
-## harvey 0.0.11
+## harvey 0.0.11b
 
 - Added scholarly identifier extraction and normalization for 14 identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN, ISNI, PMID, PMCID, VIAF, SNAC, LCNAF) via `scholarly_identifiers.go` and `github.com/caltechlibrary/metadatatools`
 - Added scholarly-aware PDF ingest: papers are chunked by section (abstract, introduction, methods, results, discussion, conclusion, references) and tagged with the document's own identifiers and any cited works' identifiers

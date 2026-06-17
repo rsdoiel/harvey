@@ -125,6 +125,11 @@ type Config struct {
 	// Timeout settings
 	RunTimeout    time.Duration // timeout for shell commands run via ! or /run; 0 means no timeout
 	OllamaTimeout time.Duration // HTTP client timeout for local LLM providers; 0 means no timeout
+	// Llamafile backend settings
+	LlamafileModels    []LlamafileEntry // registered llamafile models
+	LlamafileActive    string           // name of the active model; "" = none
+	LlamafileURL       string           // API base URL; default "http://localhost:8080"
+	LlamafileModelsDir string           // discovery directory; default "$HOME/Models"
 	// Model aliases: short name → full Ollama model identifier
 	ModelAliases map[string]string
 	// Tool settings
@@ -176,6 +181,8 @@ func DefaultConfig() *Config {
 		ModelAliases:          make(map[string]string),
 		RunTimeout:            5 * time.Minute,
 		OllamaTimeout:         0, // no timeout — local inference can take minutes on slow hardware
+		LlamafileURL:       "http://localhost:8080",
+		LlamafileModelsDir: llamafileDefaultModelsDir(),
 		SyntaxHighlight:       true,
 		AutoFormat:            true,
 		ToolsEnabled:          true,
@@ -622,12 +629,25 @@ type harveyYAML struct {
 	Tools           toolsYAML           `yaml:"tools,omitempty"`
 	ModelAliases    map[string]string   `yaml:"model_aliases,omitempty"`  // short name → full Ollama model ID
 	Memory          memoryYAML          `yaml:"memory,omitempty"`
+	Llamafile       llamafileYAML       `yaml:"llamafile,omitempty"`
 }
 
 type toolsYAML struct {
 	Enabled             *bool `yaml:"enabled,omitempty"`
 	MaxToolCallsPerTurn int   `yaml:"max_tool_calls_per_turn,omitempty"`
 	MaxOutputBytes      int   `yaml:"max_output_bytes,omitempty"`
+}
+
+type llamafileEntryYAML struct {
+	Name string `yaml:"name"`
+	Path string `yaml:"path"`
+}
+
+type llamafileYAML struct {
+	ModelsDir string               `yaml:"models_dir,omitempty"`
+	Active    string               `yaml:"active,omitempty"`
+	URL       string               `yaml:"url,omitempty"`
+	Models    []llamafileEntryYAML `yaml:"models,omitempty"`
 }
 
 type rollingSummaryYAML struct {
@@ -806,6 +826,21 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 			cfg.ModelAliases[strings.ToLower(k)] = v
 		}
 	}
+	// Load llamafile settings
+	if y.Llamafile.ModelsDir != "" {
+		cfg.LlamafileModelsDir = expandTilde(y.Llamafile.ModelsDir)
+	}
+	if y.Llamafile.Active != "" {
+		cfg.LlamafileActive = y.Llamafile.Active
+	}
+	if y.Llamafile.URL != "" {
+		cfg.LlamafileURL = y.Llamafile.URL
+	}
+	for _, m := range y.Llamafile.Models {
+		cfg.LlamafileModels = append(cfg.LlamafileModels, LlamafileEntry{
+			Name: m.Name, Path: m.Path,
+		})
+	}
 	// Load tool settings
 	if y.Tools.Enabled != nil {
 		cfg.ToolsEnabled = *y.Tools.Enabled
@@ -966,6 +1001,150 @@ func SaveModelAliases(ws *Workspace, cfg *Config) error {
 
 	y.ModelAliases = cfg.ModelAliases
 
+	out, err := yaml.Marshal(&y)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(yamlPath, out, 0644)
+}
+
+// ─── LlamafileEntry and registry helpers ─────────────────────────────────────
+
+/** LlamafileEntry describes one registered llamafile model in Harvey's registry.
+ *
+ * Fields:
+ *   Name (string) — short identifier used with /llamafile use, e.g. "qwen-coding".
+ *   Path (string) — path to the binary; absolute or workspace-relative.
+ *
+ * Example:
+ *   e := LlamafileEntry{Name: "qwen", Path: "/home/user/Models/Qwen3.5-4B.llamafile"}
+ */
+type LlamafileEntry struct {
+	Name string
+	Path string
+}
+
+// llamafileDefaultModelsDir returns the default discovery directory ($HOME/Models).
+// Falls back to "." when the home directory cannot be determined.
+func llamafileDefaultModelsDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return filepath.Join(home, "Models")
+}
+
+// expandTilde replaces a leading "~/" or bare "~" with the user's home directory.
+// Returns s unchanged if it does not start with "~" or home lookup fails.
+func expandTilde(s string) string {
+	if !strings.HasPrefix(s, "~") {
+		return s
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return s
+	}
+	if s == "~" {
+		return home
+	}
+	return filepath.Join(home, s[2:])
+}
+
+/** ActiveLlamafileEntry returns a pointer to the active LlamafileEntry in the
+ * config, or nil when no active model is set or the name is not found.
+ *
+ * Returns:
+ *   *LlamafileEntry — the active entry, or nil.
+ *
+ * Example:
+ *   if e := cfg.ActiveLlamafileEntry(); e != nil {
+ *       fmt.Println(e.Path)
+ *   }
+ */
+func (c *Config) ActiveLlamafileEntry() *LlamafileEntry {
+	return c.LlamafileEntryByName(c.LlamafileActive)
+}
+
+/** LlamafileEntryByName returns a pointer to the named LlamafileEntry, or nil
+ * when not found.
+ *
+ * Parameters:
+ *   name (string) — registry name to look up.
+ *
+ * Returns:
+ *   *LlamafileEntry — matching entry, or nil.
+ *
+ * Example:
+ *   if e := cfg.LlamafileEntryByName("qwen"); e != nil {
+ *       fmt.Println(e.Path)
+ *   }
+ */
+func (c *Config) LlamafileEntryByName(name string) *LlamafileEntry {
+	if name == "" {
+		return nil
+	}
+	for i := range c.LlamafileModels {
+		if c.LlamafileModels[i].Name == name {
+			return &c.LlamafileModels[i]
+		}
+	}
+	return nil
+}
+
+/** AddOrUpdateLlamafileEntry inserts e into the registry if its name is new,
+ * or replaces the existing entry if one with the same name exists.
+ *
+ * Parameters:
+ *   e (LlamafileEntry) — the entry to add or replace.
+ *
+ * Example:
+ *   cfg.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: "qwen", Path: "/home/user/Models/qwen.llamafile"})
+ */
+func (c *Config) AddOrUpdateLlamafileEntry(e LlamafileEntry) {
+	for i := range c.LlamafileModels {
+		if c.LlamafileModels[i].Name == e.Name {
+			c.LlamafileModels[i] = e
+			return
+		}
+	}
+	c.LlamafileModels = append(c.LlamafileModels, e)
+}
+
+/** SaveLlamafileConfig writes the llamafile registry back to agents/harvey.yaml,
+ * merging with existing content so that unrelated keys are preserved. Only the
+ * llamafile: section is updated.
+ *
+ * Parameters:
+ *   ws  (*Workspace) — workspace whose agents/ directory is written.
+ *   cfg (*Config)    — source of llamafile fields to persist.
+ *
+ * Returns:
+ *   error — on path resolution, YAML parse, or file write failure.
+ *
+ * Example:
+ *   if err := SaveLlamafileConfig(ws, cfg); err != nil {
+ *       fmt.Println("could not save llamafile config:", err)
+ *   }
+ */
+func SaveLlamafileConfig(ws *Workspace, cfg *Config) error {
+	yamlPath, err := ws.AbsPath(filepath.Join(harveySubdir, "harvey.yaml"))
+	if err != nil {
+		return err
+	}
+	var y harveyYAML
+	if data, err := os.ReadFile(yamlPath); err == nil {
+		_ = yaml.Unmarshal(data, &y)
+	}
+	entries := make([]llamafileEntryYAML, len(cfg.LlamafileModels))
+	for i, e := range cfg.LlamafileModels {
+		entries[i] = llamafileEntryYAML{Name: e.Name, Path: e.Path}
+	}
+	y.Llamafile = llamafileYAML{
+		ModelsDir: cfg.LlamafileModelsDir,
+		Active:    cfg.LlamafileActive,
+		URL:       cfg.LlamafileURL,
+		Models:    entries,
+	}
 	out, err := yaml.Marshal(&y)
 	if err != nil {
 		return err

@@ -59,6 +59,8 @@ func main() {
 					fmt.Print(fmtHelp(harvey.KBHelpText, appName, version, releaseDate, releaseHash))
 				case "ollama":
 					fmt.Print(fmtHelp(harvey.OllamaHelpText, appName, version, releaseDate, releaseHash))
+				case "llamafile":
+					fmt.Print(fmtHelp(harvey.LlamafileHelpText, appName, version, releaseDate, releaseHash))
 				case "rag":
 					fmt.Print(fmtHelp(harvey.RagHelpText, appName, version, releaseDate, releaseHash))
 				case "read":
@@ -112,7 +114,7 @@ func main() {
 				case "recall":
 					fmt.Print(fmtHelp(harvey.MemoryHelpText, appName, version, releaseDate, releaseHash))
 				default:
-					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: attach, audit, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
+					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: attach, audit, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, llamafile, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
 					os.Exit(1)
 				}
 			} else {
@@ -129,6 +131,18 @@ func main() {
 			cfg.OllamaModel = next()
 		case "--ollama":
 			cfg.OllamaURL = next()
+		case "--llamafile":
+			// Session-only: create a synthetic registry entry without persisting.
+			p := next()
+			cfg.LlamafileModels = append(cfg.LlamafileModels, harvey.LlamafileEntry{
+				Name: harvey.LlamafileModelNameFromPath(p),
+				Path: p,
+			})
+			cfg.LlamafileActive = harvey.LlamafileModelNameFromPath(p)
+		case "--llamafile-url":
+			cfg.LlamafileURL = next()
+		case "--llamafile-dir":
+			cfg.LlamafileModelsDir = next()
 		case "-w", "--workdir":
 			cfg.WorkDir = next()
 		case "-r", "--record":
@@ -151,6 +165,12 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", arg)
 			os.Exit(1)
 		}
+	}
+
+	// HARVEY_LLAMAFILE_DIR env var overrides the YAML default but is itself
+	// overridden by the --llamafile-dir flag (already applied above).
+	if v := os.Getenv("HARVEY_LLAMAFILE_DIR"); v != "" && cfg.LlamafileModelsDir == harvey.DefaultLlamafileModelsDir() {
+		cfg.LlamafileModelsDir = v
 	}
 
 	cfg.SystemPrompt = harvey.LoadHarveyMD()

@@ -1,6 +1,13 @@
 
+# Action Items
 
-# Improvemet Ideas
+## Bugs
+
+- [ ] Harvey can process PDFs, but the language model doesn't know it can read the PDFs and prompts me to convert it
+
+## Next Steps
+
+## Improvemet Ideas
 
 - [ ] `-resume` option that resumes the most recent session 
 - [ ] The assay tool for doing model and RAG analysis leaves artifacts in `testout`, This gets confused by other language models as stale error test results. Maybe the model analysis should be stored at the workspace level not in the harvey code repository?

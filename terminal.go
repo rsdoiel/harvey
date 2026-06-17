@@ -1184,9 +1184,38 @@ func (a *Agent) initRag(out io.Writer) {
 	fmt.Fprintf(out, green("✓")+" RAG store: %s (%s) [%s]\n", entry.Name, entry.DBPath, status)
 }
 
+// resolveLlamafilePath returns an absolute path for p, resolving workspace-
+// relative paths against root. Absolute paths are returned unchanged.
+func resolveLlamafilePath(p, root string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(root, p)
+}
+
+/** useLlamafileEntry wires a.Client to the running llamafile server using
+ * the registry entry name as the model identifier.
+ *
+ * Parameters:
+ *   name (string)    — registry entry name; used as the model name in API calls.
+ *   out  (io.Writer) — destination for the "Using model:" status line.
+ *
+ * Returns:
+ *   error — always nil; present for call-site uniformity with selectBackend.
+ *
+ * Example:
+ *   return a.useLlamafileEntry("qwen-coding", out)
+ */
+func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
+	a.Client = newLlamafileLLMClient(a.Config.LlamafileURL+"/v1", name, a.Config.OllamaTimeout)
+	fmt.Fprintf(out, "  Using model: %s\n", cyan(name))
+	return nil
+}
+
 /** selectBackend runs the interactive startup sequence to choose a backend.
- * preferredModel hints at which Ollama model to pre-select (from a prior session);
- * pass an empty string when no preference is known.
+ * When an active llamafile entry is configured it is probed first; Ollama is
+ * the fallback when no active llamafile is set. preferredModel hints at which
+ * Ollama model to pre-select from a prior session; pass "" when unknown.
  *
  * Parameters:
  *   reader         (*bufio.Reader) — reads user input.
@@ -1200,6 +1229,32 @@ func (a *Agent) initRag(out io.Writer) {
  *   err := agent.selectBackend(reader, os.Stdout, "GEMMA4")
  */
 func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredModel string) error {
+	// Llamafile takes priority when an active registry entry is configured.
+	if entry := a.Config.ActiveLlamafileEntry(); entry != nil {
+		absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
+		fmt.Fprintf(out, "\n  Checking llamafile (%s) at %s...\n", entry.Name, a.Config.LlamafileURL)
+		if ProbeLlamafile(a.Config.LlamafileURL) {
+			fmt.Fprintln(out, green("  ✓")+" Llamafile is running")
+			return a.useLlamafileEntry(entry.Name, out)
+		}
+		fmt.Fprintf(out, yellow("  ✗")+" Llamafile (%s) is not running\n", entry.Name)
+		if askYesNo(reader, out, fmt.Sprintf("    Start %s now? [Y/n] ", entry.Name), true) {
+			fmt.Fprintln(out, "  Starting llamafile...")
+			proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "")
+			if err != nil {
+				fmt.Fprintf(out, red("  Failed: ")+"%v\n", err)
+			} else {
+				a.llamafileProc = proc
+				fmt.Fprintln(out, green("  ✓")+" Llamafile started")
+				return a.useLlamafileEntry(entry.Name, out)
+			}
+		}
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, dim("  No backend selected."))
+		fmt.Fprintln(out, dim("  → If Ollama is installed, use /ollama start once inside."))
+		return nil
+	}
+
 	fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.OllamaURL)
 
 	if ProbeOllama(a.Config.OllamaURL) {
@@ -1225,8 +1280,11 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 	}
 
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, dim("  No backend selected. Use /ollama start once inside."))
-	fmt.Fprintln(out, dim("  Run /help getting-started for Ollama installation instructions."))
+	fmt.Fprintln(out, dim("  No backend selected."))
+	fmt.Fprintln(out, dim("  → If Ollama is installed, use /ollama start once inside."))
+	fmt.Fprintln(out, dim("  → Or pick a llamafile from:"))
+	fmt.Fprintln(out, dim("      https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles"))
+	fmt.Fprintln(out, dim("    Download it to ~/Models, then run /llamafile add to connect."))
 	return nil
 }
 
