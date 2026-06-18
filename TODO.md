@@ -8,6 +8,11 @@
 ## Next Steps
 
 - [ ] Make sure assay cli can be used to evaluate the Llamafile models as well as Ollama models.
+- [ ] The memory profile commands improvements
+  - [ ] don't follow the patter of new, list, use. Example 'show' funcitons like 'list' in the other commands, 'use' is functioning like 'new' in the other commands
+  - [ ] The "show" command should show the current active memory profile document
+  - [ ] There needs to be an `/memory profile edit`, that let's you edit the current profile, then `/memory profile use <PROFILE_NAME>` could be used to refresh the working memory profile
+
 
 ## Improvemet Ideas
 
