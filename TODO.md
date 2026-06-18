@@ -12,11 +12,11 @@
   - [ ] don't follow the patter of new, list, use. Example 'show' funcitons like 'list' in the other commands, 'use' is functioning like 'new' in the other commands
   - [ ] The "show" command should show the current active memory profile document
   - [ ] There needs to be an `/memory profile edit`, that let's you edit the current profile, then `/memory profile use <PROFILE_NAME>` could be used to refresh the working memory profile
-
+- [ ] We need a generalized web developer template that reflects the knowledge of Go, uv + Python, SQL (SQLite3 and Postgres), Deno+TypeScript, JavaScript, CSS and HTML5
+- [ ] `-resume` option that resumes the most recent session 
 
 ## Improvemet Ideas
 
-- [ ] `-resume` option that resumes the most recent session 
 - [ ] The assay tool for doing model and RAG analysis leaves artifacts in `testout`, This gets confused by other language models as stale error test results. Maybe the model analysis should be stored at the workspace level not in the harvey code repository?
 - [ ] Improving Harvey's ergonomics and user experience
   - [ ] Improve status messages to let user informed of what is happening

@@ -1,5 +1,5 @@
 
-# generated with CMTools 0.0.3 ff28069
+# generated with CMTools 0.0.12 385914d
 
 #
 # Simple Makefile for Golang based Projects built under POSIX.
@@ -8,9 +8,7 @@ PROJECT = harvey
 
 GIT_GROUP = rsdoiel
 
-PROGRAMS = harvey
-
-TOOLS = assay
+PROGRAMS = <PROGRAM_LISTS_GOES_HERE>
 
 RELEASE_DATE = $(shell date +%Y-%m-%d)
 
@@ -18,7 +16,7 @@ RELEASE_HASH=$(shell git log --pretty=format:'%h' -n 1)
 
 MAN_PAGES_1 = $(shell ls -1 *.1.md | sed -E 's/.1.md/.1/g')
 
-#MAN_PAGES_3 = $(shell ls -1 *.3.md | sed -E 's/.3.md/.3/g')
+MAN_PAGES_3 = $(shell ls -1 *.3.md | sed -E 's/.3.md/.3/g')
 
 MAN_PAGES_7 = $(shell ls -1 *.7.md | sed -E 's/.7.md/.7/g')
 
@@ -46,7 +44,7 @@ ifeq ($(OS), Windows)
 	EXT = .exe
 endif
 
-build: version.go $(PROGRAMS) $(TOOLS) help-docs man CITATION.cff about.md installer.sh installer.ps1
+build: version.go $(PROGRAMS) man CITATION.cff about.md installer.sh installer.ps1
 
 version.go: .FORCE
 	cmt codemeta.json version.go
@@ -54,7 +52,7 @@ version.go: .FORCE
 hash: .FORCE
 	git log --pretty=format:'%h' -n 1
 
-man: $(MAN_PAGES_1) $(MAN_PAGES_7) # $(MAN_PAGES_3) 
+man: $(MAN_PAGES_1) # $(MAN_PAGES_3) $(MAN_PAGES_7)
 
 $(MAN_PAGES_1): .FORCE
 	mkdir -p man/man1
@@ -68,52 +66,10 @@ $(MAN_PAGES_7): .FORCE
 	mkdir -p man/man7
 	pandoc $@.md --from markdown --to man -s >man/man7/$@
 
-help-docs: $(PROGRAMS)
-	@echo "Regenerating help topic Markdown files..."
-	@./bin/harvey --help attach    > harvey-attach.7.md
-	@./bin/harvey --help clear     > harvey-clear.7.md
-	@./bin/harvey --help context   > harvey-context.7.md
-	@./bin/harvey --help editing   > harvey-editing.7.md
-	@./bin/harvey --help file-tree > harvey-file-tree.7.md
-	@./bin/harvey --help files     > harvey-files.7.md
-	@./bin/harvey --help format    > harvey-format.7.md
-	@./bin/harvey --help git       > harvey-git.7.md
-	@./bin/harvey --help hint      > harvey-hint.7.md
-	@./bin/harvey --help inspect   > harvey-inspect.7.md
-	@./bin/harvey --help kb        > harvey-kb.7.md
-	@./bin/harvey --help learn     > harvey-learn.7.md
-	@./bin/harvey --help llamafile > harvey-llamafile.7.md
-	@./bin/harvey --help loop      > harvey-loop.7.md
-	@./bin/harvey --help memory    > harvey-memory.7.md
-	@./bin/harvey --help ollama    > harvey-ollama.7.md
-	@./bin/harvey --help pipeline  > harvey-pipeline.7.md
-	@./bin/harvey --help plan      > harvey-plan.7.md
-	@./bin/harvey --help rag       > harvey-rag.7.md
-	@./bin/harvey --help read      > harvey-read.7.md
-	@./bin/harvey --help read-dir  > harvey-read-dir.7.md
-	@./bin/harvey --help read-pdf  > harvey-read-pdf.7.md
-	@./bin/harvey --help record    > harvey-record.7.md
-	@./bin/harvey --help rename    > harvey-rename.7.md
-	@./bin/harvey --help routing   > harvey-routing.7.md
-	@./bin/harvey --help run       > harvey-run.7.md
-	@./bin/harvey --help search    > harvey-search.7.md
-	@./bin/harvey --help security  > harvey-security.7.md
-	@./bin/harvey --help session   > harvey-session.7.md
-	@./bin/harvey --help skill-set > harvey-skill-set.7.md
-	@./bin/harvey --help skills    > harvey-skills.7.md
-	@./bin/harvey --help status    > harvey-status.7.md
-	@./bin/harvey --help summarize > harvey-summarize.7.md
-	@./bin/harvey --help tools     > harvey-builtin-tools.7.md
-	@./bin/harvey --help write     > harvey-write.7.md
-
 $(PROGRAMS): $(PACKAGE)
 	@mkdir -p bin
 	go build -o "bin/$@$(EXT)" cmd/$@/*.go
 	@./bin/$@ -help >$@.1.md
-
-$(TOOLS): $(PACKAGE)
-	@mkdir -p bin
-	go build -o "bin/$@$(EXT)" cmd/$@/*.go
 
 $(MAN_PAGES): .FORCE
 	mkdir -p man/man1
@@ -149,8 +105,8 @@ refresh:
 	git fetch origin
 	git pull origin $(BRANCH)
 
-publish: build website .FORCE
-	./publish.bash
+#publish: build website .FORCE
+#	./publish.bash
 
 clean:
 	@if [ -f version.go ]; then rm version.go; fi
@@ -164,7 +120,7 @@ clean-website:
 
 install: build
 	@echo "Installing programs in $(PREFIX)/bin"
-	@for FNAME in $(PROGRAMS) $(TOOLS); do if [ -f "./bin/$${FNAME}$(EXT)" ]; then mv -v "./bin/$${FNAME}$(EXT)" "$(PREFIX)/bin/$${FNAME}$(EXT)"; fi; done
+	@for FNAME in $(PROGRAMS); do if [ -f "./bin/$${FNAME}$(EXT)" ]; then mv -v "./bin/$${FNAME}$(EXT)" "$(PREFIX)/bin/$${FNAME}$(EXT)"; fi; done
 	@echo ""
 	@echo "Make sure $(PREFIX)/bin is in your PATH"
 	@echo "Installing man page in $(PREFIX)/man"
@@ -179,7 +135,7 @@ install: build
 
 uninstall: .FORCE
 	@echo "Removing programs in $(PREFIX)/bin"
-	@for FNAME in $(PROGRAMS) $(TOOLS); do if [ -f "$(PREFIX)/bin/$${FNAME}$(EXT)" ]; then rm -v "$(PREFIX)/bin/$${FNAME}$(EXT)"; fi; done
+	@for FNAME in $(PROGRAMS); do if [ -f "$(PREFIX)/bin/$${FNAME}$(EXT)" ]; then rm -v "$(PREFIX)/bin/$${FNAME}$(EXT)"; fi; done
 	@echo "Removing man pages in $(PREFIX)/man"
 	@for FNAME in $(MAN_PAGES_1); do if [ -f "$(PREFIX)/man/man1/$${FNAME}" ]; then rm -v "$(PREFIX)/man/man1/$${FNAME}"; fi; done
 	@for FNAME in $(MAN_PAGES_3); do if [ -f "$(PREFIX)/man/man3/$${FNAME}" ]; then rm -v "$(PREFIX)/man/man3/$${FNAME}"; fi; done
@@ -245,7 +201,7 @@ distribute_docs:
 	@for DNAME in $(DOCS); do cp -vR $$DNAME dist/; done
 
 release: build installer.sh installer.ps1 save setup_dist distribute_docs dist/Linux-x86_64 dist/Linux-aarch64 dist/macOS-x86_64 dist/macOS-arm64 dist/Windows-x86_64 dist/Windows-arm64 dist/Linux-armv7l
-	@printf "\n\nready to run\n\n\trelease.bash\n"
+	@printf "\nready to run\n\n\trelease.bash\n\n"
 
 
 .FORCE:
