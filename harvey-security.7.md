@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.3 0969704
+%harvey(7) user manual | version 0.0.12 a6c32e5
 % R. S. Doiel
-% 2026-05-12
+% 2026-06-17
 
 # NAME
 
@@ -9,6 +9,7 @@ SECURITY — Safe Mode, workspace permissions, and audit logging
 # SYNOPSIS
 
 /safemode <on|off|status|allow CMD|deny CMD|reset>
+/safe <on|off|status|allow CMD|deny CMD|reset>    (alias for /safemode)
 /permissions <list [PATH]|set PATH PERMS|reset>
 /audit <show [N]|clear|status>
 /security status
@@ -27,26 +28,29 @@ and /run. When enabled, only commands in the allowlist are permitted.
 Default allowlist: ls, cat, grep, head, tail, wc, find, stat, jq, htmlq,
 bat, batcat.
 
+Alias: /safe is an exact alias for /safemode. Both names accept the same
+subcommands and behave identically. Use whichever you prefer.
+
 Subcommands:
 
-  /safemode on
+  /safemode on   (or: /safe on)
     Enable Safe Mode. Commands not in the allowlist are blocked and
     audit-logged.
 
-  /safemode off
+  /safemode off   (or: /safe off)
     Disable Safe Mode. All commands accepted by the shell metacharacter
     filter are permitted.
 
-  /safemode status
+  /safemode status   (or: /safe status)
     Show whether Safe Mode is on or off and list the current allowlist.
 
-  /safemode allow CMD
+  /safemode allow CMD   (or: /safe allow CMD)
     Add CMD to the allowlist. Persisted to agents/harvey.yaml.
 
-  /safemode deny CMD
+  /safemode deny CMD   (or: /safe deny CMD)
     Remove CMD from the allowlist. Persisted to agents/harvey.yaml.
 
-  /safemode reset
+  /safemode reset   (or: /safe reset)
     Restore the default allowlist.
 
 ## WORKSPACE PERMISSIONS (/permissions)

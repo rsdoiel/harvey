@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="memory-enrichment-plan">Memory Enrichment Plan</h1>
+<p>Implements the design in <code>memory_enrichment_design.md</code>.
+Seven steps, each independently testable. Steps 1–5 are within the
+harvey Go package and must be done in order. Steps 6–7 are file-only and
+can be done in parallel with testing.</p>
+<hr />
+<h2 id="step-1-memorymeta-schema-memory.go">Step 1 — MemoryMeta schema
+(<code>memory.go</code>)</h2>
+<h3 id="changes">Changes</h3>
+<p>Add three fields to <code>MemoryMeta</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>Kind       <span class="dt">string</span>  <span class="st">`yaml:&quot;kind,omitempty&quot;`</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>Action     <span class="dt">string</span>  <span class="st">`yaml:&quot;action,omitempty&quot;`</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>Confidence <span class="dt">float64</span> <span class="st">`yaml:&quot;confidence,omitempty&quot;`</span></span></code></pre></div>
+<p>Position <code>Kind</code> after <code>Type</code>; position
+<code>Action</code> after <code>Summary</code>; position
+<code>Confidence</code> after <code>Action</code>.</p>
+<p>Update <code>EmbedText()</code>: append <code>m.Meta.Action</code> to
+the parts slice when non-empty.</p>
+<p>Update <code>NewMemoryDoc()</code>: set <code>Confidence: 0.5</code>
+in the returned struct.</p>
+<p>Update <code>ParseMemoryDoc()</code>: after YAML unmarshal, if
+<code>meta.Confidence == 0</code> set <code>meta.Confidence = 0.5</code>
+(handles files that predate this field).</p>
+<p>Update all <code>/** ... */</code> doc comments for
+<code>MemoryMeta</code>, <code>EmbedText</code>, and
+<code>NewMemoryDoc</code> to document the new fields and the default
+confidence behaviour.</p>
+<h3 id="tests-to-run">Tests to run</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestMemoryDoc</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestParseMemoryDoc</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestNewMemoryDoc</span></code></pre></div>
+<p>Existing tests should pass unchanged because <code>omitempty</code>
+fields are not required. Add one test case to
+<code>ParseMemoryDoc</code> tests: a file with no
+<code>confidence:</code> line should return
+<code>Confidence == 0.5</code>.</p>
+<hr />
+<h2 id="step-2-db-migration-and-crud-memory_store.go">Step 2 — DB
+migration and CRUD (<code>memory_store.go</code>)</h2>
+<h3 id="schema-constant">Schema constant</h3>
+<p>Update <code>memoriesSchema</code> to include the three new columns
+in the <code>CREATE TABLE</code> statement for new databases.</p>
+<h3 id="lazy-migration">Lazy migration</h3>
+<p>Add three statements to a new <code>memoriesEnrichAlterStmts</code>
+slice (same pattern as <code>enrichedAlterStmts</code> in
+<code>rag_support.go</code>). Apply them in
+<code>NewMemoryStore()</code> immediately after
+<code>memoriesSchema</code> is applied:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> memoriesEnrichAlterStmts <span class="op">=</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE memories ADD COLUMN kind       TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE memories ADD COLUMN action     TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE memories ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5`</span><span class="op">,</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="fts-schema">FTS schema</h3>
+<p>Add <code>kind</code> and <code>action</code> as indexed columns to
+<code>memoriesFTSSchema</code>. Because FTS tables cannot use
+<code>ALTER TABLE</code>, handle the migration by checking for column
+existence via <code>PRAGMA table_info(memories_fts)</code> and
+recreating the virtual table if the new columns are absent. This is a
+one-time migration that fires only on databases created before this
+change.</p>
+<p>Note: recreating the FTS table loses its content;
+<code>rebuildIfNeeded()</code> already handles re-indexing from files,
+so call it unconditionally after any FTS recreation.</p>
+<h3 id="save"><code>Save()</code></h3>
+<p>Add <code>kind</code>, <code>action</code>, and
+<code>confidence</code> to the <code>INSERT OR REPLACE</code> statement
+and the corresponding FTS insert.</p>
+<h3 id="query"><code>Query()</code></h3>
+<p>Multiply <code>cosineSimilarity(queryVec, vec)</code> by the memory’s
+confidence value when building <code>candidates</code>. Fetch confidence
+from the row scan:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>rows<span class="op">,</span> err <span class="op">:=</span> s<span class="op">.</span>db<span class="op">.</span>Query<span class="op">(</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">`SELECT id, file_path, embedding, confidence FROM memories WHERE archived=0`</span><span class="op">,</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span></code></pre></div>
+<h3 id="searchfts"><code>SearchFTS()</code></h3>
+<p>Fetch <code>m.confidence</code> from the <code>memories</code> join
+and multiply <code>score</code> by it before appending to
+<code>out</code>.</p>
+<h3 id="setconfidence"><code>SetConfidence()</code></h3>
+<p>New method:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>s <span class="op">*</span>MemoryStore<span class="op">)</span> SetConfidence<span class="op">(</span>id <span class="dt">string</span><span class="op">,</span> delta <span class="dt">float64</span><span class="op">)</span> <span class="op">(</span><span class="dt">float64</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li>Reads current confidence from DB.</li>
+<li>Adds delta and clamps to [0.0, 1.0].</li>
+<li>Writes clamped value back.</li>
+<li>If result &lt;= 0.2, calls <code>s.Archive(id)</code> and returns
+the clamped value with a sentinel error
+<code>ErrAutoArchived</code>.</li>
+<li>Updates <code>updated_at</code> to now.</li>
+</ul>
+<p>Define
+<code>ErrAutoArchived = errors.New("memory auto-archived: confidence below threshold")</code>
+as a package-level error so callers can distinguish it.</p>
+<h3 id="writedigest"><code>WriteDigest()</code></h3>
+<p>New method:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>s <span class="op">*</span>MemoryStore<span class="op">)</span> WriteDigest<span class="op">(</span>path <span class="dt">string</span><span class="op">)</span> <span class="dt">error</span></span></code></pre></div>
+<ul>
+<li>Queries all non-archived memories ordered by confidence descending
+within each kind.</li>
+<li>Groups by kind in display order: pitfall → workaround →
+recommendation → pattern → “” (unclassified).</li>
+<li>Writes Markdown to <code>path</code> using
+<code>os.WriteFile</code>.</li>
+<li>Skips the file write (returns nil) if there are zero active
+memories.</li>
+<li>Header format:</li>
+</ul>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu"># Harvey Memory Digest</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>*Updated: &lt;RFC3339&gt; — &lt;N&gt; active memories*</span></code></pre></div>
+<ul>
+<li>Entry format per memory:</li>
+</ul>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**[&lt;type&gt;]** <span class="in">`&lt;id&gt;`</span> (confidence: <span class="dt">&lt;</span><span class="kw">X.X</span><span class="dt">&gt;</span>) — <span class="dt">&lt;</span><span class="kw">description</span><span class="dt">&gt;</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  **Action:** <span class="dt">&lt;</span><span class="kw">action</span><span class="dt">&gt;</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  Tags: <span class="in">`tag1`</span> <span class="in">`tag2`</span> ...</span></code></pre></div>
+<p>The <code>**Action:**</code> line is omitted when action is
+empty.</p>
+<h3 id="auto-call-writedigest">Auto-call <code>WriteDigest</code></h3>
+<p>Add <code>s.WriteDigest(filepath.Join(s.dir, "DIGEST.md"))</code> at
+the end of <code>Save()</code> and <code>Archive()</code>. Ignore the
+error (digest is best-effort; a failure to write DIGEST.md must not fail
+a memory save).</p>
+<h3 id="rebuildifneeded"><code>rebuildIfNeeded()</code></h3>
+<p>Update the <code>INSERT OR IGNORE</code> statement to include
+<code>kind</code>, <code>action</code>, and <code>confidence</code>
+columns. Default confidence to <code>0.5</code>.</p>
+<h3 id="tests-to-run-1">Tests to run</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestMemoryStore</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestMemoryQuery</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestSetConfidence</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestWriteDigest</span></code></pre></div>
+<p>Add tests for: - <code>SetConfidence</code> positive delta, negative
+delta, clamp at 1.0, clamp at 0.0 - <code>SetConfidence</code>
+auto-archive at threshold (check <code>ErrAutoArchived</code> returned)
+- <code>Query</code> with two memories at different confidence values —
+lower-confidence memory must rank below higher-confidence memory even if
+cosine scores are equal - <code>WriteDigest</code> with empty store (no
+file written), with memories of each kind, with memories missing action
+field</p>
+<hr />
+<h2 id="step-3-miner-alignment-memory_miner.go">Step 3 — Miner alignment
+(<code>memory_miner.go</code>)</h2>
+<h3 id="proposedmemory-struct"><code>proposedMemory</code> struct</h3>
+<p>Add two fields:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> proposedMemory <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    Type         <span class="dt">string</span>   <span class="st">`json:&quot;type&quot;`</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    Kind         <span class="dt">string</span>   <span class="st">`json:&quot;kind&quot;`</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    Description  <span class="dt">string</span>   <span class="st">`json:&quot;description&quot;`</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    Summary      <span class="dt">string</span>   <span class="st">`json:&quot;summary&quot;`</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    Action       <span class="dt">string</span>   <span class="st">`json:&quot;action&quot;`</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    Tags         <span class="op">[]</span><span class="dt">string</span> <span class="st">`json:&quot;tags&quot;`</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    FountainBody <span class="dt">string</span>   <span class="st">`json:&quot;fountain_body&quot;`</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="minersystemprompt"><code>minerSystemPrompt</code></h3>
+<p>Rewrite to add <code>kind</code> and <code>action</code> fields and
+explain the four kind values. Keep the existing rules (return [], avoid
+one-offs, durable knowledge only). The updated schema block:</p>
+<pre><code>Return a JSON array of objects with these fields:
+  type          string  — one of: &quot;tool_use&quot;, &quot;workflow&quot;, &quot;user_preference&quot;
+  kind          string  — one of: &quot;pitfall&quot;, &quot;workaround&quot;, &quot;recommendation&quot;, &quot;pattern&quot;, or &quot;&quot;
+  description   string  — one sentence, action-oriented
+  summary       string  — 2-3 sentences explaining what happened and why it matters
+  action        string  — imperative sentence: the concrete step a future agent should take
+                          (empty string &quot;&quot; if no clear action applies)
+  tags          array   — 3-7 lowercase keywords
+  fountain_body string  — Fountain dialogue ...
+
+Kind values:
+  pitfall        — a permanent gotcha (API quirk, undocumented behaviour, subtle invariant)
+  workaround     — useful now; may become obsolete when better tooling exists
+  recommendation — points to the right approach, tool, or pattern
+  pattern        — a recurring successful approach worth repeating
+  &quot;&quot;             — leave empty when the memory does not clearly fit any category</code></pre>
+<h3 id="conversion-from-proposedmemory-to-memorydoc">Conversion from
+<code>proposedMemory</code> to <code>MemoryDoc</code></h3>
+<p>In the loop that converts <code>proposedMemory</code> →
+<code>MemoryDoc</code> (find it in <code>Mine()</code> or
+<code>MineAuto()</code>), set:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>doc<span class="op">.</span>Meta<span class="op">.</span>Kind       <span class="op">=</span> p<span class="op">.</span>Kind</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>doc<span class="op">.</span>Meta<span class="op">.</span>Action     <span class="op">=</span> p<span class="op">.</span>Action</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>doc<span class="op">.</span>Meta<span class="op">.</span>Confidence <span class="op">=</span> <span class="fl">0.5</span></span></code></pre></div>
+<h3 id="mineauto-digest-call"><code>MineAuto()</code> digest call</h3>
+<p>Add <code>s.WriteDigest(filepath.Join(s.dir, "DIGEST.md"))</code>
+after the batch save loop in <code>MineAuto()</code>.</p>
+<h3 id="tests-to-run-2">Tests to run</h3>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestMiner</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestMineAuto</span></code></pre></div>
+<p>Add a test that feeds a session containing a clear pitfall (e.g., a
+git error and resolution) to a mock LLM that returns a
+<code>kind: "pitfall"</code> and non-empty <code>action</code>; verify
+both fields are present on the saved <code>MemoryDoc</code>.</p>
+<hr />
+<h2 id="step-4-terminal-command-update-terminal.go">Step 4 — Terminal
+command update (<code>terminal.go</code>)</h2>
+<h3 id="find-memory-flag">Find <code>/memory flag</code></h3>
+<p>Search <code>terminal.go</code> for the dispatch that handles
+<code>/memory flag</code>. It currently calls
+<code>store.Archive(id)</code> or similar.</p>
+<h3 id="update-behaviour">Update behaviour</h3>
+<p>Replace the archive call with:</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>newConf<span class="op">,</span> err <span class="op">:=</span> store<span class="op">.</span>SetConfidence<span class="op">(</span>id<span class="op">,</span> <span class="op">-</span><span class="fl">0.1</span><span class="op">)</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> errors<span class="op">.</span>Is<span class="op">(</span>err<span class="op">,</span> ErrAutoArchived<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;%s: confidence → archived (fell below threshold)</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> id<span class="op">)</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;error: %v</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;%s: confidence → %.1f</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> id<span class="op">,</span> newConf<span class="op">)</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="update-memory-archive">Update <code>/memory archive</code></h3>
+<p>If the existing command for explicit archival is
+<code>/memory flag --force</code> or similar, rename or add
+<code>/memory archive &lt;id&gt;</code> that calls
+<code>store.Archive(id)</code> directly. If a separate archive command
+already exists, leave it unchanged.</p>
+<h3 id="tests-to-run-3">Tests to run</h3>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestMemoryCommands</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-run</span> TestTerminal</span></code></pre></div>
+<p>Confirm that <code>/memory flag</code> on a memory with confidence
+0.5 leaves it active with confidence 0.4, and that repeated flags
+eventually archive it.</p>
+<hr />
+<h2 id="step-5-integration-smoke-test">Step 5 — Integration smoke
+test</h2>
+<p>Run the full test suite from inside <code>harvey/</code>:</p>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span> ./...</span></code></pre></div>
+<p>Confirm: - All existing tests pass - No data races - The three new
+fields round-trip through <code>Bytes()</code> /
+<code>ParseMemoryDoc()</code> - <code>DIGEST.md</code> is written to a
+temp dir and contains expected sections</p>
+<hr />
+<h2 id="step-6-harvey-memory-skill-new-file">Step 6 — Harvey memory
+skill (new file)</h2>
+<p>Create <code>agents/skills/harvey-memory/SKILL.md</code>:</p>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="an">name:</span><span class="co"> harvey-memory</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="an">description:</span><span class="co"> Load Harvey&#39;s accumulated project memories before working on this workspace.</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="an">trigger:</span><span class="co"> &quot;before making changes to this project | at session start | when asked about project history&quot;</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a><span class="fu"># Harvey Memory Skill</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>Harvey (the local coding agent for this workspace) accumulates experience memories across sessions. These memories capture tool-use pitfalls, workflow patterns, user preferences, and project facts specific to this workspace.</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a><span class="fu">## When to use this skill</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>Load this skill:</span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>At the start of a session when working on the Laboratory or harvey sub-project</span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Before making changes to files Harvey has worked on previously</span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>When the user asks about past decisions or accumulated knowledge</span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a><span class="fu">## Reading the memory digest</span></span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a>The live memory index is at <span class="in">`agents/memories/DIGEST.md`</span>. Read it with your file-read tool. It is updated automatically by Harvey whenever memories are saved or archived.</span>
+<span id="cb17-21"><a href="#cb17-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-22"><a href="#cb17-22" aria-hidden="true" tabindex="-1"></a><span class="fu">## Memory structure</span></span>
+<span id="cb17-23"><a href="#cb17-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-24"><a href="#cb17-24" aria-hidden="true" tabindex="-1"></a>Each memory has:</span>
+<span id="cb17-25"><a href="#cb17-25" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**type** — the topic category (tool_use, workflow, user_preference, workspace_profile, project_fact)</span>
+<span id="cb17-26"><a href="#cb17-26" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**kind** — why this knowledge matters:</span>
+<span id="cb17-27"><a href="#cb17-27" aria-hidden="true" tabindex="-1"></a><span class="ss">  - </span><span class="in">`pitfall`</span> — a permanent gotcha; treat as a hard constraint</span>
+<span id="cb17-28"><a href="#cb17-28" aria-hidden="true" tabindex="-1"></a><span class="ss">  - </span><span class="in">`workaround`</span> — useful now; verify it still applies before acting on it</span>
+<span id="cb17-29"><a href="#cb17-29" aria-hidden="true" tabindex="-1"></a><span class="ss">  - </span><span class="in">`recommendation`</span> — preferred approach; follow unless you have a strong reason not to</span>
+<span id="cb17-30"><a href="#cb17-30" aria-hidden="true" tabindex="-1"></a><span class="ss">  - </span><span class="in">`pattern`</span> — a successful recurring approach; use as a template</span>
+<span id="cb17-31"><a href="#cb17-31" aria-hidden="true" tabindex="-1"></a><span class="ss">  - </span>unclassified — treat with neutral confidence</span>
+<span id="cb17-32"><a href="#cb17-32" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**confidence** — reliability score (0.0–1.0). Default for new memories is 0.5.</span>
+<span id="cb17-33"><a href="#cb17-33" aria-hidden="true" tabindex="-1"></a><span class="ss">  - </span>0.8–1.0: high confidence; act on it directly</span>
+<span id="cb17-34"><a href="#cb17-34" aria-hidden="true" tabindex="-1"></a><span class="ss">  - </span>0.5–0.7: moderate; use as guidance but verify</span>
+<span id="cb17-35"><a href="#cb17-35" aria-hidden="true" tabindex="-1"></a><span class="ss">  - </span>below 0.5: low; treat as a weak suggestion</span>
+<span id="cb17-36"><a href="#cb17-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-37"><a href="#cb17-37" aria-hidden="true" tabindex="-1"></a><span class="fu">## Acting on memories</span></span>
+<span id="cb17-38"><a href="#cb17-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-39"><a href="#cb17-39" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="in">`pitfall`</span> memories with confidence &gt;= 0.8: check for this condition before acting</span>
+<span id="cb17-40"><a href="#cb17-40" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="in">`workaround`</span> memories: apply the action, but note that a better approach may exist</span>
+<span id="cb17-41"><a href="#cb17-41" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="in">`recommendation`</span> memories: follow the action unless context clearly overrides it</span>
+<span id="cb17-42"><a href="#cb17-42" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Low-confidence memories (&lt; 0.5): mention to the user before acting on them</span>
+<span id="cb17-43"><a href="#cb17-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-44"><a href="#cb17-44" aria-hidden="true" tabindex="-1"></a><span class="fu">## Source files</span></span>
+<span id="cb17-45"><a href="#cb17-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-46"><a href="#cb17-46" aria-hidden="true" tabindex="-1"></a>Individual memory documents are in <span class="in">`agents/memories/&lt;type&gt;/&lt;id&gt;.fountain`</span>. They contain the full conversation context in Fountain screenplay format.</span>
+<span id="cb17-47"><a href="#cb17-47" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-48"><a href="#cb17-48" aria-hidden="true" tabindex="-1"></a><span class="fu">## Flagging stale memories</span></span>
+<span id="cb17-49"><a href="#cb17-49" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-50"><a href="#cb17-50" aria-hidden="true" tabindex="-1"></a>If a memory appears incorrect, tell the user:</span>
+<span id="cb17-51"><a href="#cb17-51" aria-hidden="true" tabindex="-1"></a><span class="at">&gt; &quot;Memory </span><span class="in">`&lt;id&gt;`</span><span class="at"> may be stale. You can update it with </span><span class="in">`/memory flag &lt;id&gt;`</span><span class="at"> in Harvey.&quot;</span></span>
+<span id="cb17-52"><a href="#cb17-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-53"><a href="#cb17-53" aria-hidden="true" tabindex="-1"></a>Do not modify memory files directly.</span></code></pre></div>
+<hr />
+<h2 id="step-7-update-agent-instruction-files">Step 7 — Update agent
+instruction files</h2>
+<h3 id="vibe.md"><code>VIBE.md</code></h3>
+<p>Add a new section “Harvey memories” after the existing “Knowledge
+base” section:</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="fu">### Harvey memories</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>Harvey accumulates experience memories across sessions. These capture workspace-specific</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>tool-use pitfalls, workflow patterns, user preferences, and project facts.</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>**Quick reference:** Read <span class="in">`agents/memories/DIGEST.md`</span> — a plain-text index updated</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>automatically whenever Harvey mines or saves a memory. Each entry shows the memory&#39;s</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>type, kind (pitfall/workaround/recommendation/pattern), confidence score, description,</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>and action.</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>**Full skill:** <span class="in">`agents/skills/harvey-memory/SKILL.md`</span> — load this at session start</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>when working on Harvey or Laboratory experiments for full guidance on interpreting</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>confidence values and acting on different memory kinds.</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>Memory types:</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="in">`tool_use`</span> — tool-specific tricks and error fixes</span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="in">`workflow`</span> — multi-step process patterns</span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="in">`user_preference`</span> — how the user likes to work</span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="in">`workspace_profile`</span> — key facts about this workspace</span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="in">`project_fact`</span> — important project decisions and constraints</span></code></pre></div>
+<h3 id="claude.md-root"><code>CLAUDE.md</code> (root)</h3>
+<p>Add the same “Harvey memories” section under the existing “Knowledge
+base” section in the Claude.md at the Laboratory root. The wording can
+be identical to the VIBE.md addition.</p>
+<hr />
+<h2 id="checklist">Checklist</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" />Step 1: <code>memory.go</code> — add
+Kind, Action, Confidence; update EmbedText, NewMemoryDoc,
+ParseMemoryDoc</label></li>
+<li><label><input type="checkbox" />Step 2: <code>memory_store.go</code>
+— schema, migration, Save, Query, SearchFTS, SetConfidence, WriteDigest,
+rebuildIfNeeded</label></li>
+<li><label><input type="checkbox" />Step 3: <code>memory_miner.go</code>
+— proposedMemory, minerSystemPrompt, conversion loop, MineAuto digest
+call</label></li>
+<li><label><input type="checkbox" />Step 4: <code>terminal.go</code> —
+<code>/memory flag</code> confidence adjustment</label></li>
+<li><label><input type="checkbox" />Step 5:
+<code>go test -race ./...</code> passes clean</label></li>
+<li><label><input type="checkbox" />Step 6:
+<code>agents/skills/harvey-memory/SKILL.md</code> created</label></li>
+<li><label><input type="checkbox" />Step 7: <code>VIBE.md</code> and
+root <code>CLAUDE.md</code> updated</label></li>
+</ul>
+</section>
+</body>
+</html>

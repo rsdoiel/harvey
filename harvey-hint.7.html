@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>HINT — show actionable suggestions for improving Harvey’s results</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/hint</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>/hint inspects the three memory silos — the session-experience memory
+store, the active RAG store, and the knowledge base — and prints a short
+list of suggestions for things that would help Harvey give better
+answers in this workspace. It takes no arguments and makes no changes;
+it only reports what it finds and suggests a command to run next.</p>
+<h1 id="checks">CHECKS</h1>
+<p>Unmined sessions If memory is enabled and there are recorded sessions
+that have not yet been mined for experiential memories, /hint reports
+the count and suggests:</p>
+<pre><code>Run: /memory mine</code></pre>
+<p>RAG store No store configured Suggests creating one and ingesting
+reference documents:</p>
+<pre><code>  Run: /rag new NAME   then   /rag ingest &lt;file&gt;
+  See: /help learn</code></pre>
+<p>Store configured but empty Suggests ingesting documents into the
+active store:</p>
+<pre><code>  Run: /rag ingest &lt;file&gt;   (PDF, .md, .txt, .go, .ts, ...)
+  See: /help rag</code></pre>
+<p>Store has chunks but RAG is off Suggests turning RAG on so chunks are
+prepended to prompts:</p>
+<pre><code>  Run: /rag on</code></pre>
+<p>Store configured but not open Suggests checking its status:</p>
+<pre><code>  Run: /rag status</code></pre>
+<p>Knowledge base If no SQLite knowledge base is open, suggests
+recording experiment findings so they persist across sessions:</p>
+<pre><code>See: /help kb</code></pre>
+<h1 id="output">OUTPUT</h1>
+<p>If every check passes — RAG is on with chunks, sessions are mined,
+and the knowledge base is open — /hint prints a single confirmation line
+and points to /help learn for the full memory overview.</p>
+<h1 id="examples">EXAMPLES</h1>
+<pre><code>  harvey &gt; /hint
+    Sessions unmined: 3
+      Harvey can extract learnings from these sessions.
+      Run: /memory mine
+
+    RAG is off but store &quot;default&quot; has 142 chunk(s).
+      Enabling RAG prepends relevant chunks to each prompt.
+      Run: /rag on</code></pre>
+<pre><code>  harvey &gt; /hint
+    Everything looks good — RAG is on with chunks, sessions are mined, KB is open.
+    Use /help learn for the full memory overview.</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/help learn — overview of all three memory silos /memory status —
+summary of the experiential memory store /rag status — summary of the
+active RAG store /kb status — summary of the knowledge base</p>
+</section>
+</body>
+</html>

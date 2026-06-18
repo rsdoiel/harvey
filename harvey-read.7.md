@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.3 0969704
+%harvey(7) user manual | version 0.0.12 a6c32e5
 % R. S. Doiel
-% 2026-05-12
+% 2026-06-17
 
 # NAME
 
@@ -54,8 +54,12 @@ Read then ask a question:
 
 # SEE ALSO
 
-  /read-dir [PATH]   — read all files in a directory
-  /files [PATH]      — list directory contents
-  /status            — check remaining context window space
+  /read-dir [PATH]        — read all files in a directory
+  /read-pdf FILE [PAGES]  — extract and inject text from a PDF file
+  /attach FILE            — attach an image, PDF, or text file (auto-detects format)
+  /files [PATH]           — list directory contents
+  /status                 — check remaining context window space
   /help read-dir
+  /help read-pdf
+  /help attach
 

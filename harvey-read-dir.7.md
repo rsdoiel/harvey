@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.3 0969704
+%harvey(7) user manual | version 0.0.12 a6c32e5
 % R. S. Doiel
-% 2026-05-12
+% 2026-06-17
 
 # NAME
 
@@ -47,7 +47,8 @@ Load the entire docs/ tree:
 
 # SEE ALSO
 
-  /read      — load specific files into context
-  /file-tree — display directory structure without loading files
-  /search    — search for a pattern across workspace files
+  /read FILE...           — load specific files into context
+  /attach FILE            — attach an image, PDF, or text file (auto-detects format)
+  /file-tree              — display directory structure without loading files
+  /search                 — search for a pattern across workspace files
 

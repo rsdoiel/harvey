@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.3 0969704
+%harvey(7) user manual | version 0.0.12 a6c32e5
 % R. S. Doiel
-% 2026-05-12
+% 2026-06-17
 
 # NAME
 
@@ -95,14 +95,11 @@ Capability probing:
 Model aliases:
 
   /ollama alias NAME FULLNAME
-    Create a short alias for a long model name. Equivalent to
-    /model alias set NAME FULLNAME.
+    Create a short alias for a long model name.
 
   /ollama alias list
     List all defined model aliases.
 
   /ollama alias remove NAME
-    Remove an alias. Equivalent to /model alias remove NAME.
-
-  See also: /help model-alias
+    Remove an alias.
 

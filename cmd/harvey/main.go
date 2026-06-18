@@ -34,87 +34,31 @@ func main() {
 			return os.Args[i]
 		}
 		switch arg {
+		case "help":
+			// harvey help [TOPIC]
+			var topic string
+			if i+1 < len(os.Args) && len(os.Args[i+1]) > 0 && os.Args[i+1][0] != '-' {
+				i++
+				topic = os.Args[i]
+			}
+			if topic == "" {
+				fmt.Print(fmtHelp(helpText, appName, version, releaseDate, releaseHash))
+			} else if topic == "topics" || topic == "index" {
+				fmt.Print(harvey.HelpTopicsText())
+			} else if !harvey.PrintHelpTopic(os.Stdout, topic, appName, version, releaseDate, releaseHash) {
+				fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nType '%s help topics' for the topic index.\n", topic, appName)
+				os.Exit(1)
+			}
+			os.Exit(0)
 		case "-h", "-help", "--help":
 			// Optional topic: harvey --help skills
 			if i+1 < len(os.Args) && len(os.Args[i+1]) > 0 && os.Args[i+1][0] != '-' {
 				i++
-				switch os.Args[i] {
-				case "clear":
-					fmt.Print(fmtHelp(harvey.ClearHelpText, appName, version, releaseDate, releaseHash))
-				case "compact", "summarize":
-					fmt.Print(fmtHelp(harvey.SummarizeHelpText, appName, version, releaseDate, releaseHash))
-				case "context":
-					fmt.Print(fmtHelp(harvey.ContextHelpText, appName, version, releaseDate, releaseHash))
-				case "editing", "edit", "keybindings", "keys":
-					fmt.Print(fmtHelp(harvey.EditingHelpText, appName, version, releaseDate, releaseHash))
-				case "files":
-					fmt.Print(fmtHelp(harvey.FilesHelpText, appName, version, releaseDate, releaseHash))
-				case "file-tree", "filetree":
-					fmt.Print(fmtHelp(harvey.FileTreeHelpText, appName, version, releaseDate, releaseHash))
-				case "git":
-					fmt.Print(fmtHelp(harvey.GitHelpText, appName, version, releaseDate, releaseHash))
-				case "inspect":
-					fmt.Print(fmtHelp(harvey.InspectHelpText, appName, version, releaseDate, releaseHash))
-				case "kb", "knowledge", "knowledge-base":
-					fmt.Print(fmtHelp(harvey.KBHelpText, appName, version, releaseDate, releaseHash))
-				case "ollama":
-					fmt.Print(fmtHelp(harvey.OllamaHelpText, appName, version, releaseDate, releaseHash))
-				case "llamafile":
-					fmt.Print(fmtHelp(harvey.LlamafileHelpText, appName, version, releaseDate, releaseHash))
-				case "rag":
-					fmt.Print(fmtHelp(harvey.RagHelpText, appName, version, releaseDate, releaseHash))
-				case "read":
-					fmt.Print(fmtHelp(harvey.ReadHelpText, appName, version, releaseDate, releaseHash))
-				case "read-dir", "readdir":
-					fmt.Print(fmtHelp(harvey.ReadDirHelpText, appName, version, releaseDate, releaseHash))
-				case "record", "recording":
-					fmt.Print(fmtHelp(harvey.RecordHelpText, appName, version, releaseDate, releaseHash))
-				case "rename":
-					fmt.Print(fmtHelp(harvey.RenameHelpText, appName, version, releaseDate, releaseHash))
-				case "routing", "route":
-					fmt.Print(fmtHelp(harvey.RoutingHelpText, appName, version, releaseDate, releaseHash))
-				case "run":
-					fmt.Print(fmtHelp(harvey.RunHelpText, appName, version, releaseDate, releaseHash))
-				case "search":
-					fmt.Print(fmtHelp(harvey.SearchHelpText, appName, version, releaseDate, releaseHash))
-				case "security", "safemode", "safe-mode", "permissions", "audit":
-					fmt.Print(fmtHelp(harvey.SecurityHelpText, appName, version, releaseDate, releaseHash))
-				case "session", "sessions":
-					fmt.Print(fmtHelp(harvey.SessionHelpText, appName, version, releaseDate, releaseHash))
-				case "skill-set", "skillset":
-					fmt.Print(fmtHelp(harvey.SkillSetHelpText, appName, version, releaseDate, releaseHash))
-				case "skills", "skill":
-					fmt.Print(fmtHelp(harvey.SkillsHelpText, appName, version, releaseDate, releaseHash))
-				case "status":
-					fmt.Print(fmtHelp(harvey.StatusHelpText, appName, version, releaseDate, releaseHash))
-				case "write":
-					fmt.Print(fmtHelp(harvey.WriteHelpText, appName, version, releaseDate, releaseHash))
-				case "format":
-					fmt.Print(fmtHelp(harvey.FormatHelpText, appName, version, releaseDate, releaseHash))
-				case "hint":
-					fmt.Print(fmtHelp(harvey.HintHelpText, appName, version, releaseDate, releaseHash))
-				case "attach":
-					fmt.Print(fmtHelp(harvey.AttachHelpText, appName, version, releaseDate, releaseHash))
-				case "read-pdf", "readpdf":
-					fmt.Print(fmtHelp(harvey.ReadPDFHelpText, appName, version, releaseDate, releaseHash))
-				case "memory":
-					fmt.Print(fmtHelp(harvey.MemoryHelpText, appName, version, releaseDate, releaseHash))
-				case "pipeline":
-					fmt.Print(fmtHelp(harvey.PipelineHelpText, appName, version, releaseDate, releaseHash))
-				case "learn":
-					fmt.Print(fmtHelp(harvey.LearnHelpText, appName, version, releaseDate, releaseHash))
-				case "loop":
-					fmt.Print(fmtHelp(harvey.LoopHelpText, appName, version, releaseDate, releaseHash))
-				case "getting-started", "gettingstarted", "install", "setup":
-					fmt.Print(harvey.GettingStartedHelpText)
-				case "pdf-tools", "pdftools", "pdf":
-					fmt.Print(harvey.PDFToolsHelpText)
-				case "profile":
-					fmt.Print(fmtHelp(harvey.MemoryHelpText, appName, version, releaseDate, releaseHash))
-				case "recall":
-					fmt.Print(fmtHelp(harvey.MemoryHelpText, appName, version, releaseDate, releaseHash))
-				default:
-					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nAvailable topics: attach, audit, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, llamafile, loop, memory, ollama, pdf-tools, permissions, pipeline, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safemode, search, security, session, skill-set, skills, status, summarize, write\n", os.Args[i])
+				topic := os.Args[i]
+				if topic == "topics" || topic == "index" {
+					fmt.Print(harvey.HelpTopicsText())
+				} else if !harvey.PrintHelpTopic(os.Stdout, topic, appName, version, releaseDate, releaseHash) {
+					fmt.Fprintf(os.Stderr, "Unknown help topic %q.\nType '%s --help topics' for the topic index.\n", topic, appName)
 					os.Exit(1)
 				}
 			} else {

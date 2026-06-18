@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.3 0969704
+%harvey(7) user manual | version 0.0.12 a6c32e5
 % R. S. Doiel
-% 2026-05-12
+% 2026-06-17
 
 # NAME
 
@@ -159,17 +159,23 @@ are all low (< 0.3) for a question you expect the store to answer, consider:
   Remove a store from the registry after confirmation. The .db file is NOT
   deleted automatically — the path is printed so you can remove it manually.
 
-/rag setup
-  Backward-compatible alias for /rag new using the current active store
-  name, or "default" when no store is configured. Use /rag new NAME to
-  give the store a meaningful name.
-
 /rag ingest PATH [PATH...]
   Reads each file or directory (recursively), splits text into
   paragraph-sized chunks (~500 characters each), embeds them using the
   active store's embedding model, and stores the vectors in the database.
   Re-ingest any file after it changes to keep the store current.
-  Supported text formats: .md, .txt, .go, .ts, and most plain-text files.
+
+  Supported formats:
+    Plain text — .md, .txt, .go, .ts, .py, .yaml, .toml, .sql, and other
+                 text files.
+    PDF        — .pdf files are extracted with the poppler utilities
+                 (pdfinfo, pdftotext, pdfimages; must be installed). Each
+                 page is chunked separately, and every chunk is prefixed
+                 with the document title and page number so retrieval
+                 results always carry their source. Pages that contain
+                 only vector graphics (no extractable text) are stored
+                 with an incomplete-content marker so the model knows to
+                 ask for a vision-capable route for those pages.
 
 /rag query TEXT
   Retrieves the top 5 matching chunks for TEXT from the active store and

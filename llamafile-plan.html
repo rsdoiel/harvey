@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-llamafile-integration-implementation-plan">Harvey
+Llamafile Integration — Implementation Plan</h1>
+<blockquote>
+<p><strong>Revision history</strong> - v1: single
+<code>LlamafilePath</code>; <code>--llamafile</code> CLI flag. - v2:
+named model registry; <code>/llamafile</code> command family; process
+tracking. - v3: <code>LlamafileModelsDir</code> with
+<code>$HOME/Models</code> default; env var and CLI override; interactive
+picker in <code>/llamafile add</code>.</p>
+</blockquote>
+<p>See <a href="llamafile-design.html">llamafile-design.md</a> for the
+full design rationale.</p>
+<h2 id="new-module-dependencies">New Module Dependencies</h2>
+<p>None. All new code uses the standard library and existing Harvey
+packages.</p>
+<h2 id="files-to-create">Files to Create</h2>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/llamafile_service.go</code></td>
+<td><code>ProbeLlamafile</code>, <code>StartLlamafileService</code>
+(exists; updated in Phase 2)</td>
+</tr>
+<tr>
+<td><code>harvey/llamafile_service_test.go</code></td>
+<td>Unit tests (exists; extended in Phase 7)</td>
+</tr>
+<tr>
+<td><code>harvey/llamafile.go</code></td>
+<td><code>/llamafile</code> command handler, subcommands, picker,
+scanner</td>
+</tr>
+<tr>
+<td><code>harvey/llamafile_test.go</code></td>
+<td>Unit tests for command parsing, registry, and picker</td>
+</tr>
+</tbody>
+</table>
+<h2 id="files-to-modify">Files to Modify</h2>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/config.go</code></td>
+<td>Replace <code>LlamafilePath</code> with <code>LlamafileEntry</code>,
+<code>LlamafileModels</code>, <code>LlamafileActive</code>,
+<code>LlamafileModelsDir</code>; update YAML types,
+<code>DefaultConfig</code>, <code>LoadHarveyYAML</code>; add
+<code>SaveLlamafileConfig</code> and registry helpers</td>
+</tr>
+<tr>
+<td><code>harvey/harvey.go</code></td>
+<td>Add <code>llamafileProc *os.Process</code> to <code>Agent</code>;
+add <code>stopLlamafileProc()</code></td>
+</tr>
+<tr>
+<td><code>harvey/llamafile_service.go</code></td>
+<td><code>StartLlamafileService</code> returns
+<code>(*os.Process, error)</code></td>
+</tr>
+<tr>
+<td><code>harvey/terminal.go</code></td>
+<td>Update <code>selectBackend</code>, <code>useLlamafileEntry</code>;
+update “no backend” hint; add <code>resolveLlamafilePath</code></td>
+</tr>
+<tr>
+<td><code>harvey/commands.go</code></td>
+<td>Register <code>/llamafile</code></td>
+</tr>
+<tr>
+<td><code>harvey/helptext.go</code></td>
+<td>Add <code>LlamafileHelpText</code></td>
+</tr>
+<tr>
+<td><code>harvey/cmd/harvey/main.go</code></td>
+<td>Add <code>--llamafile</code>, <code>--llamafile-url</code>,
+<code>--llamafile-dir</code> flags; check
+<code>HARVEY_LLAMAFILE_DIR</code> env var</td>
+</tr>
+<tr>
+<td><code>harvey/Llamafile_notes.md</code></td>
+<td>Update to reflect revised design</td>
+</tr>
+</tbody>
+</table>
+<h2 id="implementation-phases">Implementation Phases</h2>
+<h3 id="phase-1-config-config.go">Phase 1 — Config
+(<code>config.go</code>)</h3>
+<p><strong>Replace</strong> <code>LlamafilePath string</code> in
+<code>Config</code> with:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>LlamafileModels    <span class="op">[]</span>LlamafileEntry <span class="co">// registered models</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>LlamafileActive    <span class="dt">string</span>           <span class="co">// name of the active model; &quot;&quot; = none</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>LlamafileURL       <span class="dt">string</span>           <span class="co">// API base URL; default &quot;http://localhost:8080&quot;</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>LlamafileModelsDir <span class="dt">string</span>           <span class="co">// discovery path; default &quot;$HOME/Models&quot;</span></span></code></pre></div>
+<p><strong>Add</strong> type alongside <code>RagStoreEntry</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">/** LlamafileEntry describes one registered llamafile model.</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co"> * Fields:</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"> *   Name (string) — short identifier used with /llamafile use.</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co"> *   Path (string) — path to binary; absolute or workspace-relative.</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co"> */</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> LlamafileEntry <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    Name <span class="dt">string</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    Path <span class="dt">string</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Update</strong> YAML mirror types. Replace
+<code>llamafileYAML</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> llamafileEntryYAML <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    Name <span class="dt">string</span> <span class="st">`yaml:&quot;name&quot;`</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    Path <span class="dt">string</span> <span class="st">`yaml:&quot;path&quot;`</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> llamafileYAML <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    ModelsDir <span class="dt">string</span>               <span class="st">`yaml:&quot;models_dir,omitempty&quot;`</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    Active    <span class="dt">string</span>               <span class="st">`yaml:&quot;active,omitempty&quot;`</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    URL       <span class="dt">string</span>               <span class="st">`yaml:&quot;url,omitempty&quot;`</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    Models    <span class="op">[]</span>llamafileEntryYAML <span class="st">`yaml:&quot;models,omitempty&quot;`</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Update</strong> <code>DefaultConfig</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>LlamafileURL<span class="op">:</span>       <span class="st">&quot;http://localhost:8080&quot;</span><span class="op">,</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>LlamafileModelsDir<span class="op">:</span> llamafileDefaultModelsDir<span class="op">(),</span> <span class="co">// returns filepath.Join(os.UserHomeDir(), &quot;Models&quot;)</span></span></code></pre></div>
+<p><code>llamafileDefaultModelsDir</code> is a package-level helper that
+calls <code>os.UserHomeDir()</code>, returns <code>"."</code> on
+error.</p>
+<p><strong>Update</strong> <code>LoadHarveyYAML</code> (replace the
+two-field llamafile block):</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> y<span class="op">.</span>Llamafile<span class="op">.</span>ModelsDir <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>LlamafileModelsDir <span class="op">=</span> expandTilde<span class="op">(</span>y<span class="op">.</span>Llamafile<span class="op">.</span>ModelsDir<span class="op">)</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> y<span class="op">.</span>Llamafile<span class="op">.</span>Active <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>LlamafileActive <span class="op">=</span> y<span class="op">.</span>Llamafile<span class="op">.</span>Active</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> y<span class="op">.</span>Llamafile<span class="op">.</span>URL <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>LlamafileURL <span class="op">=</span> y<span class="op">.</span>Llamafile<span class="op">.</span>URL</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> m <span class="op">:=</span> <span class="kw">range</span> y<span class="op">.</span>Llamafile<span class="op">.</span>Models <span class="op">{</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>LlamafileModels <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>cfg<span class="op">.</span>LlamafileModels<span class="op">,</span> LlamafileEntry<span class="op">{</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>        Name<span class="op">:</span> m<span class="op">.</span>Name<span class="op">,</span> Path<span class="op">:</span> m<span class="op">.</span>Path<span class="op">,</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">})</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>expandTilde(s string) string</code> replaces a leading
+<code>~/</code> or <code>~</code> with <code>os.UserHomeDir()</code>.
+Used only for <code>models_dir</code>.</p>
+<p><strong>Add</strong> config helpers (follow
+<code>RagStoreByName</code> / <code>AddOrUpdateRagStore</code>
+conventions):</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>c <span class="op">*</span>Config<span class="op">)</span> ActiveLlamafileEntry<span class="op">()</span> <span class="op">*</span>LlamafileEntry</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>c <span class="op">*</span>Config<span class="op">)</span> LlamafileEntryByName<span class="op">(</span>name <span class="dt">string</span><span class="op">)</span> <span class="op">*</span>LlamafileEntry</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>c <span class="op">*</span>Config<span class="op">)</span> AddOrUpdateLlamafileEntry<span class="op">(</span>e LlamafileEntry<span class="op">)</span></span></code></pre></div>
+<p><strong>Add</strong>
+<code>SaveLlamafileConfig(ws *Workspace, cfg *Config) error</code> —
+mirrors <code>SaveMemoryConfig</code>: read existing YAML, overwrite
+only the <code>llamafile:</code> section, write back. Serialises
+<code>LlamafileModelsDir</code> (unexpanded, preserving <code>~/</code>
+notation), <code>LlamafileActive</code>, <code>LlamafileURL</code>, and
+<code>LlamafileModels</code>.</p>
+<h3 id="phase-2-update-startllamafileservice-llamafile_service.go">Phase
+2 — Update <code>StartLlamafileService</code>
+(<code>llamafile_service.go</code>)</h3>
+<p>Change signature:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> StartLlamafileService<span class="op">(</span>path<span class="op">,</span> baseURL<span class="op">,</span> logPath <span class="dt">string</span><span class="op">)</span> <span class="op">(*</span>os<span class="op">.</span>Process<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p>Return <code>(proc, nil)</code> on success. Return
+<code>(nil, err)</code> on exec failure or probe timeout. The probe loop
+and invocation flags are unchanged.</p>
+<h3 id="phase-3-process-tracking-harvey.go">Phase 3 — Process Tracking
+(<code>harvey.go</code>)</h3>
+<p>Add to <code>Agent</code>:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>llamafileProc <span class="op">*</span>os<span class="op">.</span>Process</span></code></pre></div>
+<p>Add helper:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> stopLlamafileProc<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> a<span class="op">.</span>llamafileProc <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>        _ <span class="op">=</span> a<span class="op">.</span>llamafileProc<span class="op">.</span>Signal<span class="op">(</span>os<span class="op">.</span>Interrupt<span class="op">)</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>        a<span class="op">.</span>llamafileProc <span class="op">=</span> <span class="ot">nil</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Call <code>a.stopLlamafileProc()</code> in the clean-exit handler in
+<code>terminal.go</code> (wherever <code>/exit</code>,
+<code>/quit</code>, <code>/bye</code> are dispatched).</p>
+<h3 id="phase-4-startup-sequence-terminal.go">Phase 4 — Startup Sequence
+(<code>terminal.go</code>)</h3>
+<p><strong>Add</strong>
+<code>resolveLlamafilePath(path, root string) string</code> — returns
+<code>path</code> if absolute, otherwise
+<code>filepath.Join(root, path)</code>.</p>
+<p><strong>Update</strong> <code>selectBackend</code> opening block to
+use the registry:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> entry <span class="op">:=</span> a<span class="op">.</span>Config<span class="op">.</span>ActiveLlamafileEntry<span class="op">();</span> entry <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    absPath <span class="op">:=</span> resolveLlamafilePath<span class="op">(</span>entry<span class="op">.</span>Path<span class="op">,</span> a<span class="op">.</span>Workspace<span class="op">.</span>Root<span class="op">)</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">  Checking llamafile (%s) at %s...</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>        entry<span class="op">.</span>Name<span class="op">,</span> a<span class="op">.</span>Config<span class="op">.</span>LlamafileURL<span class="op">)</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> ProbeLlamafile<span class="op">(</span>a<span class="op">.</span>Config<span class="op">.</span>LlamafileURL<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> green<span class="op">(</span><span class="st">&quot;  ✓&quot;</span><span class="op">)+</span><span class="st">&quot; Llamafile is running&quot;</span><span class="op">)</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> a<span class="op">.</span>useLlamafileEntry<span class="op">(</span>entry<span class="op">.</span>Name<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> yellow<span class="op">(</span><span class="st">&quot;  ✗&quot;</span><span class="op">)+</span><span class="st">&quot; Llamafile (%s) is not running</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> entry<span class="op">.</span>Name<span class="op">)</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> askYesNo<span class="op">(</span>reader<span class="op">,</span> out<span class="op">,</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;    Start %s now? [Y/n] &quot;</span><span class="op">,</span> entry<span class="op">.</span>Name<span class="op">),</span> <span class="ot">true</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  Starting llamafile...&quot;</span><span class="op">)</span></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>        proc<span class="op">,</span> err <span class="op">:=</span> StartLlamafileService<span class="op">(</span>absPath<span class="op">,</span> a<span class="op">.</span>Config<span class="op">.</span>LlamafileURL<span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">)</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>            fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> red<span class="op">(</span><span class="st">&quot;  Failed: &quot;</span><span class="op">)+</span><span class="st">&quot;%v</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>            a<span class="op">.</span>llamafileProc <span class="op">=</span> proc</span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a>            fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> green<span class="op">(</span><span class="st">&quot;  ✓&quot;</span><span class="op">)+</span><span class="st">&quot; Llamafile started&quot;</span><span class="op">)</span></span>
+<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> a<span class="op">.</span>useLlamafileEntry<span class="op">(</span>entry<span class="op">.</span>Name<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb10-20"><a href="#cb10-20" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb10-21"><a href="#cb10-21" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb10-22"><a href="#cb10-22" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">)</span></span>
+<span id="cb10-23"><a href="#cb10-23" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> dim<span class="op">(</span><span class="st">&quot;  No backend selected.&quot;</span><span class="op">))</span></span>
+<span id="cb10-24"><a href="#cb10-24" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> dim<span class="op">(</span><span class="st">&quot;  → If Ollama is installed, use /ollama start once inside.&quot;</span><span class="op">))</span></span>
+<span id="cb10-25"><a href="#cb10-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb10-26"><a href="#cb10-26" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong>Update</strong> Ollama “no backend” hint:</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> dim<span class="op">(</span><span class="st">&quot;  No backend selected.&quot;</span><span class="op">))</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> dim<span class="op">(</span><span class="st">&quot;  → If Ollama is installed, use /ollama start once inside.&quot;</span><span class="op">))</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> dim<span class="op">(</span><span class="st">&quot;  → Or pick a llamafile from:&quot;</span><span class="op">))</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> dim<span class="op">(</span><span class="st">&quot;      https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles&quot;</span><span class="op">))</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> dim<span class="op">(</span><span class="st">&quot;    Download it to ~/Models, then run /llamafile add to connect.&quot;</span><span class="op">))</span></span></code></pre></div>
+<p><strong>Rename</strong> <code>useLlamafile</code> →
+<code>useLlamafileEntry(name string, out io.Writer) error</code>:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> useLlamafileEntry<span class="op">(</span>name <span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    a<span class="op">.</span>Client <span class="op">=</span> newLlamafileLLMClient<span class="op">(</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>        a<span class="op">.</span>Config<span class="op">.</span>LlamafileURL<span class="op">+</span><span class="st">&quot;/v1&quot;</span><span class="op">,</span> name<span class="op">,</span> a<span class="op">.</span>Config<span class="op">.</span>OllamaTimeout<span class="op">)</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  Using model: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> cyan<span class="op">(</span>name<span class="op">))</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Move <code>llamafileModelName</code> from <code>terminal.go</code> to
+<code>llamafile.go</code> — it is no longer needed at startup (name
+comes from the registry), but is used by <code>/llamafile add</code> to
+derive a default name from a path.</p>
+<h3 id="phase-5-llamafile-command-llamafile.go">Phase 5 —
+<code>/llamafile</code> Command (<code>llamafile.go</code>)</h3>
+<p>New file in the <code>harvey</code> package.</p>
+<p><strong>Scanner helper</strong>:</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co">// scanLlamafileModels returns the paths of all *.llamafile files in dir.</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="co">// Returns nil when dir does not exist or is unreadable.</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> scanLlamafileModels<span class="op">(</span>dir <span class="dt">string</span><span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span></code></pre></div>
+<p>Uses <code>os.ReadDir</code>; filters for files whose names end in
+<code>.llamafile</code>.</p>
+<p><strong>Subcommand dispatch</strong> (<code>cmdLlamafile</code>):</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> cmdLlamafile<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> args <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    sub <span class="op">:=</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>args<span class="op">)</span> <span class="op">&gt;</span> <span class="dv">0</span> <span class="op">{</span> sub <span class="op">=</span> args<span class="op">[</span><span class="dv">0</span><span class="op">]</span> <span class="op">}</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">switch</span> sub <span class="op">{</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;add&quot;</span><span class="op">:</span>    <span class="cf">return</span> cmdLlamafileAdd<span class="op">(</span>a<span class="op">,</span> args<span class="op">[</span><span class="dv">1</span><span class="op">:],</span> out<span class="op">)</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;use&quot;</span><span class="op">:</span>    <span class="cf">return</span> cmdLlamafileUse<span class="op">(</span>a<span class="op">,</span> args<span class="op">[</span><span class="dv">1</span><span class="op">:],</span> out<span class="op">)</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;list&quot;</span><span class="op">:</span>   <span class="cf">return</span> cmdLlamafileList<span class="op">(</span>a<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;start&quot;</span><span class="op">:</span>  <span class="cf">return</span> cmdLlamafileStart<span class="op">(</span>a<span class="op">,</span> args<span class="op">[</span><span class="dv">1</span><span class="op">:],</span> out<span class="op">)</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;status&quot;</span><span class="op">:</span> <span class="cf">return</span> cmdLlamafileStatus<span class="op">(</span>a<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">default</span><span class="op">:</span></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprint<span class="op">(</span>out<span class="op">,</span> LlamafileHelpText<span class="op">)</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><strong><code>cmdLlamafileAdd</code></strong>:</p>
+<ol type="1">
+<li>If <code>args</code> is non-empty: <code>path = args[0]</code>;
+<code>name = args[1]</code> (or derived). Skip to step 5.</li>
+<li>Scan <code>a.Config.LlamafileModelsDir</code> with
+<code>scanLlamafileModels</code>.</li>
+<li>If empty: print “No llamafiles found in <code>&lt;dir&gt;</code>.”
+then prompt for a path. If still empty after prompt: print usage and
+return.</li>
+<li>Print numbered picker. Mark paths already in registry as
+<code>(registered as NAME)</code>. Read selection; if user types a path
+directly, use that. Prompt for a name (default =
+<code>llamafileModelName(selectedPath)</code>).</li>
+<li>Resolve path (absolute or workspace-relative).</li>
+<li><code>os.Stat</code> the resolved path; error if missing.</li>
+<li>Probe <code>a.Config.LlamafileURL</code>; if not reachable,
+<code>StartLlamafileService</code>; store <code>*os.Process</code> on
+agent.</li>
+<li><code>a.useLlamafileEntry(name, out)</code>.</li>
+<li><code>a.Config.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: name, Path: path})</code>;
+<code>a.Config.LlamafileActive = name</code>.</li>
+<li><code>SaveLlamafileConfig(a.Workspace, a.Config)</code>.</li>
+<li>Print:
+<code>Saved to agents/harvey.yaml — Harvey will connect automatically on next start.</code></li>
+</ol>
+<p><strong><code>cmdLlamafileUse</code></strong>:</p>
+<ol type="1">
+<li><code>args[0]</code> = name (required; error if missing or not in
+registry).</li>
+<li><code>a.stopLlamafileProc()</code>.</li>
+<li>Resolve path; <code>StartLlamafileService</code>; store
+<code>*os.Process</code>.</li>
+<li><code>a.useLlamafileEntry(name, out)</code>.</li>
+<li><code>a.Config.LlamafileActive = name</code>;
+<code>SaveLlamafileConfig</code>.</li>
+</ol>
+<p><strong><code>cmdLlamafileList</code></strong>:</p>
+<p>Print header + one row per registered entry: arrow for active, name,
+path, file size from <code>os.Stat</code> (show
+<code>(unknown size)</code> on error). Print models_dir at the
+bottom:</p>
+<pre><code>  Discovery directory: ~/Models</code></pre>
+<p><strong><code>cmdLlamafileStart</code></strong>:</p>
+<ol type="1">
+<li>Determine target: <code>args[0]</code> if given, else
+<code>a.Config.LlamafileActive</code>; error if neither resolves to a
+registered entry.</li>
+<li>Probe; if already reachable, print status and return.</li>
+<li><code>StartLlamafileService</code>; store <code>*os.Process</code>;
+print confirmation.</li>
+</ol>
+<p><strong><code>cmdLlamafileStatus</code></strong>:</p>
+<p>Print: active model (or “none”), API URL, reachable (probe result),
+models_dir, count of registered models.</p>
+<h3 id="phase-6-cli-flags-cmdharveymain.go">Phase 6 — CLI Flags
+(<code>cmd/harvey/main.go</code>)</h3>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="st">&quot;--llamafile&quot;</span><span class="op">:</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>LlamafilePath <span class="op">=</span> next<span class="op">()</span>  <span class="co">// session-only: set active without persisting</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="st">&quot;--llamafile-url&quot;</span><span class="op">:</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>LlamafileURL <span class="op">=</span> next<span class="op">()</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="st">&quot;--llamafile-dir&quot;</span><span class="op">:</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>LlamafileModelsDir <span class="op">=</span> next<span class="op">()</span></span></code></pre></div>
+<p>After flag parsing, apply the environment variable override (before
+<code>LoadHarveyYAML</code> runs, so YAML can still override the env var
+only if we want; but per the design the env var outranks YAML):</p>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> v <span class="op">:=</span> os<span class="op">.</span>Getenv<span class="op">(</span><span class="st">&quot;HARVEY_LLAMAFILE_DIR&quot;</span><span class="op">);</span> v <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>LlamafileModelsDir <span class="op">=</span> v</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Note: <code>--llamafile PATH</code> sets a session-only active model.
+It creates a synthetic
+<code>LlamafileEntry{Name: llamafileModelName(PATH), Path: PATH}</code>
+and sets <code>LlamafileActive</code> without calling
+<code>SaveLlamafileConfig</code>.</p>
+<h3 id="phase-7-help-text-registration">Phase 7 — Help Text &amp;
+Registration</h3>
+<p>Add <code>LlamafileHelpText</code> to <code>helptext.go</code>.
+Content: synopsis of each subcommand, the pre-built models URL, the
+<code>harvey.yaml</code> config example, and a note about
+<code>HARVEY_LLAMAFILE_DIR</code>.</p>
+<p>Register in <code>commands.go</code>:</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;llamafile&quot;</span><span class="op">:</span> <span class="op">{</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    Usage<span class="op">:</span>       <span class="st">&quot;/llamafile &lt;add|use|list|start|status&gt;&quot;</span><span class="op">,</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    Description<span class="op">:</span> <span class="st">&quot;Manage llamafile model backends&quot;</span><span class="op">,</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    Handler<span class="op">:</span>     cmdLlamafile<span class="op">,</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="op">},</span></span></code></pre></div>
+<p>Add <code>"llamafile"</code> to <code>cmdHelp</code>’s topic switch,
+both topic-list strings in <code>commands.go</code>, and the
+<code>--help</code> topic list in <code>cmd/harvey/main.go</code>.</p>
+<h3 id="phase-8-tests">Phase 8 — Tests</h3>
+<p><strong><code>llamafile_service_test.go</code></strong> (extend
+existing):</p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Test</th>
+<th scope="col">Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TestProbeLlamafile_unreachable</code></td>
+<td>Existing — unchanged</td>
+</tr>
+<tr>
+<td><code>TestProbeLlamafile_reachable</code></td>
+<td>Existing — unchanged</td>
+</tr>
+<tr>
+<td><code>TestStartLlamafileService_badPath</code></td>
+<td>Existing — unchanged</td>
+</tr>
+<tr>
+<td><code>TestStartLlamafileService_returnsNilProcOnTimeout</code></td>
+<td>Mocked binary that starts but never serves; expect
+<code>(nil, err)</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>llamafile_test.go</code></strong> (new):</p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Test</th>
+<th scope="col">Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TestLlamafileModelName</code></td>
+<td>Move from service test; strip suffix, handle dirs</td>
+</tr>
+<tr>
+<td><code>TestScanLlamafileModels_empty</code></td>
+<td>Returns nil for missing or empty dir</td>
+</tr>
+<tr>
+<td><code>TestScanLlamafileModels_findsFiles</code></td>
+<td>Returns only <code>.llamafile</code> entries, ignores others</td>
+</tr>
+<tr>
+<td><code>TestExpandTilde</code></td>
+<td><code>~/foo</code> → <code>/home/user/foo</code>; absolute paths
+unchanged</td>
+</tr>
+<tr>
+<td><code>TestConfigActiveEntry_none</code></td>
+<td>Returns nil when <code>LlamafileActive</code> is “”</td>
+</tr>
+<tr>
+<td><code>TestConfigActiveEntry_found</code></td>
+<td>Returns correct entry by name</td>
+</tr>
+<tr>
+<td><code>TestConfigAddOrUpdateEntry_insert</code></td>
+<td>Appends new entry</td>
+</tr>
+<tr>
+<td><code>TestConfigAddOrUpdateEntry_update</code></td>
+<td>Replaces entry with same name</td>
+</tr>
+<tr>
+<td><code>TestCmdLlamafileAdd_missingPath</code></td>
+<td>No models_dir and no arg → prompts then errors</td>
+</tr>
+<tr>
+<td><code>TestCmdLlamafileAdd_pathNotFound</code></td>
+<td><code>os.Stat</code> fails → clear error</td>
+</tr>
+<tr>
+<td><code>TestCmdLlamafileUse_notRegistered</code></td>
+<td>Error when name absent from registry</td>
+</tr>
+<tr>
+<td><code>TestCmdLlamafileList_empty</code></td>
+<td>Prints “no models registered” and models_dir</td>
+</tr>
+<tr>
+<td><code>TestCmdLlamafileList_withEntries</code></td>
+<td>Correct table; active entry marked with arrow</td>
+</tr>
+</tbody>
+</table>
+<h2 id="acceptance-criteria">Acceptance Criteria</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>/llamafile add</code> with no
+argument scans <code>LlamafileModelsDir</code>, shows a numbered picker,
+and registers the selected model</label></li>
+<li><label><input
+type="checkbox" /><code>/llamafile add /path/to/model.llamafile</code>
+registers and starts without prompting for a path</label></li>
+<li><label><input
+type="checkbox" /><code>/llamafile add /path/to/model.llamafile my-name</code>
+uses <code>my-name</code> as the registry key</label></li>
+<li><label><input type="checkbox" />Already-registered models appear
+with <code>(registered as NAME)</code> in the picker</label></li>
+<li><label><input type="checkbox" />If <code>models_dir</code> is empty
+or missing, <code>/llamafile add</code> prompts for a path instead of
+erroring</label></li>
+<li><label><input type="checkbox" /><code>/llamafile list</code> shows
+all registered models; active entry is marked with an arrow; models_dir
+is shown at the bottom</label></li>
+<li><label><input type="checkbox" /><code>/llamafile use NAME</code>
+stops the current server, starts the named model, and updates
+<code>agents/harvey.yaml</code></label></li>
+<li><label><input type="checkbox" /><code>/llamafile status</code> shows
+active model, URL, reachability, models_dir</label></li>
+<li><label><input type="checkbox" /><code>$HOME/Models</code> is the
+default <code>models_dir</code>; <code>HARVEY_LLAMAFILE_DIR</code> env
+var overrides it; <code>--llamafile-dir</code> flag overrides
+both</label></li>
+<li><label><input
+type="checkbox" /><code>llamafile.models_dir: ~/Models</code> in
+harvey.yaml expands <code>~</code> correctly</label></li>
+<li><label><input type="checkbox" />Startup “no backend” hint includes
+the pre-built URL and <code>/llamafile add</code> command</label></li>
+<li><label><input type="checkbox" />When <code>LlamafileActive</code> is
+empty (default), startup sequence is unchanged — Ollama is probed as
+today</label></li>
+<li><label><input type="checkbox" /><code>go test ./...</code> and
+<code>go test -race</code> pass</label></li>
+<li><label><input type="checkbox" /><code>/help llamafile</code> prints
+<code>LlamafileHelpText</code></label></li>
+</ul>
+</section>
+</body>
+</html>

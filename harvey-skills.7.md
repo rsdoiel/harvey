@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.3 0969704
+%harvey(7) user manual | version 0.0.12 a6c32e5
 % R. S. Doiel
-% 2026-05-12
+% 2026-06-17
 
 # NAME
 
@@ -119,10 +119,22 @@ HARVEY_* environment variables set before each script run:
   HARVEY_WORKDIR     absolute path to the workspace root
   HARVEY_MODEL       the name of the currently active LLM model
   HARVEY_SESSION_ID  the current session ID as a string
+  HARVEY_API_BASE    base URL of the currently active LLM backend
+                     (e.g. http://localhost:11434 for Ollama,
+                     https://api.anthropic.com for Anthropic)
+                     Use this to make LLM API calls from a compiled
+                     script without hard-coding a provider URL.
 
 Staleness: if SKILL.md is modified after the scripts were compiled, Harvey
 warns you when the skill is invoked and runs the old compiled version.
 Recompile the skill on a capable system to pick up the changes.
+
+Dispatch fallback: if a compiled skill's script cannot be executed (e.g.
+the script was compiled on a different OS or was not committed), Harvey
+falls back to the LLM context-injection path — the skill body is injected
+into the conversation and the model is asked to respond — instead of
+erroring out. The fallback triggers a model response turn so the session
+continues without interruption.
 
 TRIGGER field: add an optional trigger field to SKILL.md frontmatter to enable
 automatic skill dispatch when user input matches:

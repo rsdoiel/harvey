@@ -21,8 +21,9 @@
 <h1 id="name">NAME</h1>
 <p>SECURITY — Safe Mode, workspace permissions, and audit logging</p>
 <h1 id="synopsis">SYNOPSIS</h1>
-<p>/safemode &lt;on|off|status|allow CMD|deny CMD|reset&gt; /permissions
-&lt;list [PATH]|set PATH PERMS|reset&gt; /audit &lt;show
+<p>/safemode &lt;on|off|status|allow CMD|deny CMD|reset&gt; /safe
+&lt;on|off|status|allow CMD|deny CMD|reset&gt; (alias for /safemode)
+/permissions &lt;list [PATH]|set PATH PERMS|reset&gt; /audit &lt;show
 [N]|clear|status&gt; /security status</p>
 <h1 id="description">DESCRIPTION</h1>
 <p>Harvey includes four complementary security controls. All settings
@@ -34,18 +35,20 @@ prefix and /run. When enabled, only commands in the allowlist are
 permitted.</p>
 <p>Default allowlist: ls, cat, grep, head, tail, wc, find, stat, jq,
 htmlq, bat, batcat.</p>
+<p>Alias: /safe is an exact alias for /safemode. Both names accept the
+same subcommands and behave identically. Use whichever you prefer.</p>
 <p>Subcommands:</p>
-<p>/safemode on Enable Safe Mode. Commands not in the allowlist are
-blocked and audit-logged.</p>
-<p>/safemode off Disable Safe Mode. All commands accepted by the shell
-metacharacter filter are permitted.</p>
-<p>/safemode status Show whether Safe Mode is on or off and list the
-current allowlist.</p>
-<p>/safemode allow CMD Add CMD to the allowlist. Persisted to
-agents/harvey.yaml.</p>
-<p>/safemode deny CMD Remove CMD from the allowlist. Persisted to
-agents/harvey.yaml.</p>
-<p>/safemode reset Restore the default allowlist.</p>
+<p>/safemode on (or: /safe on) Enable Safe Mode. Commands not in the
+allowlist are blocked and audit-logged.</p>
+<p>/safemode off (or: /safe off) Disable Safe Mode. All commands
+accepted by the shell metacharacter filter are permitted.</p>
+<p>/safemode status (or: /safe status) Show whether Safe Mode is on or
+off and list the current allowlist.</p>
+<p>/safemode allow CMD (or: /safe allow CMD) Add CMD to the allowlist.
+Persisted to agents/harvey.yaml.</p>
+<p>/safemode deny CMD (or: /safe deny CMD) Remove CMD from the
+allowlist. Persisted to agents/harvey.yaml.</p>
+<p>/safemode reset (or: /safe reset) Restore the default allowlist.</p>
 <h2 id="workspace-permissions-permissions">WORKSPACE PERMISSIONS
 (/permissions)</h2>
 <p>Workspace permissions give fine-grained read/write/exec/delete

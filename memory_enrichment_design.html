@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="memory-enrichment-design">Memory Enrichment Design</h1>
+<h2 id="overview">Overview</h2>
+<p>This document describes three design changes to Harvey’s memory
+system, cherry-picked from the CQ (Mozilla AI) knowledge-commons
+proposal, plus a cross-agent interoperability mechanism so tools like
+Mistral Vibe can consume Harvey’s accumulated knowledge.</p>
+<p>The changes are additive and backward-compatible. All three fields
+default to safe empty/zero values so existing memory files and databases
+continue to work without migration errors.</p>
+<hr />
+<h2 id="background">Background</h2>
+<p>Harvey stores experience memories in three independent silos, merged
+at retrieval time by <code>UnifiedMemory.Recall()</code>:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Silo</th>
+<th scope="col">Files</th>
+<th scope="col">Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Memory store</td>
+<td><code>memory_store.go</code>, <code>agents/memories/</code></td>
+<td>Typed experience records in Fountain + YAML</td>
+</tr>
+<tr>
+<td>RAG store</td>
+<td><code>rag_support.go</code>, <code>agents/rag/*.db</code></td>
+<td>Vector-embedded document chunks</td>
+</tr>
+<tr>
+<td>Knowledge base</td>
+<td><code>knowledge.go</code>, <code>agents/knowledge.db</code></td>
+<td>Hand-authored experiments/observations</td>
+</tr>
+</tbody>
+</table>
+<p>This design touches only the <strong>memory store</strong>. The RAG
+store and knowledge base are unchanged.</p>
+<hr />
+<h2 id="change-1-tripartite-insight-add-action-field">Change 1:
+Tripartite Insight — add <code>Action</code> field</h2>
+<h3 id="problem">Problem</h3>
+<p><code>MemoryMeta</code> has <code>description</code> (one sentence)
+and <code>summary</code> (2-3 sentences optimised for embedding). Both
+fields describe <em>what happened</em>. Neither makes the prescriptive
+step explicit: <em>what should a future agent do when it encounters this
+situation?</em></p>
+<h3 id="solution">Solution</h3>
+<p>Add an <code>action</code> string field to <code>MemoryMeta</code>.
+It is the imperative, concrete step a future agent should take. It
+complements <code>summary</code> rather than replacing it.</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Example memory front matter after change</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">id</span><span class="kw">:</span><span class="at"> git_fix_a3f891</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">type</span><span class="kw">:</span><span class="at"> tool_use</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">kind</span><span class="kw">:</span><span class="at"> pitfall</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">confidence</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.9</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">description</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;Run git init when git reports &#39;not a repository&#39;&quot;</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span><span class="kw">: </span><span class="ch">&gt;</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  Harvey encountered &#39;fatal: not a git repository&#39; while running a git command.</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  Running git init in the project root resolved the error immediately.</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="fu">action</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;Run `git init` in the project root, then retry the original git command.&quot;</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="fu">tags</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">git</span><span class="kw">,</span><span class="at"> init</span><span class="kw">,</span><span class="at"> error</span><span class="kw">]</span></span></code></pre></div>
+<p><code>action</code> is included in <code>EmbedText()</code> so it
+contributes to semantic retrieval scoring.</p>
+<p>The memory miner’s <code>proposedMemory</code> struct and
+<code>minerSystemPrompt</code> are updated to elicit an
+<code>action</code> value for each extracted memory.</p>
+<h3 id="backward-compatibility">Backward compatibility</h3>
+<p><code>action</code> is <code>omitempty</code> in YAML. Existing
+memory files without it parse without error and get an empty string.
+Empty action fields are silently skipped in DIGEST.md rendering and
+<code>EmbedText()</code>.</p>
+<hr />
+<h2 id="change-2-lifecycle-kinds-add-kind-field">Change 2: Lifecycle
+Kinds — add <code>Kind</code> field</h2>
+<h3 id="problem-1">Problem</h3>
+<p><code>MemoryMeta.Type</code> (tool_use, workflow, user_preference,
+workspace_profile, project_fact) classifies <em>topic</em>. It answers
+“what kind of thing is this memory about?” It does not answer “why does
+this knowledge matter?” or “how permanent is it?”</p>
+<h3 id="solution-1">Solution</h3>
+<p>Add a <code>kind</code> string field. <code>kind</code> and
+<code>type</code> are orthogonal: a <code>tool_use</code> memory can be
+a <code>pitfall</code> or a <code>workaround</code>; a
+<code>workflow</code> memory can be a <code>recommendation</code>. The
+four kind values are:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Kind</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pitfall</code></td>
+<td>A permanent gotcha — an API quirk, undocumented behaviour, or subtle
+invariant that no tool can abstract away. Unlikely to become
+obsolete.</td>
+</tr>
+<tr>
+<td><code>workaround</code></td>
+<td>Useful now but represents a gap in tooling or documentation. May be
+superseded when better tooling exists.</td>
+</tr>
+<tr>
+<td><code>recommendation</code></td>
+<td>Points toward the right approach, tool, or pattern. “Prefer X over Y
+for Z.”</td>
+</tr>
+<tr>
+<td><code>pattern</code></td>
+<td>A recurring successful approach worth repeating. Harvey-specific
+extension beyond CQ.</td>
+</tr>
+<tr>
+<td><code>""</code></td>
+<td>Unclassified. The default. Safe fallback for existing memories and
+for miner output on ambiguous cases.</td>
+</tr>
+</tbody>
+</table>
+<p><code>kind</code> is indexed in <code>memories_fts</code> so queries
+like <code>SearchFTS("pitfall git")</code> work. The
+<code>/memory list</code> command gains a <code>--kind</code>
+filter.</p>
+<h3 id="miner-assignment">Miner assignment</h3>
+<p>The miner prompt is updated with the four kind values and their
+descriptions. The miner assigns the most appropriate kind for each
+extracted memory; it defaults to empty string when classification is
+uncertain rather than guessing.</p>
+<h3 id="backward-compatibility-1">Backward compatibility</h3>
+<p><code>kind</code> is <code>omitempty</code> in YAML. Empty kind
+values are valid and display as “unclassified” in DIGEST.md.</p>
+<hr />
+<h2 id="change-3-confidence-add-confidence-float64-field">Change 3:
+Confidence — add <code>Confidence float64</code> field</h2>
+<h3 id="problem-2">Problem</h3>
+<p>Harvey has no signal for <em>how reliable</em> a memory is. All
+memories are treated equally at retrieval time regardless of whether
+they have been validated, questioned, or found to be outdated.</p>
+<h3 id="solution-2">Solution</h3>
+<p>Add <code>confidence float64</code> to <code>MemoryMeta</code>,
+stored as a <code>REAL</code> column in <code>memories.db</code>.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Value</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>1.0</code></td>
+<td>Fully trusted. Manually confirmed or very frequently validated.</td>
+</tr>
+<tr>
+<td><code>0.5</code></td>
+<td>Default for new memories. Neutral confidence.</td>
+</tr>
+<tr>
+<td><code>0.2</code></td>
+<td>Auto-archive threshold. Memory is treated as unreliable.</td>
+</tr>
+<tr>
+<td><code>0.0–0.19</code></td>
+<td>Not reachable in normal operation; <code>SetConfidence</code> clamps
+to 0.0 and archives.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="retrieval-weighting">Retrieval weighting</h4>
+<p><code>Query()</code> multiplies the cosine similarity score by
+<code>confidence</code> before ranking. <code>SearchFTS()</code>
+multiplies the FTS rank by <code>confidence</code>. A high-cosine but
+low-confidence memory ranks below a moderate-cosine high-confidence
+memory.</p>
+<pre><code>final_score = cosine_similarity × confidence</code></pre>
+<h4 id="memory-flag-id"><code>/memory flag &lt;id&gt;</code></h4>
+<p>Changes from “archive this memory” to “reduce confidence by 0.1”.
+When confidence drops to or below 0.2, <code>SetConfidence</code> calls
+<code>Archive</code> automatically. The user is shown the new confidence
+value and notified if auto-archival triggered.</p>
+<pre><code>/memory flag git_fix_a3f891
+→ git_fix_a3f891: confidence 0.9 → 0.8</code></pre>
+<pre><code>/memory flag git_fix_a3f891   (after several flags)
+→ git_fix_a3f891: confidence 0.2 → archived (below threshold)</code></pre>
+<p>Explicit archival remains available as
+<code>/memory archive &lt;id&gt;</code> for immediate removal.</p>
+<h4 id="future-confidence-boost">Future: confidence boost</h4>
+<p>When a memory is retrieved and injected into a session that the user
+rates successful (or when a session ends without the memory being
+contradicted), confidence may be auto-boosted. This is out of scope for
+this change; the field exists to support it.</p>
+<h3 id="db-migration">DB migration</h3>
+<p>Three <code>ALTER TABLE</code> statements are added to
+<code>NewMemoryStore()</code> using the lazy migration pattern already
+in use for the <code>source</code> column:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> memories <span class="kw">ADD</span> <span class="kw">COLUMN</span> kind       TEXT <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> memories <span class="kw">ADD</span> <span class="kw">COLUMN</span> action     TEXT <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> memories <span class="kw">ADD</span> <span class="kw">COLUMN</span> confidence <span class="dt">REAL</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="fl">0.5</span>;</span></code></pre></div>
+<p>These are idempotent — SQLite ignores “duplicate column name”
+errors.</p>
+<h3 id="backward-compatibility-2">Backward compatibility</h3>
+<p><code>confidence</code> is <code>omitempty</code> in YAML but
+defaults to <code>0.5</code> in <code>ParseMemoryDoc</code> when absent.
+The DB migration sets <code>0.5</code> for all existing rows.</p>
+<hr />
+<h2
+id="change-4-cross-agent-digest-digest.md-harvey-memory-skill">Change 4:
+Cross-Agent Digest — <code>DIGEST.md</code> + harvey-memory skill</h2>
+<h3 id="problem-3">Problem</h3>
+<p>Harvey’s memories are inaccessible to other agents (Vibe, Claude
+Code) without a SQLite client. Vibe can read individual
+<code>.fountain</code> files but has no index. The SQLite index is
+opaque without <code>sqlite3</code>. Each agent must independently
+rediscover what Harvey already knows about the workspace.</p>
+<h3 id="solution-digest.md">Solution: <code>DIGEST.md</code></h3>
+<p>Harvey auto-writes <code>agents/memories/DIGEST.md</code> — a flat
+Markdown file summarising all active memories — whenever memories are
+saved, archived, or auto-mined. The file is plain text, human-readable,
+and readable by any LLM with no dependencies.</p>
+<h4 id="format">Format</h4>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu"># Harvey Memory Digest</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>*Updated: 2026-06-17T14:32:00Z — 12 active memories*</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="fu">## Pitfalls</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**[tool_use]** <span class="in">`git_fix_a3f891`</span> (confidence: 0.9) — Run git init when git reports &#39;not a repository&#39;</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  **Action:** Run <span class="in">`git init`</span> in project root, then retry.</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>  Tags: <span class="in">`git`</span> <span class="in">`init`</span> <span class="in">`error`</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="fu">## Workarounds</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**[workflow]** <span class="in">`build_flag_b7c221`</span> (confidence: 0.7) — Pass -race to go test before any commit</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>  **Action:** Add <span class="in">`-race`</span> flag; fix data races before committing.</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>  Tags: <span class="in">`go`</span> <span class="in">`race`</span> <span class="in">`test`</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="fu">## Recommendations</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>...</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="fu">## Patterns</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>...</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="fu">## Unclassified</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>...</span></code></pre></div>
+<p>Sections with no entries are omitted. Entries within a section are
+sorted by confidence descending.</p>
+<h4 id="when-written">When written</h4>
+<p><code>WriteDigest(path string)</code> is called automatically from: -
+<code>MemoryStore.Save()</code> — after every memory write -
+<code>MemoryStore.Archive()</code> — after every archive -
+<code>MineAuto()</code> — after the batch save loop completes</p>
+<p>The path is <code>filepath.Join(s.dir, "DIGEST.md")</code> — i.e.,
+<code>agents/memories/DIGEST.md</code>.</p>
+<h3 id="solution-agentsskillsharvey-memoryskill.md">Solution:
+<code>agents/skills/harvey-memory/SKILL.md</code></h3>
+<p>A new skill file teaches agents <em>when</em> to read the digest and
+<em>how</em> to use it. This is the same pattern CQ uses for Claude
+Code: a <code>SKILL.md</code> that shapes agent behaviour without
+requiring any code integration.</p>
+<p>The skill: - Triggers at session start or before making project
+changes - Instructs the agent to read
+<code>agents/memories/DIGEST.md</code> - Explains memory types, kinds,
+and confidence semantics - Explains that low-confidence memories should
+be treated as suggestions, not facts</p>
+<h3 id="vibe.md-and-claude.md-updates">VIBE.md and CLAUDE.md
+updates</h3>
+<p>Both instruction files gain a “Harvey memories” section that: - Lists
+the skill and its purpose - Points directly to
+<code>agents/memories/DIGEST.md</code> as the readable knowledge index -
+Explains how to interpret confidence values</p>
+<hr />
+<h2 id="what-is-not-changed">What is not changed</h2>
+<ul>
+<li><strong><code>RagStore</code></strong> — document chunk embeddings
+are workspace-specific and not experience memories. No interop problem
+to solve.</li>
+<li><strong><code>knowledge.go</code> (Lab KB)</strong> — the
+experiments/observations database is already queryable via
+<code>sqlite3</code> as documented in VIBE.md and CLAUDE.md.</li>
+<li><strong><code>UnifiedMemory</code> retrieval ordering</strong> — the
+priority (<code>workspace_profile</code> + <code>project_fact</code>
+first, then experiential, then RAG, then KB) is unchanged. Confidence
+affects ranking <em>within</em> each silo, not between silos.</li>
+<li><strong>Memory types</strong> — the five existing types (tool_use,
+workflow, user_preference, workspace_profile, project_fact) are
+unchanged. <code>kind</code> is a new orthogonal dimension.</li>
+<li><strong>External dependencies</strong> — no new Go modules, no new
+binary dependencies.</li>
+</ul>
+<hr />
+<h2 id="data-model-summary">Data model summary</h2>
+<h3 id="memorymeta-after-change"><code>MemoryMeta</code> after
+change</h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> MemoryMeta <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    ID            <span class="dt">string</span>         <span class="st">`yaml:&quot;id&quot;`</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    Type          MemoryType     <span class="st">`yaml:&quot;type&quot;`</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    Kind          <span class="dt">string</span>         <span class="st">`yaml:&quot;kind,omitempty&quot;`</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    CreatedAt     <span class="dt">string</span>         <span class="st">`yaml:&quot;created_at&quot;`</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    UpdatedAt     <span class="dt">string</span>         <span class="st">`yaml:&quot;updated_at&quot;`</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    Supersedes    <span class="op">[]</span><span class="dt">string</span>       <span class="st">`yaml:&quot;supersedes&quot;`</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    Tags          <span class="op">[]</span><span class="dt">string</span>       <span class="st">`yaml:&quot;tags&quot;`</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    Description   <span class="dt">string</span>         <span class="st">`yaml:&quot;description&quot;`</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    Summary       <span class="dt">string</span>         <span class="st">`yaml:&quot;summary&quot;`</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    Action        <span class="dt">string</span>         <span class="st">`yaml:&quot;action,omitempty&quot;`</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    Confidence    <span class="dt">float64</span>        <span class="st">`yaml:&quot;confidence,omitempty&quot;`</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    SourceSession <span class="dt">string</span>         <span class="st">`yaml:&quot;source_session,omitempty&quot;`</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    Metadata      <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span><span class="dt">any</span> <span class="st">`yaml:&quot;metadata,omitempty&quot;`</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="memories-table-after-migration"><code>memories</code> table
+after migration</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> <span class="cf">IF</span> <span class="kw">NOT</span> <span class="kw">EXISTS</span> memories (</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>             TEXT    <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">type</span>           TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    kind           TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    description    TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">summary</span>        TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    action         TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    tags           TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;[]&#39;</span>,</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    source_session TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    file_path      TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    created_at     TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    updated_at     TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    archived       <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>,</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    confidence     <span class="dt">REAL</span>    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="fl">0.5</span>,</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    embedding      <span class="dt">BLOB</span>    <span class="kw">NOT</span> <span class="kw">NULL</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<h3 id="memories_fts-table-after-migration"><code>memories_fts</code>
+table after migration</h3>
+<p><code>kind</code> and <code>action</code> are added as indexed
+columns.</p>
+<hr />
+<h2 id="design-decisions">Design decisions</h2>
+<p><strong>Why <code>kind</code> as a free string rather than a typed
+constant?</strong> Using <code>string</code> with documented values
+(rather than a Go <code>const</code> block) keeps the YAML
+representation simple and allows future values to be added without a Go
+recompile. Validation happens at mine-time via the miner prompt; invalid
+kind values in hand-authored files are treated as unclassified.</p>
+<p><strong>Why multiply confidence into the score rather than
+filtering?</strong> Filtering (e.g., “only return memories with
+confidence &gt; 0.3”) creates hard cliffs and discards potentially
+useful context. Multiplicative weighting preserves low-confidence
+memories in the result set at reduced rank. The user still sees them but
+they don’t dominate.</p>
+<p><strong>Why DIGEST.md rather than a JSON export?</strong> LLMs read
+Markdown naturally. A JSON array of metadata structs requires the
+consuming agent to parse and format it before it’s useful. DIGEST.md is
+immediately readable and conveys priority through its structure
+(pitfalls before workarounds, sorted by confidence). A JSON export can
+be added later if programmatic consumption is needed.</p>
+<p><strong>Why a skill file rather than updating VIBE.md
+directly?</strong> A skill can be loaded on demand and versioned
+independently. Multiple agent instruction files (VIBE.md, CLAUDE.md,
+future agent files) can reference the same skill without duplicating
+content. The skill is also loadable within Harvey itself via
+<code>/skill load harvey-memory</code>.</p>
+</section>
+</body>
+</html>

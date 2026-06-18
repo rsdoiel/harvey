@@ -7,6 +7,8 @@
 
 ## Next Steps
 
+- [ ] Make sure assay cli can be used to evaluate the Llamafile models as well as Ollama models.
+
 ## Improvemet Ideas
 
 - [ ] `-resume` option that resumes the most recent session 

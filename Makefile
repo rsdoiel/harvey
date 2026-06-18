@@ -46,7 +46,7 @@ ifeq ($(OS), Windows)
 	EXT = .exe
 endif
 
-build: version.go $(PROGRAMS) $(TOOLS) man CITATION.cff about.md installer.sh installer.ps1
+build: version.go $(PROGRAMS) $(TOOLS) help-docs man CITATION.cff about.md installer.sh installer.ps1
 
 version.go: .FORCE
 	cmt codemeta.json version.go
@@ -67,6 +67,44 @@ $(MAN_PAGES_3): .FORCE
 $(MAN_PAGES_7): .FORCE
 	mkdir -p man/man7
 	pandoc $@.md --from markdown --to man -s >man/man7/$@
+
+help-docs: $(PROGRAMS)
+	@echo "Regenerating help topic Markdown files..."
+	@./bin/harvey --help attach    > harvey-attach.7.md
+	@./bin/harvey --help clear     > harvey-clear.7.md
+	@./bin/harvey --help context   > harvey-context.7.md
+	@./bin/harvey --help editing   > harvey-editing.7.md
+	@./bin/harvey --help file-tree > harvey-file-tree.7.md
+	@./bin/harvey --help files     > harvey-files.7.md
+	@./bin/harvey --help format    > harvey-format.7.md
+	@./bin/harvey --help git       > harvey-git.7.md
+	@./bin/harvey --help hint      > harvey-hint.7.md
+	@./bin/harvey --help inspect   > harvey-inspect.7.md
+	@./bin/harvey --help kb        > harvey-kb.7.md
+	@./bin/harvey --help learn     > harvey-learn.7.md
+	@./bin/harvey --help llamafile > harvey-llamafile.7.md
+	@./bin/harvey --help loop      > harvey-loop.7.md
+	@./bin/harvey --help memory    > harvey-memory.7.md
+	@./bin/harvey --help ollama    > harvey-ollama.7.md
+	@./bin/harvey --help pipeline  > harvey-pipeline.7.md
+	@./bin/harvey --help plan      > harvey-plan.7.md
+	@./bin/harvey --help rag       > harvey-rag.7.md
+	@./bin/harvey --help read      > harvey-read.7.md
+	@./bin/harvey --help read-dir  > harvey-read-dir.7.md
+	@./bin/harvey --help read-pdf  > harvey-read-pdf.7.md
+	@./bin/harvey --help record    > harvey-record.7.md
+	@./bin/harvey --help rename    > harvey-rename.7.md
+	@./bin/harvey --help routing   > harvey-routing.7.md
+	@./bin/harvey --help run       > harvey-run.7.md
+	@./bin/harvey --help search    > harvey-search.7.md
+	@./bin/harvey --help security  > harvey-security.7.md
+	@./bin/harvey --help session   > harvey-session.7.md
+	@./bin/harvey --help skill-set > harvey-skill-set.7.md
+	@./bin/harvey --help skills    > harvey-skills.7.md
+	@./bin/harvey --help status    > harvey-status.7.md
+	@./bin/harvey --help summarize > harvey-summarize.7.md
+	@./bin/harvey --help tools     > harvey-builtin-tools.7.md
+	@./bin/harvey --help write     > harvey-write.7.md
 
 $(PROGRAMS): $(PACKAGE)
 	@mkdir -p bin

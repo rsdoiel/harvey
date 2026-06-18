@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>LLAMAFILE COMMANDS</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/llamafile SUBCOMMAND [ARGS…]</p>
+<h1 id="description">DESCRIPTION</h1>
+<p>The /llamafile command manages llamafile model backends. A llamafile
+is a self-contained executable that bundles a GGUF model and an HTTP
+inference server into a single file — no separate server installation
+required.</p>
+<p>Llamafile is a project by Mozilla that makes it easy to distribute
+and run local LLMs on any platform. Learn more at: <a
+href="https://github.com/mozilla-ai/llamafile"
+class="uri">https://github.com/mozilla-ai/llamafile</a></p>
+<p>Harvey assumes models are stored in $HOME/Models by default. Place
+.llamafile executables there and use /llamafile add to register and
+connect to them.</p>
+<p>Pre-built models are available at: <a
+href="https://huggingface.co/Mozilla/llamafile-models"
+class="uri">https://huggingface.co/Mozilla/llamafile-models</a></p>
+<h1 id="subcommands">SUBCOMMANDS</h1>
+<p>/llamafile add [PATH] <a href="#name">NAME</a> Register a model and
+connect to it immediately. If PATH is omitted, Harvey scans the
+discovery directory ($HOME/Models by default) and shows a numbered
+picker. NAME is derived from the filename if not given. The choice is
+saved to agents/harvey.yaml so Harvey connects automatically on next
+start.</p>
+<p>/llamafile use <a href="#name">NAME</a> Switch to a named registered
+model. If NAME is omitted, Harvey shows a numbered picker of registered
+models. The current server is stopped (if Harvey started it) and the new
+one is launched.</p>
+<p>/llamafile list List all registered models. The active model is
+marked with an arrow. The discovery directory is shown at the
+bottom.</p>
+<p>/llamafile start <a href="#name">NAME</a> Start the active (or named)
+model’s server without changing the active setting. Useful after Harvey
+restarts.</p>
+<p>/llamafile status Show the active model, API URL, reachability,
+process ownership, discovery directory, and number of registered
+models.</p>
+<h1 id="configuration">CONFIGURATION</h1>
+<p>In agents/harvey.yaml:</p>
+<p>llamafile: models_dir: ~/Models # optional; $HOME/Models is the
+default active: qwen-coding url: http://localhost:8080 # optional; this
+is the default gpu_layers: 99 # optional; layers to offload to GPU via
+-ngl # default 99 maximises Metal/CUDA offload # set to -1 to force
+CPU-only inference startup_timeout: 120s # optional; time to wait for
+server ready # default is 120 seconds models: - name: qwen-coding path:
+/home/user/Models/Qwen3.5-4B-Q5_K_S.llamafile - name: apertus path:
+/home/user/Models/Apertus-8B-Instruct-2509.llamafile</p>
+<h1 id="environment">ENVIRONMENT</h1>
+<p>HARVEY_LLAMAFILE_DIR Override the discovery directory. Takes
+precedence over the YAML value but is itself overridden by the
+–llamafile-dir flag.</p>
+<h1 id="command-line-flags">COMMAND LINE FLAGS</h1>
+<p>–llamafile PATH Connect to PATH for this session (not persisted).
+–llamafile-url URL Override the API base URL (default:
+http://localhost:8080). –llamafile-dir PATH Override the discovery
+directory.</p>
+<h1 id="notes">NOTES</h1>
+<p>macOS: llamafile binaries use the APE (Actually Portable Executable)
+format, which macOS cannot exec directly via execve. Harvey launches
+them via /bin/sh, which mirrors what the terminal does when you
+double-click or run the file directly. No extra setup is required.</p>
+<p>GPU offload: on macOS (Apple Silicon) llamafile uses Metal; on Linux
+it uses CUDA or ROCm when available. The gpu_layers config option
+controls how many transformer layers are offloaded to the GPU. The
+default of 99 offloads everything that fits; lower it if you run out of
+VRAM, or set it to -1 for CPU-only inference.</p>
+<p>Startup: Harvey waits up to startup_timeout for the llamafile HTTP
+server to become ready. If the process exits before the server responds,
+Harvey reports the error and prints any stderr output to help diagnose
+the failure.</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/ollama — Ollama model backend management /help routing — add a
+llamafile:// server as a named route /help getting-started — Getting
+started with Harvey</p>
+</section>
+</body>
+</html>

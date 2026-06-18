@@ -496,127 +496,15 @@ func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 
 func cmdHelp(a *Agent, args []string, out io.Writer) error {
 	if len(args) > 0 {
-		switch strings.ToLower(args[0]) {
-		case "clear":
-			fmt.Fprint(out, FmtHelp(ClearHelpText, "", "", "", ""))
+		topic := strings.ToLower(args[0])
+		if topic == "topics" || topic == "index" {
+			fmt.Fprint(out, HelpTopicsText())
 			return nil
-		case "context":
-			fmt.Fprint(out, FmtHelp(ContextHelpText, "", "", "", ""))
-			return nil
-		case "editing", "edit", "keybindings", "keys":
-			fmt.Fprint(out, FmtHelp(EditingHelpText, "", "", "", ""))
-			return nil
-		case "files":
-			fmt.Fprint(out, FmtHelp(FilesHelpText, "", "", "", ""))
-			return nil
-		case "git":
-			fmt.Fprint(out, FmtHelp(GitHelpText, "", "", "", ""))
-			return nil
-		case "inspect":
-			fmt.Fprint(out, FmtHelp(InspectHelpText, "", "", "", ""))
-			return nil
-		case "kb", "knowledge", "knowledge-base":
-			fmt.Fprint(out, FmtHelp(KBHelpText, "", "", "", ""))
-			return nil
-		case "ollama":
-			fmt.Fprint(out, FmtHelp(OllamaHelpText, "", "", "", ""))
-			return nil
-		case "llamafile":
-			fmt.Fprint(out, FmtHelp(LlamafileHelpText, "", "", "", ""))
-			return nil
-		case "rag":
-			fmt.Fprint(out, FmtHelp(RagHelpText, "", "", "", ""))
-			return nil
-		case "attach":
-			fmt.Fprint(out, FmtHelp(AttachHelpText, "", "", "", ""))
-			return nil
-		case "read":
-			fmt.Fprint(out, FmtHelp(ReadHelpText, "", "", "", ""))
-			return nil
-		case "read-pdf", "readpdf":
-			fmt.Fprint(out, FmtHelp(ReadPDFHelpText, "", "", "", ""))
-			return nil
-		case "read-dir", "readdir":
-			fmt.Fprint(out, FmtHelp(ReadDirHelpText, "", "", "", ""))
-			return nil
-		case "file-tree", "filetree":
-			fmt.Fprint(out, FmtHelp(FileTreeHelpText, "", "", "", ""))
-			return nil
-		case "record", "recording":
-			fmt.Fprint(out, FmtHelp(RecordHelpText, "", "", "", ""))
-			return nil
-		case "rename":
-			fmt.Fprint(out, FmtHelp(RenameHelpText, "", "", "", ""))
-			return nil
-		case "routing", "route", "router":
-			fmt.Fprint(out, FmtHelp(RoutingHelpText, "", "", "", ""))
-			return nil
-		case "run":
-			fmt.Fprint(out, FmtHelp(RunHelpText, "", "", "", ""))
-			return nil
-		case "search":
-			fmt.Fprint(out, FmtHelp(SearchHelpText, "", "", "", ""))
-			return nil
-		case "security", "safemode", "safe", "safe-mode", "permissions", "audit":
-			fmt.Fprint(out, FmtHelp(SecurityHelpText, "", "", "", ""))
-			return nil
-		case "session", "sessions":
-			fmt.Fprint(out, FmtHelp(SessionHelpText, "", "", "", ""))
-			return nil
-		case "skills", "skill":
-			fmt.Fprint(out, FmtHelp(SkillsHelpText, "", "", "", ""))
-			return nil
-		case "skill-set", "skillset", "skill-sets":
-			fmt.Fprint(out, FmtHelp(SkillSetHelpText, "", "", "", ""))
-			return nil
-		case "status":
-			fmt.Fprint(out, FmtHelp(StatusHelpText, "", "", "", ""))
-			return nil
-		case "summarize", "compact":
-			fmt.Fprint(out, FmtHelp(SummarizeHelpText, "", "", "", ""))
-			return nil
-		case "write":
-			fmt.Fprint(out, FmtHelp(WriteHelpText, "", "", "", ""))
-			return nil
-		case "format":
-			fmt.Fprint(out, FmtHelp(FormatHelpText, "", "", "", ""))
-			return nil
-		case "hint":
-			fmt.Fprint(out, FmtHelp(HintHelpText, "", "", "", ""))
-			return nil
-		case "pipeline":
-			fmt.Fprint(out, FmtHelp(PipelineHelpText, "", "", "", ""))
-			return nil
-		case "memory":
-			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
-			return nil
-		case "plan":
-			fmt.Fprint(out, FmtHelp(PlanHelpText, "", "", "", ""))
-			return nil
-		case "tools", "builtin-tools", "builtins":
-			fmt.Fprint(out, FmtHelp(BuiltinToolsHelpText, "", "", "", ""))
-			return nil
-		case "learn", "memory-overview":
-			fmt.Fprint(out, FmtHelp(LearnHelpText, "", "", "", ""))
-			return nil
-		case "pdf-tools", "pdftools", "pdf":
-			fmt.Fprint(out, PDFToolsHelpText)
-			return nil
-		case "getting-started", "gettingstarted", "install", "setup":
-			fmt.Fprint(out, GettingStartedHelpText)
-			return nil
-		case "loop":
-			fmt.Fprint(out, FmtHelp(LoopHelpText, "", "", "", ""))
-			return nil
-		case "profile":
-			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
-			return nil
-		case "recall":
-			fmt.Fprint(out, FmtHelp(MemoryHelpText, "", "", "", ""))
-			return nil
-		default:
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Available topics: attach, audit, builtin-tools, clear, compact, context, editing, file-tree, files, format, getting-started, git, hint, inspect, kb, learn, llamafile, loop, memory, ollama, pdf-tools, permissions, pipeline, plan, profile, rag, read, read-dir, read-pdf, recall, record, rename, routing, run, safe, safemode, search, security, session, skill-set, skills, status, summarize, tools, write\n\n", args[0])
 		}
+		if !PrintHelpTopic(out, topic, "", "", "", "") {
+			fmt.Fprintf(out, "  Unknown help topic %q.\n  Type /help topics for the topic index.\n\n", args[0])
+		}
+		return nil
 	}
 
 	var builtins, userDefined []*Command
@@ -645,12 +533,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 		}
 	}
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "  Type /help TOPIC for a full guide. Topics: attach, audit, clear, compact,")
-	fmt.Fprintln(out, "  context, editing, file-tree, files, format, getting-started, git, hint,")
-	fmt.Fprintln(out, "  inspect, kb, learn, loop, memory, ollama, pdf-tools, permissions, pipeline,")
-	fmt.Fprintln(out, "  profile, rag, read, read-dir, read-pdf, recall, record, rename, routing,")
-	fmt.Fprintln(out, "  run, safemode, search, security, session, skill-set, skills, status,")
-	fmt.Fprintln(out, "  summarize, write")
+	fmt.Fprintln(out, "  Type /help TOPIC for a full guide, or /help topics for the topic index.")
 	fmt.Fprintln(out)
 	return nil
 }

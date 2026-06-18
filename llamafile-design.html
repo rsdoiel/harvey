@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-llamafile-integration-design">Harvey Llamafile
+Integration — Design</h1>
+<blockquote>
+<p><strong>Revision history</strong> - v1: single
+<code>LlamafilePath</code>; <code>--llamafile</code> CLI flag as primary
+interface. - v2: named model registry; <code>/llamafile</code> command
+family replaces CLI flag as primary interface; binaries stored anywhere
+on the filesystem. - v3: <code>models_dir</code> discovery path added;
+<code>/llamafile add</code> gains an interactive picker when invoked
+with no path argument.</p>
+</blockquote>
+<h2 id="overview">Overview</h2>
+<p>Harvey currently requires a running Ollama server to function. From
+the user’s perspective this means two separate programs must be
+installed and running before a single session can start. This design
+adds native support for <a
+href="https://github.com/Mozilla-Ocho/llamafile">Llamafile</a> as an
+alternative backend — a self-contained executable that bundles a GGUF
+model and an HTTP inference server into a single file.</p>
+<p>The user story:</p>
+<ol type="1">
+<li>Install Harvey.</li>
+<li>Pick a llamafile from the pre-built list at
+<code>https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles</code>.</li>
+<li>Download it to <code>~/Models</code> (or anywhere).</li>
+<li>Start Harvey — on the first run with no backend, Harvey hints at the
+above URL and the <code>/llamafile add</code> command.</li>
+<li>Type <code>/llamafile add</code> — Harvey scans
+<code>~/Models</code>, shows a numbered picker, starts the selected
+server, and saves the choice.</li>
+<li>On every subsequent start, Harvey connects automatically.</li>
+</ol>
+<h2 id="background-llamafiles-api-surface">Background: Llamafile’s API
+Surface</h2>
+<p>Earlier investigation concluded that llamafile could not be
+integrated with Harvey because it exposed only an interactive chat
+interface. That conclusion is now outdated. Llamafile v0.10.x exposes a
+full OpenAI-compatible HTTP API at
+<code>http://localhost:8080/v1</code>, including:</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Capability</th>
+<th scope="col">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/v1/chat/completions</code> (streaming)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>/v1/embeddings</code></td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Tool / function calling</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>/v1/models</code></td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Multimodal (image input)</td>
+<td>Yes, model-dependent</td>
+</tr>
+</tbody>
+</table>
+<p>Harvey already depends on
+<code>github.com/mozilla-ai/any-llm-go</code>, which ships a
+<code>providers/llamafile</code> package wrapping this API. The
+client-side wiring (<code>newLlamafileLLMClient</code> in
+<code>anyllm_client.go</code>) is already present.</p>
+<h2 id="key-design-decisions">Key Design Decisions</h2>
+<h3 id="binary-storage-anywhere-on-the-filesystem">Binary storage:
+anywhere on the filesystem</h3>
+<p>Llamafile binaries are system resources, not workspace resources. A
+user will likely maintain one set of llamafile binaries and use them
+across multiple Harvey workspaces. Paths registered with
+<code>/llamafile add</code> may be absolute paths anywhere on the
+filesystem. Workspace-relative paths are also accepted and resolved
+against <code>a.Workspace.Root</code>.</p>
+<p>The registry itself (in <code>agents/harvey.yaml</code>) is
+per-workspace, allowing different workspaces to use different active
+models.</p>
+<h3
+id="models_dir-a-discovery-path-not-a-requirement"><code>models_dir</code>:
+a discovery path, not a requirement</h3>
+<p>A <code>models_dir</code> setting tells Harvey where to look for
+<code>.llamafile</code> binaries. It is used only for the interactive
+picker in <code>/llamafile add</code> — Harvey never auto-registers
+models from this directory without user action.</p>
+<p><strong>Default</strong>: <code>~/Models</code>
+(<code>$HOME/Models</code>). If the directory does not exist, the picker
+is simply unavailable; Harvey does not error. Users who download
+llamafiles to the default location get the picker immediately; users who
+keep files elsewhere can still use
+<code>/llamafile add /full/path/to/model.llamafile</code>.</p>
+<p><strong>Override chain</strong> (highest to lowest priority): 1.
+<code>--llamafile-dir PATH</code> CLI flag 2.
+<code>HARVEY_LLAMAFILE_DIR</code> environment variable 3.
+<code>llamafile.models_dir</code> in <code>agents/harvey.yaml</code> 4.
+Default: <code>$HOME/Models</code></p>
+<h3 id="named-model-registry">Named model registry</h3>
+<p>Users may have multiple llamafile models for different tasks (e.g. a
+small fast model for coding, a larger model for analysis). The config
+holds a named registry rather than a single path.</p>
+<h3 id="single-port-constraint">Single port constraint</h3>
+<p>Llamafile is single-process per port. Switching models means stopping
+the current server and starting the new one. Harvey manages this
+transition via a stored <code>*os.Process</code>.</p>
+<h3
+id="llamafile-command-family-as-the-primary-interface"><code>/llamafile</code>
+command family as the primary interface</h3>
+<p>CLI flags (<code>--llamafile</code>, <code>--llamafile-url</code>,
+<code>--llamafile-dir</code>) are retained for scripted use but are not
+the recommended first-run path. A <code>/llamafile</code> REPL command
+is more discoverable for new users.</p>
+<h2 id="what-changes">What Changes</h2>
+<h3 id="configuration">1. Configuration</h3>
+<p><strong>Removed</strong> from <code>Config</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>LlamafilePath <span class="dt">string</span></span></code></pre></div>
+<p><strong>Added</strong> to <code>Config</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>LlamafileModels   <span class="op">[]</span>LlamafileEntry <span class="co">// registered models</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>LlamafileActive   <span class="dt">string</span>           <span class="co">// name of the active model; &quot;&quot; = none</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>LlamafileURL      <span class="dt">string</span>           <span class="co">// API base URL; default &quot;http://localhost:8080&quot;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>LlamafileModelsDir <span class="dt">string</span>          <span class="co">// discovery path; default &quot;$HOME/Models&quot;</span></span></code></pre></div>
+<p>New type:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> LlamafileEntry <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    Name <span class="dt">string</span> <span class="co">// short identifier, e.g. &quot;qwen-coding&quot;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    Path <span class="dt">string</span> <span class="co">// path to binary; absolute or workspace-relative</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>harvey.yaml</code> representation:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">llamafile</span><span class="kw">:</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">models_dir</span><span class="kw">:</span><span class="at"> ~/Models</span><span class="co">          # optional; $HOME/Models is the default</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">active</span><span class="kw">:</span><span class="at"> qwen-coding</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">url</span><span class="kw">:</span><span class="at"> http://localhost:8080</span><span class="co">    # optional; this is the default</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">models</span><span class="kw">:</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> qwen-coding</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">path</span><span class="kw">:</span><span class="at"> /home/user/Models/Qwen3.5-4B-Q5_K_S.llamafile</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> apertus</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">path</span><span class="kw">:</span><span class="at"> /home/user/Models/Apertus-8B-Instruct-2509.llamafile</span></span></code></pre></div>
+<p><code>~</code> in <code>models_dir</code> is expanded to
+<code>os.UserHomeDir()</code> at load time.</p>
+<p><strong>Override chain</strong> for <code>LlamafileModelsDir</code>
+is applied in <code>LoadHarveyYAML</code> and at CLI flag parsing time,
+with the environment variable checked between them. The default is
+applied in <code>DefaultConfig</code>.</p>
+<h3 id="the-llamafile-command-family">2. The <code>/llamafile</code>
+command family</h3>
+<pre><code>/llamafile list              — list registered models; mark active
+/llamafile add [PATH] [NAME] — register a model; picker shown when PATH omitted
+/llamafile use NAME          — switch to a named model
+/llamafile start [NAME]      — start the active (or named) model&#39;s server
+/llamafile status            — show current connection info</code></pre>
+<p><strong><code>/llamafile add [PATH] [NAME]</code></strong></p>
+<p><em>With PATH</em>: register the model at that path. Name is derived
+from filename if omitted. Starts the server, connects, saves to
+<code>harvey.yaml</code>.</p>
+<p><em>Without PATH</em>: scan <code>LlamafileModelsDir</code> for
+<code>*.llamafile</code> files, show a numbered picker, then proceed as
+if the user had supplied the selected path. Already-registered models
+are shown with a <code>(registered)</code> marker so the user can
+re-register or skip them. If <code>models_dir</code> does not exist or
+contains no <code>.llamafile</code> files, print a helpful message and
+prompt for a path instead:</p>
+<pre><code>  No llamafiles found in ~/Models.
+  Enter a path to a llamafile: _</code></pre>
+<p><strong><code>/llamafile use NAME</code></strong></p>
+<p>Look up NAME in the registry. Stop the current server (if Harvey
+started it), start the new one, connect <code>a.Client</code>, update
+<code>LlamafileActive</code>, save to <code>harvey.yaml</code>.</p>
+<p><strong><code>/llamafile list</code></strong></p>
+<p>Print a table with name, path, file size, and an arrow marking the
+active model:</p>
+<pre><code>  Registered llamafile models:
+  → qwen-coding   ~/Models/Qwen3.5-4B-Q5_K_S.llamafile       (4.1 GB)
+    apertus       ~/Models/Apertus-8B-Instruct-2509.llamafile  (5.9 GB)</code></pre>
+<p><strong><code>/llamafile start [NAME]</code></strong></p>
+<p>Start the active (or named) model’s server without changing the
+active setting. Useful after Harvey restarts when the server is no
+longer running.</p>
+<p><strong><code>/llamafile status</code></strong></p>
+<p>Show: active model name (or “none”), API URL, reachable yes/no,
+models_dir, number of registered models.</p>
+<h3 id="startup-sequence-terminal.go">3. Startup sequence
+(<code>terminal.go</code>)</h3>
+<p>When <code>LlamafileActive</code> is set and matches a registry
+entry, Harvey probes and auto-starts as before. The “no backend” message
+in the Ollama-failure path gains the llamafile hint:</p>
+<pre><code>  No backend selected.
+  → If Ollama is installed, use /ollama start once inside.
+  → Or pick a llamafile from:
+      https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles
+    Download it to ~/Models, then run /llamafile add to connect.</code></pre>
+<p>When no active model is configured, Harvey falls through to Ollama
+exactly as today.</p>
+<h3 id="process-tracking">4. Process tracking</h3>
+<p><code>Agent</code> gains a <code>llamafileProc *os.Process</code>
+field. <code>StartLlamafileService</code> returns
+<code>(*os.Process, error)</code>. On clean exit, Harvey signals the
+process.</p>
+<h3 id="cli-flags">5. CLI flags</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Flag</th>
+<th scope="col">Env var</th>
+<th scope="col">Config field</th>
+<th scope="col">Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--llamafile PATH</code></td>
+<td>—</td>
+<td>session-only</td>
+<td>Connect to PATH for this session only; does not persist</td>
+</tr>
+<tr>
+<td><code>--llamafile-url URL</code></td>
+<td>—</td>
+<td><code>LlamafileURL</code></td>
+<td>Override API base URL</td>
+</tr>
+<tr>
+<td><code>--llamafile-dir PATH</code></td>
+<td><code>HARVEY_LLAMAFILE_DIR</code></td>
+<td><code>LlamafileModelsDir</code></td>
+<td>Override discovery directory</td>
+</tr>
+</tbody>
+</table>
+<p><code>--llamafile PATH</code> is a session-only convenience; it does
+not write to <code>harvey.yaml</code>. To persist a model, use
+<code>/llamafile add</code> inside the REPL.</p>
+<h2 id="user-experience">User Experience</h2>
+<p><strong>No backend, first run</strong></p>
+<pre><code>  ✗ Ollama is not running
+    Start Ollama now? [Y/n] n
+
+  No backend selected.
+  → If Ollama is installed, use /ollama start once inside.
+  → Or pick a llamafile from:
+      https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles
+    Download it to ~/Models, then run /llamafile add to connect.</code></pre>
+<p><strong>After downloading a model to ~/Models</strong></p>
+<pre><code>harvey&gt; /llamafile add
+  Llamafiles found in ~/Models:
+  [1] Qwen3.5-4B-Q5_K_S.llamafile       (4.1 GB)
+  [2] Apertus-8B-Instruct-2509.llamafile  (5.9 GB)
+  Select [1-2] or enter a path: 1
+  Starting llamafile...
+  ✓ Using model: Qwen3.5-4B-Q5_K_S
+  Saved to agents/harvey.yaml — Harvey will connect automatically on next start.</code></pre>
+<p><strong>Registering a second model</strong></p>
+<pre><code>harvey&gt; /llamafile add
+  Llamafiles found in ~/Models:
+  [1] Qwen3.5-4B-Q5_K_S.llamafile       (4.1 GB)  (registered as qwen-coding)
+  [2] Apertus-8B-Instruct-2509.llamafile  (5.9 GB)
+  Select [1-2] or enter a path: 2
+  Name [Apertus-8B-Instruct-2509]: apertus
+  Registered apertus — use /llamafile use apertus to switch.</code></pre>
+<p><strong>Switching models mid-session</strong></p>
+<pre><code>harvey&gt; /llamafile use apertus
+  Stopping Qwen3.5-4B-Q5_K_S...
+  Starting apertus...
+  ✓ Using model: apertus</code></pre>
+<p><strong>Subsequent start (active model saved)</strong></p>
+<pre><code>  Checking llamafile (qwen-coding) at http://localhost:8080...
+  ✗ Llamafile is not running
+    Start qwen-coding now? [Y/n] y
+  Starting llamafile...
+  ✓ Using model: qwen-coding</code></pre>
+<h2 id="rejected-alternatives">Rejected Alternatives</h2>
+<p><strong>Auto-register all <code>.llamafile</code> files in
+<code>models_dir</code> on startup</strong>: too implicit. Harvey would
+add models to the registry without user action, which is surprising and
+makes it hard to reason about what is configured. The picker preserves
+user intent.</p>
+<p><strong>Tab-completion for file paths</strong>: requires REPL changes
+to the terminal library. The numbered picker gives the same benefit (no
+need to remember filenames) with no library changes and is friendlier
+for new users.</p>
+<p><strong>Single default <code>$HOME/Models</code> with no
+override</strong>: advanced users need to keep binaries on a separate
+drive or in a shared network location. The three-level override chain
+(CLI flag → env var → YAML → default) follows Harvey’s existing pattern
+for other configurable paths.</p>
+<p><strong>Storing models inside the workspace
+(<code>agents/models/</code>)</strong>: rejected because users run
+Harvey across multiple workspaces and should not need to duplicate or
+symlink large binary files.</p>
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li><code>/llamafile remove NAME</code> — delete a registry entry (edit
+<code>harvey.yaml</code> directly).</li>
+<li><code>/llamafile rename OLD NEW</code> — rename a registry
+entry.</li>
+<li>Multiple simultaneous llamafile servers on different ports.</li>
+<li>Automatic download of a recommended llamafile binary.</li>
+<li>Llamafile embedding support for RAG.</li>
+<li>Recursive scan of <code>models_dir</code> subdirectories.</li>
+</ul>
+</section>
+</body>
+</html>
