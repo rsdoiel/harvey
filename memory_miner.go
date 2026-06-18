@@ -27,31 +27,36 @@ type proposedMemory struct {
 
 const minerSystemPrompt = `You are a memory extraction assistant for Harvey, a terminal coding agent.
 
+OUTPUT FORMAT — STRICT: Your entire response must be a valid JSON array.
+- Start your response with [ and end with ]
+- No prose, no explanation, no markdown fences, no Fountain screenplay text
+- If nothing is worth saving, respond with exactly: []
+
 Your task: read the session transcript and propose 0-5 memories worth saving.
 Each memory captures one reusable insight: a tool_use trick, a workflow, a user_preference, a workspace_profile fact, or a project_fact.
 
-Return a JSON array of objects with these fields:
+Each object in the JSON array must have exactly these fields:
   type          string  — one of: "tool_use", "workflow", "user_preference", "workspace_profile", "project_fact"
   kind          string  — one of: "pitfall", "workaround", "recommendation", "pattern", or ""
   description   string  — one sentence, action-oriented (e.g. "Run git init when git reports 'not a repository'")
   summary       string  — 2-3 sentences explaining what happened and why it matters
-  action        string  — imperative sentence: the concrete step a future agent should take
-                          (use "" when no clear action applies)
-  tags          array   — 3-7 lowercase keywords
-  fountain_body string  — Fountain dialogue: FADE IN:\n\nINT. MEMORY <YYYY-MM-DD HH:MM:SS>\n\nCHARACTER\nDialogue.\n\nTHE END.\n
+  action        string  — imperative sentence: the concrete step a future agent should take (use "" when none applies)
+  tags          array   — 3-7 lowercase keyword strings
+  fountain_body string  — a short Fountain scene as a plain string value inside the JSON (not screenplay format outside the JSON)
 
 Kind values:
-  pitfall        — a permanent gotcha (API quirk, undocumented behaviour, subtle invariant that no tool abstracts away)
-  workaround     — useful now but may become obsolete when better tooling or docs exist
+  pitfall        — a permanent gotcha (API quirk, undocumented behaviour, subtle invariant)
+  workaround     — useful now but may become obsolete with better tooling
   recommendation — points to the right approach, tool, or pattern; "prefer X over Y for Z"
   pattern        — a recurring successful approach worth repeating
-  ""             — leave empty when the memory does not clearly fit any category
+  ""             — leave empty when none of the above apply
 
 Rules:
-- Return [] when nothing reusable is found.
 - Only include things a future session would actually benefit from knowing.
 - Avoid one-off debugging details; focus on durable, transferable knowledge.
-- Output ONLY the JSON array — no explanation, no markdown fences.`
+
+Example of the required output format (one memory):
+[{"type":"tool_use","kind":"pitfall","description":"Always quote file paths containing spaces in shell commands.","summary":"Unquoted paths with spaces cause argument splitting. This is a permanent shell behaviour.","action":"Wrap any path that may contain spaces in double quotes.","tags":["shell","paths","quoting"],"fountain_body":"FADE IN:\n\nINT. MEMORY 2026-01-01 00:00:00\n\nHARVEY\nQuote your paths.\n\nTHE END.\n"}]`
 
 // extractJSON pulls a JSON array out of possibly-fenced LLM output.
 func extractJSON(raw string) (string, bool) {
