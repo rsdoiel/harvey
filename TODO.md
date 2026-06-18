@@ -4,6 +4,7 @@
 ## Bugs
 
 - [ ] Harvey can process PDFs, but the language model doesn't know it can read the PDFs and prompts me to convert it
+- [ ] Llamafiles on Windows end in .exe (or .llamafile.exe), when scanning the ~/Models directory these need to be included
 
 ## Next Steps
 
