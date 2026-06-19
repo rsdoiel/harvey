@@ -2,31 +2,35 @@ package harvey
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"strings"
 
-	minio "github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
-// s3Reader implements RemoteReader for s3:// URIs using the MinIO Go client.
-// It works with AWS S3, MinIO, and Cloudflare R2.
+// s3Reader implements RemoteReader for s3:// URIs using the AWS SDK v2.
+// It works with AWS S3, MinIO server, Cloudflare R2, and any S3-compatible
+// endpoint via BaseEndpoint + UsePathStyle.
 type s3Reader struct {
-	client *minio.Client
-	bucket string // retained only for constructing URIs in List results
+	client   *s3.Client
+	endpoint string
 }
 
 /** newS3Reader constructs an s3Reader from AWS-compatible environment credentials.
  * Reads AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_REGION,
- * and AWS_ENDPOINT_URL from the environment. All are optional; anonymous access
- * is used when the key variables are empty.
+ * and AWS_ENDPOINT_URL from the environment. All are optional; the standard AWS
+ * credential chain is used when key variables are absent.
  *
  * Returns:
  *   *s3Reader — ready to use.
- *   error     — when the endpoint URL is malformed or the client cannot be created.
+ *   error     — when the configuration or client cannot be created.
  *
  * Example:
  *   // With AWS_ENDPOINT_URL=http://localhost:9000 (MinIO)
@@ -34,44 +38,35 @@ type s3Reader struct {
  */
 func newS3Reader() (*s3Reader, error) {
 	endpointURL := os.Getenv("AWS_ENDPOINT_URL")
-
-	var endpoint string
-	var useSSL bool
-
-	if endpointURL != "" {
-		u, err := url.Parse(endpointURL)
-		if err != nil {
-			return nil, fmt.Errorf("s3: invalid AWS_ENDPOINT_URL %q: %w", endpointURL, err)
-		}
-		endpoint = u.Host
-		useSSL = u.Scheme == "https"
-	} else {
-		endpoint = "s3.amazonaws.com"
-		useSSL = true
-	}
-
 	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
 	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
 	sessionToken := os.Getenv("AWS_SESSION_TOKEN")
 	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
 
-	var creds *credentials.Credentials
+	var opts []func(*awsconfig.LoadOptions) error
+	opts = append(opts, awsconfig.WithRegion(region))
 	if accessKey != "" || secretKey != "" {
-		creds = credentials.NewStaticV4(accessKey, secretKey, sessionToken)
-	} else {
-		creds = credentials.NewEnvAWS()
+		opts = append(opts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(accessKey, secretKey, sessionToken),
+		))
 	}
 
-	client, err := minio.New(endpoint, &minio.Options{
-		Creds:        creds,
-		Secure:       useSSL,
-		Region:       region,
-		BucketLookup: minio.BucketLookupPath,
-	})
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
-		return nil, fmt.Errorf("s3: create client: %w", err)
+		return nil, fmt.Errorf("s3: load config: %w", err)
 	}
-	return &s3Reader{client: client}, nil
+
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		if endpointURL != "" {
+			o.BaseEndpoint = aws.String(endpointURL)
+		}
+		o.UsePathStyle = true // required for non-AWS S3-compatible endpoints
+	})
+
+	return &s3Reader{client: client, endpoint: endpointURL}, nil
 }
 
 /** parseS3URI extracts the bucket name, object key, and whether the URI
@@ -101,7 +96,6 @@ func parseS3URI(uri string) (bucket, key string, isPrefix bool, err error) {
 	}
 	idx := strings.IndexByte(rest, '/')
 	if idx < 0 {
-		// s3://bucket — no key, no trailing slash
 		return rest, "", false, nil
 	}
 	bucket = rest[:idx]
@@ -111,6 +105,13 @@ func parseS3URI(uri string) (bucket, key string, isPrefix bool, err error) {
 	key = rest[idx+1:]
 	isPrefix = strings.HasSuffix(uri, "/")
 	return bucket, key, isPrefix, nil
+}
+
+// isNotFound reports whether an AWS SDK error represents a missing object or bucket.
+func isNotFound(err error) bool {
+	var nsk *types.NoSuchKey
+	var nsb *types.NoSuchBucket
+	return errors.As(err, &nsk) || errors.As(err, &nsb)
 }
 
 /** Stat returns metadata for the S3 object at uri.
@@ -132,14 +133,28 @@ func (r *s3Reader) Stat(ctx context.Context, uri string) (RemoteObjectInfo, erro
 	if err != nil {
 		return RemoteObjectInfo{}, err
 	}
-	info, err := r.client.StatObject(ctx, bucket, key, minio.StatObjectOptions{})
+	resp, err := r.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
 	if err != nil {
+		if isNotFound(err) {
+			return RemoteObjectInfo{}, fmt.Errorf("s3: stat %s: not found", uri)
+		}
 		return RemoteObjectInfo{}, fmt.Errorf("s3: stat %s: %w", uri, err)
+	}
+	size := int64(0)
+	if resp.ContentLength != nil {
+		size = *resp.ContentLength
+	}
+	ct := ""
+	if resp.ContentType != nil {
+		ct = *resp.ContentType
 	}
 	return RemoteObjectInfo{
 		URI:         uri,
-		Size:        info.Size,
-		ContentType: info.ContentType,
+		Size:        size,
+		ContentType: ct,
 		IsDir:       isPrefix,
 	}, nil
 }
@@ -163,20 +178,25 @@ func (r *s3Reader) Get(ctx context.Context, uri string, dst io.Writer) error {
 	if err != nil {
 		return err
 	}
-	obj, err := r.client.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+	resp, err := r.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
 	if err != nil {
+		if isNotFound(err) {
+			return fmt.Errorf("s3: get %s: not found", uri)
+		}
 		return fmt.Errorf("s3: get %s: %w", uri, err)
 	}
-	defer obj.Close()
-	if _, err := io.Copy(dst, obj); err != nil {
+	defer resp.Body.Close()
+	if _, err := io.Copy(dst, resp.Body); err != nil {
 		return fmt.Errorf("s3: read %s: %w", uri, err)
 	}
 	return nil
 }
 
 /** List returns all objects under the prefix URI. The prefix must end with "/".
- * Results include only objects at the immediate level (non-recursive); callers
- * that need recursive walks should call List on returned IsDir entries.
+ * Uses ListObjectsV2 with a paginator for scalable enumeration.
  *
  * Parameters:
  *   ctx    (context.Context) — governs the request lifetime.
@@ -194,20 +214,30 @@ func (r *s3Reader) List(ctx context.Context, prefix string) ([]RemoteObjectInfo,
 	if err != nil {
 		return nil, err
 	}
+
+	paginator := s3.NewListObjectsV2Paginator(r.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(keyPrefix),
+	})
+
 	var results []RemoteObjectInfo
-	for obj := range r.client.ListObjects(ctx, bucket, minio.ListObjectsOptions{
-		Prefix:    keyPrefix,
-		Recursive: false,
-	}) {
-		if obj.Err != nil {
-			return nil, fmt.Errorf("s3: list %s: %w", prefix, obj.Err)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("s3: list %s: %w", prefix, err)
 		}
-		results = append(results, RemoteObjectInfo{
-			URI:         "s3://" + bucket + "/" + obj.Key,
-			Size:        obj.Size,
-			ContentType: obj.ContentType,
-			IsDir:       strings.HasSuffix(obj.Key, "/"),
-		})
+		for _, obj := range page.Contents {
+			size := int64(0)
+			if obj.Size != nil {
+				size = *obj.Size
+			}
+			key := aws.ToString(obj.Key)
+			results = append(results, RemoteObjectInfo{
+				URI:   "s3://" + bucket + "/" + key,
+				Size:  size,
+				IsDir: strings.HasSuffix(key, "/"),
+			})
+		}
 	}
 	return results, nil
 }

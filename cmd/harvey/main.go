@@ -94,6 +94,8 @@ func main() {
 		case "--record-file":
 			cfg.AutoRecord = true
 			cfg.RecordPath = next()
+		case "--resume":
+			cfg.ResumeLatest = true
 		case "--continue":
 			cfg.ContinuePath = next()
 		case "--replay":
@@ -122,6 +124,14 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+	if cfg.ResumeLatest && cfg.ContinuePath == "" {
+		sessDir := filepath.Join(ws.HarveyDir(), "sessions")
+		if p := harvey.MostRecentSession(sessDir); p != "" {
+			cfg.ContinuePath = p
+		} else {
+			fmt.Fprintln(os.Stderr, "  No sessions found in agents/sessions/ — starting fresh.")
+		}
 	}
 	agent := harvey.NewAgent(cfg, ws)
 	if err := agent.Run(os.Stdout); err != nil {

@@ -31,12 +31,16 @@ var learColors = []func(string) string{
 // The label line is omitted when label is empty. When an estimate is provided
 // the timer shows elapsed vs. estimated (e.g. "[8s / ~12s]"); once elapsed
 // exceeds the estimate only elapsed is shown.
+//
+// Call UpdateStatus to show a transient message on line 2 in place of the Lear
+// quote. The message reverts to a Lear quote at the next message tick (~6 s).
 type Spinner struct {
 	out      io.Writer
 	estimate time.Duration
 	label    string
 	done     chan struct{}
 	stopped  chan struct{}
+	StatusCh chan string // receives transient status update strings
 }
 
 // newSpinner creates and immediately starts a Spinner that writes to out.
@@ -51,9 +55,32 @@ func newSpinner(out io.Writer, estimate time.Duration, label string) *Spinner {
 		label:    label,
 		done:     make(chan struct{}),
 		stopped:  make(chan struct{}),
+		StatusCh: make(chan string, 1),
 	}
 	go s.run()
 	return s
+}
+
+/** UpdateStatus sends a transient status message to the spinner's message line.
+ * Non-blocking: if a previous status has not been consumed, the new one
+ * replaces it. Calling UpdateStatus on a stopped spinner is safe.
+ *
+ * Parameters:
+ *   msg (string) — status string, e.g. "Calling read_file…"
+ *
+ * Example:
+ *   spin.UpdateStatus("Searching knowledge base…")
+ */
+func (s *Spinner) UpdateStatus(msg string) {
+	// Drain any pending status and replace with the latest.
+	select {
+	case <-s.StatusCh:
+	default:
+	}
+	select {
+	case s.StatusCh <- msg:
+	default:
+	}
 }
 
 // timerLabel formats the elapsed/estimate portion of the spinner line.
@@ -94,8 +121,11 @@ func (s *Spinner) run() {
 		return learColors[idx%len(learColors)](msg)
 	}
 
-	line2 := func(mi int) string {
+	line2Lear := func(mi int) string {
 		return dim("  ⎿") + " " + colorMsg(mi, LearMessages[mi])
+	}
+	line2Status := func(status string) string {
+		return dim("  ⎿") + " " + dimGreen(status)
 	}
 	line3 := func(fi int, elapsed time.Duration) string {
 		return dim("     ⎿") + " " + cyan(spinnerFrames[fi]) + " " + dim(s.timerLabel(elapsed))
@@ -108,9 +138,12 @@ func (s *Spinner) run() {
 		fmt.Fprintf(s.out, "%s\r\n", dim(s.label))
 		upLines = 2
 	}
-	fmt.Fprintf(s.out, "%s\r\n", line2(msgIdx))
+	fmt.Fprintf(s.out, "%s\r\n", line2Lear(msgIdx))
 	fmt.Fprintf(s.out, "%s", line3(0, 0))
 	// Cursor is now at the end of line 3 with no trailing newline.
+
+	var lastStatus string     // most recently received status string
+	var renderedStatus string // last status actually written to line 2
 
 	for {
 		select {
@@ -120,21 +153,40 @@ func (s *Spinner) run() {
 			return
 
 		case <-msgTick.C:
-			// Advance both the message and the frame index.
+			// Lear rotation clears any pending status so quotes resume.
+			lastStatus = ""
+			renderedStatus = ""
 			msgIdx = (msgIdx + 1) % len(LearMessages)
 			frameIdx = (frameIdx + 1) % len(spinnerFrames)
 			elapsed := time.Since(start)
 			// Move up to line 2, redraw it, then redraw line 3.
 			fmt.Fprintf(s.out, "\033[1A\r%s\033[K\r\n%s\033[K",
-				line2(msgIdx),
+				line2Lear(msgIdx),
 				line3(frameIdx, elapsed),
 			)
 
 		case <-frameTick.C:
+			// Drain latest status.
+			select {
+			case s := <-s.StatusCh:
+				lastStatus = s
+			default:
+			}
+
 			frameIdx = (frameIdx + 1) % len(spinnerFrames)
 			elapsed := time.Since(start)
-			// Redraw line 3 in place.
-			fmt.Fprintf(s.out, "\r%s\033[K", line3(frameIdx, elapsed))
+
+			if lastStatus != "" && lastStatus != renderedStatus {
+				// Status changed — redraw both line 2 and line 3.
+				renderedStatus = lastStatus
+				fmt.Fprintf(s.out, "\033[1A\r%s\033[K\r\n%s\033[K",
+					line2Status(lastStatus),
+					line3(frameIdx, elapsed),
+				)
+			} else {
+				// Redraw line 3 only.
+				fmt.Fprintf(s.out, "\r%s\033[K", line3(frameIdx, elapsed))
+			}
 		}
 	}
 }

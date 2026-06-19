@@ -15,6 +15,17 @@ import (
 // per-turn tool call iteration limit without producing a plain text response.
 var ErrToolLoopExceeded = errors.New("tool loop limit exceeded")
 
+/** StatusReporter is an optional sink for transient status messages during
+ * tool execution. The Spinner satisfies this interface; pass nil to suppress
+ * status updates.
+ *
+ * Example:
+ *   ex.Status = spin // spin is a *Spinner
+ */
+type StatusReporter interface {
+	UpdateStatus(msg string)
+}
+
 /** ToolCapable is satisfied by LLM clients that support schema-based tool
  * calling. AnyLLMClient implements this interface; other backends that do not
  * support tools do not need to implement it.
@@ -49,7 +60,8 @@ type ToolExecutor struct {
 	MaxIterations        int
 	MaxOutputBytes       int
 	DebugLog             *DebugLog
-	ToolResultCompaction bool // when true, compact prior tool rounds before each new LLM turn
+	ToolResultCompaction bool           // when true, compact prior tool rounds before each new LLM turn
+	Status               StatusReporter // optional: receives transient status during tool calls
 }
 
 /** NewToolExecutor creates a ToolExecutor from the agent's tool registry,
@@ -102,6 +114,9 @@ func NewToolExecutor(registry *ToolRegistry, client LLMClient, cfg *Config) *Too
 func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.ToolCall) ([]Message, error) {
 	results := make([]Message, 0, len(toolCalls))
 	for _, tc := range toolCalls {
+		if e.Status != nil {
+			e.Status.UpdateStatus(fmt.Sprintf("Calling %s…", tc.Function.Name))
+		}
 		start := time.Now()
 		output, err := e.Registry.Dispatch(ctx, tc.Function.Name, tc.Function.Arguments, e.MaxOutputBytes)
 		elapsed := time.Since(start)
@@ -109,6 +124,11 @@ func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.
 		if err != nil {
 			errStr = err.Error()
 			output = fmt.Sprintf("error: %v", err)
+			if e.Status != nil {
+				e.Status.UpdateStatus(fmt.Sprintf("%s failed", tc.Function.Name))
+			}
+		} else if e.Status != nil {
+			e.Status.UpdateStatus(fmt.Sprintf("%s done", tc.Function.Name))
 		}
 		e.DebugLog.LogToolCall(tc.Function.Name, len(output), elapsed, errStr)
 		results = append(results, Message{

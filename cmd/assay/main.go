@@ -103,12 +103,14 @@ type PromptResult struct {
 }
 
 type AssayResults struct {
-	RunAt         time.Time      `json:"run_at"`
-	OllamaURL     string         `json:"ollama_url"`
-	RagDB         string         `json:"rag_db,omitempty"`
-	RagEmbedModel string         `json:"rag_embed_model,omitempty"`
-	RagCompare    bool           `json:"rag_compare,omitempty"`
-	Results       []PromptResult `json:"results"`
+	RunAt          time.Time      `json:"run_at"`
+	Backend        string         `json:"backend"`                    // "Ollama" or "Llamafile"
+	LlamafilePath  string         `json:"llamafile_path,omitempty"`   // binary path when Backend=="Llamafile"
+	OllamaURL      string         `json:"ollama_url,omitempty"`
+	RagDB          string         `json:"rag_db,omitempty"`
+	RagEmbedModel  string         `json:"rag_embed_model,omitempty"`
+	RagCompare     bool           `json:"rag_compare,omitempty"`
+	Results        []PromptResult `json:"results"`
 }
 
 // ─── Corpus loading ───────────────────────────────────────────────────────────
@@ -428,7 +430,13 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# Assay Report\n\n")
 	fmt.Fprintf(&sb, "Run at: %s  \n", ar.RunAt.Format(time.RFC3339))
-	fmt.Fprintf(&sb, "Ollama: %s\n\n", ar.OllamaURL)
+	fmt.Fprintf(&sb, "Backend: %s  \n", ar.Backend)
+	if ar.LlamafilePath != "" {
+		fmt.Fprintf(&sb, "Binary: `%s`  \n", ar.LlamafilePath)
+	}
+	if ar.OllamaURL != "" {
+		fmt.Fprintf(&sb, "URL: %s\n\n", ar.OllamaURL)
+	}
 	if ar.RagDB != "" {
 		fmt.Fprintf(&sb, "RAG store: `%s` (embed: %s)\n\n", ar.RagDB, ar.RagEmbedModel)
 	}
@@ -658,22 +666,82 @@ func writeJSON(outDir string, ar AssayResults) error {
 	return os.WriteFile(filepath.Join(outDir, "results.json"), src, 0644)
 }
 
+// ─── Workspace helpers ────────────────────────────────────────────────────────
+
+// findWorkspaceRoot walks up from start looking for the directory containing
+// agents/harvey.yaml. Returns "" if not found before the filesystem root.
+func findWorkspaceRoot(start string) string {
+	dir := start
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "agents", "harvey.yaml")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// defaultOutputDir returns $WORKSPACE/assay-results/assay-TIMESTAMP/ when run
+// inside a Harvey workspace, or assay-results/assay-TIMESTAMP/ relative to cwd
+// when no workspace is found.
+func defaultOutputDir() string {
+	cwd, _ := os.Getwd()
+	ts := time.Now().Format("20060102-150405")
+	if root := findWorkspaceRoot(cwd); root != "" {
+		return filepath.Join(root, "assay-results", "assay-"+ts)
+	}
+	return filepath.Join("assay-results", "assay-"+ts)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
-	corpusPath   := flag.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
-	modelsFlag   := flag.String("models", "", "comma-separated model list (default: all from Ollama)")
-	category     := flag.String("category", "", "only run prompts from this category")
-	ollamaURL    := flag.String("ollama", "http://localhost:11434", "Ollama base URL")
-	ragDB        := flag.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
+	corpusPath    := flag.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
+	modelsFlag    := flag.String("models", "", "comma-separated model list (default: all from Ollama)")
+	category      := flag.String("category", "", "only run prompts from this category")
+	ollamaURL     := flag.String("ollama", "http://localhost:11434", "Ollama base URL")
+	llamafilePath := flag.String("llamafile", "", "path to a llamafile binary to evaluate; starts and stops the process automatically")
+	outputDir     := flag.String("output", defaultOutputDir(),
+		"write report and results to PATH\n\t\t\t(default: $WORKSPACE/assay-results/assay-TIMESTAMP/\n\t\t\t or assay-results/assay-TIMESTAMP/ if not in a workspace)")
+	ragDB         := flag.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
 	ragEmbedModel := flag.String("rag-embed-model", "nomic-embed-text", "embedding model for RAG queries")
-	ragTopK      := flag.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
-	ragCompare   := flag.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
+	ragTopK       := flag.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
+	ragCompare    := flag.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
 	flag.Parse()
 
 	if *ragCompare && *ragDB == "" {
 		fmt.Fprintln(os.Stderr, "assay: --rag-compare requires --rag-db")
 		os.Exit(1)
+	}
+
+	// Llamafile lifecycle: start process and derive LLM URL.
+	llmURL := *ollamaURL
+	backend := "Ollama"
+	if *llamafilePath != "" {
+		// RAG + llamafile requires Ollama for embeddings.
+		if *ragDB != "" && !harvey.ProbeLlamafile(*ollamaURL+"/api/tags") {
+			fmt.Fprintf(os.Stderr, "assay: RAG evaluation with --llamafile requires Ollama for embeddings.\n"+
+				"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s\n", *ollamaURL)
+			os.Exit(1)
+		}
+		port, err := harvey.FindFreePort()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "assay: llamafile: cannot find free port: %v\n", err)
+			os.Exit(1)
+		}
+		llmURL = fmt.Sprintf("http://localhost:%d", port)
+		fmt.Printf("Starting llamafile %s on %s ...\n", filepath.Base(*llamafilePath), llmURL)
+		proc, err := harvey.StartLlamafileService(*llamafilePath, llmURL, "", 30*time.Second, -1, os.Stdout)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "assay: llamafile: %v\n", err)
+			os.Exit(1)
+		}
+		defer proc.Kill()
+		fmt.Printf("  Llamafile ready at %s\n", llmURL)
+		backend = "Llamafile"
 	}
 
 	corpus, err := loadCorpus(*corpusPath)
@@ -684,14 +752,17 @@ func main() {
 
 	// Resolve model list.
 	var models []string
-	if *modelsFlag != "" {
+	if *llamafilePath != "" {
+		// Llamafile exposes a single model; derive its name from the binary.
+		models = []string{harvey.LlamafileModelNameFromPath(*llamafilePath)}
+	} else if *modelsFlag != "" {
 		for _, m := range strings.Split(*modelsFlag, ",") {
 			if m = strings.TrimSpace(m); m != "" {
 				models = append(models, m)
 			}
 		}
 	} else {
-		models, err = listOllamaModels(*ollamaURL)
+		models, err = listOllamaModels(llmURL)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "assay: could not list Ollama models: %v\n", err)
 			os.Exit(1)
@@ -731,8 +802,7 @@ func main() {
 	}
 
 	// Create output directory.
-	stamp := time.Now().Format("20060102-150405")
-	outDir := filepath.Join("testout", "assay-"+stamp)
+	outDir := *outputDir
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "assay: could not create output dir: %v\n", err)
 		os.Exit(1)
@@ -740,7 +810,9 @@ func main() {
 
 	ar := AssayResults{
 		RunAt:         time.Now(),
-		OllamaURL:     *ollamaURL,
+		Backend:       backend,
+		LlamafilePath: *llamafilePath,
+		OllamaURL:     llmURL,
 		RagDB:         *ragDB,
 		RagEmbedModel: *ragEmbedModel,
 		RagCompare:    *ragCompare,
@@ -793,7 +865,7 @@ func main() {
 				}
 
 				start := time.Now()
-				response, or, callErr := callOllama(*ollamaURL, model, promptText)
+				response, or, callErr := callOllama(llmURL, model, promptText)
 				elapsed := time.Since(start)
 
 				if callErr != nil {

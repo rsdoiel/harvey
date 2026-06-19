@@ -237,3 +237,55 @@ func TestProfileAlias(t *testing.T) {
 		t.Error("profile command should have a description")
 	}
 }
+
+func TestRewriteProfileTitle_TitleField(t *testing.T) {
+	body := "INT. WORKSPACE PROFILE - OLD NAME\n\nTITLE: Old Name\n\nROLE:\n  Developer.\n"
+	got := rewriteProfileTitle(body, "New Name")
+	if !strings.Contains(got, "TITLE: New Name") {
+		t.Errorf("expected TITLE: New Name in output, got:\n%s", got)
+	}
+}
+
+func TestRewriteProfileTitle_INTLine(t *testing.T) {
+	body := "INT. WORKSPACE PROFILE - OLD\n\nROLE:\n  Developer.\n"
+	got := rewriteProfileTitle(body, "Web Developer")
+	if !strings.Contains(got, "INT. WORKSPACE PROFILE - WEB DEVELOPER") {
+		t.Errorf("expected INT. line updated, got:\n%s", got)
+	}
+}
+
+func TestRewriteProfileTitle_NoMatch(t *testing.T) {
+	body := "Just some content\nwith no matching fields."
+	got := rewriteProfileTitle(body, "New Name")
+	if got != body {
+		t.Errorf("expected body unchanged when no field matches, got:\n%s", got)
+	}
+}
+
+func TestCmdMemoryProfileDispatch_unknownSubcmd(t *testing.T) {
+	a, store := newProfileTestAgent(t)
+	var out bytes.Buffer
+	if err := cmdMemoryProfile(a, []string{"notasubcmd"}, &out, store); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Errorf("expected usage message for unknown subcommand, got: %s", out.String())
+	}
+}
+
+func TestCmdMemoryProfileDispatch_updateDeprecated(t *testing.T) {
+	// "update" should print a deprecation warning. Use a no-op editor so the
+	// test does not block waiting for interactive input.
+	t.Setenv("EDITOR", "true") // /usr/bin/true: exits 0, changes nothing
+	a, store := newProfileTestAgent(t)
+	var out bytes.Buffer
+	// cmdMemoryProfileUpdate needs a profile to exist; skip if store is empty.
+	metas, _ := store.List(string(MemoryTypeWorkspaceProfile))
+	if len(metas) == 0 {
+		t.Skip("no workspace_profile in test store")
+	}
+	_ = cmdMemoryProfile(a, []string{"update"}, &out, store)
+	if !strings.Contains(out.String(), "deprecated") {
+		t.Errorf("expected deprecation warning, got: %s", out.String())
+	}
+}

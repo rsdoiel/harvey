@@ -16,6 +16,12 @@ func TestLlamafileModelName(t *testing.T) {
 		{"gemma-3.llamafile", "gemma-3"},
 		{"/home/user/Models/phi-4.llamafile", "phi-4"},
 		{"no-suffix", "no-suffix"},
+		// Windows universal form: strip .llamafile.exe fully.
+		{"Llama-3.2-1B.llamafile.exe", "Llama-3.2-1B"},
+		// Windows plain exe: strip .exe only.
+		{"Llama-3.2-1B.exe", "Llama-3.2-1B"},
+		// Path prefix should not affect the result.
+		{"/path/to/Qwen3.llamafile", "Qwen3"},
 	}
 	for _, c := range cases {
 		got := llamafileModelName(c.path)
@@ -47,6 +53,31 @@ func TestScanLlamafileModels_findsFiles(t *testing.T) {
 		if filepath.Ext(p) != ".llamafile" {
 			t.Errorf("unexpected file in results: %s", p)
 		}
+	}
+}
+
+func TestScanLlamafileModels_windowsUniversalForm(t *testing.T) {
+	dir := t.TempDir()
+	// .llamafile.exe is matched on all platforms.
+	files := []string{"Llama-3.2-1B.llamafile", "Qwen3.llamafile.exe", "notes.txt"}
+	for _, name := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	paths := scanLlamafileModels(dir)
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 paths (.llamafile + .llamafile.exe), got %d: %v", len(paths), paths)
+	}
+	byBase := map[string]bool{}
+	for _, p := range paths {
+		byBase[filepath.Base(p)] = true
+	}
+	if !byBase["Llama-3.2-1B.llamafile"] {
+		t.Error("expected Llama-3.2-1B.llamafile in results")
+	}
+	if !byBase["Qwen3.llamafile.exe"] {
+		t.Error("expected Qwen3.llamafile.exe in results")
 	}
 }
 

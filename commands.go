@@ -364,8 +364,8 @@ func (a *Agent) registerCommands() {
 			},
 		},
 		"profile": {
-			Usage:       "/profile <use|show|update> [name]",
-			Description: "Alias for /memory profile — manage workspace profile; /profile use [name] switches context",
+			Usage:       "/profile <list|show|edit|use|rename> [args...]",
+			Description: "Alias for /memory profile — manage workspace profile",
 			Handler: func(a *Agent, args []string, out io.Writer) error {
 				return cmdMemory(a, append([]string{"profile"}, args...), out)
 			},
@@ -5638,23 +5638,133 @@ func cmdMemoryRecall(a *Agent, args []string, out io.Writer, store *MemoryStore)
 	return nil
 }
 
-// cmdMemoryProfile dispatches /memory profile show|update|use.
+// cmdMemoryProfile dispatches /memory profile subcommands.
 func cmdMemoryProfile(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
-	sub := "show"
+	sub := "list"
 	if len(args) > 0 {
 		sub = args[0]
 	}
 	switch sub {
+	case "list":
+		return cmdMemoryProfileList(a, args[1:], out, store)
 	case "show":
-		return cmdMemoryList(a, []string{"--type", string(MemoryTypeWorkspaceProfile)}, out, store)
+		return cmdMemoryProfileShowContent(a, out, store)
+	case "edit":
+		return cmdMemoryProfileUpdate(a, out, store)
 	case "update":
+		fmt.Fprintln(out, dim("  ⚠  /memory profile update is deprecated; use /memory profile edit"))
 		return cmdMemoryProfileUpdate(a, out, store)
 	case "use":
 		return cmdMemoryProfileUse(a, args[1:], out, store)
+	case "rename":
+		return cmdMemoryProfileRename(a, args[1:], out, store)
 	default:
-		fmt.Fprintf(out, "Usage: /memory profile <show|update|use> [name]\n")
+		fmt.Fprintf(out, "Usage: /memory profile <list|show|edit|use|rename> [args...]\n")
 		return nil
 	}
+}
+
+// cmdMemoryProfileList lists active and archived workspace profiles (old "show" behavior).
+func cmdMemoryProfileList(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	return cmdMemoryList(a, append([]string{"--type", string(MemoryTypeWorkspaceProfile)}, args...), out, store)
+}
+
+// cmdMemoryProfileShowContent prints the full content of the active workspace profile.
+func cmdMemoryProfileShowContent(a *Agent, out io.Writer, store *MemoryStore) error {
+	metas, err := store.List(string(MemoryTypeWorkspaceProfile))
+	if err != nil {
+		return err
+	}
+	if len(metas) == 0 {
+		fmt.Fprintln(out, "  No workspace profiles found. Run /profile use to set one.")
+		return nil
+	}
+	active := metas[0]
+	doc, err := store.ByID(active.ID)
+	if err != nil {
+		return fmt.Errorf("profile show: %w", err)
+	}
+	if doc == nil {
+		fmt.Fprintln(out, "  Profile document not found on disk.")
+		return nil
+	}
+	fmt.Fprintf(out, "\nActive workspace profile: %s (%s)\n\n", active.Description, active.ID)
+	fmt.Fprintln(out, strings.Repeat("─", 60))
+	fmt.Fprintln(out, strings.TrimSpace(doc.FountainBody))
+	fmt.Fprintln(out, strings.Repeat("─", 60))
+
+	// RAG context summary — shown when a store is active and has chunks.
+	if a.Rag != nil {
+		if n, err := a.Rag.Count(); err == nil && n > 0 {
+			storeName := ""
+			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+				storeName = entry.Name
+			}
+			if a.RagOn {
+				fmt.Fprintf(out, "\nRAG context: %s (%d chunk(s), on)\n", storeName, n)
+			} else {
+				fmt.Fprintf(out, "\nRAG context: %s (%d chunk(s), off — /rag on to enable)\n", storeName, n)
+			}
+		}
+	}
+	return nil
+}
+
+// cmdMemoryProfileRename updates the description/title of the active workspace profile.
+func cmdMemoryProfileRename(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /memory profile rename NAME")
+		return nil
+	}
+	newName := strings.Join(args, " ")
+	metas, err := store.List(string(MemoryTypeWorkspaceProfile))
+	if err != nil || len(metas) == 0 {
+		fmt.Fprintln(out, "  No active workspace profile to rename.")
+		return nil
+	}
+	active := metas[0]
+	doc, err := store.ByID(active.ID)
+	if err != nil {
+		return fmt.Errorf("profile rename: %w", err)
+	}
+	if doc == nil {
+		fmt.Fprintln(out, "  Profile document not found on disk.")
+		return nil
+	}
+	doc.Meta.Description = newName
+	doc.FountainBody = rewriteProfileTitle(doc.FountainBody, newName)
+	var embedder Embedder
+	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+		embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+	}
+	if err := store.Save(doc, embedder); err != nil {
+		return fmt.Errorf("profile rename: %w", err)
+	}
+	fmt.Fprintf(out, green("✓")+" Workspace renamed to %q\n", newName)
+	return nil
+}
+
+// rewriteProfileTitle replaces the TITLE: field or INT. scene heading in a
+// Fountain profile body with newName. TITLE: takes priority; if absent, the
+// INT. WORKSPACE PROFILE line is updated (using an uppercased name).
+func rewriteProfileTitle(body, newName string) string {
+	lines := strings.Split(body, "\n")
+	upper := strings.ToUpper(newName)
+	// First pass: prefer the explicit TITLE: field.
+	for i, line := range lines {
+		if strings.HasPrefix(line, "TITLE:") {
+			lines[i] = "TITLE: " + newName
+			return strings.Join(lines, "\n")
+		}
+	}
+	// Second pass: fall back to the INT. scene heading.
+	for i, line := range lines {
+		if strings.HasPrefix(line, "INT. WORKSPACE PROFILE") {
+			lines[i] = "INT. WORKSPACE PROFILE - " + upper
+			return strings.Join(lines, "\n")
+		}
+	}
+	return body
 }
 
 // cmdMemoryProfileUse switches to a new workspace profile:

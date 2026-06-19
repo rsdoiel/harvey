@@ -2193,14 +2193,16 @@ Fountain files in agents/memories/ inside the workspace.
 
   profile show|update|use [name]
         Manage the workspace profile.
-        "show"   — lists workspace_profile memories (equivalent to /memory list
-                   --type workspace_profile).
-        "update" — opens the most recent profile in $EDITOR and re-saves it.
-        "use"    — switches to a new profile: writes a handoff document to
+        "list"   — list active and archived profiles (IDs + descriptions).
+        "show"   — print the full content of the active profile document.
+        "edit"   — open the active profile in $EDITOR and re-save on close.
+        "use"    — switch to a new profile: writes a handoff document to
                    agents/hand-off/, archives the current profile, selects a
                    template (by name or interactive picker), saves it as the
                    new profile, and resets history so the new context injects
                    on the next turn. Alias: /profile use [name].
+        "rename" — rename the workspace in the active profile document.
+        "update" — deprecated alias for "edit".
 
 # MEMORY TYPES
 
@@ -2293,8 +2295,11 @@ memory before the review card is displayed.
   /memory forget old_pattern_a1b2c3
   /memory status
   /memory recall git repository error
+  /memory profile list
   /memory profile show
-  /memory profile update
+  /memory profile edit
+  /memory profile use web-developer
+  /memory profile rename "Harvey Web Developer"
 `
 
 	PipelineHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
@@ -2604,6 +2609,9 @@ Type /help inside the session for available slash commands.
 --record-file FILE
 : path for the auto-recording file (implies --record)
 
+--resume
+: resume the most recent session automatically (no argument needed)
+
 --continue FILE
 : load conversation history from a Fountain recording and open the REPL
 
@@ -2842,12 +2850,14 @@ Retrieval from all three silos is unified:
   /memory recall <query>   — search all three silos, print ranked results
   /recall <query>          — alias for /memory recall
 
-  /profile <use|show|update> [name]
+  /profile <list|show|edit|use|rename> [args...]
                            — alias for /memory profile (manage workspace profile)
+  /profile list            — list active and archived profiles
+  /profile show            — print full content of the active profile
+  /profile edit            — open active profile in $EDITOR
   /profile use [name]      — switch profile: saves handoff, archives old profile,
                              selects new template, resets history
-  /profile show            — list active workspace_profile memories
-  /profile update          — open most recent profile in $EDITOR
+  /profile rename NAME     — rename the workspace in the active profile
 
 
 # CHECKING WHAT YOU HAVE

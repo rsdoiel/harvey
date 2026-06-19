@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +15,29 @@ import (
 	"strings"
 	"time"
 )
+
+/** FindFreePort asks the OS for an available TCP port by briefly binding to
+ * :0, then returns the assigned port number. Used to select a distinct port
+ * for an assay llamafile run so it does not conflict with a running Harvey
+ * session on the default llamafile port.
+ *
+ * Returns:
+ *   int   — a free port number.
+ *   error — if no port could be obtained.
+ *
+ * Example:
+ *   port, err := FindFreePort()
+ *   url := fmt.Sprintf("http://localhost:%d", port)
+ */
+func FindFreePort() (int, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, fmt.Errorf("find free port: %w", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	return port, nil
+}
 
 /** ProbeLlamafile returns true if a llamafile HTTP server is reachable at
  * baseURL. It sends a GET request to the /v1/models endpoint with a short

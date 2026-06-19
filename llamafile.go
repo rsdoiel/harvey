@@ -8,14 +8,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 // llamafileModelName derives a display/registry name from a llamafile binary
-// path by stripping the directory and the ".llamafile" suffix.
+// path by stripping the directory and known llamafile suffixes. Suffixes are
+// stripped longest-first so ".llamafile.exe" collapses fully to the stem.
 func llamafileModelName(path string) string {
 	name := filepath.Base(path)
-	return strings.TrimSuffix(name, ".llamafile")
+	name = strings.TrimSuffix(name, ".llamafile.exe")
+	name = strings.TrimSuffix(name, ".exe")
+	name = strings.TrimSuffix(name, ".llamafile")
+	return name
 }
 
 /** DefaultLlamafileModelsDir returns the default discovery directory ($HOME/Models).
@@ -50,9 +55,10 @@ func LlamafileModelNameFromPath(path string) string {
 	return llamafileModelName(path)
 }
 
-// scanLlamafileModels returns the absolute paths of all *.llamafile files
-// found directly inside dir. Returns nil when dir does not exist or cannot
-// be read.
+// scanLlamafileModels returns the absolute paths of all llamafile binaries
+// found directly inside dir. Matches .llamafile (all platforms),
+// .llamafile.exe (all platforms), and plain .exe (Windows only).
+// Returns nil when dir does not exist or cannot be read.
 func scanLlamafileModels(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -60,8 +66,14 @@ func scanLlamafileModels(dir string) []string {
 	}
 	var paths []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".llamafile") {
-			paths = append(paths, filepath.Join(dir, e.Name()))
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasSuffix(name, ".llamafile") ||
+			strings.HasSuffix(name, ".llamafile.exe") ||
+			(runtime.GOOS == "windows" && strings.HasSuffix(name, ".exe")) {
+			paths = append(paths, filepath.Join(dir, name))
 		}
 	}
 	return paths

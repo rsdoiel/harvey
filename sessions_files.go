@@ -95,6 +95,27 @@ func ExtractModelFromSession(path string) (string, error) {
 	return model, nil
 }
 
+/** MostRecentSession returns the path of the most recently modified .spmd or
+ * .fountain file in sessDir, or "" if the directory is empty or does not exist.
+ * It delegates to ListSessionFiles, which returns files sorted newest-first.
+ *
+ * Parameters:
+ *   sessDir (string) — absolute path to the sessions directory.
+ *
+ * Returns:
+ *   string — absolute path to the most recent session file, or "".
+ *
+ * Example:
+ *   path := MostRecentSession("/workspace/agents/sessions")
+ */
+func MostRecentSession(sessDir string) string {
+	files, err := ListSessionFiles(sessDir)
+	if err != nil || len(files) == 0 {
+		return ""
+	}
+	return files[0].Path
+}
+
 /** ResolveHandoffDir returns the absolute path to the hand-off directory
  * (agents/hand-off/ inside the workspace), creating it if it does not exist.
  * Hand-off documents are written there by /profile use when switching profiles.

@@ -165,6 +165,7 @@ func parseCommandLine(line string) (program string, args []string, err error) {
 
 func bold(s string) string    { return ansiBold + s + ansiReset }
 func dim(s string) string     { return ansiDim + s + ansiReset }
+func dimGreen(s string) string { return "\033[2;32m" + s + ansiReset }
 func green(s string) string   { return ansiGreen + s + ansiReset }
 func yellow(s string) string  { return ansiYellow + s + ansiReset }
 func red(s string) string     { return ansiRed + s + ansiReset }
@@ -853,6 +854,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	if a.Tools != nil && a.Config.ToolsEnabled {
 		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 		ex.DebugLog = a.DebugLog
+		ex.Status = sp
 		var updatedHistory []Message
 		updatedHistory, stats, chatErr = ex.RunToolLoop(ctx, a.History, &buf)
 		if chatErr == nil {

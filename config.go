@@ -113,6 +113,7 @@ type Config struct {
 	AutoRecord          bool            // record every session to a .spmd file automatically
 	RecordPath          string          // file path for auto-recording; empty = auto-generated timestamped name
 	ContinuePath        string          // session file to load as pre-history when starting the REPL
+	ResumeLatest        bool            // --resume: auto-select most recent session file
 	ReplayPath          string          // session file to replay instead of entering the REPL
 	ReplayOutputPath    string          // output path for replay recording; empty = auto-generated
 	ReplayContinue      bool            // when true, drop into the REPL after replay finishes
