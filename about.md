@@ -1,7 +1,7 @@
 ---
 title: harvey
 abstract: |-
-  Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.
+  Harvey is an agent REPL written in Go and designed to use Llamafile models or Ollama server to access language models locally. It is a terminal based application.
 
   The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.
 authors:
@@ -46,7 +46,7 @@ About this software
 
 
 
-Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.
+Harvey is an agent REPL written in Go and designed to use Llamafile models or Ollama server to access language models locally. It is a terminal based application.
 
 The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.
 
@@ -63,12 +63,13 @@ The Harvey name was inspired by the play of that name by Mary Chase. I saw paral
 
 ## Software Requirements
 
-- Go >= 1.26.4
-- CMTools >= 0.0.45
+- Llamafile v0.10 models or Ollama plus Ollama models
 
 
 ## Software Suggestions
 
+- Go >= 1.26.4
+- CMTools >= 0.0.45
 - Pandoc >= 3.9
 - GNU Make >= 3.8
 

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-spinner-ux-status-messages-design">Harvey Spinner UX
+&amp; Status Messages — Design</h1>
+<p><strong>Status (2026-06-18):</strong> Design settled. See <a
+href="spinner-ux-plan.html">spinner-ux-plan.md</a> for the
+implementation plan.</p>
+<p>This document covers two related UX improvements: 1. Dynamic status
+messages in the spinner (what Harvey is doing right now). 2. Tab
+completion for slash commands (noted but deferred — see end of
+document).</p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>Harvey’s spinner shows Edward Lear quotes and a timer while waiting.
+Users watching a long LLM request have no way to tell whether Harvey is:
+- Embedding a query for RAG retrieval - Calling a built-in tool -
+Waiting for the model to respond - Injecting memory context</p>
+<p>Claude Code and similar tools update a status line as work
+progresses. Users familiar with those tools expect to see live feedback.
+The Lear quotes are distinctive and add personality, but they do not
+help the user decide whether to wait or cancel.</p>
+<hr />
+<h2 id="design-principles">Design Principles</h2>
+<ol type="1">
+<li><p><strong>Lear messages are the default.</strong> When Harvey has
+nothing specific to report, the spinner shows a Lear quote as today.
+Status messages are additions, not replacements.</p></li>
+<li><p><strong>Status messages are transient.</strong> A status like
+“Calling read_file…” appears on the message line briefly. When the
+operation completes or the next Lear tick fires, the line reverts to a
+Lear quote. This prevents stale status messages from persisting after
+the operation ends.</p></li>
+<li><p><strong>Non-blocking updates.</strong> Callers send status
+updates without waiting for the spinner goroutine. If a status is sent
+faster than the ticker can display it, only the most recent is
+shown.</p></li>
+<li><p><strong>No structural change to spinner layout.</strong> The
+three-line block (label / message / frame+timer) is preserved. Status
+messages occupy the message line (line 2), rendered in dim green to
+distinguish them visually from the colored Lear quotes.</p></li>
+</ol>
+<hr />
+<h2 id="spinner-api-changes">Spinner API Changes</h2>
+<h3 id="new-field-statusch-chan-string">New field:
+<code>StatusCh chan string</code></h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Spinner <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    out      io<span class="op">.</span>Writer</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    estimate time<span class="op">.</span>Duration</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    label    <span class="dt">string</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    done     <span class="kw">chan</span> <span class="kw">struct</span><span class="op">{}</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    stopped  <span class="kw">chan</span> <span class="kw">struct</span><span class="op">{}</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    StatusCh <span class="kw">chan</span> <span class="dt">string</span>  <span class="co">// new: receives status update strings</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>StatusCh</code> is a buffered channel with capacity 1, created
+in <code>newSpinner</code>. The goroutine drains it on each frame
+tick.</p>
+<h3 id="new-method-updatestatusmsg-string">New method:
+<code>UpdateStatus(msg string)</code></h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>s <span class="op">*</span>Spinner<span class="op">)</span> UpdateStatus<span class="op">(</span>msg <span class="dt">string</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">select</span> <span class="op">{</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> s<span class="op">.</span>StatusCh <span class="op">&lt;-</span> msg<span class="op">:</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">default</span><span class="op">:</span> <span class="co">// drop if channel is full; next tick will read the latest</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Non-blocking. If the channel is full (a previous update hasn’t been
+read yet), the new update replaces it — only the latest matters.</p>
+<h3 id="goroutine-changes">Goroutine changes</h3>
+<p>The <code>run()</code> goroutine adds a
+<code>lastStatus string</code> local variable.</p>
+<p>On each frame tick: 1. Drain <code>StatusCh</code> into
+<code>lastStatus</code> (non-blocking read). 2. If
+<code>lastStatus != ""</code>, render line 2 as
+<code>dim("  ⎿") + " " + dimGreen(lastStatus)</code>. 3. On the next
+message tick (<code>msgTick.C</code>), clear <code>lastStatus</code>
+(revert to Lear). This means a status message is shown for at most 6
+seconds (the existing Lear rotation interval) before Lear resumes.</p>
+<p>No change to the timer or frame animation.</p>
+<h3 id="visual-result">Visual result</h3>
+<pre><code>Ollama (qwen2.5-coder:7b)
+  ⎿ Calling read_file…          ← dim green; replaces Lear quote
+     ⎿ ⠸ [3s / ~8s]</code></pre>
+<p>After the Lear rotation fires (or the tool call completes and no new
+status arrives):</p>
+<pre><code>Ollama (qwen2.5-coder:7b)
+  ⎿ There was an old man with a beard   ← Lear quote resumes
+     ⎿ ⠼ [9s / ~8s]</code></pre>
+<hr />
+<h2 id="status-message-injection-points">Status Message Injection
+Points</h2>
+<p>The following call sites in <code>terminal.go</code> send status
+updates:</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Event</th>
+<th scope="col">Status string</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAG embedding start</td>
+<td><code>"Searching knowledge base…"</code></td>
+</tr>
+<tr>
+<td>RAG injection complete</td>
+<td><code>"Found N relevant chunks"</code> (or empty if 0)</td>
+</tr>
+<tr>
+<td>Memory context injection</td>
+<td><code>"Injecting memory context…"</code></td>
+</tr>
+<tr>
+<td>Tool call start</td>
+<td><code>"Calling &lt;tool-name&gt;…"</code></td>
+</tr>
+<tr>
+<td>Tool call complete (success)</td>
+<td><code>"&lt;tool-name&gt; done"</code></td>
+</tr>
+<tr>
+<td>Tool call complete (error)</td>
+<td><code>"&lt;tool-name&gt; failed"</code></td>
+</tr>
+<tr>
+<td>Model switched mid-session</td>
+<td><code>"Switching to &lt;model&gt;…"</code></td>
+</tr>
+</tbody>
+</table>
+<p>The spinner is only running during LLM requests (between the spinner
+start and stop calls). Tool calls that happen <em>inside</em> a
+<code>RunToolLoop</code> iteration fire while the spinner is live;
+updates are safe because <code>UpdateStatus</code> is non-blocking.</p>
+<p>The spinner is not active during slash command execution (no LLM
+request is in flight), so status updates during <code>/rag ingest</code>
+or <code>/memory mine</code> are out of scope. Those operations already
+print their own progress lines.</p>
+<hr />
+<h2 id="tab-completion-deferred">Tab Completion (Deferred)</h2>
+<p>The TODO also requests better command tab completion to save typing.
+This is a more significant change:</p>
+<ul>
+<li>Harvey’s <code>termlib.LineEditor</code> handles raw terminal input.
+Tab completion requires the editor to detect a <code>\t</code> keypress
+and query the command table for completions.</li>
+<li>Prefix matching is straightforward for top-level commands.
+Subcommand completion (e.g., <code>/memory &lt;tab&gt;</code> →
+<code>mine list show flag forget…</code>) needs the command registry to
+expose a completion interface.</li>
+<li>Path completion (for commands that take file arguments like
+<code>/read FILE</code>) requires filesystem scanning integrated with
+the line editor.</li>
+</ul>
+<p>This is a separate project affecting
+<code>termlib/lineeditor.go</code> and <code>commands.go</code> (or a
+new <code>completions.go</code>). It is out of scope for this work item.
+It should be designed as its own document when prioritized.</p>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li><strong>Tab completion</strong> — separate design effort, noted
+above.</li>
+<li><strong>Status messages during <code>/rag ingest</code> or
+<code>/memory mine</code></strong> — these operations run their own
+progress output; spinner integration is not needed.</li>
+<li><strong>Persistent status log</strong> — status updates are
+ephemeral; they are not written to the debug log. The debug log already
+records tool call events via <code>LogToolCall</code>.</li>
+<li><strong>Color configuration</strong> — status messages are always
+dim green. No user-configurable color theming.</li>
+</ul>
+</section>
+</body>
+</html>

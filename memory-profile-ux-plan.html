@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-memory-profile-ux-implementation-plan">Harvey Memory
+Profile UX — Implementation Plan</h1>
+<p>See <a
+href="memory-profile-ux-design.html">memory-profile-ux-design.md</a> for
+the full design rationale and decisions.</p>
+<p>Phases are ordered so each compiles, passes tests, and delivers
+standalone value. Phases A and B are independent; Phase C depends on
+both.</p>
+<hr />
+<h2 id="phase-a-command-set-expansion-list-show-edit-rename">Phase A —
+Command Set Expansion (<code>list</code>, <code>show</code>,
+<code>edit</code>, <code>rename</code>)</h2>
+<p><strong>Goal:</strong> Add the missing subcommands and standardize
+naming. All changes are in <code>cmdMemoryProfile</code> and its
+helpers.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td>Update <code>cmdMemoryProfile</code> dispatch; add
+<code>cmdMemoryProfileList</code>,
+<code>cmdMemoryProfileShowContent</code>,
+<code>cmdMemoryProfileRename</code>; keep <code>update</code> as
+deprecated alias for <code>edit</code></td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Update <code>/memory</code> and <code>/profile</code> help text to
+list all five subcommands</td>
+</tr>
+<tr>
+<td><code>harvey-memory.7.md</code></td>
+<td>Update man page SUBCOMMANDS section</td>
+</tr>
+<tr>
+<td><code>commands_test.go</code></td>
+<td>Add tests for <code>list</code>, <code>show</code> (content),
+<code>edit</code> dispatch, <code>rename</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="cmdmemoryprofile-dispatch"><code>cmdMemoryProfile</code>
+dispatch</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> cmdMemoryProfile<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> args <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">,</span> store <span class="op">*</span>MemoryStore<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>args<span class="op">)</span> <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;Usage: /memory profile &lt;list|show|edit|use|rename&gt; [args...]&quot;</span><span class="op">)</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">switch</span> args<span class="op">[</span><span class="dv">0</span><span class="op">]</span> <span class="op">{</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;list&quot;</span><span class="op">:</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdMemoryProfileList<span class="op">(</span>a<span class="op">,</span> args<span class="op">[</span><span class="dv">1</span><span class="op">:],</span> out<span class="op">,</span> store<span class="op">)</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;show&quot;</span><span class="op">:</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdMemoryProfileShowContent<span class="op">(</span>a<span class="op">,</span> out<span class="op">,</span> store<span class="op">)</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;edit&quot;</span><span class="op">:</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdMemoryProfileUpdate<span class="op">(</span>a<span class="op">,</span> out<span class="op">,</span> store<span class="op">)</span> <span class="co">// renamed internally</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;update&quot;</span><span class="op">:</span> <span class="co">// deprecated alias</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> dim<span class="op">(</span><span class="st">&quot;  ⚠  /memory profile update is deprecated; use /memory profile edit&quot;</span><span class="op">))</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdMemoryProfileUpdate<span class="op">(</span>a<span class="op">,</span> out<span class="op">,</span> store<span class="op">)</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;use&quot;</span><span class="op">:</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdMemoryProfileUse<span class="op">(</span>a<span class="op">,</span> args<span class="op">[</span><span class="dv">1</span><span class="op">:],</span> out<span class="op">,</span> store<span class="op">)</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;rename&quot;</span><span class="op">:</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdMemoryProfileRename<span class="op">(</span>a<span class="op">,</span> args<span class="op">[</span><span class="dv">1</span><span class="op">:],</span> out<span class="op">,</span> store<span class="op">)</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">default</span><span class="op">:</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;Unknown profile subcommand %q</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> args<span class="op">[</span><span class="dv">0</span><span class="op">])</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;Usage: /memory profile &lt;list|show|edit|use|rename&gt; [args...]&quot;</span><span class="op">)</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3
+id="cmdmemoryprofilelist-replaces-old-show-behavior"><code>cmdMemoryProfileList</code>
+(replaces old <code>show</code> behavior)</h3>
+<p>Move the existing <code>show</code> implementation into a function
+named <code>cmdMemoryProfileList</code>. Output format unchanged — ID,
+description, status.</p>
+<h3
+id="cmdmemoryprofileshowcontent"><code>cmdMemoryProfileShowContent</code></h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> cmdMemoryProfileShowContent<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">,</span> store <span class="op">*</span>MemoryStore<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    profiles<span class="op">,</span> err <span class="op">:=</span> store<span class="op">.</span>List<span class="op">(</span><span class="dt">string</span><span class="op">(</span>MemoryTypeWorkspaceProfile<span class="op">))</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> err</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>profiles<span class="op">)</span> <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  No workspace profiles found. Run /profile use to set one.&quot;</span><span class="op">)</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    active <span class="op">:=</span> profiles<span class="op">[</span><span class="dv">0</span><span class="op">]</span> <span class="co">// List returns active first</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    doc<span class="op">,</span> err <span class="op">:=</span> store<span class="op">.</span>Load<span class="op">(</span>active<span class="op">.</span>ID<span class="op">)</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;profile show: %w&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">Active workspace profile: %s (%s)</span><span class="ch">\n\n</span><span class="st">&quot;</span><span class="op">,</span> active<span class="op">.</span>Description<span class="op">,</span> active<span class="op">.</span>ID<span class="op">)</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> strings<span class="op">.</span>Repeat<span class="op">(</span><span class="st">&quot;─&quot;</span><span class="op">,</span> <span class="dv">60</span><span class="op">))</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> <span class="dt">string</span><span class="op">(</span>doc<span class="op">))</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> strings<span class="op">.</span>Repeat<span class="op">(</span><span class="st">&quot;─&quot;</span><span class="op">,</span> <span class="dv">60</span><span class="op">))</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>If an active RAG store with chunks exists, append a RAG summary
+line:</p>
+<pre><code>RAG context: go-source (1,204 chunks, on)</code></pre>
+<p>This is read from <code>a.Config</code> and
+<code>a.RagStore</code>.</p>
+<h3 id="cmdmemoryprofilerename"><code>cmdMemoryProfileRename</code></h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> cmdMemoryProfileRename<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> args <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">,</span> store <span class="op">*</span>MemoryStore<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>args<span class="op">)</span> <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;Usage: /memory profile rename NAME&quot;</span><span class="op">)</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    newName <span class="op">:=</span> strings<span class="op">.</span>Join<span class="op">(</span>args<span class="op">,</span> <span class="st">&quot; &quot;</span><span class="op">)</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    profiles<span class="op">,</span> err <span class="op">:=</span> store<span class="op">.</span>List<span class="op">(</span><span class="dt">string</span><span class="op">(</span>MemoryTypeWorkspaceProfile<span class="op">))</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">||</span> <span class="bu">len</span><span class="op">(</span>profiles<span class="op">)</span> <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  No active workspace profile to rename.&quot;</span><span class="op">)</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    active <span class="op">:=</span> profiles<span class="op">[</span><span class="dv">0</span><span class="op">]</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    doc<span class="op">,</span> err <span class="op">:=</span> store<span class="op">.</span>Load<span class="op">(</span>active<span class="op">.</span>ID<span class="op">)</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;profile rename: %w&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Replace the INT. scene heading or TITLE: field.</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    updated <span class="op">:=</span> rewriteProfileTitle<span class="op">(</span>doc<span class="op">,</span> newName<span class="op">)</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">:=</span> store<span class="op">.</span>SaveWithID<span class="op">(</span>active<span class="op">.</span>ID<span class="op">,</span> updated<span class="op">,</span> MemoryTypeWorkspaceProfile<span class="op">,</span> newName<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;profile rename: %w&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> green<span class="op">(</span><span class="st">&quot;✓&quot;</span><span class="op">)+</span><span class="st">&quot; Workspace renamed to %q</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> newName<span class="op">)</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>rewriteProfileTitle(doc []byte, newName string) []byte</code> —
+a small helper that rewrites the <code>TITLE:</code> line or the
+<code>INT. WORKSPACE PROFILE - ...</code> line. Strategy: scan
+line-by-line; replace the first line matching either pattern; return the
+modified content.</p>
+<p><code>store.SaveWithID</code> is a new method on
+<code>MemoryStore</code> that overwrites an existing document by ID
+rather than creating a new one. This may already exist as an unexported
+method; if not, it is a small addition.</p>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>/memory profile list</code> shows IDs and descriptions.</li>
+<li><code>/memory profile show</code> prints full content of the active
+profile.</li>
+<li><code>/memory profile edit</code> opens <code>$EDITOR</code>
+(existing behavior, renamed entry point).</li>
+<li><code>/memory profile update</code> prints deprecation warning then
+behaves like <code>edit</code>.</li>
+<li><code>/memory profile rename "New Name"</code> updates the profile’s
+title and the description shown by <code>list</code> and
+<code>/status</code>.</li>
+<li>All subcommands also work via
+<code>/profile &lt;sub&gt;</code>.</li>
+</ul>
+<hr />
+<h2 id="phase-b-help-text-updates">Phase B — Help Text Updates</h2>
+<p><strong>Goal:</strong> Update all help text and the man page to
+reflect the new subcommand set.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Update <code>MemoryHelpText</code> to list all five subcommands with
+one-line descriptions</td>
+</tr>
+<tr>
+<td><code>harvey-memory.7.md</code></td>
+<td>Rewrite SUBCOMMANDS section for <code>/memory profile</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="memory-help-text-excerpt-updated">Memory help text excerpt
+(updated)</h3>
+<pre><code>/memory profile list           — list active and archived profiles
+/memory profile show           — print the content of the active profile
+/memory profile edit           — open the active profile in $EDITOR
+/memory profile use [NAME]     — switch to a template or profile
+/memory profile rename NAME    — rename the workspace in the active profile
+
+  /profile &lt;sub&gt;               — alias for /memory profile &lt;sub&gt;</code></pre>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>/help memory</code> shows the updated subcommand list.</li>
+<li><code>harvey help memory</code> (CLI form) shows the same.</li>
+<li>Man page renders correctly with <code>pandoc</code>.</li>
+</ul>
+<hr />
+<h2 id="phase-c-rag-summary-in-show-output">Phase C — RAG Summary in
+<code>show</code> Output</h2>
+<p><strong>Goal:</strong> When <code>/memory profile show</code> is
+called and an active RAG store with chunks exists, append a one-line RAG
+context summary.</p>
+<p>This phase depends on Phase A (the
+<code>cmdMemoryProfileShowContent</code> function).</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td>In <code>cmdMemoryProfileShowContent</code>, add RAG summary after
+the profile content block</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rag-summary-logic">RAG summary logic</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co">// After printing the profile content:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> a<span class="op">.</span>RagStore <span class="op">!=</span> <span class="ot">nil</span> <span class="op">&amp;&amp;</span> a<span class="op">.</span>RagOn <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    n<span class="op">,</span> _ <span class="op">:=</span> a<span class="op">.</span>RagStore<span class="op">.</span>ChunkCount<span class="op">()</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> n <span class="op">&gt;</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>        storeName <span class="op">:=</span> a<span class="op">.</span>Config<span class="op">.</span>ActiveRagStore</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">RAG context: %s (%d chunk(s), on)</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> storeName<span class="op">,</span> n<span class="op">)</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> a<span class="op">.</span>RagStore <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    n<span class="op">,</span> _ <span class="op">:=</span> a<span class="op">.</span>RagStore<span class="op">.</span>ChunkCount<span class="op">()</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> n <span class="op">&gt;</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>        storeName <span class="op">:=</span> a<span class="op">.</span>Config<span class="op">.</span>ActiveRagStore</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">RAG context: %s (%d chunk(s), off — /rag on to enable)</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> storeName<span class="op">,</span> n<span class="op">)</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>/memory profile show</code> with an active RAG store appends
+the summary line.</li>
+<li><code>/memory profile show</code> with no active store shows no RAG
+line.</li>
+</ul>
+<hr />
+<h2 id="dependency-graph">Dependency Graph</h2>
+<pre><code>Phase A (command set expansion)
+    └─► Phase C (RAG summary in show)
+
+Phase B (help text)
+    └─► independent; can land before or after A</code></pre>
+<hr />
+<h2 id="open-questions">Open Questions</h2>
+<ul>
+<li><code>store.SaveWithID</code> — verify whether
+<code>MemoryStore</code> already has a method to overwrite a document by
+ID, or whether it needs to be added. Check <code>memory_store.go</code>
+before implementing Phase A.</li>
+</ul>
+</section>
+</body>
+</html>

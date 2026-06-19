@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-s3-client-replacement-minio-aws-sdk-go-v2-design">Harvey
+S3 Client Replacement (MinIO → aws-sdk-go-v2) — Design</h1>
+<p><strong>Status (2026-06-18):</strong> Design settled. See <a
+href="s3-replacement-plan.html">s3-replacement-plan.md</a> for the
+implementation plan.</p>
+<hr />
+<h2 id="background">Background</h2>
+<p>Harvey’s <code>remote_s3.go</code> implements
+<code>RemoteReader</code> for <code>s3://</code> URIs using
+<code>github.com/minio/minio-go/v7</code>. The MinIO Go client library
+has moved to a closed-source license, making it incompatible with
+Harvey’s AGPL-3.0 codebase and the open-source-first philosophy of the
+Laboratory workspace.</p>
+<p>The three operations Harvey uses are:</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Harvey method</th>
+<th scope="col">MinIO call</th>
+<th scope="col">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Stat</code></td>
+<td><code>client.StatObject</code></td>
+<td>Get metadata for one S3 object</td>
+</tr>
+<tr>
+<td><code>Get</code></td>
+<td><code>client.GetObject</code></td>
+<td>Download one S3 object to <code>io.Writer</code></td>
+</tr>
+<tr>
+<td><code>List</code></td>
+<td><code>client.ListObjects</code></td>
+<td>Iterate objects with a prefix</td>
+</tr>
+</tbody>
+</table>
+<p>These are a small, stable subset of the S3 API surface.</p>
+<hr />
+<h2 id="replacement-aws-sdk-go-v2">Replacement: aws-sdk-go-v2</h2>
+<h3 id="why-aws-sdk-go-v2">Why aws-sdk-go-v2</h3>
+<p>The AWS SDK for Go v2 (<code>github.com/aws/aws-sdk-go-v2</code>)
+is:</p>
+<ul>
+<li><strong>Apache-2.0 licensed</strong> — compatible with
+AGPL-3.0.</li>
+<li><strong>S3-compatible</strong> — works with AWS S3, MinIO server,
+Cloudflare R2, and any other service that implements the S3 protocol,
+via the <code>BaseEndpoint</code> option on the client.</li>
+<li><strong>Actively maintained</strong> — AWS’s first-party SDK;
+unlikely to be abandoned or re-licensed.</li>
+<li><strong>Modular</strong> — only the modules actually needed are
+imported, minimizing the dependency surface.</li>
+</ul>
+<h3 id="module-imports">Module imports</h3>
+<p>Replace:</p>
+<pre><code>github.com/minio/minio-go/v7        (removed)
+github.com/minio/minio-go/v7/pkg/credentials  (removed)</code></pre>
+<p>Add:</p>
+<pre><code>github.com/aws/aws-sdk-go-v2/aws
+github.com/aws/aws-sdk-go-v2/config
+github.com/aws/aws-sdk-go-v2/service/s3</code></pre>
+<hr />
+<h2 id="api-mapping">API Mapping</h2>
+<h3 id="client-construction">Client construction</h3>
+<p>Current (MinIO):</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>client<span class="op">,</span> err <span class="op">:=</span> minio<span class="op">.</span>New<span class="op">(</span>endpoint<span class="op">,</span> <span class="op">&amp;</span>minio<span class="op">.</span>Options<span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    Creds<span class="op">:</span>        credentials<span class="op">.</span>NewStaticV4<span class="op">(</span>accessKey<span class="op">,</span> secretKey<span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">),</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    Secure<span class="op">:</span>       strings<span class="op">.</span>HasPrefix<span class="op">(</span>endpoint<span class="op">,</span> <span class="st">&quot;https://&quot;</span><span class="op">),</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    BucketLookup<span class="op">:</span> minio<span class="op">.</span>BucketLookupPath<span class="op">,</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="op">})</span></span></code></pre></div>
+<p>Replacement (aws-sdk-go-v2):</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>cfg<span class="op">,</span> err <span class="op">:=</span> config<span class="op">.</span>LoadDefaultConfig<span class="op">(</span>ctx<span class="op">,</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    config<span class="op">.</span>WithRegion<span class="op">(</span>region<span class="op">),</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    config<span class="op">.</span>WithCredentialsProvider<span class="op">(</span>credentials<span class="op">.</span>NewStaticCredentialsProvider<span class="op">(</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        accessKey<span class="op">,</span> secretKey<span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">,</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">)),</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>client <span class="op">:=</span> s3<span class="op">.</span>NewFromConfig<span class="op">(</span>cfg<span class="op">,</span> <span class="kw">func</span><span class="op">(</span>o <span class="op">*</span>s3<span class="op">.</span>Options<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    o<span class="op">.</span>BaseEndpoint <span class="op">=</span> aws<span class="op">.</span>String<span class="op">(</span>endpoint<span class="op">)</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    o<span class="op">.</span>UsePathStyle <span class="op">=</span> <span class="ot">true</span>  <span class="co">// required for non-AWS endpoints</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="op">})</span></span></code></pre></div>
+<p><code>region</code> defaults to <code>"us-east-1"</code> when not
+specified in the URI or config. Non-AWS S3-compatible services (MinIO,
+R2) accept any region string.</p>
+<h3 id="statobject-headobject">StatObject → HeadObject</h3>
+<p>Current:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>info<span class="op">,</span> err <span class="op">:=</span> r<span class="op">.</span>client<span class="op">.</span>StatObject<span class="op">(</span>ctx<span class="op">,</span> bucket<span class="op">,</span> key<span class="op">,</span> minio<span class="op">.</span>StatObjectOptions<span class="op">{})</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="co">// info.Size, info.LastModified, info.ContentType</span></span></code></pre></div>
+<p>Replacement:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>resp<span class="op">,</span> err <span class="op">:=</span> r<span class="op">.</span>client<span class="op">.</span>HeadObject<span class="op">(</span>ctx<span class="op">,</span> <span class="op">&amp;</span>s3<span class="op">.</span>HeadObjectInput<span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    Bucket<span class="op">:</span> aws<span class="op">.</span>String<span class="op">(</span>bucket<span class="op">),</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    Key<span class="op">:</span>    aws<span class="op">.</span>String<span class="op">(</span>key<span class="op">),</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="op">})</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">// *resp.ContentLength, *resp.LastModified, *resp.ContentType</span></span></code></pre></div>
+<h3 id="getobject">GetObject</h3>
+<p>Current:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>obj<span class="op">,</span> err <span class="op">:=</span> r<span class="op">.</span>client<span class="op">.</span>GetObject<span class="op">(</span>ctx<span class="op">,</span> bucket<span class="op">,</span> key<span class="op">,</span> minio<span class="op">.</span>GetObjectOptions<span class="op">{})</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>_<span class="op">,</span> err <span class="op">=</span> io<span class="op">.</span>Copy<span class="op">(</span>dst<span class="op">,</span> obj<span class="op">)</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>obj<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
+<p>Replacement:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>resp<span class="op">,</span> err <span class="op">:=</span> r<span class="op">.</span>client<span class="op">.</span>GetObject<span class="op">(</span>ctx<span class="op">,</span> <span class="op">&amp;</span>s3<span class="op">.</span>GetObjectInput<span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    Bucket<span class="op">:</span> aws<span class="op">.</span>String<span class="op">(</span>bucket<span class="op">),</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    Key<span class="op">:</span>    aws<span class="op">.</span>String<span class="op">(</span>key<span class="op">),</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="op">})</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>_<span class="op">,</span> err <span class="op">=</span> io<span class="op">.</span>Copy<span class="op">(</span>dst<span class="op">,</span> resp<span class="op">.</span>Body<span class="op">)</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>resp<span class="op">.</span>Body<span class="op">.</span>Close<span class="op">()</span></span></code></pre></div>
+<h3 id="listobjects-listobjectsv2">ListObjects → ListObjectsV2</h3>
+<p>Current (uses <code>ListObjects</code> which maps to the older S3
+list API):</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> obj <span class="op">:=</span> <span class="kw">range</span> r<span class="op">.</span>client<span class="op">.</span>ListObjects<span class="op">(</span>ctx<span class="op">,</span> bucket<span class="op">,</span> minio<span class="op">.</span>ListObjectsOptions<span class="op">{</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    Prefix<span class="op">:</span>    prefix<span class="op">,</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    Recursive<span class="op">:</span> <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="op">})</span> <span class="op">{</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> obj<span class="op">.</span>Err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span> <span class="cf">return</span> obj<span class="op">.</span>Err <span class="op">}</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">// obj.Key, obj.Size, obj.LastModified</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Replacement (uses <code>ListObjectsV2</code> paginator):</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>paginator <span class="op">:=</span> s3<span class="op">.</span>NewListObjectsV2Paginator<span class="op">(</span>r<span class="op">.</span>client<span class="op">,</span> <span class="op">&amp;</span>s3<span class="op">.</span>ListObjectsV2Input<span class="op">{</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    Bucket<span class="op">:</span> aws<span class="op">.</span>String<span class="op">(</span>bucket<span class="op">),</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    Prefix<span class="op">:</span> aws<span class="op">.</span>String<span class="op">(</span>prefix<span class="op">),</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="op">})</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> paginator<span class="op">.</span>HasMorePages<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    page<span class="op">,</span> err <span class="op">:=</span> paginator<span class="op">.</span>NextPage<span class="op">(</span>ctx<span class="op">)</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span> <span class="cf">return</span> err <span class="op">}</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> obj <span class="op">:=</span> <span class="kw">range</span> page<span class="op">.</span>Contents <span class="op">{</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>        <span class="co">// *obj.Key, *obj.Size, *obj.LastModified</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>ListObjectsV2</code> is the current S3 best practice;
+<code>ListObjects</code> (v1) is deprecated by AWS. Both are supported
+by all S3-compatible services.</p>
+<hr />
+<h2 id="configuration-changes">Configuration Changes</h2>
+<h3 id="harvey.yaml">harvey.yaml</h3>
+<p>No change to the user-visible configuration schema. The S3 remote
+configuration fields (<code>endpoint</code>, <code>bucket</code>,
+<code>access_key</code>, <code>secret_key</code>, <code>region</code>)
+remain the same.</p>
+<h3 id="credential-resolution">Credential resolution</h3>
+<p>The AWS SDK v2 credential chain reads from (in order): 1. Static
+credentials if <code>access_key</code> and <code>secret_key</code> are
+set in harvey.yaml. 2. <code>AWS_ACCESS_KEY_ID</code> and
+<code>AWS_SECRET_ACCESS_KEY</code> environment variables. 3.
+<code>~/.aws/credentials</code> shared credentials file. 4. IAM role
+credentials (EC2 instance roles, ECS task roles, etc.).</p>
+<p>This is a superset of MinIO client’s credential resolution. Users
+relying on environment variables continue to work unchanged.</p>
+<h3 id="region">Region</h3>
+<p>A new optional <code>region</code> field in the S3 remote config.
+Defaults to <code>"us-east-1"</code> when absent. Non-AWS services
+ignore the value.</p>
+<hr />
+<h2 id="error-handling">Error Handling</h2>
+<p>AWS SDK v2 returns typed errors. The two most important for Harvey’s
+use:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Situation</th>
+<th scope="col">AWS SDK error</th>
+<th scope="col">Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Object not found</td>
+<td><code>*types.NoSuchKey</code></td>
+<td>Return <code>ErrNotFound</code> (Harvey’s sentinel)</td>
+</tr>
+<tr>
+<td>Bucket not found</td>
+<td><code>*types.NoSuchBucket</code></td>
+<td>Return descriptive error with bucket name</td>
+</tr>
+<tr>
+<td>Credentials failed</td>
+<td><code>smithy.APIError</code> with code
+<code>"InvalidAccessKeyId"</code></td>
+<td>Return error with hint to check credentials</td>
+</tr>
+</tbody>
+</table>
+<p>Harvey’s <code>RemoteReader</code> interface returns plain
+<code>error</code>; the AWS error types are unwrapped internally in
+<code>remote_s3.go</code> and mapped to Harvey’s error vocabulary.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<p>The existing <code>remote_test.go</code> uses a mock HTTP server to
+simulate S3 responses. The test infrastructure does not change — it will
+be updated to serve responses compatible with the AWS SDK’s request
+format (V4 signed requests to an HTTP server). If the mock server is too
+complex to update, an integration test flag (<code>--integration</code>)
+can gate tests that require a real S3-compatible endpoint (e.g., a local
+MinIO server started for testing).</p>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li><strong>S3 write operations</strong> — Harvey’s
+<code>RemoteReader</code> is read-only. No PUT, DELETE, or multipart
+upload support is added.</li>
+<li><strong>Pre-signed URLs</strong> — not used by the current
+implementation.</li>
+<li><strong>S3 event notifications</strong> — not applicable.</li>
+<li><strong>Replacing other MinIO references</strong> — Harvey has no
+other MinIO imports. <code>remote_s3.go</code> is the entire blast
+radius.</li>
+</ul>
+</section>
+</body>
+</html>

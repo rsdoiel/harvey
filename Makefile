@@ -20,6 +20,9 @@ MAN_PAGES_3 = $(shell ls -1 *.3.md | sed -E 's/.3.md/.3/g')
 
 MAN_PAGES_7 = $(shell ls -1 *.7.md | sed -E 's/.7.md/.7/g')
 
+# Get list of help topics from harvey --help index
+HELP_TOPICS = $(shell ./bin/harvey --help index 2>/dev/null | sed -n '/^  [a-z]/s/^[[:space:]]*//p' | awk '{print $$1}' | tr '\n' ' ')
+
 HTML_PAGES = $(shell find . -type f | grep -E '.html$')
 
 DOCS = $(shell ls -1 *.?.md)
@@ -52,7 +55,22 @@ version.go: .FORCE
 hash: .FORCE
 	git log --pretty=format:'%h' -n 1
 
-man: $(MAN_PAGES_1) # $(MAN_PAGES_3) $(MAN_PAGES_7)
+man: man-md
+
+# Generate markdown man pages from --help commands and convert to man format
+man-md: $(PROGRAMS)
+	@echo "Generating markdown man pages from help commands..."
+	@mkdir -p bin man/man1 man/man7
+	# Generate main man page (chapter 1)
+	@for PROG in $(PROGRAMS); do \
+		./bin/$${PROG} --help > $${PROG}.1.md; \
+		pandoc $${PROG}.1.md --from markdown --to man -s > man/man1/$${PROG}.1; \
+		done
+	# Generate topic man pages (chapter 7)
+	@for TOPIC in $(HELP_TOPICS); do \
+		./bin/harvey --help $$TOPIC > harvey-$$TOPIC.7.md; \
+		pandoc harvey-$$TOPIC.7.md --from markdown --to man -s > man/man7/harvey-$$TOPIC.7; \
+		done
 
 $(MAN_PAGES_1): .FORCE
 	mkdir -p man/man1
@@ -69,7 +87,6 @@ $(MAN_PAGES_7): .FORCE
 $(PROGRAMS): $(PACKAGE)
 	@mkdir -p bin
 	go build -o "bin/$@$(EXT)" cmd/$@/*.go
-	@./bin/$@ -help >$@.1.md
 
 $(MAN_PAGES): .FORCE
 	mkdir -p man/man1

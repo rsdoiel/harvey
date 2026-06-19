@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1
+id="harvey-assay-llamafile-support-output-location-implementation-plan">Harvey
+Assay — Llamafile Support &amp; Output Location — Implementation
+Plan</h1>
+<p>See <a
+href="assay-llamafile-design.html">assay-llamafile-design.md</a> for the
+full design rationale and decisions.</p>
+<p>The two changes — Llamafile backend and workspace-level output — are
+independent. Phase A (output location) can ship before Phase B
+(Llamafile support). Both compile and pass tests independently.</p>
+<hr />
+<h2 id="phase-a-workspace-level-output-directory">Phase A —
+Workspace-Level Output Directory</h2>
+<p><strong>Goal:</strong> Change the default assay output directory from
+<code>testout/</code> to
+<code>$WORKSPACE/assay-results/assay-&lt;timestamp&gt;/</code>.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td>Add <code>findWorkspaceRoot</code>, <code>defaultOutputDir</code>;
+update flag defaults and <code>--help</code> text</td>
+</tr>
+</tbody>
+</table>
+<h3 id="findworkspaceroot-function"><code>findWorkspaceRoot</code>
+function</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// findWorkspaceRoot walks up from start looking for the directory containing</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">// agents/harvey.yaml. Returns &quot;&quot; if not found.</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> findWorkspaceRoot<span class="op">(</span>start <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    dir <span class="op">:=</span> start</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">{</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> os<span class="op">.</span>Stat<span class="op">(</span>filepath<span class="op">.</span>Join<span class="op">(</span>dir<span class="op">,</span> <span class="st">&quot;agents&quot;</span><span class="op">,</span> <span class="st">&quot;harvey.yaml&quot;</span><span class="op">));</span> err <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> dir</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>        parent <span class="op">:=</span> filepath<span class="op">.</span>Dir<span class="op">(</span>dir<span class="op">)</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> parent <span class="op">==</span> dir <span class="op">{</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="st">&quot;&quot;</span> <span class="co">// reached filesystem root</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>        dir <span class="op">=</span> parent</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="defaultoutputdir-function"><code>defaultOutputDir</code>
+function</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> defaultOutputDir<span class="op">()</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    cwd<span class="op">,</span> _ <span class="op">:=</span> os<span class="op">.</span>Getwd<span class="op">()</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    ts <span class="op">:=</span> time<span class="op">.</span>Now<span class="op">().</span>Format<span class="op">(</span><span class="st">&quot;20060102-150405&quot;</span><span class="op">)</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> root <span class="op">:=</span> findWorkspaceRoot<span class="op">(</span>cwd<span class="op">);</span> root <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> filepath<span class="op">.</span>Join<span class="op">(</span>root<span class="op">,</span> <span class="st">&quot;assay-results&quot;</span><span class="op">,</span> <span class="st">&quot;assay-&quot;</span><span class="op">+</span>ts<span class="op">)</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> filepath<span class="op">.</span>Join<span class="op">(</span><span class="st">&quot;assay-results&quot;</span><span class="op">,</span> <span class="st">&quot;assay-&quot;</span><span class="op">+</span>ts<span class="op">)</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="flag-initialization-change">Flag initialization change</h3>
+<p>Replace the current hardcoded default for <code>--output</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Before</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>outputDir <span class="op">:=</span> flag<span class="op">.</span>String<span class="op">(</span><span class="st">&quot;output&quot;</span><span class="op">,</span> <span class="st">&quot;testout/assay-&quot;</span><span class="op">+</span>timestamp<span class="op">,</span> <span class="st">&quot;...&quot;</span><span class="op">)</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">// After</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>outputDir <span class="op">:=</span> flag<span class="op">.</span>String<span class="op">(</span><span class="st">&quot;output&quot;</span><span class="op">,</span> defaultOutputDir<span class="op">(),</span> <span class="st">&quot;...&quot;</span><span class="op">)</span></span></code></pre></div>
+<p>Since <code>defaultOutputDir</code> is called at flag parse time, the
+timestamp is captured correctly.</p>
+<h3 id="updated---help-text-for---output">Updated <code>--help</code>
+text for <code>--output</code></h3>
+<pre><code>--output PATH   write report and results to PATH
+                default: $WORKSPACE/assay-results/assay-TIMESTAMP/
+                         (assay-results/assay-TIMESTAMP/ if not in a workspace)</code></pre>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>bin/assay</code> run from a Harvey workspace writes to
+<code>$WORKSPACE/assay-results/assay-&lt;timestamp&gt;/</code>.</li>
+<li><code>bin/assay</code> run from outside a workspace writes to
+<code>assay-results/assay-&lt;timestamp&gt;/</code> relative to
+cwd.</li>
+<li><code>bin/assay --output custom/path</code> writes to
+<code>custom/path</code> regardless of workspace discovery.</li>
+<li><code>testout/</code> is not created by a default assay run.</li>
+</ul>
+<hr />
+<h2 id="phase-b-llamafile-backend-support">Phase B — Llamafile Backend
+Support</h2>
+<p><strong>Goal:</strong> Add <code>--llamafile PATH</code> flag to
+<code>bin/assay</code> that starts, uses, and cleanly stops a llamafile
+process during evaluation.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td>Add <code>--llamafile</code> flag parsing; lifecycle management
+(<code>startLlamafile</code>, <code>findFreePort</code>, deferred stop);
+update report header; update <code>--help</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="note-on-package-imports">Note on package imports</h3>
+<p><code>cmd/assay/main.go</code> already imports the root
+<code>harvey</code> package for <code>RagStore</code> and
+<code>OllamaEmbedder</code>. The functions <code>startLlamafile</code>
+and <code>findFreePort</code> are in <code>llamafile_service.go</code>
+(package <code>harvey</code>) and are accessible via the same import. No
+new files or imports are needed.</p>
+<h3 id="flag-addition">Flag addition</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>llamafilePath <span class="op">:=</span> flag<span class="op">.</span>String<span class="op">(</span><span class="st">&quot;llamafile&quot;</span><span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">,</span> <span class="st">&quot;path to a llamafile binary to evaluate&quot;</span><span class="op">)</span></span></code></pre></div>
+<h3 id="lifecycle-management">Lifecycle management</h3>
+<p>After flag parsing and before corpus loading:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> llamafileURL <span class="dt">string</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">*</span>llamafilePath <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    port<span class="op">,</span> err <span class="op">:=</span> harvey<span class="op">.</span>FindFreePort<span class="op">()</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>        log<span class="op">.</span>Fatalf<span class="op">(</span><span class="st">&quot;llamafile: cannot find free port: %v&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    proc<span class="op">,</span> err <span class="op">:=</span> harvey<span class="op">.</span>StartLlamafile<span class="op">(*</span>llamafilePath<span class="op">,</span> port<span class="op">)</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>        log<span class="op">.</span>Fatalf<span class="op">(</span><span class="st">&quot;llamafile: failed to start: %v&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> proc<span class="op">.</span>Stop<span class="op">()</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    llamafileURL <span class="op">=</span> fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;http://localhost:%d&quot;</span><span class="op">,</span> port<span class="op">)</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Wait up to 30 s for the server to be ready.</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">:=</span> harvey<span class="op">.</span>WaitLlamafileReady<span class="op">(</span>llamafileURL<span class="op">,</span> <span class="dv">30</span><span class="op">*</span>time<span class="op">.</span>Second<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>        proc<span class="op">.</span>Stop<span class="op">()</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>        log<span class="op">.</span>Fatalf<span class="op">(</span><span class="st">&quot;llamafile: did not become ready: %v&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;  Llamafile ready at %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> llamafileURL<span class="op">)</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>When <code>llamafileURL</code> is set, pass it to the LLM client in
+place of the Ollama URL. The rest of the evaluation loop is
+unchanged.</p>
+<h3 id="rag-llamafile-guard">RAG + Llamafile guard</h3>
+<p>When both <code>--llamafile</code> and <code>--rag-db</code> are
+provided:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">*</span>llamafilePath <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> <span class="op">*</span>ragDBPath <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Embeddings go to Ollama; warn if Ollama is not reachable.</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">:=</span> harvey<span class="op">.</span>ProbeOllama<span class="op">(*</span>ollamaURL<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>        log<span class="op">.</span>Fatalf<span class="op">(</span><span class="st">&quot;RAG evaluation with --llamafile requires Ollama for embeddings.</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">+</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;Start Ollama or use --ollama-url to specify a running instance.</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">+</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;Error: %v&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="report-header-extension">Report header extension</h3>
+<p>Add “Backend” and “Binary” rows to the report header table:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Backend <span class="pp">|</span> Llamafile <span class="pp">|</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Binary  <span class="pp">|</span> /home/user/Models/Llama-3.2-1B.llamafile <span class="pp">|</span></span></code></pre></div>
+<p>For Ollama runs, “Backend” shows “Ollama” and “Binary” is
+omitted.</p>
+<h3 id="updated---help-text">Updated <code>--help</code> text</h3>
+<pre><code>--llamafile PATH    evaluate a llamafile model; starts and stops the process
+                    automatically (mutually exclusive with --ollama-url)</code></pre>
+<h3 id="export-requirements">Export requirements</h3>
+<p>The following functions must be exported from
+<code>llamafile_service.go</code> (or already be exported — verify
+before implementing):</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Function</th>
+<th scope="col">Currently exported?</th>
+<th scope="col">Action if not</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>startLlamafile</code></td>
+<td>Check</td>
+<td>Export as <code>StartLlamafile</code></td>
+</tr>
+<tr>
+<td><code>findFreePort</code></td>
+<td>Check</td>
+<td>Export as <code>FindFreePort</code></td>
+</tr>
+<tr>
+<td><code>WaitLlamafileReady</code> (or equivalent)</td>
+<td>Check</td>
+<td>Export or add</td>
+</tr>
+</tbody>
+</table>
+<p>If the health-check loop is currently inline in
+<code>terminal.go</code>, extract it into a named function in
+<code>llamafile_service.go</code> so assay can reuse it.</p>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>bin/assay --llamafile /path/to/model.llamafile</code> starts
+the process, runs the full corpus, writes the report, and terminates the
+process.</li>
+<li>The report header shows “Llamafile” as backend and includes the
+binary path.</li>
+<li><code>bin/assay --llamafile PATH --rag-db PATH</code> fails with a
+clear error if Ollama is not reachable for embeddings.</li>
+<li>Ctrl+C during evaluation terminates the llamafile process
+cleanly.</li>
+</ul>
+<hr />
+<h2 id="dependency-graph">Dependency Graph</h2>
+<pre><code>Phase A (workspace output)    — independent
+Phase B (llamafile backend)   — independent of Phase A</code></pre>
+<p>Both phases can be developed and committed in either order.</p>
+<hr />
+<h2 id="open-questions">Open Questions</h2>
+<ul>
+<li>Verify export status of <code>startLlamafile</code>,
+<code>findFreePort</code>, and any health-check function in
+<code>llamafile_service.go</code> before implementing Phase B.</li>
+<li>Verify the <code>LlamafileProcess</code> type’s stop method
+signature (likely <code>proc.Stop()</code> or
+<code>proc.Kill()</code>).</li>
+</ul>
+</section>
+</body>
+</html>

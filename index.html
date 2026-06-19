@@ -63,8 +63,10 @@ window</li>
 </ul>
 <h3 id="multi-model-routing">Multi-Model &amp; Routing</h3>
 <ul>
-<li>Ollama integration (primary), with cloud routes for Anthropic,
-DeepSeek, Gemini, Mistral, and OpenAI</li>
+<li>Llamafile integration</li>
+<li>Ollama integration</li>
+<li>Cloud model routes for Anthropic, DeepSeek, Gemini, Mistral, and
+OpenAI</li>
 <li>Multi-model routing via <code>@mention</code> dispatch and model
 aliasing</li>
 </ul>
@@ -108,12 +110,16 @@ instructions.</p>
 Apple Silicon (M1 and above) - Windows: x86_64 - Raspberry Pi OS</p>
 <h2 id="software-requirements">Software Requirements</h2>
 <ul>
-<li>Go &gt;= 1.26.3</li>
-<li>Ollama (recommended)</li>
+<li>LLamafile models or Ollama plus Ollama Models</li>
 </ul>
 <h3 id="software-suggestions">Software Suggestions</h3>
-<p>For building Harvey and documentation from source: - CMTools &gt;=
-0.0.45b - Pandoc &gt;= 3.9 - GNU Make &gt;= 3.8</p>
+<p>For building Harvey and documentation from source:</p>
+<ul>
+<li>Go &gt;= 1.26.4</li>
+<li>CMTools &gt;= 0.0.46</li>
+<li>Pandoc &gt;= 3.9</li>
+<li>GNU Make &gt;= 3.8</li>
+</ul>
 <h2 id="documentation">Documentation</h2>
 <ul>
 <li><a href="https://github.com/rsdoiel/harvey">GitHub Repository</a> —
@@ -137,9 +143,9 @@ future direction</li>
 </ul>
 <h2 id="release-notes">Release Notes</h2>
 <ul>
-<li><p>version: 0.0.10</p></li>
+<li><p>version: 0.0.13</p></li>
 <li><p>status: active</p></li>
-<li><p>released: 2026-06-09</p></li>
+<li><p>released: 2026-06-19</p></li>
 <li><p>Added multi-language code-aware chunking for RAG ingestion (C,
 C++, Pascal, Oberon, Lisp, Basic)</p></li>
 <li><p>Added documentation extraction: comment and docstring association

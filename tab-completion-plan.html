@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-tab-completion-implementation-plan">Harvey Tab Completion
+— Implementation Plan</h1>
+<p>See <a href="tab-completion-design.html">tab-completion-design.md</a>
+for the full design rationale and decisions.</p>
+<p>Phases are ordered so each one compiles, passes tests, and provides
+standalone value before the next begins.</p>
+<hr />
+<h2 id="phase-a-ui.go-shared-select-list-helper">Phase A —
+<code>ui.go</code>: shared select list helper</h2>
+<p><strong>Goal:</strong> Create the <code>SelectFrom</code> /
+<code>SelectFromStrings</code> / <code>SelectItem</code> API that all
+later phases depend on. No existing behaviour changes.</p>
+<h3 id="files-to-create">Files to create</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ui.go</code></td>
+<td><code>SelectItem</code>, <code>SelectFrom</code>,
+<code>SelectFromStrings</code>, unexported helpers</td>
+</tr>
+<tr>
+<td><code>ui_test.go</code></td>
+<td>Unit tests for all exported symbols</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ui.go-implementation-notes"><code>ui.go</code> implementation
+notes</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">package</span> harvey</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="op">(</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;bufio&quot;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;fmt&quot;</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;io&quot;</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;strings&quot;</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> SelectItem <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    Value  <span class="dt">string</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    Label  <span class="dt">string</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    Active <span class="dt">bool</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> SelectFrom<span class="op">(</span>items <span class="op">[]</span>SelectItem<span class="op">,</span> prompt <span class="dt">string</span><span class="op">,</span> in io<span class="op">.</span>Reader<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>items<span class="op">)</span> <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;&quot;</span><span class="op">,</span> <span class="ot">nil</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>items<span class="op">)</span> <span class="op">==</span> <span class="dv">1</span> <span class="op">{</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> items<span class="op">[</span><span class="dv">0</span><span class="op">].</span>Value<span class="op">,</span> <span class="ot">nil</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    renderSelectList<span class="op">(</span>items<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprint<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  &quot;</span><span class="op">+</span>prompt<span class="op">)</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    reader <span class="op">:=</span> bufio<span class="op">.</span>NewReader<span class="op">(</span>in<span class="op">)</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    line<span class="op">,</span> _ <span class="op">:=</span> reader<span class="op">.</span>ReadString<span class="op">(</span><span class="ch">&#39;\n&#39;</span><span class="op">)</span></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    line <span class="op">=</span> strings<span class="op">.</span>TrimSpace<span class="op">(</span>line<span class="op">)</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    idx<span class="op">,</span> raw <span class="op">:=</span> parseSelectInput<span class="op">(</span>line<span class="op">,</span> <span class="bu">len</span><span class="op">(</span>items<span class="op">))</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> idx <span class="op">&gt;=</span> <span class="dv">1</span> <span class="op">&amp;&amp;</span> idx <span class="op">&lt;=</span> <span class="bu">len</span><span class="op">(</span>items<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> items<span class="op">[</span>idx<span class="op">-</span><span class="dv">1</span><span class="op">].</span>Value<span class="op">,</span> <span class="ot">nil</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> raw <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> raw<span class="op">,</span> <span class="ot">nil</span>  <span class="co">// caller validates (e.g. file path)</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">&quot;&quot;</span><span class="op">,</span> <span class="ot">nil</span>  <span class="co">// cancelled</span></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> SelectFromStrings<span class="op">(</span>items <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> prompt <span class="dt">string</span><span class="op">,</span> in io<span class="op">.</span>Reader<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>    si <span class="op">:=</span> <span class="bu">make</span><span class="op">([]</span>SelectItem<span class="op">,</span> <span class="bu">len</span><span class="op">(</span>items<span class="op">))</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i<span class="op">,</span> s <span class="op">:=</span> <span class="kw">range</span> items <span class="op">{</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>        si<span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> SelectItem<span class="op">{</span>Value<span class="op">:</span> s<span class="op">,</span> Label<span class="op">:</span> s<span class="op">}</span></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> SelectFrom<span class="op">(</span>si<span class="op">,</span> prompt<span class="op">,</span> in<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>renderSelectList</code> prints:</p>
+<pre><code>  →  [1] active-store
+     [2] other-store
+     [3] third-store</code></pre>
+<p><code>parseSelectInput</code> returns <code>(idx, "")</code> for
+numeric input, <code>(0, raw)</code> for non-numeric. Input
+<code>""</code>, <code>"q"</code>, or <code>"0"</code> all return
+<code>(0, "")</code>.</p>
+<h3 id="ui_test.go-tests"><code>ui_test.go</code> tests</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Test</th>
+<th scope="col">Checks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TestSelectFrom_singleItem</code></td>
+<td>Returns item without prompting</td>
+</tr>
+<tr>
+<td><code>TestSelectFrom_validIndex</code></td>
+<td>Picks item by number</td>
+</tr>
+<tr>
+<td><code>TestSelectFrom_outOfRange</code></td>
+<td>Returns <code>""</code> for index &gt; len</td>
+</tr>
+<tr>
+<td><code>TestSelectFrom_empty</code></td>
+<td>Returns <code>""</code> for empty input</td>
+</tr>
+<tr>
+<td><code>TestSelectFrom_rawInput</code></td>
+<td>Returns raw string for non-numeric</td>
+</tr>
+<tr>
+<td><code>TestSelectFrom_activeMarker</code></td>
+<td>Active item rendered with <code>→</code></td>
+</tr>
+<tr>
+<td><code>TestSelectFromStrings_basic</code></td>
+<td>Value == Label, works correctly</td>
+</tr>
+<tr>
+<td><code>TestSelectFrom_cancel_q</code></td>
+<td><code>"q"</code> returns <code>""</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>SelectFrom</code> returns the <code>Value</code> (not
+<code>Label</code>) of the chosen item.</li>
+<li><code>SelectFrom</code> with 1 item returns it without printing the
+list.</li>
+<li>Active item is rendered with <code>→</code>; inactive with
+equivalent indent.</li>
+</ul>
+<hr />
+<h2 id="phase-b-command-struct-layer-1-subcommand-completion">Phase B —
+<code>Command</code> struct + layer 1 subcommand completion</h2>
+<p><strong>Goal:</strong> Add <code>Subcommands []string</code> and
+<code>ArgCompletion</code> to <code>Command</code>. Populate them for
+every multi-subcommand command. Extend <code>buildCompleter()</code> to
+use them for second-token completion.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td>Add <code>Subcommands []string</code> and
+<code>ArgCompletion map[string]func(*Agent) []string</code> to
+<code>Command</code> struct and its doc comment. Populate both fields
+for: <code>memory</code>, <code>rag</code>, <code>ollama</code>,
+<code>llamafile</code>, <code>kb</code>, <code>skill</code>,
+<code>skill-set</code>, <code>route</code>, <code>plan</code>,
+<code>session</code>.</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>In <code>buildCompleter()</code>: insert layer 1 block between the
+<code>@mention</code> block and the Ollama-model block.</td>
+</tr>
+<tr>
+<td><code>commands_test.go</code></td>
+<td>Add <code>TestSubcommandCompletion</code>: create agent, register
+commands, call <code>buildCompleter()(line)</code> for a handful of
+cases, assert expected completions.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="layer-1-block-in-buildcompleter">Layer 1 block in
+<code>buildCompleter()</code></h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Layer 1: subcommand completion (second token position).</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>tokens<span class="op">)</span> <span class="op">==</span> <span class="dv">2</span> <span class="op">||</span> <span class="op">(</span><span class="bu">len</span><span class="op">(</span>tokens<span class="op">)</span> <span class="op">==</span> <span class="dv">1</span> <span class="op">&amp;&amp;</span> strings<span class="op">.</span>HasSuffix<span class="op">(</span>line<span class="op">,</span> <span class="st">&quot; &quot;</span><span class="op">))</span> <span class="op">{</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    cmdName <span class="op">:=</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>tokens<span class="op">)</span> <span class="op">&gt;=</span> <span class="dv">1</span> <span class="op">{</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>        cmdName <span class="op">=</span> strings<span class="op">.</span>ToLower<span class="op">(</span>strings<span class="op">.</span>TrimPrefix<span class="op">(</span>tokens<span class="op">[</span><span class="dv">0</span><span class="op">],</span> <span class="st">&quot;/&quot;</span><span class="op">))</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> cmd<span class="op">,</span> ok <span class="op">:=</span> a<span class="op">.</span>commands<span class="op">[</span>cmdName<span class="op">];</span> ok <span class="op">&amp;&amp;</span> <span class="bu">len</span><span class="op">(</span>cmd<span class="op">.</span>Subcommands<span class="op">)</span> <span class="op">&gt;</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>        prefix <span class="op">:=</span> strings<span class="op">.</span>ToLower<span class="op">(</span>word<span class="op">)</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>        <span class="kw">var</span> matches <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> _<span class="op">,</span> sub <span class="op">:=</span> <span class="kw">range</span> cmd<span class="op">.</span>Subcommands <span class="op">{</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> strings<span class="op">.</span>HasPrefix<span class="op">(</span>sub<span class="op">,</span> prefix<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>                matches <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>matches<span class="op">,</span> sub<span class="op">)</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>        sortStrings<span class="op">(</span>matches<span class="op">)</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> matches</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="subcommand-lists-to-register">Subcommand lists to register</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 59%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Subcommands</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory</code></td>
+<td><code>mine list show flag forget status recall profile</code></td>
+</tr>
+<tr>
+<td><code>rag</code></td>
+<td><code>list new use drop ingest status query on off</code></td>
+</tr>
+<tr>
+<td><code>ollama</code></td>
+<td><code>start stop status list ps run pull push show create cp rm logs use env alias</code></td>
+</tr>
+<tr>
+<td><code>llamafile</code></td>
+<td><code>add use list start status drop</code></td>
+</tr>
+<tr>
+<td><code>kb</code></td>
+<td><code>status search inject project observe concept</code></td>
+</tr>
+<tr>
+<td><code>skill</code></td>
+<td><code>list load info status new run</code></td>
+</tr>
+<tr>
+<td><code>skill-set</code></td>
+<td><code>list load info create status unload</code></td>
+</tr>
+<tr>
+<td><code>route</code></td>
+<td><code>add rm models probe set list on off status</code></td>
+</tr>
+<tr>
+<td><code>plan</code></td>
+<td><code>next status show clear</code></td>
+</tr>
+<tr>
+<td><code>session</code></td>
+<td><code>continue replay</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>/memory &lt;tab&gt;</code> completes to subcommand names.</li>
+<li><code>/memory m&lt;tab&gt;</code> completes to
+<code>mine</code>.</li>
+<li>Commands without <code>Subcommands</code> (e.g. <code>/read</code>,
+<code>/status</code>) are unaffected by the new block.</li>
+</ul>
+<hr />
+<h2 id="phase-c-layer-2-argument-value-completion">Phase C — Layer 2
+argument value completion</h2>
+<p><strong>Goal:</strong> Extend <code>buildCompleter()</code> with
+third-token completion using <code>ArgCompletion</code> functions. Add
+the candidate functions.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td>Add <code>ArgCompletion</code> population to each
+<code>Command</code> registration that needs it (see table below). Add
+candidate functions as package-level helpers.</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>In <code>buildCompleter()</code>: insert layer 2 block after layer 1
+and before the Ollama-model block.</td>
+</tr>
+<tr>
+<td><code>commands_test.go</code></td>
+<td>Add <code>TestArgCompletion</code>: test a few cases
+(<code>/rag use &lt;tab&gt;</code> returns store names,
+<code>/memory list &lt;tab&gt;</code> returns type names).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="layer-2-block-in-buildcompleter">Layer 2 block in
+<code>buildCompleter()</code></h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Layer 2: argument value completion (third token position).</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>tokens<span class="op">)</span> <span class="op">&gt;=</span> <span class="dv">2</span> <span class="op">{</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    cmdName <span class="op">:=</span> strings<span class="op">.</span>ToLower<span class="op">(</span>strings<span class="op">.</span>TrimPrefix<span class="op">(</span>tokens<span class="op">[</span><span class="dv">0</span><span class="op">],</span> <span class="st">&quot;/&quot;</span><span class="op">))</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    sub <span class="op">:=</span> strings<span class="op">.</span>ToLower<span class="op">(</span>tokens<span class="op">[</span><span class="dv">1</span><span class="op">])</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> cmd<span class="op">,</span> ok <span class="op">:=</span> a<span class="op">.</span>commands<span class="op">[</span>cmdName<span class="op">];</span> ok <span class="op">&amp;&amp;</span> cmd<span class="op">.</span>ArgCompletion <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> fn<span class="op">,</span> ok <span class="op">:=</span> cmd<span class="op">.</span>ArgCompletion<span class="op">[</span>sub<span class="op">];</span> ok <span class="op">{</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>            candidates <span class="op">:=</span> fn<span class="op">(</span>a<span class="op">)</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>            prefix <span class="op">:=</span> strings<span class="op">.</span>ToLower<span class="op">(</span>word<span class="op">)</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>            <span class="kw">var</span> matches <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> _<span class="op">,</span> c <span class="op">:=</span> <span class="kw">range</span> candidates <span class="op">{</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>                <span class="cf">if</span> strings<span class="op">.</span>HasPrefix<span class="op">(</span>strings<span class="op">.</span>ToLower<span class="op">(</span>c<span class="op">),</span> prefix<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>                    matches <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>matches<span class="op">,</span> c<span class="op">)</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>                <span class="op">}</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>            sortStrings<span class="op">(</span>matches<span class="op">)</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> matches</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>This block runs before the Ollama-model block and before the
+file-path switch. Commands that have <code>ArgCompletion</code>
+registered for a subcommand short-circuit here. Others fall through to
+existing logic.</p>
+<h3 id="candidate-functions-to-add">Candidate functions to add</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ragStoreNameCandidates returns the names of all registered RAG stores.</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> ragStoreNameCandidates<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co">// memoryTypeCandidates returns all valid MemoryType constant strings.</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> memoryTypeCandidates<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co">// memoryIDCandidates returns IDs of all active memories across all types.</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co">// Opens and closes the MemoryStore; must not be called in a hot loop.</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> memoryIDCandidates<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="co">// llamafileNameCandidates returns names of all registered llamafile models.</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> llamafileNameCandidates<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="co">// routeNameCandidates returns the names of all registered routes.</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> routeNameCandidates<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a><span class="co">// skillNameCandidates returns the names of all loaded skills.</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> skillNameCandidates<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="co">// profileTemplateNameCandidates returns template names from ListTemplates.</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> profileTemplateNameCandidates<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span></code></pre></div>
+<h3 id="argcompletion-registrations">ArgCompletion registrations</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Subcommand</th>
+<th scope="col">Candidate function</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rag</code></td>
+<td><code>use</code></td>
+<td><code>ragStoreNameCandidates</code></td>
+</tr>
+<tr>
+<td><code>rag</code></td>
+<td><code>drop</code></td>
+<td><code>ragStoreNameCandidates</code></td>
+</tr>
+<tr>
+<td><code>memory</code></td>
+<td><code>list</code></td>
+<td><code>memoryTypeCandidates</code></td>
+</tr>
+<tr>
+<td><code>memory</code></td>
+<td><code>show</code></td>
+<td><code>memoryIDCandidates</code></td>
+</tr>
+<tr>
+<td><code>memory</code></td>
+<td><code>forget</code></td>
+<td><code>memoryIDCandidates</code></td>
+</tr>
+<tr>
+<td><code>memory</code></td>
+<td><code>flag</code></td>
+<td><code>memoryIDCandidates</code></td>
+</tr>
+<tr>
+<td><code>llamafile</code></td>
+<td><code>use</code></td>
+<td><code>llamafileNameCandidates</code></td>
+</tr>
+<tr>
+<td><code>llamafile</code></td>
+<td><code>drop</code></td>
+<td><code>llamafileNameCandidates</code></td>
+</tr>
+<tr>
+<td><code>route</code></td>
+<td><code>rm</code></td>
+<td><code>routeNameCandidates</code></td>
+</tr>
+<tr>
+<td><code>route</code></td>
+<td><code>probe</code></td>
+<td><code>routeNameCandidates</code></td>
+</tr>
+<tr>
+<td><code>skill</code></td>
+<td><code>load</code></td>
+<td><code>skillNameCandidates</code></td>
+</tr>
+<tr>
+<td><code>skill</code></td>
+<td><code>run</code></td>
+<td><code>skillNameCandidates</code></td>
+</tr>
+<tr>
+<td><code>profile</code></td>
+<td><code>use</code></td>
+<td><code>profileTemplateNameCandidates</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>/rag use &lt;tab&gt;</code> returns registered store
+names.</li>
+<li><code>/memory list &lt;tab&gt;</code> returns memory type
+names.</li>
+<li><code>/memory show tool&lt;tab&gt;</code> returns IDs prefixed with
+<code>tool</code>.</li>
+<li>File-path completion for <code>/rag ingest &lt;tab&gt;</code> is
+unaffected.</li>
+</ul>
+<hr />
+<h2 id="phase-d-picker-fallback-in-command-handlers">Phase D — Picker
+fallback in command handlers</h2>
+<p><strong>Goal:</strong> Commands that take a NAME argument but receive
+none show the <code>SelectFrom</code> picker. Uses
+<code>SelectFrom</code> from Phase A and the candidate functions from
+Phase C.</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 73%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Commands updated</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td><code>/rag use</code>, <code>/rag drop</code>,
+<code>/memory show</code>, <code>/memory forget</code>,
+<code>/memory flag</code>, <code>/memory list</code>,
+<code>/route rm</code>, <code>/skill load</code>,
+<code>/skill run</code></td>
+</tr>
+<tr>
+<td><code>llamafile.go</code></td>
+<td><code>/llamafile use</code>, <code>/llamafile drop</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pattern-for-each-command">Pattern for each command</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Example: /rag use</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>args<span class="op">)</span> <span class="op">==</span> <span class="dv">0</span> <span class="op">||</span> args<span class="op">[</span><span class="dv">0</span><span class="op">]</span> <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    items <span class="op">:=</span> ragStoreSelectItems<span class="op">(</span>a<span class="op">)</span>  <span class="co">// []SelectItem with Active flag</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    chosen<span class="op">,</span> err <span class="op">:=</span> SelectFrom<span class="op">(</span>items<span class="op">,</span> fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;Select store [1-%d] or Enter to cancel: &quot;</span><span class="op">,</span> <span class="bu">len</span><span class="op">(</span>items<span class="op">)),</span> a<span class="op">.</span>In<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">||</span> chosen <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> err</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    args <span class="op">=</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span>chosen<span class="op">}</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co">// ... existing name-based logic</span></span></code></pre></div>
+<h3 id="helper-ragstoreselectitems">Helper:
+<code>ragStoreSelectItems</code></h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> ragStoreSelectItems<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="op">[]</span>SelectItem <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    active <span class="op">:=</span> a<span class="op">.</span>Config<span class="op">.</span>Memory<span class="op">.</span>ActiveRagStore<span class="op">()</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    items <span class="op">:=</span> <span class="bu">make</span><span class="op">([]</span>SelectItem<span class="op">,</span> <span class="bu">len</span><span class="op">(</span>a<span class="op">.</span>Config<span class="op">.</span>Memory<span class="op">.</span>RagStores<span class="op">))</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i<span class="op">,</span> s <span class="op">:=</span> <span class="kw">range</span> a<span class="op">.</span>Config<span class="op">.</span>Memory<span class="op">.</span>RagStores <span class="op">{</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>        items<span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> SelectItem<span class="op">{</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>            Value<span class="op">:</span>  s<span class="op">.</span>Name<span class="op">,</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>            Label<span class="op">:</span>  s<span class="op">.</span>Name<span class="op">,</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>            Active<span class="op">:</span> active <span class="op">!=</span> <span class="ot">nil</span> <span class="op">&amp;&amp;</span> active<span class="op">.</span>Name <span class="op">==</span> s<span class="op">.</span>Name<span class="op">,</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> items</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Similar helpers for memory IDs (building
+<code>Label = "ID — description"</code>).</p>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>/rag use</code> (no arg) → numbered list of stores → selection
+works.</li>
+<li><code>/rag use existing-name</code> (with arg) → proceeds directly,
+no picker.</li>
+<li><code>/memory show</code> (no arg) → picker of memories; selection
+loads that ID.</li>
+<li>Commands in test mode (non-interactive <code>a.In</code>) return
+<code>""</code> without blocking (test passes
+<code>strings.NewReader("")</code>).</li>
+</ul>
+<hr />
+<h2 id="phase-e-refactor-existing-pickers-to-use-selectfrom">Phase E —
+Refactor existing pickers to use <code>SelectFrom</code></h2>
+<p><strong>Goal:</strong> Replace the hand-rolled picker loops in
+<code>llamafile.go</code> and <code>commands.go</code> with calls to
+<code>SelectFrom</code>. Behaviour is identical; code is shorter and
+consistent.</p>
+<h3 id="files-to-modify-3">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 22%" />
+<col style="width: 77%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Function to refactor</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llamafile.go</code></td>
+<td><code>llamafilePickFromRegistered</code></td>
+</tr>
+<tr>
+<td><code>llamafile.go</code></td>
+<td><code>llamafilePickFromDir</code> (retains raw-path passthrough via
+<code>SelectFrom</code>’s raw-string return)</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>profile template picker inside <code>cmdMemoryProfileUse</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="notes">Notes</h3>
+<ul>
+<li><code>llamafilePickFromDir</code> currently accepts a typed path
+when input is non-numeric. <code>SelectFrom</code> already returns the
+raw string for non-numeric input. The caller checks whether the return
+value is a registered name or a file path.</li>
+<li>The profile picker currently calls <code>maybeEditTemplate</code> on
+the chosen template; that call stays in <code>cmdMemoryProfileUse</code>
+after <code>SelectFrom</code> returns the template name.</li>
+</ul>
+<h3 id="acceptance-criteria-4">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>All existing picker tests (in <code>profile_use_test.go</code>,
+<code>llamafile_test.go</code>) continue to pass without
+modification.</li>
+<li><code>/llamafile use</code> behaviour is visually identical to
+before.</li>
+</ul>
+<hr />
+<h2 id="dependency-graph">Dependency graph</h2>
+<pre><code>Phase A (ui.go — SelectFrom)
+    └─► Phase B (Command.Subcommands + layer 1 completion)
+            └─► Phase C (ArgCompletion + layer 2 completion)
+                    ├─► Phase D (picker fallback in handlers)
+                    └─► Phase E (refactor existing pickers)</code></pre>
+<p>Phases D and E are independent of each other after Phase C
+completes.</p>
+<hr />
+<h2 id="new-module-dependencies">New module dependencies</h2>
+<p>None. All implementation uses packages already imported:
+<code>bufio</code>, <code>fmt</code>, <code>io</code>,
+<code>strings</code>, and the Go standard library.</p>
+<hr />
+<h2 id="open-questions">Open questions</h2>
+<p>None. Design decisions settled 2026-06-19. Record reversals here as
+implementation proceeds.</p>
+</section>
+</body>
+</html>

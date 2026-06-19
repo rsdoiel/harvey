@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-spinner-ux-implementation-plan">Harvey Spinner UX —
+Implementation Plan</h1>
+<p>See <a href="spinner-ux-design.html">spinner-ux-design.md</a> for the
+full design rationale and decisions.</p>
+<hr />
+<h2 id="phase-a-dynamic-status-messages-in-spinner">Phase A — Dynamic
+Status Messages in Spinner</h2>
+<p><strong>Goal:</strong> Add <code>UpdateStatus(msg string)</code> to
+<code>Spinner</code> and wire it into the key operation call sites in
+<code>terminal.go</code>.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spinner.go</code></td>
+<td>Add <code>StatusCh chan string</code> field,
+<code>UpdateStatus</code> method, <code>lastStatus</code> tracking in
+<code>run()</code></td>
+</tr>
+<tr>
+<td><code>spinner_test.go</code></td>
+<td>Add test: <code>UpdateStatus</code> causes the message line to show
+the status string</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Call <code>spin.UpdateStatus(...)</code> at RAG embed, tool call
+start/end, memory injection</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="spinner.go-changes"><code>spinner.go</code> changes</h3>
+<h4 id="struct">Struct</h4>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Spinner <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    out      io<span class="op">.</span>Writer</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    estimate time<span class="op">.</span>Duration</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    label    <span class="dt">string</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    done     <span class="kw">chan</span> <span class="kw">struct</span><span class="op">{}</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    stopped  <span class="kw">chan</span> <span class="kw">struct</span><span class="op">{}</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    StatusCh <span class="kw">chan</span> <span class="dt">string</span> <span class="co">// receives transient status updates</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="newspinner-update"><code>newSpinner</code> update</h4>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> newSpinner<span class="op">(</span>out io<span class="op">.</span>Writer<span class="op">,</span> estimate time<span class="op">.</span>Duration<span class="op">,</span> label <span class="dt">string</span><span class="op">)</span> <span class="op">*</span>Spinner <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    s <span class="op">:=</span> <span class="op">&amp;</span>Spinner<span class="op">{</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        out<span class="op">:</span>      out<span class="op">,</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>        estimate<span class="op">:</span> estimate<span class="op">,</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        label<span class="op">:</span>    label<span class="op">,</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>        done<span class="op">:</span>     <span class="bu">make</span><span class="op">(</span><span class="kw">chan</span> <span class="kw">struct</span><span class="op">{}),</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        stopped<span class="op">:</span>  <span class="bu">make</span><span class="op">(</span><span class="kw">chan</span> <span class="kw">struct</span><span class="op">{}),</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        StatusCh<span class="op">:</span> <span class="bu">make</span><span class="op">(</span><span class="kw">chan</span> <span class="dt">string</span><span class="op">,</span> <span class="dv">1</span><span class="op">),</span> <span class="co">// buffered: drop if full</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">go</span> s<span class="op">.</span>run<span class="op">()</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> s</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="updatestatus-method"><code>UpdateStatus</code> method</h4>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">/** UpdateStatus sends a transient status message to the spinner&#39;s message</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co"> * line. Non-blocking: if a previous status has not been consumed yet, the</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co"> * new message replaces it. Calling UpdateStatus on a stopped spinner is safe</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"> * (the send is discarded).</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co"> * Parameters:</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"> *   msg (string) — status string to display, e.g. &quot;Calling read_file…&quot;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co"> * Example:</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co"> *   spin.UpdateStatus(&quot;Searching knowledge base…&quot;)</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co"> */</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>s <span class="op">*</span>Spinner<span class="op">)</span> UpdateStatus<span class="op">(</span>msg <span class="dt">string</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">select</span> <span class="op">{</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> s<span class="op">.</span>StatusCh <span class="op">&lt;-</span> msg<span class="op">:</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">default</span><span class="op">:</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Channel full — drain and replace with latest.</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">select</span> <span class="op">{</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">case</span> <span class="op">&lt;-</span>s<span class="op">.</span>StatusCh<span class="op">:</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>        <span class="cf">default</span><span class="op">:</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">select</span> <span class="op">{</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>        <span class="cf">case</span> s<span class="op">.</span>StatusCh <span class="op">&lt;-</span> msg<span class="op">:</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">default</span><span class="op">:</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="run-goroutine-changes"><code>run()</code> goroutine changes</h4>
+<p>Add <code>lastStatus string</code> as a local variable. On each
+<code>frameTick.C</code> event:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="op">&lt;-</span>frameTick<span class="op">.</span>C<span class="op">:</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Drain status channel.</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">select</span> <span class="op">{</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> s <span class="op">:=</span> <span class="op">&lt;-</span>s<span class="op">.</span>StatusCh<span class="op">:</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>        lastStatus <span class="op">=</span> s</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">default</span><span class="op">:</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    frameIdx <span class="op">=</span> <span class="op">(</span>frameIdx <span class="op">+</span> <span class="dv">1</span><span class="op">)</span> <span class="op">%</span> <span class="bu">len</span><span class="op">(</span>spinnerFrames<span class="op">)</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    elapsed <span class="op">:=</span> time<span class="op">.</span>Since<span class="op">(</span>start<span class="op">)</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> msgLine <span class="dt">string</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> lastStatus <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>        msgLine <span class="op">=</span> dim<span class="op">(</span><span class="st">&quot;  ⎿&quot;</span><span class="op">)</span> <span class="op">+</span> <span class="st">&quot; &quot;</span> <span class="op">+</span> dimGreen<span class="op">(</span>lastStatus<span class="op">)</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>        msgLine <span class="op">=</span> line2<span class="op">(</span>msgIdx<span class="op">)</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Redraw line 2 and line 3.</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>s<span class="op">.</span>out<span class="op">,</span> <span class="st">&quot;</span><span class="ch">\033</span><span class="st">[1A</span><span class="ch">\r</span><span class="st">%s</span><span class="ch">\033</span><span class="st">[K</span><span class="ch">\r\n</span><span class="st">%s</span><span class="ch">\033</span><span class="st">[K&quot;</span><span class="op">,</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>        msgLine<span class="op">,</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>        line3<span class="op">(</span>frameIdx<span class="op">,</span> elapsed<span class="op">),</span></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>    <span class="op">)</span></span></code></pre></div>
+<p>On each <code>msgTick.C</code> event (Lear rotation):</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="op">&lt;-</span>msgTick<span class="op">.</span>C<span class="op">:</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    lastStatus <span class="op">=</span> <span class="st">&quot;&quot;</span> <span class="co">// clear status; revert to Lear</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    msgIdx <span class="op">=</span> <span class="op">(</span>msgIdx <span class="op">+</span> <span class="dv">1</span><span class="op">)</span> <span class="op">%</span> <span class="bu">len</span><span class="op">(</span>LearMessages<span class="op">)</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// existing redraw logic</span></span></code></pre></div>
+<p><strong>Note on redraw frequency:</strong> The current implementation
+separates fast (frame) and slow (msg) redraws. Currently
+<code>frameTick.C</code> only redraws line 3. To show status updates
+promptly, we need to redraw line 2 on status arrival. The simplest
+change: on <code>frameTick.C</code>, always redraw both lines 2 and 3
+when <code>lastStatus</code> has changed since the last frame. Track
+<code>renderedStatus string</code> alongside <code>lastStatus</code> to
+detect changes.</p>
+<p>This increases the write frequency slightly but keeps the existing
+split between frame (100ms) and message (6s) ticks.</p>
+<h4 id="dimgreen-helper"><code>dimGreen</code> helper</h4>
+<p>If not already defined in <code>terminal.go</code> or a color helpers
+file:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> dimGreen<span class="op">(</span>s <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">&quot;</span><span class="ch">\033</span><span class="st">[2;32m&quot;</span> <span class="op">+</span> s <span class="op">+</span> <span class="st">&quot;</span><span class="ch">\033</span><span class="st">[0m&quot;</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Check whether Harvey already has a dim+green combination; reuse if
+so.</p>
+<hr />
+<h3 id="terminal.go-call-sites"><code>terminal.go</code> call sites</h3>
+<p>Add <code>spin.UpdateStatus(...)</code> calls at these points (search
+for existing <code>spin</code> variable usage to find exact line
+numbers):</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Before RAG embedding:</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>spin<span class="op">.</span>UpdateStatus<span class="op">(</span><span class="st">&quot;Searching knowledge base…&quot;</span><span class="op">)</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co">// After RAG injection (N chunks found):</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> n <span class="op">&gt;</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    spin<span class="op">.</span>UpdateStatus<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;Found %d relevant chunk(s)&quot;</span><span class="op">,</span> n<span class="op">))</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="co">// Before memory context injection:</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>spin<span class="op">.</span>UpdateStatus<span class="op">(</span><span class="st">&quot;Injecting memory context…&quot;</span><span class="op">)</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="co">// At tool call start (inside RunToolLoop or tryExecuteProseToolCalls):</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>spin<span class="op">.</span>UpdateStatus<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;Calling %s…&quot;</span><span class="op">,</span> toolName<span class="op">))</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="co">// At tool call completion:</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>    spin<span class="op">.</span>UpdateStatus<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;%s failed&quot;</span><span class="op">,</span> toolName<span class="op">))</span></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>    spin<span class="op">.</span>UpdateStatus<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;%s done&quot;</span><span class="op">,</span> toolName<span class="op">))</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The spinner is not available inside <code>RunToolLoop</code> directly
+(the spinner is started in the REPL’s chat path in
+<code>terminal.go</code>). The cleanest approach: pass the spinner
+reference to <code>RunToolLoop</code> as an optional interface:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> StatusReporter <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    UpdateStatus<span class="op">(</span>msg <span class="dt">string</span><span class="op">)</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>RunToolLoop</code> accepts an optional
+<code>StatusReporter</code> (nil if no spinner is active). The REPL
+passes <code>spin</code> when calling <code>RunToolLoop</code>; tests
+and non-interactive paths pass <code>nil</code>.</p>
+<p>Alternatively, attach <code>StatusReporter</code> to
+<code>Agent</code> temporarily for the duration of the LLM call. This
+avoids a signature change to <code>RunToolLoop</code>. Choose whichever
+is less invasive given the current signature.</p>
+<hr />
+<h3 id="spinner_test.go-changes"><code>spinner_test.go</code>
+changes</h3>
+<p>Add a test that: 1. Creates a spinner with a
+<code>bytes.Buffer</code> as output. 2. Calls
+<code>spin.UpdateStatus("hello")</code>. 3. Waits 150ms (long enough for
+one frame tick). 4. Stops the spinner. 5. Asserts the buffer contains
+<code>"hello"</code> in the output.</p>
+<p>The test must handle the ANSI escape sequences in the output (search
+for <code>"hello"</code> as a substring, not an exact match).</p>
+<hr />
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>During an LLM call, the spinner message line shows transient status
+strings at the injection points listed above.</li>
+<li>After 6 seconds without a status update, the Lear message
+resumes.</li>
+<li><code>UpdateStatus</code> on a stopped spinner does not panic or
+block.</li>
+<li>The spinner test asserts <code>"hello"</code> appears in output
+after <code>UpdateStatus</code>.</li>
+</ul>
+<hr />
+<h2 id="tab-completion-out-of-scope-notes-only">Tab Completion (Out of
+Scope — Notes Only)</h2>
+<p>Tab completion is mentioned in the TODO as a separate improvement. It
+is not part of this plan. Key design questions to resolve when that work
+begins:</p>
+<ol type="1">
+<li><strong>Where does completion live?</strong> Options:
+<ul>
+<li>In <code>termlib/lineeditor.go</code> as a pluggable
+<code>CompletionFunc</code>.</li>
+<li>In <code>commands.go</code> as a static completion table.</li>
+<li>Combination: <code>LineEditor</code> calls a registered
+<code>CompletionFunc</code>; Harvey registers the function at
+startup.</li>
+</ul></li>
+<li><strong>What completes?</strong>
+<ul>
+<li>Top-level commands (<code>/</code>, then prefix matching).</li>
+<li>Subcommands (e.g., <code>/memory &lt;tab&gt;</code> →
+<code>mine list show flag forget…</code>).</li>
+<li>File arguments (OS path completion for <code>/read FILE</code>,
+<code>/attach FILE</code>).</li>
+<li>Model names for <code>/model</code>, <code>/ollama use</code>,
+<code>/llamafile use</code>.</li>
+</ul></li>
+<li><strong>Edge cases:</strong>
+<ul>
+<li>Multiple matches: show a completion menu or cycle on repeated
+Tab.</li>
+<li>Path completion with spaces: quoting conventions.</li>
+<li>Non-interactive terminals: Tab is a literal character; no
+completion.</li>
+</ul></li>
+</ol>
+<p>Design that work as a separate <code>tab-completion-design.md</code>
+when prioritized.</p>
+<hr />
+<h2 id="dependency-graph">Dependency Graph</h2>
+<pre><code>Phase A (spinner status) — independent; no dependencies on other open items</code></pre>
+<hr />
+<h2 id="open-questions">Open Questions</h2>
+<ul>
+<li>What is the exact signature of <code>RunToolLoop</code> today?
+Determine whether to pass <code>StatusReporter</code> as a parameter or
+attach it to <code>Agent</code>. Check <code>tool_executor.go</code>
+before implementing.</li>
+<li>Does Harvey already define a <code>dimGreen</code> color function?
+Check color helpers in <code>terminal.go</code> or a separate colors
+file.</li>
+</ul>
+</section>
+</body>
+</html>

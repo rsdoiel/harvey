@@ -4,7 +4,7 @@ message: "If you use this software, please cite it as below."
 type: software
 title: harvey
 abstract: |-
-  Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.
+  Harvey is an agent REPL written in Go and designed to use Llamafile models or Ollama server to access language models locally. It is a terminal based application.
 
   The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.
 authors:

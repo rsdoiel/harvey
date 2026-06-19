@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-quick-fixes-design">Harvey Quick Fixes — Design</h1>
+<p><strong>Status (2026-06-18):</strong> Design settled. See <a
+href="quick-fixes-plan.html">quick-fixes-plan.md</a> for the phased
+implementation plan.</p>
+<p>This document covers four related fixes: two bugs that have been
+reported, one small ergonomics feature, and one housekeeping
+improvement. They are grouped into a single document because each is
+small, self-contained, and can be shipped independently.</p>
+<hr />
+<h2 id="pdf-capability-disclosure-in-harvey.md">1. PDF Capability
+Disclosure in HARVEY.md</h2>
+<h3 id="problem">Problem</h3>
+<p>Harvey’s <code>read_file</code> built-in tool description explicitly
+states:</p>
+<blockquote>
+<p>PDF files (.pdf) are automatically extracted to plain text using
+poppler utilities — no manual conversion is needed.</p>
+</blockquote>
+<p>This disclosure only reaches the model when tools are enabled
+<em>and</em> the model reads tool descriptions before deciding how to
+respond. Small models using prose tool calls, and any session with
+<code>--tools off</code>, have no knowledge of Harvey’s PDF support. The
+result: the model asks the user to convert a PDF to text before it can
+help, even though Harvey would handle this automatically if asked via
+<code>read_file</code> or <code>/attach</code>.</p>
+<h3 id="root-cause">Root cause</h3>
+<p><code>HARVEY.md</code> is always injected as the system prompt. It
+documents Harvey’s automatic write-proposal behavior (tagged code
+blocks) and safe-mode rules, but says nothing about Harvey’s file
+reading capabilities. There is no single source of truth for “what can
+Harvey read without user intervention?”</p>
+<h3 id="solution">Solution</h3>
+<p>Add a <strong>File reading capabilities</strong> section to
+<code>HARVEY.md</code>. It lists all formats Harvey handles
+transparently, with a single line per format. The section follows the
+existing “Agent execution model” section, which already documents
+automatic behaviors.</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">## File reading capabilities</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>When asked to read a file, Harvey handles these formats automatically:</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**Plain text, Markdown, source code** — returned as-is.</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**PDF (.pdf)** — text is extracted using the poppler utilities</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  (pdfinfo, pdftotext). No user conversion is needed. Use the optional</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  <span class="in">`pages`</span> parameter to read a subset (e.g. <span class="in">`&quot;1-10&quot;`</span> or <span class="in">`&quot;5&quot;`</span>).</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**Images (.png, .jpg, .jpeg, .gif, .webp)** — injected directly when</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  the active model supports vision input.</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>Never ask the user to convert a PDF to text before reading it. Call</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="in">`read_file`</span> with the <span class="in">`.pdf`</span> path directly.</span></code></pre></div>
+<p>The last sentence is a model instruction, not a description — it
+closes the loop by telling the model what to do differently.</p>
+<h3 id="scope">Scope</h3>
+<ul>
+<li><code>HARVEY.md</code> only. No code changes.</li>
+<li>Does not affect <code>builtin_tools.go</code> (the tool description
+already correct).</li>
+<li>Does not affect <code>pdf_extract.go</code>,
+<code>helptext.go</code>, or any test file.</li>
+</ul>
+<hr />
+<h2 id="llamafile-windows-.exe-discovery">2. Llamafile Windows .exe
+Discovery</h2>
+<h3 id="problem-1">Problem</h3>
+<p><code>scanLlamafileModels()</code> in <code>llamafile.go</code>
+identifies binaries by suffix:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">!</span>e<span class="op">.</span>IsDir<span class="op">()</span> <span class="op">&amp;&amp;</span> strings<span class="op">.</span>HasSuffix<span class="op">(</span>e<span class="op">.</span>Name<span class="op">(),</span> <span class="st">&quot;.llamafile&quot;</span><span class="op">)</span> <span class="op">{</span></span></code></pre></div>
+<p>The llamafile project ships Windows binaries with two possible names:
+- <code>Llama-3.2-1B.llamafile.exe</code> — the “universal” format that
+works on all platforms after renaming <code>.exe</code> to
+<code>.llamafile</code> on non-Windows. - <code>Llama-3.2-1B.exe</code>
+— plain Windows executable distributed separately.</p>
+<p>Neither matches <code>.llamafile</code>. Users on Windows see an
+empty model picker even with valid models in <code>~/Models</code>.</p>
+<p>A second bug: <code>llamafileModelName</code> strips only
+<code>.llamafile</code>, leaving <code>.exe</code> in the display
+name:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> strings<span class="op">.</span>TrimSuffix<span class="op">(</span>name<span class="op">,</span> <span class="st">&quot;.llamafile&quot;</span><span class="op">)</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">// &quot;Llama-3.2-1B.llamafile.exe&quot; → &quot;Llama-3.2-1B.llamafile.exe&quot; (unchanged)</span></span></code></pre></div>
+<h3 id="solution-1">Solution</h3>
+<p><strong><code>scanLlamafileModels</code> changes:</strong></p>
+<p>Match three patterns, in priority order: 1. <code>.llamafile</code> —
+Linux/macOS standard form (unchanged). 2. <code>.llamafile.exe</code> —
+Windows universal form. 3. <code>.exe</code> — Windows-only plain
+executable. This pattern is only activated when the OS is Windows
+(<code>runtime.GOOS == "windows"</code>), to avoid picking up unrelated
+executables on other platforms.</p>
+<p><strong><code>llamafileModelName</code> changes:</strong></p>
+<p>Strip suffixes in longest-first order so the double extension is
+handled correctly before the single extension: 1. Strip
+<code>.llamafile.exe</code> (if present). 2. Strip <code>.exe</code> (if
+still present). 3. Strip <code>.llamafile</code> (if still present).</p>
+<p>The helper <code>strings.TrimSuffix</code> already handles the “no-op
+if suffix not present” case, so the chain is safe.</p>
+<h3 id="platform-guard">Platform guard</h3>
+<p>The <code>.exe</code> fallback scan is guarded by
+<code>runtime.GOOS == "windows"</code>. On Linux and macOS, only
+<code>.llamafile</code> and <code>.llamafile.exe</code> are matched.
+This prevents Harvey from accidentally treating non-llamafile binaries
+as models on developer machines with mixed executable types in
+<code>~/Models</code>.</p>
+<hr />
+<h2 id="resume-flag">3. <code>--resume</code> Flag</h2>
+<h3 id="problem-2">Problem</h3>
+<p>The most common workflow after reopening a terminal is to resume the
+last Harvey session. The current options are:</p>
+<ul>
+<li><code>--continue PATH</code> — requires finding and typing the
+session file path.</li>
+<li>Interactive picker at startup — offers all sessions and requires a
+keypress to select the most recent one.</li>
+</ul>
+<p>Both are unnecessary friction when the user simply wants to pick up
+exactly where they left off.</p>
+<h3 id="solution-2">Solution</h3>
+<p>Add a <code>--resume</code> flag (no argument) to
+<code>cmd/harvey/main.go</code>. When present, it resolves the most
+recently modified <code>.spmd</code> file in
+<code>agents/sessions/</code> and assigns it to
+<code>cfg.ContinuePath</code>. Harvey then enters the existing
+<code>ContinueFromFountain</code> path without any interactive
+prompt.</p>
+<pre><code>harvey --resume</code></pre>
+<p>If no <code>.spmd</code> files exist in
+<code>agents/sessions/</code>, Harvey prints:</p>
+<pre><code>  No sessions found in agents/sessions/ — starting fresh.</code></pre>
+<p>and continues to a clean session.</p>
+<p><strong>Implementation detail:</strong> <code>--resume</code> sets
+<code>cfg.ContinuePath</code> before <code>Run</code> is called. Inside
+<code>Run</code>, the <code>pickSession</code> call is skipped when
+<code>cfg.ContinuePath</code> is already set (this logic already exists
+for <code>--continue</code>). No changes to <code>terminal.go</code> are
+needed.</p>
+<p>A new helper <code>mostRecentSession(sessDir string) string</code>
+returns the path of the <code>.spmd</code> file with the most recent
+<code>ModTime</code> in <code>sessDir</code>, or <code>""</code> if none
+exist. It lives in <code>sessions_files.go</code> alongside the other
+session file utilities.</p>
+<h3 id="interaction-with---record">Interaction with
+<code>--record</code></h3>
+<p>The existing guard in <code>terminal.go:333-338</code> prevents
+re-recording a session that is being resumed.
+<code>--resume --record</code> is safe: recording starts a new file
+distinct from the resumed session.</p>
+<hr />
+<h2 id="assay-output-at-workspace-level">4. Assay Output at Workspace
+Level</h2>
+<h3 id="problem-3">Problem</h3>
+<p><code>bin/assay</code> writes evaluation output to
+<code>testout/</code> inside the <code>harvey/</code> source
+repository:</p>
+<pre><code>harvey/testout/assay-20260618-143022/
+  report.md
+  results.json</code></pre>
+<p><code>testout/</code> is gitignored, but the artifacts are still
+visible to file-tree tools (<code>/file-tree</code>,
+<code>read_dir</code>). Language models reading the harvey source tree
+interpret these as current test results, generating false alarms about
+test failures and confusing the agent’s understanding of the project
+state.</p>
+<h3 id="solution-3">Solution</h3>
+<p>Change the default output directory to a workspace-level path:</p>
+<pre><code>$WORKSPACE/assay-results/assay-&lt;timestamp&gt;/
+  report.md
+  results.json</code></pre>
+<p>where <code>$WORKSPACE</code> is resolved using the same heuristic
+Harvey uses: walk up from the current working directory to the nearest
+directory containing <code>agents/harvey.yaml</code>.</p>
+<p>If no workspace is found (e.g., assay is run outside a Harvey
+workspace), fall back to <code>assay-results/</code> in the current
+working directory — same behaviour as today’s default, but with a
+clearer directory name.</p>
+<p>The <code>--output PATH</code> flag continues to override the default
+entirely.</p>
+<h3 id="implementation">Implementation</h3>
+<p>A <code>findWorkspaceRoot(start string) string</code> helper in
+<code>cmd/assay/main.go</code> walks up the directory tree looking for
+<code>agents/harvey.yaml</code>. This is a small standalone function
+(~15 lines); it does not import the Harvey package’s
+<code>NewWorkspace</code> to avoid increasing the assay binary’s
+dependency surface unnecessarily.</p>
+<p>The <code>defaultOutputDir()</code> function uses
+<code>findWorkspaceRoot</code> and returns the fully qualified output
+path with a timestamp suffix.</p>
+<h3 id="migration-note">Migration note</h3>
+<p>Users with scripts referencing the old <code>testout/assay-*</code>
+path need to update to the new location or pass
+<code>--output testout/</code> explicitly. The <code>--help</code>
+output documents the default location so users can find results.</p>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li><strong>Command tab completion</strong> — mentioned in TODO but
+requires significant <code>termlib</code> changes. Tracked
+separately.</li>
+<li><strong>Min.io replacement</strong> — tracked in
+<code>s3-replacement-design.md</code>.</li>
+<li><strong>Assay Llamafile evaluation</strong> — tracked in
+<code>assay-llamafile-design.md</code>.</li>
+</ul>
+</section>
+</body>
+</html>

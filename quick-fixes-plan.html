@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-quick-fixes-implementation-plan">Harvey Quick Fixes —
+Implementation Plan</h1>
+<p>See <a href="quick-fixes-design.html">quick-fixes-design.md</a> for
+the full design rationale and decisions.</p>
+<p>Each fix is independent and can be shipped in any order. All four are
+included in a single plan document because they are small and likely to
+be committed together.</p>
+<hr />
+<h2 id="fix-a-pdf-capability-in-harvey.md">Fix A — PDF Capability in
+HARVEY.md</h2>
+<p><strong>Goal:</strong> Add a “File reading capabilities” section to
+<code>HARVEY.md</code> so the model knows about automatic PDF extraction
+regardless of whether tools are enabled.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HARVEY.md</code></td>
+<td>Add “File reading capabilities” section after “Agent execution
+model”</td>
+</tr>
+</tbody>
+</table>
+<h3 id="content-to-add">Content to add</h3>
+<p>Insert after the <code>## Documentation conventions</code> heading
+(which follows the <code>## Agent execution model</code> section):</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">## File reading capabilities</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>When asked to read a file, Harvey handles these formats automatically:</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**Plain text, Markdown, source code** — returned as-is.</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**PDF (.pdf)** — text is extracted using the poppler utilities</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  (pdfinfo, pdftotext). No user conversion is needed. Use the optional</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  <span class="in">`pages`</span> parameter to read a subset (e.g. <span class="in">`&quot;1-10&quot;`</span> or <span class="in">`&quot;5&quot;`</span>).</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>**Images (.png, .jpg, .jpeg, .gif, .webp)** — injected directly when</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  the active model supports vision input.</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>Never ask the user to convert a PDF to text before reading it. Call</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="in">`read_file`</span> with the <span class="in">`.pdf`</span> path directly.</span></code></pre></div>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>HARVEY.md</code> contains the new section.</li>
+<li>In a session with tools disabled, asking Harvey to summarize a PDF
+no longer produces “please convert this to text first” responses.</li>
+<li><code>go build ./...</code> and <code>go test ./...</code> pass (no
+code changes).</li>
+</ul>
+<hr />
+<h2 id="fix-b-llamafile-windows-.exe-discovery">Fix B — Llamafile
+Windows .exe Discovery</h2>
+<p><strong>Goal:</strong> Make <code>scanLlamafileModels</code> and
+<code>llamafileModelName</code> handle <code>.llamafile.exe</code> and
+<code>.exe</code> (Windows) extensions correctly.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llamafile.go</code></td>
+<td>Update <code>scanLlamafileModels</code> to match
+<code>.llamafile.exe</code> and <code>.exe</code> (Windows guard).
+Update <code>llamafileModelName</code> to strip suffixes in
+longest-first order.</td>
+</tr>
+<tr>
+<td><code>llamafile_test.go</code></td>
+<td>Add test cases for <code>.llamafile.exe</code> and <code>.exe</code>
+naming.</td>
+</tr>
+</tbody>
+</table>
+<h3
+id="scanllamafilemodels-implementation"><code>scanLlamafileModels</code>
+implementation</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> scanLlamafileModels<span class="op">(</span>dir <span class="dt">string</span><span class="op">)</span> <span class="op">[]</span><span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    entries<span class="op">,</span> err <span class="op">:=</span> os<span class="op">.</span>ReadDir<span class="op">(</span>dir<span class="op">)</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> paths <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> e <span class="op">:=</span> <span class="kw">range</span> entries <span class="op">{</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> e<span class="op">.</span>IsDir<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>            <span class="cf">continue</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        name <span class="op">:=</span> e<span class="op">.</span>Name<span class="op">()</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> strings<span class="op">.</span>HasSuffix<span class="op">(</span>name<span class="op">,</span> <span class="st">&quot;.llamafile&quot;</span><span class="op">)</span> <span class="op">||</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>            strings<span class="op">.</span>HasSuffix<span class="op">(</span>name<span class="op">,</span> <span class="st">&quot;.llamafile.exe&quot;</span><span class="op">)</span> <span class="op">||</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>            <span class="op">(</span>runtime<span class="op">.</span>GOOS <span class="op">==</span> <span class="st">&quot;windows&quot;</span> <span class="op">&amp;&amp;</span> strings<span class="op">.</span>HasSuffix<span class="op">(</span>name<span class="op">,</span> <span class="st">&quot;.exe&quot;</span><span class="op">))</span> <span class="op">{</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>            paths <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>paths<span class="op">,</span> filepath<span class="op">.</span>Join<span class="op">(</span>dir<span class="op">,</span> name<span class="op">))</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> paths</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3
+id="llamafilemodelname-implementation"><code>llamafileModelName</code>
+implementation</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> llamafileModelName<span class="op">(</span>path <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    name <span class="op">:=</span> filepath<span class="op">.</span>Base<span class="op">(</span>path<span class="op">)</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    name <span class="op">=</span> strings<span class="op">.</span>TrimSuffix<span class="op">(</span>name<span class="op">,</span> <span class="st">&quot;.llamafile.exe&quot;</span><span class="op">)</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    name <span class="op">=</span> strings<span class="op">.</span>TrimSuffix<span class="op">(</span>name<span class="op">,</span> <span class="st">&quot;.exe&quot;</span><span class="op">)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    name <span class="op">=</span> strings<span class="op">.</span>TrimSuffix<span class="op">(</span>name<span class="op">,</span> <span class="st">&quot;.llamafile&quot;</span><span class="op">)</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> name</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The three <code>TrimSuffix</code> calls are safe: each is a no-op if
+the suffix is not present. Longest suffix is stripped first so
+<code>Foo.llamafile.exe</code> becomes <code>Foo</code> (not
+<code>Foo.llamafile</code>).</p>
+<h3 id="test-cases-to-add-in-llamafile_test.go">Test cases to add in
+<code>llamafile_test.go</code></h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Input</th>
+<th scope="col">Expected output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Llama-3.2-1B.llamafile</code></td>
+<td><code>Llama-3.2-1B</code></td>
+</tr>
+<tr>
+<td><code>Llama-3.2-1B.llamafile.exe</code></td>
+<td><code>Llama-3.2-1B</code></td>
+</tr>
+<tr>
+<td><code>Llama-3.2-1B.exe</code></td>
+<td><code>Llama-3.2-1B</code></td>
+</tr>
+<tr>
+<td><code>/path/to/Qwen3.llamafile</code></td>
+<td><code>Qwen3</code></td>
+</tr>
+</tbody>
+</table>
+<p>Also add a test for <code>scanLlamafileModels</code> using a temp
+directory with one file of each extension type.</p>
+<h3 id="import-needed">Import needed</h3>
+<p>Add <code>"runtime"</code> to <code>llamafile.go</code> imports (if
+not already present).</p>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>All four <code>llamafileModelName</code> cases above return the
+expected string.</li>
+<li><code>scanLlamafileModels</code> returns <code>.llamafile.exe</code>
+files on all platforms and <code>.exe</code> files only on Windows.</li>
+</ul>
+<hr />
+<h2 id="fix-c---resume-flag">Fix C — <code>--resume</code> Flag</h2>
+<p><strong>Goal:</strong> Add a <code>--resume</code> flag to
+<code>cmd/harvey/main.go</code> that auto-selects the most recent
+session without prompting.</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sessions_files.go</code></td>
+<td>Add <code>mostRecentSession(sessDir string) string</code>
+helper</td>
+</tr>
+<tr>
+<td><code>cmd/harvey/main.go</code></td>
+<td>Add <code>--resume</code> flag case</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Add <code>--resume</code> to the flags section of
+<code>HelpText</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="mostrecentsession-implementation"><code>mostRecentSession</code>
+implementation</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">/** mostRecentSession returns the path of the most recently modified .spmd</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co"> * file in sessDir, or &quot;&quot; if the directory is empty or does not exist.</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"> * Parameters:</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"> *   sessDir (string) — absolute path to the sessions directory.</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"> * Returns:</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co"> *   string — absolute path to the most recent .spmd file, or &quot;&quot;.</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co"> *</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co"> * Example:</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="co"> *   path := mostRecentSession(&quot;/workspace/agents/sessions&quot;)</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co"> */</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> mostRecentSession<span class="op">(</span>sessDir <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    entries<span class="op">,</span> err <span class="op">:=</span> os<span class="op">.</span>ReadDir<span class="op">(</span>sessDir<span class="op">)</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> newest <span class="dt">string</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> newestTime time<span class="op">.</span>Time</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> e <span class="op">:=</span> <span class="kw">range</span> entries <span class="op">{</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> e<span class="op">.</span>IsDir<span class="op">()</span> <span class="op">||</span> <span class="op">!</span>strings<span class="op">.</span>HasSuffix<span class="op">(</span>e<span class="op">.</span>Name<span class="op">(),</span> <span class="st">&quot;.spmd&quot;</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>            <span class="cf">continue</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>        info<span class="op">,</span> err <span class="op">:=</span> e<span class="op">.</span>Info<span class="op">()</span></span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>            <span class="cf">continue</span></span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> info<span class="op">.</span>ModTime<span class="op">().</span>After<span class="op">(</span>newestTime<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a>            newestTime <span class="op">=</span> info<span class="op">.</span>ModTime<span class="op">()</span></span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a>            newest <span class="op">=</span> filepath<span class="op">.</span>Join<span class="op">(</span>sessDir<span class="op">,</span> e<span class="op">.</span>Name<span class="op">())</span></span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> newest</span>
+<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="cmdharveymain.go-change"><code>cmd/harvey/main.go</code>
+change</h3>
+<p>Add to the flag switch before
+<code>cfg.SystemPrompt = harvey.LoadHarveyMD()</code>:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="st">&quot;--resume&quot;</span><span class="op">:</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Resolved after workspace is known (sessDir depends on cfg.WorkDir).</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>ResumeLatest <span class="op">=</span> <span class="ot">true</span></span></code></pre></div>
+<p>And after
+<code>ws, err := harvey.NewWorkspace(cfg.WorkDir)</code>:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> cfg<span class="op">.</span>ResumeLatest <span class="op">&amp;&amp;</span> cfg<span class="op">.</span>ContinuePath <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    sessDir <span class="op">:=</span> filepath<span class="op">.</span>Join<span class="op">(</span>ws<span class="op">.</span>Root<span class="op">,</span> <span class="st">&quot;agents&quot;</span><span class="op">,</span> <span class="st">&quot;sessions&quot;</span><span class="op">)</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> p <span class="op">:=</span> harvey<span class="op">.</span>MostRecentSession<span class="op">(</span>sessDir<span class="op">);</span> p <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>        cfg<span class="op">.</span>ContinuePath <span class="op">=</span> p</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>os<span class="op">.</span>Stderr<span class="op">,</span> <span class="st">&quot;  No sessions found in agents/sessions/ — starting fresh.&quot;</span><span class="op">)</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="config-change"><code>Config</code> change</h3>
+<p>Add <code>ResumeLatest bool</code> to <code>Config</code> in
+<code>config.go</code> alongside <code>ContinuePath</code>.</p>
+<h3 id="help-text">Help text</h3>
+<p>Add to the flags section in <code>helptext.go</code>:</p>
+<pre><code>--resume                resume the most recent session (no argument needed)
+--continue PATH         resume from a specific session file</code></pre>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li><code>harvey --resume</code> in a workspace with sessions loads the
+most recent <code>.spmd</code> and prints the “Resumed N turns”
+line.</li>
+<li><code>harvey --resume</code> in a workspace with no sessions starts
+fresh with a one-line notice.</li>
+<li><code>harvey --resume --continue PATH</code> ignores
+<code>--resume</code> (ContinuePath is set; ResumeLatest is skipped
+because <code>cfg.ContinuePath != ""</code>).</li>
+<li>Existing <code>--continue</code> behavior is unchanged.</li>
+</ul>
+<hr />
+<h2 id="fix-d-assay-output-at-workspace-level">Fix D — Assay Output at
+Workspace Level</h2>
+<p><strong>Goal:</strong> Change <code>bin/assay</code> default output
+directory from <code>testout/</code> to
+<code>$WORKSPACE/assay-results/assay-&lt;timestamp&gt;/</code>.</p>
+<h3 id="files-to-modify-3">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td>Add <code>findWorkspaceRoot</code> helper; change default output
+path logic</td>
+</tr>
+</tbody>
+</table>
+<h3 id="findworkspaceroot-implementation"><code>findWorkspaceRoot</code>
+implementation</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co">// findWorkspaceRoot walks up from start looking for a directory containing</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co">// agents/harvey.yaml. Returns &quot;&quot; if not found.</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> findWorkspaceRoot<span class="op">(</span>start <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    dir <span class="op">:=</span> start</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">{</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> os<span class="op">.</span>Stat<span class="op">(</span>filepath<span class="op">.</span>Join<span class="op">(</span>dir<span class="op">,</span> <span class="st">&quot;agents&quot;</span><span class="op">,</span> <span class="st">&quot;harvey.yaml&quot;</span><span class="op">));</span> err <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> dir</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>        parent <span class="op">:=</span> filepath<span class="op">.</span>Dir<span class="op">(</span>dir<span class="op">)</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> parent <span class="op">==</span> dir <span class="op">{</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>        dir <span class="op">=</span> parent</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="default-output-path-logic">Default output path logic</h3>
+<p>Replace the current <code>defaultOutputDir()</code> (or inline
+default):</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> defaultOutputDir<span class="op">()</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    cwd<span class="op">,</span> _ <span class="op">:=</span> os<span class="op">.</span>Getwd<span class="op">()</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    root <span class="op">:=</span> findWorkspaceRoot<span class="op">(</span>cwd<span class="op">)</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    ts <span class="op">:=</span> time<span class="op">.</span>Now<span class="op">().</span>Format<span class="op">(</span><span class="st">&quot;20060102-150405&quot;</span><span class="op">)</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> root <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> filepath<span class="op">.</span>Join<span class="op">(</span>root<span class="op">,</span> <span class="st">&quot;assay-results&quot;</span><span class="op">,</span> <span class="st">&quot;assay-&quot;</span><span class="op">+</span>ts<span class="op">)</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> filepath<span class="op">.</span>Join<span class="op">(</span><span class="st">&quot;assay-results&quot;</span><span class="op">,</span> <span class="st">&quot;assay-&quot;</span><span class="op">+</span>ts<span class="op">)</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="help-text-update-in-cmdassaymain.go">Help text update in
+<code>cmd/assay/main.go</code></h3>
+<p>Update the <code>--output</code> flag description:</p>
+<pre><code>--output PATH   write report and results to PATH
+                (default: $WORKSPACE/assay-results/assay-TIMESTAMP/
+                 or assay-results/assay-TIMESTAMP/ if not in a workspace)</code></pre>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code>
+pass.</li>
+<li>Running <code>bin/assay</code> from inside a Harvey workspace
+creates output in
+<code>$WORKSPACE/assay-results/assay-&lt;timestamp&gt;/</code>.</li>
+<li>Running <code>bin/assay</code> from outside a workspace creates
+output in <code>assay-results/assay-&lt;timestamp&gt;/</code> relative
+to cwd.</li>
+<li><code>bin/assay --output testout/myrun</code> still writes to
+<code>testout/myrun</code>.</li>
+<li><code>testout/</code> inside the harvey repo is not populated by a
+default assay run.</li>
+</ul>
+<hr />
+<h2 id="dependency-graph">Dependency Graph</h2>
+<p>All four fixes are independent. Suggested commit order:</p>
+<pre><code>Fix A  (HARVEY.md)            — no tests needed; low risk
+Fix B  (llamafile .exe)       — add tests before shipping
+Fix C  (--resume)             — new flag + helper; add unit test
+Fix D  (assay output)         — new helper + default change</code></pre>
+<p>Each fix can be committed separately on <code>main</code>.</p>
+<hr />
+<h2 id="open-questions">Open Questions</h2>
+<p>None as of 2026-06-18.</p>
+</section>
+</body>
+</html>

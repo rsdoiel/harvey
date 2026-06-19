@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-web-developer-template-implementation-plan">Harvey Web
+Developer Template — Implementation Plan</h1>
+<p>See <a
+href="web-developer-template-design.html">web-developer-template-design.md</a>
+for the full design rationale.</p>
+<p>This is a single-phase change: add one <code>.spmd</code> file to
+<code>templates/profiles/</code>. No code changes are required —
+<code>ListTemplates()</code> discovers all <code>.spmd</code> files in
+that directory automatically.</p>
+<hr />
+<h2 id="phase-a-add-web-developer.spmd">Phase A — Add
+<code>web-developer.spmd</code></h2>
+<p><strong>Goal:</strong> Add the web developer profile template to the
+embedded template set.</p>
+<h3 id="files-to-create">Files to create</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>templates/profiles/web-developer.spmd</code></td>
+<td>Web developer profile template</td>
+</tr>
+</tbody>
+</table>
+<h3 id="template-content">Template content</h3>
+<pre class="fountain"><code>INT. WORKSPACE PROFILE - WEB DEVELOPER
+
+TITLE: Web Developer
+
+NOTE: Recommended model: qwen2.5-coder:7b or granite3.3:2b
+      RAG: ingest Go source, deno.json/package.json, SQL schema files
+      Style: prefer stdlib and web platform APIs; avoid heavy frameworks
+
+ROLE:
+  Full-stack web developer. Backend: Go (net/http, database/sql,
+  standard library first). Frontend: Deno + TypeScript (standard library,
+  no bundler by default), vanilla JavaScript (ES modules), CSS (custom
+  properties), HTML5 (semantic markup). Data: SQL — SQLite3 dialect for
+  embedded/application data, Postgres for shared services. Scripts and
+  automation: uv-managed Python.
+
+PREFERENCES:
+  Go: minimal imports, stdlib over third-party, idiomatic error returns.
+  TypeScript/Deno: use Deno standard library (jsr:@std/*); no npm by
+  default. Type everything; avoid `any`.
+  JavaScript: ES modules, no class-based OOP unless the pattern fits.
+  CSS: custom properties for theming; no utility framework (Tailwind etc.)
+  unless the project already uses one.
+  HTML: semantic elements, ARIA attributes for interactive components.
+  SQL: write explicit column lists; avoid SELECT *; use transactions for
+  writes. SQLite3 dialect unless otherwise specified.
+  Python: managed via uv; prefer standard library; type hints on public
+  functions.
+  Tests: written alongside implementation. Go table-driven tests.
+  TypeScript: Deno&#39;s built-in test runner (Deno.test).
+
+CONTEXT:
+  Edit this section to describe your current project, the tech stack
+  in use, and any constraints Harvey should keep in mind (e.g.
+  &quot;API must stay compatible with v1&quot;, &quot;SQLite3 only, no Postgres
+  in this project&quot;, &quot;no external JS dependencies&quot;).</code></pre>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> and <code>go test ./...</code> pass
+(binary recompilation picks up the new embedded file via
+<code>//go:embed templates</code>).</li>
+<li><code>ListTemplates()</code> returns an entry with
+<code>Name == "Web Developer"</code> and
+<code>File == "web-developer.spmd"</code>.</li>
+<li>The onboarding picker shows “Web Developer” as an option.</li>
+<li><code>/profile use web-developer</code> opens the template in
+<code>$EDITOR</code>.</li>
+<li>The <code>templates_test.go</code> test for
+<code>ListTemplates</code> either already passes with the new file (if
+it counts entries by index) or needs a count update.</li>
+</ul>
+<h3 id="test-update">Test update</h3>
+<p>If <code>templates_test.go</code> asserts a specific count of
+built-in templates, update the expected count from 6 to 7.</p>
+<hr />
+<h2 id="no-dependency">No Dependency</h2>
+<p>This phase has no dependencies on other open work items. It can be
+committed before or after any other change.</p>
+<hr />
+<h2 id="open-questions">Open Questions</h2>
+<p>None as of 2026-06-18.</p>
+</section>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-memory-profile-ux-design">Harvey Memory Profile UX —
+Design</h1>
+<p><strong>Status (2026-06-18):</strong> Design settled. See <a
+href="memory-profile-ux-plan.html">memory-profile-ux-plan.md</a> for the
+phased implementation plan.</p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>The <code>/memory profile</code> command set has grown organically
+and now has three problems:</p>
+<ol type="1">
+<li><p><strong>Naming inconsistency.</strong> <code>show</code> lists
+profile IDs (like <code>list</code> does everywhere else in Harvey).
+Users who type <code>/memory profile show</code> expecting to see the
+<em>content</em> of their current profile instead see a terse ID list.
+This contradicts Harvey’s established vocabulary where
+<code>show &lt;id&gt;</code> displays a document’s full
+content.</p></li>
+<li><p><strong>Missing <code>show</code> (content display).</strong>
+There is no command to print the full text of the active workspace
+profile. The user must run <code>/memory show &lt;id&gt;</code> after
+first running <code>/memory profile show</code> to find the ID — a
+two-step process for a common action.</p></li>
+<li><p><strong>Missing <code>edit</code> and
+<code>rename</code>.</strong> The only way to modify the current profile
+is <code>/memory profile update</code>, which opens
+<code>$EDITOR</code>. A user who wants to rename the workspace (the
+description field in the profile document) has no direct
+command.</p></li>
+</ol>
+<hr />
+<h2 id="revised-command-set">Revised Command Set</h2>
+<h3 id="summary-table">Summary table</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Subcommand</th>
+<th scope="col">Semantics</th>
+<th scope="col">Was</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list</code></td>
+<td>List all profiles (active + archived) with IDs and descriptions</td>
+<td><code>show</code> (old)</td>
+</tr>
+<tr>
+<td><code>show</code></td>
+<td>Print the full content of the <em>current active</em> profile
+document</td>
+<td>(missing)</td>
+</tr>
+<tr>
+<td><code>edit</code></td>
+<td>Open the active profile in <code>$EDITOR</code> and re-save on
+close</td>
+<td><code>update</code></td>
+</tr>
+<tr>
+<td><code>use [NAME]</code></td>
+<td>Switch to a named template or show picker</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td><code>rename NAME</code></td>
+<td>Update the description field of the active profile</td>
+<td>(missing)</td>
+</tr>
+</tbody>
+</table>
+<p><code>update</code> is kept as a deprecated alias for
+<code>edit</code>. When called, it prints:</p>
+<pre><code>  ⚠  /memory profile update is deprecated; use /memory profile edit</code></pre>
+<p>then proceeds identically to <code>edit</code>.</p>
+<p>The <code>/profile</code> top-level alias continues to work for all
+subcommands:</p>
+<pre><code>/profile list
+/profile show
+/profile edit
+/profile use [name]
+/profile rename NAME</code></pre>
+<hr />
+<h2 id="subcommand-specifications">Subcommand Specifications</h2>
+<h3 id="list"><code>list</code></h3>
+<p>Replaces the current <code>show</code> behavior.</p>
+<pre><code>/memory profile list</code></pre>
+<p>Output format (same as current <code>show</code>):</p>
+<pre><code>Active workspace profiles:
+
+  workspace_profile_a1b2c3  Back End Developer      (active)
+  workspace_profile_d4e5f6  Technical Writer        (archived 2026-06-10)</code></pre>
+<p>If <code>--all</code> is passed, archived profiles are included (same
+as today). If no profiles exist, print:</p>
+<pre><code>  No workspace profiles found. Run /profile use to set one.</code></pre>
+<h3 id="show"><code>show</code></h3>
+<p>Displays the full content of the most recent active
+<code>workspace_profile</code> document — the text that is injected into
+the LLM context at session start.</p>
+<pre><code>/memory profile show</code></pre>
+<p>Output:</p>
+<pre><code>Active workspace profile: Back End Developer (workspace_profile_a1b2c3)
+
+─────────────────────────────────────────────
+INT. WORKSPACE PROFILE - BACK END DEVELOPER
+
+ROLE:
+  Back end developer. Primary languages: Go, Python,
+  TypeScript (Deno runtime). Uses SQL for application
+  data access (Postgres and SQLite3).
+
+PREFERENCES:
+  Concise code with no unnecessary comments.
+  …
+─────────────────────────────────────────────</code></pre>
+<p>If no active profile exists, print the same nudge as
+<code>list</code>.</p>
+<h3 id="edit"><code>edit</code></h3>
+<p>Opens the active profile in <code>$EDITOR</code> (same as current
+<code>update</code>).</p>
+<pre><code>/memory profile edit</code></pre>
+<p>After the user saves and closes the editor, the updated content
+replaces the existing profile document in the store. If the user closes
+the editor without changes, a message confirms no change was made.</p>
+<h3 id="use-name"><code>use [NAME]</code></h3>
+<p>Unchanged from the current implementation. Switches to a named
+template or shows the interactive picker. Writes a handoff document
+before switching.</p>
+<h3 id="rename-name"><code>rename NAME</code></h3>
+<p>Updates the description line in the active profile document. The
+description appears in <code>list</code> output and in
+<code>/status</code> (the “Profile:” field).</p>
+<pre><code>/memory profile rename &quot;Harvey Web Developer&quot;</code></pre>
+<p>The rename is a targeted string replacement in the stored Fountain
+document: it finds the <code>TITLE:</code> line (or the
+<code>INT.</code> scene heading) and updates it. The profile’s ID and
+content are otherwise unchanged. No new document is created — this is an
+in-place edit.</p>
+<p>If no active profile exists, print an error.</p>
+<hr />
+<h2 id="memoryrag-unified-view">Memory/RAG Unified View</h2>
+<p>The TODO notes that users think of memory and RAG settings as going
+together. This design does not merge the two — they remain separate
+silos with separate commands — but acknowledges the confusion with two
+UX touches:</p>
+<ol type="1">
+<li><p><code>/memory profile show</code> will include a brief RAG
+summary at the bottom if a RAG store is active:</p>
+<pre><code>RAG context: go-source (1,204 chunks, on)</code></pre>
+<p>This surfaces the most relevant RAG state alongside the profile
+without mixing the storage models.</p></li>
+<li><p><code>/hint</code> (existing command) already aggregates memory
+and RAG state. No change needed there.</p></li>
+</ol>
+<p>A deeper unification — e.g., a <code>/workspace</code> command that
+shows profile, active RAG stores, active memory count, and KB status
+together — is left as a future design exercise once user feedback
+clarifies what information is most commonly needed at a glance.</p>
+<hr />
+<h2 id="workspace-rename">Workspace Rename</h2>
+<p><code>/memory profile rename NAME</code> targets the description
+embedded in the profile Fountain document. Specifically, it rewrites the
+<code>TITLE:</code> or <code>INT.</code> line in the stored
+<code>.spmd</code> file.</p>
+<p>The current format of a profile document’s opening lines is:</p>
+<pre><code>INT. WORKSPACE PROFILE - BACK END DEVELOPER</code></pre>
+<p>After <code>rename "Web Developer"</code>:</p>
+<pre><code>INT. WORKSPACE PROFILE - WEB DEVELOPER</code></pre>
+<p>The memory store’s <code>Description</code> field for the record is
+derived from this heading at load time, so <code>list</code> and
+<code>/status</code> pick up the new name automatically without
+requiring a store migration.</p>
+<hr />
+<h2 id="help-text-updates">Help Text Updates</h2>
+<p>The <code>/memory</code> help text is updated to list all five
+subcommands:</p>
+<pre><code>/memory profile list           — list active and archived profiles
+/memory profile show           — print the content of the active profile
+/memory profile edit           — open the active profile in $EDITOR
+/memory profile use [NAME]     — switch to a template or profile
+/memory profile rename NAME    — rename the workspace in the active profile</code></pre>
+<p>The man page <code>harvey-memory.7.md</code> is updated to match.</p>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li><strong>Profile versioning / diff</strong> — deferred. The archive
+mechanism preserves history without a full diff UI.</li>
+<li><strong>Global <code>/workspace</code> command</strong> — deferred
+pending user feedback on what information is most useful at a
+glance.</li>
+<li><strong>Merging RAG and memory toggles</strong> — the silos serve
+different retrieval strategies; merging them into a single toggle would
+lose retrieval precision for small models.</li>
+</ul>
+</section>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-assay-llamafile-support-output-location-design">Harvey
+Assay — Llamafile Support &amp; Output Location — Design</h1>
+<p><strong>Status (2026-06-18):</strong> Design settled. See <a
+href="assay-llamafile-plan.html">assay-llamafile-plan.md</a> for the
+implementation plan.</p>
+<p>This document covers two related improvements to
+<code>bin/assay</code>: 1. Support for evaluating Llamafile models
+alongside Ollama models. 2. Moving evaluation output to a
+workspace-level directory.</p>
+<hr />
+<h2 id="background">Background</h2>
+<p><code>bin/assay</code> is Harvey’s LLM evaluation harness. It reads a
+corpus of prompts from <code>agents/assay/corpus.yaml</code>, sends each
+prompt to a model backend, scores the response against
+<code>contains:</code> checks, and writes a report to
+<code>testout/</code>.</p>
+<p>Currently, only the Ollama backend is supported. Harvey also supports
+Llamafile — a self-contained, runnable binary that serves a
+llamafile.cpp model on a local HTTP port (the same OpenAI-compatible API
+as Ollama). Users who want to compare a Llamafile model against an
+Ollama model must manually start the Llamafile process, find the port,
+and pass <code>--ollama-url http://localhost:PORT</code> to assay — a
+fragile workaround that isn’t documented.</p>
+<hr />
+<h2 id="llamafile-backend-support">1. Llamafile Backend Support</h2>
+<h3 id="goals">Goals</h3>
+<ul>
+<li><code>bin/assay --llamafile PATH</code> starts the llamafile binary
+automatically, runs the full evaluation suite against it, and terminates
+the process on exit.</li>
+<li>The report header identifies the model as a llamafile with its
+binary path.</li>
+<li>RAG evaluation (<code>--rag-db</code>, <code>--rag-compare</code>)
+continues to work; embeddings still use Ollama (the only embedding
+backend Harvey has today).</li>
+<li><code>--rag-db</code> + <code>--llamafile</code> fails fast with a
+clear error if the RAG store’s recorded embedding model is not reachable
+via Ollama.</li>
+</ul>
+<h3 id="flag-interface">Flag interface</h3>
+<pre><code>bin/assay --llamafile PATH [--model NAME] [other flags]</code></pre>
+<p><code>PATH</code> — absolute or relative path to a llamafile binary.
+The name is derived from the binary filename using
+<code>llamafileModelName</code> (already in the package). The optional
+<code>--model NAME</code> overrides the derived name in the report.</p>
+<p><code>--ollama-url</code> is silently ignored when
+<code>--llamafile</code> is provided, because the llamafile process
+binds its own port.</p>
+<h3 id="process-lifecycle">Process lifecycle</h3>
+<ol type="1">
+<li>At startup (after flag parsing, before corpus loading), assay calls
+<code>startLlamafile(path, port)</code> — the same function used by
+Harvey’s <code>/llamafile add</code> command
+(<code>llamafile_service.go</code>).</li>
+<li>The port is selected by calling <code>findFreePort()</code> (also in
+<code>llamafile_service.go</code>), distinct from Harvey’s default
+llamafile port to allow assay and an interactive Harvey session to
+coexist.</li>
+<li>On process start, assay waits up to 30 seconds for the llamafile
+HTTP server to respond (same health-check loop used in the interactive
+path).</li>
+<li>All evaluation prompts are sent to
+<code>http://localhost:PORT/v1/chat/completions</code> using the same
+<code>anyllm_client.go</code> client already used by the Ollama
+path.</li>
+<li>On exit (normal or panic), a <code>defer</code> stops the llamafile
+process. If the process has already exited, the stop is a no-op.</li>
+</ol>
+<h3 id="port-selection">Port selection</h3>
+<p><code>findFreePort()</code> asks the OS for an available port by
+opening and immediately closing a listener on <code>:0</code>. This is
+already implemented in <code>llamafile_service.go</code>. No new port
+logic is needed.</p>
+<h3 id="embedding-with-llamafile">Embedding with Llamafile</h3>
+<p>Llamafile does not expose an embedding endpoint. When
+<code>--rag-db</code> is also given and <code>--llamafile</code> is the
+backend, embeddings go to Ollama at the default URL
+(<code>--ollama-url</code> or <code>http://localhost:11434</code>). If
+Ollama is not running, assay prints:</p>
+<pre><code>  RAG evaluation requires Ollama for embeddings (llamafile has no
+  embedding endpoint). Start Ollama or use --ollama-url to specify
+  a running instance.</code></pre>
+<p>and exits with a non-zero status.</p>
+<hr />
+<h2 id="workspace-level-output-directory">2. Workspace-Level Output
+Directory</h2>
+<h3 id="problem">Problem</h3>
+<p>Assay writes to <code>testout/</code> in the <code>harvey/</code>
+source repository. This is gitignored, but models reading the file tree
+(via <code>/file-tree</code> or <code>read_dir</code>) see the directory
+and misinterpret stale evaluation results as current test failures.</p>
+<h3 id="solution">Solution</h3>
+<p>The default output directory becomes
+<code>$WORKSPACE/assay-results/assay-&lt;timestamp&gt;/</code> where
+<code>$WORKSPACE</code> is the Harvey workspace root (the directory
+containing <code>agents/harvey.yaml</code>).</p>
+<pre><code>$WORKSPACE/
+  agents/
+    harvey.yaml
+  assay-results/
+    assay-20260618-143022/
+      report.md
+      results.json</code></pre>
+<p>The <code>assay-results/</code> directory is not inside the harvey
+source tree, so it does not appear in the harvey file tree. It is at the
+workspace root, next to <code>agents/</code>, making it easy to
+find.</p>
+<h3 id="workspace-discovery">Workspace discovery</h3>
+<p><code>findWorkspaceRoot(start string) string</code> walks up the
+directory tree from <code>start</code> (default: cwd) looking for a
+directory containing <code>agents/harvey.yaml</code>. Returns the empty
+string if none is found.</p>
+<p>This is a standalone function in <code>cmd/assay/main.go</code>. It
+does not import the Harvey package’s <code>NewWorkspace</code> to keep
+the assay binary’s dependency surface small.</p>
+<h3 id="fallback">Fallback</h3>
+<p>If no workspace is found, the default output is
+<code>assay-results/assay-&lt;timestamp&gt;/</code> in the current
+working directory. The <code>--help</code> text documents this
+fallback.</p>
+<h3 id="override">Override</h3>
+<p><code>--output PATH</code> fully overrides the default directory.
+Users with existing scripts that pass
+<code>--output testout/myrun</code> are unaffected.</p>
+<hr />
+<h2 id="report-header-changes">Report Header Changes</h2>
+<p>The report header is extended to include backend information:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu"># Assay Report — 2026-06-18 14:30:22</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Field       <span class="pp">|</span> Value                              <span class="pp">|</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="pp">|-------------|-----------------------------------|</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Backend     <span class="pp">|</span> Llamafile                         <span class="pp">|</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Model       <span class="pp">|</span> Llama-3.2-1B                      <span class="pp">|</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Binary      <span class="pp">|</span> /home/user/Models/Llama-3.2-1B.llamafile <span class="pp">|</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Ollama URL  <span class="pp">|</span> (not used)                        <span class="pp">|</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> RAG store   <span class="pp">|</span> go-source (1,204 chunks)          <span class="pp">|</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Output dir  <span class="pp">|</span> /workspace/assay-results/assay-20260618-143022 <span class="pp">|</span></span></code></pre></div>
+<p>For Ollama runs, “Backend” shows “Ollama” and “Binary” is
+omitted.</p>
+<hr />
+<h2 id="interaction-between-the-two-changes">Interaction Between the Two
+Changes</h2>
+<p>The output directory change and the Llamafile backend change are
+independent. Either can be shipped without the other. The plan treats
+them as separate phases for this reason.</p>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li><strong>Llamafile embedding support</strong> — not feasible until
+llamafile exposes an embedding endpoint. Track as a future
+enhancement.</li>
+<li><strong>Side-by-side Ollama vs. Llamafile comparison</strong> —
+<code>--rag-compare</code> already shows base vs. RAG delta; a
+backend-comparison mode would require running the corpus twice with
+different backends and diffing results. Deferred.</li>
+<li><strong>Corpus management CLI</strong> — adding/editing corpus
+entries via CLI flags. Corpus is currently a hand-edited YAML file,
+which is sufficient.</li>
+</ul>
+</section>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="harvey-web-developer-template-design">Harvey Web Developer
+Template — Design</h1>
+<p><strong>Status (2026-06-18):</strong> Design settled. See <a
+href="web-developer-template-plan.html">web-developer-template-plan.md</a>
+for the implementation plan.</p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>The five profile templates shipped in v1 cover:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Template</th>
+<th scope="col">Stack focus</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend-developer</code></td>
+<td>Go, Python, TypeScript+Deno, SQL</td>
+</tr>
+<tr>
+<td><code>frontend-developer</code></td>
+<td>HTML, CSS, TypeScript/JavaScript, Deno bundling</td>
+</tr>
+<tr>
+<td><code>dataset-developer</code></td>
+<td>Front end + SQL, dataset CLI and datasetd</td>
+</tr>
+<tr>
+<td><code>data-scientist</code></td>
+<td>Data analysis, SQL, Python</td>
+</tr>
+<tr>
+<td><code>technical-writer</code></td>
+<td>Documentation, Markdown, Fountain</td>
+</tr>
+</tbody>
+</table>
+<p>A developer building web applications in the Laboratory workspace
+uses <em>all</em> of these stacks simultaneously:</p>
+<ul>
+<li><strong>Go</strong> — HTTP servers, middleware, API handlers
+(<code>net/http</code>, <code>database/sql</code>)</li>
+<li><strong>uv + Python</strong> — scripts, data processing,
+automation</li>
+<li><strong>SQL</strong> — SQLite3 for application data, Postgres for
+shared/production data</li>
+<li><strong>Deno + TypeScript</strong> — frontend logic, build scripts,
+server-side TypeScript</li>
+<li><strong>JavaScript</strong> — browser-native ES modules, no
+framework default</li>
+<li><strong>CSS</strong> — custom properties, no utility framework
+default</li>
+<li><strong>HTML5</strong> — semantic markup</li>
+</ul>
+<p>The closest match is <code>backend-developer</code>, but that
+template emphasizes server architecture and does not mention the
+front-end layers. The <code>frontend-developer</code> template covers
+HTML/CSS/JS but omits Go and SQL. Neither gives Harvey the full picture
+needed to assist across a full-stack session.</p>
+<hr />
+<h2 id="template-design">Template Design</h2>
+<h3 id="name">Name</h3>
+<p><code>web-developer</code> — concise, describes the role without
+implying a specific framework or language. The display name is “Web
+Developer”.</p>
+<h3 id="note-field">NOTE field</h3>
+<p>Shown during onboarding and template selection, not injected into
+context:</p>
+<pre><code>NOTE: Recommended model: qwen2.5-coder:7b or granite3.3:2b
+      RAG: ingest Go source, deno.json, package.json, SQL schema files
+      Style: prefer stdlib and web platform APIs; avoid heavy frameworks</code></pre>
+<h3 id="full-template-content">Full template content</h3>
+<pre class="fountain"><code>INT. WORKSPACE PROFILE - WEB DEVELOPER
+
+TITLE: Web Developer
+
+NOTE: Recommended model: qwen2.5-coder:7b or granite3.3:2b
+      RAG: ingest Go source, deno.json/package.json, SQL schema files
+      Style: prefer stdlib and web platform APIs; avoid heavy frameworks
+
+ROLE:
+  Full-stack web developer. Backend: Go (net/http, database/sql,
+  standard library first). Frontend: Deno + TypeScript (standard library,
+  no bundler by default), vanilla JavaScript (ES modules), CSS (custom
+  properties), HTML5 (semantic markup). Data: SQL — SQLite3 dialect for
+  embedded/application data, Postgres for shared services. Scripts and
+  automation: uv-managed Python.
+
+PREFERENCES:
+  Go: minimal imports, stdlib over third-party, idiomatic error returns.
+  TypeScript/Deno: use Deno standard library (jsr:@std/*); no npm by
+  default. Type everything; avoid `any`.
+  JavaScript: ES modules, no class-based OOP unless the pattern fits.
+  CSS: custom properties for theming; no utility framework (Tailwind etc.)
+  unless the project already uses one.
+  HTML: semantic elements, ARIA attributes for interactive components.
+  SQL: write explicit column lists; avoid SELECT *; use transactions for
+  writes. SQLite3 dialect unless otherwise specified.
+  Python: managed via uv; prefer standard library; type hints on public
+  functions.
+  Tests: written alongside implementation. Go table-driven tests.
+  TypeScript: Deno&#39;s built-in test runner (Deno.test).
+
+CONTEXT:
+  Edit this section to describe your current project, the tech stack
+  in use, and any constraints Harvey should keep in mind (e.g. &quot;API
+  must stay compatible with v1&quot;, &quot;SQLite3 only, no Postgres in this
+  project&quot;, &quot;no external JS dependencies&quot;).</code></pre>
+<h3 id="fields-and-rationale">Fields and rationale</h3>
+<p><strong>ROLE</strong> — gives the model a clear mental model of the
+developer’s scope. The explicit mention of each language with its
+primary library prevents the model from defaulting to Node.js, npm, or
+framework-heavy approaches.</p>
+<p><strong>PREFERENCES</strong> — per-language style rules. These are
+the most common points of friction when a general-purpose model assists
+a developer who has strong opinions about stdlib-first, no-framework,
+and idiomatic usage.</p>
+<p><strong>CONTEXT</strong> — left blank for user to fill in. The
+placeholder text suggests what to include without prescribing it. The
+comment examples cover the most common reasons a developer would need to
+override the defaults.</p>
+<hr />
+<h2 id="integration-with-existing-template-system">Integration with
+Existing Template System</h2>
+<p>No code changes are required. <code>ListTemplates()</code> discovers
+all <code>.spmd</code> files in <code>templates/profiles/</code>
+automatically. Adding <code>web-developer.spmd</code> to that directory
+is sufficient.</p>
+<p>The onboarding picker will show a seventh option. The display order
+is alphabetical within the built-in set, so “Web Developer” will appear
+after “Technical Writer”.</p>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li><strong>Library-role templates</strong> — deferred pending
+consultation with library staff. See the original
+profile-templates-plan.md Phase F.</li>
+<li><strong>Framework-specific variants</strong> — a
+<code>web-developer-react.spmd</code> or similar is useful for teams
+with a fixed stack, but outside the scope of this workspace-general
+template.</li>
+</ul>
+</section>
+</body>
+</html>

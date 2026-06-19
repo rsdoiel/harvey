@@ -21,7 +21,10 @@ Harvey is **experimental** — a **working proof of concept**, not production-re
 - Pinned context and conversation summarization to manage the context window
 
 ### Multi-Model & Routing
-- Ollama integration (primary), with cloud routes for Anthropic, DeepSeek, Gemini, Mistral, and OpenAI
+
+- Llamafile integration
+- Ollama integration
+- Cloud model routes for Anthropic, DeepSeek, Gemini, Mistral, and OpenAI
 - Multi-model routing via `@mention` dispatch and model aliasing
 
 ### Security
@@ -62,13 +65,14 @@ Harvey runs on:
 
 ## Software Requirements
 
-- Go >= 1.26.3
-- Ollama (recommended)
+- LLamafile models or Ollama plus Ollama Models
 
 ### Software Suggestions
 
 For building Harvey and documentation from source:
-- CMTools >= 0.0.45b
+
+- Go >= 1.26.4
+- CMTools >= 0.0.46
 - Pandoc >= 3.9
 - GNU Make >= 3.8
 
@@ -86,9 +90,9 @@ For building Harvey and documentation from source:
 
 ## Release Notes
 
-- version: 0.0.10
+- version: 0.0.13
 - status: active
-- released: 2026-06-09
+- released: 2026-06-19
 
 - Added multi-language code-aware chunking for RAG ingestion (C, C++, Pascal, Oberon, Lisp, Basic)
 - Added documentation extraction: comment and docstring association with symbols for C, C++, Pascal, Oberon, Lisp, Basic
