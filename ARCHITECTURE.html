@@ -28,21 +28,94 @@ accumulate context through explicit slash commands rather than implicit
 background crawling.</p>
 <h2 id="component-map">Component map</h2>
 <pre><code>cmd/harvey/main.go          CLI entry point; parses flags; calls agent.Run()
+cmd/assay/main.go           Evaluation harness binary (LLM prompt corpus runner)
 harvey.go                   Core types: Agent, LLMClient, Message, ChatStats,
                               ExpandDynamicSections
 config.go                   Config struct, DefaultConfig(), LoadHarveyMD(),
-                              permissions, timeout, safe-mode configuration
-terminal.go                 REPL loop (Run), startup sequence, backend selection
+                              permissions, timeout, safe-mode, model aliases
+terminal.go                 REPL loop (Run), startup sequence, backend selection,
+                              prose tool-call dispatch, auto-execute reply
+ui.go                       Terminal line editor, tab completion
+completion_candidates.go    Completion candidate generation (paths, commands, topics)
 commands.go                 All slash-command handlers and dispatch
 workspace.go                Sandboxed file I/O (Workspace)
 knowledge.go                SQLite knowledge base (KnowledgeBase)
 audit.go                    In-memory ring-buffer audit log (AuditBuffer)
 permissions.go              Permission check helpers (CheckReadPermission, etc.)
+debuglog.go                 JSONL diagnostic event log (DebugLog); written when --debug
+lear_messages.go            Edward Lear-themed spinner waiting messages
+
+--- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
-anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go
+anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go for cloud providers
+llamafile.go                /llamafile command family; model registration and discovery
+llamafile_service.go        Llamafile server lifecycle (start, probe, port selection)
+model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
-spinner.go                  Animated spinner with Edward Lear messages + timer
-recorder.go                 Markdown session recorder</code></pre>
+route_persist.go            Persistence helpers for routes.json
+
+--- Tool system ---
+tool_registry.go            ToolRegistry — named tools with JSON schemas; Dispatch()
+tool_executor.go            ToolExecutor — RunToolLoop (structured multi-turn tool calls)
+tools.go                    Tool schema definitions and LLMClient tool extensions
+builtin_tools.go            Built-in tools: read_file, write_file, list_files,
+                              run_command, git, create_dir, get_user_info
+
+--- Memory (three-silo) ---
+memory_store.go             MemoryStore — typed experience records in agents/memories/
+memory_miner.go             Miner — LLM-based extraction from Fountain session files
+memory_manifest.go          Manifest — tracks which sessions have been mined
+memory_unified.go           UnifiedMemory — unified Recall() across all three silos
+memory_rolling.go           Rolling summary — compresses history when budget exceeded
+memory_scrub.go             Credential scrubbing before memory review cards
+memory_onboarding.go        Workspace-profile onboarding on first run
+memory_enrichment_*.go      Design/plan documents (not compiled)
+
+--- Skills ---
+skills.go                   SkillCatalog, skill discovery and metadata
+skill_dispatch.go           Skill dispatch (compiled script path vs. LLM fallback)
+skill_compile.go            Compiled skill script generation via LLM
+skill_wizard.go             Interactive skill creation wizard (/skill new)
+skill_set.go                SkillSet — YAML bundles of multiple skills
+
+--- Pipelines and automation ---
+pipeline.go                 /pipeline — multi-step confidence-gated prompt chains
+plan.go                     Plan, PlanStep — GFM checklist plan data structures
+plan_cmd.go                 /plan command handler; step execution and progress tracking
+loop.go                     /loop — repeating prompt/command runner with interval
+
+--- Session recording ---
+recorder.go                 Fountain .spmd session recorder
+sessions_files.go           Session file discovery, listing, MostRecentSession()
+replay.go                   Session replay (re-run user turns against new model)
+
+--- RAG ---
+rag_support.go              RagStore, Embedder, chunk ingest/query, FTS5+cosine hybrid
+
+--- Scholarly support ---
+scholarly_identifiers.go    14-type identifier extraction (DOI, ORCID, ROR, ArXiv, etc.)
+scholarly_pdf.go            Section-aware PDF chunking; identifier tagging for RAG
+
+--- Language support ---
+language_detector.go        Language detection from filename and content
+language_registry.go        Language registry (extension → language mapping)
+code_chunkers.go            Symbol-aware chunking for 13+ languages
+code_formatters.go          Auto-formatters (gofmt, clang-format, prettier, black, etc.)
+doc_extractors.go           Comment/docstring extraction and symbol association
+syntax_highlighters.go      ANSI syntax highlighting for code blocks in LLM replies
+
+--- Remote I/O ---
+remote.go                   RemoteReader interface, URI-scheme factory
+remote_http.go              HTTP/HTTPS backend with body limit and timeout
+remote_s3.go                S3-compatible backend (AWS S3, MinIO, Cloudflare R2)
+remote_sftp.go              SFTP/SCP backend with strict host-key verification
+
+--- Utilities ---
+pdf_extract.go              PDF text extraction via poppler (pdfinfo, pdftotext)
+codeblock.go                Fenced code block parser
+templates.go                Workspace profile templates
+spinner.go                  Animated spinner: braille frames, Lear messages, live timer,
+                              StatusCh for tool-call status updates</code></pre>
 <h2 id="core-types">Core types</h2>
 <h3 id="agent-harvey.go">Agent (<code>harvey.go</code>)</h3>
 <p><code>Agent</code> is the central struct that wires everything
@@ -87,9 +160,34 @@ together for one session:</p>
 <td>SQLite knowledge base (<code>agents/knowledge.db</code>)</td>
 </tr>
 <tr>
+<td><code>ModelCache</code></td>
+<td><code>*ModelCache</code></td>
+<td>Capability cache for installed Ollama models</td>
+</tr>
+<tr>
+<td><code>Rag</code></td>
+<td><code>*RagStore</code></td>
+<td>Active RAG chunk store; nil when not configured</td>
+</tr>
+<tr>
+<td><code>RagOn</code></td>
+<td><code>bool</code></td>
+<td>When true, top-K chunks are prepended before each Chat call</td>
+</tr>
+<tr>
+<td><code>SessionsDir</code></td>
+<td><code>string</code></td>
+<td>Absolute path to the sessions directory</td>
+</tr>
+<tr>
+<td><code>Skills</code></td>
+<td><code>SkillCatalog</code></td>
+<td>Skills discovered at startup</td>
+</tr>
+<tr>
 <td><code>Recorder</code></td>
 <td><code>*Recorder</code></td>
-<td>Optional Markdown session log</td>
+<td>Optional Fountain .spmd session log</td>
 </tr>
 <tr>
 <td><code>In</code></td>
@@ -100,18 +198,64 @@ for tests)</td>
 <tr>
 <td><code>PinnedContext</code></td>
 <td><code>string</code></td>
-<td>Text that survives <code>/clear</code> and is re-injected after the
-system prompt</td>
+<td>Text that survives <code>/clear</code>; re-injected after system
+prompt</td>
 </tr>
 <tr>
-<td><code>commands</code></td>
-<td><code>map[string]*Command</code></td>
-<td>Registered slash commands</td>
+<td><code>Routes</code></td>
+<td><code>*RouteRegistry</code></td>
+<td>Registered remote endpoints; nil when routing not configured</td>
 </tr>
 <tr>
-<td><code>statHistory</code></td>
-<td><code>[]ChatStats</code></td>
-<td>Rolling window of up to 5 past turns for duration estimation</td>
+<td><code>ActiveSkill</code></td>
+<td><code>string</code></td>
+<td>Most recently loaded skill name; <code>""</code> when none</td>
+</tr>
+<tr>
+<td><code>ActiveSkillSet</code></td>
+<td><code>string</code></td>
+<td>Currently loaded skill-set bundle name; <code>""</code> when
+none</td>
+</tr>
+<tr>
+<td><code>Tools</code></td>
+<td><code>*ToolRegistry</code></td>
+<td>Schema-based tool registry; nil when tools disabled</td>
+</tr>
+<tr>
+<td><code>AuditBuffer</code></td>
+<td><code>*AuditBuffer</code></td>
+<td>In-memory audit log ring buffer</td>
+</tr>
+<tr>
+<td><code>DebugLog</code></td>
+<td><code>*DebugLog</code></td>
+<td>JSONL diagnostic log; nil when <code>--debug</code> not set</td>
+</tr>
+<tr>
+<td><code>OllamaStartedByHarvey</code></td>
+<td><code>bool</code></td>
+<td>True when Harvey launched the Ollama subprocess</td>
+</tr>
+<tr>
+<td><code>llamafileProc</code></td>
+<td><code>*os.Process</code></td>
+<td>Non-nil when Harvey started the current llamafile server</td>
+</tr>
+<tr>
+<td><code>sessionTurns</code></td>
+<td><code>int</code></td>
+<td>Total completed user turns (used to trigger auto-mine)</td>
+</tr>
+<tr>
+<td><code>sessionInjectedTokens</code></td>
+<td><code>int</code></td>
+<td>Tokens injected via UnifiedMemory this session</td>
+</tr>
+<tr>
+<td><code>sessionCompressed</code></td>
+<td><code>bool</code></td>
+<td>True if rolling summary fired at least once this session</td>
 </tr>
 </tbody>
 </table>
@@ -125,28 +269,29 @@ system prompt</td>
 <span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    Close<span class="op">()</span> <span class="dt">error</span></span>
 <span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p><code>Chat</code> streams tokens to <code>out</code> as they arrive
-and returns <code>ChatStats</code> containing <code>PromptTokens</code>,
-<code>ReplyTokens</code>, <code>Elapsed</code>, and
-<code>TokensPerSec</code> once the response is complete. Backends that
-do not report token counts (currently PublicAI) return zeros for those
-fields; only <code>Elapsed</code> is always populated.</p>
+and returns <code>ChatStats</code> (containing
+<code>PromptTokens</code>, <code>ReplyTokens</code>,
+<code>Elapsed</code>, <code>TokensPerSec</code>) once complete. Backends
+that do not report token counts return zeros for those fields;
+<code>Elapsed</code> is always populated.</p>
 <h3 id="chatstats-duration-estimation">ChatStats &amp; duration
 estimation</h3>
-<p>After each successful turn the REPL records stats via
+<p>After each turn the REPL records stats via
 <code>agent.recordStats()</code>, which maintains a rolling window of
 the last 5 turns. Before the next turn,
 <code>agent.estimateDuration()</code> averages
-<code>ReplyTokens / TokensPerSec</code> across all window entries that
-have token data, returning a <code>time.Duration</code> estimate that
-the spinner displays as <code>[Xs / ~Ys]</code>.</p>
+<code>ReplyTokens / TokensPerSec</code> across window entries that have
+token data, returning a <code>time.Duration</code> estimate displayed by
+the spinner as <code>[Xs / ~Ys]</code>.</p>
 <h3 id="message">Message</h3>
 <div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Message <span class="kw">struct</span> <span class="op">{</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    Role    <span class="dt">string</span> <span class="st">`json:&quot;role&quot;`</span>    <span class="co">// &quot;system&quot;, &quot;user&quot;, or &quot;assistant&quot;</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    Content <span class="dt">string</span> <span class="st">`json:&quot;content&quot;`</span></span>
 <span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <p>The full <code>History</code> slice is sent on every call to
-<code>Chat</code>; there is no partial or sliding-window trimming beyond
-the explicit <code>/summarize</code> command.</p>
+<code>Chat</code>. Rolling summary (<code>memory_rolling.go</code>)
+compresses older turns when the budget threshold is exceeded, keeping
+the last N turns verbatim.</p>
 <h2 id="workspace-sandboxing-workspace.go">Workspace sandboxing
 (<code>workspace.go</code>)</h2>
 <p><code>Workspace</code> resolves the root to an absolute, symlink-free
@@ -155,7 +300,9 @@ path at construction time. Every subsequent operation calls
 <code>Root</code> and then checks that the result still has
 <code>Root</code> as a prefix — rejecting <code>../</code> escapes and
 absolute paths outside the root. The <code>agents/</code> subdirectory
-is created automatically and holds <code>knowledge.db</code>.</p>
+is created automatically and holds <code>knowledge.db</code>,
+<code>memories/</code>, <code>sessions/</code>, and
+<code>rag/*.db</code>.</p>
 <p>All file I/O in command handlers goes through
 <code>ws.ReadFile</code>, <code>ws.WriteFile</code>,
 <code>ws.ListDir</code>, or <code>ws.MkdirAll</code>; direct
@@ -165,15 +312,20 @@ is created automatically and holds <code>knowledge.db</code>.</p>
 <pre><code>startup
   └─ system message  ← HARVEY.md (after ExpandDynamicSections)
   └─ user message    ← [pinned context] if PinnedContext != &quot;&quot;
+  └─ user message    ← [memory context] from UnifiedMemory.Recall()
 
 each turn
   user types input
   └─ AddMessage(&quot;user&quot;, input)
+  └─ ragAugment(input) prepends context chunks when RagOn == true
   └─ Client.Chat(History, &amp;buf)  ← full History sent every time
+     └─ RunToolLoop if model uses structured tool_calls
+     └─ tryExecuteProseToolCalls if model uses JSON fenced blocks
   └─ AddMessage(&quot;assistant&quot;, buf.String())
 
 /clear
   └─ History reset to [system message, pinned context message]
+  └─ memoryContextPending = true  → re-injected on next user turn
 
 /summarize
   └─ History + summarizePrompt → LLM
@@ -186,14 +338,14 @@ each turn
 (newline-separated); there is always at most one
 <code>[pinned context]</code> message in <code>History</code> —
 subsequent <code>add</code> calls update it in-place.
-<code>ClearHistory</code> re-injects it automatically, so it also
-survives <code>/summarize</code>.</p>
+<code>ClearHistory</code> re-injects it automatically, so it survives
+<code>/summarize</code>.</p>
 <h3 id="dynamic-system-prompt-expanddynamicsections">Dynamic system
 prompt (<code>ExpandDynamicSections</code>)</h3>
 <p><code>LoadHarveyMD</code> reads <code>HARVEY.md</code> from the
-process working directory. <code>ExpandDynamicSections</code> is then
-called before the system message is injected, replacing these markers
-with live data:</p>
+process working directory. <code>ExpandDynamicSections</code> is called
+before the system message is injected, replacing these markers with live
+data:</p>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -221,14 +373,6 @@ with live data:</p>
 </tr>
 </tbody>
 </table>
-<p>Example <code>HARVEY.md</code> header:</p>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>You are a coding assistant for this Go project.</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>Date: <span class="co">&lt;!-- @date --&gt;</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>Workspace:</span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @files --&gt;</span></span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>Git:</span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @git-status --&gt;</span></span></code></pre></div>
 <h2 id="slash-command-system-commands.go">Slash-command system
 (<code>commands.go</code>)</h2>
 <p>Commands are registered in <code>registerCommands()</code> as
@@ -236,7 +380,7 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb5-1"><
 <code>Handler func(a *Agent, args []string, out io.Writer) error</code>.
 The REPL calls <code>dispatch(input, out)</code> for any line beginning
 with <code>/</code>.</p>
-<h3 id="foundation-commands">Foundation commands</h3>
+<h3 id="workspace-commands">Workspace commands</h3>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -250,24 +394,53 @@ with <code>/</code>.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>/help</code></td>
-<td>List all commands</td>
+<td><code>/files [PATH]</code></td>
+<td>List workspace directory contents</td>
 </tr>
 <tr>
-<td><code>/status</code></td>
-<td>Show backend, history length, workspace, KB, recording state</td>
+<td><code>/read FILE [FILE...]</code></td>
+<td>Inject file contents into context</td>
 </tr>
 <tr>
-<td><code>/clear</code></td>
-<td>Reset history (re-injects system prompt + pinned context)</td>
+<td><code>/attach FILE</code></td>
+<td>Attach image, PDF, or text; selects best representation for
+route</td>
 </tr>
 <tr>
-<td><code>/exit</code> <code>/quit</code> <code>/bye</code></td>
-<td>End the session</td>
+<td><code>/read-pdf FILE [PAGES]</code></td>
+<td>Extract PDF text via poppler; inject into context</td>
+</tr>
+<tr>
+<td><code>/write PATH</code></td>
+<td>Save last assistant reply (or first code block) to a file</td>
+</tr>
+<tr>
+<td><code>/read-dir [PATH] [--depth N]</code></td>
+<td>Read all eligible files in a directory tree into context</td>
+</tr>
+<tr>
+<td><code>/file-tree [PATH]</code></td>
+<td>Display recursive directory tree</td>
+</tr>
+<tr>
+<td><code>/search PATTERN [PATH]</code></td>
+<td>Regex search across workspace files</td>
+</tr>
+<tr>
+<td><code>/run COMMAND [ARGS...]</code></td>
+<td>Run shell command; subject to safe mode and timeout</td>
+</tr>
+<tr>
+<td><code>/git status\|diff\|log\|show\|blame [ARGS...]</code></td>
+<td>Read-only git commands</td>
+</tr>
+<tr>
+<td><code>/format FILE [FILE...]</code></td>
+<td>Detect and apply language-appropriate formatters</td>
 </tr>
 </tbody>
 </table>
-<h3 id="backend-commands">Backend commands</h3>
+<h3 id="model-and-backend-commands">Model and backend commands</h3>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -281,12 +454,85 @@ with <code>/</code>.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>/ollama start\|stop\|status\|list\|use MODEL</code></td>
-<td>Control the local Ollama service</td>
+<td><code>/ollama start\|stop\|status\|list\|ps\|pull\|push\|show\|create\|cp\|rm\|probe\|logs\|use\|env\|alias</code></td>
+<td>Manage local Ollama server</td>
+</tr>
+<tr>
+<td><code>/inspect [MODEL]</code></td>
+<td>Show detailed model capability information</td>
 </tr>
 <tr>
 <td><code>/route add\|rm\|models\|probe\|set\|list\|on\|off\|status</code></td>
 <td>Manage named remote endpoints</td>
+</tr>
+<tr>
+<td><code>/llamafile add\|use\|list\|start\|status\|drop</code></td>
+<td>Manage llamafile model backends</td>
+</tr>
+</tbody>
+</table>
+<h3 id="context-and-history-commands">Context and history commands</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/context add TEXT...\|show\|clear</code></td>
+<td>Manage pinned context that survives <code>/clear</code></td>
+</tr>
+<tr>
+<td><code>/clear</code></td>
+<td>Reset conversation history (system prompt + pinned context
+survive)</td>
+</tr>
+<tr>
+<td><code>/summarize</code></td>
+<td>Condense history to a summary; <code>/compact</code> is an
+alias</td>
+</tr>
+<tr>
+<td><code>/status</code></td>
+<td>Show backend, token usage, routing, recording, memory, debug
+state</td>
+</tr>
+<tr>
+<td><code>/hint</code></td>
+<td>Actionable suggestions (unmined sessions, empty RAG, empty KB)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="session-commands">Session commands</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/record start [FILE]\|stop\|status</code></td>
+<td>Start or stop Fountain session recording</td>
+</tr>
+<tr>
+<td><code>/rename NAME</code></td>
+<td>Rename the active session file without interrupting recording</td>
+</tr>
+<tr>
+<td><code>/session continue FILE\|replay FILE [OUTPUT]</code></td>
+<td>Load or replay a prior session</td>
 </tr>
 </tbody>
 </table>
@@ -304,47 +550,25 @@ with <code>/</code>.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>/kb status</code></td>
-<td>Print project/concept/observation summary</td>
+<td><code>/kb status\|search\|inject\|project\|observe\|concept</code></td>
+<td>Query and update SQLite knowledge base</td>
 </tr>
 <tr>
-<td><code>/kb project list\|add NAME [DESC]\|use ID</code></td>
-<td>Manage projects</td>
+<td><code>/rag list\|new\|use\|drop\|ingest\|status\|query\|on\|off</code></td>
+<td>Manage RAG stores</td>
 </tr>
 <tr>
-<td><code>/kb observe [KIND] TEXT</code></td>
-<td>Record a note, finding, decision, question, or hypothesis</td>
+<td><code>/memory mine\|list\|show\|flag\|forget\|status\|recall\|profile</code></td>
+<td>Manage session-experience memory store</td>
 </tr>
 <tr>
-<td><code>/kb concept list\|add NAME [DESC]</code></td>
-<td>Manage shared concepts</td>
+<td><code>/recall QUERY</code></td>
+<td>Search all knowledge silos (alias for
+<code>/memory recall</code>)</td>
 </tr>
 </tbody>
 </table>
-<h3 id="session-recording">Session recording</h3>
-<table>
-<thead>
-<tr>
-<th scope="col">Command</th>
-<th scope="col">Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>/record start [FILE]</code></td>
-<td>Begin writing turns to a Markdown file</td>
-</tr>
-<tr>
-<td><code>/record stop</code></td>
-<td>Close the recording</td>
-</tr>
-<tr>
-<td><code>/record status</code></td>
-<td>Show recording path or “not recording”</td>
-</tr>
-</tbody>
-</table>
-<h3 id="tier-1-file-operations">Tier 1 — file operations</h3>
+<h3 id="skills-commands">Skills commands</h3>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -358,24 +582,17 @@ with <code>/</code>.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>/read FILE [FILE...]</code></td>
-<td>Read workspace files into conversation context</td>
+<td><code>/skill list\|load NAME\|info NAME\|status\|new\|run NAME</code></td>
+<td>Discover, load, and run skills</td>
 </tr>
 <tr>
-<td><code>/write PATH</code></td>
-<td>Write last assistant reply (or its first code block) to a file</td>
-</tr>
-<tr>
-<td><code>/run COMMAND [ARGS...]</code></td>
-<td>Run a shell command; inject stdout+stderr into context (8 KB
-cap)</td>
+<td><code>/skill-set list\|load NAME\|info NAME\|create NAME\|status\|unload</code></td>
+<td>Manage skill-set bundles</td>
 </tr>
 </tbody>
 </table>
-<p>Context messages injected by these commands use a
-<code>[context: /cmd args]</code> label so the model and user can
-distinguish injected context from typed conversation.</p>
-<h3 id="tier-2-code-assistance">Tier 2 — code assistance</h3>
+<h3 id="pipelines-and-automation-commands">Pipelines and automation
+commands</h3>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -389,70 +606,16 @@ distinguish injected context from typed conversation.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>/search PATTERN [PATH]</code></td>
-<td>Regexp search across workspace files (100-match cap,
-binary-safe)</td>
+<td><code>/pipeline CONFIDENCE% FILE [FILE...]</code></td>
+<td>Chain Markdown prompt files as confidence-gated steps</td>
 </tr>
 <tr>
-<td><code>/git status\|diff\|log\|show\|blame [ARGS...]</code></td>
-<td>Read-only git commands; inject output into context</td>
+<td><code>/plan TASK\|next\|status\|show\|clear</code></td>
+<td>Generate a GFM checklist plan; execute each step</td>
 </tr>
 <tr>
-<td><code>/apply</code></td>
-<td>Detect fenced blocks tagged with filenames and write them to the
-workspace</td>
-</tr>
-</tbody>
-</table>
-<p><code>/apply</code> uses <code>findTaggedBlocks</code> which
-recognises fence lines like <code>```go harvey/spinner.go</code>
-(language + path) or <code>```README.md</code> (path only). It prompts
-for a single Y/n confirmation before writing any files, reading from
-<code>a.In</code> so the prompt is testable.</p>
-<h3 id="tier-3-session-quality">Tier 3 — session quality</h3>
-<table>
-<colgroup>
-<col style="width: 50%" />
-<col style="width: 50%" />
-</colgroup>
-<thead>
-<tr>
-<th scope="col">Command</th>
-<th scope="col">Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>/summarize</code></td>
-<td>Condense history into a summary via the LLM; replaces full
-history</td>
-</tr>
-<tr>
-<td><code>/context add TEXT...</code></td>
-<td>Append text to pinned context (survives <code>/clear</code>)</td>
-</tr>
-<tr>
-<td><code>/context show</code></td>
-<td>Print current pinned context</td>
-</tr>
-<tr>
-<td><code>/context clear</code></td>
-<td>Remove pinned context from agent and history</td>
-</tr>
-</tbody>
-</table>
-<h3 id="file-utility">File utility</h3>
-<table>
-<thead>
-<tr>
-<th scope="col">Command</th>
-<th scope="col">Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>/files [PATH]</code></td>
-<td>List workspace directory entries</td>
+<td><code>/loop INTERVAL [--count N] PROMPT\|/COMMAND</code></td>
+<td>Run a prompt or command repeatedly on an interval</td>
 </tr>
 </tbody>
 </table>
@@ -474,6 +637,10 @@ history</td>
 <td>Command allowlist; persisted to harvey.yaml</td>
 </tr>
 <tr>
+<td><code>/safe</code></td>
+<td>Alias for <code>/safemode</code></td>
+</tr>
+<tr>
 <td><code>/permissions list\|set PATH PERMS\|reset</code></td>
 <td>Path-prefix read/write/exec/delete control</td>
 </tr>
@@ -482,7 +649,7 @@ history</td>
 <td>In-memory ring-buffer audit log (1000 events)</td>
 </tr>
 <tr>
-<td><code>/security</code></td>
+<td><code>/security status</code></td>
 <td>Unified view of safe mode, permissions, and audit state</td>
 </tr>
 </tbody>
@@ -495,54 +662,62 @@ system (<code>audit.go</code>, <code>permissions.go</code>,
 <code>Config.SafeMode</code> is true, every <code>!</code> and
 <code>/run</code> invocation checks the command name against
 <code>Config.AllowedCommands</code> before execution. Denied commands
-are audit-logged with <code>StatusDenied</code> and the user sees which
-commands are permitted. Settings are persisted to
-<code>agents/harvey.yaml</code> via <code>SaveRAGConfig</code> so they
-survive restart.</p>
+are audit-logged with <code>StatusDenied</code>. Settings are persisted
+to <code>agents/harvey.yaml</code> and survive restart.</p>
 <p><strong>Path permissions.</strong> <code>Config.Permissions</code> is
 a <code>map[string][]string</code> keyed on path prefixes. Before any
-<code>ws.ReadFile</code>, <code>ws.WriteFile</code>, or block-write in
-<code>/apply</code>, the command handler calls
+file read, write, or block-write, the command handler calls
 <code>a.CheckReadPermission</code> /
 <code>a.CheckWritePermission</code>. The most specific matching prefix
-wins; unmatched paths are denied. Persisted under the
-<code>permissions:</code> key in harvey.yaml.</p>
+wins; unmatched paths are denied. Persisted under
+<code>permissions:</code> in harvey.yaml.</p>
 <p><strong>Audit log.</strong> <code>AuditBuffer</code>
 (<code>audit.go</code>) is a thread-safe ring buffer (capacity 1000)
 using <code>sync.RWMutex</code>. It records action type, details, and
 outcome (<code>allowed</code>, <code>denied</code>, <code>error</code>,
 <code>success</code>). The global instance is held via
 <code>sync/atomic.Pointer[AuditBuffer]</code> so it can be written from
-multiple goroutines without a lock on the pointer itself.</p>
+multiple goroutines.</p>
 <p><strong>Environment filtering.</strong> Every child process launched
 via <code>!</code> or <code>/run</code> receives a filtered environment
 from <code>filterCommandEnvironment</code> (<code>commands.go</code>).
-Only variables in a safe-prefix allowlist (<code>PATH</code>,
-<code>HOME</code>, <code>USER</code>, <code>SHELL</code>,
-<code>TERM</code>, <code>LANG</code>, <code>LC_*</code>,
-<code>PWD</code>, <code>OLLAMA_*</code>, <code>HARVEY_*</code>) are
-forwarded; all cloud provider API key variables are unconditionally
-stripped. Users should avoid storing secrets in environment variables
-prefixed <code>HARVEY_</code>, as every value matching that prefix is
-forwarded to child processes.</p>
+Only variables matching a safe-prefix allowlist (<code>PATH</code>,
+<code>HOME</code>, <code>USER</code>, <code>USERNAME</code>,
+<code>SHELL</code>, <code>TERM</code>, <code>LANG</code>,
+<code>LC_*</code>, <code>PWD</code>, <code>OLLAMA_*</code>,
+<code>HARVEY_*</code>) are forwarded. The following variables are
+unconditionally stripped:</p>
+<ul>
+<li>LLM provider API keys: <code>ANTHROPIC_API_KEY</code>,
+<code>COHERE_API_KEY</code>, <code>DEEPSEEK_API_KEY</code>,
+<code>GEMINI_API_KEY</code>, <code>GOOGLE_API_KEY</code>,
+<code>GROQ_API_KEY</code>, <code>MISTRAL_API_KEY</code>,
+<code>OPENAI_API_KEY</code>, <code>PERPLEXITY_API_KEY</code></li>
+<li>S3-compatible credentials: <code>AWS_ACCESS_KEY_ID</code>,
+<code>AWS_SECRET_ACCESS_KEY</code>, <code>AWS_SESSION_TOKEN</code>,
+<code>AWS_SECURITY_TOKEN</code>, <code>MINIO_ACCESS_KEY</code>,
+<code>MINIO_SECRET_KEY</code></li>
+<li>SFTP/SCP credentials: <code>SFTP_PASSWORD</code>,
+<code>SFTP_KEY_PATH</code></li>
+<li>HTTP authentication: <code>HTTP_BEARER_TOKEN</code>,
+<code>HTTP_BASIC_PASSWORD</code></li>
+</ul>
+<p>Note: all variables matching the <code>HARVEY_*</code> prefix are
+forwarded to child processes (including compiled skills). Avoid storing
+secrets in <code>HARVEY_</code>-prefixed variables.</p>
 <p><strong>Timeout configuration.</strong>
 <code>Config.RunTimeout</code> (default 5 minutes) bounds every
 <code>!</code> and <code>/run</code> subprocess via
 <code>context.WithTimeout</code>. <code>Config.OllamaTimeout</code>
 controls the HTTP client timeout for local LLM providers; it defaults to
-0 (no timeout) because inference on slow hardware (Raspberry Pi) can
-take several minutes. Both are configurable in harvey.yaml as duration
-strings (<code>"5m"</code>, <code>"300s"</code>, <code>"1m30s"</code>)
-or plain integer seconds. When Ollama runs on a remote host (configured
-via <code>/route add</code>), consider setting
-<code>ollama_timeout</code> in <code>harvey.yaml</code> to prevent an
-unresponsive remote server from hanging Harvey indefinitely.</p>
+0 (no timeout) because inference on slow hardware can take several
+minutes.</p>
 <h2 id="knowledge-base-knowledge.go">Knowledge base
 (<code>knowledge.go</code>)</h2>
 <p>The SQLite database lives at
 <code>&lt;workspace&gt;/agents/knowledge.db</code> and is opened with
-<code>MaxOpenConns(1)</code> and WAL mode. The schema has five
-tables:</p>
+<code>MaxOpenConns(1)</code> and WAL mode. The schema has five tables,
+extended in v0.0.11 for scholarly identifiers:</p>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -562,13 +737,15 @@ tables:</p>
 </tr>
 <tr>
 <td><code>observations</code></td>
-<td>Timestamped notes attached to a project; kinds: <code>note</code>,
-<code>finding</code>, <code>decision</code>, <code>question</code>,
-<code>hypothesis</code></td>
+<td>Timestamped notes per project; kind:
+<code>note</code>/<code>finding</code>/<code>decision</code>/<code>question</code>/<code>hypothesis</code>;
+<code>source_doi</code> column for scholarly citations</td>
 </tr>
 <tr>
 <td><code>concepts</code></td>
-<td>Named terms that can span projects</td>
+<td>Named terms spanning projects; <code>identifier_type</code> and
+<code>identifier_value</code> columns for scholarly entities (people,
+papers, institutions, funders)</td>
 </tr>
 <tr>
 <td><code>project_concepts</code></td>
@@ -582,62 +759,302 @@ tables:</p>
 </table>
 <p>A <code>project_summary</code> view joins projects with their concept
 names for display.</p>
-<p><strong>Important:</strong> <code>Summary()</code> drains all project
-rows into a slice and closes the cursor before calling
-<code>recentObservations</code> for each project, avoiding a deadlock
-that would occur if the outer <code>rows</code> cursor were held open
-while a second query tried to acquire the single allowed connection.</p>
-<h2 id="session-recording-recorder.go">Session recording
-(<code>recorder.go</code>)</h2>
-<p><code>Recorder</code> writes a Markdown file with a header (started
-timestamp, model, workspace) followed by numbered
-<code>### Turn N</code> sections. It is started with
-<code>/record start [FILE]</code> and closed on
-<code>/record stop</code> or clean session exit.
-<code>DefaultSessionPath</code> generates a timestamped filename:
-<code>&lt;workspace&gt;/harvey-session-YYYYMMDD-HHMMSS.md</code>.</p>
-<h2 id="spinner-spinner.go">Spinner (<code>spinner.go</code>)</h2>
-<p>The <code>Spinner</code> runs a background goroutine that:</p>
-<ol type="1">
-<li>Rotates braille animation frames every 100 ms.</li>
-<li>Cycles through 50 Edward Lear–themed waiting messages every 4
-s.</li>
-<li>Displays a live timer via <code>timerLabel(elapsed)</code>:
+<h2 id="three-silo-memory-architecture">Three-silo memory
+architecture</h2>
+<p>Harvey has three independent knowledge stores that are unified at
+retrieval time by <code>UnifiedMemory.Recall()</code>
+(<code>memory_unified.go</code>):</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Silo</th>
+<th scope="col">Files</th>
+<th scope="col">Content</th>
+<th scope="col">Injection point</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>RAG store</strong></td>
+<td><code>rag_support.go</code>, <code>agents/rag/*.db</code></td>
+<td>Vector-embedded document chunks</td>
+<td>Per-prompt via <code>ragAugment()</code> when RAG is on</td>
+</tr>
+<tr>
+<td><strong>Memory store</strong></td>
+<td><code>memory_store.go</code>, <code>memory_miner.go</code>,
+<code>memory_manifest.go</code>, <code>agents/memories/</code></td>
+<td>Typed experience records extracted from sessions</td>
+<td>Session start via <code>UnifiedMemory.Recall()</code></td>
+</tr>
+<tr>
+<td><strong>Knowledge base</strong></td>
+<td><code>knowledge.go</code>, <code>agents/knowledge.db</code></td>
+<td>Hand-authored experiments/observations/concepts (relational)</td>
+<td>Optional; also via <code>UnifiedMemory</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="memory-store">Memory store</h3>
+<p>Experience records are typed as <code>tool_use</code>,
+<code>workflow</code>, <code>user_preference</code>,
+<code>workspace_profile</code>, or <code>project_fact</code>. Each
+record carries three enrichment fields:</p>
 <ul>
-<li>No estimate available: <code>[8s]</code></li>
-<li>Estimate available, still under: <code>[8s / ~12s]</code></li>
-<li>Elapsed exceeds estimate: <code>[13s]</code> (estimate dropped to
-avoid showing overrun)</li>
-</ul></li>
+<li><code>kind</code> — why this knowledge matters:
+<code>pitfall</code>, <code>workaround</code>,
+<code>recommendation</code>, or <code>pattern</code></li>
+<li><code>action</code> — an imperative step a future agent should take;
+included in embedding text</li>
+<li><code>confidence</code> — float 0.0–1.0 (default 0.5); final
+retrieval score = <code>cosine × confidence</code></li>
+</ul>
+<p><code>/memory flag ID</code> reduces confidence by 0.1 per call;
+memories at or below 0.2 are auto-archived. <code>WriteDigest()</code>
+writes <code>agents/memories/DIGEST.md</code> on every save, archive,
+and auto-mine — a plain Markdown index readable by any LLM.</p>
+<h3 id="memory-mining-flow">Memory mining flow</h3>
+<pre><code>Manifest.UnminedSessions()   → find .spmd files not yet in the manifest
+Miner.Mine(session)          → send session text to LLM for JSON extraction
+interactive review           → user accepts / edits / skips each proposed memory
+MemoryStore.Save()           → write typed Fountain files to agents/memories/</code></pre>
+<p>Auto-mine triggers on session exit when
+<code>sessionTurns &gt;= 10</code>.</p>
+<h3 id="unifiedmemory.recall-priority-order">UnifiedMemory.Recall()
+priority order</h3>
+<ol type="1">
+<li><code>workspace_profile</code> + <code>project_fact</code> memories
+— always injected first (score 1.0)</li>
+<li>Experiential memories (FTS5 full-text + cosine × confidence) —
+ranked by final score</li>
+<li>RAG chunks — relevance-ranked, discarded below
+<code>ragMinScore</code> (0.3)</li>
+<li>KB observations — optional</li>
 </ol>
-<p><code>newSpinner(out, estimate)</code> accepts a
-<code>time.Duration</code> estimate (0 = none) computed by
-<code>agent.estimateDuration()</code> from the rolling stat history.</p>
+<p>Token budget is enforced via <code>memory.budget_pct</code> in
+harvey.yaml (default 0.25 of the model context window). Setting
+<code>memory.inject_on_start: false</code> disables injection.</p>
+<h3 id="rolling-summary-memory_rolling.go">Rolling summary
+(<code>memory_rolling.go</code>)</h3>
+<p>When <code>len(History)</code> token count reaches
+<code>memory.rolling_summary.warn_at_pct</code> (default 80 %) of the
+context window, Harvey compresses all but the last
+<code>rolling_summary.keep_turns</code> turns (default 6) into a
+~150-token summary. The session recording on disk retains the full
+pre-compression history.</p>
+<h2 id="tool-registry-and-executor">Tool registry and executor</h2>
+<h3 id="toolregistry-tool_registry.go">ToolRegistry
+(<code>tool_registry.go</code>)</h3>
+<p><code>ToolRegistry</code> holds named tool definitions with JSON
+schemas. <code>Dispatch(name, argsJSON, maxBytes)</code> looks up the
+tool by name and calls its handler, returning a string result or an
+error. <code>ToolRegistry.Dispatch</code> returns
+<code>fmt.Errorf("unknown tool %q", name)</code> for unregistered names
+— <code>tryExecuteProseToolCalls</code> detects this via
+<code>strings.Contains(r.Content, "unknown tool")</code>.</p>
+<h3 id="two-execution-paths-tool_executor.go-terminal.go">Two execution
+paths (<code>tool_executor.go</code>, <code>terminal.go</code>)</h3>
+<p>Harvey uses two separate paths depending on model capability:</p>
+<p><strong>Structured tools (<code>RunToolLoop</code> in
+<code>tool_executor.go</code>)</strong> — used when the model returns
+proper <code>tool_calls</code> in the API response. Multi-turn: LLM →
+tools → results appended to history → LLM again.
+<code>ToolExecutor.Status</code> accepts a <code>StatusReporter</code>
+(satisfied by <code>*Spinner</code>) to display transient “Calling
+tool…” status during execution. Prior tool-call rounds are compacted
+before each new LLM turn to keep context bounded.</p>
+<p><strong>Prose tool calls (<code>tryExecuteProseToolCalls</code> in
+<code>terminal.go</code>)</strong> — used when small models emit JSON in
+fenced blocks instead of structured calls. Single-turn only. Returns
+<code>(dispatched bool, unknownNames []string)</code>. When
+<code>dispatched</code> is false, Harvey prints a “try /tools off or a
+larger model” warning. When <code>unknownNames</code> is non-empty,
+available tool names are printed and a correction message is injected
+into history.</p>
+<p>The <code>noToolCalls</code> flag is captured <strong>before</strong>
+<code>AddMessage</code> — after that call the lengths are never equal,
+so it must be read first.</p>
+<h3 id="built-in-tools-builtin_tools.go">Built-in tools
+(<code>builtin_tools.go</code>)</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Tool</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>read_file</code></td>
+<td>Read a workspace file; supports PDF (via poppler) and images (vision
+routes)</td>
+</tr>
+<tr>
+<td><code>write_file</code></td>
+<td>Write to a workspace file; applies auto-formatters when
+<code>auto_format</code> is on</td>
+</tr>
+<tr>
+<td><code>list_files</code></td>
+<td>List workspace directory contents</td>
+</tr>
+<tr>
+<td><code>run_command</code></td>
+<td>Run a shell command (subject to safe mode)</td>
+</tr>
+<tr>
+<td><code>git</code></td>
+<td>Read-only git operations</td>
+</tr>
+<tr>
+<td><code>create_dir</code></td>
+<td>Create a directory inside the workspace</td>
+</tr>
+<tr>
+<td><code>get_user_info</code></td>
+<td>Return OS username, git user name/email, hostname</td>
+</tr>
+</tbody>
+</table>
+<h2 id="skills-system">Skills system</h2>
+<p>Skills are <code>SKILL.md</code> files discovered at startup in: -
+<code>&lt;workspace&gt;/agents/skills/</code> — workspace-local skills -
+<code>~/.harvey/skills/</code> — user-global skills</p>
+<p><code>SkillCatalog</code> (<code>skills.go</code>) maps skill names
+to <code>SkillMeta</code> (path, description, trigger, compatibility,
+license). The catalog summary is added to the system prompt so the model
+knows what skills are available.</p>
+<h3 id="skill-dispatch-skill_dispatch.go">Skill dispatch
+(<code>skill_dispatch.go</code>)</h3>
+<p>When <code>/skill run NAME</code> is called:</p>
+<ol type="1">
+<li><p><strong>Compiled path</strong> — if
+<code>scripts/compiled.bash</code> (Linux/macOS) or
+<code>scripts/compiled.ps1</code> (Windows) exists, the script is
+executed directly. Environment includes <code>HARVEY_PROMPT</code>,
+<code>HARVEY_WORKDIR</code>, <code>HARVEY_MODEL</code>,
+<code>HARVEY_SESSION_ID</code>, and <code>HARVEY_API_BASE</code> (for
+compiled skills that call the LLM API directly).</p></li>
+<li><p><strong>LLM-fallback path</strong> — if no compiled script, the
+full SKILL.md body is injected into context and an LLM response turn is
+triggered.</p></li>
+</ol>
+<p>Compilation failure falls back to the LLM-fallback path rather than
+erroring. Skill trigger regexes use <code>/pattern/flags</code> format;
+the trailing flag suffix is stripped before compilation.</p>
+<h3 id="skill-sets-skill_set.go">Skill sets
+(<code>skill_set.go</code>)</h3>
+<p><code>SkillSetMeta</code> defines a YAML bundle
+(<code>agents/skill-sets/*.yaml</code>) that groups multiple skills by
+name. <code>/skill-set load NAME</code> injects every skill in the
+bundle.</p>
+<h3 id="skill-wizard-skill_wizard.go">Skill wizard
+(<code>skill_wizard.go</code>)</h3>
+<p><code>/skill new</code> launches an interactive wizard that prompts
+for name, description, trigger, and compatibility, then scaffolds a new
+<code>SKILL.md</code> in <code>agents/skills/</code>.</p>
+<h2 id="pipelines-and-automation">Pipelines and automation</h2>
+<h3 id="pipeline-pipeline.go">Pipeline (<code>pipeline.go</code>)</h3>
+<p><code>/pipeline CONFIDENCE% FILE [FILE...]</code> chains Markdown
+prompt files as discrete steps. After each step Harvey attempts to
+extract a confidence score using three strategies (explicit “Confidence:
+N%”, score patterns, and sentiment heuristics). If the score falls below
+the threshold, the pipeline stops with a report.</p>
+<h3 id="plan-plan.go-plan_cmd.go">Plan (<code>plan.go</code>,
+<code>plan_cmd.go</code>)</h3>
+<p><code>Plan</code> holds a slice of <code>PlanStep</code> (GFM
+checkbox items). <code>/plan TASK</code> asks the LLM to generate a
+checklist, saves it to <code>agents/plan.md</code>, then executes each
+step with fresh bounded context. Progress is tracked in the plan file: -
+<code>[ ]</code> — pending - <code>[x]</code> — completed -
+<code>[!]</code> — failed or blocked</p>
+<p>Steps with blocked or failed tool calls are not auto-marked
+complete.</p>
+<h3 id="loop-loop.go">Loop (<code>loop.go</code>)</h3>
+<p><code>/loop INTERVAL [--count N] PROMPT|/COMMAND</code> runs a prompt
+or slash command repeatedly on a fixed interval. Useful for polling,
+watch loops, and repeated evaluation.</p>
+<h2
+id="session-recording-recorder.go-sessions_files.go-replay.go">Session
+recording (<code>recorder.go</code>, <code>sessions_files.go</code>,
+<code>replay.go</code>)</h2>
+<p>Sessions are recorded as Fountain screenplay dialect files
+(<code>.spmd</code>) in <code>agents/sessions/</code>, not plain
+Markdown. Key recorder calls:</p>
+<ul>
+<li><code>RecordTurnWithStats</code> — normal chat turn</li>
+<li><code>RecordAgentAction</code> — file write confirmation</li>
+<li><code>RecordShellCommand</code> — <code>!</code> command
+execution</li>
+</ul>
+<p><code>ListSessionFiles</code> returns
+<code>.spmd</code>/<code>.fountain</code> files sorted newest-first.
+<code>MostRecentSession(dir)</code> delegates to
+<code>ListSessionFiles</code> and returns the path of the most recent
+file — used by <code>--resume</code> to automatically load the last
+session at startup.</p>
+<p><code>replay.go</code> re-sends every user turn from a
+<code>.spmd</code> file to the current model and records fresh
+responses, enabling cross-model comparison.</p>
 <h2 id="backends">Backends</h2>
 <h3 id="ollamaclient-ollama.go">OllamaClient
 (<code>ollama.go</code>)</h3>
 <p>Posts to <code>/api/chat</code> with <code>stream: true</code>. The
-final chunk with <code>done: true</code> carries
-<code>eval_count</code>, <code>eval_duration</code>,
-<code>prompt_eval_count</code>, and <code>prompt_eval_duration</code>
-(all in nanoseconds). These are parsed into <code>ChatStats</code>;
-<code>TokensPerSec</code> is computed as
+final chunk with <code>done: true</code> carries eval counts and
+durations (nanoseconds). <code>TokensPerSec</code> is computed as
 <code>eval_count / (eval_duration / 1e9)</code>.</p>
 <h3 id="anyllmclient-anyllm_client.go">AnyLLMClient
 (<code>anyllm_client.go</code>)</h3>
 <p>Wraps <a
 href="https://github.com/mozilla-ai/any-llm-go">mozilla-ai/any-llm-go</a>
-and implements <code>LLMClient</code>. Local providers (Ollama,
-Llamafile, llama.cpp) are constructed with
-<code>anyllm.WithHTTPClient(&amp;http.Client{})</code> when
-<code>Config.OllamaTimeout</code> is zero, removing the library’s
-default 120 s timeout which was too short for inference on slow
-hardware. Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI)
-use the library’s default timeout.</p>
+for cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI).
+Local providers with <code>Config.OllamaTimeout == 0</code> use
+<code>anyllm.WithHTTPClient(&amp;http.Client{})</code> to remove the
+library’s default 120 s timeout.</p>
 <p>Named remote endpoints are managed by <code>RouteRegistry</code>
 (<code>routing.go</code>). The <code>@name</code> prefix in a prompt
-dispatches that turn to the named endpoint instead of the primary
-backend.</p>
+dispatches that turn to the named endpoint.</p>
+<h3 id="llamafile-backend-llamafile.go-llamafile_service.go">Llamafile
+backend (<code>llamafile.go</code>,
+<code>llamafile_service.go</code>)</h3>
+<p>Llamafile binaries are registered via <code>/llamafile add</code> and
+stored in <code>Config.LlamafileModels</code>.
+<code>llamafile_service.go</code> handles the server lifecycle:
+<code>FindFreePort</code> selects an available TCP port,
+<code>StartLlamafileServer</code> launches the binary via
+<code>/bin/sh</code> (required on macOS for APE format binaries), and
+probes the health endpoint before returning. Key config fields:</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Field</th>
+<th scope="col">Default</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>startup_timeout</code></td>
+<td>120s</td>
+<td>Fast-fail if server does not become ready</td>
+</tr>
+<tr>
+<td><code>gpu_layers</code></td>
+<td>99</td>
+<td><code>-ngl</code> flag for Metal/CUDA layer offload</td>
+</tr>
+</tbody>
+</table>
 <h3 id="backend-selection-at-startup-terminal.go">Backend selection at
 startup (<code>terminal.go</code>)</h3>
 <ol type="1">
@@ -647,14 +1064,10 @@ present a menu.</li>
 <li>If unreachable: offer to start <code>ollama serve</code>, then
 retry.</li>
 <li>If nothing selected: Harvey starts without a backend; commands that
-need one (<code>/summarize</code>, chat turns) print a prompt to connect
-first.</li>
+need one print a prompt to connect first.</li>
 </ol>
 <h2 id="rag-retrieval-augmented-generation-rag_support.go">RAG —
 Retrieval-Augmented Generation (<code>rag_support.go</code>)</h2>
-<p>RAG augments each user prompt with relevant chunks retrieved from a
-local SQLite store before the prompt is sent to the generation model.
-The key types are:</p>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -687,60 +1100,50 @@ The key types are:</p>
 </tbody>
 </table>
 <p><strong>Embedding model binding.</strong> Each <code>RagStore</code>
-is created with an explicit embedding model name. <code>Ingest</code>
-and <code>Query</code> both reject an <code>Embedder</code> whose
-<code>Name()</code> differs from the stored model — mixing vector spaces
-from different models would produce meaningless similarity scores.</p>
-<p><strong>Named store registry.</strong> <code>Config</code> holds a
-<code>[]RagStoreEntry</code> registry and a <code>RagActive</code>
-string naming the currently selected store. Only the active store is
-opened at runtime; all others remain dormant on disk. Helpers:</p>
-<ul>
-<li><code>Config.ActiveRagStore()</code> — returns the active entry or
-nil.</li>
-<li><code>Config.RagStoreByName(name)</code> — lookup by name.</li>
-<li><code>Config.AddOrUpdateRagStore(e)</code> — upsert into the
-registry.</li>
-<li><code>Config.RemoveRagStore(name)</code> — remove from the
-registry.</li>
-</ul>
-<p><strong>YAML persistence.</strong> <code>SaveRAGConfig</code> writes
-new multi-store format:</p>
-<div class="sourceCode" id="cb6"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rag</span><span class="kw">:</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">active</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stores</span><span class="kw">:</span></span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/golang.db</span></span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span></code></pre></div>
-<p>Old single-store format (<code>db_path</code> /
-<code>embedding_model</code> at the top of <code>rag:</code>) is read
-and automatically migrated to a store named <code>"default"</code> on
-load.</p>
+is bound to one embedding model at creation. <code>Ingest</code> and
+<code>Query</code> both reject an <code>Embedder</code> whose
+<code>Name()</code> differs from the stored model.</p>
+<p><strong>Hybrid retrieval.</strong> <code>RagStore.Query</code> uses
+FTS5 full-text search as a fast lexical pass, then re-ranks results
+using cosine similarity. Chunks below <code>ragMinScore</code> (0.3) are
+discarded. The same threshold is used in <code>terminal.go</code> and
+<code>cmd/assay/main.go</code> — keep them in sync if changed.</p>
 <p><strong>Retrieval flow.</strong>
 <code>Agent.ragAugment(prompt)</code> is called before every
-<code>Chat</code> invocation when <code>RagOn</code> is true. It looks
-up the active store’s embedding model (resolving via
-<code>ModelMap</code> when the current generation model has a specific
-override), queries the top 5 chunks, discards any below the
-<code>ragMinScore</code> threshold (0.3 cosine similarity), and prepends
-a <code>### Context (from knowledge base)</code> block to the prompt.
-The original prompt is returned unchanged if RAG is off, the store is
-nil, or no chunks exceed the threshold.</p>
+<code>Chat</code> invocation when <code>RagOn</code> is true. It embeds
+the prompt, queries the active store for the top 5 chunks, discards any
+below the threshold, and prepends a
+<code>### Context (from knowledge base)</code> block. Silent no-op if
+the store is empty or nothing exceeds threshold.</p>
 <p><strong>Database layout.</strong> One table per store:</p>
-<div class="sourceCode" id="cb7"><pre
-class="sourceCode sql"><code class="sourceCode sql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> chunks (</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>        <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    content   TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    embedding <span class="dt">BLOB</span>    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">source</span>    TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> chunks (</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>        <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    content   TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    embedding <span class="dt">BLOB</span>    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">source</span>    TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
 <p>Embeddings are stored as <code>[int32 length][float64...]</code> in
 little-endian byte order. Cosine similarity is computed in Go at query
-time (no vector extension required in SQLite).</p>
+time.</p>
+<h2 id="spinner-spinner.go">Spinner (<code>spinner.go</code>)</h2>
+<p>The <code>Spinner</code> runs a background goroutine that:</p>
+<ol type="1">
+<li>Rotates braille animation frames every 100 ms.</li>
+<li>Cycles through Edward Lear–themed waiting messages every 4 s.</li>
+<li>Displays a live timer: <code>[8s]</code> / <code>[8s / ~12s]</code>
+/ drops estimate when overrun.</li>
+<li>Displays a transient tool-call status line via
+<code>StatusCh chan string</code>. The <code>ToolExecutor</code> calls
+<code>spin.UpdateStatus("Calling read_file…")</code> before each tool
+dispatch; the spinner renders it on a second line below the
+animation.</li>
+</ol>
+<p><code>Spinner</code> satisfies the <code>StatusReporter</code>
+interface (<code>UpdateStatus(msg string)</code>), making it directly
+assignable to <code>ToolExecutor.Status</code>.</p>
 <h2 id="test-coverage">Test coverage</h2>
-<p>Tests live alongside source in six files:</p>
+<p>Tests live alongside source files. Current test files:</p>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -768,22 +1171,25 @@ time (no vector extension required in SQLite).</p>
 </tr>
 <tr>
 <td><code>recorder_test.go</code></td>
-<td>Session file write round-trip, path format</td>
+<td>Session recorder round-trip</td>
+</tr>
+<tr>
+<td><code>sessions_files_test.go</code></td>
+<td>Session file listing, <code>MostRecentSession</code></td>
 </tr>
 <tr>
 <td><code>knowledge_test.go</code></td>
-<td>Full KB CRUD, duplicate handling, links, <code>Summary</code></td>
+<td>Full KB CRUD, duplicate handling, links, <code>Summary</code>,
+scholarly fields</td>
 </tr>
 <tr>
 <td><code>commands_test.go</code></td>
-<td><code>extractCodeBlock</code>, <code>/read</code>,
-<code>/write</code>, <code>/run</code></td>
+<td>Core slash-command handlers</td>
 </tr>
 <tr>
 <td><code>tier2_test.go</code></td>
-<td>Helpers (<code>isBinary</code>, <code>looksLikePath</code>,
-<code>findTaggedBlocks</code>), <code>/search</code>, <code>/git</code>,
-<code>/apply</code></td>
+<td>Helpers (<code>isBinary</code>, <code>looksLikePath</code>),
+<code>/search</code>, <code>/git</code></td>
 </tr>
 <tr>
 <td><code>tier3_test.go</code></td>
@@ -793,85 +1199,207 @@ time (no vector extension required in SQLite).</p>
 <tr>
 <td><code>rag_support_test.go</code></td>
 <td><code>RagStore</code> ingest, query, source round-trip, semantic
-ranking, mismatch rejection</td>
+ranking</td>
+</tr>
+<tr>
+<td><code>anyllm_client_test.go</code></td>
+<td>AnyLLMClient construction and routing</td>
+</tr>
+<tr>
+<td><code>codeblock_test.go</code></td>
+<td>Fenced code block parser</td>
+</tr>
+<tr>
+<td><code>code_chunkers_test.go</code></td>
+<td>Symbol-aware chunking for multiple languages</td>
+</tr>
+<tr>
+<td><code>code_formatters_test.go</code></td>
+<td>Auto-formatter detection and dispatch</td>
+</tr>
+<tr>
+<td><code>doc_extractors_test.go</code></td>
+<td>Comment/docstring extraction</td>
+</tr>
+<tr>
+<td><code>language_detector_test.go</code></td>
+<td>Language detection from filename and content</td>
+</tr>
+<tr>
+<td><code>language_registry_test.go</code></td>
+<td>Extension → language mapping</td>
+</tr>
+<tr>
+<td><code>syntax_highlighters_test.go</code></td>
+<td>ANSI highlighting output</td>
+</tr>
+<tr>
+<td><code>memory_store_test.go</code></td>
+<td>MemoryStore CRUD, enrichment fields, archiving</td>
+</tr>
+<tr>
+<td><code>memory_miner_test.go</code></td>
+<td>Miner extraction and scrub</td>
+</tr>
+<tr>
+<td><code>memory_rolling_test.go</code></td>
+<td>Rolling summary trigger and compression</td>
+</tr>
+<tr>
+<td><code>memory_unified_test.go</code></td>
+<td>UnifiedMemory.Recall() priority ordering</td>
+</tr>
+<tr>
+<td><code>memory_onboarding_test.go</code></td>
+<td>Workspace-profile onboarding flow</td>
+</tr>
+<tr>
+<td><code>memory_test.go</code></td>
+<td>Integration across memory subsystems</td>
+</tr>
+<tr>
+<td><code>llamafile_test.go</code></td>
+<td>Llamafile command parsing and model name derivation</td>
+</tr>
+<tr>
+<td><code>llamafile_service_test.go</code></td>
+<td>Port selection, server start/stop lifecycle</td>
+</tr>
+<tr>
+<td><code>tools_test.go</code></td>
+<td>Tool schema definitions and registry construction</td>
+</tr>
+<tr>
+<td><code>tool_executor_test.go</code></td>
+<td>RunToolLoop multi-turn execution, compaction</td>
+</tr>
+<tr>
+<td><code>skill_dispatch_test.go</code></td>
+<td>Compiled vs. LLM-fallback dispatch paths</td>
+</tr>
+<tr>
+<td><code>skill_compile_test.go</code></td>
+<td>Skill compilation prompt and output</td>
+</tr>
+<tr>
+<td><code>skill_set_test.go</code></td>
+<td>SkillSet YAML loading and validation</td>
+</tr>
+<tr>
+<td><code>skills_test.go</code></td>
+<td>Skill discovery and catalog</td>
+</tr>
+<tr>
+<td><code>skill_wizard_test.go</code></td>
+<td>Wizard scaffolding output</td>
+</tr>
+<tr>
+<td><code>pipeline_test.go</code></td>
+<td>Confidence extraction and pipeline step gating</td>
+</tr>
+<tr>
+<td><code>plan_test.go</code></td>
+<td>Plan parsing, step state transitions</td>
+</tr>
+<tr>
+<td><code>loop_test.go</code></td>
+<td>Loop interval parsing and execution</td>
+</tr>
+<tr>
+<td><code>routing_test.go</code></td>
+<td>RouteRegistry CRUD and <span class="citation"
+data-cites="mention">@mention</span> dispatch</td>
+</tr>
+<tr>
+<td><code>routing_phase4_test.go</code></td>
+<td>Routing phase 4 integration scenarios</td>
+</tr>
+<tr>
+<td><code>config_test.go</code></td>
+<td>Config load, YAML migration, model alias resolution</td>
+</tr>
+<tr>
+<td><code>remote_test.go</code></td>
+<td>RemoteReader scheme selection</td>
+</tr>
+<tr>
+<td><code>remote_sftp_test.go</code></td>
+<td>SFTP packet size limits and string length caps</td>
+</tr>
+<tr>
+<td><code>scholarly_identifiers_test.go</code></td>
+<td>14-type identifier extraction and normalization</td>
+</tr>
+<tr>
+<td><code>scholarly_pdf_test.go</code></td>
+<td>Section-aware PDF chunking</td>
+</tr>
+<tr>
+<td><code>pdf_extract_test.go</code></td>
+<td>Poppler-based text extraction</td>
+</tr>
+<tr>
+<td><code>ollama_probe_test.go</code></td>
+<td>Ollama server health probing</td>
+</tr>
+<tr>
+<td><code>agent_integration_test.go</code></td>
+<td>Full agent lifecycle integration tests</td>
+</tr>
+<tr>
+<td><code>profile_use_test.go</code></td>
+<td>Profile template loading and <code>/profile use</code> flow</td>
+</tr>
+<tr>
+<td><code>phase_d_test.go</code></td>
+<td>Phase D feature integration tests</td>
+</tr>
+<tr>
+<td><code>phase_e_test.go</code></td>
+<td>Phase E feature integration tests</td>
+</tr>
+<tr>
+<td><code>ui_test.go</code></td>
+<td>Terminal line editor and completion</td>
+</tr>
+<tr>
+<td><code>terminal_test.go</code></td>
+<td>REPL startup sequence and backend selection</td>
+</tr>
+<tr>
+<td><code>model_cache_test.go</code></td>
+<td>ModelCache capability lookup and expiry</td>
+</tr>
+<tr>
+<td><code>encoderfile_embedder_test.go</code></td>
+<td>Embedder interface and embedding consistency</td>
+</tr>
+<tr>
+<td><code>templates_test.go</code></td>
+<td>Workspace profile template rendering</td>
 </tr>
 </tbody>
 </table>
-<p>The <code>mockLLMClient</code> in <code>tier3_test.go</code>
-satisfies the <code>LLMClient</code> interface with a configurable reply
-string and optional error, making it available for any future test that
-needs an LLM without a live server.</p>
+<p>The <code>mockLLMClient</code> in <code>tier3_test.go</code> is the
+canonical test double for <code>LLMClient</code> — reuse it rather than
+creating new ones.</p>
 <h2 id="roadmap">Roadmap</h2>
-<p>The commands implemented so far map to three tiers of increasing
-capability. The following outlines the thinking behind each tier and
-where the natural next steps lie.</p>
-<h3 id="tier-1-file-operations-implemented">Tier 1 — file operations
-(implemented)</h3>
-<p>The minimum for a coding assistant: Harvey must be able to
-<em>see</em> code and <em>produce</em> files.</p>
+<p>Harvey is in active development. All major architectural components
+described in this document are fully implemented as of v0.0.13:</p>
 <ul>
-<li><code>/read</code> brings code into context.</li>
-<li><code>/run</code> closes the feedback loop (build errors, test
-output).</li>
-<li><code>/write</code> turns suggestions into actual files without
-copy-pasting.</li>
+<li>✓ Three-silo memory (RAG, experience store, knowledge base)</li>
+<li>✓ Tool registry and dual execution paths (structured + prose)</li>
+<li>✓ Multi-backend routing (Ollama, Llamafile, cloud providers)</li>
+<li>✓ Skills system (compiled and LLM-fallback)</li>
+<li>✓ Pipelines, plan execution, and loop automation</li>
+<li>✓ Scholarly identifier support (14 types) and scholarly PDF
+chunking</li>
+<li>✓ Remote I/O (S3, HTTP/S, SFTP/SCP)</li>
+<li>✓ Security system (safe mode, permissions, audit log, env
+filtering)</li>
 </ul>
-<h3 id="tier-2-code-navigation-implemented">Tier 2 — code navigation
-(implemented)</h3>
-<p>Makes the workspace explorable without leaving Harvey.</p>
-<ul>
-<li><code>/search</code> finds symbols and patterns across the whole
-codebase.</li>
-<li><code>/git</code> gives Harvey awareness of what has changed.</li>
-<li><code>/apply</code> auto-dispatches multi-file code suggestions,
-making Harvey feel agentic rather than advisory.</li>
-</ul>
-<h3 id="tier-3-session-quality-implemented">Tier 3 — session quality
-(implemented)</h3>
-<p>Keeps long sessions useful and the system prompt rich.</p>
-<ul>
-<li><code>/summarize</code> prevents context-window exhaustion on long
-refactoring sessions.</li>
-<li><code>/context</code> pins invariants (target platform, coding
-conventions, open constraints) that should frame every response.</li>
-<li>Dynamic HARVEY.md sections give the model a live snapshot of the
-project at startup with no manual maintenance.</li>
-</ul>
-<h3 id="potential-future-directions">Potential future directions</h3>
-<p><strong>Diff/patch workflow</strong> — After <code>/apply</code>, run
-a <code>git diff</code> and offer a one-step undo
-(<code>/unapply</code>). The current write is destructive; a patch-based
-apply would stage changes and let the user review them with
-<code>git diff --staged</code> before committing.</p>
-<p><strong>Multi-file context loading</strong> — <code>/read</code>
-currently requires explicit file names. A
-<code>/context load-dir PATH [GLOB]</code> variant that recursively adds
-all matching files (e.g. <code>*.go</code>) would reduce friction when
-reviewing a package or subsystem.</p>
-<p><strong>Prompt templates</strong> — A <code>/template use NAME</code>
-command backed by an <code>agents/templates/</code> directory would let
-teams share structured prompts for common tasks (code review, test
-generation, commit message drafting) without repeating them each
-session.</p>
-<p><strong>Knowledge-base auto-recording</strong> — After each turn,
-Harvey could optionally extract decisions or findings from the assistant
-reply and offer to record them as observations in the KB
-(<code>/kb observe</code> today requires manual invocation).</p>
-<p><strong>Token budget awareness</strong> — The Ollama done-packet
-already returns <code>prompt_eval_count</code>. Harvey could warn when
-the accumulated history is approaching the model’s context window and
-suggest <code>/summarize</code> before the model starts silently
-truncating earlier context.</p>
-<p><strong>Model benchmarking</strong> — Since Harvey tracks
-<code>TokensPerSec</code> per turn, a <code>/bench</code> command could
-run a fixed prompt against each installed Ollama model and display a
-comparison table, helping users pick the right model for
-latency-vs-quality tradeoffs on their hardware.</p>
-<p><strong>Headless / pipe mode</strong> — A non-interactive
-<code>harvey --run SCRIPT</code> mode that reads slash commands from a
-file would enable Harvey to be driven from shell scripts or CI
-workflows, applying the same workspace-sandboxed agent loop without a
-human at the terminal.</p>
+<p>See <code>TODO.md</code> for current open items and
+<code>CHANGES.md</code> for the release history.</p>
 </section>
 </body>
 </html>

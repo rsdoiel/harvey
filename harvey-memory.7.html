@@ -55,13 +55,15 @@ grouped results. Uses FTS5 full-text search plus cosine similarity when
 a RAG store is configured. No token budget is applied — all matching
 results are shown.</p>
 <p>profile show|update|use <a href="#name">name</a> Manage the workspace
-profile. “show” — lists workspace_profile memories (equivalent to
-/memory list –type workspace_profile). “update” — opens the most recent
-profile in $EDITOR and re-saves it. “use” — switches to a new profile:
-writes a handoff document to agents/hand-off/, archives the current
-profile, selects a template (by name or interactive picker), saves it as
-the new profile, and resets history so the new context injects on the
-next turn. Alias: /profile use <a href="#name">name</a>.</p>
+profile. “list” — list active and archived profiles (IDs +
+descriptions). “show” — print the full content of the active profile
+document. “edit” — open the active profile in $EDITOR and re-save on
+close. “use” — switch to a new profile: writes a handoff document to
+agents/hand-off/, archives the current profile, selects a template (by
+name or interactive picker), saves it as the new profile, and resets
+history so the new context injects on the next turn. Alias: /profile use
+<a href="#name">name</a>. “rename” — rename the workspace in the active
+profile document. “update” — deprecated alias for “edit”.</p>
 <h1 id="memory-types">MEMORY TYPES</h1>
 <p>tool_use A tool or command trick that worked (e.g. a useful flag, a
 workaround for a known bug). workflow A repeatable multi-step process
@@ -130,7 +132,9 @@ workflow /memory list –type workspace_profile /memory list –kind pitfall
 /memory list –type tool_use –kind workaround /memory show
 pipeline_confidence_extraction /memory flag old_pattern_a1b2c3 /memory
 forget old_pattern_a1b2c3 /memory status /memory recall git repository
-error /memory profile show /memory profile update</p>
+error /memory profile list /memory profile show /memory profile edit
+/memory profile use web-developer /memory profile rename “Harvey Web
+Developer”</p>
 </section>
 </body>
 </html>

@@ -1545,6 +1545,53 @@ func (a *Agent) buildCompleter() func(string) []string {
 			return matches
 		}
 
+		// Layer 1: subcommand completion (second token position).
+		if len(tokens) >= 1 && strings.HasPrefix(tokens[0], "/") {
+			cmdName := strings.ToLower(tokens[0][1:])
+			// Fire when the user has typed the command and a space (no second token yet)
+			// or is mid-way through typing the second token.
+			atSubcmd := (len(tokens) == 1 && strings.HasSuffix(line, " ")) ||
+				(len(tokens) == 2 && !strings.HasSuffix(line, " "))
+			if atSubcmd {
+				if cmd, ok := a.commands[cmdName]; ok && len(cmd.Subcommands) > 0 {
+					prefix := strings.ToLower(word)
+					var matches []string
+					for _, sub := range cmd.Subcommands {
+						if strings.HasPrefix(sub, prefix) {
+							matches = append(matches, sub)
+						}
+					}
+					sortStrings(matches)
+					return matches
+				}
+			}
+		}
+
+		// Layer 2: argument value completion (third token position).
+		// Checked before file-path switch; commands with ArgCompletion short-circuit here.
+		if len(tokens) >= 2 && strings.HasPrefix(tokens[0], "/") {
+			cmdName := strings.ToLower(tokens[0][1:])
+			sub := strings.ToLower(tokens[1])
+			atArg := (len(tokens) == 2 && strings.HasSuffix(line, " ")) ||
+				(len(tokens) == 3 && !strings.HasSuffix(line, " "))
+			if atArg {
+				if cmd, ok := a.commands[cmdName]; ok && cmd.ArgCompletion != nil {
+					if fn, ok := cmd.ArgCompletion[sub]; ok {
+						candidates := fn(a)
+						prefix := strings.ToLower(word)
+						var matches []string
+						for _, c := range candidates {
+							if strings.HasPrefix(strings.ToLower(c), prefix) {
+								matches = append(matches, c)
+							}
+						}
+						sortStrings(matches)
+						return matches
+					}
+				}
+			}
+		}
+
 		// Ollama model / alias completion for subcommands that take a model name.
 		if len(tokens) >= 2 {
 			cmd := strings.ToLower(tokens[0])

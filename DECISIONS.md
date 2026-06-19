@@ -4,6 +4,29 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-19 — Tab completion: two-layer design with shared SelectFrom helper
+
+**Context.** Harvey's `buildCompleter()` only completes top-level command names, `@route` references, Ollama model names, and file paths. Users must remember subcommand names by heart and must know exact RAG store/model names to use `use` and `drop` subcommands. Several commands already show numbered pickers when no name is given, but each reimplements the pattern differently. See [tab-completion-design.md](tab-completion-design.md).
+
+**Decision.** Extend completion in two layers: (1) second-token subcommand names using a new `Subcommands []string` field on `Command`; (2) third-token argument values using a new `ArgCompletion map[string]func(*Agent) []string` field that maps each subcommand to a candidate-list function. Additionally, introduce a shared `SelectFrom` / `SelectItem` / `SelectFromStrings` API in a new `ui.go` file. Commands whose first positional argument comes from a finite, enumerable list (`/rag use`, `/memory show`, `/llamafile use`, etc.) display the picker when no argument is given. `ui.go` lives in the `harvey` package; promotion to `termlib` is deferred until a clean generalisation is proven.
+
+**Rejected alternatives.**
+
+- *Parse Usage strings* — brittle; the Usage field is for display, not machine consumption. A `Subcommands` field is explicit and refactoring-safe.
+- *Single CompletionFunc per Command* — more flexible but requires each command to handle prefix filtering, sorting, and the active-marker display pattern itself. The `ArgCompletion map[string]func` approach keeps candidate production separate from completion mechanics.
+- *Fuzzy matching* — adds complexity without a proven need. Prefix matching is sufficient for short subcommand names; fuzzy can be added later without changing the API.
+- *Move SelectFrom to termlib immediately* — premature. We don't know the right generalisation until it has been used in several places. Standard design → plan → decision process applies if/when that move happens.
+
+**Consequences.**
+
+- `Command` struct gains `Subcommands []string` and `ArgCompletion map[string]func(*Agent) []string`. The doc comment is updated. No existing registration is broken (new fields are optional).
+- `buildCompleter()` gains two new blocks before the existing file-path switch. Existing file-path and model-name completion is unchanged.
+- `ui.go` is a new file; `ui_test.go` covers all exported symbols.
+- Existing picker implementations in `llamafile.go` and `commands.go` are refactored to call `SelectFrom` in Phase E. Behaviour is identical; code shrinks.
+- Harvey YAML and configuration are not changed.
+
+---
+
 ## 2026-06-18 — MinIO replaced with aws-sdk-go-v2 S3 client
 
 **Context.** `remote_s3.go` uses `github.com/minio/minio-go/v7` as the S3 protocol client. MinIO's Go client has moved to a closed-source license, making it unsuitable for Harvey's AGPL-3.0 codebase. The affected surface is small: `Stat`, `Get`, and `List` operations on S3-compatible stores (AWS S3, MinIO server, Cloudflare R2). See [s3-replacement-design.md](s3-replacement-design.md).

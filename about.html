@@ -19,69 +19,27 @@
 </nav>
 <section>
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.12">harvey 0.0.12</h2>
+<h2 id="harvey-0.0.13">harvey 0.0.13</h2>
 <ul>
-<li>memory enrichment: added <code>kind</code> field to memory documents
-classifying why knowledge matters
-(pitfall/workaround/recommendation/pattern)</li>
-<li>memory enrichment: added <code>action</code> field — the imperative
-step a future agent should take; included in embedding text for better
-semantic retrieval</li>
-<li>memory enrichment: added <code>confidence</code> field (default
-0.5); retrieval scores are weighted multiplicatively (score = cosine ×
-confidence)</li>
-<li><code>/memory flag &lt;id&gt;</code>: new command reduces confidence
-by 0.1 per call; auto-archives when confidence falls to or below
-0.2</li>
-<li><code>/memory list</code>: new <code>--kind</code> filter; output
-now shows kind and confidence columns alongside type</li>
-<li>miner prompt updated to elicit <code>kind</code> and
-<code>action</code> for each extracted memory; all five memory types now
-listed</li>
-<li><code>WriteDigest()</code>: MemoryStore auto-writes
-<code>agents/memories/DIGEST.md</code> on every Save, Archive, and
-MineAuto — plain Markdown readable by any LLM without a SQLite
-client</li>
-<li><code>agents/skills/harvey-memory/SKILL.md</code>: new cross-agent
-skill teaching Vibe and Claude Code when and how to use the memory
-digest</li>
-<li>memories database lazily migrated: existing <code>memories.db</code>
-files gain kind, action, confidence columns on first open; FTS5 table
-rebuilt with new columns</li>
-<li>added <code>create_dir</code> built-in tool so models can create
-directories without <code>run_command mkdir</code></li>
-<li>added <code>/safe</code> and <code>/safe_mode</code> as aliases for
-<code>/safemode</code></li>
-<li>unknown slash commands now highlighted in yellow</li>
-<li>llamafile: fixed exec format error on macOS (APE binaries now
-launched via <code>/bin/sh</code>)</li>
-<li>llamafile: added <code>--server</code> flag for headless mode
-(llamafile v0.10.3 API change)</li>
-<li>llamafile: added <code>-ngl</code> GPU layer offload support with
-<code>gpu_layers</code> config option (default 99, maximises
-Metal/CUDA)</li>
-<li>llamafile: <code>startup_timeout</code> config option (default
-120s); fast-fail on process exit with stderr surfaced in error</li>
-<li>llamafile: debug log now wired to new client after
-<code>/llamafile use</code> model switch</li>
-<li>tool result compaction: prior tool-call rounds are compacted in
-<code>RunToolLoop</code> before each new LLM turn, keeping context
-bounded during multi-step tasks</li>
-<li><code>/plan</code> command: generate a GFM checklist plan, execute
-each step with fresh bounded context, track progress in
-<code>agents/plan.md</code></li>
-<li><code>multi-file</code> skill: auto-detects multi-file creation
-requests and generates a plan via the compiled script path</li>
-<li>skill trigger regex: fixed <code>/pattern/flags</code> format
-(trailing flag suffix no longer breaks regex mode)</li>
-<li>skill dispatch: compilation failure now falls back to LLM
-context-injection path instead of erroring out</li>
-<li>skill dispatch: <code>HARVEY_API_BASE</code> env var added to
-compiled script environment</li>
-<li>skill dispatch: LLM-fallback skills now trigger an LLM response turn
-instead of silently continuing</li>
-<li>plan execution: steps with blocked or failed tool calls are no
-longer auto-marked complete</li>
+<li><code>/profile</code> command: top-level alias for
+<code>/memory profile &lt;list|show|edit|use|rename&gt;</code></li>
+<li><code>--resume</code> flag: resumes the most recent session in
+<code>agents/sessions/</code> automatically at startup</li>
+<li>Spinner live status: tool calls now show a transient status line
+(“Calling tool…”) while waiting for results</li>
+<li><code>assay --llamafile PATH</code>: evaluate a llamafile binary
+directly; assay starts/stops the process and derives the model name from
+the binary path</li>
+<li>Added web-developer workspace profile template</li>
+<li><code>HARVEY.md</code>: documented native file-reading for PDF and
+image files so models call <code>read_file</code> directly</li>
+<li>S3 remote: improved not-found detection for missing keys and
+buckets; path-style access fixed for non-AWS endpoints</li>
+<li><code>MostRecentSession</code> helper in
+<code>sessions_files.go</code> for reliable <code>--resume</code>
+behaviour</li>
+<li>Llamafile: <code>scanLlamafileModels</code> now discovers binaries
+by directory scan</li>
 </ul>
 <h2 id="authors">Authors</h2>
 <ul>
@@ -108,15 +66,15 @@ Tracker</a></li>
 </ul>
 <h2 id="programming-languages">Programming languages</h2>
 <ul>
-<li>Go &gt;= 1.26.3</li>
+<li>Go &gt;= 1.26.4</li>
 </ul>
 <h2 id="software-requirements">Software Requirements</h2>
 <ul>
-<li>Go &gt;= 1.26.3</li>
+<li>Go &gt;= 1.26.4</li>
+<li>CMTools &gt;= 0.0.45</li>
 </ul>
 <h2 id="software-suggestions">Software Suggestions</h2>
 <ul>
-<li>CMTools &gt;= 0.0.45b</li>
 <li>Pandoc &gt;= 3.9</li>
 <li>GNU Make &gt;= 3.8</li>
 </ul>

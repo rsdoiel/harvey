@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.12 c4e5004
+%harvey(7) user manual | version 0.0.13 b877e04
 % R. S. Doiel
-% 2026-06-17
+% 2026-06-19
 
 # NAME
 

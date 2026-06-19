@@ -832,3 +832,194 @@ func TestRouteSet_unknownValue(t *testing.T) {
 		t.Errorf("expected unknown value message, got: %s", out.String())
 	}
 }
+
+// ─── tab completion ────────────────────────────────────────────────────────────
+
+func TestSubcommandCompletion_memory(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	// "/memory " (trailing space) → all subcommands
+	got := completer("/memory ")
+	if len(got) == 0 {
+		t.Fatal("expected subcommand completions for '/memory ', got none")
+	}
+	for _, want := range []string{"mine", "list", "show", "recall", "profile"} {
+		found := false
+		for _, g := range got {
+			if g == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in completions, got %v", want, got)
+		}
+	}
+}
+
+func TestSubcommandCompletion_prefix(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	// "/memory m" → only subcommands starting with "m"
+	got := completer("/memory m")
+	for _, g := range got {
+		if !strings.HasPrefix(g, "m") {
+			t.Errorf("expected all completions to start with 'm', got %q", g)
+		}
+	}
+	if len(got) == 0 {
+		t.Error("expected at least one completion for '/memory m'")
+	}
+}
+
+func TestSubcommandCompletion_rag(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	got := completer("/rag ")
+	for _, want := range []string{"list", "new", "use", "drop", "ingest", "status", "query", "on", "off"} {
+		found := false
+		for _, g := range got {
+			if g == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in /rag completions, got %v", want, got)
+		}
+	}
+}
+
+func TestSubcommandCompletion_noSubcommands(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	// "/status " has no subcommands — should return nil, not panic
+	got := completer("/status ")
+	if len(got) != 0 {
+		t.Errorf("expected no completions for '/status ', got %v", got)
+	}
+}
+
+func TestSubcommandCompletion_sorted(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	got := completer("/rag ")
+	for i := 1; i < len(got); i++ {
+		if got[i] < got[i-1] {
+			t.Errorf("completions not sorted: %q before %q", got[i-1], got[i])
+		}
+	}
+}
+
+func TestArgCompletion_ragStoreNames(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.Memory.RagStores = []RagStoreEntry{
+		{Name: "harvey"},
+		{Name: "project-docs"},
+	}
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	got := completer("/rag use ")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 store candidates, got %d: %v", len(got), got)
+	}
+	for _, want := range []string{"harvey", "project-docs"} {
+		found := false
+		for _, g := range got {
+			if g == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in /rag use completions, got %v", want, got)
+		}
+	}
+}
+
+func TestArgCompletion_ragStorePrefixFilter(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.Memory.RagStores = []RagStoreEntry{
+		{Name: "harvey"},
+		{Name: "project-docs"},
+	}
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	got := completer("/rag use h")
+	if len(got) != 1 || got[0] != "harvey" {
+		t.Errorf("prefix 'h' should match only 'harvey', got %v", got)
+	}
+}
+
+func TestArgCompletion_memoryTypes(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	got := completer("/memory list ")
+	if len(got) == 0 {
+		t.Fatal("expected memory type candidates for '/memory list ', got none")
+	}
+	for _, want := range []string{"tool_use", "workflow", "user_preference"} {
+		found := false
+		for _, g := range got {
+			if g == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in /memory list completions, got %v", want, got)
+		}
+	}
+}
+
+func TestArgCompletion_noRegistration(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	// /rag new takes a user-chosen name — no ArgCompletion registered
+	got := completer("/rag new ")
+	if len(got) != 0 {
+		t.Errorf("expected no completions for '/rag new', got %v", got)
+	}
+}
+
+func TestArgCompletion_llamafileNames(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.LlamafileModels = []LlamafileEntry{
+		{Name: "granite3.3-2b"},
+		{Name: "llama3.2-1b"},
+	}
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	got := completer("/llamafile use ")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 llamafile candidates, got %d: %v", len(got), got)
+	}
+}
+
+func TestArgCompletion_memoryIDCandidates_emptyStore(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	completer := a.buildCompleter()
+
+	// Empty store — should return empty without panicking.
+	got := completer("/memory show ")
+	// nil or empty is fine; just must not panic
+	_ = got
+}

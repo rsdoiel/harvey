@@ -109,6 +109,8 @@ func cmdLlamafile(a *Agent, args []string, out io.Writer) error {
 		return cmdLlamafileStart(a, args[1:], out)
 	case "status":
 		return cmdLlamafileStatus(a, out)
+	case "drop":
+		return cmdLlamafileDrop(a, args[1:], out)
 	default:
 		fmt.Fprint(out, LlamafileHelpText)
 		return nil
@@ -188,59 +190,48 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 
 // llamafilePickFromDir scans LlamafileModelsDir, shows a numbered picker,
 // and returns the selected path. Returns ("", nil) if the user declines.
+// Non-numeric input is returned as-is so the caller can treat it as a path.
 func llamafilePickFromDir(a *Agent, out io.Writer) (string, error) {
 	dir := a.Config.LlamafileModelsDir
 	paths := scanLlamafileModels(dir)
 
 	if len(paths) == 0 {
 		fmt.Fprintf(out, "  No llamafiles found in %s.\n", dir)
-		fmt.Fprint(out, "  Enter a path to a llamafile: ")
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		line = strings.TrimSpace(line)
-		if line == "" {
-			fmt.Fprintln(out, "  No path given — use /llamafile add PATH to register a model.")
-			return "", nil
+		result, err := SelectFromStrings(nil, "Enter a path to a llamafile (or Enter to cancel): ", a.In, out)
+		if err != nil || result == "" {
+			if err == nil {
+				fmt.Fprintln(out, "  No path given — use /llamafile add PATH to register a model.")
+			}
+			return "", err
 		}
-		return line, nil
+		return result, nil
 	}
 
 	fmt.Fprintf(out, "  Llamafiles found in %s:\n", dir)
+	items := make([]SelectItem, len(paths))
 	for i, p := range paths {
 		info, err := os.Stat(p)
 		size := ""
 		if err == nil {
 			size = fmt.Sprintf(" (%s)", llamafileFormatBytes(info.Size()))
 		}
-		// Mark already-registered models.
-		registered := ""
-		name := llamafileModelName(p)
+		label := filepath.Base(p) + size
 		for _, e := range a.Config.LlamafileModels {
 			if e.Path == p || e.Path == filepath.Base(p) {
-				registered = fmt.Sprintf("  (registered as %s)", e.Name)
-				name = e.Name
+				label += fmt.Sprintf("  (registered as %s)", e.Name)
 				break
 			}
 		}
-		_ = name
-		fmt.Fprintf(out, "  [%d] %s%s%s\n", i+1, filepath.Base(p), size, registered)
+		items[i] = SelectItem{Value: p, Label: label}
 	}
-	fmt.Fprintf(out, "  Select [1-%d] or enter a path: ", len(paths))
-
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	line = strings.TrimSpace(line)
-
-	// If the user typed a number, use that index.
-	idx := 0
-	fmt.Sscanf(line, "%d", &idx)
-	if idx >= 1 && idx <= len(paths) {
-		return paths[idx-1], nil
+	result, err := SelectFrom(items, fmt.Sprintf("Select [1-%d] or enter a path: ", len(items)), a.In, out)
+	if err != nil {
+		return "", err
 	}
-	// Otherwise treat as a direct path.
-	if line != "" {
-		return line, nil
+	if result == "" {
+		fmt.Fprintln(out, "  No selection — use /llamafile add PATH to register a model.")
 	}
-	fmt.Fprintln(out, "  No selection — use /llamafile add PATH to register a model.")
-	return "", nil
+	return result, nil
 }
 
 // llamafilePickFromRegistered shows a numbered picker of registered models
@@ -251,27 +242,15 @@ func llamafilePickFromRegistered(a *Agent, out io.Writer) (string, error) {
 		fmt.Fprintln(out, "  No llamafile models registered. Use /llamafile add first.")
 		return "", nil
 	}
-	fmt.Fprintln(out, "  Registered llamafile models:")
+	items := make([]SelectItem, len(models))
 	for i, e := range models {
-		arrow := "  "
-		if e.Name == a.Config.LlamafileActive {
-			arrow = "→ "
+		items[i] = SelectItem{
+			Value:  e.Name,
+			Label:  e.Name,
+			Active: e.Name == a.Config.LlamafileActive,
 		}
-		fmt.Fprintf(out, "  %s[%d] %s\n", arrow, i+1, e.Name)
 	}
-	fmt.Fprintf(out, "  Select [1-%d] or enter a name: ", len(models))
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	line = strings.TrimSpace(line)
-	if line == "" {
-		fmt.Fprintln(out, "  No selection.")
-		return "", nil
-	}
-	idx := 0
-	fmt.Sscanf(line, "%d", &idx)
-	if idx >= 1 && idx <= len(models) {
-		return models[idx-1].Name, nil
-	}
-	return line, nil
+	return SelectFrom(items, fmt.Sprintf("Select model [1-%d] or enter a name: ", len(items)), a.In, out)
 }
 
 // cmdLlamafileUse switches to a named registered model.
@@ -337,6 +316,49 @@ func cmdLlamafileList(a *Agent, out io.Writer) error {
 		}
 	}
 	fmt.Fprintf(out, "  Discovery directory: %s\n", a.Config.LlamafileModelsDir)
+	return nil
+}
+
+// cmdLlamafileDrop removes a registered llamafile model from the config.
+// When no NAME is given, shows a numbered picker of registered models.
+func cmdLlamafileDrop(a *Agent, args []string, out io.Writer) error {
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	} else {
+		names := llamafileNameCandidates(a)
+		if len(names) == 0 {
+			fmt.Fprintln(out, "  No llamafile models registered.")
+			return nil
+		}
+		chosen, err := SelectFromStrings(names, fmt.Sprintf("Drop which model [1-%d] or Enter to cancel: ", len(names)), a.In, out)
+		if err != nil || chosen == "" {
+			return err
+		}
+		name = chosen
+	}
+	models := a.Config.LlamafileModels
+	newModels := models[:0]
+	found := false
+	for _, e := range models {
+		if e.Name == name {
+			found = true
+			continue
+		}
+		newModels = append(newModels, e)
+	}
+	if !found {
+		fmt.Fprintf(out, "  No llamafile registered as %q — use /llamafile list.\n", name)
+		return nil
+	}
+	a.Config.LlamafileModels = newModels
+	if a.Config.LlamafileActive == name {
+		a.Config.LlamafileActive = ""
+	}
+	if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
+		fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
+	}
+	fmt.Fprintf(out, "  Removed %q from registered models.\n", name)
 	return nil
 }
 

@@ -521,7 +521,19 @@ func TestCmdSkill_loadEmptyBody(t *testing.T) {
 }
 
 func TestCmdSkill_loadNoArgs(t *testing.T) {
+	// When skills are available, no-arg load shows a picker (not a usage message).
 	a := newSkillAgent(t)
+	a.In = strings.NewReader("\n") // cancel the picker immediately
+	out := runSkillCmd(t, a, "load")
+	if !strings.Contains(out, "which skill") {
+		t.Errorf("expected picker prompt, got: %q", out)
+	}
+}
+
+func TestCmdSkill_loadNoArgs_noSkills(t *testing.T) {
+	// When no skills are in the catalog, no-arg load shows a usage message.
+	a := newSkillAgent(t)
+	a.Skills = SkillCatalog{} // empty
 	out := runSkillCmd(t, a, "load")
 	if !strings.Contains(out, "Usage") {
 		t.Errorf("expected usage message, got: %q", out)
@@ -547,7 +559,19 @@ func TestCmdSkill_infoNotFound(t *testing.T) {
 }
 
 func TestCmdSkill_infoNoArgs(t *testing.T) {
+	// When skills are available, no-arg info shows a picker (not a usage message).
 	a := newSkillAgent(t)
+	a.In = strings.NewReader("\n") // cancel the picker immediately
+	out := runSkillCmd(t, a, "info")
+	if !strings.Contains(out, "which skill") {
+		t.Errorf("expected picker prompt, got: %q", out)
+	}
+}
+
+func TestCmdSkill_infoNoArgs_noSkills(t *testing.T) {
+	// When no skills are in the catalog, no-arg info shows a usage message.
+	a := newSkillAgent(t)
+	a.Skills = SkillCatalog{}
 	out := runSkillCmd(t, a, "info")
 	if !strings.Contains(out, "Usage") {
 		t.Errorf("expected usage message, got: %q", out)

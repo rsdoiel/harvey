@@ -1,6 +1,6 @@
-%harvey(1) user manual | version 0.0.12 c4e5004
+%harvey(1) user manual | version 0.0.13 b877e04
 % R. S. Doiel
-% 2026-06-17
+% 2026-06-19
 
 # NAME
 
@@ -56,6 +56,9 @@ Type /help inside the session for available slash commands.
 
 --record-file FILE
 : path for the auto-recording file (implies --record)
+
+--resume
+: resume the most recent session automatically (no argument needed)
 
 --continue FILE
 : load conversation history from a Fountain recording and open the REPL
@@ -120,6 +123,9 @@ are also available from the shell: harvey --help TOPIC.
 /git <status|diff|log|show|blame> [ARGS...]
 : read-only git commands in the workspace
 
+/format FILE [FILE...]
+: detect and apply language-appropriate formatters to workspace source files
+
 **Model and backend**
 
 /ollama <start [debug]|stop|status|list|ps|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL]|logs|use MODEL|env|alias NAME FULLNAME>
@@ -130,6 +136,9 @@ are also available from the shell: harvey --help TOPIC.
 
 /route <add NAME URL [MODEL]|rm NAME|list|on|off|status>
 : manage named remote LLM endpoints (@mention routing)
+
+/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status|drop NAME>
+: manage local llamafile model backends
 
 **Context and history**
 
@@ -181,10 +190,16 @@ are also available from the shell: harvey --help TOPIC.
 /skill-set <list|load NAME|info NAME|create NAME|status|unload>
 : manage named bundles of skills
 
-**Pipelines**
+**Pipelines and automation**
 
 /pipeline <CONFIDENCE%> FILE [FILE ...]
 : chain Markdown prompt files as discrete steps with confidence gating
+
+/plan <TASK | next | status | show | clear>
+: generate a GFM checklist plan and execute each step with bounded context
+
+/loop INTERVAL [--count N] PROMPT|/COMMAND
+: run a prompt or command repeatedly on a fixed interval
 
 **Security**
 

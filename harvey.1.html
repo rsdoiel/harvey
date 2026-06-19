@@ -74,6 +74,10 @@ start a Fountain recording automatically at startup
 <dd>
 path for the auto-recording file (implies –record)
 </dd>
+<dt>–resume</dt>
+<dd>
+resume the most recent session automatically (no argument needed)
+</dd>
 <dt>–continue FILE</dt>
 <dd>
 load conversation history from a Fountain recording and open the REPL
@@ -154,6 +158,11 @@ run a shell command; subject to Safe Mode and timeout
 <dd>
 read-only git commands in the workspace
 </dd>
+<dt>/format FILE [FILE…]</dt>
+<dd>
+detect and apply language-appropriate formatters to workspace source
+files
+</dd>
 </dl>
 <p><strong>Model and backend</strong></p>
 <dl>
@@ -171,6 +180,11 @@ show detailed model information (Ollama only)
 <dd>
 manage named remote LLM endpoints (<span class="citation"
 data-cites="mention">@mention</span> routing)
+</dd>
+<dt>/llamafile &lt;add [PATH] <a href="#name">NAME</a>|use
+NAME|list|start <a href="#name">NAME</a>|status|drop NAME&gt;</dt>
+<dd>
+manage local llamafile model backends
 </dd>
 </dl>
 <p><strong>Context and history</strong></p>
@@ -247,11 +261,19 @@ NAME|status|unload&gt;</dt>
 manage named bundles of skills
 </dd>
 </dl>
-<p><strong>Pipelines</strong></p>
+<p><strong>Pipelines and automation</strong></p>
 <dl>
 <dt>/pipeline &lt;CONFIDENCE%&gt; FILE [FILE …]</dt>
 <dd>
 chain Markdown prompt files as discrete steps with confidence gating
+</dd>
+<dt>/plan &lt;TASK | next | status | show | clear&gt;</dt>
+<dd>
+generate a GFM checklist plan and execute each step with bounded context
+</dd>
+<dt>/loop INTERVAL [–count N] PROMPT|/COMMAND</dt>
+<dd>
+run a prompt or command repeatedly on a fixed interval
 </dd>
 </dl>
 <p><strong>Security</strong></p>

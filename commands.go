@@ -140,11 +140,18 @@ func filterCommandEnvironment(env []string) []string {
 /** Command describes a slash command available in the Harvey REPL.
  *
  * Fields:
- *   Usage       (string)   — short usage synopsis shown by /help.
- *   Description (string)   — one-line description shown by /help.
- *   UserDefined (bool)     — true for commands generated from compiled skills.
- *   Handler     (func)     — called when the command is dispatched; nil for
- *                            commands handled directly in the REPL (exit, quit).
+ *   Usage          (string)   — short usage synopsis shown by /help.
+ *   Description    (string)   — one-line description shown by /help.
+ *   UserDefined    (bool)     — true for commands generated from compiled skills.
+ *   Handler        (func)     — called when the command is dispatched; nil for
+ *                               commands handled directly in the REPL (exit, quit).
+ *   Subcommands    ([]string) — valid second-token subcommand names; used by
+ *                               buildCompleter for tab completion. Empty for
+ *                               commands that take no subcommand.
+ *   ArgCompletion  (map)      — maps each subcommand name to a function that
+ *                               returns candidate strings for its first positional
+ *                               argument. Called at tab time; must not make LLM
+ *                               or network calls. nil if not applicable.
  *
  * Example:
  *   cmd := &Command{
@@ -161,7 +168,9 @@ type Command struct {
 	Description string
 	UserDefined bool
 	// Handler is nil for commands handled directly in the REPL (exit, quit).
-	Handler func(a *Agent, args []string, out io.Writer) error
+	Handler       func(a *Agent, args []string, out io.Writer) error
+	Subcommands   []string
+	ArgCompletion map[string]func(*Agent) []string
 }
 
 /** registerCommands wires the built-in slash commands onto the agent.
@@ -187,29 +196,48 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdClear,
 		},
 		"ollama": {
-			Usage:       "/ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|logs|use MODEL|env>",
-			Description: "Control the local Ollama service and manage models",
-			Handler:     cmdOllama,
+			Usage:        "/ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|logs|use MODEL|env>",
+			Description:  "Control the local Ollama service and manage models",
+			Handler:      cmdOllama,
+			Subcommands:  []string{"start", "stop", "status", "list", "ps", "run", "pull", "push", "show", "create", "cp", "rm", "logs", "use", "env", "alias"},
 		},
 		"llamafile": {
-			Usage:       "/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status>",
+			Usage:       "/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status|drop NAME>",
 			Description: "Manage llamafile model backends",
 			Handler:     cmdLlamafile,
+			Subcommands: []string{"add", "use", "list", "start", "status", "drop"},
+			ArgCompletion: map[string]func(*Agent) []string{
+				"use":  llamafileNameCandidates,
+				"drop": llamafileNameCandidates,
+			},
 		},
 		"kb": {
 			Usage:       "/kb <status|search|inject|project|observe|concept> [args...]",
 			Description: "Manage and query the workspace knowledge base",
 			Handler:     cmdKB,
+			Subcommands: []string{"status", "search", "inject", "project", "observe", "concept"},
 		},
 		"memory": {
-			Usage:       "/memory <mine|list|show|forget|status> [args...]",
+			Usage:       "/memory <mine|list|show|flag|forget|status|recall|profile> [args...]",
 			Description: "Mine sessions for memories and manage the memory store",
 			Handler:     cmdMemory,
+			Subcommands: []string{"mine", "list", "show", "flag", "forget", "status", "recall", "profile"},
+			ArgCompletion: map[string]func(*Agent) []string{
+				"list":   memoryTypeCandidates,
+				"show":   memoryIDCandidates,
+				"flag":   memoryIDCandidates,
+				"forget": memoryIDCandidates,
+			},
 		},
 		"rag": {
 			Usage:       "/rag <list|new NAME|use NAME|drop NAME|ingest PATH|status|query TEXT|on|off>",
 			Description: "Manage named RAG knowledge stores for context-augmented generation",
 			Handler:     cmdRag,
+			Subcommands: []string{"list", "new", "use", "drop", "ingest", "status", "query", "on", "off"},
+			ArgCompletion: map[string]func(*Agent) []string{
+				"use":  ragStoreNameCandidates,
+				"drop": ragStoreNameCandidates,
+			},
 		},
 		"files": {
 			Usage:       "/files [PATH]",
@@ -255,6 +283,7 @@ func (a *Agent) registerCommands() {
 			Usage:       "/git <status|diff|log|show|blame> [ARGS...]",
 			Description: "Run a read-only git command and inject its output into context",
 			Handler:     cmdGit,
+			Subcommands: []string{"status", "diff", "log", "show", "blame"},
 		},
 		"summarize": {
 			Usage:       "/summarize",
@@ -270,31 +299,37 @@ func (a *Agent) registerCommands() {
 			Usage:       "/context <show|add TEXT...|clear>",
 			Description: "Manage pinned context that survives /clear",
 			Handler:     cmdContext,
+			Subcommands: []string{"show", "add", "clear"},
 		},
 		"audit": {
 			Usage:       "/audit <show [n]|clear|status>",
 			Description: "View or clear the audit log of security-relevant events",
 			Handler:     cmdAudit,
+			Subcommands: []string{"show", "clear", "status"},
 		},
 		"permissions": {
 			Usage:       "/permissions <list [PATH]|set PATH PERMS|reset>",
 			Description: "Manage workspace file permissions (read, write, exec, delete)",
 			Handler:     cmdPermissions,
+			Subcommands: []string{"list", "set", "reset"},
 		},
 		"security": {
 			Usage:       "/security status",
 			Description: "Show security settings status (safe mode, permissions, audit)",
 			Handler:     cmdSecurity,
+			Subcommands: []string{"status"},
 		},
 		"record": {
 			Usage:       "/record <start [FILE]|stop|status>",
 			Description: "Record session exchanges to a Markdown file",
 			Handler:     cmdRecord,
+			Subcommands: []string{"start", "stop", "status"},
 		},
 		"session": {
 			Usage:       "/session <continue FILE|replay FILE [OUTPUT]>",
 			Description: "Continue or replay a .spmd/.fountain session recording",
 			Handler:     cmdSession,
+			Subcommands: []string{"continue", "replay"},
 		},
 		"rename": {
 			Usage:       "/rename NAME",
@@ -315,11 +350,18 @@ func (a *Agent) registerCommands() {
 			Usage:       "/skill <list|load NAME|info NAME|status|new|run NAME>",
 			Description: "List or load Agent Skills from the skill catalog",
 			Handler:     cmdSkill,
+			Subcommands: []string{"list", "load", "info", "status", "new", "run"},
+			ArgCompletion: map[string]func(*Agent) []string{
+				"load": skillNameCandidates,
+				"info": skillNameCandidates,
+				"run":  skillNameCandidates,
+			},
 		},
 		"skill-set": {
 			Usage:       "/skill-set <list|load NAME|info NAME|create NAME|status|unload>",
 			Description: "Load or manage named bundles of skills from agents/skill-sets/",
 			Handler:     cmdSkillSet,
+			Subcommands: []string{"list", "load", "info", "create", "status", "unload"},
 		},
 		"inspect": {
 			Usage:       "/inspect [MODEL]",
@@ -330,16 +372,24 @@ func (a *Agent) registerCommands() {
 			Usage:       "/route <add NAME URL [MODEL] | rm NAME | models URL | probe NAME | set NAME tools on|off | list | on | off | status>",
 			Description: "Register remote LLM endpoints and dispatch to them with @name in prompts",
 			Handler:     cmdRoute,
+			Subcommands: []string{"add", "rm", "models", "probe", "set", "list", "on", "off", "status"},
+			ArgCompletion: map[string]func(*Agent) []string{
+				"rm":    routeNameCandidates,
+				"probe": routeNameCandidates,
+				"set":   routeNameCandidates,
+			},
 		},
 		"safemode": {
 			Usage:       "/safemode <on|off|status|allow CMD|deny CMD|reset>",
 			Description: "Enable/disable safe mode or manage the command allowlist",
 			Handler:     cmdSafeMode,
+			Subcommands: []string{"on", "off", "status", "allow", "deny", "reset"},
 		},
 		"safe": {
 			Usage:       "/safe <on|off|status|allow CMD|deny CMD|reset>",
 			Description: "Alias for /safemode",
 			Handler:     cmdSafeMode,
+			Subcommands: []string{"on", "off", "status", "allow", "deny", "reset"},
 		},
 		"pipeline": {
 			Usage:       "/pipeline <CONFIDENCE%> FILE [FILE ...]",
@@ -350,6 +400,7 @@ func (a *Agent) registerCommands() {
 			Usage:       "/plan <TASK | next | status | show | clear>",
 			Description: "Generate a step-by-step plan and execute it with bounded context per step",
 			Handler:     cmdPlan,
+			Subcommands: []string{"next", "status", "show", "clear"},
 		},
 		"hint": {
 			Usage:       "/hint",
@@ -368,6 +419,10 @@ func (a *Agent) registerCommands() {
 			Description: "Alias for /memory profile — manage workspace profile",
 			Handler: func(a *Agent, args []string, out io.Writer) error {
 				return cmdMemory(a, append([]string{"profile"}, args...), out)
+			},
+			Subcommands: []string{"list", "show", "edit", "use", "rename"},
+			ArgCompletion: map[string]func(*Agent) []string{
+				"use": profileTemplateNameCandidates,
 			},
 		},
 		"format": {
@@ -783,16 +838,32 @@ func cmdRoute(a *Agent, args []string, out io.Writer) error {
 		return routeAdd(a, args[1:], out)
 	case "rm", "remove":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "  Usage: /route rm NAME")
-			return nil
+			names := routeNameCandidates(a)
+			if len(names) == 0 {
+				fmt.Fprintln(out, "  No routes registered. Use /route add NAME URL to add one.")
+				return nil
+			}
+			chosen, err := SelectFromStrings(names, fmt.Sprintf("Remove which route [1-%d] or Enter to cancel: ", len(names)), a.In, out)
+			if err != nil || chosen == "" {
+				return err
+			}
+			args = append(args, chosen)
 		}
 		return routeRemove(a, args[1], out)
 	case "models":
 		return routeModels(a, args[1:], out)
 	case "probe":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "  Usage: /route probe NAME")
-			return nil
+			names := routeNameCandidates(a)
+			if len(names) == 0 {
+				fmt.Fprintln(out, "  No routes registered.")
+				return nil
+			}
+			chosen, err := SelectFromStrings(names, fmt.Sprintf("Probe which route [1-%d] or Enter to cancel: ", len(names)), a.In, out)
+			if err != nil || chosen == "" {
+				return err
+			}
+			args = append(args, chosen)
 		}
 		return routeProbe(a, args[1], out)
 	case "set":
@@ -3646,14 +3717,30 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 	switch strings.ToLower(args[0]) {
 	case "load":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /skill load NAME")
-			return nil
+			names := skillNameCandidates(a)
+			if len(names) == 0 {
+				fmt.Fprintln(out, "Usage: /skill load NAME")
+				return nil
+			}
+			chosen, err := SelectFromStrings(names, fmt.Sprintf("Load which skill [1-%d] or Enter to cancel: ", len(names)), a.In, out)
+			if err != nil || chosen == "" {
+				return err
+			}
+			args = append(args, chosen)
 		}
 		return skillLoad(a, args[1], out)
 	case "info":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /skill info NAME")
-			return nil
+			names := skillNameCandidates(a)
+			if len(names) == 0 {
+				fmt.Fprintln(out, "Usage: /skill info NAME")
+				return nil
+			}
+			chosen, err := SelectFromStrings(names, fmt.Sprintf("Info for which skill [1-%d] or Enter to cancel: ", len(names)), a.In, out)
+			if err != nil || chosen == "" {
+				return err
+			}
+			args = append(args, chosen)
 		}
 		return skillInfo(a, args[1], out)
 	case "status":
@@ -3662,8 +3749,16 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		return skillNew(a, out)
 	case "run":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /skill run NAME")
-			return nil
+			names := skillNameCandidates(a)
+			if len(names) == 0 {
+				fmt.Fprintln(out, "Usage: /skill run NAME")
+				return nil
+			}
+			chosen, err := SelectFromStrings(names, fmt.Sprintf("Run which skill [1-%d] or Enter to cancel: ", len(names)), a.In, out)
+			if err != nil || chosen == "" {
+				return err
+			}
+			args = append(args, chosen)
 		}
 		return skillRun(a, args[1], out)
 	default:
@@ -4504,14 +4599,30 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		return ragWizard(a, args[1], kind, url, out)
 	case "use":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /rag use NAME")
-			return nil
+			items := ragStoreSelectItems(a)
+			if len(items) == 0 {
+				fmt.Fprintln(out, "No RAG stores registered. Run /rag new NAME to create one.")
+				return nil
+			}
+			chosen, err := SelectFrom(items, fmt.Sprintf("Select store [1-%d] or Enter to cancel: ", len(items)), a.In, out)
+			if err != nil || chosen == "" {
+				return err
+			}
+			args = append(args, chosen)
 		}
 		return ragSwitch(a, args[1], out)
 	case "drop":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /rag drop NAME")
-			return nil
+			items := ragStoreSelectItems(a)
+			if len(items) == 0 {
+				fmt.Fprintln(out, "No RAG stores registered.")
+				return nil
+			}
+			chosen, err := SelectFrom(items, fmt.Sprintf("Drop which store [1-%d] or Enter to cancel: ", len(items)), a.In, out)
+			if err != nil || chosen == "" {
+				return err
+			}
+			args = append(args, chosen)
 		}
 		return ragDrop(a, args[1], out)
 	case "ingest":
@@ -5479,8 +5590,16 @@ func cmdMemoryList(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 // cmdMemoryShow displays the full content of a memory by ID.
 func cmdMemoryShow(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /memory show <id>")
-		return nil
+		items := memorySelectItems(store)
+		if len(items) == 0 {
+			fmt.Fprintln(out, "No memories found.")
+			return nil
+		}
+		chosen, err := SelectFrom(items, fmt.Sprintf("Show which memory [1-%d] or Enter to cancel: ", len(items)), a.In, out)
+		if err != nil || chosen == "" {
+			return err
+		}
+		args = []string{chosen}
 	}
 	doc, err := store.ByID(args[0])
 	if err != nil {
@@ -5501,8 +5620,16 @@ func cmdMemoryShow(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 // cmdMemoryForget archives a memory by ID immediately.
 func cmdMemoryForget(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /memory forget <id>")
-		return nil
+		items := memorySelectItems(store)
+		if len(items) == 0 {
+			fmt.Fprintln(out, "No memories found.")
+			return nil
+		}
+		chosen, err := SelectFrom(items, fmt.Sprintf("Forget which memory [1-%d] or Enter to cancel: ", len(items)), a.In, out)
+		if err != nil || chosen == "" {
+			return err
+		}
+		args = []string{chosen}
 	}
 	if err := store.Archive(args[0]); err != nil {
 		return fmt.Errorf("memory forget: %w", err)
@@ -5516,8 +5643,16 @@ func cmdMemoryForget(a *Agent, args []string, out io.Writer, store *MemoryStore)
 // immediate archival without the confidence step.
 func cmdMemoryFlag(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /memory flag <id>")
-		return nil
+		items := memorySelectItems(store)
+		if len(items) == 0 {
+			fmt.Fprintln(out, "No memories found.")
+			return nil
+		}
+		chosen, err := SelectFrom(items, fmt.Sprintf("Flag which memory [1-%d] or Enter to cancel: ", len(items)), a.In, out)
+		if err != nil || chosen == "" {
+			return err
+		}
+		args = []string{chosen}
 	}
 	id := args[0]
 	newConf, err := store.SetConfidence(id, -0.1)
@@ -5862,20 +5997,45 @@ func profileSelectTemplate(a *Agent, args []string, wsRoot string, out io.Writer
 		fmt.Fprintf(out, "  Template %q not found — showing picker.\n", name)
 	}
 
-	// Interactive picker via a.In.
+	// Interactive picker via SelectFrom.
 	templates := ListTemplates(wsRoot)
-	fmt.Fprintf(out, "\nChoose a profile:\n\n")
+	fmt.Fprintln(out, "\nChoose a profile:")
+	items := make([]SelectItem, len(templates))
 	for i, t := range templates {
-		fmt.Fprintf(out, "  [%d] %s\n", i+1, t.Name)
+		label := t.Name
 		if t.Recommended != "" {
-			fmt.Fprintf(out, "      %s\n", t.Recommended)
+			label += "\n        " + t.Recommended
+		}
+		items[i] = SelectItem{Value: t.Name, Label: label}
+	}
+	chosen, err := SelectFrom(items, fmt.Sprintf("Select [1-%d] or press Enter for Blank: ", len(items)), a.In, out)
+	if err != nil {
+		return nil, ""
+	}
+	// "" means cancelled → use Blank
+	if chosen == "" {
+		data, _ := LoadTemplate("blank")
+		return maybeEditTemplate(data, out), "Blank"
+	}
+	// Find the template by name and load it.
+	for _, t := range templates {
+		if t.Name == chosen {
+			var data []byte
+			if t.Source == "workspace" && wsRoot != "" {
+				localPath := filepath.Join(wsRoot, "agents", "templates", "profiles", t.File)
+				data, _ = os.ReadFile(localPath)
+			}
+			if data == nil {
+				data, _ = LoadTemplate(t.File)
+			}
+			if data != nil {
+				return maybeEditTemplate(data, out), t.Name
+			}
 		}
 	}
-	fmt.Fprintln(out)
-	reader := bufio.NewReaderSize(a.In, 1)
-	line := promptLine(reader, out, fmt.Sprintf("Select [1-%d] or press Enter for Blank: ", len(templates)))
-	chosen, templateName := resolveTemplateChoice(line, templates, wsRoot)
-	return maybeEditTemplate(chosen, out), templateName
+	// Template not found (shouldn't happen) → Blank.
+	data, _ := LoadTemplate("blank")
+	return maybeEditTemplate(data, out), "Blank"
 }
 
 // maybeEditTemplate opens the template in $EDITOR when running interactively.

@@ -26,6 +26,491 @@ Each entry names the decision, the context that prompted it, the chosen
 approach, the rejected alternatives, and the consequences.</p>
 <hr />
 <h2
+id="tab-completion-two-layer-design-with-shared-selectfrom-helper">2026-06-19
+— Tab completion: two-layer design with shared SelectFrom helper</h2>
+<p><strong>Context.</strong> Harvey’s <code>buildCompleter()</code> only
+completes top-level command names, <code>@route</code> references,
+Ollama model names, and file paths. Users must remember subcommand names
+by heart and must know exact RAG store/model names to use
+<code>use</code> and <code>drop</code> subcommands. Several commands
+already show numbered pickers when no name is given, but each
+reimplements the pattern differently. See <a
+href="tab-completion-design.html">tab-completion-design.md</a>.</p>
+<p><strong>Decision.</strong> Extend completion in two layers: (1)
+second-token subcommand names using a new
+<code>Subcommands []string</code> field on <code>Command</code>; (2)
+third-token argument values using a new
+<code>ArgCompletion map[string]func(*Agent) []string</code> field that
+maps each subcommand to a candidate-list function. Additionally,
+introduce a shared <code>SelectFrom</code> / <code>SelectItem</code> /
+<code>SelectFromStrings</code> API in a new <code>ui.go</code> file.
+Commands whose first positional argument comes from a finite, enumerable
+list (<code>/rag use</code>, <code>/memory show</code>,
+<code>/llamafile use</code>, etc.) display the picker when no argument
+is given. <code>ui.go</code> lives in the <code>harvey</code> package;
+promotion to <code>termlib</code> is deferred until a clean
+generalisation is proven.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Parse Usage strings</em> — brittle; the Usage field is for
+display, not machine consumption. A <code>Subcommands</code> field is
+explicit and refactoring-safe.</li>
+<li><em>Single CompletionFunc per Command</em> — more flexible but
+requires each command to handle prefix filtering, sorting, and the
+active-marker display pattern itself. The
+<code>ArgCompletion map[string]func</code> approach keeps candidate
+production separate from completion mechanics.</li>
+<li><em>Fuzzy matching</em> — adds complexity without a proven need.
+Prefix matching is sufficient for short subcommand names; fuzzy can be
+added later without changing the API.</li>
+<li><em>Move SelectFrom to termlib immediately</em> — premature. We
+don’t know the right generalisation until it has been used in several
+places. Standard design → plan → decision process applies if/when that
+move happens.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>Command</code> struct gains <code>Subcommands []string</code>
+and <code>ArgCompletion map[string]func(*Agent) []string</code>. The doc
+comment is updated. No existing registration is broken (new fields are
+optional).</li>
+<li><code>buildCompleter()</code> gains two new blocks before the
+existing file-path switch. Existing file-path and model-name completion
+is unchanged.</li>
+<li><code>ui.go</code> is a new file; <code>ui_test.go</code> covers all
+exported symbols.</li>
+<li>Existing picker implementations in <code>llamafile.go</code> and
+<code>commands.go</code> are refactored to call <code>SelectFrom</code>
+in Phase E. Behaviour is identical; code shrinks.</li>
+<li>Harvey YAML and configuration are not changed.</li>
+</ul>
+<hr />
+<h2 id="minio-replaced-with-aws-sdk-go-v2-s3-client">2026-06-18 — MinIO
+replaced with aws-sdk-go-v2 S3 client</h2>
+<p><strong>Context.</strong> <code>remote_s3.go</code> uses
+<code>github.com/minio/minio-go/v7</code> as the S3 protocol client.
+MinIO’s Go client has moved to a closed-source license, making it
+unsuitable for Harvey’s AGPL-3.0 codebase. The affected surface is
+small: <code>Stat</code>, <code>Get</code>, and <code>List</code>
+operations on S3-compatible stores (AWS S3, MinIO server, Cloudflare
+R2). See <a
+href="s3-replacement-design.html">s3-replacement-design.md</a>.</p>
+<p><strong>Decision.</strong> Replace the MinIO client with
+<code>github.com/aws/aws-sdk-go-v2</code> (Apache-2.0 licensed). The AWS
+SDK v2 supports all S3-compatible endpoints via the
+<code>BaseEndpoint</code> override option. The call sites in
+<code>remote_s3.go</code> map cleanly: <code>StatObject</code> →
+<code>HeadObject</code>, <code>GetObject</code> →
+<code>GetObject</code>, <code>ListObjects</code> →
+<code>ListObjectsV2</code>. Credentials continue to come from
+environment variables (<code>AWS_ACCESS_KEY_ID</code>,
+<code>AWS_SECRET_ACCESS_KEY</code>) and the SDK’s default credential
+chain.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Minimal net/http + AWS Signature V4 from scratch</em> —
+eliminates the dependency but requires maintaining the signing and
+error-parsing logic. The AWS SDK already does this correctly for all S3
+variants; hand-rolling it for three methods is low-leverage.</li>
+<li><em>rclone/rclone as a library</em> — comprehensive but extremely
+heavy (~100+ package imports). Overkill for three read-only S3
+operations.</li>
+<li><em>Continue using MinIO client</em> — violates Harvey’s open-source
+license requirements.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>go.mod</code> removes
+<code>github.com/minio/minio-go/v7</code>, adds three
+<code>aws-sdk-go-v2</code> modules (<code>config</code>,
+<code>service/s3</code>, <code>credentials</code>).</li>
+<li><code>remote_s3.go</code> is rewritten; public interface
+(<code>RemoteReader</code> implementation) is unchanged.</li>
+<li>Existing S3 URIs and <code>harvey.yaml</code> config fields are
+unaffected.</li>
+<li>AWS credential chain (env vars, <code>~/.aws/credentials</code>, IAM
+roles) works automatically.</li>
+</ul>
+<hr />
+<h2 id="spinner-gains-dynamic-status-message-channel">2026-06-18 —
+Spinner gains dynamic status message channel</h2>
+<p><strong>Context.</strong> Harvey’s spinner currently shows rotating
+Edward Lear quotes and a timer while waiting for the LLM. Users have no
+way to tell whether Harvey is embedding a query, calling a tool, waiting
+for Ollama, or doing something else. Claude Code and similar tools
+display live status messages that update as work progresses. See <a
+href="spinner-ux-design.html">spinner-ux-design.md</a>.</p>
+<p><strong>Decision.</strong> Add a <code>StatusCh chan string</code>
+field to the <code>Spinner</code> struct and an
+<code>UpdateStatus(msg string)</code> method. The spinner’s message line
+shows the most-recent status update instead of the next Lear quote
+whenever a message is pending; Lear quotes resume when no status is
+pending. The caller sends non-blocking updates via
+<code>UpdateStatus</code>; the spinner goroutine reads them on the fast
+tick. This preserves the existing Lear personality while surfacing
+actionable progress at key moments: tool call start/end, RAG embedding,
+context injection, model switching. Tab completion is out of scope for
+this work item; it is a separate, larger effort.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Replace Lear messages entirely with status strings</em> — loses
+the personality that distinguishes Harvey from generic CLI tools. The
+mixed approach preserves Lear for idle periods.</li>
+<li><em>Print status on a separate line below the spinner</em> —
+requires the spinner to know its vertical position relative to other
+output, which it does not; scrolling behavior would be
+unpredictable.</li>
+<li><em>Atomic string (sync/atomic or sync.Mutex)</em> — functionally
+equivalent but a channel fits Harvey’s existing goroutine patterns and
+avoids a lock.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>spinner.go</code> adds <code>StatusCh chan string</code>,
+<code>UpdateStatus(string)</code>, and <code>lastStatus string</code> to
+the <code>Spinner</code> type.</li>
+<li><code>terminal.go</code> calls <code>UpdateStatus</code> at: RAG
+embedding start, tool call start, tool call complete, context
+injection.</li>
+<li>The message line now shows status text (dim green) when present;
+falls back to a Lear quote (colored) when idle.</li>
+<li>No change to the timer or frame tick behavior.</li>
+</ul>
+<hr />
+<h2
+id="assay-evaluation-output-moves-to-workspace-level-directory">2026-06-18
+— Assay evaluation output moves to workspace-level directory</h2>
+<p><strong>Context.</strong> <code>bin/assay</code> writes evaluation
+results to <code>testout/</code> inside the <code>harvey/</code> source
+repository. This directory is gitignored, but the JSON and Markdown
+artifacts look like test output to language models that read the source
+tree, causing models to misinterpret stale evaluation results as current
+test failures. See <a
+href="assay-llamafile-design.html">assay-llamafile-design.md</a>.</p>
+<p><strong>Decision.</strong> Change the default output directory for
+<code>bin/assay</code> from <code>testout/</code> to
+<code>$WORKSPACE/assay-results/&lt;timestamp&gt;/</code> where
+<code>$WORKSPACE</code> is resolved the same way Harvey resolves its
+workspace (walk up from cwd to the directory containing
+<code>agents/harvey.yaml</code>). If no workspace is found, fall back to
+a <code>assay-results/</code> directory in the current working
+directory. The <code>--output</code> flag overrides the default as
+before.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Keep output in <code>testout/</code> but add a note file</em> —
+models still read and misinterpret the directory.</li>
+<li><em>Always require <code>--output</code> flag</em> — breaks existing
+workflows that rely on the default.</li>
+<li><em>Use <code>$XDG_DATA_HOME/harvey/assay-results/</code></em> —
+correct in principle but separates results from the workspace they were
+generated against, making correlation harder.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>cmd/assay/main.go</code> gains workspace discovery logic (same
+heuristic as Harvey’s <code>NewWorkspace</code>).</li>
+<li>Default report and results paths change; documented in
+<code>--help</code> output.</li>
+<li><code>testout/</code> in the harvey repo is no longer populated by
+<code>bin/assay</code> in normal use.</li>
+</ul>
+<hr />
+<h2 id="assay-adds-llamafile-backend-via---llamafile-flag">2026-06-18 —
+Assay adds Llamafile backend via <code>--llamafile</code> flag</h2>
+<p><strong>Context.</strong> <code>bin/assay</code> currently only
+supports Ollama as a model backend, but Harvey supports both Ollama and
+Llamafile. Users evaluating a Llamafile model must run it manually and
+point assay at it with a custom URL, which is error-prone and
+undocumented. See <a
+href="assay-llamafile-design.html">assay-llamafile-design.md</a>.</p>
+<p><strong>Decision.</strong> Add a <code>--llamafile PATH</code> flag
+to <code>bin/assay</code>. When provided, assay starts the llamafile
+process on an ephemeral port (same <code>startLlamafile</code> logic as
+in <code>llamafile_service.go</code>), runs the evaluation suite against
+that endpoint, then terminates the process on exit. The
+<code>--model</code> flag is still respected (it sets the model name in
+the report) but <code>--ollama</code> is ignored when
+<code>--llamafile</code> is given. Embeddings continue to use the Ollama
+embedder unless <code>--rag-db</code> is also given and the store’s
+recorded embedding model differs, in which case the operation fails fast
+with a clear error.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Separate <code>assay-llamafile</code> binary</em> — duplicates
+95% of the evaluation harness; not maintainable.</li>
+<li><em>Auto-discover a running Llamafile process</em> — fragile;
+depends on port conventions that are not enforced.</li>
+<li><em>Require user to start Llamafile and pass URL</em> — current
+workaround; acceptable as an escape hatch but the
+<code>--llamafile</code> flag makes the common case ergonomic.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>cmd/assay/main.go</code> imports
+<code>llamafile_service.go</code> functions already in the package; no
+new files needed.</li>
+<li>Llamafile process is always terminated on assay exit, even if
+evaluation panics (deferred cleanup).</li>
+<li>The report header records the llamafile path and version alongside
+the model name.</li>
+</ul>
+<hr />
+<h2 id="web-developer-template-added-to-built-in-profile-set">2026-06-18
+— Web developer template added to built-in profile set</h2>
+<p><strong>Context.</strong> The five templates shipped in v1
+(<code>backend-developer</code>, <code>frontend-developer</code>,
+<code>dataset-developer</code>, <code>data-scientist</code>,
+<code>technical-writer</code>) do not have a template that covers the
+full polyglot web development stack used in this workspace: Go backends,
+uv-managed Python scripts, SQL (SQLite3 and Postgres), Deno+TypeScript
+frontends, and vanilla JavaScript/CSS/HTML5. A backend developer using
+Deno or a frontend developer writing Go API clients currently reaches
+for an incomplete template. See <a
+href="web-developer-template-design.html">web-developer-template-design.md</a>.</p>
+<p><strong>Decision.</strong> Add a <code>web-developer.spmd</code>
+template to <code>templates/profiles/</code>. It covers: Go (net/http,
+database/sql), uv+Python (scripting, data processing), SQL (SQLite3
+dialect and Postgres), Deno+TypeScript (runtime, standard library, no
+bundler by default), JavaScript (ES modules, no framework by default),
+CSS (custom properties, no utility framework by default), HTML5
+(semantic markup). The template’s <code>NOTE:</code> recommends
+<code>qwen2.5-coder:7b</code> or <code>granite3.3:2b</code> and suggests
+ingesting both Go source and the
+<code>deno.json</code>/<code>package.json</code> for context.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Extend the existing <code>backend-developer</code> template</em>
+— the existing template is already a good fit for pure Go/Python/SQL
+work; adding Deno and CSS would make it too broad and undermine the
+template picker’s value as a role-specific starting point.</li>
+<li><em>Split into <code>go-web</code> and <code>deno-web</code>
+templates</em> — two templates for what is effectively one stack in this
+workspace is unnecessarily granular.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>templates/profiles/web-developer.spmd</code> is added to the
+embedded binary.</li>
+<li>The onboarding template picker shows a seventh option.</li>
+<li>No code changes required; <code>ListTemplates()</code> discovers it
+automatically.</li>
+</ul>
+<hr />
+<h2
+id="memory-profile-subcommand-set-expanded-and-naming-standardized">2026-06-18
+— <code>/memory profile</code> subcommand set expanded and naming
+standardized</h2>
+<p><strong>Context.</strong> The current <code>/memory profile</code>
+command has three subcommands — <code>show</code>, <code>update</code>,
+<code>use</code> — but their semantics do not match Harvey’s established
+command vocabulary. <code>show</code> lists active profiles (like
+<code>list</code> does elsewhere) rather than showing the
+<em>content</em> of the active profile. <code>use</code> creates a new
+profile from a template (like <code>new</code> does elsewhere) rather
+than selecting an existing saved profile. <code>update</code> opens the
+current profile in <code>$EDITOR</code>. There is no way to rename a
+workspace. See <a
+href="memory-profile-ux-design.html">memory-profile-ux-design.md</a>.</p>
+<p><strong>Decision.</strong> Standardize the subcommand set:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Subcommand</th>
+<th scope="col">New behaviour</th>
+<th scope="col">Was</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list</code></td>
+<td>List all profiles (active + archived)</td>
+<td>(<code>show</code> partial)</td>
+</tr>
+<tr>
+<td><code>show</code></td>
+<td>Print the <em>content</em> of the current active profile</td>
+<td>(missing)</td>
+</tr>
+<tr>
+<td><code>edit</code></td>
+<td>Open the active profile in <code>$EDITOR</code> (rename of
+<code>update</code>)</td>
+<td><code>update</code></td>
+</tr>
+<tr>
+<td><code>use [NAME]</code></td>
+<td>Switch to a named template or picker</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td><code>rename NAME</code></td>
+<td>Rename the workspace display name in the active profile</td>
+<td>(missing)</td>
+</tr>
+</tbody>
+</table>
+<p><code>update</code> is kept as a deprecated alias for
+<code>edit</code> with a one-line deprecation notice, to avoid breaking
+existing workflows. The <code>/profile</code> top-level alias continues
+to delegate to all subcommands. The help text for <code>/memory</code>
+is updated to list all five subcommands.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Rename <code>use</code> to <code>new</code> to match the
+<code>new/list/use</code> pattern elsewhere</em> —
+<code>/profile use</code> is already shipped, documented, and matches
+<code>/ollama use</code>, <code>/rag use</code>. Breaking the alias
+would confuse users more than the current inconsistency.</li>
+<li><em>Keep <code>show</code> with list semantics</em> — defeats
+discoverability; users type <code>/memory profile show</code> expecting
+to see what their profile says, not a list of IDs.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>commands.go</code>: <code>cmdMemoryProfile</code> gains
+<code>list</code>, <code>rename</code>, and <code>show</code>
+(content-display) cases. <code>show</code> (old list behavior) becomes
+<code>list</code>. <code>update</code> remains as alias for
+<code>edit</code>.</li>
+<li><code>helptext.go</code>: memory and profile help text updated.</li>
+<li><code>harvey-memory.7.md</code>: man page updated to document all
+five subcommands.</li>
+</ul>
+<hr />
+<h2 id="pdf-capability-disclosed-in-harvey.md-system-prompt">2026-06-18
+— PDF capability disclosed in HARVEY.md system prompt</h2>
+<p><strong>Context.</strong> Harvey’s <code>read_file</code> built-in
+tool description states that PDF files are extracted automatically via
+poppler. But when tools are disabled — or when a small model uses prose
+tool calls and does not consistently read all tool descriptions — the
+model has no knowledge of this capability and asks the user to manually
+convert PDFs to text. HARVEY.md is always injected as the system prompt,
+making it the correct place to disclose capabilities that should be
+known regardless of tool-call mode. See <a
+href="quick-fixes-design.html">quick-fixes-design.md</a>.</p>
+<p><strong>Decision.</strong> Add a <strong>File reading
+capabilities</strong> section to <code>HARVEY.md</code> that enumerates
+what Harvey can read without conversion: plain text, Markdown,
+Go/TypeScript/Python source, and PDF (extracted via poppler
+automatically). This mirrors the pattern of the existing “Tagged code
+blocks” section — documenting Harvey’s automatic behaviors so the model
+can confidently use them rather than guessing.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Only fix the <code>read_file</code> tool description</em> —
+already done; the problem is the model doesn’t see tool descriptions
+when tools are disabled.</li>
+<li><em>Inject a capability summary at each turn</em> — wasteful in
+context tokens; a one-time system prompt disclosure is sufficient.</li>
+<li><em>Print a reminder when the user asks about a PDF</em> — reactive;
+the bug is the model prompting the user to convert, not the user asking
+Harvey.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>HARVEY.md</code> gains a short “File reading” section (4-6
+bullet points).</li>
+<li>No code changes required; <code>HARVEY.md</code> is loaded by
+<code>LoadHarveyMD()</code> at startup.</li>
+<li>Models that previously asked users to convert PDFs will instead use
+<code>read_file</code> directly.</li>
+</ul>
+<hr />
+<h2
+id="llamafile-model-discovery-includes-windows-.exe-extensions">2026-06-18
+— Llamafile model discovery includes Windows .exe extensions</h2>
+<p><strong>Context.</strong> <code>scanLlamafileModels()</code> in
+<code>llamafile.go</code> uses
+<code>strings.HasSuffix(e.Name(), ".llamafile")</code> to identify
+llamafile binaries. On Windows, llamafile binaries end in
+<code>.exe</code> (plain) or <code>.llamafile.exe</code> (when
+distributed with the double extension). Users on Windows who place
+binaries in <code>~/Models</code> see an empty picker even with valid
+models present. The same bug affects <code>llamafileModelName</code>,
+which only strips the <code>.llamafile</code> suffix and leaves
+<code>.exe</code> on Windows paths. See <a
+href="quick-fixes-design.html">quick-fixes-design.md</a>.</p>
+<p><strong>Decision.</strong> Extend <code>scanLlamafileModels</code> to
+match three patterns: <code>.llamafile</code>,
+<code>.llamafile.exe</code>, and (on Windows only) any <code>.exe</code>
+file in the models directory. <code>llamafileModelName</code> is updated
+to strip suffixes in the correct order: strip <code>.exe</code> first
+(if present), then <code>.llamafile</code> (if present). The
+<code>llamafileDefaultModelsDir()</code> platform function already
+returns the correct OS-appropriate path; no change needed there.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Require users to rename binaries on Windows</em> — poor UX;
+llamafile project ships <code>.exe</code> files and users should not
+need to rename them.</li>
+<li><em>Add a config field for custom extensions</em> — over-engineering
+a simple extension check.</li>
+<li><em>Match all <code>.exe</code> files unconditionally</em> — would
+pick up non-llamafile executables; restrict to <code>.exe</code> only
+when the scan finds no <code>.llamafile</code> or
+<code>.llamafile.exe</code> files, or only match <code>.exe</code> files
+that also check for the llamafile magic bytes (deferred to a future
+improvement).</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>llamafile.go</code>: <code>scanLlamafileModels</code> matches
+<code>.llamafile</code>, <code>.llamafile.exe</code>, and
+<code>.exe</code> (Windows-only guard); <code>llamafileModelName</code>
+strips suffixes in the correct order.</li>
+<li>Windows users with binaries in <code>~/Models</code> now see them in
+the picker.</li>
+<li>No change to Linux/macOS behavior.</li>
+</ul>
+<hr />
+<h2 id="resume-flag-auto-selects-the-most-recent-session">2026-06-18 —
+<code>--resume</code> flag auto-selects the most recent session</h2>
+<p><strong>Context.</strong> Harvey’s <code>--continue PATH</code> flag
+resumes from a specific session file. When the user simply wants to pick
+up where they left off (the most common case), they must find and type
+the session path, or navigate the interactive picker. Both are
+unnecessary friction when the intent is always “resume my last session.”
+See <a href="quick-fixes-design.html">quick-fixes-design.md</a>.</p>
+<p><strong>Decision.</strong> Add a <code>--resume</code> flag (no
+argument) that resolves to the most recently modified <code>.spmd</code>
+file in <code>agents/sessions/</code> and sets
+<code>cfg.ContinuePath</code> to that path before <code>Run</code>. If
+no sessions exist, Harvey prints a one-line notice and starts fresh. The
+implementation delegates entirely to the existing
+<code>ContinueFromFountain</code> path — no new session-loading logic is
+needed.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Make <code>--continue</code> with no argument mean “most
+recent”</em> — changes the semantics of an existing flag; would break
+scripts that pass <code>--continue</code> expecting a required
+argument.</li>
+<li><em>Add <code>--resume</code> as an alias for opening the
+interactive picker</em> — the picker is useful for choosing among
+multiple sessions; <code>--resume</code> should be zero-friction and not
+prompt.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>cmd/harvey/main.go</code> gains a <code>--resume</code> case
+that calls a new <code>mostRecentSession(sessDir string) string</code>
+helper.</li>
+<li><code>harvey.go</code> or <code>sessions_files.go</code> gains
+<code>mostRecentSession</code> (walks <code>agents/sessions/</code>,
+returns path of newest <code>.spmd</code> by <code>ModTime</code>).</li>
+<li>No change to <code>--continue</code> semantics.</li>
+<li>If called with <code>--record</code>, the resumed session is not
+re-recorded (existing guard in <code>terminal.go:333-338</code> already
+handles this).</li>
+</ul>
+<hr />
+<h2
 id="programming-language-support-uses-a-central-languageregistry-with-pluggable-handlers">2026-06-09
 — Programming language support uses a central LanguageRegistry with
 pluggable handlers</h2>

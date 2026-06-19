@@ -2675,6 +2675,9 @@ are also available from the shell: harvey --help TOPIC.
 /git <status|diff|log|show|blame> [ARGS...]
 : read-only git commands in the workspace
 
+/format FILE [FILE...]
+: detect and apply language-appropriate formatters to workspace source files
+
 **Model and backend**
 
 /ollama <start [debug]|stop|status|list|ps|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL]|logs|use MODEL|env|alias NAME FULLNAME>
@@ -2685,6 +2688,9 @@ are also available from the shell: harvey --help TOPIC.
 
 /route <add NAME URL [MODEL]|rm NAME|list|on|off|status>
 : manage named remote LLM endpoints (@mention routing)
+
+/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status|drop NAME>
+: manage local llamafile model backends
 
 **Context and history**
 
@@ -2736,10 +2742,16 @@ are also available from the shell: harvey --help TOPIC.
 /skill-set <list|load NAME|info NAME|create NAME|status|unload>
 : manage named bundles of skills
 
-**Pipelines**
+**Pipelines and automation**
 
 /pipeline <CONFIDENCE%> FILE [FILE ...]
 : chain Markdown prompt files as discrete steps with confidence gating
+
+/plan <TASK | next | status | show | clear>
+: generate a GFM checklist plan and execute each step with bounded context
+
+/loop INTERVAL [--count N] PROMPT|/COMMAND
+: run a prompt or command repeatedly on a fixed interval
 
 **Security**
 
@@ -3252,5 +3264,138 @@ points to /help learn for the full memory overview.
   /memory status  — summary of the experiential memory store
   /rag status     — summary of the active RAG store
   /kb status      — summary of the knowledge base
+`
+
+	// AssayHelpText is the help page for the assay evaluation harness.
+	// Displayed by: assay --help
+	AssayHelpText = `%{app_name}(1) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+{app_name}
+
+# SYNOPSIS
+
+{app_name} [OPTIONS]
+
+# DESCRIPTION
+
+{app_name} is an LLM evaluation harness for Harvey. It runs a corpus of prompts
+against one or more Ollama models (or a llamafile binary) and produces a
+Markdown report plus a JSON results file for human review and automated
+checking.
+
+The prompt corpus is defined in a YAML file (default:
+agents/assay/corpus.yaml). Each entry specifies a category, a prompt,
+automated checks (contains, not_contains, compiles, go_vet), and
+human-review questions. {app_name} sends each prompt to each model, records
+the response, runs all automated checks, and writes a summary table plus
+per-prompt results to the output directory.
+
+When a RAG store is provided via -rag-db, {app_name} embeds each prompt and
+injects the top-k retrieved chunks as context before calling the model.
+With -rag-compare, every prompt is run twice (once without RAG, once with)
+and a per-check delta table is appended to the report.
+
+# OPTIONS
+
+-corpus PATH
+: Path to the corpus YAML file.
+  Default: agents/assay/corpus.yaml
+
+-models MODEL[,MODEL...]
+: Comma-separated list of Ollama model names to evaluate.
+  Default: all models currently available on the Ollama server.
+
+-category NAME
+: Run only prompts in the named category. Omit to run all categories.
+
+-llamafile PATH
+: Path to a llamafile binary to evaluate. {app_name} starts the llamafile
+  server automatically before the run and stops it when finished.
+  The model name is derived from the binary filename.
+  Cannot be combined with -models.
+
+-ollama URL
+: Base URL of the Ollama server.
+  Default: http://localhost:11434
+
+-output PATH
+: Directory to write the report (report.md) and results (results.json).
+  Default: $WORKSPACE/assay-results/assay-TIMESTAMP/ if run inside a
+  Harvey workspace, or assay-results/assay-TIMESTAMP/ otherwise.
+
+-rag-db PATH
+: Path to a Harvey RAG store (SQLite). When set, {app_name} embeds each
+  prompt and prepends retrieved context chunks before calling the model.
+
+-rag-top-k N
+: Number of RAG chunks to retrieve per prompt when -rag-db is set.
+  Default: 3
+
+-rag-embed-model MODEL
+: Ollama embedding model used to embed prompts for RAG retrieval.
+  Default: nomic-embed-text
+
+-rag-compare
+: Run each prompt twice — once without RAG context and once with — and
+  append a per-check delta table to the report. Requires -rag-db.
+
+-h, -help, --help
+: Display this help message.
+
+-v, -version, --version
+: Display version information.
+
+# OUTPUT
+
+{app_name} writes two files to the output directory:
+
+report.md
+: Markdown report containing a summary table (model x prompts x
+  auto-pass rate x average tok/s) followed by per-prompt result blocks
+  with automated check outcomes and space for human review notes.
+
+results.json
+: Machine-readable JSON array of all prompt results, including the full
+  model response, individual check outcomes, and timing data.
+
+# EXAMPLES
+
+Run all prompts against all local Ollama models:
+
+~~~
+  assay
+~~~
+
+Run only the go-crosswalk category against a specific model:
+
+~~~
+  assay -models qwen2.5-coder:7b -category go-crosswalk
+~~~
+
+Evaluate a llamafile binary:
+
+~~~
+  assay -llamafile ~/models/qwen2.5-coder-7b.llamafile
+~~~
+
+Run with RAG context injection and comparison:
+
+~~~
+  assay -models llama3.1:8b -rag-db agents/rag/harvey.db -rag-compare
+~~~
+
+Write results to a custom directory:
+
+~~~
+  assay -models granite3-moe:3b -output testout/granite-run/
+~~~
+
+# SEE ALSO
+
+harvey(1), harvey-rag(7)
 `
 )

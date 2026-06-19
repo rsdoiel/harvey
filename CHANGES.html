@@ -19,8 +19,134 @@
 </nav>
 <section>
 <h1 id="changes">CHANGES</h1>
-<h2 id="v0.0.10-2026-06-09">v0.0.10 (2026-06-09)</h2>
+<h2 id="v0.0.13-2026-06-19">v0.0.13 (2026-06-19)</h2>
 <h3 id="new-features">New features</h3>
+<ul>
+<li><code>/profile</code> command: top-level alias for
+<code>/memory profile &lt;list|show|edit|use|rename&gt;</code> — profile
+management without the <code>/memory</code> prefix</li>
+<li><code>--resume</code> flag: resumes the most recent session in
+<code>agents/sessions/</code> automatically at startup (no path needed);
+prints a notice if no sessions are found</li>
+<li>Spinner live status: tool calls now show a transient “Calling tool…”
+status line on the second spinner line while waiting for results;
+<code>StatusReporter</code> interface added to
+<code>tool_executor.go</code> so the spinner can be wired to the
+executor</li>
+<li><code>assay --llamafile PATH</code>: evaluate a llamafile binary
+directly; assay starts and stops the process automatically and derives
+the model name from the binary path</li>
+<li>Added web-developer workspace profile template
+(<code>templates/profiles/web-developer.fountain</code>)</li>
+<li><code>HARVEY.md</code>: documented native file-reading capabilities
+— PDF (via poppler) and image (vision routes) — so models know to call
+<code>read_file</code> directly without asking the user to convert
+files</li>
+</ul>
+<h3 id="bug-fixes">Bug fixes</h3>
+<ul>
+<li>S3 remote: improved not-found detection for missing keys and missing
+buckets; path-style access now correctly enabled for non-AWS
+S3-compatible endpoints (MinIO, Cloudflare R2)</li>
+<li><code>MostRecentSession</code> helper added to
+<code>sessions_files.go</code>; <code>--resume</code> reliably selects
+the newest <code>.spmd</code>/<code>.fountain</code> file by delegating
+to <code>ListSessionFiles</code> (already sorted newest-first)</li>
+<li>Llamafile: <code>scanLlamafileModels</code> now discovers binaries
+by directory scan, fixing cases where auto-discovery missed models not
+registered via <code>/llamafile add</code></li>
+</ul>
+<h2 id="v0.0.12-2026-06-17">v0.0.12 (2026-06-17)</h2>
+<h3 id="new-features-1">New features</h3>
+<ul>
+<li>Memory enrichment: added <code>kind</code> field to memory documents
+classifying why knowledge matters
+(<code>pitfall</code>/<code>workaround</code>/<code>recommendation</code>/<code>pattern</code>)</li>
+<li>Memory enrichment: added <code>action</code> field — the imperative
+step a future agent should take; included in embedding text for better
+semantic retrieval</li>
+<li>Memory enrichment: added <code>confidence</code> field (default
+0.5); retrieval scores are weighted multiplicatively
+(<code>score = cosine × confidence</code>)</li>
+<li><code>/memory flag &lt;id&gt;</code>: new command reduces confidence
+by 0.1 per call; auto-archives when confidence falls to or below
+0.2</li>
+<li><code>/memory list</code>: new <code>--kind</code> filter; output
+now shows kind and confidence columns alongside type</li>
+<li>Miner prompt updated to elicit <code>kind</code> and
+<code>action</code> for each extracted memory; all five memory types now
+listed</li>
+<li><code>WriteDigest()</code>: MemoryStore auto-writes
+<code>agents/memories/DIGEST.md</code> on every Save, Archive, and
+MineAuto — plain Markdown readable by any LLM without a SQLite
+client</li>
+<li><code>agents/skills/harvey-memory/SKILL.md</code>: new cross-agent
+skill teaching Vibe and Claude Code when and how to use the memory
+digest</li>
+<li>Memories database lazily migrated: existing <code>memories.db</code>
+files gain <code>kind</code>, <code>action</code>,
+<code>confidence</code> columns on first open; FTS5 table rebuilt with
+new columns</li>
+<li>Added <code>create_dir</code> built-in tool so models can create
+directories without <code>run_command mkdir</code></li>
+<li>Added <code>/safe</code> and <code>/safe_mode</code> as aliases for
+<code>/safemode</code></li>
+<li>Unknown slash commands now highlighted in yellow</li>
+<li>Tool result compaction: prior tool-call rounds are compacted in
+<code>RunToolLoop</code> before each new LLM turn, keeping context
+bounded during multi-step tasks</li>
+<li><code>/plan</code> command: generate a GFM checklist plan, execute
+each step with fresh bounded context, track progress in
+<code>agents/plan.md</code></li>
+<li><code>multi-file</code> skill: auto-detects multi-file creation
+requests and generates a plan via the compiled script path</li>
+<li>Skill dispatch: <code>HARVEY_API_BASE</code> env var added to
+compiled script environment</li>
+<li>Skill dispatch: LLM-fallback skills now trigger an LLM response turn
+instead of silently continuing</li>
+<li>Plan execution: steps with blocked or failed tool calls are no
+longer auto-marked complete</li>
+</ul>
+<h3 id="bug-fixes-1">Bug fixes</h3>
+<ul>
+<li>Llamafile: fixed exec format error on macOS (APE binaries now
+launched via <code>/bin/sh</code>)</li>
+<li>Llamafile: added <code>--server</code> flag for headless mode
+(llamafile v0.10.3 API change)</li>
+<li>Llamafile: added <code>-ngl</code> GPU layer offload support with
+<code>gpu_layers</code> config option (default 99, maximises
+Metal/CUDA)</li>
+<li>Llamafile: <code>startup_timeout</code> config option (default
+120s); fast-fail on process exit with stderr surfaced in error</li>
+<li>Llamafile: debug log now wired to new client after
+<code>/llamafile use</code> model switch</li>
+<li>Skill trigger regex: fixed <code>/pattern/flags</code> format
+(trailing flag suffix no longer breaks regex mode)</li>
+<li>Skill dispatch: compilation failure now falls back to LLM
+context-injection path instead of erroring out</li>
+</ul>
+<h2 id="v0.0.11-2026-06-11">v0.0.11 (2026-06-11)</h2>
+<h3 id="new-features-2">New features</h3>
+<ul>
+<li>Added scholarly identifier extraction and normalization for 14
+identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN,
+ISNI, PMID, PMCID, VIAF, SNAC, LCNAF) via
+<code>scholarly_identifiers.go</code> and
+<code>github.com/caltechlibrary/metadatatools</code></li>
+<li>Added scholarly-aware PDF ingest: papers are chunked by section
+(abstract, introduction, methods, results, discussion, conclusion,
+references) and tagged with the document’s own identifiers and any cited
+works’ identifiers</li>
+<li>Extended the knowledge base schema so observations can record a
+source DOI and concepts can represent scholarly entities (people,
+papers, institutions, funders) via an identifier type/value pair</li>
+<li>Workspace onboarding now scans
+<code>codemeta.json</code>/<code>CITATION.cff</code> for identifiers
+(e.g. author ORCID iDs, release DOIs) and records them in the project’s
+<code>project_fact</code> memory metadata</li>
+</ul>
+<h2 id="v0.0.10-2026-06-09">v0.0.10 (2026-06-09)</h2>
+<h3 id="new-features-3">New features</h3>
 <ul>
 <li>Added multi-language code-aware chunking for RAG ingestion (C, C++,
 Pascal, Oberon, Lisp, Basic)</li>
@@ -48,7 +174,7 @@ management</li>
 <li>Added help guides and <code>/status profile</code> display</li>
 </ul>
 <h2 id="v0.0.7-2026-06-02">v0.0.7 (2026-06-02)</h2>
-<h3 id="new-features-1">New features</h3>
+<h3 id="new-features-4">New features</h3>
 <p><strong><code>assay</code> evaluation harness</strong> — a new
 <code>bin/assay</code> tool for running a prompt corpus against one or
 more Ollama models and producing a Markdown report plus JSON results for
@@ -101,7 +227,7 @@ store, chunk count, RAG on/off)</li>
 is saved to <code>agents/harvey_history</code> on exit (capped at 1000
 entries, most recent kept) and reloaded on the next startup; history is
 per-workspace to avoid leaking commands and paths between projects.</p>
-<h3 id="bug-fixes">Bug fixes</h3>
+<h3 id="bug-fixes-2">Bug fixes</h3>
 <ul>
 <li>Removed unreachable dead code (<code>cmdRunCtx</code>,
 <code>extractRunSuggestions</code>) that was missing the safe-mode
@@ -116,7 +242,7 @@ all are now listed under their appropriate sections</li>
 through to the unknown-topic error</li>
 </ul>
 <h2 id="v0.0.6-2026-05-30">v0.0.6 (2026-05-30)</h2>
-<h3 id="new-features-2">New features</h3>
+<h3 id="new-features-5">New features</h3>
 <p><strong>Remote protocol integration</strong> — Harvey can now read
 files from remote storage over <code>s3://</code>, <code>http://</code>,
 <code>https://</code>, <code>sftp://</code>, and <code>scp://</code>
@@ -191,7 +317,7 @@ hangs when a server stalls after accepting the connection.</li>
 <code>HTTP_BEARER_TOKEN</code>, <code>HTTP_BASIC_PASSWORD</code> from
 child-process environments.</li>
 </ul>
-<h3 id="bug-fixes-1">Bug fixes</h3>
+<h3 id="bug-fixes-3">Bug fixes</h3>
 <ul>
 <li>Fixed tools-loop processing problem where the model’s tool-call
 responses were not advancing the conversation correctly</li>

@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.12 c4e5004
+%harvey(7) user manual | version 0.0.13 b877e04
 % R. S. Doiel
-% 2026-06-17
+% 2026-06-19
 
 # NAME
 
@@ -41,12 +41,14 @@ Retrieval from all three silos is unified:
   /memory recall <query>   — search all three silos, print ranked results
   /recall <query>          — alias for /memory recall
 
-  /profile <use|show|update> [name]
+  /profile <list|show|edit|use|rename> [args...]
                            — alias for /memory profile (manage workspace profile)
+  /profile list            — list active and archived profiles
+  /profile show            — print full content of the active profile
+  /profile edit            — open active profile in $EDITOR
   /profile use [name]      — switch profile: saves handoff, archives old profile,
                              selects new template, resets history
-  /profile show            — list active workspace_profile memories
-  /profile update          — open most recent profile in $EDITOR
+  /profile rename NAME     — rename the workspace in the active profile
 
 
 # CHECKING WHAT YOU HAVE

@@ -12,25 +12,25 @@
     }
   ],
   "dateCreated": "2026-04-15",
-  "dateModified": "2026-06-17",
-  "datePublished": "2026-06-17",
+  "dateModified": "2026-06-19",
+  "datePublished": "2026-06-19",
   "description": "Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.\n\nThe Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.",
   "name": "harvey",
   "license": "https://www.gnu.org/licenses/agpl-3.0.txt",
   "programmingLanguage": [
-    "Go >= 1.26.3"
+    "Go >= 1.26.4"
   ],
   "softwareRequirements": [
-    "Go >= 1.26.3"
+    "Go >= 1.26.4",
+    "CMTools >= 0.0.45"
   ],
   "softwareSuggestions": [
-    "CMTools >= 0.0.45b",
     "Pandoc >= 3.9",
     "GNU Make >= 3.8"
   ],
-  "version": "0.0.12",
+  "version": "0.0.13",
   "developmentStatus": "active",
   "issueTracker": "https://github.com/rsdoiel/harvey/issues",
-  "releaseNotes": "- memory enrichment: added `kind` field to memory documents classifying why knowledge matters (pitfall/workaround/recommendation/pattern)\n- memory enrichment: added `action` field — the imperative step a future agent should take; included in embedding text for better semantic retrieval\n- memory enrichment: added `confidence` field (default 0.5); retrieval scores are weighted multiplicatively (score = cosine × confidence)\n- `/memory flag <id>`: new command reduces confidence by 0.1 per call; auto-archives when confidence falls to or below 0.2\n- `/memory list`: new `--kind` filter; output now shows kind and confidence columns alongside type\n- miner prompt updated to elicit `kind` and `action` for each extracted memory; all five memory types now listed\n- `WriteDigest()`: MemoryStore auto-writes `agents/memories/DIGEST.md` on every Save, Archive, and MineAuto — plain Markdown readable by any LLM without a SQLite client\n- `agents/skills/harvey-memory/SKILL.md`: new cross-agent skill teaching Vibe and Claude Code when and how to use the memory digest\n- memories database lazily migrated: existing `memories.db` files gain kind, action, confidence columns on first open; FTS5 table rebuilt with new columns\n- added `create_dir` built-in tool so models can create directories without `run_command mkdir`\n- added `/safe` and `/safe_mode` as aliases for `/safemode`\n- unknown slash commands now highlighted in yellow\n- llamafile: fixed exec format error on macOS (APE binaries now launched via `/bin/sh`)\n- llamafile: added `--server` flag for headless mode (llamafile v0.10.3 API change)\n- llamafile: added `-ngl` GPU layer offload support with `gpu_layers` config option (default 99, maximises Metal/CUDA)\n- llamafile: `startup_timeout` config option (default 120s); fast-fail on process exit with stderr surfaced in error\n- llamafile: debug log now wired to new client after `/llamafile use` model switch\n- tool result compaction: prior tool-call rounds are compacted in `RunToolLoop` before each new LLM turn, keeping context bounded during multi-step tasks\n- `/plan` command: generate a GFM checklist plan, execute each step with fresh bounded context, track progress in `agents/plan.md`\n- `multi-file` skill: auto-detects multi-file creation requests and generates a plan via the compiled script path\n- skill trigger regex: fixed `/pattern/flags` format (trailing flag suffix no longer breaks regex mode)\n- skill dispatch: compilation failure now falls back to LLM context-injection path instead of erroring out\n- skill dispatch: `HARVEY_API_BASE` env var added to compiled script environment\n- skill dispatch: LLM-fallback skills now trigger an LLM response turn instead of silently continuing\n- plan execution: steps with blocked or failed tool calls are no longer auto-marked complete",
+  "releaseNotes": "- `/profile` command: top-level alias for `/memory profile <list|show|edit|use|rename>`\n- `--resume` flag: resumes the most recent session in `agents/sessions/` automatically at startup\n- Spinner live status: tool calls now show a transient status line (\"Calling tool…\") while waiting for results\n- `assay --llamafile PATH`: evaluate a llamafile binary directly; assay starts/stops the process and derives the model name from the binary path\n- Added web-developer workspace profile template\n- `HARVEY.md`: documented native file-reading for PDF and image files so models call `read_file` directly\n- S3 remote: improved not-found detection for missing keys and buckets; path-style access fixed for non-AWS endpoints\n- `MostRecentSession` helper in `sessions_files.go` for reliable `--resume` behaviour\n- Llamafile: `scanLlamafileModels` now discovers binaries by directory scan",
   "copyrightHolder": "R. S. Doiel"
 }

@@ -699,6 +699,18 @@ func defaultOutputDir() string {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
+	appName := filepath.Base(os.Args[0])
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "-h", "-help", "--help":
+			fmt.Print(harvey.FmtHelp(harvey.AssayHelpText, appName, harvey.Version, harvey.ReleaseDate, harvey.ReleaseHash))
+			os.Exit(0)
+		case "-v", "-version", "--version":
+			fmt.Printf("%s %s %s\n", appName, harvey.Version, harvey.ReleaseHash)
+			os.Exit(0)
+		}
+	}
+
 	corpusPath    := flag.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
 	modelsFlag    := flag.String("models", "", "comma-separated model list (default: all from Ollama)")
 	category      := flag.String("category", "", "only run prompts from this category")

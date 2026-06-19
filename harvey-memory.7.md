@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.12 c4e5004
+%harvey(7) user manual | version 0.0.13 b877e04
 % R. S. Doiel
-% 2026-06-17
+% 2026-06-19
 
 # NAME
 
@@ -56,14 +56,16 @@ Fountain files in agents/memories/ inside the workspace.
 
   profile show|update|use [name]
         Manage the workspace profile.
-        "show"   — lists workspace_profile memories (equivalent to /memory list
-                   --type workspace_profile).
-        "update" — opens the most recent profile in $EDITOR and re-saves it.
-        "use"    — switches to a new profile: writes a handoff document to
+        "list"   — list active and archived profiles (IDs + descriptions).
+        "show"   — print the full content of the active profile document.
+        "edit"   — open the active profile in $EDITOR and re-save on close.
+        "use"    — switch to a new profile: writes a handoff document to
                    agents/hand-off/, archives the current profile, selects a
                    template (by name or interactive picker), saves it as the
                    new profile, and resets history so the new context injects
                    on the next turn. Alias: /profile use [name].
+        "rename" — rename the workspace in the active profile document.
+        "update" — deprecated alias for "edit".
 
 # MEMORY TYPES
 
@@ -156,5 +158,8 @@ memory before the review card is displayed.
   /memory forget old_pattern_a1b2c3
   /memory status
   /memory recall git repository error
+  /memory profile list
   /memory profile show
-  /memory profile update
+  /memory profile edit
+  /memory profile use web-developer
+  /memory profile rename "Harvey Web Developer"

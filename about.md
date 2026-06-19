@@ -12,46 +12,30 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.12
+version: 0.0.13
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
-  - Go >= 1.26.3
+  - Go >= 1.26.4
 
 
-date_released: 2026-06-17
+date_released: 2026-06-19
 ---
 
 About this software
 ===================
 
-## harvey 0.0.12
+## harvey 0.0.13
 
-- memory enrichment: added `kind` field to memory documents classifying why knowledge matters (pitfall/workaround/recommendation/pattern)
-- memory enrichment: added `action` field — the imperative step a future agent should take; included in embedding text for better semantic retrieval
-- memory enrichment: added `confidence` field (default 0.5); retrieval scores are weighted multiplicatively (score = cosine × confidence)
-- `/memory flag <id>`: new command reduces confidence by 0.1 per call; auto-archives when confidence falls to or below 0.2
-- `/memory list`: new `--kind` filter; output now shows kind and confidence columns alongside type
-- miner prompt updated to elicit `kind` and `action` for each extracted memory; all five memory types now listed
-- `WriteDigest()`: MemoryStore auto-writes `agents/memories/DIGEST.md` on every Save, Archive, and MineAuto — plain Markdown readable by any LLM without a SQLite client
-- `agents/skills/harvey-memory/SKILL.md`: new cross-agent skill teaching Vibe and Claude Code when and how to use the memory digest
-- memories database lazily migrated: existing `memories.db` files gain kind, action, confidence columns on first open; FTS5 table rebuilt with new columns
-- added `create_dir` built-in tool so models can create directories without `run_command mkdir`
-- added `/safe` and `/safe_mode` as aliases for `/safemode`
-- unknown slash commands now highlighted in yellow
-- llamafile: fixed exec format error on macOS (APE binaries now launched via `/bin/sh`)
-- llamafile: added `--server` flag for headless mode (llamafile v0.10.3 API change)
-- llamafile: added `-ngl` GPU layer offload support with `gpu_layers` config option (default 99, maximises Metal/CUDA)
-- llamafile: `startup_timeout` config option (default 120s); fast-fail on process exit with stderr surfaced in error
-- llamafile: debug log now wired to new client after `/llamafile use` model switch
-- tool result compaction: prior tool-call rounds are compacted in `RunToolLoop` before each new LLM turn, keeping context bounded during multi-step tasks
-- `/plan` command: generate a GFM checklist plan, execute each step with fresh bounded context, track progress in `agents/plan.md`
-- `multi-file` skill: auto-detects multi-file creation requests and generates a plan via the compiled script path
-- skill trigger regex: fixed `/pattern/flags` format (trailing flag suffix no longer breaks regex mode)
-- skill dispatch: compilation failure now falls back to LLM context-injection path instead of erroring out
-- skill dispatch: `HARVEY_API_BASE` env var added to compiled script environment
-- skill dispatch: LLM-fallback skills now trigger an LLM response turn instead of silently continuing
-- plan execution: steps with blocked or failed tool calls are no longer auto-marked complete
+- `/profile` command: top-level alias for `/memory profile <list|show|edit|use|rename>`
+- `--resume` flag: resumes the most recent session in `agents/sessions/` automatically at startup
+- Spinner live status: tool calls now show a transient status line ("Calling tool…") while waiting for results
+- `assay --llamafile PATH`: evaluate a llamafile binary directly; assay starts/stops the process and derives the model name from the binary path
+- Added web-developer workspace profile template
+- `HARVEY.md`: documented native file-reading for PDF and image files so models call `read_file` directly
+- S3 remote: improved not-found detection for missing keys and buckets; path-style access fixed for non-AWS endpoints
+- `MostRecentSession` helper in `sessions_files.go` for reliable `--resume` behaviour
+- Llamafile: `scanLlamafileModels` now discovers binaries by directory scan
 
 ## Authors
 
@@ -72,19 +56,19 @@ The Harvey name was inspired by the play of that name by Mary Chase. I saw paral
 
 ## Programming languages
 
-- Go >= 1.26.3
+- Go >= 1.26.4
 
 
 
 
 ## Software Requirements
 
-- Go >= 1.26.3
+- Go >= 1.26.4
+- CMTools >= 0.0.45
 
 
 ## Software Suggestions
 
-- CMTools >= 0.0.45b
 - Pandoc >= 3.9
 - GNU Make >= 3.8
 

@@ -42,12 +42,13 @@ hypotheses /kb concept</p>
 <p>Retrieval from all three silos is unified:</p>
 <p>/memory recall <query> — search all three silos, print ranked results
 /recall <query> — alias for /memory recall</p>
-<p>/profile &lt;use|show|update&gt; <a href="#name">name</a> — alias for
-/memory profile (manage workspace profile) /profile use <a
+<p>/profile &lt;list|show|edit|use|rename&gt; [args…] — alias for
+/memory profile (manage workspace profile) /profile list — list active
+and archived profiles /profile show — print full content of the active
+profile /profile edit — open active profile in $EDITOR /profile use <a
 href="#name">name</a> — switch profile: saves handoff, archives old
-profile, selects new template, resets history /profile show — list
-active workspace_profile memories /profile update — open most recent
-profile in $EDITOR</p>
+profile, selects new template, resets history /profile rename NAME —
+rename the workspace in the active profile</p>
 <h1 id="checking-what-you-have">CHECKING WHAT YOU HAVE</h1>
 <p>/status — shows active memories, unmined sessions, RAG chunk count
 /hint — prints actionable suggestions for improving results /memory

@@ -3,7 +3,7 @@ param (
 )
 
 # List of programs to build (each must have a matching cmd/<name>/ directory)
-$programs = @("harvey")
+$programs = @("harvey", "assay")
 
 $jsonContent = Get-Content -Raw -Path "codemeta.json" | ConvertFrom-Json
 $projectName = $jsonContent.name

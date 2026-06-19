@@ -1,5 +1,64 @@
 # CHANGES
 
+## v0.0.13 (2026-06-19)
+
+### New features
+
+- `/profile` command: top-level alias for `/memory profile <list|show|edit|use|rename>` — profile management without the `/memory` prefix
+- `--resume` flag: resumes the most recent session in `agents/sessions/` automatically at startup (no path needed); prints a notice if no sessions are found
+- Spinner live status: tool calls now show a transient "Calling tool…" status line on the second spinner line while waiting for results; `StatusReporter` interface added to `tool_executor.go` so the spinner can be wired to the executor
+- `assay --llamafile PATH`: evaluate a llamafile binary directly; assay starts and stops the process automatically and derives the model name from the binary path
+- Added web-developer workspace profile template (`templates/profiles/web-developer.fountain`)
+- `HARVEY.md`: documented native file-reading capabilities — PDF (via poppler) and image (vision routes) — so models know to call `read_file` directly without asking the user to convert files
+
+### Bug fixes
+
+- S3 remote: improved not-found detection for missing keys and missing buckets; path-style access now correctly enabled for non-AWS S3-compatible endpoints (MinIO, Cloudflare R2)
+- `MostRecentSession` helper added to `sessions_files.go`; `--resume` reliably selects the newest `.spmd`/`.fountain` file by delegating to `ListSessionFiles` (already sorted newest-first)
+- Llamafile: `scanLlamafileModels` now discovers binaries by directory scan, fixing cases where auto-discovery missed models not registered via `/llamafile add`
+
+## v0.0.12 (2026-06-17)
+
+### New features
+
+- Memory enrichment: added `kind` field to memory documents classifying why knowledge matters (`pitfall`/`workaround`/`recommendation`/`pattern`)
+- Memory enrichment: added `action` field — the imperative step a future agent should take; included in embedding text for better semantic retrieval
+- Memory enrichment: added `confidence` field (default 0.5); retrieval scores are weighted multiplicatively (`score = cosine × confidence`)
+- `/memory flag <id>`: new command reduces confidence by 0.1 per call; auto-archives when confidence falls to or below 0.2
+- `/memory list`: new `--kind` filter; output now shows kind and confidence columns alongside type
+- Miner prompt updated to elicit `kind` and `action` for each extracted memory; all five memory types now listed
+- `WriteDigest()`: MemoryStore auto-writes `agents/memories/DIGEST.md` on every Save, Archive, and MineAuto — plain Markdown readable by any LLM without a SQLite client
+- `agents/skills/harvey-memory/SKILL.md`: new cross-agent skill teaching Vibe and Claude Code when and how to use the memory digest
+- Memories database lazily migrated: existing `memories.db` files gain `kind`, `action`, `confidence` columns on first open; FTS5 table rebuilt with new columns
+- Added `create_dir` built-in tool so models can create directories without `run_command mkdir`
+- Added `/safe` and `/safe_mode` as aliases for `/safemode`
+- Unknown slash commands now highlighted in yellow
+- Tool result compaction: prior tool-call rounds are compacted in `RunToolLoop` before each new LLM turn, keeping context bounded during multi-step tasks
+- `/plan` command: generate a GFM checklist plan, execute each step with fresh bounded context, track progress in `agents/plan.md`
+- `multi-file` skill: auto-detects multi-file creation requests and generates a plan via the compiled script path
+- Skill dispatch: `HARVEY_API_BASE` env var added to compiled script environment
+- Skill dispatch: LLM-fallback skills now trigger an LLM response turn instead of silently continuing
+- Plan execution: steps with blocked or failed tool calls are no longer auto-marked complete
+
+### Bug fixes
+
+- Llamafile: fixed exec format error on macOS (APE binaries now launched via `/bin/sh`)
+- Llamafile: added `--server` flag for headless mode (llamafile v0.10.3 API change)
+- Llamafile: added `-ngl` GPU layer offload support with `gpu_layers` config option (default 99, maximises Metal/CUDA)
+- Llamafile: `startup_timeout` config option (default 120s); fast-fail on process exit with stderr surfaced in error
+- Llamafile: debug log now wired to new client after `/llamafile use` model switch
+- Skill trigger regex: fixed `/pattern/flags` format (trailing flag suffix no longer breaks regex mode)
+- Skill dispatch: compilation failure now falls back to LLM context-injection path instead of erroring out
+
+## v0.0.11 (2026-06-11)
+
+### New features
+
+- Added scholarly identifier extraction and normalization for 14 identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN, ISNI, PMID, PMCID, VIAF, SNAC, LCNAF) via `scholarly_identifiers.go` and `github.com/caltechlibrary/metadatatools`
+- Added scholarly-aware PDF ingest: papers are chunked by section (abstract, introduction, methods, results, discussion, conclusion, references) and tagged with the document's own identifiers and any cited works' identifiers
+- Extended the knowledge base schema so observations can record a source DOI and concepts can represent scholarly entities (people, papers, institutions, funders) via an identifier type/value pair
+- Workspace onboarding now scans `codemeta.json`/`CITATION.cff` for identifiers (e.g. author ORCID iDs, release DOIs) and records them in the project's `project_fact` memory metadata
+
 ## v0.0.10 (2026-06-09)
 
 ### New features

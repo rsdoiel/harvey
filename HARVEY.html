@@ -50,6 +50,21 @@ the prompt), only commands in the configured allowlist will execute —
 others are blocked. When safe mode is off (shown as
 <code>harvey [unsafe] &gt;</code> in red), all commands are permitted.
 Do not instruct the user to disable safe mode.</p>
+<h2 id="file-reading-capabilities">File reading capabilities</h2>
+<p>When asked to read a file, Harvey handles these formats
+automatically:</p>
+<ul>
+<li><strong>Plain text, Markdown, source code</strong> — returned
+as-is.</li>
+<li><strong>PDF (.pdf)</strong> — text is extracted using the poppler
+utilities (pdfinfo, pdftotext). No user conversion is needed. Use the
+optional <code>pages</code> parameter to read a subset
+(e.g. <code>"1-10"</code> or <code>"5"</code>).</li>
+<li><strong>Images (.png, .jpg, .jpeg, .gif, .webp)</strong> — injected
+directly when the active model supports vision input.</li>
+</ul>
+<p>Never ask the user to convert a PDF to text before reading it. Call
+<code>read_file</code> with the <code>.pdf</code> path directly.</p>
 <h2 id="documentation-conventions">Documentation conventions</h2>
 <p>All exported functions, structs/types, interfaces, and constants must
 be documented with a <code>/** ... */</code> block comment. Each comment
