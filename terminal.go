@@ -161,18 +161,18 @@ func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
  *   if switched, err := attemptModelSwitch(a, "phi-mini", out); switched { ... }
  */
 func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
-	// Check llamafile registry first.
+	// Check llamafile registry first (case-insensitive).
 	for _, e := range a.Config.LlamafileModels {
-		if e.Name == name {
-			err := cmdLlamafileUse(a, []string{name}, out)
+		if strings.EqualFold(e.Name, name) {
+			err := cmdLlamafileUse(a, []string{e.Name}, out)
 			if err == nil && a.Recorder != nil {
-				_ = a.Recorder.RecordModelSwitch(name, "llamafile")
+				_ = a.Recorder.RecordModelSwitch(e.Name, "llamafile")
 			}
 			return true, err
 		}
 	}
-	// Check model aliases.
-	if full, ok := a.Config.ModelAliases[name]; ok {
+	// Check model aliases (stored with lowercase keys).
+	if full, ok := a.Config.ModelAliases[strings.ToLower(name)]; ok {
 		err := cmdLlamafileUse(a, []string{full}, out)
 		if err != nil {
 			// Not a llamafile alias — fall through to Ollama.
@@ -786,65 +786,82 @@ func (a *Agent) Run(out io.Writer) error {
 			continue
 		}
 
-		// @mention dispatch — send prompt to a registered remote endpoint.
+		// @mention: dispatch to a registered remote endpoint, or switch to a
+		// local model when the name matches a registered llamafile or alias.
 		if name, prompt, ok := ParseAtMention(input); ok {
-			if a.Routes == nil || !a.Routes.Enabled {
-				fmt.Fprintln(out, yellow("  Routing is off.")+" Use /route on to enable @mentions.")
-				continue
-			}
-			ep := a.Routes.Lookup(name)
-			if ep == nil {
-				fmt.Fprintf(out, yellow("  @%s not found.")+" Use /route list to see registered endpoints.\n", name)
-				continue
-			}
-			le.AppendHistory(input)
-			fmt.Fprintf(out, dim("  → dispatching to @%s\n"), name)
-			fmt.Fprintln(out)
+			// Step 1: Route dispatch — only when routing is enabled and the
+			// name matches a registered endpoint.
+			if a.Routes != nil && a.Routes.Enabled {
+				if ep := a.Routes.Lookup(name); ep != nil {
+					le.AppendHistory(input)
+					fmt.Fprintf(out, dim("  → dispatching to @%s\n"), name)
+					fmt.Fprintln(out)
 
-			dispCtx, cancelDisp := context.WithCancel(context.Background())
-			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, os.Interrupt)
-			wasCancelled := false
-			watchDone := make(chan struct{})
-			go func() {
-				defer signal.Stop(sigCh)
-				select {
-				case <-sigCh:
-					wasCancelled = true
+					dispCtx, cancelDisp := context.WithCancel(context.Background())
+					sigCh := make(chan os.Signal, 1)
+					signal.Notify(sigCh, os.Interrupt)
+					wasCancelled := false
+					watchDone := make(chan struct{})
+					go func() {
+						defer signal.Stop(sigCh)
+						select {
+						case <-sigCh:
+							wasCancelled = true
+							cancelDisp()
+						case <-watchDone:
+						}
+					}()
+
+					sp := newSpinner(out, 0, routeSpinnerLabel(name, ep))
+					sp.UpdateStatus("routed → " + name)
+					reply, dispErr := DispatchToEndpoint(dispCtx, ep, a.History, prompt, a.Config, a.Tools, io.Discard)
+					sp.stop()
+					close(watchDone)
 					cancelDisp()
-				case <-watchDone:
-				}
-			}()
 
-			sp := newSpinner(out, 0, routeSpinnerLabel(name, ep))
-			sp.UpdateStatus("routed → " + name)
-			reply, dispErr := DispatchToEndpoint(dispCtx, ep, a.History, prompt, a.Config, a.Tools, io.Discard)
-			sp.stop()
-			close(watchDone)
-			cancelDisp()
+					if wasCancelled || errors.Is(dispErr, context.Canceled) {
+						fmt.Fprintln(out, dim("  Cancelled."))
+						continue
+					}
+					if dispErr != nil {
+						fmt.Fprintf(out, red("Error: ")+"%v\n", dispErr)
+						continue
+					}
 
-			if wasCancelled || errors.Is(dispErr, context.Canceled) {
-				fmt.Fprintln(out, dim("  Cancelled."))
-				continue
-			}
-			if dispErr != nil {
-				fmt.Fprintf(out, red("Error: ")+"%v\n", dispErr)
-				continue
-			}
+					fmt.Fprint(out, reply)
+					fmt.Fprintln(out)
+					fmt.Fprintln(out, dim("  @"+name))
+					a.AddMessage("user", input)
+					a.AddMessage("assistant", reply)
 
-			fmt.Fprint(out, reply)
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, dim("  @"+name))
-			a.AddMessage("user", input)
-			a.AddMessage("assistant", reply)
-
-			if a.Recorder != nil {
-				if recErr := a.Recorder.RecordTurn(input, reply); recErr != nil {
-					fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
+					if a.Recorder != nil {
+						if recErr := a.Recorder.RecordTurn(input, reply); recErr != nil {
+							fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
+						}
+					}
+					a.autoExecuteReply(reply, out, reader, context.Background())
+					continue
 				}
 			}
-			a.autoExecuteReply(reply, out, reader, context.Background())
-			continue
+
+			// Step 2: Local model switch — try registered llamafiles and aliases.
+			switched, switchErr := attemptModelSwitch(a, name, out)
+			if switchErr != nil {
+				fmt.Fprintf(out, red("  @%s switch failed: ")+"%v\n", name, switchErr)
+				continue
+			}
+			if switched {
+				if prompt == "" {
+					continue // pure model switch, no prompt to send this turn
+				}
+				// Switch succeeded with a trailing prompt — send it to the new model.
+				input = prompt
+				// Fall through to the normal chat path below.
+			} else {
+				// Name not found as a route or local model.
+				fmt.Fprintf(out, yellow("  @%s not found.")+" Use /route list or /model list to see available models.\n", name)
+				continue
+			}
 		}
 
 		// Chat

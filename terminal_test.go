@@ -282,6 +282,70 @@ func TestAttemptModelSwitch_llamafileRegistered(t *testing.T) {
 	_ = err
 }
 
+func TestAttemptModelSwitch_caseInsensitive(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/nonexistent.llamafile"},
+	}
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+	// Upper-case name should still find "qwen-coding".
+	switched, _ := attemptModelSwitch(a, "QWEN-CODING", &buf)
+	if !switched {
+		t.Error("expected switched=true for case-insensitive name match")
+	}
+}
+
+func TestAttemptModelSwitch_aliasLookupCaseInsensitive(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	// Register an alias. Aliases are stored with lowercase keys.
+	cfg.ModelAliases = map[string]string{"coder": "qwen2.5-coder:7b"}
+	cfg.OllamaURL = "http://localhost:11434" // won't connect, just wiring
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+	// "CODER" should match the alias stored as "coder".
+	switched, _ := attemptModelSwitch(a, "CODER", &buf)
+	if !switched {
+		t.Error("expected switched=true for case-insensitive alias match")
+	}
+}
+
+// ─── @mention local model switch (REPL-level) ─────────────────────────────────
+
+func TestAtMention_localModelSwitch_withFakeServer(t *testing.T) {
+	// A fake llamafile server so startAndUseLlamafile succeeds.
+	srv := fakeLlamafileServer(t, "phi-mini")
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileURL = srv.URL
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
+		{Name: "phi-mini", Path: "/tmp/p.llamafile"},
+	}
+	cfg.LlamafileActive = "qwen-coding"
+	a := NewAgent(cfg, ws)
+	// Wire up a starting client so the REPL has a backend.
+	a.Client = newLlamafileLLMClient(srv.URL+"/v1", "qwen-coding", 0)
+
+	var buf strings.Builder
+	// attemptModelSwitch with "phi-mini" should succeed (server is reachable).
+	switched, err := attemptModelSwitch(a, "phi-mini", &buf)
+	if !switched {
+		t.Error("expected switched=true when model is registered and server reachable")
+	}
+	if err != nil {
+		t.Errorf("unexpected switch error: %v", err)
+	}
+	// After switch, active model should be phi-mini.
+	if a.Config.LlamafileActive != "phi-mini" {
+		t.Errorf("expected LlamafileActive=phi-mini, got %q", a.Config.LlamafileActive)
+	}
+}
+
 // ─── pickBackend tests ────────────────────────────────────────────────────────
 
 func TestPickBackend_listsLlamafilesBeforeOllama(t *testing.T) {
