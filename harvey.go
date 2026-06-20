@@ -203,6 +203,12 @@ func (a *Agent) stopLlamafileProc() {
  *   if limit > 0 { fmt.Printf("window: %d tokens\n", limit) }
  */
 func (a *Agent) effectiveContextLimit() int {
+	// Llamafile: check the active entry's ContextLength first (user config or probed).
+	if a.Config.LlamafileActive != "" {
+		if entry := a.Config.ActiveLlamafileEntry(); entry != nil && entry.ContextLength > 0 {
+			return entry.ContextLength
+		}
+	}
 	if a.Config.OllamaContextLength > 0 {
 		return a.Config.OllamaContextLength
 	}

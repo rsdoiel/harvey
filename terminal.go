@@ -74,6 +74,44 @@ func filterEnvironment(env []string) []string {
 	return filterCommandEnvironment(env)
 }
 
+// isConnectionError returns true when err indicates a transport-level failure
+// consistent with the llamafile server having stopped: connection refused,
+// EOF, or reset by peer.
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "EOF") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "no route to host")
+}
+
+// restartActiveLlamafile stops any Harvey-managed llamafile process and
+// starts a fresh one for the currently active entry. Returns an error when
+// there is no active entry, or when the active entry has an empty path
+// (i.e. an adopted external server that Harvey cannot restart).
+func restartActiveLlamafile(a *Agent, out io.Writer) error {
+	entry := a.Config.ActiveLlamafileEntry()
+	if entry == nil {
+		return fmt.Errorf("no active llamafile entry to restart")
+	}
+	if entry.Path == "" {
+		return fmt.Errorf("cannot restart %q: server was adopted (path unknown)", entry.Name)
+	}
+	a.stopLlamafileProc()
+	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
+	fmt.Fprintf(out, "  Starting %s...\n", entry.Name)
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
+	if err != nil {
+		return fmt.Errorf("restart failed: %w", err)
+	}
+	a.llamafileProc = proc
+	fmt.Fprintln(out, green("  ✓")+" Restarted "+entry.Name)
+	return a.useLlamafileEntry(entry.Name, out)
+}
+
 /** runFirstRunWizard prints onboarding text for new users who have no backend
  * configured, then reads one line of input. An empty line returns an error
  * (no backend available). A non-empty line is treated as a llamafile path and
@@ -757,6 +795,7 @@ func (a *Agent) Run(out io.Writer) error {
 			}()
 
 			sp := newSpinner(out, 0, "@"+name+" · working")
+			sp.UpdateStatus("routed → " + name)
 			reply, dispErr := DispatchToEndpoint(dispCtx, ep, a.History, prompt, a.Config, a.Tools, io.Discard)
 			sp.stop()
 			close(watchDone)
@@ -850,6 +889,22 @@ func (a *Agent) Run(out io.Writer) error {
 		reply, _, turnErr := a.runChatTurn(chatCtx, input, out, reader, true)
 		close(watchDone)
 		cancelChat()
+
+		// Auto-reconnect: when the llamafile server drops mid-session, offer
+		// to restart it and retry the turn rather than surfacing a raw HTTP error.
+		if turnErr != nil && isConnectionError(turnErr) &&
+			a.llamafileProc != nil && !probeActiveBackend(a) {
+			fmt.Fprintln(out, yellow("  ⚠ The llamafile server stopped unexpectedly."))
+			if askYesNo(reader, out, fmt.Sprintf("  Restart %s? [Y/n] ", a.Config.LlamafileActive), true) {
+				if restartErr := restartActiveLlamafile(a, out); restartErr == nil {
+					retryCtx, retryCancel := context.WithCancel(context.Background())
+					reply, _, turnErr = a.runChatTurn(retryCtx, input, out, reader, true)
+					retryCancel()
+				} else {
+					fmt.Fprintf(out, red("  Restart failed: ")+"%v\n", restartErr)
+				}
+			}
+		}
 
 		// When a skill used the LLM-fallback path and the model responded with a
 		// parseable plan checklist, auto-save it to agents/plan.md so the user

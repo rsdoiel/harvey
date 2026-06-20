@@ -1053,9 +1053,20 @@ func SaveModelAliases(ws *Workspace, cfg *Config) error {
  * Example:
  *   e := LlamafileEntry{Name: "qwen", Path: "/home/user/Models/Qwen3.5-4B.llamafile"}
  */
+/** LlamafileEntry describes a registered llamafile model.
+ *
+ * Fields:
+ *   Name          (string) — short identifier used with /llamafile use and /llamafile add.
+ *   Path          (string) — path to the llamafile binary, relative to workspace root or absolute.
+ *   ContextLength (int)    — context window size in tokens; 0 means unknown (probed at startup).
+ *
+ * Example:
+ *   e := LlamafileEntry{Name: "qwen-coding", Path: "~/Models/Qwen2.5-Coder-7B.llamafile", ContextLength: 8192}
+ */
 type LlamafileEntry struct {
-	Name string
-	Path string
+	Name          string `yaml:"name"`
+	Path          string `yaml:"path"`
+	ContextLength int    `yaml:"context_length,omitempty"`
 }
 
 // llamafileDefaultModelsDir returns the default discovery directory ($HOME/Models).

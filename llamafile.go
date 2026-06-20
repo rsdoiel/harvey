@@ -191,6 +191,8 @@ func cmdLlamafile(a *Agent, args []string, out io.Writer) error {
 		return cmdLlamafileStatus(a, out)
 	case "drop", "remove":
 		return cmdLlamafileDrop(a, args[1:], out)
+	case "download":
+		return cmdLlamafileDownload(out)
 	default:
 		fmt.Fprint(out, LlamafileHelpText)
 		return nil
@@ -256,7 +258,11 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 		return err
 	}
 
-	a.Config.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: name, Path: path})
+	entry := LlamafileEntry{Name: name, Path: path}
+	if ctx := ProbeLlamafileContextLength(a.Config.LlamafileURL); ctx > 0 {
+		entry.ContextLength = ctx
+	}
+	a.Config.AddOrUpdateLlamafileEntry(entry)
 	a.Config.LlamafileActive = name
 	if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
 		fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
@@ -368,6 +374,13 @@ func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
 		return err
 	}
 	a.Config.LlamafileActive = name
+	// Probe context length and store in-memory if not already set by user config.
+	if entry.ContextLength == 0 {
+		if ctx := ProbeLlamafileContextLength(a.Config.LlamafileURL); ctx > 0 {
+			entry.ContextLength = ctx
+			a.Config.AddOrUpdateLlamafileEntry(*entry)
+		}
+	}
 	if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
 		fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
 	}
@@ -469,6 +482,13 @@ func cmdLlamafileStart(a *Agent, args []string, out io.Writer) error {
 	a.stopLlamafileProc()
 	a.llamafileProc = proc
 	return a.useLlamafileEntry(name, out)
+}
+
+// cmdLlamafileDownload prints a curated table of recommended llamafile models
+// with download guidance. No network access is performed.
+func cmdLlamafileDownload(out io.Writer) error {
+	fmt.Fprint(out, LlamafileDownloadText)
+	return nil
 }
 
 // cmdLlamafileStatus prints the current llamafile connection status.

@@ -3399,6 +3399,29 @@ Write results to a custom directory:
 harvey(1), harvey-rag(7)
 `
 
+	// LlamafileDownloadText is printed by /llamafile download. It lists
+	// recommended models with sizes and download guidance. Update each release
+	// when the recommended set changes.
+	LlamafileDownloadText = `
+Recommended Llamafile models (Mozilla / HuggingFace):
+  https://huggingface.co/Mozilla/llamafile-models
+
+  Name                                   Size    Best for
+  ──────────────────────────────────────────────────────────────────
+  Qwen2.5-Coder-7B-Q5_K_S.llamafile     5.1 GB  Code generation, refactoring
+  Qwen2.5-Coder-1.5B-Q4_K_M.llamafile   1.4 GB  Code generation (low VRAM / CPU)
+  Phi-3.5-mini-instruct-Q4_K_M.llamafile 2.3 GB  Compact reasoning, general tasks
+  Mistral-7B-Instruct-v0.3-Q4_K_M.llamafile 4.1 GB  Instruction following, writing
+  Llama-3.2-3B-Instruct-Q8_0.llamafile  3.5 GB  General chat
+
+Download the file, place it in ~/Models/, then:
+  /llamafile add
+
+Or pass the path directly:
+  /llamafile add ~/Downloads/Qwen2.5-Coder-7B-Q5_K_S.llamafile
+
+`
+
 	// ModelHelpText is shown by /help model and harvey --help model.
 	ModelHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
 % R. S. Doiel

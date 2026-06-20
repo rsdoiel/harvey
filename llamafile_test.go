@@ -155,6 +155,56 @@ func TestCmdLlamafileList_empty(t *testing.T) {
 	}
 }
 
+// ─── /llamafile download ─────────────────────────────────────────────────────
+
+func TestCmdLlamafileDownload_printsText(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	if err := cmdLlamafile(a, []string{"download"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "llamafile") {
+		t.Errorf("expected download text to mention llamafile, got: %s", out)
+	}
+	if !strings.Contains(out, "huggingface") || !strings.Contains(out, "huggingface") {
+		// at least some download guidance
+	}
+}
+
+// ─── LlamafileEntry.ContextLength ────────────────────────────────────────────
+
+func TestLlamafileEntryContextLength_default(t *testing.T) {
+	e := LlamafileEntry{Name: "qwen", Path: "/tmp/q.llamafile"}
+	if e.ContextLength != 0 {
+		t.Errorf("expected default ContextLength=0, got %d", e.ContextLength)
+	}
+}
+
+func TestEffectiveContextLimit_llamafileEntry(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen", Path: "/tmp/q.llamafile", ContextLength: 8192}}
+	cfg.LlamafileActive = "qwen"
+	a := NewAgent(cfg, ws)
+	if got := a.effectiveContextLimit(); got != 8192 {
+		t.Errorf("effectiveContextLimit: got %d want 8192", got)
+	}
+}
+
+func TestEffectiveContextLimit_llamafileEntryZeroFallsThrough(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen", Path: "/tmp/q.llamafile", ContextLength: 0}}
+	cfg.LlamafileActive = "qwen"
+	a := NewAgent(cfg, ws)
+	// ContextLength=0 means unknown; should return 0 (no other source available).
+	if got := a.effectiveContextLimit(); got != 0 {
+		t.Errorf("effectiveContextLimit with ContextLength=0: got %d want 0", got)
+	}
+}
+
 func TestCmdLlamafileRemove_alias(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
@@ -304,5 +354,32 @@ func TestRunFirstRunWizard_pathNotFound(t *testing.T) {
 	err := runFirstRunWizard(a, strings.NewReader("/nonexistent/model.llamafile\n"), &buf)
 	if err == nil {
 		t.Fatal("expected error for non-existent llamafile path")
+	}
+}
+
+// ─── restartActiveLlamafile ──────────────────────────────────────────────────
+
+func TestRestartActiveLlamafile_noActiveEntry(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	// No LlamafileActive set — should return an error.
+	var buf strings.Builder
+	err := restartActiveLlamafile(a, &buf)
+	if err == nil {
+		t.Fatal("expected error when no active entry")
+	}
+}
+
+func TestRestartActiveLlamafile_emptyPath(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	// Adopted server: entry registered but path is empty.
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "external", Path: ""}}
+	cfg.LlamafileActive = "external"
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+	err := restartActiveLlamafile(a, &buf)
+	if err == nil {
+		t.Fatal("expected error for adopted server with empty path")
 	}
 }

@@ -216,7 +216,7 @@ func (a *Agent) registerCommands() {
 			Usage:       "/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status|drop NAME>",
 			Description: "Manage llamafile model backends",
 			Handler:     cmdLlamafile,
-			Subcommands: []string{"add", "use", "list", "start", "status", "drop"},
+			Subcommands: []string{"add", "use", "list", "start", "status", "remove", "drop", "download"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"use":  llamafileNameCandidates,
 				"drop": llamafileNameCandidates,

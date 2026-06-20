@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -208,6 +209,42 @@ func TestProbeActiveBackend_ollamaNotRunning(t *testing.T) {
 	a.Config.OllamaURL = "http://127.0.0.1:19992" // nothing listening here
 	if probeActiveBackend(a) {
 		t.Error("expected false when ollama server is not running")
+	}
+}
+
+// ─── isConnectionError ───────────────────────────────────────────────────────
+
+func TestIsConnectionError_refused(t *testing.T) {
+	err := fmt.Errorf("dial tcp: connect: connection refused")
+	if !isConnectionError(err) {
+		t.Error("expected true for connection refused")
+	}
+}
+
+func TestIsConnectionError_eof(t *testing.T) {
+	err := fmt.Errorf("unexpected EOF")
+	if !isConnectionError(err) {
+		t.Error("expected true for EOF")
+	}
+}
+
+func TestIsConnectionError_reset(t *testing.T) {
+	err := fmt.Errorf("read tcp: connection reset by peer")
+	if !isConnectionError(err) {
+		t.Error("expected true for connection reset")
+	}
+}
+
+func TestIsConnectionError_other(t *testing.T) {
+	err := fmt.Errorf("invalid JSON response")
+	if isConnectionError(err) {
+		t.Error("expected false for non-connection error")
+	}
+}
+
+func TestIsConnectionError_nil(t *testing.T) {
+	if isConnectionError(nil) {
+		t.Error("expected false for nil error")
 	}
 }
 

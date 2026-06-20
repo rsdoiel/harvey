@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>llamafile-primary-design</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">llamafile-primary-design</h1>
+</header>
+<h1 id="harvey-v0.0.14-llamafile-primary-ux-design">Harvey v0.0.14 —
+Llamafile-Primary UX Design</h1>
+<p><strong>Status (2026-06-20):</strong> Design settled. See <a
+href="llamafile-primary-plan.html">llamafile-primary-plan.md</a> for the
+implementation plan and <a href="DECISIONS.html">DECISIONS.md</a> for
+key architectural choices.</p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>Harvey has supported Llamafile since v0.0.11, but Ollama remains the
+assumed primary backend in documentation, startup logic, and UX flow.
+Users who want a self-contained local setup — no separate server
+process, no model downloads through a package manager — have to discover
+Llamafile support through man pages rather than finding it in the
+natural startup path.</p>
+<p>Llamafile’s model-as-single-executable design aligns well with
+Harvey’s local-first philosophy and single-binary install model. Making
+Llamafile the primary path reduces setup friction for new users,
+especially on platforms where Ollama is less convenient (Windows,
+isolated servers, Raspberry Pi).</p>
+<p>Ollama remains fully supported. It becomes the “advanced” path for
+users who want a persistent model server, GPU pooling, or access to the
+full Ollama model library.</p>
+<hr />
+<h2 id="design-principles">Design Principles</h2>
+<ol type="1">
+<li><p><strong>Local-first by default.</strong> If a Llamafile is
+registered and its server can be started, that is the preferred backend.
+No network required.</p></li>
+<li><p><strong>Explicit connection feedback.</strong> Users on slower
+hardware (Raspberry Pi, older laptops) need to know Harvey is waiting
+for the model server, not hung. Every backend connection attempt is
+narrated.</p></li>
+<li><p><strong>Progressive disclosure.</strong> Getting started shows
+the simplest path (download a llamafile, run Harvey). Advanced features
+(routing, Ollama, RAG) are documented in their own sections.</p></li>
+<li><p><strong>Preserve personality.</strong> The Lear quotes, spinner,
+and terse output style are unchanged. UX additions are additive, not
+replacements.</p></li>
+<li><p><strong>Fail loudly with a path forward.</strong> When no backend
+is reachable, Harvey does not just error — it walks the user toward a
+solution.</p></li>
+</ol>
+<hr />
+<h2 id="startup-connection">Startup &amp; Connection</h2>
+<h3 id="backend-detection-order">Backend detection order</h3>
+<p>At startup, Harvey probes backends in this order:</p>
+<ol type="1">
+<li><strong>Active Llamafile</strong> — if <code>LlamafileActive</code>
+is set in <code>harvey.yaml</code>, probe the Llamafile URL. If
+reachable, connect and proceed.</li>
+<li><strong>Registered Llamafiles</strong> — if the active Llamafile is
+not reachable but registered models exist, offer to start the active one
+(or pick from a numbered list).</li>
+<li><strong>Ollama</strong> — probe the Ollama URL. If reachable,
+connect and proceed.</li>
+<li><strong>First-run wizard</strong> — if nothing is reachable, run the
+onboarding wizard.</li>
+</ol>
+<p>When no session is being continued (<code>--continue</code> /
+<code>--resume</code>), and multiple backends are available, Harvey
+presents Llamafile choices first:</p>
+<pre><code>Available models:
+
+  Llamafile
+    1. qwen-coding   (Qwen2.5-Coder-7B, 5.1GB)   ← registered
+    2. phi-mini      (Phi-3.5-mini, 2.4GB)         ← registered
+
+  Ollama
+    3. llama3.2:3b
+    4. nomic-embed-text
+
+Select [1-4] or press Enter to use qwen-coding:</code></pre>
+<p>When a session is being continued (<code>--continue</code> /
+<code>--resume</code>), the picker is skipped and Harvey connects to the
+previously-active model directly.</p>
+<h3 id="connection-feedback">Connection feedback</h3>
+<p>Every backend connection attempt emits an explicit status line before
+the ready prompt:</p>
+<pre><code>Harvey 0.0.14  (workspace: ~/src/myproject)
+Connecting to qwen-coding (llamafile)… ✓ ready</code></pre>
+<p>If the model takes more than two seconds to become ready
+(e.g. startup time):</p>
+<pre><code>Connecting to qwen-coding (llamafile)… starting server
+  ⎿ ⠸ [4s / ~15s]
+Connecting to qwen-coding (llamafile)… ✓ ready (18s)</code></pre>
+<p>If connection fails:</p>
+<pre><code>Connecting to qwen-coding (llamafile)… ✗ failed
+  Could not start server: exit status 1
+  Stderr: error loading model weights
+  Use /llamafile drop qwen-coding to remove this model, or check the path.</code></pre>
+<h3 id="first-run-onboarding-wizard">First-run onboarding wizard</h3>
+<p>When Harvey starts and no backend is reachable, it prints a guided
+setup rather than an error:</p>
+<pre><code>Harvey couldn&#39;t find a model to connect to.
+
+To get started with a local model (no internet required after download):
+
+  1. Download a llamafile from:
+       https://huggingface.co/Mozilla/llamafile-models
+     Recommended for most hardware: Qwen2.5-Coder-7B-Q5_K_S.llamafile (~5GB)
+     Low-memory option:              Phi-3.5-mini-instruct-Q4.llamafile (~2GB)
+
+  2. Place it in ~/Models/ (or any directory)
+
+  3. Run Harvey again — it will find the file automatically.
+
+Alternatively, install Ollama (https://ollama.com) and pull a model:
+  ollama pull qwen2.5-coder:7b
+
+Press Enter to exit, or type a path to a llamafile to add it now:</code></pre>
+<p>If the user types a path, Harvey validates it and runs the normal
+<code>/llamafile add</code> flow before entering the REPL.</p>
+<h3 id="stale-external-server-adoption">Stale external server
+adoption</h3>
+<p>When <code>/llamafile add</code> (or startup) discovers a llamafile
+server already running at the configured URL that Harvey did not
+start:</p>
+<ol type="1">
+<li>Probe <code>GET /v1/models</code> on the running server.</li>
+<li>Extract the model name from the response.</li>
+<li>Present an adoption offer:</li>
+</ol>
+<pre><code>  A llamafile server is already running at http://localhost:8080
+  Detected model: Qwen2.5-Coder-7B-Q5_K_S
+  Adopt this as the active model? [Y/n]:</code></pre>
+<p>If accepted, Harvey registers the model under the detected name, sets
+it as active, and saves to <code>agents/harvey.yaml</code>. Harvey does
+not manage the process lifecycle (it did not start it, so
+<code>a.llamafileProc</code> remains nil). The managed/unmanaged
+distinction is already tracked by the existing
+<code>a.llamafileProc != nil</code> check.</p>
+<h3 id="health-check-on---resume">Health check on
+<code>--resume</code></h3>
+<p>Before loading a resumed session’s history, Harvey checks whether the
+previously-active model is reachable. Detection uses the same backend
+probing as normal startup. If the model is not reachable:</p>
+<pre><code>Session: agents/sessions/2026-06-19-141523.spmd
+Model qwen-coding is not running.
+Start it now? [Y/n]:</code></pre>
+<p>If the user declines, Harvey loads the session context but does not
+connect to a backend, allowing the user to switch models manually before
+chatting.</p>
+<hr />
+<h2 id="mid-session-awareness">Mid-Session Awareness</h2>
+<h3 id="auto-reconnect-on-dropped-llamafile">Auto-reconnect on dropped
+Llamafile</h3>
+<p>When a chat request returns a connection error (HTTP transport error,
+not an LLM-level error), Harvey checks whether the Llamafile process it
+started has exited:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> a<span class="op">.</span>llamafileProc <span class="op">!=</span> <span class="ot">nil</span> <span class="op">&amp;&amp;</span> a<span class="op">.</span>llamafileProc<span class="op">.</span>ProcessExited<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// offer restart</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>If the process has exited, Harvey interrupts the current turn and
+prompts:</p>
+<pre><code>  ⚠ The llamafile server stopped unexpectedly (exit status 1).
+  Restart qwen-coding? [Y/n]:</code></pre>
+<p>If yes, Harvey restarts the process and retries the original prompt
+once. If restart fails, Harvey reports the error and returns to the REPL
+without retrying. Retrying more than once risks masking a persistent
+crash loop.</p>
+<p>The prompt text is not lost — it is preserved in the REPL input
+buffer so the user can re-submit it after a successful restart.</p>
+<h3 id="context-utilization-indicator">Context utilization
+indicator</h3>
+<p>Small llamafiles (4B–8B parameters) typically have a 4k–8k token
+context window. When Harvey knows the active model’s context length, it
+shows a utilization percentage on the status line after each turn:</p>
+<pre><code>Harvey 0.0.14  (workspace: ~/src/myproject)  [ctx: 34%]</code></pre>
+<p>The <code>[ctx: N%]</code> suffix updates after every turn. It is
+omitted when the context length is unknown (avoids a misleading
+“0%”).</p>
+<p><strong>Context length discovery (in priority order):</strong></p>
+<ol type="1">
+<li><code>context_length</code> field on the <code>LlamafileEntry</code>
+in <code>harvey.yaml</code> — explicit user override; useful when the
+server does not expose the value or the user wants to cap the displayed
+window.</li>
+<li><code>/v1/models</code> API response after startup — field
+<code>data[0].meta.n_ctx</code> in the llamafile response (tested on
+Qwen3.5-2B, Qwen3.5-4B, and Apertus-8B; consistently present). This is
+the <em>runtime</em> context window — how much llamafile actually loaded
+— not the training context (<code>n_ctx_train</code>).</li>
+<li>Ollama <code>/api/show</code> response — <code>ContextLength</code>
+already populated by <code>ShowModel</code> in
+<code>ollama.go</code>.</li>
+</ol>
+<p><strong>Token count source:</strong> the
+<code>usage.prompt_tokens</code> field returned with each LLM response
+(already tracked in <code>ChatStats</code>). Harvey accumulates prompt
+tokens across the session (the full history is re-sent each turn) rather
+than summing per-turn deltas — the last turn’s
+<code>prompt_tokens</code> is the current context size.</p>
+<p><strong>New config field on <code>LlamafileEntry</code>:</strong></p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> LlamafileEntry <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    Name          <span class="dt">string</span> <span class="st">`yaml:&quot;name&quot;`</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    Path          <span class="dt">string</span> <span class="st">`yaml:&quot;path&quot;`</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    ContextLength <span class="dt">int</span>    <span class="st">`yaml:&quot;context_length,omitempty&quot;`</span> <span class="co">// tokens; 0 = probe from server</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="routing-feedback-in-spinner">Routing feedback in spinner</h3>
+<p>When a turn is handled by a route other than the default model, the
+spinner shows which model handled it:</p>
+<pre><code>  ⎿ routed → coding-model</code></pre>
+<p>This reuses the existing <code>UpdateStatus</code> channel added in
+v0.0.13. The routing layer already knows which endpoint handled a
+request; it passes the route name to the caller, which calls
+<code>spin.UpdateStatus(fmt.Sprintf("routed → %s", name))</code>.</p>
+<h3 id="at-mention-model-switch">At-mention model switch</h3>
+<p>If the user’s input begins with <code>@name</code>, where
+<code>name</code> matches a registered Llamafile or Ollama model, Harvey
+switches to that model and forwards the remainder of the input as the
+prompt:</p>
+<pre><code>you&gt; @phi-mini rewrite this in a more concise style
+  Switching to phi-mini…
+  Starting phi-mini… ✓ ready (12s)</code></pre>
+<p>The existing conversation history is preserved unchanged. The model
+switch takes effect for this turn and all subsequent turns. The session
+recorder emits a model-switch note (see Session Quality below).</p>
+<p><strong>Parsing:</strong></p>
+<pre><code>@&lt;name&gt; &lt;rest-of-prompt&gt;</code></pre>
+<ul>
+<li><code>name</code> is the token immediately after <code>@</code>, up
+to the first space or end-of-line.</li>
+<li><code>name</code> is looked up in <code>LlamafileModels</code>
+first, then Ollama models.</li>
+<li>If <code>name</code> is not found, Harvey treats the whole input as
+a normal prompt (no silent fail — just no switch).</li>
+<li>If <code>name</code> is found but switching fails, Harvey reports
+the error and cancels the turn.</li>
+</ul>
+<p>The <code>@name</code> prefix is stripped before the prompt is sent
+to the model.</p>
+<hr />
+<h2 id="model-management-ergonomics">Model Management Ergonomics</h2>
+<h3 id="unified-model-command">Unified <code>/model</code> command</h3>
+<p>A new top-level command <code>/model</code> provides a
+backend-agnostic interface for common model operations:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Subcommand</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/model</code> (no args)</td>
+<td>Print the active model name and backend</td>
+</tr>
+<tr>
+<td><code>/model list</code></td>
+<td>List all registered models across both backends</td>
+</tr>
+<tr>
+<td><code>/model use NAME</code></td>
+<td>Switch to any registered model (llamafile or Ollama)</td>
+</tr>
+<tr>
+<td><code>/model status</code></td>
+<td>Equivalent to <code>/llamafile status</code> or
+<code>/ollama status</code> for the active backend</td>
+</tr>
+</tbody>
+</table>
+<p><code>/model use NAME</code> resolves the name by checking
+<code>LlamafileModels</code> first, then Ollama models via
+<code>/api/tags</code>. The switch delegates to the existing
+<code>cmdLlamafileUse</code> or <code>cmdOllamaUse</code> logic — no new
+switching code.</p>
+<p><code>/model list</code> merges both lists and marks the active
+entry:</p>
+<pre><code>  Active backend: llamafile
+  → qwen-coding    (llamafile)  /home/user/Models/Qwen2.5-Coder-7B.llamafile
+    phi-mini       (llamafile)  /home/user/Models/Phi-3.5-mini.llamafile
+    llama3.2:3b    (ollama)
+    nomic-embed-text (ollama)</code></pre>
+<h3 id="llamafile-remove-alias"><code>/llamafile remove</code>
+alias</h3>
+<p><code>remove</code> is registered as an alias for the
+<code>drop</code> subcommand inside <code>cmdLlamafile</code>. No new
+logic — a one-line case addition.</p>
+<h3 id="llamafile-download-stub"><code>/llamafile download</code>
+stub</h3>
+<p><code>/llamafile download</code> prints a curated table of
+recommended models with download guidance. No network access is
+performed; it is a pure information display. The table is embedded in
+<code>helptext.go</code> alongside other help strings and updated each
+release when new recommended models are available.</p>
+<pre><code>Recommended Llamafile models (Mozilla / HuggingFace):
+  https://huggingface.co/Mozilla/llamafile-models
+
+  Name                              Size   Best for
+  ───────────────────────────────────────────────────────────────
+  Qwen2.5-Coder-7B-Q5_K_S          5.1GB  Code generation, refactoring
+  Qwen2.5-Coder-1.5B-Q4_K_M        1.4GB  Code generation (low VRAM / CPU)
+  Phi-3.5-mini-instruct-Q4_K_M      2.3GB  Compact reasoning, general tasks
+  Mistral-7B-Instruct-v0.3-Q4_K_M   4.1GB  Instruction following, writing
+  Llama-3.2-3B-Instruct-Q8_0        3.5GB  General chat
+
+Download a model, place it in ~/Models/, then:
+  /llamafile add
+
+Or pass the path directly:
+  /llamafile add ~/Downloads/Qwen2.5-Coder-7B-Q5_K_S.llamafile</code></pre>
+<hr />
+<h2 id="session-quality">Session Quality</h2>
+<h3 id="model-provenance-in-fountain-sessions">Model provenance in
+Fountain sessions</h3>
+<p>The session recorder’s title page already records a
+<code>Model:</code> field. The theatrical framing — a model switch is a
+<em>new character entering the scene</em> — guides the design for
+mid-session switches and the three downstream systems that need
+updating.</p>
+<p><strong>Title page additions:</strong></p>
+<p>A new <code>Backend:</code> title-page field is written at session
+open (<code>llamafile</code> or <code>ollama</code>).</p>
+<p><strong>Mid-session model switches as scene entries:</strong></p>
+<p>When the model changes (via <code>@mention</code> or
+<code>/llamafile use</code>), the original title page is already written
+to disk. Instead, a Fountain note is inserted at the switch point:</p>
+<pre><code>[[model switch: phi-mini (llamafile) at 2026-06-20 14:32:11]]</code></pre>
+<p>The <code>Recorder</code> gains a
+<code>RecordModelSwitch(newModel, backend string) error</code> method
+that writes this note. Subsequent turns in the session file are
+associated with the new model until the next switch note.</p>
+<p><code>RecordModelSwitch</code> is called from: -
+<code>cmdLlamafileUse</code> after a successful switch - the
+<code>@mention</code> handler in <code>terminal.go</code> after a
+successful switch</p>
+<p><strong>Memory miner changes:</strong></p>
+<p>The miner currently sends the full session text to a single
+extraction model. With switch notes, the miner must attribute each
+assistant turn’s content to the model that generated it. Implementation:
+<code>Miner.Mine()</code> pre-processes the <code>.spmd</code> file to
+split it at <code>[[model switch: ...]]</code> boundaries and injects a
+“Model generating the following turns: NAME” line into the extraction
+prompt for each segment. Extracted memories gain a
+<code>source_model</code> metadata field.</p>
+<p><strong>Session replay changes:</strong></p>
+<p><code>replay.go</code> currently re-sends turns to whatever model is
+currently active. With switch notes, replay must parse
+<code>[[model switch: ...]]</code> lines and call
+<code>attemptModelSwitch</code> at each boundary, so the replayed
+session follows the same model sequence as the original. The replay
+recording’s title page reflects the starting model; switch notes are
+reproduced in the output file.</p>
+<p><strong>Plan command changes:</strong></p>
+<p>A plan may benefit from different models for different steps — e.g. a
+large model for architectural decisions, a small fast model for
+repetitive edits, a specialized model for a domain-specific task. Two
+mechanisms support this:</p>
+<ol type="1">
+<li><p><strong>Step-level <code>[model: name]</code> annotation</strong>
+in <code>agents/plan.md</code>:</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="va">[ ]</span> Step 3 <span class="co">[</span><span class="ot">model: phi-mini</span><span class="co">]</span>: compress the output to under 200 words</span></code></pre></div>
+<p>The plan executor detects this annotation and calls
+<code>attemptModelSwitch</code> before running the step. On step
+completion it switches back to the plan’s default model (the model
+active when <code>/plan</code> was invoked).</p></li>
+<li><p><strong><code>@mention</code> inside a plan step prompt</strong>:
+if a step’s text begins with <code>@name</code>, the
+<code>@mention</code> handler fires as normal. The switch persists for
+all subsequent steps unless the next step specifies its own
+<code>[model:]</code>.</p></li>
+</ol>
+<p>The plan file format and executor are updated in Phase C of the
+implementation plan.</p>
+<hr />
+<h2 id="documentation">Documentation</h2>
+<h3 id="getting-started-restructure">Getting-started restructure</h3>
+<p><code>getting-started.md</code> and
+<code>harvey-getting-started.7.md</code> are rewritten so Llamafile
+setup is Step 1:</p>
+<ol type="1">
+<li>Download a llamafile (link + size note)</li>
+<li>Place it in <code>~/Models/</code></li>
+<li>Start Harvey — it finds the model automatically</li>
+<li>First prompt</li>
+</ol>
+<p>Ollama appears under “Advanced: Using Ollama” after the Llamafile
+section, with a cross-reference to <code>harvey-ollama.7.md</code>.</p>
+<p><code>INSTALL.md</code> similarly leads with Llamafile and notes
+Ollama as optional.</p>
+<h3 id="documentation-review-scope">Documentation review scope</h3>
+<p>A documentation audit pass covers:</p>
+<ul>
+<li>All <code>.7.md</code> man pages: verify every flag, subcommand, and
+config field added in v0.0.12–v0.0.13 is documented.</li>
+<li>Cross-references: every command introduced since v0.0.11 appears in
+at least one SEE ALSO section and in the user manual index.</li>
+<li><code>CONFIGURATION.md</code>: add entries for
+<code>LlamafileEntry.context_length</code> and any new fields added in
+v0.0.14.</li>
+<li><code>harvey-llamafile.7.md</code>: add <code>download</code>
+subcommand; update SYNOPSIS and SEE ALSO.</li>
+<li><code>harvey-model-alias.7.html</code>: verify it exists and covers
+<code>@mention</code> switching (currently this man page has no
+<code>.md</code> source — audit needed).</li>
+</ul>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li><strong>Tab completion for <code>/model</code></strong> — tab
+completion is a separate ongoing effort; <code>/model</code> will
+participate via the existing <code>ArgCompletion</code> mechanism but is
+not added in this cycle.</li>
+<li><strong>Automatic llamafile download</strong> — Harvey prints the
+URL and recommended filenames but does not execute
+<code>wget</code>/<code>curl</code>. Network access in Harvey’s startup
+path would complicate offline use.</li>
+<li><strong>Multiple simultaneous llamafile servers</strong> — one
+llamafile process at a time is the current design. Parallel servers
+would require dynamic port allocation and process tracking beyond the
+single <code>a.llamafileProc</code> field.</li>
+<li><strong>Llamafile version detection</strong> — Harvey does not parse
+the llamafile binary version; it relies on the <code>/v1/models</code>
+API being present (true since llamafile v0.9).</li>
+</ul>
+</body>
+</html>

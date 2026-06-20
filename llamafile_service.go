@@ -5,6 +5,7 @@ package harvey
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -63,6 +64,41 @@ func ProbeLlamafile(baseURL string) bool {
 	}
 	resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+/** ProbeLlamafileContextLength queries the /v1/models endpoint of a running
+ * llamafile server and returns the runtime context window size in tokens from
+ * the data[0].meta.n_ctx field. Returns 0 when the server is unreachable,
+ * the field is absent, or any error occurs.
+ *
+ * Parameters:
+ *   baseURL (string) — llamafile API base URL, e.g. "http://localhost:8080".
+ *
+ * Returns:
+ *   int — context window in tokens, or 0 if unknown.
+ *
+ * Example:
+ *   ctxLen := ProbeLlamafileContextLength("http://localhost:8080")
+ *   // ctxLen == 16384 for Qwen3.5 models at default settings
+ */
+func ProbeLlamafileContextLength(baseURL string) int {
+	c := &http.Client{Timeout: 5 * time.Second}
+	resp, err := c.Get(baseURL + "/v1/models")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return 0
+	}
+	defer resp.Body.Close()
+	var payload struct {
+		Data []struct {
+			Meta struct {
+				NCtx int `json:"n_ctx"`
+			} `json:"meta"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil || len(payload.Data) == 0 {
+		return 0
+	}
+	return payload.Data[0].Meta.NCtx
 }
 
 /** StartLlamafileService launches the llamafile binary at path as a background

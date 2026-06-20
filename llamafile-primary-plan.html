@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>llamafile-primary-plan</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">llamafile-primary-plan</h1>
+</header>
+<h1 id="harvey-v0.0.14-llamafile-primary-implementation-plan">Harvey
+v0.0.14 — Llamafile-Primary Implementation Plan</h1>
+<p>See <a
+href="llamafile-primary-design.html">llamafile-primary-design.md</a> for
+the full design rationale. See <a href="DECISIONS.html">DECISIONS.md</a>
+for key architectural choices and rejected alternatives.</p>
+<hr />
+<h2 id="phase-a-connection-feedback-health-check-on---resume">Phase A —
+Connection Feedback &amp; Health Check on <code>--resume</code></h2>
+<p><strong>Goal:</strong> Every backend connection attempt is narrated.
+<code>--resume</code> verifies the model is reachable before loading
+session history.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Add <code>connectWithFeedback(a *Agent, out io.Writer) error</code>
+helper; call it in <code>Run</code> after backend selection</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Add health check before <code>ContinueFromFountain</code> when
+<code>a.Config.ResumeLatest</code> or
+<code>a.Config.ContinuePath != ""</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="connectwithfeedback"><code>connectWithFeedback</code></h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> connectWithFeedback<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    model <span class="op">:=</span> activeModelLabel<span class="op">(</span>a<span class="op">)</span> <span class="co">// e.g. &quot;qwen-coding (llamafile)&quot;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;Connecting to %s… &quot;</span><span class="op">,</span> model<span class="op">)</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">:=</span> probeActiveBackend<span class="op">(</span>a<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> red<span class="op">(</span><span class="st">&quot;✗ failed&quot;</span><span class="op">))</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  &quot;</span><span class="op">+</span>err<span class="op">.</span>Error<span class="op">())</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> err</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> green<span class="op">(</span><span class="st">&quot;✓ ready&quot;</span><span class="op">))</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>probeActiveBackend</code> calls
+<code>ProbeLlamafile(a.Config.LlamafileURL)</code> when a llamafile is
+active, or <code>ProbeOllama(a.Config.OllamaURL)</code> otherwise.</p>
+<p>When the connection takes more than 2 seconds (e.g. llamafile
+startup), replace the inline wait with a spinner:
+<code>fmt.Fprintln(out, "starting server")</code> then spin until the
+server responds or <code>LlamafileStartupTimeout</code> expires.</p>
+<h3 id="resume-health-check"><code>--resume</code> health check</h3>
+<p>In the existing <code>--resume</code> / <code>--continue</code>
+pre-flight in <code>terminal.go</code>, before calling
+<code>ContinueFromFountain</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> cfg<span class="op">.</span>ResumeLatest <span class="op">||</span> cfg<span class="op">.</span>ContinuePath <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">!</span>probeActiveBackendBool<span class="op">(</span>a<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;Model %s is not running.</span><span class="ch">\n</span><span class="st">Start it now? [Y/n]: &quot;</span><span class="op">,</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>            a<span class="op">.</span>Config<span class="op">.</span>LlamafileActive<span class="op">)</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> userConfirms<span class="op">(</span>a<span class="op">.</span>In<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> err <span class="op">:=</span> startActiveModel<span class="op">(</span>a<span class="op">,</span> out<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>                fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> yellow<span class="op">(</span><span class="st">&quot;  ⚠ Could not start model: &quot;</span><span class="op">+</span>err<span class="op">.</span>Error<span class="op">()))</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>                fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  Continuing without a backend — use /llamafile start or /ollama to connect.&quot;</span><span class="op">)</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>Starting Harvey with an active llamafile prints “Connecting to X
+(llamafile)… ✓ ready”.</li>
+<li>Starting with <code>--resume</code> and a stopped llamafile offers
+to restart before loading history.</li>
+<li><code>connectWithFeedback</code> on a non-reachable backend prints
+the error and returns it.</li>
+</ul>
+<hr />
+<h2 id="phase-b-first-run-onboarding-stale-server-adoption">Phase B —
+First-Run Onboarding &amp; Stale Server Adoption</h2>
+<p><strong>Goal:</strong> When no backend is reachable at startup, guide
+the user rather than erroring. When a foreign llamafile server is found,
+offer to adopt it.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Add <code>runFirstRunWizard(a *Agent, out io.Writer) error</code>;
+call it from <code>connectWithFeedback</code> when all backends
+fail</td>
+</tr>
+<tr>
+<td><code>llamafile.go</code></td>
+<td>Add <code>adoptExternalServer(a *Agent, out io.Writer) error</code>;
+call it from <code>cmdLlamafileAdd</code> and startup when a server is
+already running</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Add <code>FirstRunWizardText</code> and
+<code>LlamafileDownloadText</code> constants</td>
+</tr>
+</tbody>
+</table>
+<h3 id="runfirstrunwizard"><code>runFirstRunWizard</code></h3>
+<p>Prints <code>FirstRunWizardText</code> (Llamafile download
+instructions + Ollama alternative). Then reads one line from
+<code>a.In</code>:</p>
+<ul>
+<li>Empty input → return without error; Harvey exits gracefully.</li>
+<li>A path → call <code>cmdLlamafileAdd(a, []string{path}, out)</code>,
+then retry <code>connectWithFeedback</code>.</li>
+</ul>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> runFirstRunWizard<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprint<span class="op">(</span>out<span class="op">,</span> FirstRunWizardText<span class="op">)</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprint<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;Enter a llamafile path (or press Enter to exit): &quot;</span><span class="op">)</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    line<span class="op">,</span> _ <span class="op">:=</span> bufio<span class="op">.</span>NewReader<span class="op">(</span>a<span class="op">.</span>In<span class="op">).</span>ReadString<span class="op">(</span><span class="ch">&#39;\n&#39;</span><span class="op">)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    path <span class="op">:=</span> strings<span class="op">.</span>TrimSpace<span class="op">(</span>line<span class="op">)</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> path <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;no backend available&quot;</span><span class="op">)</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> cmdLlamafileAdd<span class="op">(</span>a<span class="op">,</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span>path<span class="op">},</span> out<span class="op">)</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="adoptexternalserver"><code>adoptExternalServer</code></h3>
+<p>Called when <code>ProbeLlamafile(a.Config.LlamafileURL)</code>
+returns true but <code>a.llamafileProc == nil</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> adoptExternalServer<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    name<span class="op">,</span> err <span class="op">:=</span> probeRunningLlamafileName<span class="op">(</span>a<span class="op">.</span>Config<span class="op">.</span>LlamafileURL<span class="op">)</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">||</span> name <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        name <span class="op">=</span> <span class="st">&quot;external&quot;</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  A llamafile server is already running at %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> a<span class="op">.</span>Config<span class="op">.</span>LlamafileURL<span class="op">)</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  Detected model: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> name<span class="op">)</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprint<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  Adopt as active model? [Y/n]: &quot;</span><span class="op">)</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">!</span>userConfirms<span class="op">(</span>a<span class="op">.</span>In<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    a<span class="op">.</span>Config<span class="op">.</span>AddOrUpdateLlamafileEntry<span class="op">(</span>LlamafileEntry<span class="op">{</span>Name<span class="op">:</span> name<span class="op">,</span> Path<span class="op">:</span> <span class="st">&quot;&quot;</span><span class="op">})</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    a<span class="op">.</span>Config<span class="op">.</span>LlamafileActive <span class="op">=</span> name</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> a<span class="op">.</span>useLlamafileEntry<span class="op">(</span>name<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>probeRunningLlamafileName</code> calls
+<code>GET /v1/models</code>, parses the JSON response, and returns the
+first model ID found.</p>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li>Starting Harvey with no Ollama and no llamafile registered shows the
+first-run wizard text.</li>
+<li>Typing a valid llamafile path in the wizard completes the add
+flow.</li>
+<li><code>/llamafile add</code> with a server already running offers
+adoption instead of the “stop it manually” warning.</li>
+<li>Adopted model appears in <code>/llamafile list</code>.</li>
+</ul>
+<hr />
+<h2
+id="phase-c-at-mention-model-switch-unified-model-llamafile-remove">Phase
+C — At-Mention Model Switch, Unified <code>/model</code>, &amp;
+<code>/llamafile remove</code></h2>
+<p><strong>Goal:</strong> <code>@model</code> at the start of a prompt
+switches the active model while preserving history. <code>/model</code>
+provides a backend-agnostic interface. <code>/llamafile remove</code> is
+an alias for <code>drop</code>.</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Parse <code>@name</code> prefix in the REPL input handler before the
+normal chat/command dispatch</td>
+</tr>
+<tr>
+<td><code>llamafile.go</code></td>
+<td>Add <code>remove</code> case to <code>cmdLlamafile</code> switch
+(one line)</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>Register <code>/model</code> command; add <code>cmdModel</code>
+dispatcher</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Add <code>ModelHelpText</code></td>
+</tr>
+<tr>
+<td><code>recorder.go</code></td>
+<td>Add <code>RecordModelSwitch(newModel, backend string) error</code>
+method</td>
+</tr>
+</tbody>
+</table>
+<h3 id="mention-parsing-in-terminal.go"><code>@mention</code> parsing in
+<code>terminal.go</code></h3>
+<p>At the top of the REPL input handler, before checking for
+<code>/</code> commands:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> strings<span class="op">.</span>HasPrefix<span class="op">(</span>input<span class="op">,</span> <span class="st">&quot;@&quot;</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    parts <span class="op">:=</span> strings<span class="op">.</span>SplitN<span class="op">(</span>input<span class="op">,</span> <span class="st">&quot; &quot;</span><span class="op">,</span> <span class="dv">2</span><span class="op">)</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    name <span class="op">:=</span> strings<span class="op">.</span>TrimPrefix<span class="op">(</span>parts<span class="op">[</span><span class="dv">0</span><span class="op">],</span> <span class="st">&quot;@&quot;</span><span class="op">)</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    rest <span class="op">:=</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>parts<span class="op">)</span> <span class="op">&gt;</span> <span class="dv">1</span> <span class="op">{</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>        rest <span class="op">=</span> parts<span class="op">[</span><span class="dv">1</span><span class="op">]</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    switched<span class="op">,</span> err <span class="op">:=</span> attemptModelSwitch<span class="op">(</span>a<span class="op">,</span> name<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> yellow<span class="op">(</span><span class="st">&quot;  ⚠ Model switch failed: &quot;</span><span class="op">+</span>err<span class="op">.</span>Error<span class="op">()))</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">continue</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> switched <span class="op">&amp;&amp;</span> rest <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>        input <span class="op">=</span> rest <span class="co">// forward remainder as the prompt</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> switched <span class="op">{</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">continue</span> <span class="co">// switch-only with no prompt</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>    <span class="co">// name not found: fall through to normal chat</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error)</code>:</p>
+<ol type="1">
+<li>Check <code>a.Config.LlamafileModels</code> for a matching entry →
+call <code>cmdLlamafileUse(a, []string{name}, out)</code>.</li>
+<li>Check Ollama models via <code>OllamaClient.ModelSummaries</code> →
+call the existing Ollama model switch path.</li>
+<li>Return <code>(false, nil)</code> if the name is not found (no-op,
+fall through).</li>
+</ol>
+<p>After a successful switch, call
+<code>a.Recorder.RecordModelSwitch(name, backend)</code>.</p>
+<h3 id="cmdmodel"><code>cmdModel</code></h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> cmdModel<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> args <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    sub <span class="op">:=</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>args<span class="op">)</span> <span class="op">&gt;</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>        sub <span class="op">=</span> args<span class="op">[</span><span class="dv">0</span><span class="op">]</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">switch</span> sub <span class="op">{</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;list&quot;</span><span class="op">:</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdModelList<span class="op">(</span>a<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;use&quot;</span><span class="op">:</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdModelUse<span class="op">(</span>a<span class="op">,</span> args<span class="op">[</span><span class="dv">1</span><span class="op">:],</span> out<span class="op">)</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> <span class="st">&quot;status&quot;</span><span class="op">:</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdModelStatus<span class="op">(</span>a<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">default</span><span class="op">:</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cmdModelShow<span class="op">(</span>a<span class="op">,</span> out<span class="op">)</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>cmdModelList</code> merges
+<code>a.Config.LlamafileModels</code> and Ollama model summaries into a
+single sorted table. <code>cmdModelUse</code> resolves the name by
+checking <code>LlamafileModels</code> first, then Ollama, and
+delegates.</p>
+<h3 id="recordmodelswitch"><code>RecordModelSwitch</code></h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>Recorder<span class="op">)</span> RecordModelSwitch<span class="op">(</span>newModel<span class="op">,</span> backend <span class="dt">string</span><span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    ts <span class="op">:=</span> time<span class="op">.</span>Now<span class="op">().</span>Format<span class="op">(</span><span class="st">&quot;2006-01-02 15:04:05&quot;</span><span class="op">)</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    note <span class="op">:=</span> fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;model switch: %s (%s) at %s&quot;</span><span class="op">,</span> newModel<span class="op">,</span> backend<span class="op">,</span> ts<span class="op">)</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    _<span class="op">,</span> err <span class="op">:=</span> fmt<span class="op">.</span>Fprintln<span class="op">(</span>r<span class="op">.</span>f<span class="op">,</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">[[&quot;</span><span class="op">+</span>note<span class="op">+</span><span class="st">&quot;]]&quot;</span><span class="op">)</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> err</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Also add a <code>Backend:</code> field to the title page in
+<code>NewRecorder</code>:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="op">{</span>Type<span class="op">:</span> fountain<span class="op">.</span>TitlePageType<span class="op">,</span> Name<span class="op">:</span> <span class="st">&quot;Backend&quot;</span><span class="op">,</span> Content<span class="op">:</span> backendLabel<span class="op">},</span></span></code></pre></div>
+<p>where <code>backendLabel</code> is <code>"llamafile"</code> or
+<code>"ollama"</code>.</p>
+<h3 id="llamafile-remove-alias"><code>/llamafile remove</code>
+alias</h3>
+<p>In <code>cmdLlamafile</code>, add one case before
+<code>default</code>:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="st">&quot;remove&quot;</span><span class="op">:</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> cmdLlamafileDrop<span class="op">(</span>a<span class="op">,</span> args<span class="op">[</span><span class="dv">1</span><span class="op">:],</span> out<span class="op">)</span></span></code></pre></div>
+<h3 id="memory-miner-updates-memory_miner.go">Memory miner updates
+(<code>memory_miner.go</code>)</h3>
+<p><code>Miner.Mine()</code> pre-processes the <code>.spmd</code> source
+before building the extraction prompt. Add a helper
+<code>splitAtModelSwitches(spmd string) []modelSegment</code> where:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> modelSegment <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    model   <span class="dt">string</span> <span class="co">// model name active for this segment</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    backend <span class="dt">string</span> <span class="co">// &quot;llamafile&quot; or &quot;ollama&quot;</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    text    <span class="dt">string</span> <span class="co">// the turns in this segment</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The helper scans for
+<code>[[model switch: NAME (BACKEND) at TIMESTAMP]]</code> notes and
+splits the session text at each boundary. The extraction prompt for each
+segment prepends:
+<code>The following turns were generated by model NAME (BACKEND).</code></p>
+<p>Extracted memories gain a <code>source_model</code> metadata field in
+the Fountain output.</p>
+<h3 id="session-replay-updates-replay.go">Session replay updates
+(<code>replay.go</code>)</h3>
+<p>Add
+<code>parseModelSwitchNote(line string) (name, backend string, ok bool)</code>
+that matches the <code>[[model switch: ...]]</code> pattern. In the
+replay loop, when a model- switch note is encountered, call
+<code>attemptModelSwitch(a, name, out)</code> before continuing to the
+next turn. The resulting replay recording emits switch notes at the same
+positions.</p>
+<h3 id="plan-executor-updates-plan.go-plan_cmd.go">Plan executor updates
+(<code>plan.go</code>, <code>plan_cmd.go</code>)</h3>
+<p>Extend the step-line parser to detect <code>[model: NAME]</code>
+annotations:</p>
+<pre><code>- [ ] Step 3 [model: phi-mini]: compress the output to under 200 words</code></pre>
+<p>Before executing such a step, call
+<code>attemptModelSwitch(a, name, out)</code>. Track the plan’s
+<em>default model</em> (the model active when <code>/plan</code> was
+invoked) and restore it after each annotated step unless the next step
+also has a <code>[model:]</code> annotation.</p>
+<p><code>@mention</code> syntax in a step’s text is already handled by
+the REPL input path and does not require special plan handling.</p>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>@phi-mini tell me a joke</code> with phi-mini registered
+switches to phi-mini and forwards “tell me a joke”.</li>
+<li><code>@unknown-model hello</code> with no such model proceeds as a
+normal prompt.</li>
+<li><code>/model list</code> shows all registered llamafile models and
+Ollama models in one table.</li>
+<li><code>/model use phi-mini</code> switches to phi-mini.</li>
+<li><code>/llamafile remove qwen-coding</code> removes qwen-coding (same
+behaviour as <code>drop</code>).</li>
+<li>Session recorder emits <code>[[model switch: ...]]</code> after a
+switch.</li>
+<li>Session recorder title page includes <code>Backend: llamafile</code>
+or <code>Backend: ollama</code>.</li>
+<li>Memory miner extracts memories with correct
+<code>source_model</code> attribution across switch boundaries.</li>
+<li>Session replay with a switch note changes the active model at the
+correct turn.</li>
+<li>Plan step with <code>[model: phi-mini]</code> annotation switches to
+phi-mini for that step and restores the default model after.</li>
+</ul>
+<hr />
+<h2
+id="phase-d-llamafile-download-context-utilization-routing-feedback">Phase
+D — <code>/llamafile download</code>, Context Utilization, Routing
+Feedback</h2>
+<p><strong>Goal:</strong> Print a model download guide. Show context
+utilization when the context length is known. Show which route handled a
+turn in the spinner.</p>
+<h3 id="files-to-modify-3">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llamafile.go</code></td>
+<td>Add <code>download</code> case to <code>cmdLlamafile</code>; add
+<code>cmdLlamafileDownload</code></td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Add <code>LlamafileDownloadText</code> constant (table from design
+doc)</td>
+</tr>
+<tr>
+<td><code>config.go</code></td>
+<td>Add <code>ContextLength int</code> field to
+<code>LlamafileEntry</code></td>
+</tr>
+<tr>
+<td><code>config.go</code></td>
+<td>Add YAML marshal/unmarshal for the new field</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Compute and display <code>[ctx: N%]</code> on the status/ready line
+after each turn</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Call
+<code>spin.UpdateStatus(fmt.Sprintf("routed → %s", name))</code> in the
+routing dispatch path</td>
+</tr>
+<tr>
+<td><code>llamafile_service.go</code></td>
+<td>Add <code>ProbeLlamafileContextLength(url string) int</code> that
+queries <code>/v1/models</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="context-utilization-display">Context utilization display</h3>
+<p>After each turn, if context length is known:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> contextPct<span class="op">(</span>promptTokens<span class="op">,</span> contextLength <span class="dt">int</span><span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> contextLength <span class="op">&lt;=</span> <span class="dv">0</span> <span class="op">||</span> promptTokens <span class="op">&lt;=</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    pct <span class="op">:=</span> <span class="op">(</span>promptTokens <span class="op">*</span> <span class="dv">100</span><span class="op">)</span> <span class="op">/</span> contextLength</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;[ctx: %d%%]&quot;</span><span class="op">,</span> pct<span class="op">)</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The <code>[ctx: N%]</code> string is appended to the ready/status
+line Harvey prints after each turn. Source of <code>promptTokens</code>:
+<code>stats.PromptTokens</code> from the last <code>ChatStats</code>
+returned by <code>runChatTurn</code>. Source of
+<code>contextLength</code>: checked in priority order (see design
+doc).</p>
+<h3
+id="llamafileentry.contextlength"><code>LlamafileEntry.ContextLength</code></h3>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> LlamafileEntry <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    Name          <span class="dt">string</span> <span class="st">`yaml:&quot;name&quot;`</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    Path          <span class="dt">string</span> <span class="st">`yaml:&quot;path&quot;`</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    ContextLength <span class="dt">int</span>    <span class="st">`yaml:&quot;context_length,omitempty&quot;`</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>After a successful llamafile start in <code>cmdLlamafileAdd</code>
+and <code>cmdLlamafileUse</code>, call
+<code>ProbeLlamafileContextLength</code> and store the result in the
+entry if it was not already set by the user. The result is stored in
+memory only (not written back to <code>harvey.yaml</code>) to avoid
+config churn on every startup.</p>
+<h3
+id="probellamafilecontextlength-implementation-note"><code>ProbeLlamafileContextLength</code>
+implementation note</h3>
+<p>Tested against Qwen3.5-2B, Qwen3.5-4B, and Apertus-8B: the field is
+consistently at <code>data[0].meta.n_ctx</code> in the
+<code>/v1/models</code> JSON response, NOT a field named
+<code>context_length</code>. Parse it as:</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> ProbeLlamafileContextLength<span class="op">(</span>url <span class="dt">string</span><span class="op">)</span> <span class="dt">int</span> <span class="op">{</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// GET url + &quot;/v1/models&quot;</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// parse: response.data[0].meta.n_ctx</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// return 0 if absent or on any error</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The <code>n_ctx</code> value is the <em>runtime</em> context window
+(how much llamafile loaded), which may be smaller than
+<code>n_ctx_train</code> (the training context). Always use
+<code>n_ctx</code> for the utilization indicator.</p>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li><code>/llamafile download</code> prints the curated table and exits
+cleanly.</li>
+<li><code>harvey.yaml</code> with <code>context_length: 8192</code> on a
+LlamafileEntry causes <code>[ctx: N%]</code> to appear after each
+turn.</li>
+<li>When no context length is known, the indicator is omitted (no
+<code>[ctx: 0%]</code>).</li>
+<li>A routing-dispatched turn shows
+<code>routed → &lt;route-name&gt;</code> in the spinner.</li>
+</ul>
+<hr />
+<h2 id="phase-e-auto-reconnect-on-dropped-llamafile">Phase E —
+Auto-Reconnect on Dropped Llamafile</h2>
+<p><strong>Goal:</strong> When the llamafile process dies mid-session,
+detect this on the next turn and offer to restart rather than returning
+an opaque API error.</p>
+<h3 id="files-to-modify-4">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llamafile_service.go</code></td>
+<td>Add <code>(*LlamafileProcess) HasExited() bool</code> method</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Wrap the <code>runChatTurn</code> call with a reconnect-check
+path</td>
+</tr>
+</tbody>
+</table>
+<h3 id="hasexited"><code>HasExited</code></h3>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>p <span class="op">*</span>LlamafileProcess<span class="op">)</span> HasExited<span class="op">()</span> <span class="dt">bool</span> <span class="op">{</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> p <span class="op">==</span> <span class="ot">nil</span> <span class="op">||</span> p<span class="op">.</span>cmd <span class="op">==</span> <span class="ot">nil</span> <span class="op">||</span> p<span class="op">.</span>cmd<span class="op">.</span>Process <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">false</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> p<span class="op">.</span>cmd<span class="op">.</span>ProcessState <span class="op">!=</span> <span class="ot">nil</span> <span class="op">&amp;&amp;</span> p<span class="op">.</span>cmd<span class="op">.</span>ProcessState<span class="op">.</span>Exited<span class="op">()</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="reconnect-wrapper-in-terminal.go">Reconnect wrapper in
+<code>terminal.go</code></h3>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>reply<span class="op">,</span> stats<span class="op">,</span> err <span class="op">:=</span> runChatTurn<span class="op">(</span>ctx<span class="op">,</span> a<span class="op">,</span> input<span class="op">,</span> out<span class="op">,</span> spin<span class="op">)</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">&amp;&amp;</span> isConnectionError<span class="op">(</span>err<span class="op">)</span> <span class="op">&amp;&amp;</span> a<span class="op">.</span>llamafileProc <span class="op">!=</span> <span class="ot">nil</span> <span class="op">&amp;&amp;</span> a<span class="op">.</span>llamafileProc<span class="op">.</span>HasExited<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>out<span class="op">,</span> yellow<span class="op">(</span><span class="st">&quot;  ⚠ The llamafile server stopped unexpectedly.&quot;</span><span class="op">))</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(</span>out<span class="op">,</span> <span class="st">&quot;  Restart %s? [Y/n]: &quot;</span><span class="op">,</span> a<span class="op">.</span>Config<span class="op">.</span>LlamafileActive<span class="op">)</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> userConfirms<span class="op">(</span>a<span class="op">.</span>In<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> restartErr <span class="op">:=</span> restartActiveLlamafile<span class="op">(</span>a<span class="op">,</span> out<span class="op">);</span> restartErr <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>            reply<span class="op">,</span> stats<span class="op">,</span> err <span class="op">=</span> runChatTurn<span class="op">(</span>ctx<span class="op">,</span> a<span class="op">,</span> input<span class="op">,</span> out<span class="op">,</span> spin<span class="op">)</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>isConnectionError(err)</code> checks whether the error string
+contains <code>"connection refused"</code> or <code>"EOF"</code> or
+<code>"connect: no route to host"</code> — the standard net package
+error strings for a dead server.</p>
+<p><code>restartActiveLlamafile</code> calls
+<code>StartLlamafileService</code> with the same parameters as the
+original start and reassigns <code>a.llamafileProc</code>.</p>
+<h3 id="acceptance-criteria-4">Acceptance criteria</h3>
+<ul>
+<li>Killing the llamafile process mid-session causes Harvey to offer a
+restart on the next prompt rather than printing a raw HTTP error.</li>
+<li>Declining the restart returns to the prompt without crashing.</li>
+<li>A successful restart allows the original prompt to be processed
+normally.</li>
+</ul>
+<hr />
+<h2 id="phase-f-session-quality-model-provenance">Phase F — Session
+Quality (Model Provenance)</h2>
+<p>This phase is partially implemented in Phase C (title page
+<code>Backend:</code> field and <code>RecordModelSwitch</code>). The
+remaining work:</p>
+<h3 id="files-to-modify-5">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Pass <code>backendLabel</code> (not just model name) to
+<code>NewRecorder</code></td>
+</tr>
+<tr>
+<td><code>recorder.go</code></td>
+<td>Accept <code>backend string</code> parameter in
+<code>NewRecorder</code> and write it to title page</td>
+</tr>
+</tbody>
+</table>
+<h3 id="newrecorder-signature-change"><code>NewRecorder</code> signature
+change</h3>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> NewRecorder<span class="op">(</span>path<span class="op">,</span> model<span class="op">,</span> backend<span class="op">,</span> workspace <span class="dt">string</span><span class="op">)</span> <span class="op">(*</span>Recorder<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p>The <code>backend</code> parameter is written as a
+<code>Backend:</code> title-page key:</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="op">{</span>Type<span class="op">:</span> fountain<span class="op">.</span>TitlePageType<span class="op">,</span> Name<span class="op">:</span> <span class="st">&quot;Backend&quot;</span><span class="op">,</span> Content<span class="op">:</span> backend<span class="op">},</span></span></code></pre></div>
+<p>Call sites in <code>terminal.go</code> pass <code>"llamafile"</code>
+or <code>"ollama"</code> as appropriate.</p>
+<h3 id="acceptance-criteria-5">Acceptance criteria</h3>
+<ul>
+<li><code>.spmd</code> files from llamafile sessions contain
+<code>Backend: llamafile</code> in the title block.</li>
+<li><code>.spmd</code> files from Ollama sessions contain
+<code>Backend: ollama</code>.</li>
+<li>Model-switch events appear as <code>[[model switch: ...]]</code>
+notes at the correct position in the session file.</li>
+</ul>
+<hr />
+<h2 id="phase-g-documentation">Phase G — Documentation</h2>
+<p><strong>Goal:</strong> Llamafile leads in all setup documentation.
+All new features have man pages. All cross-references are current.</p>
+<h3 id="files-to-modify-6">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>getting-started.md</code></td>
+<td>Rewrite to lead with Llamafile; move Ollama to “Advanced”
+section</td>
+</tr>
+<tr>
+<td><code>harvey-getting-started.7.md</code></td>
+<td>Mirror <code>getting-started.md</code> changes</td>
+</tr>
+<tr>
+<td><code>INSTALL.md</code></td>
+<td>Lead with Llamafile; note Ollama as optional</td>
+</tr>
+<tr>
+<td><code>harvey-llamafile.7.md</code></td>
+<td>Add <code>download</code> subcommand; add <code>remove</code> alias
+note</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Add <code>ModelAliasHelpText</code> constant covering
+<code>/model alias</code> subcommands AND <code>@mention</code>
+switching</td>
+</tr>
+<tr>
+<td><code>harvey-model-alias.7.md</code></td>
+<td>Regenerated from <code>ModelAliasHelpText</code> (the
+<code>.html</code> exists but the <code>.md</code> source was lost;
+recreate via <code>cmt</code>)</td>
+</tr>
+<tr>
+<td><code>CONFIGURATION.md</code></td>
+<td>Add <code>LlamafileEntry.context_length</code> field
+documentation</td>
+</tr>
+<tr>
+<td><code>user_manual.md</code></td>
+<td>Add <code>/model</code> command and <code>@mention</code> to the
+command index</td>
+</tr>
+<tr>
+<td><code>reference.md</code></td>
+<td>Add <code>/model</code>, <code>@mention</code>,
+<code>/llamafile download</code>, <code>/llamafile remove</code>
+entries</td>
+</tr>
+<tr>
+<td>Multiple <code>.7.md</code> files</td>
+<td>SEE ALSO audit — add cross-refs for commands missing since
+v0.0.11</td>
+</tr>
+</tbody>
+</table>
+<h3
+id="modelaliashelptext-content-scope"><code>ModelAliasHelpText</code>
+content scope</h3>
+<p>The constant must cover: - <code>@mention</code> syntax for inline
+model switching (new in v0.0.14) -
+<code>/model alias set ALIAS FULLNAME</code> — define a short name -
+<code>/model alias list</code> — list defined aliases -
+<code>/model alias remove ALIAS</code> — remove an alias - Interaction
+between aliases and <code>@mention</code> (aliases resolve at the
+<code>@</code> lookup step) - SEE ALSO: <code>harvey-llamafile.7</code>,
+<code>harvey-ollama.7</code>, <code>harvey-routing.7</code></p>
+<p>This consolidates content previously split between the Ollama help
+block and the now-sourceless HTML file.</p>
+<h3 id="see-also-audit-checklist">SEE ALSO audit checklist</h3>
+<p>Run
+<code>grep -L "harvey-model-alias\|harvey-llamafile\|harvey-routing" harvey-*.7.md</code>
+to find man pages that reference model switching without pointing to the
+new <code>harvey-model-alias.7.md</code>.</p>
+<p>Commands introduced since v0.0.11 that need SEE ALSO coverage:
+<code>/profile</code>, <code>--resume</code>, <code>/hint</code>,
+<code>/loop</code>, <code>/plan</code>, <code>/safe</code>,
+<code>/memory flag</code>, <code>/llamafile download</code>,
+<code>/model</code>.</p>
+<h3 id="acceptance-criteria-6">Acceptance criteria</h3>
+<ul>
+<li><code>getting-started.md</code> step 1 is “download a
+llamafile”.</li>
+<li><code>harvey-llamafile.7.md</code> documents <code>download</code>
+and <code>remove</code>.</li>
+<li><code>harvey-model-alias.7.md</code> exists and documents
+<code>@mention</code> syntax.</li>
+<li><code>CONFIGURATION.md</code> documents <code>context_length</code>
+on LlamafileEntry.</li>
+<li><code>user_manual.md</code> index includes <code>/model</code>.</li>
+</ul>
+<hr />
+<h2 id="dependency-graph">Dependency Graph</h2>
+<pre><code>Phase A (connection feedback) ────────────────────────────────┐
+Phase B (first-run wizard)  ──────────────────────────────────┤
+Phase C (at-mention + /model + remove) ───────────────────────┤→ Phase F (session quality) → Phase G (docs)
+Phase D (download + ctx% + routing)  ─────────────────────────┤
+Phase E (auto-reconnect)   ───────────────────────────────────┘</code></pre>
+<p>Phases A–E are independent of each other and can be developed in
+parallel. Phase F depends on Phase C (<code>RecordModelSwitch</code>,
+<code>NewRecorder</code> signature). Phase G depends on all preceding
+phases being complete.</p>
+<hr />
+<h2 id="resolved-questions">Resolved Questions</h2>
+<ul>
+<li><p><strong><code>/v1/models</code> context length field</strong> —
+Tested on Qwen3.5-2B, Qwen3.5-4B, and Apertus-8B. Field is
+<code>data[0].meta.n_ctx</code> (NOT <code>context_length</code>).
+Consistently present across all three model families. <code>n_ctx</code>
+is the runtime window; <code>n_ctx_train</code> is the training context
+and should not be used.</p></li>
+<li><p><strong><code>@mention</code> session continuity</strong> —
+Confirmed: continue in the existing session file. The switch is a new
+character entering the scene; <code>[[model switch: ...]]</code> notes
+mark the boundary. Memory miner, replay, and plan executor each need
+updates to track model attribution across boundaries (see Phase
+C).</p></li>
+<li><p><strong><code>harvey-model-alias.7.md</code> source</strong> —
+The <code>.md</code> source was lost; the <code>.html</code> exists.
+Resolution: create <code>ModelAliasHelpText</code> in
+<code>helptext.go</code> covering both <code>/model alias</code>
+subcommands and <code>@mention</code> switching, then regenerate the
+<code>.md</code> via <code>cmt</code> (Phase G).</p></li>
+</ul>
+</body>
+</html>
