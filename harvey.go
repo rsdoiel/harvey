@@ -179,6 +179,7 @@ type Agent struct {
 	DebugLog               *DebugLog    // JSONL diagnostic log; nil when --debug not set
 	OllamaStartedByHarvey  bool         // true when Harvey launched the Ollama subprocess this session
 	llamafileProc          *os.Process  // non-nil when Harvey started the current llamafile server
+	ActiveRoute            string       // session-sticky route name; when set, prompts are auto-dispatched via @NAME
 }
 
 // stopLlamafileProc signals the llamafile server process to stop, if Harvey

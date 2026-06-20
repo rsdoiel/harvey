@@ -244,10 +244,11 @@ func (a *Agent) registerCommands() {
 			Usage:       "/rag <list|new NAME|use NAME|drop NAME|ingest PATH|status|query TEXT|on|off>",
 			Description: "Manage named RAG knowledge stores for context-augmented generation",
 			Handler:     cmdRag,
-			Subcommands: []string{"list", "new", "use", "drop", "ingest", "status", "query", "on", "off"},
+			Subcommands: []string{"list", "new", "use", "remove", "drop", "ingest", "status", "query", "on", "off"},
 			ArgCompletion: map[string]func(*Agent) []string{
-				"use":  ragStoreNameCandidates,
-				"drop": ragStoreNameCandidates,
+				"use":    ragStoreNameCandidates,
+				"remove": ragStoreNameCandidates,
+				"drop":   ragStoreNameCandidates,
 			},
 		},
 		"files": {
@@ -337,10 +338,10 @@ func (a *Agent) registerCommands() {
 			Subcommands: []string{"start", "stop", "status"},
 		},
 		"session": {
-			Usage:       "/session <continue FILE|replay FILE [OUTPUT]>",
-			Description: "Continue or replay a .spmd/.fountain session recording",
+			Usage:       "/session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>",
+			Description: "List, inspect, load, or replay .spmd/.fountain session recordings",
 			Handler:     cmdSession,
-			Subcommands: []string{"continue", "replay"},
+			Subcommands: []string{"list", "show", "use", "continue", "replay"},
 		},
 		"rename": {
 			Usage:       "/rename NAME",
@@ -358,21 +359,22 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdFileTree,
 		},
 		"skill": {
-			Usage:       "/skill <list|load NAME|info NAME|status|new|run NAME>",
+			Usage:       "/skill <list|load NAME|show NAME|info NAME|status|new|run NAME>",
 			Description: "List or load Agent Skills from the skill catalog",
 			Handler:     cmdSkill,
-			Subcommands: []string{"list", "load", "info", "status", "new", "run"},
+			Subcommands: []string{"list", "load", "show", "info", "status", "new", "run"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"load": skillNameCandidates,
+				"show": skillNameCandidates,
 				"info": skillNameCandidates,
 				"run":  skillNameCandidates,
 			},
 		},
 		"skill-set": {
-			Usage:       "/skill-set <list|load NAME|info NAME|create NAME|status|unload>",
+			Usage:       "/skill-set <list|load NAME|show NAME|info NAME|new NAME|create NAME|status|unload>",
 			Description: "Load or manage named bundles of skills from agents/skill-sets/",
 			Handler:     cmdSkillSet,
-			Subcommands: []string{"list", "load", "info", "create", "status", "unload"},
+			Subcommands: []string{"list", "load", "show", "info", "new", "create", "status", "unload"},
 		},
 		"inspect": {
 			Usage:       "/inspect [MODEL]",
@@ -380,13 +382,15 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdInspect,
 		},
 		"route": {
-			Usage:       "/route <add NAME URL [MODEL] | rm NAME | models URL | probe NAME | set NAME tools on|off | list | on | off | status>",
+			Usage:       "/route <add NAME URL [MODEL] | rm NAME | use [NAME] | models URL | probe NAME | set NAME tools on|off | list | on | off | status>",
 			Description: "Register remote LLM endpoints and dispatch to them with @name in prompts",
 			Handler:     cmdRoute,
-			Subcommands: []string{"add", "rm", "models", "probe", "set", "list", "on", "off", "status"},
+			Subcommands: []string{"add", "rm", "remove", "use", "models", "probe", "set", "list", "on", "off", "status"},
 			ArgCompletion: map[string]func(*Agent) []string{
-				"rm":    routeNameCandidates,
-				"probe": routeNameCandidates,
+				"rm":     routeNameCandidates,
+				"remove": routeNameCandidates,
+				"use":    routeNameCandidates,
+				"probe":  routeNameCandidates,
 				"set":   routeNameCandidates,
 			},
 		},
@@ -999,9 +1003,29 @@ func cmdRoute(a *Agent, args []string, out io.Writer) error {
 		return routeOff(a, out)
 	case "status":
 		return routeStatus(a, out)
+	case "use":
+		if len(args) < 2 {
+			// No name given — clear the sticky route.
+			if a.ActiveRoute != "" {
+				fmt.Fprintf(out, "  Cleared active route (was %q). Prompts go to default model.\n", a.ActiveRoute)
+				a.ActiveRoute = ""
+			} else {
+				fmt.Fprintln(out, "  No active route set. Use /route use NAME to set one.")
+			}
+			return nil
+		}
+		name := args[1]
+		if a.Routes == nil || a.Routes.Lookup(name) == nil {
+			fmt.Fprintf(out, "  Route %q not found. Use /route list to see registered routes.\n", name)
+			return nil
+		}
+		a.ActiveRoute = name
+		fmt.Fprintf(out, "  Active route set to %q. All prompts will be dispatched via @%s.\n", name, name)
+		fmt.Fprintln(out, dim("  Use /route use (no name) to clear."))
+		return nil
 	default:
 		fmt.Fprintf(out, "  Unknown route subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "  Usage: /route <add NAME URL [MODEL] | rm NAME | models URL | probe NAME | set NAME tools on|off | list | on | off | status>")
+		fmt.Fprintln(out, "  Usage: /route <add NAME URL [MODEL] | rm NAME | models URL | probe NAME | set NAME tools on|off | list | use [NAME] | on | off | status>")
 	}
 	return nil
 }
@@ -3743,13 +3767,62 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
  */
 func cmdSession(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /session <continue FILE|replay FILE [OUTPUT]>")
+		fmt.Fprintln(out, "Usage: /session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>")
 		return nil
 	}
 	switch strings.ToLower(args[0]) {
-	case "continue":
+	case "list":
+		sessDir := a.SessionsDir
+		if sessDir == "" {
+			fmt.Fprintln(out, "  No sessions directory configured.")
+			return nil
+		}
+		files, err := ListSessionFiles(sessDir)
+		if err != nil {
+			return err
+		}
+		if len(files) == 0 {
+			fmt.Fprintln(out, "  No sessions found in "+sessDir)
+			return nil
+		}
+		fmt.Fprintf(out, "  Sessions in %s:\n", sessDir)
+		for _, f := range files {
+			fmt.Fprintf(out, "    %-40s  %s\n", f.Name, f.ModTime.Format("2006-01-02 15:04"))
+		}
+	case "show":
+		path := ""
+		if len(args) >= 2 {
+			path = args[1]
+		} else if a.Recorder != nil {
+			path = a.Recorder.Path()
+		} else {
+			fmt.Fprintln(out, "  Usage: /session show FILE")
+			return nil
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			fmt.Fprintf(out, "  ✗ %v\n", err)
+			return nil
+		}
+		_, model, turns, err := parseFountainSession(path)
+		if err != nil {
+			fmt.Fprintf(out, "  ✗ Could not parse session: %v\n", err)
+			return nil
+		}
+		fmt.Fprintf(out, "  File:    %s\n", path)
+		fmt.Fprintf(out, "  Date:    %s\n", info.ModTime().Format("2006-01-02 15:04"))
+		fmt.Fprintf(out, "  Model:   %s\n", model)
+		fmt.Fprintf(out, "  Turns:   %d\n", len(turns))
+		if len(turns) > 0 {
+			preview := turns[0].UserInput
+			if len(preview) > 60 {
+				preview = preview[:57] + "..."
+			}
+			fmt.Fprintf(out, "  First:   %s\n", preview)
+		}
+	case "use", "continue":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /session continue FILE")
+			fmt.Fprintln(out, "Usage: /session use FILE")
 			return nil
 		}
 		n, err := a.ContinueFromFountain(args[1])
@@ -3771,13 +3844,13 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 			outPath = DefaultSessionPath(a.SessionsDir)
 		}
 		if a.Client == nil {
-			fmt.Fprintln(out, "  No backend connected. Use /ollama start.")
+			fmt.Fprintln(out, "  No backend connected. Use /llamafile start or /ollama start.")
 			return nil
 		}
 		return a.ReplayFromFountain(context.Background(), src, outPath, out)
 	default:
 		fmt.Fprintf(out, "Unknown session subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /session <continue FILE|replay FILE [OUTPUT]>")
+		fmt.Fprintln(out, "Usage: /session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>")
 	}
 	return nil
 }
@@ -3852,14 +3925,14 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 			args = append(args, chosen)
 		}
 		return skillLoad(a, args[1], out)
-	case "info":
+	case "info", "show":
 		if len(args) < 2 {
 			names := skillNameCandidates(a)
 			if len(names) == 0 {
-				fmt.Fprintln(out, "Usage: /skill info NAME")
+				fmt.Fprintln(out, "Usage: /skill show NAME")
 				return nil
 			}
-			chosen, err := SelectFromStrings(names, fmt.Sprintf("Info for which skill [1-%d] or Enter to cancel: ", len(names)), a.In, out)
+			chosen, err := SelectFromStrings(names, fmt.Sprintf("Show which skill [1-%d] or Enter to cancel: ", len(names)), a.In, out)
 			if err != nil || chosen == "" {
 				return err
 			}
@@ -4095,15 +4168,15 @@ func cmdSkillSet(a *Agent, args []string, out io.Writer) error {
 			return nil
 		}
 		return skillSetLoad(a, args[1], out)
-	case "info":
+	case "info", "show":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /skill-set info NAME")
+			fmt.Fprintln(out, "Usage: /skill-set show NAME")
 			return nil
 		}
 		return skillSetInfo(a, args[1], out)
-	case "create":
+	case "create", "new":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /skill-set create NAME")
+			fmt.Fprintln(out, "Usage: /skill-set new NAME")
 			return nil
 		}
 		return skillSetCreate(a, args[1], out)
@@ -4347,9 +4420,9 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 	}
 
 	switch args[0] {
-	case "set":
+	case "set", "add":
 		if len(args) < 3 {
-			fmt.Fprintln(out, "Usage: /ollama alias set ALIAS FULL_MODEL_NAME")
+			fmt.Fprintln(out, "Usage: /model alias add ALIAS FULL_MODEL_NAME")
 			return nil
 		}
 		alias := strings.ToLower(args[1])
@@ -4734,14 +4807,14 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 			args = append(args, chosen)
 		}
 		return ragSwitch(a, args[1], out)
-	case "drop":
+	case "drop", "remove":
 		if len(args) < 2 {
 			items := ragStoreSelectItems(a)
 			if len(items) == 0 {
 				fmt.Fprintln(out, "No RAG stores registered.")
 				return nil
 			}
-			chosen, err := SelectFrom(items, fmt.Sprintf("Drop which store [1-%d] or Enter to cancel: ", len(items)), a.In, out)
+			chosen, err := SelectFrom(items, fmt.Sprintf("Remove which store [1-%d] or Enter to cancel: ", len(items)), a.In, out)
 			if err != nil || chosen == "" {
 				return err
 			}

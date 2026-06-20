@@ -1099,3 +1099,133 @@ func TestCmdModelUse_notFound(t *testing.T) {
 		t.Errorf("expected error or not-found message, got: %s", buf.String())
 	}
 }
+
+// ─── vocabulary alias tests ───────────────────────────────────────────────────
+
+func TestRagRemove_alias(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	// No stores registered — remove should report that, not error
+	err := cmdRag(a, []string{"remove", "nonexistent"}, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSkillShow_aliasForInfo(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	a.Skills = SkillCatalog{}
+	var bufShow, bufInfo strings.Builder
+	// Both should produce the same output (or same error path) for an unknown skill.
+	errShow := cmdSkill(a, []string{"show", "nonexistent"}, &bufShow)
+	errInfo := cmdSkill(a, []string{"info", "nonexistent"}, &bufInfo)
+	// Both either error or print "not found" — they must behave identically.
+	if (errShow == nil) != (errInfo == nil) {
+		t.Errorf("show/info error mismatch: show=%v info=%v", errShow, errInfo)
+	}
+}
+
+func TestSkillSetNew_aliasForCreate(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var bufNew, bufCreate strings.Builder
+	errNew := cmdSkillSet(a, []string{"new", "myskill"}, &bufNew)
+	errCreate := cmdSkillSet(a, []string{"create", "myskill"}, &bufCreate)
+	// Both attempt the same operation; behaviour and error path are identical.
+	if (errNew == nil) != (errCreate == nil) {
+		t.Errorf("new/create error mismatch: new=%v create=%v", errNew, errCreate)
+	}
+}
+
+func TestSkillSetShow_aliasForInfo(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var bufShow, bufInfo strings.Builder
+	errShow := cmdSkillSet(a, []string{"show", "nonexistent"}, &bufShow)
+	errInfo := cmdSkillSet(a, []string{"info", "nonexistent"}, &bufInfo)
+	if (errShow == nil) != (errInfo == nil) {
+		t.Errorf("show/info error mismatch: show=%v info=%v", errShow, errInfo)
+	}
+}
+
+func TestModelAliasAdd_aliasForSet(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.ModelAliases = make(map[string]string)
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+	// Use "add" verb to define an alias.
+	if err := cmdModelAlias(a, []string{"add", "coder", "qwen2.5-coder:7b"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.Config.ModelAliases["coder"] != "qwen2.5-coder:7b" {
+		t.Errorf("alias not set: %v", a.Config.ModelAliases)
+	}
+}
+
+func TestSessionUse_aliasForContinue(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/test.spmd"
+	// Create a properly-formatted session using NewRecorder.
+	rec, err := NewRecorder(path, "ollama (mock)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.RecordTurn("Hello.", "Hi!"); err != nil {
+		t.Fatal(err)
+	}
+	rec.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	if err := cmdSession(a, []string{"use", path}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(a.History) == 0 {
+		t.Error("expected history to be loaded after /session use")
+	}
+}
+
+func TestSessionList_emptyDir(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	a.SessionsDir = t.TempDir() // empty dir
+	var buf strings.Builder
+	if err := cmdSession(a, []string{"list"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "No sessions") && !strings.Contains(out, "no sessions") {
+		t.Errorf("expected empty message, got: %s", out)
+	}
+}
+
+func TestRouteUse_setsActiveRoute(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	a.Routes = NewRouteRegistry()
+	a.Routes.Add(&RouteEndpoint{Name: "pi2", URL: "ollama://192.0.2.12:11434", Model: "llama3:8b"})
+	var buf strings.Builder
+	if err := cmdRoute(a, []string{"use", "pi2"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.ActiveRoute != "pi2" {
+		t.Errorf("ActiveRoute: got %q want %q", a.ActiveRoute, "pi2")
+	}
+}
+
+func TestRouteUse_noArgs_clearsActiveRoute(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	a.ActiveRoute = "pi2"
+	var buf strings.Builder
+	if err := cmdRoute(a, []string{"use"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.ActiveRoute != "" {
+		t.Errorf("expected ActiveRoute cleared, got %q", a.ActiveRoute)
+	}
+}

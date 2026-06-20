@@ -617,6 +617,11 @@ func (a *Agent) Run(out io.Writer) error {
 			continue
 		}
 
+		// Sticky route: prepend @ActiveRoute when set and no explicit @ prefix given.
+		if a.ActiveRoute != "" && !strings.HasPrefix(input, "@") && !strings.HasPrefix(input, "/") {
+			input = "@" + a.ActiveRoute + " " + input
+		}
+
 		// "@name" prefix — inline model switch; remainder is forwarded as prompt.
 		if strings.HasPrefix(input, "@") && !strings.HasPrefix(input, "@route:") {
 			parts := strings.SplitN(input, " ", 2)

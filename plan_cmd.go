@@ -134,6 +134,17 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 		return nil
 	}
 
+	// Switch model if the step has a [model: NAME] annotation.
+	defaultModel := activeModelLabel(a) // label to restore after the step
+	if step.Model != "" {
+		fmt.Fprintf(out, "  Switching to %s for this step...\n", step.Model)
+		if switched, err := attemptModelSwitch(a, step.Model, out); err != nil {
+			fmt.Fprintf(out, yellow("  ⚠ Model switch failed: ")+"%v — using current model.\n", err)
+		} else if !switched {
+			fmt.Fprintf(out, yellow("  ⚠ Model %q not found — using current model.\n"), step.Model)
+		}
+	}
+
 	fmt.Fprintf(out, "  Executing step %d/%d: %s\n", step.Index+1, len(p.Steps), step.Title)
 
 	// Build a fresh bounded context — system prompt + plan state + step instruction.
@@ -172,6 +183,13 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 
 	if txt := strings.TrimSpace(buf.String()); txt != "" {
 		fmt.Fprintln(out, txt)
+	}
+
+	// Restore the default model if the step used a different one.
+	if step.Model != "" && activeModelLabel(a) != defaultModel {
+		if _, err := attemptModelSwitch(a, a.Config.LlamafileActive, out); err != nil {
+			fmt.Fprintf(out, yellow("  ⚠ Could not restore model: ")+"%v\n", err)
+		}
 	}
 
 	if toolErrors {
