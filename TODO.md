@@ -5,6 +5,7 @@
 
 ## Release Review
 
+- [ ] the user_manual.md is stale, still referring to Ollama first approach
 - [ ] Overview.md still reflects a Ollama first approach, needs to cover Llamafile support before talking about Ollama model support.
 - [ ] The helptext.go help guides (help text) seem to still be oriented as Ollama first, needs to be LLamafile primary while still supporting Ollama models. See `./bin/harvery --help getting-started` output as an example
 - [ ] Review the helptext.go file, review the help text constants to ensure they align with the current implementation. 

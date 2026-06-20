@@ -2,7 +2,7 @@
 
 ![Harvey, a six foot six invisible rabbit](media/harvey.svg "project mascot, a Púca")
 
-Harvey is a terminal-based coding agent backed by a local [Ollama](https://ollama.com) server (or any provider supported by `mozilla-ai/any-llm-go`). It provides an interactive REPL where you chat with a large language model while also reading files, running commands, searching code, and applying suggested changes, all sandboxed to a single workspace directory.
+Harvey is a terminal-based coding agent for local large language models. It runs models via [llamafile](https://github.com/mozilla-ai/llamafile) (self-contained model executables that need no server installation) or a local [Ollama](https://ollama.com) server, and can route individual prompts to cloud providers via named routes. It provides an interactive REPL where you chat with a large language model while also reading files, running commands, searching code, and applying suggested changes, all sandboxed to a single workspace directory.
 
 ---
 
@@ -13,7 +13,7 @@ Harvey is a terminal-based coding agent backed by a local [Ollama](https://ollam
 [INSTALL.md](INSTALL.md) — Step-by-step instructions to install Harvey on Linux, macOS, or Windows
 
 ### 2. First Session
-[getting_started.md](getting_started.md) — Launch Harvey, connect to Ollama, and run your first commands
+[getting_started.md](getting_started.md) — Launch Harvey, connect to a local model, and run your first commands
 
 ### 3. System Prompt Customization
 [HARVEY.md](HARVEY.md) — The default system prompt and how to customize it for your project
@@ -79,12 +79,13 @@ Learning this vocabulary for one command teaches you all the others:
 
 ### Model Management
 
-- **[Model Guide](model_guide.md)** — Model selection guide based on `/ollama probe` results
-- **[Model Cache](MODEL_CACHE.md)** — Model capability caching architecture, database schema, and probing mechanisms
-- **[Routing](ROUTING.md)** — Connect to remote model endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI) via @mention syntax
-- **[Llamafile Commands](harvey-llamafile.7.md)** — Manage llamafile backends: add, use, list, download, remove
+- **[Llamafile Commands](harvey-llamafile.7.md)** — Primary local backend: add, use, show, list, start, download, remove
+- **[Unified /model Command](harvey-model.7.md)** — `/model list|use|show|status` works across llamafile and Ollama
 - **[Model & Alias Commands](harvey-model-alias.7.md)** — `@mention` inline model switching and `/model alias` short names
-- **[Unified /model Command](harvey-model-alias.7.md)** — `/model list|use|show|status` works across llamafile and Ollama
+- **[Ollama Commands](harvey-ollama.7.md)** — Alternative local backend: service control and model management
+- **[Routing](ROUTING.md)** — Connect to remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI, remote Ollama) via @mention syntax
+- **[Model Guide](model_guide.md)** — Model selection guide based on capability probing results
+- **[Model Cache](MODEL_CACHE.md)** — Model capability caching architecture, database schema, and probing mechanisms
 
 ### Sessions & Recording
 
