@@ -74,6 +74,55 @@ func filterEnvironment(env []string) []string {
 	return filterCommandEnvironment(env)
 }
 
+/** activeModelLabel returns a short human-readable label for the currently
+ * configured model backend, e.g. "qwen-coding (llamafile)" or "llama3.2:3b (ollama)".
+ * Returns "none" when no backend is configured. Llamafile takes priority when
+ * both LlamafileActive and OllamaModel are set.
+ *
+ * Parameters:
+ *   a (*Agent) — the running Harvey agent.
+ *
+ * Returns:
+ *   string — label of the form "name (backend)" or "none".
+ *
+ * Example:
+ *   fmt.Fprintf(out, "Connecting to %s…\n", activeModelLabel(a))
+ */
+func activeModelLabel(a *Agent) string {
+	if a.Config.LlamafileActive != "" {
+		return a.Config.LlamafileActive + " (llamafile)"
+	}
+	if a.Config.OllamaModel != "" {
+		return a.Config.OllamaModel + " (ollama)"
+	}
+	return "none"
+}
+
+/** probeActiveBackend returns true if the currently configured backend server
+ * is reachable. Probes the LlamafileURL when LlamafileActive is set; probes
+ * OllamaURL when OllamaModel is set; returns false when neither is configured.
+ *
+ * Parameters:
+ *   a (*Agent) — the running Harvey agent.
+ *
+ * Returns:
+ *   bool — true if the backend responds to a health probe.
+ *
+ * Example:
+ *   if !probeActiveBackend(a) {
+ *       fmt.Fprintln(out, "Backend is not reachable.")
+ *   }
+ */
+func probeActiveBackend(a *Agent) bool {
+	if a.Config.LlamafileActive != "" {
+		return ProbeLlamafile(a.Config.LlamafileURL)
+	}
+	if a.Config.OllamaModel != "" {
+		return ProbeOllama(a.Config.OllamaURL)
+	}
+	return false
+}
+
 /** parseCommandLine splits a command line string into a program name and
  * arguments, handling quoted strings. This provides basic shell-like parsing
  * without supporting shell metacharacters (|, >, <, &, ;, etc.) for security.
@@ -392,6 +441,10 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// --continue flag: pre-load history from a named session file.
 	if a.Config.ContinuePath != "" {
+		if a.Client == nil {
+			fmt.Fprintf(out, yellow("  ⚠")+" No backend connected — %s will load read-only.\n", a.Config.ContinuePath)
+			fmt.Fprintln(out, dim("  Use /llamafile start or /ollama start to connect a model."))
+		}
 		n, contErr := a.ContinueFromFountain(a.Config.ContinuePath)
 		if contErr != nil {
 			fmt.Fprintf(out, yellow("  ✗")+" Continue failed: %v\n", contErr)
@@ -403,9 +456,9 @@ func (a *Agent) Run(out io.Writer) error {
 	// Ready line
 	fmt.Fprintln(out, cyan(bold(sep)))
 	if a.Client != nil {
-		fmt.Fprintf(out, "  Connected: %s\n", green(a.Client.Name()))
+		fmt.Fprintf(out, "  Connected: %s\n", green(activeModelLabel(a)))
 	} else {
-		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /ollama start"))
+		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /llamafile start or /ollama start"))
 	}
 	fmt.Fprintln(out, dim("  /help for commands · /exit to quit"))
 	fmt.Fprintln(out, cyan(bold(sep)))

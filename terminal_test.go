@@ -146,3 +146,66 @@ func TestWorkspacePathCandidates_escapeBlocked(t *testing.T) {
 		t.Errorf("path escape should produce no completions, got %v", got)
 	}
 }
+
+// ─── activeModelLabel ────────────────────────────────────────────────────────
+
+func TestActiveModelLabel_noBackend(t *testing.T) {
+	a := &Agent{Config: DefaultConfig()}
+	if got := activeModelLabel(a); got != "none" {
+		t.Errorf("got %q want %q", got, "none")
+	}
+}
+
+func TestActiveModelLabel_llamafile(t *testing.T) {
+	a := &Agent{Config: DefaultConfig()}
+	a.Config.LlamafileActive = "qwen-coding"
+	if got := activeModelLabel(a); got != "qwen-coding (llamafile)" {
+		t.Errorf("got %q want %q", got, "qwen-coding (llamafile)")
+	}
+}
+
+func TestActiveModelLabel_ollama(t *testing.T) {
+	a := &Agent{Config: DefaultConfig()}
+	a.Config.OllamaModel = "llama3.2:3b"
+	if got := activeModelLabel(a); got != "llama3.2:3b (ollama)" {
+		t.Errorf("got %q want %q", got, "llama3.2:3b (ollama)")
+	}
+}
+
+func TestActiveModelLabel_llamafileTakesPriority(t *testing.T) {
+	a := &Agent{Config: DefaultConfig()}
+	a.Config.LlamafileActive = "qwen-coding"
+	a.Config.OllamaModel = "llama3.2:3b"
+	if got := activeModelLabel(a); got != "qwen-coding (llamafile)" {
+		t.Errorf("llamafile should take priority; got %q", got)
+	}
+}
+
+// ─── probeActiveBackend ──────────────────────────────────────────────────────
+
+func TestProbeActiveBackend_noBackendConfigured(t *testing.T) {
+	a := &Agent{Config: DefaultConfig()}
+	// Neither LlamafileActive nor OllamaModel set — must return false without
+	// making any network call.
+	if probeActiveBackend(a) {
+		t.Error("expected false when no backend is configured")
+	}
+}
+
+func TestProbeActiveBackend_llamafileNotRunning(t *testing.T) {
+	a := &Agent{Config: DefaultConfig()}
+	a.Config.LlamafileActive = "qwen-coding"
+	a.Config.LlamafileURL = "http://127.0.0.1:19991" // nothing listening here
+	if probeActiveBackend(a) {
+		t.Error("expected false when llamafile server is not running")
+	}
+}
+
+func TestProbeActiveBackend_ollamaNotRunning(t *testing.T) {
+	a := &Agent{Config: DefaultConfig()}
+	a.Config.OllamaModel = "llama3.2:3b"
+	a.Config.OllamaURL = "http://127.0.0.1:19992" // nothing listening here
+	if probeActiveBackend(a) {
+		t.Error("expected false when ollama server is not running")
+	}
+}
