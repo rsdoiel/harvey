@@ -1,82 +1,78 @@
 
-# Harvey – A Terminal‑Based AI Interaction Layer
+# Harvey – Natural Language Programming for Scholarly Work
 
-## What Harvey Is  
+## What Harvey Is
 
-Harvey is an open‑source, cross‑platform terminal REPL (Read‑Eval‑Print Loop) that lets you interact with language models (LLMs) through a simple, tool‑rich command interface. Built primarily on Ollama with support for cloud providers via named routes, Harvey provides an interactive coding agent experience focused on local model execution.
+Harvey is an open-source, cross-platform terminal tool for scholarly work using
+natural language programming. It connects a local language model system —
+running via [llamafile](https://github.com/mozilla-ai/llamafile) or
+[Ollama](https://ollama.com) — to your workspace, giving you a programmable
+interface for reading files, running commands, searching code, managing
+knowledge, and recording your work. Language model systems are commonly called
+"AI models" or "AI"; Harvey treats them as a programmable substrate for
+deliberate, documented work rather than a chat assistant.
 
-## Why You Might Want to Use It  
+Harvey runs on any platform supported by Go and is designed to work well on
+resource-constrained hardware such as a Raspberry Pi, as well as on more
+capable desktop and server machines.
+
+## Why You Might Want to Use It
 
 | Feature | Benefit |
 |---|---|
-| **Unified Command Set** (`/read`, `/write`, `/run`, `/attach`, `/search`, `/git`, `/rag`, `/memory`, `/kb`, etc.) | Interact with models without remembering separate API calls. |
-| **RAG Integration** | Inject context from local files, PDFs, or remote storage (S3, HTTP, HTTPS, SFTP, SCP) into your prompts. Create and query SQLite‑backed vector stores with `/rag` commands. |
-| **Tool Calling & Schema Support** | Harvey provides built-in tools (read_file, write_file, run_command, etc.) with validated schemas for safe operation. |
-| **Multi‑Model & Multi‑Backend Routing** | Dispatch prompts to specific models (`@model_name`) or route to different backends (Ollama, Anthropic, DeepSeek, Gemini, Mistral, OpenAI) via `/route add`. |
-| **Session Recording (Fountain screenplay)** | Sessions can be recorded as Fountain‑compatible `.spmd` files using `/record start` or `--record` flag, enabling later review, summarization, or replay. |
-| **Knowledge Base & Memory** | Persistent knowledge base (`agents/knowledge.db`) plus a unified memory system with rolling summaries and token budget tracking. |
-| **Secure Safe Mode** | Execution is limited to a whitelisted set of shell commands; remote file reads enforce size limits and host‑key verification. API keys are filtered from child processes. |
-| **Installer Scripts** | Installer scripts for Linux (x86_64/aarch64/armv7l), macOS, and Windows. |
-| **Extensible Skill System** | Load specialized skills via `/skill load <name>` to add domain‑specific tooling. |
+| **Llamafile & Ollama backends** | Run language model systems locally with no cloud dependency. Llamafile bundles a model and server into a single executable; Ollama manages a model registry. Switch between them with `/model use`. |
+| **Unified command set** (`/read`, `/write`, `/run`, `/attach`, `/search`, `/git`, `/rag`, `/memory`, `/kb`, etc.) | Direct the language model and manage your workspace without leaving the REPL. |
+| **RAG integration** | Inject context from local files, PDFs, S3 objects, SFTP/SCP servers, or HTTP/HTTPS URLs into your prompts. Create and query SQLite-backed vector stores with `/rag` commands. |
+| **Tool calling** | Built-in tools (`read_file`, `write_file`, `run_command`, etc.) with validated schemas let capable language models act directly on your workspace. |
+| **Multi-model routing** | Dispatch prompts to specific models (`@model_name`) or route to remote endpoints (Ollama, Anthropic, DeepSeek, Gemini, Mistral, OpenAI) via `/route add`. |
+| **Session recording** | Every session is recorded as a Fountain `.spmd` file — a structured, human-readable transcript you can review, replay against a different model, or mine for reusable memories. |
+| **Knowledge base & memory** | Persistent SQLite knowledge base (`agents/knowledge.db`) plus a unified memory system with rolling summaries, typed experience records, and token-budget tracking. |
+| **Secure safe mode** | Execution is gated by a command allowlist; workspace permissions give fine-grained read/write/exec/delete control per path prefix; API keys are stripped from every child process. |
+| **Extensible skill system** | Load specialised skills via `/skill load <name>` to inject domain-specific instructions and compiled scripts. |
+| **Installer scripts** | Pre-built installers for Linux (x86_64/aarch64/armv7l), macOS, and Windows. |
 
-## Getting Started  
+## Getting Started
 
-1. **Install Harvey** – Run the installer script for your OS (`installer.sh` for Linux/macOS, `installer.ps1` for Windows).  
-2. **Launch the REPL**  
+1. **Install Harvey** — Run the installer script for your OS (`installer.sh` for Linux/macOS, `installer.ps1` for Windows).
+
+2. **Get a model** — Download a llamafile from the [Mozilla AI pre-built llamafiles page](https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles) and place it in `~/Models/`. Harvey finds and connects to it automatically at startup.
+
+3. **Launch Harvey**
 
    ```bash
+   cd $HOME/myproject
    harvey
    ```
 
-   You’ll be greeted with a prompt like `harvey >`.  
+4. **Basic commands**
 
-3. **Basic Commands**  
-
-   - **Read a file** – `/read <path>`.  
-   - **Write output** – `/write <path>` (writes last assistant reply to a file).  
-   - **Run shell commands safely** – `/run ls -l`.  
-   - **Query the knowledge base** – `/kb search <text>`.  
-   - **Attach a file for this turn** – `/attach docs/manual.pdf` (image, PDF text extraction, or plain text; not stored in RAG).  
-
-4. **Using RAG**  
-
-   ```bash
-   /rag new my_store
-   /rag use my_store
+   ```
+   harvey > /read src/main.go
+   harvey > /run go test ./...
+   harvey > /kb observe finding context window at 8 192 tokens is tight for large files
+   harvey > /bye
    ```
 
-5. **Recording a Session**  
+See [getting_started.md](getting_started.md) for a full session walkthrough.
 
-   Harvey can record sessions to Fountain files. To start recording:
+## Design Principles
 
-   ```bash
-   /record start
-   ```
+**Natural language programming interface** — The REPL is not a chatbot. Every
+exchange directs the language model to act on your workspace: read files, run
+commands, write output, search code, update knowledge. The goal is a
+reproducible, auditable workflow expressed in natural language.
 
-## Design Decisions (Three Core Principles)
+**Scholarly apparatus built in** — The workspace, knowledge base, RAG store,
+memory system, and session recording together form a lab notebook: a place to
+accumulate findings, record decisions, and retrieve prior context. Harvey is
+designed for work that requires documentation and continuity across sessions.
 
-1. **Tool‑First Architecture** – All user actions are exposed as first‑class *tools* (`read_file`, `write_file`, `run_command`, etc.). This makes the system extensible: new capabilities can be added by registering a tool with its schema, without touching core logic.
+**Tool-first, local-first architecture** — All user actions are exposed as
+first-class tools (`read_file`, `write_file`, `run_command`, etc.) with
+validated schemas. Language model systems run locally by default; cloud
+endpoints are opt-in named routes, never the primary path.
 
-2. **Unified Memory & Knowledge Base** – Harvey separates three storage layers:
-   - **RAG Store** (vector DB for fast semantic search).  
-   - **Memory System** (rolling summary and token‑budget tracking).  
-   - **Knowledge Base** (structured SQLite tables for experiments, concepts, observations).  
-   A single `MemoryConfig` configuration drives budgeting and switching between them.
-
-3. **Secure Safe Mode with Remote Protocol Support** – Execution is gated by a whitelist; remote file reads (`s3://`, `http://`, `https://`, `sftp://`, `scp://`) enforce strict size caps and host-key verification, preventing accidental data leakage or denial-of-service attacks.
-
----
-
-### Next Steps  
-
-- Run the installer (if you haven’t already).  
-- Try a few commands to see tool responses:  
-
-  ```bash
-  harvey > /read LICENSE
-  harvey > /kb status
-  ```
-
-- Explore available skills and load any that interest you  
-
-Feel free to ask for more detailed examples or to tailor the document further!
+**Layered security** — Safe Mode gates execution to a command allowlist;
+workspace permissions give fine-grained read/write/exec/delete control per
+path prefix; an audit log records every command and file access; API keys are
+stripped from every child process environment.
