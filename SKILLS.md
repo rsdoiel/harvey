@@ -253,6 +253,21 @@ skill-name/
 > skill can read, write, or delete any file accessible to the current user. Only run
 > compiled skills from trusted sources, and review generated scripts before invoking
 > `/skill run`.
+>
+> **`HARVEY_PROMPT` safety:** The user's raw prompt is passed to compiled scripts
+> via the `HARVEY_PROMPT` environment variable. Never interpolate it unquoted into
+> a shell command — doing so enables code injection if the prompt contains shell
+> metacharacters. Always quote the variable:
+>
+> ```bash
+> # Safe — value treated as a literal string
+> prompt="$HARVEY_PROMPT"
+> echo "User asked: $prompt"
+>
+> # UNSAFE — shell interprets metacharacters in the prompt
+> eval $HARVEY_PROMPT        # never do this
+> sh -c "$HARVEY_PROMPT"    # never do this
+> ```
 
 ### Type 3: Triggered Skills
 

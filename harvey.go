@@ -239,13 +239,18 @@ func NewAgent(cfg *Config, ws *Workspace) *Agent {
 		ep := cfg.Routes[i]
 		rr.Add(&ep)
 	}
+	buf := NewAuditBuffer(DefaultAuditBufferCapacity)
+	if ws != nil {
+		auditPath := filepath.Join(ws.HarveyDir(), "audit.jsonl")
+		_ = buf.OpenLogFile(auditPath) // best-effort; in-memory fallback on error
+	}
 	a := &Agent{
 		Config:      cfg,
 		Workspace:   ws,
 		Routes:      rr,
 		In:          os.Stdin,
 		commands:    make(map[string]*Command),
-		AuditBuffer: NewAuditBuffer(DefaultAuditBufferCapacity),
+		AuditBuffer: buf,
 	}
 	if cfg.ToolsEnabled && ws != nil {
 		a.Tools = NewToolRegistry()

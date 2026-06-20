@@ -29,16 +29,25 @@ import (
 
 // sensitiveSkillEnvVars contains environment variable names that should be
 // EXCLUDED from skill execution to prevent sensitive data leakage.
+//
+// Note: filterSkillEnvironment uses a whitelist approach, so variables not
+// matching a safe prefix are already blocked. This list is defence-in-depth.
 var sensitiveSkillEnvVars = []string{
 	"ANTHROPIC_API_KEY",
 	"COHERE_API_KEY",
 	"DEEPSEEK_API_KEY",
+	"FIREWORKS_API_KEY",
 	"GEMINI_API_KEY",
 	"GOOGLE_API_KEY",
 	"GROQ_API_KEY",
+	"HUGGINGFACE_TOKEN",
 	"MISTRAL_API_KEY",
 	"OPENAI_API_KEY",
 	"PERPLEXITY_API_KEY",
+	"PUBLICAI_API_KEY",
+	"REPLICATE_API_KEY",
+	"TOGETHER_API_KEY",
+	"XAI_API_KEY",
 }
 
 // safeSkillEnvPrefixes contains environment variable name prefixes that are

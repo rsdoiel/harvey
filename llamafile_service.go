@@ -93,6 +93,13 @@ func ProbeLlamafile(baseURL string) bool {
  *   proc, err := StartLlamafileService("/models/gemma3.llamafile", "http://localhost:8080", "", 120*time.Second, 99, os.Stdout)
  */
 func StartLlamafileService(path, baseURL, logPath string, timeout time.Duration, gpuLayers int, progress io.Writer) (*os.Process, error) {
+	// Guard against a crafted harvey.yaml entry executing an arbitrary script.
+	// Only binaries with a recognised llamafile extension are launched.
+	lower := strings.ToLower(path)
+	if !strings.HasSuffix(lower, ".llamafile") && !strings.HasSuffix(lower, ".llamafile.exe") {
+		return nil, fmt.Errorf("llamafile: %q does not have a .llamafile or .llamafile.exe extension", path)
+	}
+
 	if timeout <= 0 {
 		timeout = 120 * time.Second
 	}

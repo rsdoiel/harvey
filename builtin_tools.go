@@ -75,7 +75,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			if err != nil {
 				return "", fmt.Errorf("read_file: %w", err)
 			}
-			if !a.CheckReadPermission(p) {
+			if !a.CheckReadPermission(filepath.Clean(p)) {
 				if a.AuditBuffer != nil {
 					a.AuditBuffer.Log(ActionFileRead, p, StatusDenied)
 				}
@@ -165,7 +165,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			if _, err := resolveWorkspacePath(root, p); err != nil {
 				return "", fmt.Errorf("write_file: %w", err)
 			}
-			if !a.CheckWritePermission(p) {
+			if !a.CheckWritePermission(filepath.Clean(p)) {
 				if a.AuditBuffer != nil {
 					a.AuditBuffer.Log(ActionFileWrite, p, StatusDenied)
 				}
@@ -219,7 +219,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			if _, err := resolveWorkspacePath(root, p); err != nil {
 				return "", fmt.Errorf("create_dir: %w", err)
 			}
-			if !a.CheckWritePermission(p) {
+			if !a.CheckWritePermission(filepath.Clean(p)) {
 				if a.AuditBuffer != nil {
 					a.AuditBuffer.Log(ActionFileWrite, p, StatusDenied)
 				}

@@ -1,4 +1,4 @@
-%assay(1) user manual | version 0.0.13 aa87def
+%assay(1) user manual | version 0.0.13 1344074
 % R. S. Doiel
 % 2026-06-19
 

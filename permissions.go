@@ -245,13 +245,25 @@ func cmdSecurity(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintln(out, "  Not initialized.")
 	} else {
 		fmt.Fprintf(out, "  Events: %d/%d\n", a.AuditBuffer.Size(), a.AuditBuffer.Capacity())
+		if a.AuditBuffer.LogPath != "" {
+			fmt.Fprintf(out, "  Persistent log: %s\n", a.AuditBuffer.LogPath)
+		} else {
+			fmt.Fprintln(out, "  Persistent log: none (in-memory only)")
+		}
 	}
 	fmt.Fprintln(out)
 
 	fmt.Fprintln(out, dim("Attack surfaces controlled:"))
-	fmt.Fprintln(out, dim("  • Command Execution: Safe Mode restricts which commands can run"))
+	fmt.Fprintln(out, dim("  • Command Execution: Safe Mode restricts which programs can run"))
 	fmt.Fprintln(out, dim("  • File Access: Permissions control read/write/exec/delete per path"))
 	fmt.Fprintln(out, dim("  • Environment Leakage: Filtered for all child processes"))
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, dim("Safe Mode note:"))
+	fmt.Fprintln(out, dim("  The allowlist restricts which programs are launched, not which files"))
+	fmt.Fprintln(out, dim("  those programs can access. Allowed commands such as 'cat' or 'grep'"))
+	fmt.Fprintln(out, dim("  can still read files outside the workspace (e.g. /etc/passwd)."))
+	fmt.Fprintln(out, dim("  Use workspace Permissions to gate file-tool access; use Safe Mode"))
+	fmt.Fprintln(out, dim("  only to limit which programs the LLM can invoke."))
 	fmt.Fprintln(out)
 
 	fmt.Fprintln(out, cyan(bold(sep)))

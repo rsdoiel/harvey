@@ -26,17 +26,28 @@ import (
 
 // sensitiveCmdEnvVars contains environment variable names that should be
 // EXCLUDED from child processes to prevent sensitive data leakage.
+//
+// Note: filterCommandEnvironment uses a whitelist approach, so variables not
+// matching a safe prefix are already blocked. This denylist is defence-in-depth:
+// it ensures that if a broad prefix is ever added to safeCmdEnvPrefixes, known
+// sensitive names are still stripped first.
 var sensitiveCmdEnvVars = []string{
 	// LLM provider API keys
 	"ANTHROPIC_API_KEY",
 	"COHERE_API_KEY",
 	"DEEPSEEK_API_KEY",
+	"FIREWORKS_API_KEY",
 	"GEMINI_API_KEY",
 	"GOOGLE_API_KEY",
 	"GROQ_API_KEY",
+	"HUGGINGFACE_TOKEN",
 	"MISTRAL_API_KEY",
 	"OPENAI_API_KEY",
 	"PERPLEXITY_API_KEY",
+	"PUBLICAI_API_KEY",
+	"REPLICATE_API_KEY",
+	"TOGETHER_API_KEY",
+	"XAI_API_KEY",
 	// S3-compatible storage credentials (AWS, MinIO, Cloudflare R2)
 	"AWS_ACCESS_KEY_ID",
 	"AWS_SECRET_ACCESS_KEY",

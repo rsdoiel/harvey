@@ -799,9 +799,18 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 		cfg.Memory.RagActive = "default"
 		cfg.Memory.RagEnabled = y.Memory.RAG.Enabled
 	}
-	// Load permissions if present
+	// Load permissions if present, normalising directory prefixes to always
+	// end with "/" so HasPermission's HasPrefix check cannot match sibling
+	// directories (e.g. a prefix "src" must not match "srcOther/").
 	if y.Permissions != nil {
-		cfg.Permissions = y.Permissions
+		normalised := make(map[string][]string, len(y.Permissions))
+		for k, v := range y.Permissions {
+			if k != "." && !strings.HasSuffix(k, "/") {
+				k = k + "/"
+			}
+			normalised[k] = v
+		}
+		cfg.Permissions = normalised
 	}
 	// Load security settings — only override the default when explicitly set in YAML.
 	if y.SafeMode != nil {

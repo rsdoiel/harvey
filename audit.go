@@ -1,6 +1,7 @@
-// Package harvey — audit.go implements in-memory audit logging for security events.
-// This provides a ring buffer that stores recent audit events without writing
-// any files outside the workspace, addressing the requirement for no external file writes.
+// Package harvey — audit.go implements audit logging for security events.
+// Events are stored in a thread-safe ring buffer (in-memory) and, when a
+// workspace is present, also appended to agents/audit.jsonl in NDJSON format
+// so the trail persists across restarts.
 //
 // Events are logged for:
 //   - Command execution (via ! and /run)
@@ -17,8 +18,10 @@
 package harvey
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,12 +75,16 @@ func (e AuditEvent) Format() string {
 }
 
 // AuditBuffer is a thread-safe ring buffer for storing audit events.
+// When a log file is open (via OpenLogFile), every event is also appended
+// to that file in NDJSON format so the audit trail survives restarts.
 type AuditBuffer struct {
 	mu       sync.RWMutex
 	events   []AuditEvent
-	head     int  // next write position
-	count    int  // number of events currently stored
-	capacity int  // maximum capacity
+	head     int      // next write position
+	count    int      // number of events currently stored
+	capacity int      // maximum capacity
+	logFile  *os.File // optional persistent sink; nil = in-memory only
+	LogPath  string   // path of the open log file, empty when none
 }
 
 // DefaultAuditBufferCapacity is the default size of the audit ring buffer.
@@ -94,7 +101,9 @@ func NewAuditBuffer(capacity int) *AuditBuffer {
 	}
 }
 
-// Add appends an event to the buffer, overwriting the oldest event if full.
+// Add appends an event to the ring buffer and, if a log file is open,
+// writes a JSON line to it. File write errors are silently discarded so
+// that a full disk never breaks the agent REPL.
 func (b *AuditBuffer) Add(event AuditEvent) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -103,6 +112,67 @@ func (b *AuditBuffer) Add(event AuditEvent) {
 	b.head = (b.head + 1) % b.capacity
 	if b.count < b.capacity {
 		b.count++
+	}
+
+	if b.logFile != nil {
+		line, err := json.Marshal(struct {
+			TS      string `json:"ts"`
+			Action  string `json:"action"`
+			Details string `json:"details"`
+			Status  string `json:"status"`
+		}{
+			TS:      event.Timestamp.UTC().Format(time.RFC3339Nano),
+			Action:  string(event.Action),
+			Details: event.Details,
+			Status:  string(event.Status),
+		})
+		if err == nil {
+			b.logFile.Write(append(line, '\n')) //nolint:errcheck
+		}
+	}
+}
+
+/** OpenLogFile opens (or creates) the file at path in append mode and
+ * directs future audit events to it in NDJSON format. Each line is a
+ * JSON object with ts, action, details, and status fields.
+ *
+ * Parameters:
+ *   path (string) — absolute path to the audit log file.
+ *
+ * Returns:
+ *   error — if the file cannot be opened or created.
+ *
+ * Example:
+ *   err := buf.OpenLogFile("/workspace/agents/audit.jsonl")
+ */
+func (b *AuditBuffer) OpenLogFile(path string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if b.logFile != nil {
+		b.logFile.Close() //nolint:errcheck
+	}
+	b.logFile = f
+	b.LogPath = path
+	return nil
+}
+
+/** CloseLogFile flushes and closes the current audit log file.
+ * It is safe to call when no file is open.
+ *
+ * Example:
+ *   defer buf.CloseLogFile()
+ */
+func (b *AuditBuffer) CloseLogFile() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.logFile != nil {
+		b.logFile.Close() //nolint:errcheck
+		b.logFile = nil
+		b.LogPath = ""
 	}
 }
 
@@ -258,6 +328,11 @@ func auditStatus(a *Agent, out io.Writer) error {
 		return nil
 	}
 	fmt.Fprintf(out, "  Audit buffer: %d/%d events\n", a.AuditBuffer.Size(), a.AuditBuffer.Capacity())
+	if a.AuditBuffer.LogPath != "" {
+		fmt.Fprintf(out, "  Persistent log: %s\n", a.AuditBuffer.LogPath)
+	} else {
+		fmt.Fprintln(out, "  Persistent log: none (in-memory only)")
+	}
 	return nil
 }
 
