@@ -102,6 +102,28 @@ Prefix any prompt with `@model-name` to switch model inline:
 
 The conversation history is preserved across the switch.
 
+### Command vocabulary — learn once, apply everywhere
+
+All Harvey resource commands share eight verbs:
+
+  list     — show all registered items
+  add      — register an existing resource (file path, URL)
+  new      — create a fresh internal item (database, skill, plan)
+  use      — activate an item (picker shown if name omitted)
+  show     — display item content or details
+  edit     — open in $EDITOR
+  remove   — delete or unregister (picker if name omitted)
+  rename   — rename an item
+
+The key distinction: "add" registers something you already have; "new"
+creates something Harvey manages from scratch. Backend commands also
+support "start", "stop", and "status" (connection health).
+
+Examples: /llamafile add, /llamafile use, /llamafile show, /llamafile remove
+         /rag new, /rag use, /rag remove
+         /session list, /session show, /session use
+         /route add, /route use, /route remove
+
 ### Common workflows
 
     /read main.go                  — load a file into context

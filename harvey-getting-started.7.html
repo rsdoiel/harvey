@@ -271,6 +271,20 @@ you enter a path to a llamafile before starting.</p>
 inline:</p>
 <pre><code>@phi-mini summarise this function in one sentence</code></pre>
 <p>The conversation history is preserved across the switch.</p>
+<h3 id="command-vocabulary-learn-once-apply-everywhere">Command
+vocabulary — learn once, apply everywhere</h3>
+<p>All Harvey resource commands share eight verbs:</p>
+<p>list — show all registered items add — register an existing resource
+(file path, URL) new — create a fresh internal item (database, skill,
+plan) use — activate an item (picker shown if name omitted) show —
+display item content or details edit — open in $EDITOR remove — delete
+or unregister (picker if name omitted) rename — rename an item</p>
+<p>The key distinction: “add” registers something you already have;
+“new” creates something Harvey manages from scratch. Backend commands
+also support “start”, “stop”, and “status” (connection health).</p>
+<p>Examples: /llamafile add, /llamafile use, /llamafile show, /llamafile
+remove /rag new, /rag use, /rag remove /session list, /session show,
+/session use /route add, /route use, /route remove</p>
 <h3 id="common-workflows">Common workflows</h3>
 <pre><code>/read main.go                  — load a file into context
 /search &quot;TODO&quot;                 — search the workspace

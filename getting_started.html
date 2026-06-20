@@ -1,23 +1,245 @@
 <!DOCTYPE html>
-<html lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-    <title>Harvey</title>
-    <link rel="stylesheet" href="css/site.css">
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>getting_started</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
-<nav>
-<ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">Harvey</a></li>
-    <li><a href="LICENSE">LICENSE</a></li>
-    <li><a href="INSTALL.html">INSTALL</a></li>
-    <li><a href="user_manual.html">User Manual</a></li>
-    <li><a href="about.html">About</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
-</ul>
-</nav>
-<section>
+<header id="title-block-header">
+<h1 class="title">getting_started</h1>
+</header>
 <h1 id="starting-harvey">Starting Harvey</h1>
 <h2 id="what-is-harvey">What is Harvey?</h2>
 <p>harvey is a terminal agent for local language models.</p>
@@ -91,8 +313,8 @@ an up-to-date picture of the project:</p>
 </colgroup>
 <thead>
 <tr>
-<th scope="col">Marker</th>
-<th scope="col">Replaced with</th>
+<th>Marker</th>
+<th>Replaced with</th>
 </tr>
 </thead>
 <tbody>
@@ -195,8 +417,8 @@ time keeps the terminal alive.</p>
 <table>
 <thead>
 <tr>
-<th scope="col">Key</th>
-<th scope="col">Action</th>
+<th>Key</th>
+<th>Action</th>
 </tr>
 </thead>
 <tbody>
@@ -222,8 +444,8 @@ time keeps the terminal alive.</p>
 <table>
 <thead>
 <tr>
-<th scope="col">Key</th>
-<th scope="col">Action</th>
+<th>Key</th>
+<th>Action</th>
 </tr>
 </thead>
 <tbody>
@@ -249,8 +471,8 @@ time keeps the terminal alive.</p>
 </colgroup>
 <thead>
 <tr>
-<th scope="col">Key</th>
-<th scope="col">Action</th>
+<th>Key</th>
+<th>Action</th>
 </tr>
 </thead>
 <tbody>
@@ -271,6 +493,97 @@ longer prompts — you can write, edit, and review the full prompt in your
 preferred editor before sending it. The current line content is
 pre-loaded into the editor so you can also edit a prompt you have
 already started typing.</p>
+<h2 id="command-vocabulary">Command vocabulary</h2>
+<p>Harvey’s resource management commands share a consistent set of
+verbs. Learn them once and you can predict subcommands for any command
+family.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Verb</th>
+<th>Meaning</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list</code></td>
+<td>Show all registered items</td>
+<td>Always available</td>
+</tr>
+<tr>
+<td><code>add</code></td>
+<td>Register an <strong>existing</strong> external resource</td>
+<td>Registering a file path, URL, or endpoint</td>
+</tr>
+<tr>
+<td><code>new</code></td>
+<td>Create a <strong>fresh</strong> internal item</td>
+<td>Creating a database, skill, or plan</td>
+</tr>
+<tr>
+<td><code>use [NAME]</code></td>
+<td>Activate an item; shows a picker when NAME is omitted</td>
+<td>Switching the active model, store, or route</td>
+</tr>
+<tr>
+<td><code>show [NAME]</code></td>
+<td>Display item content or details</td>
+<td>Inspecting what something contains</td>
+</tr>
+<tr>
+<td><code>edit [NAME]</code></td>
+<td>Open an item in <code>$EDITOR</code></td>
+<td>Modifying a profile or skill</td>
+</tr>
+<tr>
+<td><code>remove [NAME]</code></td>
+<td>Delete or unregister an item; picker when NAME is omitted</td>
+<td>Cleaning up</td>
+</tr>
+<tr>
+<td><code>rename OLD NEW</code></td>
+<td>Rename an item</td>
+<td>Renaming a workspace or session</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>Health/connection state of a <em>service</em></td>
+<td>Backend and store health checks</td>
+</tr>
+</tbody>
+</table>
+<p>The key distinction: <strong><code>add</code></strong> registers
+something you already have (a llamafile binary, a route URL);
+<strong><code>new</code></strong> creates something Harvey manages from
+scratch (a RAG database, a skill bundle, a plan). Both verbs are
+distinct from <code>use</code>, which activates something already
+registered.</p>
+<p>For backend services (<code>/llamafile</code>, <code>/ollama</code>),
+<code>status</code> checks whether the server is reachable — it is not
+the same as <code>show</code>, which displays item content.</p>
+<p><strong>Examples across command families:</strong></p>
+<pre><code>/llamafile add ~/Models/Qwen.llamafile   — register an existing file
+/llamafile use qwen-coding               — activate a registered model
+/llamafile show qwen-coding              — show model details
+/llamafile remove qwen-coding            — unregister
+
+/rag new my-docs                         — create a new RAG database
+/rag use my-docs                         — activate it
+/rag remove my-docs                      — delete it
+
+/session list                            — show all recorded sessions
+/session show session.spmd               — show metadata for one session
+/session use session.spmd                — load it into context
+
+/route add pi2 ollama://192.0.2.12       — register a remote endpoint
+/route use pi2                           — set as sticky default
+/route remove pi2                        — unregister</code></pre>
 <h2 id="slash-commands">Slash commands</h2>
 <p>Type <code>/help</code> at any prompt for a live command list. All
 commands begin with <code>/</code>.</p>
@@ -282,8 +595,8 @@ commands begin with <code>/</code>.</p>
 </colgroup>
 <thead>
 <tr>
-<th scope="col">Command</th>
-<th scope="col">Description</th>
+<th>Command</th>
+<th>Description</th>
 </tr>
 </thead>
 <tbody>
@@ -316,8 +629,8 @@ kept)</td>
 </colgroup>
 <thead>
 <tr>
-<th scope="col">Command</th>
-<th scope="col">Description</th>
+<th>Command</th>
+<th>Description</th>
 </tr>
 </thead>
 <tbody>
@@ -495,9 +808,9 @@ Harvey runs on your behalf.</p>
 <p>Shell commands have a configurable timeout (default 5 minutes).
 Ollama queries default to no timeout, which is correct for slow
 hardware. Both are set in <code>agents/harvey.yaml</code>:</p>
-<div class="sourceCode" id="cb12"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">run_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;5m&quot;</span><span class="co">       # or &quot;300s&quot;, &quot;1m30s&quot;, &quot;300&quot;</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ollama_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">      # empty = no timeout (recommended for Ollama on a Pi)</span></span></code></pre></div>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">run_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;5m&quot;</span><span class="co">       # or &quot;300s&quot;, &quot;1m30s&quot;, &quot;300&quot;</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ollama_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">      # empty = no timeout (recommended for Ollama on a Pi)</span></span></code></pre></div>
 <h2 id="code-assistance">Code assistance</h2>
 <h3 id="search-pattern-path"><code>/search PATTERN [PATH]</code></h3>
 <p>Searches workspace files for a regular expression. Results are capped
@@ -525,12 +838,12 @@ blocks</h3>
 <p>When the model produces a fenced code block tagged with a file path,
 Harvey automatically previews the content and prompts you to write it —
 no explicit command needed. Tag the fence line with the target path:</p>
-<div class="sourceCode" id="cb15"><pre
-class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="in">```go harvey/spinner.go</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="in">func (s *Spinner) run() {</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="in">    ...</span></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="in">```go harvey/spinner.go</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="in">func (s *Spinner) run() {</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="in">    ...</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span></code></pre></div>
 <p>Harvey will show a box preview and ask for confirmation:</p>
 <pre><code>  ┌─ Write: harvey/spinner.go ──────────────────────────────────┐
   │  func (s *Spinner) run() {
@@ -584,8 +897,8 @@ conversation history and persists across sessions.</p>
 </colgroup>
 <thead>
 <tr>
-<th scope="col">Command</th>
-<th scope="col">Description</th>
+<th>Command</th>
+<th>Description</th>
 </tr>
 </thead>
 <tbody>
@@ -649,8 +962,8 @@ that Harvey can replay or resume later.</p>
 </colgroup>
 <thead>
 <tr>
-<th scope="col">Command</th>
-<th scope="col">Description</th>
+<th>Command</th>
+<th>Description</th>
 </tr>
 </thead>
 <tbody>
@@ -675,9 +988,9 @@ Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.sp
 harvey &gt; /record stop
 Recording stopped. Session saved to harvey-session-20260415-142300.spmd</code></pre>
 <p>You can also start recording automatically at launch:</p>
-<div class="sourceCode" id="cb21"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record</span>                          <span class="co"># auto-named timestamped file</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.spmd  <span class="co"># explicit path</span></span></code></pre></div>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record</span>                          <span class="co"># auto-named timestamped file</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.spmd  <span class="co"># explicit path</span></span></code></pre></div>
 <h3 id="resuming-or-replaying-a-fountain-file">Resuming or replaying a
 Fountain file</h3>
 <p>There are two ways to use a recorded <code>.spmd</code> file in a
@@ -685,17 +998,17 @@ later session:</p>
 <p><strong>Continue</strong> — loads the Fountain file’s conversation
 history into context and drops you into the interactive REPL, so you can
 pick up exactly where you left off:</p>
-<div class="sourceCode" id="cb22"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> mysession.spmd</span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> mysession.spmd</span></code></pre></div>
 <p>Or from inside a running Harvey session:</p>
 <pre><code>harvey &gt; /session continue mysession.spmd</code></pre>
 <p><strong>Replay</strong> — re-sends every user turn from the Fountain
 file to the currently connected model and records the fresh responses to
 a new file. Useful for re-running a session against a different
 model:</p>
-<div class="sourceCode" id="cb24"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd</span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd <span class="at">--replay-output</span> newresponses.spmd</span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd <span class="at">--replay-output</span> newresponses.spmd</span></code></pre></div>
 <p>Or from inside a running Harvey session:</p>
 <pre><code>harvey &gt; /session replay mysession.spmd
 harvey &gt; /session replay mysession.spmd newresponses.spmd</code></pre>
@@ -706,8 +1019,8 @@ harvey &gt; /session replay mysession.spmd newresponses.spmd</code></pre>
 </colgroup>
 <thead>
 <tr>
-<th scope="col">Startup flag</th>
-<th scope="col">Description</th>
+<th>Startup flag</th>
+<th>Description</th>
 </tr>
 </thead>
 <tbody>
@@ -766,6 +1079,5 @@ harvey &gt; ...discussion about database choice...
 harvey &gt; /kb observe decision Use SQLite with WAL mode; Postgres is overkill for this deployment
 harvey &gt; /kb observe question How do we handle schema migrations across versions?
 harvey &gt; /kb status</code></pre>
-</section>
 </body>
 </html>

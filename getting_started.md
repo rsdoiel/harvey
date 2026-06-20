@@ -199,6 +199,53 @@ write, edit, and review the full prompt in your preferred editor before sending
 it. The current line content is pre-loaded into the editor so you can also edit
 a prompt you have already started typing.
 
+## Command vocabulary
+
+Harvey's resource management commands share a consistent set of verbs. Learn
+them once and you can predict subcommands for any command family.
+
+| Verb | Meaning | When to use |
+|---|---|---|
+| `list` | Show all registered items | Always available |
+| `add` | Register an **existing** external resource | Registering a file path, URL, or endpoint |
+| `new` | Create a **fresh** internal item | Creating a database, skill, or plan |
+| `use [NAME]` | Activate an item; shows a picker when NAME is omitted | Switching the active model, store, or route |
+| `show [NAME]` | Display item content or details | Inspecting what something contains |
+| `edit [NAME]` | Open an item in `$EDITOR` | Modifying a profile or skill |
+| `remove [NAME]` | Delete or unregister an item; picker when NAME is omitted | Cleaning up |
+| `rename OLD NEW` | Rename an item | Renaming a workspace or session |
+| `status` | Health/connection state of a *service* | Backend and store health checks |
+
+The key distinction: **`add`** registers something you already have (a llamafile
+binary, a route URL); **`new`** creates something Harvey manages from scratch
+(a RAG database, a skill bundle, a plan). Both verbs are distinct from `use`,
+which activates something already registered.
+
+For backend services (`/llamafile`, `/ollama`), `status` checks whether the
+server is reachable — it is not the same as `show`, which displays item
+content.
+
+**Examples across command families:**
+
+```
+/llamafile add ~/Models/Qwen.llamafile   — register an existing file
+/llamafile use qwen-coding               — activate a registered model
+/llamafile show qwen-coding              — show model details
+/llamafile remove qwen-coding            — unregister
+
+/rag new my-docs                         — create a new RAG database
+/rag use my-docs                         — activate it
+/rag remove my-docs                      — delete it
+
+/session list                            — show all recorded sessions
+/session show session.spmd               — show metadata for one session
+/session use session.spmd                — load it into context
+
+/route add pi2 ollama://192.0.2.12       — register a remote endpoint
+/route use pi2                           — set as sticky default
+/route remove pi2                        — unregister
+```
+
 ## Slash commands
 
 Type `/help` at any prompt for a live command list. All commands begin with `/`.

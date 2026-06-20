@@ -33,6 +33,31 @@ Harvey is a terminal-based coding agent backed by a local [Ollama](https://ollam
 - **[Command Reference](harvey.1.md)** — Primary man page with all available commands and flags
 - **[Getting Started](getting_started.md)** — Detailed session walkthrough, keyboard shortcuts, and slash commands
 
+#### Command vocabulary
+
+Every Harvey resource command responds to the same eight verbs:
+
+| Verb | Meaning |
+|---|---|
+| `list` | Enumerate all registered items |
+| `add` | Register an existing external resource (file, URL) |
+| `new` | Create a fresh internal item (database, skill, plan) |
+| `use [NAME]` | Activate an item; picker when NAME is omitted |
+| `show [NAME]` | Display item content or details |
+| `edit [NAME]` | Open in `$EDITOR` |
+| `remove [NAME]` | Delete or unregister; picker when NAME is omitted |
+| `rename OLD NEW` | Rename |
+
+Backend service commands additionally support `start`, `stop`, and `status`
+(connection health — distinct from `show` which displays content).
+
+The `add` vs `new` distinction: `add` registers something you already have;
+`new` creates something Harvey manages from scratch.
+
+Learning this vocabulary for one command teaches you all the others:
+`/llamafile`, `/rag`, `/route`, `/session`, `/skill`, `/skill-set`, and
+`/memory profile` all follow the same pattern.
+
 ### Security Features
 
 - **[Security Guide](SECURITY.md)** — Safe mode, command allowlists, workspace permissions, audit logging, and threat model

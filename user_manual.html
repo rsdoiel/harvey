@@ -219,6 +219,60 @@ Primary man page with all available commands and flags</li>
 — Detailed session walkthrough, keyboard shortcuts, and slash
 commands</li>
 </ul>
+<h4 id="command-vocabulary">Command vocabulary</h4>
+<p>Every Harvey resource command responds to the same eight verbs:</p>
+<table>
+<thead>
+<tr>
+<th>Verb</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list</code></td>
+<td>Enumerate all registered items</td>
+</tr>
+<tr>
+<td><code>add</code></td>
+<td>Register an existing external resource (file, URL)</td>
+</tr>
+<tr>
+<td><code>new</code></td>
+<td>Create a fresh internal item (database, skill, plan)</td>
+</tr>
+<tr>
+<td><code>use [NAME]</code></td>
+<td>Activate an item; picker when NAME is omitted</td>
+</tr>
+<tr>
+<td><code>show [NAME]</code></td>
+<td>Display item content or details</td>
+</tr>
+<tr>
+<td><code>edit [NAME]</code></td>
+<td>Open in <code>$EDITOR</code></td>
+</tr>
+<tr>
+<td><code>remove [NAME]</code></td>
+<td>Delete or unregister; picker when NAME is omitted</td>
+</tr>
+<tr>
+<td><code>rename OLD NEW</code></td>
+<td>Rename</td>
+</tr>
+</tbody>
+</table>
+<p>Backend service commands additionally support <code>start</code>,
+<code>stop</code>, and <code>status</code> (connection health — distinct
+from <code>show</code> which displays content).</p>
+<p>The <code>add</code> vs <code>new</code> distinction:
+<code>add</code> registers something you already have; <code>new</code>
+creates something Harvey manages from scratch.</p>
+<p>Learning this vocabulary for one command teaches you all the others:
+<code>/llamafile</code>, <code>/rag</code>, <code>/route</code>,
+<code>/session</code>, <code>/skill</code>, <code>/skill-set</code>, and
+<code>/memory profile</code> all follow the same pattern.</p>
 <h3 id="security-features">Security Features</h3>
 <ul>
 <li><strong><a href="SECURITY.html">Security Guide</a></strong> — Safe
