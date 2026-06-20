@@ -10,11 +10,14 @@ See [man page](harvey.1.md)
 How it starts:
 
 Harvey looks for HARVEY.md in the workspace root and uses it as a system
-prompt. It then connects to a local Ollama server and starts an interactive
-chat session.
+prompt. It then connects to a local model — either a llamafile executable
+or an Ollama server — and starts an interactive chat session.
 
-> **Note:** Harvey focuses on local models via Ollama. It can route requests
-> to a remote Ollama server instances
+> **Tip:** The easiest way to get started is to download a llamafile from the
+> [Mozilla AI pre-built llamafiles page](https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles),
+> place it in `~/Models/`, and run `harvey`. Harvey will find and connect to
+> it automatically. See [Llamafile Commands](harvey-llamafile.7.md) for details.
+> Ollama is also supported as an alternative backend.
 
 All file I/O is constrained to the workspace.
 A knowledge base is stored at `<workspace>/agents/knowledge.db` and is
@@ -33,8 +36,14 @@ created automatically on first run. Session recordings are stored in
 # Change to project directory
 cd $HOME/myproject
 
-# Start in the workspace (current directory), auto-select Ollama model
+# Start Harvey — auto-detects llamafile or Ollama
 harvey
+
+# Use a specific llamafile for this session (not persisted)
+harvey --llamafile ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
+
+# Use a specific Ollama model
+harvey --model qwen2.5-coder:7b
 ```
 
 ## Startup sequence
@@ -49,9 +58,13 @@ When Harvey starts it:
    used is pre-selected in the next step.
 5. Reads `HARVEY.md` from the workspace root, expands any
    [dynamic markers](#dynamic-markers), and injects it as the system prompt.
-6. Probes Ollama; if reachable, selects the model from the resumed session or
-   lets you choose from the installed list.
-7. If Ollama is unreachable, offers to start `ollama serve` then retries.
+6. Detects available model backends: scans `~/Models/` (or the configured
+   `llamafile.models_dir`) for registered llamafile executables and probes
+   the Ollama server. Llamafile models are offered first; Ollama models follow.
+7. Selects the model — from the resumed session, from `--llamafile` or
+   `--model` flags, or via an interactive picker.
+8. If no model is reachable, prints the first-run guide with download
+   instructions and exits.
 9. Begins recording the session to a new `.spmd` file in `agents/sessions/`.
 10. Drops you into the REPL prompt: `harvey > `
 
@@ -106,20 +119,19 @@ Today: <!-- @date -->
 ## Session walkthrough
 
 ~~~markdown
-$ harvey -m llama3:latest
+$ harvey
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Harvey  0.0.0
+  Harvey  0.0.14
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ Workspace: /home/user/myproject
 ✓ Knowledge base: agents/knowledge.db
 ✓ Loaded HARVEY.md as system prompt
 
-  Checking Ollama at http://localhost:11434...
-  ✓ Ollama is running
-  Using model: llama3:latest
+  Starting qwen-coding (llamafile)...
+  ✓ Ready at http://localhost:8080
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Connected: Ollama (llama3:latest)
+  Connected: llamafile (qwen-coding)
   /help for commands · /exit to quit
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -261,25 +273,47 @@ Type `/help` at any prompt for a live command list. All commands begin with `/`.
 
 ## Backend commands
 
-**Ollama**
+**Llamafile (primary)**
 
 | Command | Description |
 |---|---|
-| `/ollama start` | Launch `ollama serve` in the background |
+| `/llamafile add [PATH] [NAME]` | Register a llamafile and connect to it; picker shown when PATH is omitted |
+| `/llamafile use [NAME]` | Switch to a registered llamafile; picker shown when NAME is omitted |
+| `/llamafile show [NAME]` | Show path, size, and context length for a model |
+| `/llamafile list` | List all registered models; active model marked with `→` |
+| `/llamafile start [NAME]` | Start the active (or named) model's server |
+| `/llamafile status` | Show active model, API URL, and reachability |
+| `/llamafile remove NAME` | Unregister a model (binary not deleted) |
+| `/llamafile download` | Print a table of recommended models with download URLs |
+
+See [Llamafile Commands](harvey-llamafile.7.md) for full reference.
+
+**Unified model management**
+
+| Command | Description |
+|---|---|
+| `/model list` | List all models across llamafile and Ollama |
+| `/model use NAME` | Switch to a named model regardless of backend |
+| `/model show [NAME]` | Show the active (or named) model details |
+| `/model status` | Check whether the active backend is reachable |
+| `/model alias add ALIAS FULLNAME` | Define a short alias for a long model name |
+| `/model alias list` | List all defined aliases |
+
+**Ollama (alternative)**
+
+| Command | Description |
+|---|---|
+| `/ollama start [debug]` | Launch `ollama serve` in the background |
 | `/ollama stop` | Print a reminder to use your system's service manager |
 | `/ollama status` | Check whether Ollama is reachable |
 | `/ollama list` | List installed models; the current model is marked with `*` |
-| `/ollama ps` | Show which models are currently loaded in memory |
-| `/ollama run MODEL [PROMPT]` | Start an interactive Ollama session (passes through the terminal) |
 | `/ollama pull MODEL` | Download a model from the Ollama registry |
-| `/ollama push MODEL` | Upload a model to the Ollama registry |
-| `/ollama show MODEL` | Display a model's Modelfile and parameters |
-| `/ollama create NAME [-f MODELFILE]` | Create a new model from a Modelfile |
-| `/ollama cp SOURCE DEST` | Copy an installed model to a new name |
-| `/ollama rm MODEL [MODEL...]` | Remove one or more installed models |
 | `/ollama use MODEL` | Switch to a different installed model mid-session |
+| `/ollama probe [MODEL]` | Test and cache capability flags for a model |
 | `/ollama logs` | Tail the Ollama service log |
 | `/ollama env` | Show Ollama environment variables as seen by Harvey |
+
+See [Ollama Commands](harvey-ollama.7.md) for full reference.
 
 ## File operations
 
@@ -418,13 +452,16 @@ never visible to commands Harvey runs on your behalf.
 
 ### Configurable timeouts
 
-Shell commands have a configurable timeout (default 5 minutes). Ollama queries
-default to no timeout, which is correct for slow hardware. Both are set in
-`agents/harvey.yaml`:
+Shell commands have a configurable timeout (default 5 minutes). Model query
+timeouts default to no limit, which is appropriate for slow hardware. Settings
+live in `agents/harvey.yaml`:
 
 ```yaml
-run_timeout: "5m"       # or "300s", "1m30s", "300"
-ollama_timeout: ""      # empty = no timeout (recommended for Ollama on a Pi)
+run_timeout: "5m"             # timeout for ! and /run commands
+ollama_timeout: ""            # empty = no timeout (recommended on a Pi)
+
+llamafile:
+  startup_timeout: 120s       # how long to wait for llamafile server ready
 ```
 
 ## Code assistance
