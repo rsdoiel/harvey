@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -452,5 +453,95 @@ func TestCmdLlamafileShow_noActive(t *testing.T) {
 	// Should indicate nothing is active rather than panicking.
 	if !strings.Contains(out, "No active") && !strings.Contains(out, "no active") && !strings.Contains(out, "none") {
 		t.Errorf("expected no-active message, got: %s", out)
+	}
+}
+
+// ─── startAndUseLlamafile — stale server adoption ────────────────────────────
+
+// fakeLlamafileServer starts an httptest server that answers /v1/models with
+// the given model name. Returns the server and its URL.
+func fakeLlamafileServer(t *testing.T, modelName string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"data":[{"id":%q}],"object":"list"}`, modelName)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+}
+
+func TestStartAndUseLlamafile_staleServerSameModel(t *testing.T) {
+	srv := fakeLlamafileServer(t, "qwen-coding")
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileURL = srv.URL
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	a := NewAgent(cfg, ws)
+
+	var buf strings.Builder
+	entry := &a.Config.LlamafileModels[0]
+	_ = a.startAndUseLlamafile(entry, &buf)
+
+	out := buf.String()
+	// Server matched — should show a connection-feedback line, not a mismatch warning.
+	if strings.Contains(out, "not") && strings.Contains(out, "configured") {
+		t.Errorf("unexpected mismatch warning for matching model: %s", out)
+	}
+	if a.Client == nil {
+		t.Error("expected Client to be set after stale-server adoption")
+	}
+}
+
+func TestStartAndUseLlamafile_staleServerDifferentModel(t *testing.T) {
+	// Server is running "phi-mini" but we asked for "qwen-coding".
+	srv := fakeLlamafileServer(t, "phi-mini")
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileURL = srv.URL
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	a := NewAgent(cfg, ws)
+
+	var buf strings.Builder
+	entry := &a.Config.LlamafileModels[0]
+	_ = a.startAndUseLlamafile(entry, &buf)
+
+	out := buf.String()
+	// Should warn that the running model differs from the expected one.
+	if !strings.Contains(out, "phi-mini") {
+		t.Errorf("expected detected model name 'phi-mini' in output, got: %s", out)
+	}
+	// Client should still be set (we adopt the running model).
+	if a.Client == nil {
+		t.Error("expected Client to be set even when detected model differs")
+	}
+}
+
+// ─── selectBackend — connection feedback format ───────────────────────────────
+
+func TestSelectBackend_connectionFeedbackFormat(t *testing.T) {
+	// Start a fake llamafile server so ProbeLlamafile returns true.
+	srv := fakeLlamafileServer(t, "qwen-coding")
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileURL = srv.URL
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	cfg.LlamafileActive = "qwen-coding"
+	a := NewAgent(cfg, ws)
+
+	var buf strings.Builder
+	_ = a.selectBackend(newTestBufioReader(""), &buf, "")
+
+	out := buf.String()
+	// Should show "Connecting to" feedback rather than the old "Checking llamafile".
+	if !strings.Contains(out, "Connecting to") {
+		t.Errorf("expected 'Connecting to' in startup feedback, got: %s", out)
 	}
 }

@@ -1467,20 +1467,20 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 	// Case 1: Active llamafile configured — probe it, offer to start if down.
 	if entry := a.Config.ActiveLlamafileEntry(); entry != nil {
 		absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-		fmt.Fprintf(out, "\n  Checking llamafile (%s) at %s...\n", entry.Name, a.Config.LlamafileURL)
+		fmt.Fprintf(out, "\n  Connecting to %s (llamafile)…", entry.Name)
 		if ProbeLlamafile(a.Config.LlamafileURL) {
-			fmt.Fprintln(out, green("  ✓")+" Llamafile is running")
+			fmt.Fprintln(out, " "+green("✓"))
 			return a.useLlamafileEntry(entry.Name, out)
 		}
-		fmt.Fprintf(out, yellow("  ✗")+" Llamafile (%s) is not running\n", entry.Name)
+		fmt.Fprintln(out, " "+yellow("✗")+" not running")
 		if askYesNo(reader, out, fmt.Sprintf("    Start %s now? [Y/n] ", entry.Name), true) {
-			fmt.Fprintln(out, "  Starting llamafile...")
+			fmt.Fprintf(out, "  Connecting to %s (llamafile)…\n", entry.Name)
 			proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
 			if err != nil {
-				fmt.Fprintf(out, red("  Failed: ")+"%v\n", err)
+				fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
 			} else {
 				a.llamafileProc = proc
-				fmt.Fprintln(out, green("  ✓")+" Llamafile started")
+				fmt.Fprintf(out, "  %s Ready\n", green("✓"))
 				return a.useLlamafileEntry(entry.Name, out)
 			}
 		}
@@ -1630,22 +1630,35 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 }
 
 // startAndUseLlamafile starts the llamafile server for entry (if not already
-// running) and wires it as the active client. On start failure the error is
-// printed and a non-nil error is returned so the caller can react.
+// running) and wires it as the active client. When a server is already running
+// at LlamafileURL but was not started by Harvey, it probes /v1/models to
+// identify the actual model and adopts it — using the detected name rather
+// than entry.Name when they differ. On start failure the error is printed and
+// returned.
 func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error {
 	if ProbeLlamafile(a.Config.LlamafileURL) {
-		fmt.Fprintf(out, "  Using running llamafile at %s\n", a.Config.LlamafileURL)
-		return a.useLlamafileEntry(entry.Name, out)
+		// A server is already running — probe which model it is actually serving.
+		detectedName := probeRunningLlamafileName(a.Config.LlamafileURL)
+		useName := entry.Name
+		if detectedName != "" && !strings.EqualFold(detectedName, entry.Name) {
+			fmt.Fprintf(out, "  Server at %s is serving %q (configured: %q) — adopting detected model.\n",
+				a.Config.LlamafileURL, detectedName, entry.Name)
+			useName = detectedName
+		} else {
+			fmt.Fprintf(out, "  Connecting to %s (llamafile)… %s\n", useName, green("✓"))
+		}
+		return a.useLlamafileEntry(useName, out)
 	}
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-	fmt.Fprintf(out, "  Starting %s...\n", entry.Name)
+	fmt.Fprintf(out, "  Connecting to %s (llamafile)…\n", entry.Name)
 	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
 	if err != nil {
-		fmt.Fprintf(out, red("  Failed: ")+"%v\n", err)
+		fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
 		return err
 	}
 	a.stopLlamafileProc()
 	a.llamafileProc = proc
+	fmt.Fprintf(out, "  %s Ready\n", green("✓"))
 	return a.useLlamafileEntry(entry.Name, out)
 }
 
