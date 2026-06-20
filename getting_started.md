@@ -3,15 +3,18 @@
 
 ## What is Harvey?
 
-harvey is a terminal agent for local language models.
+Harvey is a tool for scholarly work using natural language programming.
 
 See [man page](harvey.1.md)
 
 How it starts:
 
 Harvey looks for HARVEY.md in the workspace root and uses it as a system
-prompt. It then connects to a local model — either a llamafile executable
-or an Ollama server — and starts an interactive chat session.
+prompt. It then connects to a local language model system — either a llamafile
+executable or an Ollama server — and opens an interactive natural language
+programming session. Language model systems are commonly called "AI models"
+or "AI"; Harvey treats them as a programmable interface for deliberate,
+documented work.
 
 > **Tip:** The easiest way to get started is to download a llamafile from the
 > [Mozilla AI pre-built llamafiles page](https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles),
@@ -71,7 +74,7 @@ When Harvey starts it:
 ## The HARVEY.md system prompt
 
 Harvey looks for `HARVEY.md` in the directory where it is launched and uses
-its contents as the LLM system prompt for the whole session. This is the
+its contents as the system prompt for the whole session. This is the
 primary way to give the model persistent context about your project.
 
 A minimal `HARVEY.md`:
@@ -527,8 +530,8 @@ remaining files without further prompts, or `q` to cancel.
 
 ### `/summarize`
 
-Asks the connected LLM to condense the current conversation into a single
-paragraph, then replaces the full history with that summary. Use this when
+Asks the connected language model to condense the current conversation into a
+single paragraph, then replaces the full history with that summary. Use this when
 a long session is approaching the model's context window.
 
 ```

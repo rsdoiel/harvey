@@ -12,21 +12,21 @@ harvey [OPTIONS]
 
 # DESCRIPTION
 
-harvey is a terminal agent for local large language models. It was
-inspired by Claude Code but focused on working with small language models
-in small computer environments like a Raspberry Pi computer. The
-inspiration was to run an agent locally. harvey supports running models
-via llamafile (self-contained model executables from Mozilla) and via
-Ollama. It can run larger models on more capable computers too. harvey
-can be compiled to run on any system that is supported by the Go
-programming language. The project distributes executable versions that are
-suitable to run under Linux, macOS and Windows for x86_64 and aarch64
-computers.
+harvey is a tool for scholarly work using natural language programming.
+It was inspired by Claude Code but designed for local language model systems
+running on small computers like a Raspberry Pi. Language model systems are
+commonly called "AI models" or "AI"; harvey treats them as a programmable
+interface for deliberate, documented work. harvey supports language model
+systems via llamafile (self-contained executables from Mozilla) and Ollama,
+and scales from resource-constrained hardware to more capable computers.
+harvey can be compiled to run on any system supported by Go. The project
+distributes executables for Linux, macOS, and Windows on x86_64 and aarch64.
 
 harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It then connects to a llamafile or Ollama server and starts
-an interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
-Mistral, OpenAI) can be added as named routes via /route add.
+system prompt. It connects to a local language model system — llamafile or
+Ollama — and opens an interactive natural language programming session.
+Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI) can be
+added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
 A knowledge base is stored at <workdir>/agents/knowledge.db and is created

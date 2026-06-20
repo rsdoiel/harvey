@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -9,10 +9,10 @@ BUILT-IN TOOLS — tools Harvey exposes to capable LLM models
 # DESCRIPTION
 
 Harvey registers a set of built-in tools that are made available to
-models with structured tool-calling support. The model may invoke these
-tools during a conversation turn; Harvey executes them and returns results
-before the next LLM call. All file operations are constrained to the
-workspace root; paths outside the workspace are rejected.
+language models with structured tool-calling support. The model may invoke
+these tools during a conversation turn; Harvey executes them and returns
+results before the next model call. All file operations are constrained to
+the workspace root; paths outside the workspace are rejected.
 
 Workspace permissions (/permissions) and Safe Mode (/safemode) apply
 where noted below.

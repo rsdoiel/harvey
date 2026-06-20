@@ -24,11 +24,18 @@
 <p>See <a href="harvey.1.html">man page</a></p>
 <p>How it starts:</p>
 <p>Harvey looks for HARVEY.md in the workspace root and uses it as a
-system prompt. It then connects to a local Ollama server and starts an
-interactive chat session.</p>
+system prompt. It then connects to a local model — either a llamafile
+executable or an Ollama server — and starts an interactive chat
+session.</p>
 <blockquote>
-<p><strong>Note:</strong> Harvey focuses on local models via Ollama. It
-can route requests to a remote Ollama server instances</p>
+<p><strong>Tip:</strong> The easiest way to get started is to download a
+llamafile from the <a
+href="https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles">Mozilla
+AI pre-built llamafiles page</a>, place it in <code>~/Models/</code>,
+and run <code>harvey</code>. Harvey will find and connect to it
+automatically. See <a href="harvey-llamafile.7.html">Llamafile
+Commands</a> for details. Ollama is also supported as an alternative
+backend.</p>
 </blockquote>
 <p>All file I/O is constrained to the workspace. A knowledge base is
 stored at <code>&lt;workspace&gt;/agents/knowledge.db</code> and is
@@ -46,8 +53,14 @@ overridden in <code>&lt;workspace&gt;/agents/harvey.yaml</code>.</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Change to project directory</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> <span class="va">$HOME</span>/myproject</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start in the workspace (current directory), auto-select Ollama model</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span></code></pre></div>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start Harvey — auto-detects llamafile or Ollama</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Use a specific llamafile for this session (not persisted)</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--llamafile</span> ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Use a specific Ollama model</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--model</span> qwen2.5-coder:7b</span></code></pre></div>
 <h2 id="startup-sequence">Startup sequence</h2>
 <p>When Harvey starts it:</p>
 <ol type="1">
@@ -62,10 +75,15 @@ chosen, the model it used is pre-selected in the next step.</li>
 <li>Reads <code>HARVEY.md</code> from the workspace root, expands any <a
 href="#dynamic-markers">dynamic markers</a>, and injects it as the
 system prompt.</li>
-<li>Probes Ollama; if reachable, selects the model from the resumed
-session or lets you choose from the installed list.</li>
-<li>If Ollama is unreachable, offers to start <code>ollama serve</code>
-then retries.</li>
+<li>Detects available model backends: scans <code>~/Models/</code> (or
+the configured <code>llamafile.models_dir</code>) for registered
+llamafile executables and probes the Ollama server. Llamafile models are
+offered first; Ollama models follow.</li>
+<li>Selects the model — from the resumed session, from
+<code>--llamafile</code> or <code>--model</code> flags, or via an
+interactive picker.</li>
+<li>If no model is reachable, prints the first-run guide with download
+instructions and exits.</li>
 <li>Begins recording the session to a new <code>.spmd</code> file in
 <code>agents/sessions/</code>.</li>
 <li>Drops you into the REPL prompt: <code>harvey &gt;</code></li>
@@ -131,60 +149,59 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb3-1"><
 <span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use <span class="in">`t.TempDir()`</span> in tests; no global state.</span></code></pre></div>
 <h2 id="session-walkthrough">Session walkthrough</h2>
 <div class="sourceCode" id="cb4"><pre
-class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>$ harvey -m llama3:latest</span>
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>$ harvey</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  Harvey  0.0.0</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  Harvey  0.0.14</span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>✓ Workspace: /home/user/myproject</span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>✓ Knowledge base: agents/knowledge.db</span>
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>✓ Loaded HARVEY.md as system prompt</span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  Checking Ollama at http://localhost:11434...</span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>  ✓ Ollama is running</span>
-<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>  Using model: llama3:latest</span>
-<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
-<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>  Connected: Ollama (llama3:latest)</span>
-<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>  /help for commands · /exit to quit</span>
-<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
-<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>harvey &gt; /read internal/parser/parser.go</span>
-<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>  ✓ internal/parser/parser.go (3241 bytes)</span>
-<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>  1 file(s) added to context.</span>
-<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>harvey &gt; The ParseExpr function panics on empty input. Can you fix it?</span>
-<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>⠹ The Jumblies have gone to sea in a sieve... <span class="co">[</span><span class="ot">4s / ~11s</span><span class="co">]</span></span>
-<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>Here is the corrected function:</span>
-<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a><span class="in">```go internal/parser/parser.go</span></span>
-<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a><span class="in">func ParseExpr(src string) (Expr, error) {</span></span>
-<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a><span class="in">    if src == &quot;&quot; {</span></span>
-<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a><span class="in">        return nil, fmt.Errorf(&quot;parseExpr: empty input&quot;)</span></span>
-<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a><span class="in">    }</span></span>
-<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a><span class="in">    // ... rest of function</span></span>
-<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
-<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a>  26 prompt + 58 reply tokens · 11.2s · 5.2 tok/s</span>
-<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a>  ┌─ Write: internal/parser/parser.go ─────────────────────────┐</span>
-<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a>  │  func ParseExpr(src string) (Expr, error) {</span>
-<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a>  │      if src == &quot;&quot; {</span>
-<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a>  │          return nil, fmt.Errorf(&quot;parseExpr: empty input&quot;)</span>
-<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>  │      }</span>
-<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a>  │      // ... rest of function</span>
-<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a>  │  }</span>
-<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a>  └──────────────────────────────────────────────────────────────┘</span>
-<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>  <span class="co">[</span><span class="ot">y</span><span class="co">]</span>es  <span class="co">[</span><span class="ot">n</span><span class="co">]</span>o  <span class="co">[</span><span class="ot">A</span><span class="co">]</span>ll  <span class="co">[</span><span class="ot">q</span><span class="co">]</span>uit &gt; y</span>
-<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a>  ✓ wrote internal/parser/parser.go (847 bytes)</span>
-<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a>harvey &gt; /run go test ./internal/parser/...</span>
-<span id="cb4-50"><a href="#cb4-50" aria-hidden="true" tabindex="-1"></a>  $ go test ./internal/parser/...</span>
-<span id="cb4-51"><a href="#cb4-51" aria-hidden="true" tabindex="-1"></a>  312 bytes of output added to context.</span>
-<span id="cb4-52"><a href="#cb4-52" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-53"><a href="#cb4-53" aria-hidden="true" tabindex="-1"></a>harvey &gt; All tests pass now. /bye</span>
-<span id="cb4-54"><a href="#cb4-54" aria-hidden="true" tabindex="-1"></a>Goodbye.</span></code></pre></div>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  Starting qwen-coding (llamafile)...</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>  ✓ Ready at http://localhost:8080</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>  Connected: llamafile (qwen-coding)</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>  /help for commands · /exit to quit</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>harvey &gt; /read internal/parser/parser.go</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>  ✓ internal/parser/parser.go (3241 bytes)</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>  1 file(s) added to context.</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>harvey &gt; The ParseExpr function panics on empty input. Can you fix it?</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>⠹ The Jumblies have gone to sea in a sieve... <span class="co">[</span><span class="ot">4s / ~11s</span><span class="co">]</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>Here is the corrected function:</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a><span class="in">```go internal/parser/parser.go</span></span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a><span class="in">func ParseExpr(src string) (Expr, error) {</span></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a><span class="in">    if src == &quot;&quot; {</span></span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a><span class="in">        return nil, fmt.Errorf(&quot;parseExpr: empty input&quot;)</span></span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a><span class="in">    }</span></span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a><span class="in">    // ... rest of function</span></span>
+<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a><span class="in">}</span></span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a>  26 prompt + 58 reply tokens · 11.2s · 5.2 tok/s</span>
+<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a>  ┌─ Write: internal/parser/parser.go ─────────────────────────┐</span>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a>  │  func ParseExpr(src string) (Expr, error) {</span>
+<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a>  │      if src == &quot;&quot; {</span>
+<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a>  │          return nil, fmt.Errorf(&quot;parseExpr: empty input&quot;)</span>
+<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a>  │      }</span>
+<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>  │      // ... rest of function</span>
+<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a>  │  }</span>
+<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a>  └──────────────────────────────────────────────────────────────┘</span>
+<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a>  <span class="co">[</span><span class="ot">y</span><span class="co">]</span>es  <span class="co">[</span><span class="ot">n</span><span class="co">]</span>o  <span class="co">[</span><span class="ot">A</span><span class="co">]</span>ll  <span class="co">[</span><span class="ot">q</span><span class="co">]</span>uit &gt; y</span>
+<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>  ✓ wrote internal/parser/parser.go (847 bytes)</span>
+<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a>harvey &gt; /run go test ./internal/parser/...</span>
+<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a>  $ go test ./internal/parser/...</span>
+<span id="cb4-50"><a href="#cb4-50" aria-hidden="true" tabindex="-1"></a>  312 bytes of output added to context.</span>
+<span id="cb4-51"><a href="#cb4-51" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-52"><a href="#cb4-52" aria-hidden="true" tabindex="-1"></a>harvey &gt; All tests pass now. /bye</span>
+<span id="cb4-53"><a href="#cb4-53" aria-hidden="true" tabindex="-1"></a>Goodbye.</span></code></pre></div>
 <p>After each assistant response Harvey prints a stats line showing
 prompt tokens, reply tokens, elapsed time, and generation speed. While
 the model is thinking, an animated spinner with an estimated completion
@@ -399,7 +416,7 @@ kept)</td>
 </tbody>
 </table>
 <h2 id="backend-commands">Backend commands</h2>
-<p><strong>Ollama</strong></p>
+<p><strong>Llamafile (primary)</strong></p>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -413,7 +430,98 @@ kept)</td>
 </thead>
 <tbody>
 <tr>
-<td><code>/ollama start</code></td>
+<td><code>/llamafile add [PATH] [NAME]</code></td>
+<td>Register a llamafile and connect to it; picker shown when PATH is
+omitted</td>
+</tr>
+<tr>
+<td><code>/llamafile use [NAME]</code></td>
+<td>Switch to a registered llamafile; picker shown when NAME is
+omitted</td>
+</tr>
+<tr>
+<td><code>/llamafile show [NAME]</code></td>
+<td>Show path, size, and context length for a model</td>
+</tr>
+<tr>
+<td><code>/llamafile list</code></td>
+<td>List all registered models; active model marked with
+<code>→</code></td>
+</tr>
+<tr>
+<td><code>/llamafile start [NAME]</code></td>
+<td>Start the active (or named) model’s server</td>
+</tr>
+<tr>
+<td><code>/llamafile status</code></td>
+<td>Show active model, API URL, and reachability</td>
+</tr>
+<tr>
+<td><code>/llamafile remove NAME</code></td>
+<td>Unregister a model (binary not deleted)</td>
+</tr>
+<tr>
+<td><code>/llamafile download</code></td>
+<td>Print a table of recommended models with download URLs</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="harvey-llamafile.7.html">Llamafile Commands</a> for full
+reference.</p>
+<p><strong>Unified model management</strong></p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/model list</code></td>
+<td>List all models across llamafile and Ollama</td>
+</tr>
+<tr>
+<td><code>/model use NAME</code></td>
+<td>Switch to a named model regardless of backend</td>
+</tr>
+<tr>
+<td><code>/model show [NAME]</code></td>
+<td>Show the active (or named) model details</td>
+</tr>
+<tr>
+<td><code>/model status</code></td>
+<td>Check whether the active backend is reachable</td>
+</tr>
+<tr>
+<td><code>/model alias add ALIAS FULLNAME</code></td>
+<td>Define a short alias for a long model name</td>
+</tr>
+<tr>
+<td><code>/model alias list</code></td>
+<td>List all defined aliases</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Ollama (alternative)</strong></p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/ollama start [debug]</code></td>
 <td>Launch <code>ollama serve</code> in the background</td>
 </tr>
 <tr>
@@ -430,41 +538,16 @@ kept)</td>
 <code>*</code></td>
 </tr>
 <tr>
-<td><code>/ollama ps</code></td>
-<td>Show which models are currently loaded in memory</td>
-</tr>
-<tr>
-<td><code>/ollama run MODEL [PROMPT]</code></td>
-<td>Start an interactive Ollama session (passes through the
-terminal)</td>
-</tr>
-<tr>
 <td><code>/ollama pull MODEL</code></td>
 <td>Download a model from the Ollama registry</td>
 </tr>
 <tr>
-<td><code>/ollama push MODEL</code></td>
-<td>Upload a model to the Ollama registry</td>
-</tr>
-<tr>
-<td><code>/ollama show MODEL</code></td>
-<td>Display a model’s Modelfile and parameters</td>
-</tr>
-<tr>
-<td><code>/ollama create NAME [-f MODELFILE]</code></td>
-<td>Create a new model from a Modelfile</td>
-</tr>
-<tr>
-<td><code>/ollama cp SOURCE DEST</code></td>
-<td>Copy an installed model to a new name</td>
-</tr>
-<tr>
-<td><code>/ollama rm MODEL [MODEL...]</code></td>
-<td>Remove one or more installed models</td>
-</tr>
-<tr>
 <td><code>/ollama use MODEL</code></td>
 <td>Switch to a different installed model mid-session</td>
+</tr>
+<tr>
+<td><code>/ollama probe [MODEL]</code></td>
+<td>Test and cache capability flags for a model</td>
 </tr>
 <tr>
 <td><code>/ollama logs</code></td>
@@ -476,6 +559,8 @@ terminal)</td>
 </tr>
 </tbody>
 </table>
+<p>See <a href="harvey-ollama.7.html">Ollama Commands</a> for full
+reference.</p>
 <h2 id="file-operations">File operations</h2>
 <p>These commands move information between the workspace and the
 conversation.</p>
@@ -583,12 +668,15 @@ stripped from the environment of every child process started by
 <code>!</code> or <code>/run</code>. They are never visible to commands
 Harvey runs on your behalf.</p>
 <h3 id="configurable-timeouts">Configurable timeouts</h3>
-<p>Shell commands have a configurable timeout (default 5 minutes).
-Ollama queries default to no timeout, which is correct for slow
-hardware. Both are set in <code>agents/harvey.yaml</code>:</p>
+<p>Shell commands have a configurable timeout (default 5 minutes). Model
+query timeouts default to no limit, which is appropriate for slow
+hardware. Settings live in <code>agents/harvey.yaml</code>:</p>
 <div class="sourceCode" id="cb13"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">run_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;5m&quot;</span><span class="co">       # or &quot;300s&quot;, &quot;1m30s&quot;, &quot;300&quot;</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ollama_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">      # empty = no timeout (recommended for Ollama on a Pi)</span></span></code></pre></div>
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">run_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;5m&quot;</span><span class="co">             # timeout for ! and /run commands</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ollama_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">            # empty = no timeout (recommended on a Pi)</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="fu">llamafile</span><span class="kw">:</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">startup_timeout</span><span class="kw">:</span><span class="at"> 120s</span><span class="co">       # how long to wait for llamafile server ready</span></span></code></pre></div>
 <h2 id="code-assistance">Code assistance</h2>
 <h3 id="search-pattern-path"><code>/search PATTERN [PATH]</code></h3>
 <p>Searches workspace files for a regular expression. Results are capped

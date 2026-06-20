@@ -2,7 +2,7 @@
 
 ![Harvey, a six foot six invisible rabbit](media/harvey.svg "project mascot, a Púca")
 
-Harvey is a terminal-based coding agent for local large language models. It runs models via [llamafile](https://github.com/mozilla-ai/llamafile) (self-contained model executables that need no server installation) or a local [Ollama](https://ollama.com) server, and can route individual prompts to cloud providers via named routes. It provides an interactive REPL where you chat with a large language model while also reading files, running commands, searching code, and applying suggested changes, all sandboxed to a single workspace directory.
+Harvey is a tool for scholarly work via natural language programming. It provides an interactive REPL backed by a local language model system — running via [llamafile](https://github.com/mozilla-ai/llamafile) or [Ollama](https://ollama.com) — where you direct the model to read files, run commands, search code, and apply changes inside a sandboxed workspace. Individual prompts can be routed to cloud providers via named routes. Language model systems are commonly called "AI models" or "AI"; Harvey treats them as a programmable interface for deliberate, documented work rather than a chat assistant.
 
 ---
 

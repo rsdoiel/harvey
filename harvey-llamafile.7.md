@@ -17,7 +17,7 @@ self-contained executable that bundles a GGUF model and an HTTP inference
 server into a single file — no separate server installation required.
 
 Llamafile is a project by Mozilla that makes it easy to distribute and run
-local LLMs on any platform. Learn more at:
+local language models on any platform. Learn more at:
   <https://github.com/mozilla-ai/llamafile>
 
 Harvey assumes models are stored in $HOME/Models by default. Place

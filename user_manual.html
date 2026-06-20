@@ -25,12 +25,15 @@ alt="Harvey, a six foot six invisible rabbit" />
 <figcaption aria-hidden="true">Harvey, a six foot six invisible
 rabbit</figcaption>
 </figure>
-<p>Harvey is a terminal-based coding agent backed by a local <a
-href="https://ollama.com">Ollama</a> server (or any provider supported
-by <code>mozilla-ai/any-llm-go</code>). It provides an interactive REPL
-where you chat with a large language model while also reading files,
-running commands, searching code, and applying suggested changes, all
-sandboxed to a single workspace directory.</p>
+<p>Harvey is a terminal-based coding agent for local large language
+models. It runs models via <a
+href="https://github.com/mozilla-ai/llamafile">llamafile</a>
+(self-contained model executables that need no server installation) or a
+local <a href="https://ollama.com">Ollama</a> server, and can route
+individual prompts to cloud providers via named routes. It provides an
+interactive REPL where you chat with a large language model while also
+reading files, running commands, searching code, and applying suggested
+changes, all sandboxed to a single workspace directory.</p>
 <hr />
 <h2 id="quick-start-guide">🚀 Quick Start Guide</h2>
 <p><em>For users who want to get Harvey running immediately</em></p>
@@ -39,7 +42,7 @@ sandboxed to a single workspace directory.</p>
 install Harvey on Linux, macOS, or Windows</p>
 <h3 id="first-session">2. First Session</h3>
 <p><a href="getting_started.html">getting_started.md</a> — Launch
-Harvey, connect to Ollama, and run your first commands</p>
+Harvey, connect to a local model, and run your first commands</p>
 <h3 id="system-prompt-customization">3. System Prompt Customization</h3>
 <p><a href="HARVEY.html">HARVEY.md</a> — The default system prompt and
 how to customize it for your project</p>
@@ -146,24 +149,26 @@ and token budget tracking</li>
 </ul>
 <h3 id="model-management">Model Management</h3>
 <ul>
-<li><strong><a href="model_guide.html">Model Guide</a></strong> — Model
-selection guide based on <code>/ollama probe</code> results</li>
-<li><strong><a href="MODEL_CACHE.html">Model Cache</a></strong> — Model
-capability caching architecture, database schema, and probing
-mechanisms</li>
-<li><strong><a href="ROUTING.html">Routing</a></strong> — Connect to
-remote model endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI)
-via <span class="citation" data-cites="mention">@mention</span>
-syntax</li>
 <li><strong><a href="harvey-llamafile.7.html">Llamafile
-Commands</a></strong> — Manage llamafile backends: add, use, list,
-download, remove</li>
+Commands</a></strong> — Primary local backend: add, use, show, list,
+start, download, remove</li>
+<li><strong><a href="harvey-model.7.html">Unified /model
+Command</a></strong> — <code>/model list|use|show|status</code> works
+across llamafile and Ollama</li>
 <li><strong><a href="harvey-model-alias.7.html">Model &amp; Alias
 Commands</a></strong> — <code>@mention</code> inline model switching and
 <code>/model alias</code> short names</li>
-<li><strong><a href="harvey-model-alias.7.html">Unified /model
-Command</a></strong> — <code>/model list|use|show|status</code> works
-across llamafile and Ollama</li>
+<li><strong><a href="harvey-ollama.7.html">Ollama Commands</a></strong>
+— Alternative local backend: service control and model management</li>
+<li><strong><a href="ROUTING.html">Routing</a></strong> — Connect to
+remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI, remote
+Ollama) via <span class="citation" data-cites="mention">@mention</span>
+syntax</li>
+<li><strong><a href="model_guide.html">Model Guide</a></strong> — Model
+selection guide based on capability probing results</li>
+<li><strong><a href="MODEL_CACHE.html">Model Cache</a></strong> — Model
+capability caching architecture, database schema, and probing
+mechanisms</li>
 </ul>
 <h3 id="sessions-recording">Sessions &amp; Recording</h3>
 <ul>
