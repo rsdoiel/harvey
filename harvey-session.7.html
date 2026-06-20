@@ -78,12 +78,14 @@ HARVEY, model name). These files are plain text and human-readable.</p>
 harvey-session-YYYYMMDD-HHMMSS.spmd</p>
 <h1 id="cli-flags">CLI FLAGS</h1>
 <p>The same operations are available as startup flags:</p>
-<p>harvey –continue FILE load history then open REPL harvey –replay FILE
-replay without entering REPL harvey –replay-output FILE write replay
-output to FILE</p>
+<p>harvey –resume resume the most recent session automatically (no path
+needed; prints a notice if no sessions found) harvey –continue FILE load
+history from FILE then open REPL harvey –replay FILE replay without
+entering REPL harvey –replay-output FILE write replay output to FILE</p>
 <h1 id="see-also">SEE ALSO</h1>
-<p>/record — start or stop session recording manually harvey –help —
-full CLI flag reference</p>
+<p>/record — start or stop session recording manually harvey –resume —
+resume the most recent session at startup (no path needed) harvey –help
+— full CLI flag reference</p>
 </section>
 </body>
 </html>

@@ -274,9 +274,15 @@ func runPipelineStep(
 	threshold float64,
 ) (strippedResponse string, confidence float64, err error) {
 	// Build spinner label with context percentage when available.
+	// Ollama: use the exact tokenizer API. All other backends: character estimate.
 	label := fmt.Sprintf("[%d/%d] %s", stepNum, total, filename)
-	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" && len(messages) > 0 {
-		n, _ := CountTokens(ctx, ac.BackendURL(), ac.ModelName(), HistoryText(messages))
+	if ac, ok := a.Client.(*AnyLLMClient); ok && len(messages) > 0 {
+		var n int
+		if ac.ProviderName() == "ollama" {
+			n, _ = CountTokens(ctx, ac.BackendURL(), ac.ModelName(), HistoryText(messages))
+		} else {
+			n = len(HistoryText(messages)) / 4
+		}
 		if limit := a.effectiveContextLimit(); limit > 0 && n > 0 {
 			pct := n * 100 / limit
 			label = fmt.Sprintf("[%d/%d] %s | context %d%%", stepNum, total, filename, pct)

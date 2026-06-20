@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -87,5 +88,60 @@ func TestCmdStatus_MemoryDisabled(t *testing.T) {
 	got := out.String()
 	if strings.Contains(got, "Profile:") {
 		t.Errorf("Profile line should not appear when memory is disabled; got:\n%s", got)
+	}
+}
+
+// ─── /status llamafile parity ─────────────────────────────────────────────────
+
+func TestCmdStatus_llamafileShowsTokenEstimate(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile", ContextLength: 32768}}
+	cfg.LlamafileActive = "qwen-coding"
+	a := &Agent{
+		Config:   cfg,
+		Workspace: ws,
+		commands: make(map[string]*Command),
+	}
+	a.registerCommands()
+	a.Client = newLlamafileLLMClient("http://localhost:8080/v1", "qwen-coding", 0)
+	a.AddMessage("user", strings.Repeat("x", 400)) // ~100 tokens
+
+	var out strings.Builder
+	if err := cmdStatus(a, nil, &out); err != nil {
+		t.Fatalf("cmdStatus: %v", err)
+	}
+	got := out.String()
+	// Should show a token estimate (with ~ prefix) for llamafile.
+	if !strings.Contains(got, "Tokens:") {
+		t.Errorf("expected Tokens line for llamafile backend, got:\n%s", got)
+	}
+	if !strings.Contains(got, "~") {
+		t.Errorf("expected ~ estimate qualifier for llamafile, got:\n%s", got)
+	}
+}
+
+func TestCmdStatus_llamafileShowsHarveyTag(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	cfg.LlamafileActive = "qwen-coding"
+	a := &Agent{
+		Config:   cfg,
+		Workspace: ws,
+		commands: make(map[string]*Command),
+	}
+	a.registerCommands()
+	a.Client = newLlamafileLLMClient("http://localhost:8080/v1", "qwen-coding", 0)
+	// Simulate Harvey having started the llamafile.
+	a.llamafileProc = &os.Process{Pid: 99999}
+
+	var out strings.Builder
+	if err := cmdStatus(a, nil, &out); err != nil {
+		t.Fatalf("cmdStatus: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "[Harvey]") {
+		t.Errorf("expected [Harvey] tag when Harvey started the llamafile, got:\n%s", got)
 	}
 }

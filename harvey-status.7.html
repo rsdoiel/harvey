@@ -50,6 +50,11 @@ otherwise.</p>
 <p>Sessions Absolute path of the sessions directory.</p>
 <p>Recording Path of the active Fountain session file, or “off” when not
 recording.</p>
+<p>Spinner (transient, not shown by /status) While a prompt is being
+processed, Harvey shows an animated spinner with an estimated completion
+time. During tool-call execution a second transient line appears:
+“Calling tool: <name>…” — this clears automatically when the call
+returns and is not part of /status output.</p>
 <h1 id="examples">EXAMPLES</h1>
 <pre><code>  harvey &gt; /status
   Backend:   ollama (gemma4:e2b) [external]
@@ -61,9 +66,9 @@ recording.</p>
   Sessions:  /Users/alice/myproject/agents/sessions
   Recording: /Users/alice/myproject/agents/sessions/harvey-session-20260514-094620.spmd</code></pre>
 <h1 id="see-also">SEE ALSO</h1>
-<p>/ollama status — check whether the Ollama daemon is reachable /help
-ollama — Ollama server and model management /help record — session
-recording</p>
+<p>/ollama status — check whether the Ollama daemon is reachable /hint —
+actionable suggestions for improving results /help ollama — Ollama
+server and model management /help record — session recording</p>
 </section>
 </body>
 </html>

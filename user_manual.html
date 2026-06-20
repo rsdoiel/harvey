@@ -25,15 +25,16 @@ alt="Harvey, a six foot six invisible rabbit" />
 <figcaption aria-hidden="true">Harvey, a six foot six invisible
 rabbit</figcaption>
 </figure>
-<p>Harvey is a terminal-based coding agent for local large language
-models. It runs models via <a
-href="https://github.com/mozilla-ai/llamafile">llamafile</a>
-(self-contained model executables that need no server installation) or a
-local <a href="https://ollama.com">Ollama</a> server, and can route
-individual prompts to cloud providers via named routes. It provides an
-interactive REPL where you chat with a large language model while also
-reading files, running commands, searching code, and applying suggested
-changes, all sandboxed to a single workspace directory.</p>
+<p>Harvey is a tool for scholarly work via natural language programming.
+It provides an interactive REPL backed by a local language model system
+— running via <a
+href="https://github.com/mozilla-ai/llamafile">llamafile</a> or <a
+href="https://ollama.com">Ollama</a> — where you direct the model to
+read files, run commands, search code, and apply changes inside a
+sandboxed workspace. Individual prompts can be routed to cloud providers
+via named routes. Language model systems are commonly called “AI models”
+or “AI”; Harvey treats them as a programmable interface for deliberate,
+documented work rather than a chat assistant.</p>
 <hr />
 <h2 id="quick-start-guide">🚀 Quick Start Guide</h2>
 <p><em>For users who want to get Harvey running immediately</em></p>
@@ -119,14 +120,6 @@ creates something Harvey manages from scratch.</p>
 <code>/llamafile</code>, <code>/rag</code>, <code>/route</code>,
 <code>/session</code>, <code>/skill</code>, <code>/skill-set</code>, and
 <code>/memory profile</code> all follow the same pattern.</p>
-<h3 id="security-features">Security Features</h3>
-<ul>
-<li><strong><a href="SECURITY.html">Security Guide</a></strong> — Safe
-mode, command allowlists, workspace permissions, audit logging, and
-threat model</li>
-<li><strong><a href="SECURITY_REVIEW.html">Security Review</a></strong>
-— Pre-release security assessment and known limitations</li>
-</ul>
 <hr />
 <h2 id="advanced-features">🎯 Advanced Features</h2>
 <h3 id="retrieval-augmented-generation">Retrieval-Augmented
@@ -143,9 +136,18 @@ Detailed reference for all RAG-related slash commands</li>
 <li><strong><a href="KNOWLEDGE_BASE.html">Knowledge Base</a></strong> —
 SQLite-backed knowledge base schema, FTS5 search, CLI commands, and Go
 API</li>
+<li><strong><a href="harvey-kb.7.html">KB Commands</a></strong> —
+<code>/kb</code> slash command reference: projects, observations,
+concepts</li>
 <li><strong><a href="memory-unified-design.html">Memory
 System</a></strong> — Unified memory architecture with rolling summaries
 and token budget tracking</li>
+<li><strong><a href="harvey-memory.7.html">Memory Commands</a></strong>
+— <code>/memory</code> slash command reference: mine, list, show, flag,
+forget, profile</li>
+<li><strong><a href="harvey-learn.7.html">Learn — Memory
+Overview</a></strong> — When to use RAG vs memory vs KB; unified
+recall</li>
 </ul>
 <h3 id="model-management">Model Management</h3>
 <ul>
@@ -164,6 +166,8 @@ Commands</a></strong> — <code>@mention</code> inline model switching and
 remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI, remote
 Ollama) via <span class="citation" data-cites="mention">@mention</span>
 syntax</li>
+<li><strong><a href="harvey-routing.7.html">Routing
+Commands</a></strong> — <code>/route</code> slash command reference</li>
 <li><strong><a href="model_guide.html">Model Guide</a></strong> — Model
 selection guide based on capability probing results</li>
 <li><strong><a href="MODEL_CACHE.html">Model Cache</a></strong> — Model
@@ -175,9 +179,56 @@ mechanisms</li>
 <li><strong><a href="SESSIONS.html">Sessions</a></strong> — Session
 recording, file structure, replay functionality, and programmatic
 access</li>
+<li><strong><a href="harvey-session.7.html">Session
+Commands</a></strong> —
+<code>/session list|show|use|continue|replay</code> reference</li>
+<li><strong><a href="harvey-record.7.html">Record Commands</a></strong>
+— <code>/record start|stop|status</code> reference</li>
 <li><strong><a href="FOUNTAIN_FORMAT.html">Fountain Format</a></strong>
 — Fountain screenplay format specification for conversation
 recordings</li>
+</ul>
+<h3 id="file-workspace-operations">File &amp; Workspace Operations</h3>
+<ul>
+<li><strong><a href="harvey-read.7.html">Read</a></strong> — Inject
+workspace files into conversation context</li>
+<li><strong><a href="harvey-read-dir.7.html">Read Directory</a></strong>
+— Read all files in a directory tree into context</li>
+<li><strong><a href="harvey-read-pdf.7.html">Read PDF</a></strong> —
+Extract and inject PDF text (requires poppler)</li>
+<li><strong><a href="harvey-attach.7.html">Attach</a></strong> — Attach
+images, PDFs, or text; auto-selects best representation</li>
+<li><strong><a href="harvey-write.7.html">Write</a></strong> — Save the
+last reply or first code block to a file</li>
+<li><strong><a href="harvey-format.7.html">Format</a></strong> —
+Auto-format source files using language-appropriate tools</li>
+<li><strong><a href="harvey-search.7.html">Search</a></strong> — Regex
+search across workspace files</li>
+<li><strong><a href="harvey-files.7.html">Files</a></strong> — List
+workspace directory contents</li>
+<li><strong><a href="harvey-file-tree.7.html">File Tree</a></strong> —
+Display a recursive directory tree</li>
+</ul>
+<h3 id="automation-pipelines">Automation &amp; Pipelines</h3>
+<ul>
+<li><strong><a href="harvey-pipeline.7.html">Pipeline</a></strong> —
+Chain Markdown prompt files with confidence gating</li>
+<li><strong><a href="harvey-plan.7.html">Plan</a></strong> — Generate
+and execute step-by-step task plans with bounded context</li>
+<li><strong><a href="harvey-loop.7.html">Loop</a></strong> — Repeat a
+prompt or command on a fixed interval</li>
+</ul>
+<h3 id="status-diagnostics">Status &amp; Diagnostics</h3>
+<ul>
+<li><strong><a href="harvey-status.7.html">Status</a></strong> — Show
+backend, token usage, routing, recording, and debug state</li>
+<li><strong><a href="harvey-hint.7.html">Hint</a></strong> — Actionable
+suggestions for improving results (RAG, memory, KB)</li>
+<li><strong><a href="harvey-inspect.7.html">Inspect</a></strong> —
+Detailed model information (Ollama)</li>
+<li><strong><a href="harvey-summarize.7.html">Summarize</a></strong> —
+Condense history to free context window space (<code>/compact</code>
+alias)</li>
 </ul>
 <hr />
 <h2 id="extending-harvey">🔧 Extending Harvey</h2>
@@ -186,8 +237,22 @@ recordings</li>
 <li><strong><a href="SKILLS.html">Skills Overview</a></strong> — Extend
 Harvey with custom skills, including SKILL.md format, discovery paths,
 compiled skills, triggers, and the skill wizard</li>
+<li><strong><a href="harvey-skills.7.html">Skills Commands</a></strong>
+— <code>/skill</code> slash command reference</li>
 <li><strong><a href="harvey-skill-set.7.html">Skill Sets</a></strong> —
 Manage named bundles of skills for specific workflows</li>
+</ul>
+<h3 id="security">Security</h3>
+<ul>
+<li><strong><a href="SECURITY.html">Security Guide</a></strong> — Safe
+mode, command allowlists, workspace permissions, audit logging, and
+threat model</li>
+<li><strong><a href="harvey-security.7.html">Security
+Commands</a></strong> — <code>/safemode</code>,
+<code>/permissions</code>, <code>/audit</code>, <code>/security</code>
+reference</li>
+<li><strong><a href="SECURITY_REVIEW.html">Security Review</a></strong>
+— Pre-release security assessment and known limitations</li>
 </ul>
 <hr />
 <h2 id="whats-new">📖 What’s New</h2>

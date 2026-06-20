@@ -20,13 +20,16 @@
 <section>
 <h1 id="starting-harvey">Starting Harvey</h1>
 <h2 id="what-is-harvey">What is Harvey?</h2>
-<p>harvey is a terminal agent for local language models.</p>
+<p>Harvey is a tool for scholarly work using natural language
+programming.</p>
 <p>See <a href="harvey.1.html">man page</a></p>
 <p>How it starts:</p>
 <p>Harvey looks for HARVEY.md in the workspace root and uses it as a
-system prompt. It then connects to a local model — either a llamafile
-executable or an Ollama server — and starts an interactive chat
-session.</p>
+system prompt. It then connects to a local language model system —
+either a llamafile executable or an Ollama server — and opens an
+interactive natural language programming session. Language model systems
+are commonly called “AI models” or “AI”; Harvey treats them as a
+programmable interface for deliberate, documented work.</p>
 <blockquote>
 <p><strong>Tip:</strong> The easiest way to get started is to download a
 llamafile from the <a
@@ -90,7 +93,7 @@ instructions and exits.</li>
 </ol>
 <h2 id="the-harvey.md-system-prompt">The HARVEY.md system prompt</h2>
 <p>Harvey looks for <code>HARVEY.md</code> in the directory where it is
-launched and uses its contents as the LLM system prompt for the whole
+launched and uses its contents as the system prompt for the whole
 session. This is the primary way to give the model persistent context
 about your project.</p>
 <p>A minimal <code>HARVEY.md</code>:</p>
@@ -723,9 +726,10 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb16-1">
 without further prompts, or <code>q</code> to cancel.</p>
 <h2 id="session-quality">Session quality</h2>
 <h3 id="summarize"><code>/summarize</code></h3>
-<p>Asks the connected LLM to condense the current conversation into a
-single paragraph, then replaces the full history with that summary. Use
-this when a long session is approaching the model’s context window.</p>
+<p>Asks the connected language model to condense the current
+conversation into a single paragraph, then replaces the full history
+with that summary. Use this when a long session is approaching the
+model’s context window.</p>
 <pre><code>harvey &gt; /summarize
   History condensed to 312 chars.</code></pre>
 <p>The summary is stored as a <code>[Conversation summary]</code> user

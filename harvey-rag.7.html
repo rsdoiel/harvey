@@ -150,6 +150,14 @@ splits text into paragraph-sized chunks (~500 characters each), embeds
 them using the active store’s embedding model, and stores the vectors in
 the database. Re-ingest any file after it changes to keep the store
 current.</p>
+<p>Remote URIs are supported alongside local paths: s3://bucket/prefix/
+— list and ingest all ingestable objects (requires AWS_ACCESS_KEY_ID and
+AWS_SECRET_ACCESS_KEY) sftp://[user@]host/path/ — list and ingest via
+SFTP over SSH (reads SFTP_PASSWORD or SFTP_KEY_PATH from environment)
+scp://[user@]host/path/ — alias for sftp:// http://host/file.ext —
+download and ingest a single file https://host/file.ext — same, with TLS
+(optional HTTP_BEARER_TOKEN or HTTP_BASIC_USER /
+HTTP_BASIC_PASSWORD)</p>
 <p>Supported formats: Plain text — .md, .txt, .go, .ts, .py, .yaml,
 .toml, .sql, and other text files. PDF — .pdf files are extracted with
 the poppler utilities (pdfinfo, pdftotext, pdfimages; must be
@@ -189,6 +197,10 @@ lets different generation models share the same embedding model; entries
 are populated automatically by /rag new.</p>
 <p>Old single-store configurations (db_path at the top level of rag:)
 are automatically migrated to a store named “default” on first load.</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>/memory recall — search all knowledge silos including RAG /help learn
+— overview of all three memory silos /help kb — structured knowledge
+base for experiments</p>
 </section>
 </body>
 </html>

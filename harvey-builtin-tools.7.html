@@ -22,10 +22,11 @@
 <p>BUILT-IN TOOLS — tools Harvey exposes to capable LLM models</p>
 <h1 id="description">DESCRIPTION</h1>
 <p>Harvey registers a set of built-in tools that are made available to
-models with structured tool-calling support. The model may invoke these
-tools during a conversation turn; Harvey executes them and returns
-results before the next LLM call. All file operations are constrained to
-the workspace root; paths outside the workspace are rejected.</p>
+language models with structured tool-calling support. The model may
+invoke these tools during a conversation turn; Harvey executes them and
+returns results before the next model call. All file operations are
+constrained to the workspace root; paths outside the workspace are
+rejected.</p>
 <p>Workspace permissions (/permissions) and Safe Mode (/safemode) apply
 where noted below.</p>
 <h1 id="file-tools">FILE TOOLS</h1>

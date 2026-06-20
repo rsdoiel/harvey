@@ -22,80 +22,86 @@
 <h2 id="bugs">Bugs</h2>
 <h2 id="release-review">Release Review</h2>
 <ul class="task-list">
-<li><label><input type="checkbox" />the user_manual.md is stale, still
-referring to Ollama first approach</label></li>
-<li><label><input type="checkbox" />Overview.md still reflects a Ollama
-first approach, needs to cover Llamafile support before talking about
-Ollama model support.</label></li>
-<li><label><input type="checkbox" />The helptext.go help guides (help
-text) seem to still be oriented as Ollama first, needs to be LLamafile
-primary while still supporting Ollama models. See
-<code>./bin/harvery --help getting-started</code> output as an
-example</label></li>
-<li><label><input type="checkbox" />Review the helptext.go file, review
-the help text constants to ensure they align with the current
-implementation.</label></li>
-<li><label><input type="checkbox" />Each exported constant needs a brief
-comment identifying it’s purpose as well as related man page
-output.</label></li>
-<li><label><input type="checkbox" />Order the help texts in helptext.go
-to make it easy for humans to review. Example the helptext that is used
-to generate harvey.1 man page, should be at the top. The other help text
-gguides should be grouped around what they cover.</label></li>
+<li><label><input type="checkbox" checked="" />the user_manual.md is
+stale, still referring to Ollama first approach — fixed; llamafile-first
+framing throughout</label></li>
+<li><label><input type="checkbox" checked="" />Overview.md still
+reflects a Ollama first approach — rewritten with natural language
+programming / scholarly work framing</label></li>
+<li><label><input type="checkbox" checked="" />The helptext.go help
+guides (help text) seem to still be oriented as Ollama first — HelpText
+description updated; getting_started guide restructured</label></li>
+<li><label><input type="checkbox" checked="" />Review the helptext.go
+file, review the help text constants to ensure they align with the
+current implementation — reviewed and updated throughout this
+release</label></li>
+<li><label><input type="checkbox" checked="" />Each exported constant
+needs a brief comment identifying it’s purpose as well as related man
+page output — all 41 constants commented</label></li>
+<li><label><input type="checkbox" checked="" />Order the help texts in
+helptext.go to make it easy for humans to review — reordered into 11
+logical groups; HelpText (harvey.1) is now first</label></li>
 </ul>
 <h2 id="next-v0.0.14-release">Next (v0.0.14 release)</h2>
 <h3 id="llamafile-as-primary-model-system">Llamafile as primary model
 system</h3>
 <ul class="task-list">
-<li><label><input type="checkbox" />Llamafile becomes primary model
-system alongside Ollama models</label>
+<li><label><input type="checkbox" checked="" />Llamafile becomes primary
+model system alongside Ollama models</label>
 <ul class="task-list">
-<li><label><input type="checkbox" />In startup process before prompting
-user, detect what model systems are available</label></li>
-<li><label><input type="checkbox" />If a session is not being continued,
-present available Llamafiles as the first choice and Ollama models (if
-available) next</label></li>
+<li><label><input type="checkbox" checked="" />In startup process before
+prompting user, detect what model systems are available —
+<code>selectBackend</code> probes llamafile first, then
+Ollama</label></li>
+<li><label><input type="checkbox" checked="" />If a session is not being
+continued, present available Llamafiles as the first choice and Ollama
+models (if available) next — <code>pickBackend</code> shows registered
+llamafiles before Ollama models</label></li>
 <li><label><input type="checkbox" />Bring Llamafile support into parity
 for advanced features like pipelines and routing</label></li>
-<li><label><input type="checkbox" />Update documentation to present
-Llamafile support for basic operation, then include an advanced section
-for working with Ollama models</label></li>
+<li><label><input type="checkbox" checked="" />Update documentation to
+present Llamafile support for basic operation, then include an advanced
+section for working with Ollama models — getting_started.md and
+user_manual.md restructured</label></li>
 </ul></li>
 </ul>
 <h3 id="startup-connection">Startup &amp; connection</h3>
 <ul class="task-list">
-<li><label><input type="checkbox" />Explicit connection feedback — show
-“Connecting to <code>&lt;model&gt;</code> (llamafile)… ✓” during startup
-instead of silent connection; important for slower hardware where users
-can’t tell if Harvey is waiting on the model or hung</label></li>
-<li><label><input type="checkbox" />First-run onboarding when no model
-is found — if neither a llamafile nor Ollama is reachable, run a guided
-mini-wizard: print the HuggingFace Mozilla model list URL and guide the
-user into a <code>/llamafile add</code> flow rather than dropping to an
-error</label></li>
-<li><label><input type="checkbox" />Stale external server adoption —
-when <code>/llamafile add</code> finds a server already running that
-Harvey didn’t start, probe its <code>/v1/models</code> endpoint,
-identify which model it’s serving, and offer to adopt it (register as
-active) rather than just warning and bailing</label></li>
+<li><label><input type="checkbox" checked="" />Explicit connection
+feedback — “Connecting to <code>&lt;model&gt;</code> (llamafile)… ✓” in
+<code>selectBackend</code> and <code>startAndUseLlamafile</code>; dots
+from <code>StartLlamafileService</code> during wait; “✓ Ready” when
+server becomes available</label></li>
+<li><label><input type="checkbox" checked="" />First-run onboarding when
+no model is found — <code>runFirstRunWizard</code> fires when
+<code>pickBackend</code> finds neither llamafiles nor Ollama; guides
+user to <code>/llamafile add</code></label></li>
+<li><label><input type="checkbox" checked="" />Stale external server
+adoption — <code>startAndUseLlamafile</code> calls
+<code>probeRunningLlamafileName</code>; warns and adopts the detected
+model when it differs from the configured entry;
+<code>adoptExternalServer</code> handles <code>/llamafile add</code>
+case</label></li>
 </ul>
 <h3 id="mid-session-awareness">Mid-session awareness</h3>
 <ul class="task-list">
-<li><label><input type="checkbox" />Auto-reconnect on dropped llamafile
-— detect when the llamafile process dies mid-session (crash, OOM), and
-on the next prompt offer to restart it with the same model rather than
-presenting an opaque API error</label></li>
-<li><label><input type="checkbox" />Context utilization hint — show a
-subtle <code>[ctx: 72%]</code> indicator in the status line or spinner
-for smaller llamafiles (4B–8B) with tight context windows, so users know
-when to <code>/clear</code></label></li>
-<li><label><input type="checkbox" />Routing feedback in spinner — when
-multi-model routing is active, show which model handled the turn
-(e.g. <code>routed → coding-model</code>) in the transient spinner
-status to make routing transparent and easier to tune</label></li>
-<li><label><input type="checkbox" />At-mention model switch — if the
-command prompt starts with <code>@modelname</code>, treat it as a model
-switch while preserving existing context in the environment</label></li>
+<li><label><input type="checkbox" checked="" />Auto-reconnect on dropped
+llamafile — <code>isConnectionError</code> detects transport failures;
+REPL loop offers restart via <code>restartActiveLlamafile</code> and
+retries the turn; implemented at terminal.go:917</label></li>
+<li><label><input type="checkbox" checked="" />Context utilization hint
+— <code>spinnerLabel()</code> in harvey.go shows <code>[ctx: N%]</code>
+when estimated usage ≥ 50% of
+<code>effectiveContextLimit()</code></label></li>
+<li><label><input type="checkbox" checked="" />Routing feedback in
+spinner — <code>routeSpinnerLabel</code> shows
+<code>"@name · model"</code> in spinner label;
+<code>UpdateStatus("routed → name")</code> on line 2</label></li>
+<li><label><input type="checkbox" checked="" />At-mention model switch —
+<code>@name</code> now tries route dispatch first, then
+<code>attemptModelSwitch</code> for local models;
+<code>@name prompt</code> switches model and sends prompt to new model
+with full history preserved; case-insensitive lookup</label></li>
 </ul>
 <h3 id="model-management-ergonomics">Model management ergonomics</h3>
 <ul class="task-list">
@@ -115,16 +121,17 @@ checked="" /><code>/llamafile download</code> stub —
 </ul>
 <h3 id="session-quality">Session quality</h3>
 <ul class="task-list">
-<li><label><input type="checkbox" />Record active model in session
-Fountain header — add
-<code>## Model: &lt;name&gt; (&lt;backend&gt;)</code> to the
-<code>.spmd</code> header so session reviews and memory mining have
-model provenance</label></li>
-<li><label><input type="checkbox" />Health check on
-<code>--resume</code> — before loading the resumed session’s context,
-verify the previously-active model is reachable; if not, prompt to
-restart it rather than silently continuing with a dead
-backend</label></li>
+<li><label><input type="checkbox" checked="" />Record active model in
+session Fountain header — <code>Model:</code> title page field now
+stores <code>"NAME (backend)"</code>
+(e.g. <code>QWEN-CODING (llamafile)</code>);
+<code>parseFountainSession</code> strips the suffix for auto-selection;
+implemented in recorder.go and replay.go</label></li>
+<li><label><input type="checkbox" checked="" />Health check on
+<code>--resume</code> — session model extracted from
+<code>ContinuePath</code> before <code>selectBackend</code> so the right
+backend is auto-selected; mismatch warning shown after connect if models
+differ</label></li>
 </ul>
 <h3 id="command-vocabulary-consistency">Command vocabulary
 consistency</h3>
@@ -173,19 +180,22 @@ vocabulary” section added to both <code>user_manual.md</code> and
 <code>add</code> vs <code>new</code> distinction</p>
 <h3 id="documentation">Documentation</h3>
 <ul class="task-list">
-<li><label><input type="checkbox" />Restructure getting-started
-documentation to lead with Llamafile setup, then present Ollama as an
-advanced/alternative option</label></li>
-<li><label><input type="checkbox" />Review all <code>.7.md</code> man
-pages and <code>.md</code> prose docs for coverage gaps introduced by
-v0.0.12–v0.0.13 features (spinner status, profile commands,
-<code>--resume</code>, routing feedback, memory enrichment)</label></li>
-<li><label><input type="checkbox" />Audit cross-references: every new
-command/flag added since v0.0.11 should appear in at least one SEE ALSO
-section and in the user manual index</label></li>
-<li><label><input type="checkbox" />Update CONFIGURATION.md to document
-new config fields added in v0.0.14 (LlamafileContextLength,
-etc.)</label></li>
+<li><label><input type="checkbox" checked="" />Restructure
+getting-started documentation to lead with Llamafile setup, then present
+Ollama as an advanced/alternative option — getting_started.md completely
+restructured</label></li>
+<li><label><input type="checkbox" checked="" />Review all
+<code>.7.md</code> man pages and <code>.md</code> prose docs for
+coverage gaps — 4 gaps fixed (–resume, /profile, /safe alias, spinner
+tool-call status)</label></li>
+<li><label><input type="checkbox" checked="" />Audit cross-references:
+every new command/flag added since v0.0.11 should appear in at least one
+SEE ALSO section and in the user manual index — 12 SEE ALSO sections
+added/updated; 20 links added to user_manual.md</label></li>
+<li><label><input type="checkbox" checked="" />Update CONFIGURATION.md
+to document new config fields added in v0.0.14 — model_aliases,
+llamafile, tools, memory, rolling_summary, syntax_highlight, auto_format
+all documented</label></li>
 </ul>
 </section>
 </body>

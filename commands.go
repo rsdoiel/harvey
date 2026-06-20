@@ -622,11 +622,20 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintln(out, "Backend:   none")
 	} else {
 		tag := ""
-		if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
-			if a.OllamaStartedByHarvey {
-				tag = " [Harvey]"
-			} else {
-				tag = " [external]"
+		if ac, ok := a.Client.(*AnyLLMClient); ok {
+			switch ac.ProviderName() {
+			case "ollama":
+				if a.OllamaStartedByHarvey {
+					tag = " [Harvey]"
+				} else {
+					tag = " [external]"
+				}
+			case "llamafile", "llamacpp":
+				if a.llamafileProc != nil {
+					tag = " [Harvey]"
+				} else {
+					tag = " [external]"
+				}
 			}
 		}
 		fmt.Fprintf(out, "Backend:   %s%s\n", a.Client.Name(), tag)
@@ -635,11 +644,22 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintf(out, "Debug:     on (%s)\n", a.DebugLog.Path())
 	}
 	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
-	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" && len(a.History) > 0 {
-		n, exact := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), HistoryText(a.History))
-		qualifier := "~"
-		if exact {
-			qualifier = ""
+	if ac, ok := a.Client.(*AnyLLMClient); ok && len(a.History) > 0 {
+		var n int
+		var qualifier string
+		switch ac.ProviderName() {
+		case "ollama":
+			exact := false
+			n, exact = CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), HistoryText(a.History))
+			if exact {
+				qualifier = ""
+			} else {
+				qualifier = "~"
+			}
+		default:
+			// For llamafile and cloud providers: estimate via character count.
+			n = len(HistoryText(a.History)) / 4
+			qualifier = "~"
 		}
 		limit := a.effectiveContextLimit()
 		if limit > 0 {

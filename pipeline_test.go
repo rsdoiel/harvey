@@ -285,3 +285,38 @@ func TestCmdPipeline_fileNotFound(t *testing.T) {
 		t.Errorf("History changed on file-not-found")
 	}
 }
+
+// ─── llamafile parity: context % in pipeline spinner ──────────────────────────
+
+func TestRunPipelineStep_llamafileContextHint(t *testing.T) {
+	a, dir := newPipelineTestAgent(t)
+	// Use a llamafile client (not Ollama) with a known context window.
+	a.Client = newLlamafileLLMClient("http://localhost:8080/v1", "qwen-coding", 0)
+	a.Config.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/q.llamafile", ContextLength: 1024},
+	}
+	a.Config.LlamafileActive = "qwen-coding"
+
+	// Write a step file.
+	step := filepath.Join(dir, "step.md")
+	if err := os.WriteFile(step, []byte("Hello from pipeline."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed history so token estimate is non-zero.
+	a.AddMessage("user", strings.Repeat("x", 200)) // ~50 tokens
+
+	client := newPipelineMock(`{"confidence": 0.95}`)
+	messages := []Message{{Role: "user", Content: "Hello from pipeline."}}
+
+	var out strings.Builder
+	_, _, err := runPipelineStep(context.Background(), a, client, messages, &out, 1, 1, "step.md", 0.8)
+	if err != nil {
+		t.Fatalf("runPipelineStep: %v", err)
+	}
+
+	// The spinner label should have included a context percentage for llamafile.
+	// We can't directly inspect the label, but the run should succeed without panic.
+	// The key assertion: the step completes successfully on a llamafile backend.
+	_ = out.String()
+}
