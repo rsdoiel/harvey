@@ -77,14 +77,34 @@ passed as literal string arguments rather than being interpreted.
 <code>parseCommandLine()</code> handles quoted-string splitting only; it
 does not reject these characters.</p>
 <h3 id="api-key-filtering">API key filtering</h3>
-<p>The following environment variables are stripped from all child
-processes (skills, <code>/run</code>, <code>/git</code>):</p>
+<p>Child processes (skills, <code>/run</code>, <code>/git</code>)
+receive a <strong>whitelist-filtered</strong> environment — only
+variables whose names match a small set of safe prefixes
+(<code>PATH</code>, <code>HOME</code>, <code>USER</code>,
+<code>SHELL</code>, <code>TERM</code>, <code>LANG</code>,
+<code>LC_*</code>, <code>PWD</code>, <code>HARVEY_*</code>,
+<code>OLLAMA_*</code>) are forwarded. Everything else is stripped.</p>
+<p>As defence-in-depth, the following known sensitive names are also
+explicitly denied before the whitelist is applied, so a future prefix
+change cannot accidentally expose them:</p>
 <p><code>ANTHROPIC_API_KEY</code>, <code>COHERE_API_KEY</code>,
-<code>DEEPSEEK_API_KEY</code>, <code>GEMINI_API_KEY</code>,
-<code>GOOGLE_API_KEY</code>, <code>GROQ_API_KEY</code>,
+<code>DEEPSEEK_API_KEY</code>, <code>FIREWORKS_API_KEY</code>,
+<code>GEMINI_API_KEY</code>, <code>GOOGLE_API_KEY</code>,
+<code>GROQ_API_KEY</code>, <code>HUGGINGFACE_TOKEN</code>,
 <code>MISTRAL_API_KEY</code>, <code>OPENAI_API_KEY</code>,
-<code>PERPLEXITY_API_KEY</code></p>
+<code>PERPLEXITY_API_KEY</code>, <code>PUBLICAI_API_KEY</code>,
+<code>REPLICATE_API_KEY</code>, <code>TOGETHER_API_KEY</code>,
+<code>XAI_API_KEY</code>, <code>AWS_ACCESS_KEY_ID</code>,
+<code>AWS_SECRET_ACCESS_KEY</code>, <code>AWS_SESSION_TOKEN</code>,
+<code>SFTP_PASSWORD</code>, <code>HTTP_BEARER_TOKEN</code>,
+<code>HTTP_BASIC_PASSWORD</code></p>
 <p>Error messages reference variable names only, never their values.</p>
+<p><strong><code>HARVEY_*</code> pass-through:</strong> Harvey injects
+its own <code>HARVEY_*</code> session variables (workspace path, model
+name, API base URL) into child processes so that compiled skills can
+call the LLM API. Any <code>HARVEY_*</code> variable already present in
+the parent shell’s environment is also forwarded. Avoid storing
+sensitive data in <code>HARVEY_</code>-prefixed variables.</p>
 <h3 id="safe-mode">Safe Mode</h3>
 <p><code>/safemode on</code> restricts <code>/run</code> and
 <code>!</code> to a configurable command allowlist (default:
@@ -95,6 +115,14 @@ processes (skills, <code>/run</code>, <code>/git</code>):</p>
 <code>/safemode allow COMMAND</code> and
 <code>/safemode deny COMMAND</code>. Safe Mode state and the allowlist
 persist across sessions in <code>agents/harvey.yaml</code>.</p>
+<p><strong>Safe Mode limitation:</strong> the allowlist controls
+<em>which programs</em> can be launched. It does not control <em>which
+files those programs can access</em>. An allowed command such as
+<code>cat</code> or <code>grep</code> can still read files outside the
+workspace boundary (e.g. <code>/etc/passwd</code>,
+<code>~/.ssh/id_rsa</code>). Use the <strong>Permissions system</strong>
+(below) to gate file-tool access; use Safe Mode to limit which programs
+the LLM can invoke via <code>/run</code>.</p>
 <h3 id="permissions-system">Permissions system</h3>
 <p>Path-prefix permissions stored in <code>agents/harvey.yaml</code>
 gate file operations. Managed with
@@ -102,11 +130,13 @@ gate file operations. Managed with
 <code>read</code>, <code>write</code>, <code>exec</code>,
 <code>delete</code>.</p>
 <h3 id="audit-logging">Audit logging</h3>
-<p>An in-memory ring buffer (1000 events) records all commands, file
-operations, and skill runs with a status of <code>allowed</code> or
-<code>denied</code>. View with <code>/audit show</code>, clear with
-<code>/audit clear</code>. The buffer does not persist across sessions —
-no sensitive history is written to disk.</p>
+<p>A ring buffer (1000 events) records all commands, file operations,
+and skill runs with a status of <code>allowed</code> or
+<code>denied</code>. When a workspace is present, events are also
+appended to <code>agents/audit.jsonl</code> in NDJSON format so the
+trail survives restarts. View with <code>/audit show</code>, check the
+log path with <code>/audit status</code>, and clear the in-memory buffer
+with <code>/audit clear</code>.</p>
 <h3 id="configurable-timeouts">Configurable timeouts</h3>
 <p><code>run_timeout</code> (default 5 min) in
 <code>agents/harvey.yaml</code> caps shell command execution via
@@ -148,9 +178,9 @@ and are never written to disk by Harvey.</p></li>
 OS support. True isolation requires containers.</td>
 </tr>
 <tr>
-<td>Audit log is in-memory</td>
-<td>Lost when Harvey exits. No persistent audit trail across
-sessions.</td>
+<td>Audit log is append-only</td>
+<td><code>agents/audit.jsonl</code> grows without bound; no automatic
+rotation.</td>
 </tr>
 <tr>
 <td>No rate limiting</td>

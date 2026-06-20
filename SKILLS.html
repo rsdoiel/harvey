@@ -243,6 +243,19 @@ sandboxed to the workspace directory — a compiled skill can read, write,
 or delete any file accessible to the current user. Only run compiled
 skills from trusted sources, and review generated scripts before
 invoking <code>/skill run</code>.</p>
+<p><strong><code>HARVEY_PROMPT</code> safety:</strong> The user’s raw
+prompt is passed to compiled scripts via the <code>HARVEY_PROMPT</code>
+environment variable. Never interpolate it unquoted into a shell command
+— doing so enables code injection if the prompt contains shell
+metacharacters. Always quote the variable:</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Safe — value treated as a literal string</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="va">prompt</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$HARVEY_PROMPT</span><span class="st">&quot;</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;User asked: </span><span class="va">$prompt</span><span class="st">&quot;</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co"># UNSAFE — shell interprets metacharacters in the prompt</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="bu">eval</span> <span class="va">$HARVEY_PROMPT</span>        <span class="co"># never do this</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="fu">sh</span> <span class="at">-c</span> <span class="st">&quot;</span><span class="va">$HARVEY_PROMPT</span><span class="st">&quot;</span>    <span class="co"># never do this</span></span></code></pre></div>
 </blockquote>
 <h3 id="type-3-triggered-skills">Type 3: Triggered Skills</h3>
 <p>Skills with a <code>trigger:</code> field can be
@@ -253,8 +266,8 @@ pattern.</p>
 <strong>Regexp mode:</strong> <code>trigger: /\bpdf\b/</code> — Pattern
 must match</p>
 <p><strong>Example:</strong></p>
-<div class="sourceCode" id="cb9"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">trigger</span><span class="kw">:</span><span class="at"> /\b(run|execute) tests?\b/</span></span></code></pre></div>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">trigger</span><span class="kw">:</span><span class="at"> /\b(run|execute) tests?\b/</span></span></code></pre></div>
 <p>When the user types “run tests” or “execute test”, Harvey
 automatically invokes the skill (if it’s compiled) or loads it into
 context.</p>
@@ -366,27 +379,27 @@ variables:</p>
 </tbody>
 </table>
 <p><strong>Example compiled.bash:</strong></p>
-<div class="sourceCode" id="cb16"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/usr/bin/env bash</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="bu">set</span> <span class="at">-euo</span> pipefail</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Parse arguments from HARVEY_PROMPT</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="bu">read</span> <span class="at">-ra</span> <span class="va">_args</span> <span class="op">&lt;&lt;&lt;</span> <span class="st">&quot;</span><span class="va">${HARVEY_PROMPT</span><span class="op">:-</span><span class="va">}</span><span class="st">&quot;</span></span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="va">FOUNTAIN_FILE</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${_args</span><span class="op">[</span><span class="dv">0</span><span class="op">]:-</span><span class="va">}</span><span class="st">&quot;</span></span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Validate</span></span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">[</span> <span class="ot">-z</span> <span class="st">&quot;</span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span> <span class="bu">]</span><span class="kw">;</span> <span class="cf">then</span></span>
-<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    <span class="bu">read</span> <span class="at">-rp</span> <span class="st">&quot;Fountain file path: &quot;</span> <span class="va">FOUNTAIN_FILE</span></span>
-<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="cf">fi</span></span>
-<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Execute</span></span>
-<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">[</span> <span class="ot">!</span> <span class="ot">-f</span> <span class="st">&quot;</span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span> <span class="bu">]</span><span class="kw">;</span> <span class="cf">then</span></span>
-<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>    <span class="bu">echo</span> <span class="st">&quot;Error: File not found: </span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span> <span class="op">&gt;&amp;</span><span class="dv">2</span></span>
-<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>    <span class="bu">exit</span> 1</span>
-<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a><span class="cf">fi</span></span>
-<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;Analyzing: </span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span></span>
-<span id="cb16-20"><a href="#cb16-20" aria-hidden="true" tabindex="-1"></a><span class="co"># ... rest of script</span></span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/usr/bin/env bash</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="bu">set</span> <span class="at">-euo</span> pipefail</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Parse arguments from HARVEY_PROMPT</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="bu">read</span> <span class="at">-ra</span> <span class="va">_args</span> <span class="op">&lt;&lt;&lt;</span> <span class="st">&quot;</span><span class="va">${HARVEY_PROMPT</span><span class="op">:-</span><span class="va">}</span><span class="st">&quot;</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a><span class="va">FOUNTAIN_FILE</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${_args</span><span class="op">[</span><span class="dv">0</span><span class="op">]:-</span><span class="va">}</span><span class="st">&quot;</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Validate</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">[</span> <span class="ot">-z</span> <span class="st">&quot;</span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span> <span class="bu">]</span><span class="kw">;</span> <span class="cf">then</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    <span class="bu">read</span> <span class="at">-rp</span> <span class="st">&quot;Fountain file path: &quot;</span> <span class="va">FOUNTAIN_FILE</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a><span class="cf">fi</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Execute</span></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">[</span> <span class="ot">!</span> <span class="ot">-f</span> <span class="st">&quot;</span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span> <span class="bu">]</span><span class="kw">;</span> <span class="cf">then</span></span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>    <span class="bu">echo</span> <span class="st">&quot;Error: File not found: </span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span> <span class="op">&gt;&amp;</span><span class="dv">2</span></span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>    <span class="bu">exit</span> 1</span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a><span class="cf">fi</span></span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;Analyzing: </span><span class="va">$FOUNTAIN_FILE</span><span class="st">&quot;</span></span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a><span class="co"># ... rest of script</span></span></code></pre></div>
 <h3 id="script-generation-rules">Script Generation Rules</h3>
 <p>When generating compiled scripts (via compile-skill), follow these
 rules:</p>
@@ -446,28 +459,28 @@ Wizard (<code>/skill new</code>)</h3>
 <h3 id="method-2-manual-creation">Method 2: Manual Creation</h3>
 <ol type="1">
 <li><p>Create the skill directory:</p>
-<div class="sourceCode" id="cb19"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> agents/skills/my-skill</span></code></pre></div></li>
-<li><p>Create SKILL.md with proper frontmatter:</p>
 <div class="sourceCode" id="cb20"><pre
-class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="an">name:</span><span class="co"> my-skill</span></span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="an">description:</span><span class="co"> Does something useful</span></span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a><span class="an">license:</span><span class="co"> AGPL-3.0</span></span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="an">compatibility:</span><span class="co"> claude-code, harvey</span></span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a><span class="an">metadata:</span></span>
-<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a><span class="co">  author: Your Name</span></span>
-<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a><span class="co">  version: &quot;1.0&quot;</span></span>
-<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
-<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a><span class="fu"># My Skill</span></span>
-<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>Instructions for the LLM...</span></code></pre></div></li>
-<li><p>(Optional) Create compiled scripts:</p>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> agents/skills/my-skill</span></code></pre></div></li>
+<li><p>Create SKILL.md with proper frontmatter:</p>
 <div class="sourceCode" id="cb21"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> agents/skills/my-skill/scripts</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="fu">touch</span> agents/skills/my-skill/scripts/compiled.bash</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="fu">touch</span> agents/skills/my-skill/scripts/compiled.ps1</span></code></pre></div></li>
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="an">name:</span><span class="co"> my-skill</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="an">description:</span><span class="co"> Does something useful</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="an">license:</span><span class="co"> AGPL-3.0</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a><span class="an">compatibility:</span><span class="co"> claude-code, harvey</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a><span class="an">metadata:</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a><span class="co">  author: Your Name</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a><span class="co">  version: &quot;1.0&quot;</span></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a><span class="fu"># My Skill</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>Instructions for the LLM...</span></code></pre></div></li>
+<li><p>(Optional) Create compiled scripts:</p>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> agents/skills/my-skill/scripts</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="fu">touch</span> agents/skills/my-skill/scripts/compiled.bash</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a><span class="fu">touch</span> agents/skills/my-skill/scripts/compiled.ps1</span></code></pre></div></li>
 <li><p>(Optional) Compile the skill:</p>
 <pre><code>harvey&gt; /skill compile my-skill</code></pre></li>
 </ol>
@@ -564,21 +577,21 @@ ls agents/skills/my-skill/SKILL.md
 <p><strong>Cause:</strong> SKILL.md frontmatter is missing the
 <code>description</code> field.</p>
 <p><strong>Fix:</strong> Add a description to the frontmatter:</p>
-<div class="sourceCode" id="cb25"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="pp">---</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> my-skill</span></span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="fu">description</span><span class="kw">:</span><span class="at"> Does something useful</span></span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="co">...</span></span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="pp">---</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> my-skill</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="fu">description</span><span class="kw">:</span><span class="at"> Does something useful</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a><span class="co">...</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span></code></pre></div>
 <h3 id="invalid-skill-name">“Invalid skill name”</h3>
 <p><strong>Cause:</strong> Name contains uppercase letters, spaces, or
 special characters.</p>
 <p><strong>Fix:</strong> Use only lowercase letters, numbers, and
 hyphens:</p>
-<div class="sourceCode" id="cb26"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> my-skill</span><span class="co">  # good</span></span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> My Skill</span><span class="co">  # bad (spaces, uppercase)</span></span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> my_skill</span><span class="co">  # bad (underscore)</span></span></code></pre></div>
+<div class="sourceCode" id="cb27"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> my-skill</span><span class="co">  # good</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> My Skill</span><span class="co">  # bad (spaces, uppercase)</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> my_skill</span><span class="co">  # bad (underscore)</span></span></code></pre></div>
 <h3 id="compiled-skill-not-executing">Compiled skill not executing</h3>
 <p><strong>Causes:</strong> - Scripts not compiled yet - Scripts not
 executable - Missing shebang line - Syntax errors in script</p>
@@ -624,33 +637,33 @@ them available to all compatible agents:</p>
         └── SKILL.md</code></pre>
 <h3 id="compatibility-field">Compatibility Field</h3>
 <p>Specify which agents can use the skill:</p>
-<div class="sourceCode" id="cb31"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="fu">compatibility</span><span class="kw">:</span><span class="at"> claude-code, harvey</span></span></code></pre></div>
-<p>Or use a wildcard:</p>
 <div class="sourceCode" id="cb32"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">compatibility</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;*&quot;</span></span></code></pre></div>
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">compatibility</span><span class="kw">:</span><span class="at"> claude-code, harvey</span></span></code></pre></div>
+<p>Or use a wildcard:</p>
+<div class="sourceCode" id="cb33"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="fu">compatibility</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;*&quot;</span></span></code></pre></div>
 <h2 id="advanced-system-prompt-integration">Advanced: System Prompt
 Integration</h2>
 <p>Skills can be injected into Harvey’s system prompt so the LLM knows
 what skills are available without loading them all. The catalog is
 formatted as:</p>
-<div class="sourceCode" id="cb33"><pre
-class="sourceCode xml"><code class="sourceCode xml"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>&lt;<span class="kw">available_skills</span>&gt;</span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>  &lt;<span class="kw">skill</span>&gt;</span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">name</span>&gt;fountain-analysis&lt;/<span class="kw">name</span>&gt;</span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">description</span>&gt;Read and actively monitor a Harvey Fountain...&lt;/<span class="kw">description</span>&gt;</span>
-<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;/home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
-<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>  &lt;/<span class="kw">skill</span>&gt;</span>
-<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>  &lt;<span class="kw">skill</span>&gt;</span>
-<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">name</span>&gt;review-knowledge-base&lt;/<span class="kw">name</span>&gt;</span>
-<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">description</span>&gt;Queries knowledge_base.db and delivers...&lt;/<span class="kw">description</span>&gt;</span>
-<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;/home/user/Laboratory/agents/skills/review-knowledge-base/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
-<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>  &lt;/<span class="kw">skill</span>&gt;</span>
-<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a>&lt;/<span class="kw">available_skills</span>&gt;</span>
-<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a>When a task matches a skill&#39;s description, the user can type:</span>
-<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>  /skill load &lt;<span class="kw">name</span>&gt;</span>
-<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a>to activate it.</span></code></pre></div>
+<div class="sourceCode" id="cb34"><pre
+class="sourceCode xml"><code class="sourceCode xml"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>&lt;<span class="kw">available_skills</span>&gt;</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>  &lt;<span class="kw">skill</span>&gt;</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">name</span>&gt;fountain-analysis&lt;/<span class="kw">name</span>&gt;</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">description</span>&gt;Read and actively monitor a Harvey Fountain...&lt;/<span class="kw">description</span>&gt;</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;/home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>  &lt;/<span class="kw">skill</span>&gt;</span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>  &lt;<span class="kw">skill</span>&gt;</span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">name</span>&gt;review-knowledge-base&lt;/<span class="kw">name</span>&gt;</span>
+<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">description</span>&gt;Queries knowledge_base.db and delivers...&lt;/<span class="kw">description</span>&gt;</span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;/home/user/Laboratory/agents/skills/review-knowledge-base/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
+<span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a>  &lt;/<span class="kw">skill</span>&gt;</span>
+<span id="cb34-12"><a href="#cb34-12" aria-hidden="true" tabindex="-1"></a>&lt;/<span class="kw">available_skills</span>&gt;</span>
+<span id="cb34-13"><a href="#cb34-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-14"><a href="#cb34-14" aria-hidden="true" tabindex="-1"></a>When a task matches a skill&#39;s description, the user can type:</span>
+<span id="cb34-15"><a href="#cb34-15" aria-hidden="true" tabindex="-1"></a>  /skill load &lt;<span class="kw">name</span>&gt;</span>
+<span id="cb34-16"><a href="#cb34-16" aria-hidden="true" tabindex="-1"></a>to activate it.</span></code></pre></div>
 <p>This helps the LLM suggest appropriate skills to the user.</p>
 <h2 id="reference-built-in-skills">Reference: Built-in Skills</h2>
 <p>Harvey includes these skills out of the box (in
