@@ -185,6 +185,9 @@ are also available from the shell: harvey --help TOPIC.
 /recall QUERY
 : search all knowledge silos (alias for /memory recall)
 
+/profile <list|show|edit|use|rename> [args...]
+: manage the workspace profile (alias for /memory profile)
+
 **Skills**
 
 /skill <list|load NAME|info NAME|status|new|run NAME>
@@ -223,10 +226,10 @@ are also available from the shell: harvey --help TOPIC.
 Harvey includes several features for controlling what it can do on your system.
 All settings survive restart when persisted via the commands below.
 
-Safe mode (/safemode)
+Safe mode (/safemode, /safe)
 : Restricts which commands may be executed via ! and /run to an explicit
   allowlist. Default allowlist: ls, cat, grep, head, tail, wc, find, stat,
-  jq, htmlq, bat, batcat.
+  jq, htmlq, bat, batcat. /safe is an exact alias for /safemode.
   Subcommands: on, off, status, allow CMD, deny CMD, reset.
 
 Workspace permissions (/permissions)

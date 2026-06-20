@@ -79,7 +79,9 @@ harvey-session-YYYYMMDD-HHMMSS.spmd
 
 The same operations are available as startup flags:
 
-  harvey --continue FILE         load history then open REPL
+  harvey --resume                resume the most recent session automatically
+                                 (no path needed; prints a notice if no sessions found)
+  harvey --continue FILE         load history from FILE then open REPL
   harvey --replay FILE           replay without entering REPL
   harvey --replay-output FILE    write replay output to FILE
 

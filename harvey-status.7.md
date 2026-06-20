@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -52,6 +52,12 @@ Sessions
 
 Recording
   Path of the active Fountain session file, or "off" when not recording.
+
+Spinner (transient, not shown by /status)
+  While a prompt is being processed, Harvey shows an animated spinner with an
+  estimated completion time. During tool-call execution a second transient line
+  appears: "Calling tool: <name>…" — this clears automatically when the call
+  returns and is not part of /status output.
 
 # EXAMPLES
 
