@@ -5330,12 +5330,22 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	// confirmation flow, since the user explicitly addressed them by URI.
 	var localPaths []string
 	for _, p := range paths {
-		if parseURIScheme(p) == "s3" {
-			ragIngestS3Prefix(a, p, embedder, out)
-		} else if parseURIScheme(p) != "" {
-			fmt.Fprintf(out, "  ⚠ remote ingest only supports s3:// URIs, skipping %s\n", p)
-		} else {
+		switch parseURIScheme(p) {
+		case "":
 			localPaths = append(localPaths, p)
+		case "s3":
+			ragIngestS3Prefix(a, p, embedder, out)
+		case "sftp", "scp":
+			r, err := NewRemoteReader(p)
+			if err != nil {
+				fmt.Fprintf(out, "  ✗ %s: %v\n", p, err)
+				continue
+			}
+			ragIngestRemotePrefix(a, r, parseURIScheme(p), p, embedder, out)
+		case "http", "https":
+			ragIngestHTTP(a, p, embedder, out)
+		default:
+			fmt.Fprintf(out, "  ⚠ unsupported scheme %q, skipping %s\n", parseURIScheme(p), p)
 		}
 	}
 	if len(localPaths) == 0 {
@@ -5408,16 +5418,29 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	return nil
 }
 
-// ragIngestS3Prefix lists all ingestable objects under an S3 prefix URI and
-// ingests each one by downloading to a temp file, ingesting, and removing the
-// temp file immediately. This keeps peak disk usage bounded to a single object.
-func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) {
-	s3r, err := newS3Reader()
-	if err != nil {
-		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
-		return
-	}
-	objects, err := s3r.List(context.Background(), uri)
+/** ragIngestRemotePrefix lists all ingestable objects under a remote prefix URI
+ * using r and ingests each by downloading to a temp file, ingesting, then
+ * deleting the temp file immediately. This keeps peak disk usage bounded to a
+ * single object regardless of prefix size.
+ *
+ * Works for any RemoteReader that implements List (s3://, sftp://, scp://).
+ * HTTP/HTTPS callers should use ragIngestHTTP instead, as HTTP has no directory
+ * listing protocol.
+ *
+ * Parameters:
+ *   a       (*Agent)       — Harvey agent; a.Rag must be non-nil.
+ *   r       (RemoteReader) — backend to use for List and Get.
+ *   scheme  (string)       — URI scheme ("s3", "sftp", "scp"); used in progress messages.
+ *   uri     (string)       — prefix URI to list and ingest.
+ *   embedder (Embedder)    — embedding model for the active store.
+ *   out     (io.Writer)    — progress and error output.
+ *
+ * Example:
+ *   r, _ := NewRemoteReader("sftp://host/docs/")
+ *   ragIngestRemotePrefix(a, r, "sftp", "sftp://host/docs/", embedder, out)
+ */
+func ragIngestRemotePrefix(a *Agent, r RemoteReader, scheme, uri string, embedder Embedder, out io.Writer) {
+	objects, err := r.List(context.Background(), uri)
 	if err != nil {
 		fmt.Fprintf(out, "  ✗ list %s: %v\n", uri, err)
 		return
@@ -5431,13 +5454,13 @@ func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) {
 		if !ragIngestableExts[ext] {
 			continue
 		}
-		f, err := os.CreateTemp("", "harvey-s3-*"+ext)
+		f, err := os.CreateTemp("", "harvey-"+scheme+"-*"+ext)
 		if err != nil {
 			fmt.Fprintf(out, "  ✗ temp for %s: %v\n", obj.URI, err)
 			continue
 		}
 		tmpPath := f.Name()
-		if err := s3r.Get(context.Background(), obj.URI, f); err != nil {
+		if err := r.Get(context.Background(), obj.URI, f); err != nil {
 			f.Close()
 			os.Remove(tmpPath)
 			fmt.Fprintf(out, "  ✗ download %s: %v\n", obj.URI, err)
@@ -5472,7 +5495,77 @@ func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) {
 		os.Remove(tmpPath) // immediate cleanup regardless of ingest outcome
 	}
 	if ingested > 0 {
-		fmt.Fprintf(out, "  S3: ingested %d chunk(s) from %s\n", ingested, uri)
+		fmt.Fprintf(out, "  %s: ingested %d chunk(s) from %s\n", scheme, ingested, uri)
+	}
+}
+
+// ragIngestS3Prefix is kept for backwards compatibility; delegates to ragIngestRemotePrefix.
+func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) {
+	s3r, err := newS3Reader()
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
+		return
+	}
+	ragIngestRemotePrefix(a, s3r, "s3", uri, embedder, out)
+}
+
+/** ragIngestHTTP downloads a single HTTP or HTTPS resource, writes it to a
+ * temp file, ingests it into the active RAG store, then deletes the temp file.
+ *
+ * Parameters:
+ *   a        (*Agent)    — Harvey agent; a.Rag must be non-nil.
+ *   uri      (string)    — http:// or https:// URL of the resource.
+ *   embedder (Embedder)  — embedding model for the active store.
+ *   out      (io.Writer) — progress and error output.
+ *
+ * Example:
+ *   ragIngestHTTP(a, "https://example.com/spec.md", embedder, out)
+ */
+func ragIngestHTTP(a *Agent, uri string, embedder Embedder, out io.Writer) {
+	ext := strings.ToLower(filepath.Ext(uri))
+	if ext == "" {
+		ext = ".txt" // treat extensionless URLs as plain text
+	}
+	f, err := os.CreateTemp("", "harvey-http-*"+ext)
+	if err != nil {
+		fmt.Fprintf(out, "  ✗ temp for %s: %v\n", uri, err)
+		return
+	}
+	tmpPath := f.Name()
+	r := newHTTPReader()
+	if err := r.Get(context.Background(), uri, f); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
+		return
+	}
+	f.Close()
+	defer os.Remove(tmpPath)
+
+	fmt.Fprintf(out, "  %s", uri)
+	var n int
+	if ext == ".pdf" {
+		var diagrams []int
+		n, diagrams, err = ragIngestPDF(a.Rag, embedder, tmpPath)
+		if err != nil {
+			fmt.Fprintf(out, " — error: %v\n", err)
+			return
+		}
+		fmt.Fprintf(out, " — %d chunk(s)", n)
+		if len(diagrams) > 0 {
+			fmt.Fprintf(out, " (%d diagram-only page(s) flagged)", len(diagrams))
+		}
+		fmt.Fprintln(out)
+	} else {
+		n, err = ragIngestFile(a.Rag, embedder, tmpPath)
+		if err != nil {
+			fmt.Fprintf(out, " — error: %v\n", err)
+			return
+		}
+		fmt.Fprintf(out, " — %d chunk(s)\n", n)
+	}
+	if n > 0 {
+		fmt.Fprintf(out, "  http: ingested %d chunk(s) from %s\n", n, uri)
 	}
 }
 

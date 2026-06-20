@@ -174,6 +174,16 @@ are all low (< 0.3) for a question you expect the store to answer, consider:
   active store's embedding model, and stores the vectors in the database.
   Re-ingest any file after it changes to keep the store current.
 
+  Remote URIs are supported alongside local paths:
+    s3://bucket/prefix/     — list and ingest all ingestable objects (requires
+                              AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
+    sftp://[user@]host/path/ — list and ingest via SFTP over SSH (reads
+                              SFTP_PASSWORD or SFTP_KEY_PATH from environment)
+    scp://[user@]host/path/  — alias for sftp://
+    http://host/file.ext    — download and ingest a single file
+    https://host/file.ext   — same, with TLS (optional HTTP_BEARER_TOKEN or
+                              HTTP_BASIC_USER / HTTP_BASIC_PASSWORD)
+
   Supported formats:
     Plain text — .md, .txt, .go, .ts, .py, .yaml, .toml, .sql, and other
                  text files.
