@@ -162,7 +162,7 @@ func NewRecorder(path, model, workspace string) (*Recorder, error) {
 		{Type: fountain.TitlePageType, Name: "Author", Content: user},
 		{Type: fountain.TitlePageType, Name: "Date", Content: now.Format("2006-01-02 15:04:05")},
 		{Type: fountain.TitlePageType, Name: "Draft date", Content: now.Format("2006-01-02")},
-		{Type: fountain.TitlePageType, Name: "Model", Content: r.modelName},
+		{Type: fountain.TitlePageType, Name: "Model", Content: r.modelName + " (" + backend + ")"},
 		{Type: fountain.TitlePageType, Name: "Backend", Content: backend},
 	} {
 		fmt.Fprintln(f, fountainSrc(elem))

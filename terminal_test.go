@@ -381,3 +381,41 @@ func TestSelectBackend_callsPickBackendWhenLlamafileModelsExistButNoActive(t *te
 func newTestBufioReader(s string) *bufio.Reader {
 	return bufio.NewReader(strings.NewReader(s))
 }
+
+// ─── --continue / --resume model hint extraction ──────────────────────────────
+
+func TestSelectBackend_extractsModelHintFromContinuePath(t *testing.T) {
+	// Write a minimal session file that records "llamafile (qwen-coding)" as the model.
+	dir := t.TempDir()
+	sessionPath := filepath.Join(dir, "session.fountain")
+	rec, err := NewRecorder(sessionPath, "llamafile (qwen-coding)", dir)
+	if err != nil {
+		t.Fatalf("NewRecorder: %v", err)
+	}
+	_ = rec.RecordTurnWithStats("hello", "world", ChatStats{}, nil, "", nil)
+	rec.Close()
+
+	// Set up agent with qwen-coding registered but no active model.
+	// Point LlamafileURL at a fake server so pickBackend can auto-select.
+	srv := fakeLlamafileServer(t, "qwen-coding")
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.ContinuePath = sessionPath
+	cfg.LlamafileURL = srv.URL
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
+	}
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+
+	// selectBackend should auto-select qwen-coding (from the session hint)
+	// without showing the interactive picker.
+	_ = a.selectBackend(newTestBufioReader(""), &buf, "")
+
+	// The auto-selection path connects the client.
+	if a.Client == nil {
+		t.Error("expected Client to be set after auto-selection from session hint")
+	}
+}

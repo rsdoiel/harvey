@@ -60,9 +60,15 @@ func parseFountainSession(path string) (userName, modelName string, turns []Play
 	modelName = ""
 
 	// Seed model from title page (written at session start, before any turns).
+	// The Model field stores "NAME (backend)" — strip the backend suffix so
+	// the returned model name can be used for auto-selection comparisons.
 	for _, tp := range doc.TitlePage {
 		if strings.EqualFold(tp.Name, "Model") && strings.TrimSpace(tp.Content) != "" {
-			modelName = strings.TrimSpace(tp.Content)
+			m := strings.TrimSpace(tp.Content)
+			if i := strings.Index(m, " ("); i > 0 {
+				m = m[:i]
+			}
+			modelName = m
 		}
 	}
 

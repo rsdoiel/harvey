@@ -237,3 +237,64 @@ func TestNewRecorder_backendFieldOllama(t *testing.T) {
 		t.Errorf("expected 'Backend: ollama' in title page, got:\n%s", string(data))
 	}
 }
+
+// ─── Model field includes backend suffix ─────────────────────────────────────
+
+func TestNewRecorder_modelFieldIncludesBackend_llamafile(t *testing.T) {
+	dir := t.TempDir()
+	r, err := NewRecorder(filepath.Join(dir, "s.fountain"), "llamafile (qwen-coding)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	data := string(mustRead(t, filepath.Join(dir, "s.fountain")))
+	// Model field should include the backend in parentheses.
+	if !strings.Contains(data, "Model: QWEN-CODING (llamafile)") {
+		t.Errorf("expected 'Model: QWEN-CODING (llamafile)' in title page, got:\n%s", data)
+	}
+}
+
+func TestNewRecorder_modelFieldIncludesBackend_ollama(t *testing.T) {
+	dir := t.TempDir()
+	r, err := NewRecorder(filepath.Join(dir, "s.fountain"), "ollama (gemma4:e2b)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	data := string(mustRead(t, filepath.Join(dir, "s.fountain")))
+	if !strings.Contains(data, "Model: GEMMA4 (ollama)") {
+		t.Errorf("expected 'Model: GEMMA4 (ollama)' in title page, got:\n%s", data)
+	}
+}
+
+// mustRead reads a file and fails the test on error.
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile %s: %v", path, err)
+	}
+	return b
+}
+
+// ─── parseFountainSession strips backend suffix from Model field ──────────────
+
+func TestParseFountainSession_stripsBackendSuffix(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.fountain")
+	r, err := NewRecorder(path, "llamafile (qwen-coding)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r.RecordTurnWithStats("hello", "world", ChatStats{}, nil, "", nil)
+	r.Close()
+
+	_, model, _, err := parseFountainSession(path)
+	if err != nil {
+		t.Fatalf("parseFountainSession: %v", err)
+	}
+	// Should return just the model name (no backend suffix) so auto-selection works.
+	if model != "QWEN-CODING" {
+		t.Errorf("expected 'QWEN-CODING', got %q", model)
+	}
+}

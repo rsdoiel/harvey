@@ -429,11 +429,19 @@ func (a *Agent) Run(out io.Writer) error {
 	}
 
 	// Session resume — offer before backend selection so the chosen session's
-	// model can pre-select the Ollama model below.
+	// model can pre-select the backend below.
 	var resumePath string
 	var sessionModel string
 	if a.Config.ContinuePath == "" && a.Config.ReplayPath == "" { // --continue and --replay bypass the picker
 		resumePath, sessionModel = a.pickSession(reader, out, sessDir)
+	}
+
+	// For --continue / --resume: extract the session's model as a backend hint
+	// so selectBackend can auto-select it without an interactive picker.
+	if a.Config.ContinuePath != "" && sessionModel == "" {
+		if m, err := ExtractModelFromSession(a.Config.ContinuePath); err == nil {
+			sessionModel = m
+		}
 	}
 
 	// System prompt
@@ -559,6 +567,15 @@ func (a *Agent) Run(out io.Writer) error {
 		if a.Client == nil {
 			fmt.Fprintf(out, yellow("  ⚠")+" No backend connected — %s will load read-only.\n", a.Config.ContinuePath)
 			fmt.Fprintln(out, dim("  Use /llamafile start or /ollama start to connect a model."))
+		} else if sessionModel != "" {
+			// Health check: warn when the connected backend differs from the
+			// session's recorded model so the user knows responses may change.
+			connected := strings.ToUpper(activeModelLabel(a))
+			if !strings.Contains(connected, sessionModel) {
+				fmt.Fprintf(out, yellow("  ⚠")+" Session used %s but connected to %s — responses may differ.\n",
+					sessionModel, activeModelLabel(a))
+				fmt.Fprintln(out, dim("  Use /model use NAME or /llamafile use NAME to switch."))
+			}
 		}
 		n, contErr := a.ContinueFromFountain(a.Config.ContinuePath)
 		if contErr != nil {
