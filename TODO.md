@@ -5,34 +5,34 @@
 
 ## Release Review
 
-- [ ] the user_manual.md is stale, still referring to Ollama first approach
-- [ ] Overview.md still reflects a Ollama first approach, needs to cover Llamafile support before talking about Ollama model support.
-- [ ] The helptext.go help guides (help text) seem to still be oriented as Ollama first, needs to be LLamafile primary while still supporting Ollama models. See `./bin/harvery --help getting-started` output as an example
-- [ ] Review the helptext.go file, review the help text constants to ensure they align with the current implementation. 
-- [ ] Each exported constant needs a brief comment identifying it's purpose as well as related man page output. 
-- [ ] Order the help texts in helptext.go to make it easy for humans to review. Example the helptext that is used to generate harvey.1 man page, should be at the top. The other help text gguides should be grouped around what they cover.
+- [x] the user_manual.md is stale, still referring to Ollama first approach — fixed; llamafile-first framing throughout
+- [x] Overview.md still reflects a Ollama first approach — rewritten with natural language programming / scholarly work framing
+- [x] The helptext.go help guides (help text) seem to still be oriented as Ollama first — HelpText description updated; getting_started guide restructured
+- [x] Review the helptext.go file, review the help text constants to ensure they align with the current implementation — reviewed and updated throughout this release
+- [x] Each exported constant needs a brief comment identifying it's purpose as well as related man page output — all 41 constants commented
+- [x] Order the help texts in helptext.go to make it easy for humans to review — reordered into 11 logical groups; HelpText (harvey.1) is now first
 
 ## Next (v0.0.14 release)
 
 ### Llamafile as primary model system
 
-- [ ] Llamafile becomes primary model system alongside Ollama models
-  - [ ] In startup process before prompting user, detect what model systems are available
-  - [ ] If a session is not being continued, present available Llamafiles as the first choice and Ollama models (if available) next
+- [x] Llamafile becomes primary model system alongside Ollama models
+  - [x] In startup process before prompting user, detect what model systems are available — `selectBackend` probes llamafile first, then Ollama
+  - [x] If a session is not being continued, present available Llamafiles as the first choice and Ollama models (if available) next — `pickBackend` shows registered llamafiles before Ollama models
   - [ ] Bring Llamafile support into parity for advanced features like pipelines and routing
-  - [ ] Update documentation to present Llamafile support for basic operation, then include an advanced section for working with Ollama models
+  - [x] Update documentation to present Llamafile support for basic operation, then include an advanced section for working with Ollama models — getting_started.md and user_manual.md restructured
 
 ### Startup & connection
 
-- [ ] Explicit connection feedback — show "Connecting to `<model>` (llamafile)… ✓" during startup instead of silent connection; important for slower hardware where users can't tell if Harvey is waiting on the model or hung
-- [ ] First-run onboarding when no model is found — if neither a llamafile nor Ollama is reachable, run a guided mini-wizard: print the HuggingFace Mozilla model list URL and guide the user into a `/llamafile add` flow rather than dropping to an error
-- [ ] Stale external server adoption — when `/llamafile add` finds a server already running that Harvey didn't start, probe its `/v1/models` endpoint, identify which model it's serving, and offer to adopt it (register as active) rather than just warning and bailing
+- [x] Explicit connection feedback — "Connecting to `<model>` (llamafile)… ✓" in `selectBackend` and `startAndUseLlamafile`; dots from `StartLlamafileService` during wait; "✓ Ready" when server becomes available
+- [x] First-run onboarding when no model is found — `runFirstRunWizard` fires when `pickBackend` finds neither llamafiles nor Ollama; guides user to `/llamafile add`
+- [x] Stale external server adoption — `startAndUseLlamafile` calls `probeRunningLlamafileName`; warns and adopts the detected model when it differs from the configured entry; `adoptExternalServer` handles `/llamafile add` case
 
 ### Mid-session awareness
 
-- [ ] Auto-reconnect on dropped llamafile — detect when the llamafile process dies mid-session (crash, OOM), and on the next prompt offer to restart it with the same model rather than presenting an opaque API error
-- [ ] Context utilization hint — show a subtle `[ctx: 72%]` indicator in the status line or spinner for smaller llamafiles (4B–8B) with tight context windows, so users know when to `/clear`
-- [ ] Routing feedback in spinner — when multi-model routing is active, show which model handled the turn (e.g. `routed → coding-model`) in the transient spinner status to make routing transparent and easier to tune
+- [x] Auto-reconnect on dropped llamafile — `isConnectionError` detects transport failures; REPL loop offers restart via `restartActiveLlamafile` and retries the turn; implemented at terminal.go:917
+- [x] Context utilization hint — `spinnerLabel()` in harvey.go shows `[ctx: N%]` when estimated usage ≥ 50% of `effectiveContextLimit()`
+- [x] Routing feedback in spinner — `routeSpinnerLabel` shows `"@name · model"` in spinner label; `UpdateStatus("routed → name")` on line 2
 - [ ] At-mention model switch — if the command prompt starts with `@modelname`, treat it as a model switch while preserving existing context in the environment
 
 ### Model management ergonomics
@@ -43,8 +43,8 @@
 
 ### Session quality
 
-- [ ] Record active model in session Fountain header — add `## Model: <name> (<backend>)` to the `.spmd` header so session reviews and memory mining have model provenance
-- [ ] Health check on `--resume` — before loading the resumed session's context, verify the previously-active model is reachable; if not, prompt to restart it rather than silently continuing with a dead backend
+- [x] Record active model in session Fountain header — `Model:` title page field now stores `"NAME (backend)"` (e.g. `QWEN-CODING (llamafile)`); `parseFountainSession` strips the suffix for auto-selection; implemented in recorder.go and replay.go
+- [x] Health check on `--resume` — session model extracted from `ContinuePath` before `selectBackend` so the right backend is auto-selected; mismatch warning shown after connect if models differ
 
 ### Command vocabulary consistency
 
@@ -83,8 +83,8 @@ curve: knowing any one command family teaches you all the others.
 
 ### Documentation
 
-- [ ] Restructure getting-started documentation to lead with Llamafile setup, then present Ollama as an advanced/alternative option
-- [ ] Review all `.7.md` man pages and `.md` prose docs for coverage gaps introduced by v0.0.12–v0.0.13 features (spinner status, profile commands, `--resume`, routing feedback, memory enrichment)
-- [ ] Audit cross-references: every new command/flag added since v0.0.11 should appear in at least one SEE ALSO section and in the user manual index
-- [ ] Update CONFIGURATION.md to document new config fields added in v0.0.14 (LlamafileContextLength, etc.)
+- [x] Restructure getting-started documentation to lead with Llamafile setup, then present Ollama as an advanced/alternative option — getting_started.md completely restructured
+- [x] Review all `.7.md` man pages and `.md` prose docs for coverage gaps — 4 gaps fixed (--resume, /profile, /safe alias, spinner tool-call status)
+- [x] Audit cross-references: every new command/flag added since v0.0.11 should appear in at least one SEE ALSO section and in the user manual index — 12 SEE ALSO sections added/updated; 20 links added to user_manual.md
+- [x] Update CONFIGURATION.md to document new config fields added in v0.0.14 — model_aliases, llamafile, tools, memory, rolling_summary, syntax_highlight, auto_format all documented
 
