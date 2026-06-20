@@ -1023,3 +1023,79 @@ func TestArgCompletion_memoryIDCandidates_emptyStore(t *testing.T) {
 	// nil or empty is fine; just must not panic
 	_ = got
 }
+
+// ─── /model command ──────────────────────────────────────────────────────────
+
+func TestCmdModelShow_noBackend(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	if err := cmdModel(a, nil, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "none") {
+		t.Errorf("expected 'none' in output when no backend configured, got: %s", buf.String())
+	}
+}
+
+func TestCmdModelShow_withLlamafile(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileActive = "qwen-coding"
+	a := NewAgent(cfg, ws)
+	a.Client = &mockLLMClient{}
+	var buf strings.Builder
+	if err := cmdModel(a, nil, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "qwen-coding") {
+		t.Errorf("expected model name in output, got: %s", buf.String())
+	}
+}
+
+func TestCmdModelList_empty(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	if err := cmdModel(a, []string{"list"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should not panic and should produce some output.
+	if buf.Len() == 0 {
+		t.Error("expected non-empty output from /model list")
+	}
+}
+
+func TestCmdModelList_withLlamafiles(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/qwen.llamafile"},
+		{Name: "phi-mini", Path: "/tmp/phi.llamafile"},
+	}
+	cfg.LlamafileActive = "qwen-coding"
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+	if err := cmdModel(a, []string{"list"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "qwen-coding") {
+		t.Errorf("expected qwen-coding in list output, got: %s", out)
+	}
+	if !strings.Contains(out, "phi-mini") {
+		t.Errorf("expected phi-mini in list output, got: %s", out)
+	}
+}
+
+func TestCmdModelUse_notFound(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	// No registered models — use should fail gracefully.
+	err := cmdModel(a, []string{"use", "nonexistent"}, &buf)
+	// Either an error or an "not found" message in output is acceptable.
+	if err == nil && !strings.Contains(buf.String(), "not found") && !strings.Contains(buf.String(), "no") {
+		t.Errorf("expected error or not-found message, got: %s", buf.String())
+	}
+}

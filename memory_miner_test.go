@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -216,5 +217,66 @@ func TestMineAuto_KindAndActionSaved(t *testing.T) {
 	}
 	if doc.Meta.Confidence != 0.5 {
 		t.Errorf("Confidence: got %v, want 0.5", doc.Meta.Confidence)
+	}
+}
+
+// ─── splitAtModelSwitches ────────────────────────────────────────────────────
+
+func TestSplitAtModelSwitches_noSwitches(t *testing.T) {
+	text := "HARVEY\nHello!\n\nRSDOIEL\nThanks."
+	segs := splitAtModelSwitches(text, "qwen-coding", "llamafile")
+	if len(segs) != 1 {
+		t.Fatalf("expected 1 segment, got %d", len(segs))
+	}
+	if segs[0].model != "qwen-coding" {
+		t.Errorf("segment model: got %q want %q", segs[0].model, "qwen-coding")
+	}
+	if strings.TrimRight(segs[0].text, "\n") != strings.TrimRight(text, "\n") {
+		t.Errorf("segment text mismatch\ngot:  %q\nwant: %q", segs[0].text, text)
+	}
+}
+
+func TestSplitAtModelSwitches_oneSwitch(t *testing.T) {
+	text := "HARVEY\nFirst reply.\n\n[[model switch: phi-mini (llamafile) at 2026-06-20 14:00:00]]\n\nHARVEY\nSecond reply."
+	segs := splitAtModelSwitches(text, "qwen-coding", "llamafile")
+	if len(segs) != 2 {
+		t.Fatalf("expected 2 segments, got %d: %+v", len(segs), segs)
+	}
+	if segs[0].model != "qwen-coding" {
+		t.Errorf("seg[0] model: got %q want %q", segs[0].model, "qwen-coding")
+	}
+	if segs[1].model != "phi-mini" {
+		t.Errorf("seg[1] model: got %q want %q", segs[1].model, "phi-mini")
+	}
+	if segs[1].backend != "llamafile" {
+		t.Errorf("seg[1] backend: got %q want %q", segs[1].backend, "llamafile")
+	}
+}
+
+func TestParseModelSwitchNote_valid(t *testing.T) {
+	line := "[[model switch: phi-mini (llamafile) at 2026-06-20 14:32:11]]"
+	name, backend, ok := parseModelSwitchNote(line)
+	if !ok {
+		t.Fatal("expected ok=true for valid note")
+	}
+	if name != "phi-mini" {
+		t.Errorf("name: got %q want %q", name, "phi-mini")
+	}
+	if backend != "llamafile" {
+		t.Errorf("backend: got %q want %q", backend, "llamafile")
+	}
+}
+
+func TestParseModelSwitchNote_invalid(t *testing.T) {
+	cases := []string{
+		"[[write: foo.go — ok]]",
+		"some regular text",
+		"[[model switch: missing-parens at 2026-06-20]]",
+	}
+	for _, c := range cases {
+		_, _, ok := parseModelSwitchNote(c)
+		if ok {
+			t.Errorf("expected ok=false for %q", c)
+		}
 	}
 }

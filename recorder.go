@@ -155,6 +155,7 @@ func NewRecorder(path, model, workspace string) (*Recorder, error) {
 
 	// Title page (key: value pairs, no blank lines between them).
 	now := time.Now()
+	backend := backendFromClientName(model)
 	for _, elem := range []*fountain.Element{
 		{Type: fountain.TitlePageType, Name: "Title", Content: "Harvey Session"},
 		{Type: fountain.TitlePageType, Name: "Credit", Content: "Recorded by Harvey"},
@@ -162,6 +163,7 @@ func NewRecorder(path, model, workspace string) (*Recorder, error) {
 		{Type: fountain.TitlePageType, Name: "Date", Content: now.Format("2006-01-02 15:04:05")},
 		{Type: fountain.TitlePageType, Name: "Draft date", Content: now.Format("2006-01-02")},
 		{Type: fountain.TitlePageType, Name: "Model", Content: r.modelName},
+		{Type: fountain.TitlePageType, Name: "Backend", Content: backend},
 	} {
 		fmt.Fprintln(f, fountainSrc(elem))
 	}
@@ -170,6 +172,37 @@ func NewRecorder(path, model, workspace string) (*Recorder, error) {
 	fmt.Fprintln(f)
 	r.writeTransition("FADE IN:")
 	return r, nil
+}
+
+// backendFromClientName extracts the provider prefix from a client Name()
+// string of the form "provider (model)", returning it lowercased.
+// Returns "unknown" if the format is not recognised.
+func backendFromClientName(name string) string {
+	if i := strings.Index(name, " ("); i > 0 {
+		return strings.ToLower(name[:i])
+	}
+	return "unknown"
+}
+
+/** RecordModelSwitch appends a Fountain note recording that the active model
+ * changed during the session. The note format is:
+ *   [[model switch: NAME (BACKEND) at TIMESTAMP]]
+ *
+ * Parameters:
+ *   newModel (string) — name of the model switched to.
+ *   backend  (string) — backend identifier, e.g. "llamafile" or "ollama".
+ *
+ * Returns:
+ *   error — if the write fails.
+ *
+ * Example:
+ *   r.RecordModelSwitch("phi-mini", "llamafile")
+ */
+func (r *Recorder) RecordModelSwitch(newModel, backend string) error {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	note := fmt.Sprintf("model switch: %s (%s) at %s", newModel, backend, ts)
+	_, err := fmt.Fprintln(r.f, "\n[["+note+"]]")
+	return err
 }
 
 // Path returns the file path this recorder is writing to.

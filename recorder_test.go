@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRecorder_roundtrip(t *testing.T) {
@@ -165,5 +166,74 @@ func TestDefaultSessionPath(t *testing.T) {
 	ts := strings.TrimPrefix(strings.TrimSuffix(base, ".spmd"), "harvey-session-")
 	if len(ts) != 15 {
 		t.Errorf("timestamp %q: expected 15 chars (YYYYMMDD-HHMMSS)", ts)
+	}
+}
+
+// ─── RecordModelSwitch ───────────────────────────────────────────────────────
+
+func TestRecordModelSwitch_writesNote(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, err := NewRecorder(path, "llamafile (qwen-coding)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RecordModelSwitch("phi-mini", "llamafile"); err != nil {
+		t.Fatalf("RecordModelSwitch: %v", err)
+	}
+	r.Close()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "[[model switch: phi-mini (llamafile)") {
+		t.Errorf("expected model switch note in session file, got:\n%s", content)
+	}
+}
+
+func TestRecordModelSwitch_timestampFormat(t *testing.T) {
+	dir := t.TempDir()
+	r, err := NewRecorder(filepath.Join(dir, "s.fountain"), "ollama (llama3:8b)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().Format("2006-01-02")
+	if err := r.RecordModelSwitch("llama3:70b", "ollama"); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	data, _ := os.ReadFile(filepath.Join(dir, "s.fountain"))
+	if !strings.Contains(string(data), before) {
+		t.Errorf("expected today's date %q in switch note", before)
+	}
+}
+
+// ─── NewRecorder Backend field ───────────────────────────────────────────────
+
+func TestNewRecorder_backendFieldLlamafile(t *testing.T) {
+	dir := t.TempDir()
+	r, err := NewRecorder(filepath.Join(dir, "s.fountain"), "llamafile (qwen-coding)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	data, _ := os.ReadFile(filepath.Join(dir, "s.fountain"))
+	if !strings.Contains(string(data), "Backend: llamafile") {
+		t.Errorf("expected 'Backend: llamafile' in title page, got:\n%s", string(data))
+	}
+}
+
+func TestNewRecorder_backendFieldOllama(t *testing.T) {
+	dir := t.TempDir()
+	r, err := NewRecorder(filepath.Join(dir, "s.fountain"), "ollama (llama3:8b)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	data, _ := os.ReadFile(filepath.Join(dir, "s.fountain"))
+	if !strings.Contains(string(data), "Backend: ollama") {
+		t.Errorf("expected 'Backend: ollama' in title page, got:\n%s", string(data))
 	}
 }

@@ -155,6 +155,21 @@ func TestCmdLlamafileList_empty(t *testing.T) {
 	}
 }
 
+func TestCmdLlamafileRemove_alias(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	cfg.LlamafileActive = "qwen-coding"
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+	if err := cmdLlamafile(a, []string{"remove", "qwen-coding"}, &buf); err != nil {
+		t.Fatalf("remove alias error: %v", err)
+	}
+	if len(a.Config.LlamafileModels) != 0 {
+		t.Error("expected model to be removed")
+	}
+}
+
 func TestCmdLlamafileUse_notRegistered(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)

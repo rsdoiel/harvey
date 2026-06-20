@@ -189,7 +189,7 @@ func cmdLlamafile(a *Agent, args []string, out io.Writer) error {
 		return cmdLlamafileStart(a, args[1:], out)
 	case "status":
 		return cmdLlamafileStatus(a, out)
-	case "drop":
+	case "drop", "remove":
 		return cmdLlamafileDrop(a, args[1:], out)
 	default:
 		fmt.Fprint(out, LlamafileHelpText)

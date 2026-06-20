@@ -166,3 +166,42 @@ func TestFormatAndParsePlan(t *testing.T) {
 		t.Error("step 1 should not be done after round-trip")
 	}
 }
+
+// ─── model annotation parsing ────────────────────────────────────────────────
+
+func TestExtractStepModel_present(t *testing.T) {
+	title, model := extractStepModel("Step 3 [model: phi-mini]: compress the output")
+	if model != "phi-mini" {
+		t.Errorf("model: got %q want %q", model, "phi-mini")
+	}
+	if title != "Step 3: compress the output" {
+		t.Errorf("title: got %q want %q", title, "Step 3: compress the output")
+	}
+}
+
+func TestExtractStepModel_absent(t *testing.T) {
+	title, model := extractStepModel("Write the README file")
+	if model != "" {
+		t.Errorf("expected empty model, got %q", model)
+	}
+	if title != "Write the README file" {
+		t.Errorf("title should be unchanged, got %q", title)
+	}
+}
+
+func TestParsePlan_modelAnnotation(t *testing.T) {
+	content := `# Plan: test
+- [ ] Step 1 [model: phi-mini]: do something small
+- [ ] Step 2: do something normally
+`
+	p, err := parsePlan(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Steps[0].Model != "phi-mini" {
+		t.Errorf("step 0 model: got %q want %q", p.Steps[0].Model, "phi-mini")
+	}
+	if p.Steps[1].Model != "" {
+		t.Errorf("step 1 model should be empty, got %q", p.Steps[1].Model)
+	}
+}

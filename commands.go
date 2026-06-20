@@ -407,6 +407,15 @@ func (a *Agent) registerCommands() {
 			Description: "Chain Markdown prompt files through models with confidence gating",
 			Handler:     cmdPipeline,
 		},
+		"model": {
+			Usage:       "/model [list|use NAME|show [NAME]|status]",
+			Description: "Backend-agnostic model management — works across llamafile and ollama",
+			Handler:     cmdModel,
+			Subcommands: []string{"list", "use", "show", "status"},
+			ArgCompletion: map[string]func(*Agent) []string{
+				"use": func(a *Agent) []string { return allModelNames(a) },
+			},
+		},
 		"plan": {
 			Usage:       "/plan <TASK | next | status | show | clear>",
 			Description: "Generate a step-by-step plan and execute it with bounded context per step",
@@ -734,6 +743,109 @@ func cmdClear(a *Agent, _ []string, out io.Writer) error {
  * Example:
  *   /hint
  */
+// allModelNames returns all registered model names across llamafile and ollama
+// for use in tab completion.
+func allModelNames(a *Agent) []string {
+	var names []string
+	for _, e := range a.Config.LlamafileModels {
+		names = append(names, e.Name)
+	}
+	for alias := range a.Config.ModelAliases {
+		names = append(names, alias)
+	}
+	return names
+}
+
+/** cmdModel dispatches /model subcommands: list, use, show, status.
+ * With no subcommand, prints the active model and backend.
+ *
+ * Parameters:
+ *   a    (*Agent)   — the running Harvey agent.
+ *   args ([]string) — subcommand and arguments.
+ *   out  (io.Writer) — destination for output.
+ *
+ * Returns:
+ *   error — non-nil on unexpected failures.
+ *
+ * Example:
+ *   cmdModel(agent, []string{"list"}, os.Stdout)
+ */
+func cmdModel(a *Agent, args []string, out io.Writer) error {
+	sub := ""
+	if len(args) > 0 {
+		sub = args[0]
+	}
+	switch sub {
+	case "list":
+		return cmdModelList(a, out)
+	case "use":
+		if len(args) < 2 {
+			fmt.Fprintln(out, "  Usage: /model use NAME")
+			return nil
+		}
+		switched, err := attemptModelSwitch(a, args[1], out)
+		if err != nil {
+			return err
+		}
+		if !switched {
+			fmt.Fprintf(out, "  Model %q not found — use /llamafile list or /ollama list.\n", args[1])
+		}
+		return nil
+	case "status":
+		return cmdModelStatus(a, out)
+	default:
+		return cmdModelShow(a, out)
+	}
+}
+
+// cmdModelShow prints the currently active model and backend.
+func cmdModelShow(a *Agent, out io.Writer) error {
+	label := activeModelLabel(a)
+	if a.Client != nil {
+		fmt.Fprintf(out, "  Active model: %s\n", green(label))
+	} else {
+		fmt.Fprintf(out, "  Active model: %s\n", yellow(label))
+	}
+	return nil
+}
+
+// cmdModelList prints all registered models across llamafile and ollama.
+func cmdModelList(a *Agent, out io.Writer) error {
+	hasAny := false
+	if len(a.Config.LlamafileModels) > 0 {
+		hasAny = true
+		fmt.Fprintln(out, "  Llamafile models:")
+		for _, e := range a.Config.LlamafileModels {
+			marker := "  "
+			if e.Name == a.Config.LlamafileActive {
+				marker = "→ "
+			}
+			fmt.Fprintf(out, "    %s%-20s (llamafile)\n", marker, e.Name)
+		}
+	}
+	if a.Config.OllamaModel != "" {
+		hasAny = true
+		fmt.Fprintf(out, "  Ollama active: %s\n", a.Config.OllamaModel)
+	}
+	if !hasAny {
+		fmt.Fprintln(out, "  No models registered. Use /llamafile add or connect to Ollama.")
+	}
+	return nil
+}
+
+// cmdModelStatus prints connection status for the active backend.
+func cmdModelStatus(a *Agent, out io.Writer) error {
+	label := activeModelLabel(a)
+	reachable := probeActiveBackend(a)
+	status := red("✗ not reachable")
+	if reachable {
+		status = green("✓ reachable")
+	}
+	fmt.Fprintf(out, "  Model:  %s\n", label)
+	fmt.Fprintf(out, "  Status: %s\n", status)
+	return nil
+}
+
 func cmdHint(a *Agent, _ []string, out io.Writer) error {
 	hints := 0
 

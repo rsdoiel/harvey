@@ -23,6 +23,7 @@ const planFileName = "plan.md"
  *   Index (int)    — zero-based position in the plan.
  *   Done  (bool)   — true when the step has been executed successfully.
  *   Title (string) — one-line description of the action to perform.
+ *   Model (string) — optional model name from a [model: name] annotation; "" means use default.
  *
  * Example:
  *   step := PlanStep{Index: 0, Done: false, Title: "Create demo/ directory"}
@@ -31,6 +32,42 @@ type PlanStep struct {
 	Index int
 	Done  bool
 	Title string
+	Model string // from [model: name] annotation; "" = use the default model
+}
+
+/** extractStepModel parses an optional [model: NAME] annotation from a plan
+ * step title. Returns the cleaned title (with the annotation removed) and the
+ * model name. Returns (title, "") when no annotation is present.
+ *
+ * Parameters:
+ *   raw (string) — raw step title, e.g. "Step 3 [model: phi-mini]: do it".
+ *
+ * Returns:
+ *   title (string) — title with the annotation stripped.
+ *   model (string) — model name, or "" if no annotation present.
+ *
+ * Example:
+ *   title, model := extractStepModel("Step 1 [model: phi-mini]: compress output")
+ *   // title == "Step 1: compress output", model == "phi-mini"
+ */
+func extractStepModel(raw string) (string, string) {
+	// Match "[model: NAME]" anywhere in the title.
+	open := strings.Index(raw, "[model:")
+	if open < 0 {
+		return raw, ""
+	}
+	close := strings.Index(raw[open:], "]")
+	if close < 0 {
+		return raw, ""
+	}
+	annotation := raw[open : open+close+1]           // "[model: phi-mini]"
+	modelName := strings.TrimSpace(raw[open+7 : open+close]) // "phi-mini"
+	cleaned := strings.TrimSpace(strings.Replace(raw, annotation, "", 1))
+	// Collapse whitespace artifacts left by annotation removal.
+	cleaned = strings.ReplaceAll(cleaned, "  ", " ")
+	cleaned = strings.ReplaceAll(cleaned, " :", ":")
+	cleaned = strings.TrimPrefix(cleaned, ": ")
+	return cleaned, modelName
 }
 
 /** Plan represents a multi-step task decomposed into ordered, checkable steps.
@@ -289,10 +326,12 @@ func parsePlan(content string) (*Plan, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "- [ ] ") {
-			p.Steps = append(p.Steps, PlanStep{Index: idx, Done: false, Title: line[6:]})
+			title, model := extractStepModel(line[6:])
+			p.Steps = append(p.Steps, PlanStep{Index: idx, Done: false, Title: title, Model: model})
 			idx++
 		} else if strings.HasPrefix(line, "- [x] ") || strings.HasPrefix(line, "- [X] ") {
-			p.Steps = append(p.Steps, PlanStep{Index: idx, Done: true, Title: line[6:]})
+			title, model := extractStepModel(line[6:])
+			p.Steps = append(p.Steps, PlanStep{Index: idx, Done: true, Title: title, Model: model})
 			idx++
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -208,4 +209,37 @@ func TestProbeActiveBackend_ollamaNotRunning(t *testing.T) {
 	if probeActiveBackend(a) {
 		t.Error("expected false when ollama server is not running")
 	}
+}
+
+// ─── attemptModelSwitch ──────────────────────────────────────────────────────
+
+func TestAttemptModelSwitch_notFound(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	switched, err := attemptModelSwitch(a, "unknown-model", &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if switched {
+		t.Error("expected switched=false for unknown model name")
+	}
+}
+
+func TestAttemptModelSwitch_llamafileRegistered(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/nonexistent.llamafile"},
+	}
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+	// The switch will fail because the file doesn't exist and no server is
+	// running, but the name IS found, so switched==true and err!=nil.
+	switched, err := attemptModelSwitch(a, "qwen-coding", &buf)
+	if !switched {
+		t.Error("expected switched=true when model name is registered")
+	}
+	// An error is acceptable (server not running); what matters is switched==true.
+	_ = err
 }

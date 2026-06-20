@@ -104,6 +104,53 @@ func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
 	return cmdLlamafileAdd(a, []string{path}, out)
 }
 
+/** attemptModelSwitch tries to switch the active model to the named backend
+ * entry. It checks LlamafileModels first, then Ollama models. Returns
+ * (true, err) when the name is found regardless of whether the switch
+ * succeeded; returns (false, nil) when the name is not registered anywhere
+ * so the caller can fall through to treating the input as a normal prompt.
+ *
+ * Parameters:
+ *   a    (*Agent)    — the running Harvey agent.
+ *   name (string)   — model name to switch to (without the "@" prefix).
+ *   out  (io.Writer) — destination for status messages.
+ *
+ * Returns:
+ *   switched (bool)  — true when a matching model entry was found.
+ *   error           — non-nil when the switch was attempted but failed.
+ *
+ * Example:
+ *   if switched, err := attemptModelSwitch(a, "phi-mini", out); switched { ... }
+ */
+func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
+	// Check llamafile registry first.
+	for _, e := range a.Config.LlamafileModels {
+		if e.Name == name {
+			err := cmdLlamafileUse(a, []string{name}, out)
+			if err == nil && a.Recorder != nil {
+				_ = a.Recorder.RecordModelSwitch(name, "llamafile")
+			}
+			return true, err
+		}
+	}
+	// Check model aliases.
+	if full, ok := a.Config.ModelAliases[name]; ok {
+		err := cmdLlamafileUse(a, []string{full}, out)
+		if err != nil {
+			// Not a llamafile alias — fall through to Ollama.
+			a.Config.OllamaModel = full
+			a.Client = newOllamaLLMClient(a.Config.OllamaURL, full, a.Config.OllamaTimeout)
+			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
+			if a.Recorder != nil {
+				_ = a.Recorder.RecordModelSwitch(full, "ollama")
+			}
+		}
+		return true, nil
+	}
+	// Name not found in any registry.
+	return false, nil
+}
+
 /** activeModelLabel returns a short human-readable label for the currently
  * configured model backend, e.g. "qwen-coding (llamafile)" or "llama3.2:3b (ollama)".
  * Returns "none" when no backend is configured. Llamafile takes priority when
@@ -530,6 +577,29 @@ func (a *Agent) Run(out io.Writer) error {
 		input = strings.TrimSpace(input)
 		if input == "" {
 			continue
+		}
+
+		// "@name" prefix — inline model switch; remainder is forwarded as prompt.
+		if strings.HasPrefix(input, "@") && !strings.HasPrefix(input, "@route:") {
+			parts := strings.SplitN(input, " ", 2)
+			name := strings.TrimPrefix(parts[0], "@")
+			rest := ""
+			if len(parts) > 1 {
+				rest = strings.TrimSpace(parts[1])
+			}
+			switched, switchErr := attemptModelSwitch(a, name, out)
+			if switchErr != nil {
+				fmt.Fprintf(out, yellow("  ⚠ Model switch failed: ")+"%v\n", switchErr)
+				continue
+			}
+			if switched {
+				le.AppendHistory(input)
+				if rest == "" {
+					continue // switch-only turn
+				}
+				input = rest // forward remainder as prompt
+			}
+			// name not found — fall through to normal chat
 		}
 
 		if strings.HasPrefix(input, "/") {

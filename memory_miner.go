@@ -528,3 +528,94 @@ func editInEditor(doc *MemoryDoc, out io.Writer) (*MemoryDoc, error) {
 	}
 	return ParseMemoryDoc(edited)
 }
+
+// modelSegment holds a contiguous block of session text attributed to one model.
+type modelSegment struct {
+	model   string
+	backend string
+	text    string
+}
+
+/** parseModelSwitchNote parses a Fountain model-switch note of the form:
+ *   [[model switch: NAME (BACKEND) at TIMESTAMP]]
+ * Returns (name, backend, true) on success; ("", "", false) otherwise.
+ *
+ * Parameters:
+ *   line (string) — a single line from a session file.
+ *
+ * Returns:
+ *   name    (string) — model name.
+ *   backend (string) — backend identifier.
+ *   ok      (bool)   — true when the line matches the expected format.
+ *
+ * Example:
+ *   name, backend, ok := parseModelSwitchNote("[[model switch: phi-mini (llamafile) at 2026-06-20 14:32:11]]")
+ */
+func parseModelSwitchNote(line string) (name, backend string, ok bool) {
+	const prefix = "[[model switch: "
+	const suffix = "]]"
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
+		return "", "", false
+	}
+	inner := line[len(prefix) : len(line)-len(suffix)] // "NAME (BACKEND) at TIMESTAMP"
+	// Find " (" to split name from the rest.
+	openParen := strings.Index(inner, " (")
+	if openParen < 0 {
+		return "", "", false
+	}
+	name = inner[:openParen]
+	rest := inner[openParen+2:] // "BACKEND) at TIMESTAMP"
+	closeParen := strings.Index(rest, ")")
+	if closeParen < 0 {
+		return "", "", false
+	}
+	backend = rest[:closeParen]
+	return name, backend, true
+}
+
+/** splitAtModelSwitches partitions session text into segments, each attributed
+ * to the model that was active when those turns were generated. The first
+ * segment uses startModel/startBackend; subsequent segments use the name and
+ * backend parsed from each [[model switch: ...]] note.
+ *
+ * Parameters:
+ *   text         (string) — full session file content.
+ *   startModel   (string) — model active at session start.
+ *   startBackend (string) — backend active at session start.
+ *
+ * Returns:
+ *   []modelSegment — one entry per model-attributed block.
+ *
+ * Example:
+ *   segs := splitAtModelSwitches(spmd, "qwen-coding", "llamafile")
+ */
+func splitAtModelSwitches(text, startModel, startBackend string) []modelSegment {
+	var segs []modelSegment
+	currentModel := startModel
+	currentBackend := startBackend
+	var buf strings.Builder
+
+	for _, line := range strings.Split(text, "\n") {
+		if name, backend, ok := parseModelSwitchNote(line); ok {
+			segs = append(segs, modelSegment{
+				model:   currentModel,
+				backend: currentBackend,
+				text:    buf.String(),
+			})
+			buf.Reset()
+			currentModel = name
+			currentBackend = backend
+			continue
+		}
+		buf.WriteString(line)
+		buf.WriteByte('\n')
+	}
+	// Final segment.
+	segs = append(segs, modelSegment{
+		model:   currentModel,
+		backend: currentBackend,
+		text:    buf.String(),
+	})
+	return segs
+}
