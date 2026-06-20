@@ -21,8 +21,8 @@
 <h1 id="name">NAME</h1>
 <p>RAG — Retrieval-Augmented Generation</p>
 <h1 id="synopsis">SYNOPSIS</h1>
-<p>/rag &lt;list|new NAME|switch NAME|drop NAME|setup|ingest
-PATH|status|query TEXT|on|off&gt;</p>
+<p>/rag &lt;list|new NAME|use NAME|show <a href="#name">NAME</a>|remove
+NAME|ingest PATH|status|query TEXT|on|off&gt;</p>
 <h1 id="description">DESCRIPTION</h1>
 <p>RAG lets Harvey find relevant snippets from a local knowledge store
 and inject them into the context window before each prompt is sent to
@@ -138,9 +138,13 @@ Creates the database at agents/rag/NAME.db and saves the config to
 agents/harvey.yaml. The new store is immediately set as active.</p>
 <p>/rag use NAME Close the currently open store and activate NAME. The
 change is persisted to agents/harvey.yaml.</p>
-<p>/rag drop NAME Remove a store from the registry after confirmation.
+<p>/rag show <a href="#name">NAME</a> Show details for the named (or
+active) store: database path, embedding model, chunk count, and model
+map. If NAME is omitted, the active store is shown.</p>
+<p>/rag remove NAME Remove a store from the registry after confirmation.
 The .db file is NOT deleted automatically — the path is printed so you
-can remove it manually.</p>
+can remove it manually. Alias: drop.</p>
+<p>/rag drop NAME Alias for remove.</p>
 <p>/rag ingest PATH [PATH…] Reads each file or directory (recursively),
 splits text into paragraph-sized chunks (~500 characters each), embeds
 them using the active store’s embedding model, and stores the vectors in

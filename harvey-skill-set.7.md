@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -8,7 +8,7 @@ SKILL-SET — load and manage named bundles of Harvey skills
 
 # SYNOPSIS
 
-/skill-set <list|load NAME|info NAME|create NAME|status|unload>
+/skill-set <list|load NAME|show NAME|new NAME|status|unload>
 
 # DESCRIPTION
 
@@ -30,11 +30,19 @@ load NAME
   when combined tokens exceed 50 % of the active context window; errors
   when they exceed 100 %.
 
-info NAME
+show NAME
   Show the skill-set description and the skills it contains without loading.
+  Alias: info.
+
+info NAME
+  Alias for show.
+
+new NAME
+  Scaffold a new NAME.yaml in agents/skill-sets/ with placeholder content.
+  Alias: create.
 
 create NAME
-  Scaffold a new NAME.yaml in agents/skill-sets/ with placeholder content.
+  Alias for new.
 
 status
   Show the currently loaded skill-set (if any).
@@ -67,7 +75,7 @@ Load the fountain bundle:
 
 Show bundle contents without loading:
 
-  /skill-set info fountain
+  /skill-set show fountain
 
 Check what is active:
 
@@ -75,7 +83,7 @@ Check what is active:
 
 Create a new bundle:
 
-  /skill-set create my-bundle
+  /skill-set new my-bundle
 
 # SEE ALSO
 

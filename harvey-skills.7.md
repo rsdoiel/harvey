@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -164,7 +164,8 @@ that follows the Agent Skills specification (https://agentskills.io/home).
   /skill                   list all discovered skills
   /skill list              same as above
   /skill load NAME         inject the full skill body into context
-  /skill info NAME         show path, compatibility, and license
+  /skill show NAME         show path, compatibility, and license (alias: info)
+  /skill info NAME         alias for show
   /skill status            count skills by scope
   /skill new               interactive wizard to create a new skill
   /skill run NAME          run a skill (dispatches compiled scripts if available)

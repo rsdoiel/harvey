@@ -97,20 +97,19 @@ switch while preserving existing context in the environment</label></li>
 </ul>
 <h3 id="model-management-ergonomics">Model management ergonomics</h3>
 <ul class="task-list">
-<li><label><input type="checkbox" />Unified <code>/model</code> command
-— <code>/model [list|use NAME|status]</code> that works regardless of
-whether the active backend is llamafile or Ollama, removing the mental
-load of choosing between <code>/llamafile</code> and
-<code>/ollama</code> subcommands</label></li>
-<li><label><input type="checkbox" /><code>/llamafile remove</code> alias
-— add <code>remove</code> as an alias for the <code>drop</code>
-subcommand; <code>remove</code> is more natural English for most
-users</label></li>
-<li><label><input type="checkbox" /><code>/llamafile download</code>
-stub — a command that prints a curated table of recommended models
-(name, size, HuggingFace URL, capability note) formatted for
-copy-pasting into <code>wget</code>/<code>curl</code>, removing the
-friction of finding the right file</label></li>
+<li><label><input type="checkbox" checked="" />Unified
+<code>/model</code> command —
+<code>/model [list|use NAME|show [NAME]|status]</code> implemented;
+works regardless of backend (llamafile.go +
+commands.go:415)</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>/llamafile remove</code> alias —
+<code>case "drop", "remove":</code> in llamafile.go:192;
+<code>drop</code> kept as alias</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>/llamafile download</code> stub —
+<code>case "download":</code> in llamafile.go:194;
+<code>LlamafileDownloadText</code> in helptext.go</label></li>
 </ul>
 <h3 id="session-quality">Session quality</h3>
 <ul class="task-list">
@@ -134,45 +133,42 @@ consistency</h3>
 command families. Making the vocabulary consistent lowers the learning
 curve: knowing any one command family teaches you all the others.</p>
 <p><strong><code>remove</code> as the canonical delete verb (aliases
-kept for backwards compat):</strong> - [ ] <code>/rag remove</code> —
-alias for <code>drop</code>; make <code>remove</code> canonical - [ ]
-<code>/route remove</code> — alias for <code>rm</code>; make
-<code>remove</code> canonical - [ ] <code>/llamafile remove</code> —
-already planned above; confirm <code>drop</code> stays as alias</p>
+kept for backwards compat):</strong> - [x] <code>/rag remove</code> —
+implemented; <code>case "drop", "remove":</code> at commands.go:4810 -
+[x] <code>/route remove</code> — implemented; in subcommand list and
+handler at commands.go:966 - [x] <code>/llamafile remove</code> —
+implemented; see Model management ergonomics above</p>
 <p><strong>Missing <code>show</code> subcommands (content/details
-display, distinct from <code>status</code>):</strong> - [ ]
-<code>/llamafile show [NAME]</code> — display registered model details:
-path, size, context length, capabilities from model cache - [ ]
-<code>/rag show [NAME]</code> — display active (or named) store stats:
-chunk count, embedding model, DB path, last ingest date</p>
-<p><strong>Missing <code>use</code> subcommand:</strong> - [ ]
-<code>/route use NAME</code> — set the named route as the default
-without requiring <code>@mention</code> syntax</p>
-<p><strong><code>/session</code> command expansion:</strong> - [ ]
-<code>/session list</code> — list available session files from
-<code>agents/sessions/</code> without restarting Harvey - [ ]
-<code>/session show [PATH]</code> — display session metadata: date,
-model, backend, turn count, opening prompt - [ ]
-<code>/session use PATH</code> (or <code>continue</code>) — alias
-<code>continue</code> as <code>use</code> to match the vocabulary; keep
-<code>continue</code> as alias</p>
+display, distinct from <code>status</code>):</strong> - [x]
+<code>/llamafile show [NAME]</code> — implemented in
+llamafile.go:cmdLlamafileShow; shows path, size, context length - [x]
+<code>/rag show [NAME]</code> — implemented in commands.go:ragShow;
+shows db path, embed model, chunk count, model map</p>
+<p><strong>Missing <code>use</code> subcommand:</strong> - [x]
+<code>/route use NAME</code> — implemented; <code>case "use":</code> at
+commands.go:1006; also clears sticky route when NAME omitted</p>
+<p><strong><code>/session</code> command expansion:</strong> - [x]
+<code>/session list</code> — implemented; lists .spmd files from
+agents/sessions/ with timestamps - [x] <code>/session show [PATH]</code>
+— implemented at commands.go:3792; shows date, model, turn count,
+opening prompt - [x] <code>/session use PATH</code> (or
+<code>continue</code>) — implemented;
+<code>case "use", "continue":</code> at commands.go:3823</p>
 <p><strong>Normalize <code>new</code>/<code>show</code> in skill
-commands:</strong> - [ ] <code>/skill show NAME</code> — alias for
-<code>info</code>; make <code>show</code> canonical, keep
-<code>info</code> as alias - [ ] <code>/skill-set new NAME</code> —
-alias for <code>create</code>; make <code>new</code> canonical, keep
-<code>create</code> as alias - [ ] <code>/skill-set show NAME</code> —
-alias for <code>info</code>; make <code>show</code> canonical, keep
-<code>info</code> as alias</p>
-<p><strong><code>/model alias</code> verb normalization:</strong> - [ ]
-<code>/model alias add ALIAS FULLNAME</code> — alias for
-<code>set</code>; make <code>add</code> the preferred verb, keep
-<code>set</code> as alias</p>
-<p><strong>Documentation of the vocabulary:</strong> - [ ] Add a
-“Command vocabulary” section to <code>user_manual.md</code> and
-<code>getting-started.md</code> explaining the eight core verbs and the
-<code>add</code> vs <code>new</code> distinction so users can predict
-subcommands for any command family</p>
+commands:</strong> - [x] <code>/skill show NAME</code> — implemented;
+<code>case "info", "show":</code> at commands.go:3932 - [x]
+<code>/skill-set new NAME</code> — implemented;
+<code>case "create", "new":</code> at commands.go:4179 - [x]
+<code>/skill-set show NAME</code> — implemented;
+<code>case "info", "show":</code> at commands.go:4173</p>
+<p><strong><code>/model alias</code> verb normalization:</strong> - [x]
+<code>/model alias add ALIAS FULLNAME</code> — implemented;
+<code>add</code> is preferred verb, <code>set</code> kept as alias;
+documented in ModelAliasHelpText</p>
+<p><strong>Documentation of the vocabulary:</strong> - [x] “Command
+vocabulary” section added to both <code>user_manual.md</code> and
+<code>getting_started.md</code> with eight-verb table and
+<code>add</code> vs <code>new</code> distinction</p>
 <h3 id="documentation">Documentation</h3>
 <ul class="task-list">
 <li><label><input type="checkbox" />Restructure getting-started

@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -8,7 +8,7 @@ RAG — Retrieval-Augmented Generation
 
 # SYNOPSIS
 
-/rag <list|new NAME|switch NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
+/rag <list|new NAME|use NAME|show [NAME]|remove NAME|ingest PATH|status|query TEXT|on|off>
 
 # DESCRIPTION
 
@@ -155,9 +155,18 @@ are all low (< 0.3) for a question you expect the store to answer, consider:
   Close the currently open store and activate NAME. The change is persisted
   to agents/harvey.yaml.
 
-/rag drop NAME
+/rag show [NAME]
+  Show details for the named (or active) store: database path, embedding
+  model, chunk count, and model map. If NAME is omitted, the active store
+  is shown.
+
+/rag remove NAME
   Remove a store from the registry after confirmation. The .db file is NOT
   deleted automatically — the path is printed so you can remove it manually.
+  Alias: drop.
+
+/rag drop NAME
+  Alias for remove.
 
 /rag ingest PATH [PATH...]
   Reads each file or directory (recursively), splits text into

@@ -27,15 +27,17 @@
 inspired by Claude Code but focused on working with small language
 models in small computer environments like a Raspberry Pi computer. The
 inspiration was to run an agent locally. harvey supports running models
-via LLamafiles and models provided Ollama. It can run larger models on
-more capable computers too. harvey can be compiled to run on any system
-that is supported by the Go programming language. The project
-distributes executable versions that are suitable to run under Linux,
-macOS and Windows for x86_64 and aarch64 computers.</p>
+via llamafile (self-contained model executables from Mozilla) and via
+Ollama. It can run larger models on more capable computers too. harvey
+can be compiled to run on any system that is supported by the Go
+programming language. The project distributes executable versions that
+are suitable to run under Linux, macOS and Windows for x86_64 and
+aarch64 computers.</p>
 <p>harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It then connects to a local Ollama server and starts an
-interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
-Mistral, OpenAI) can be added as named routes via /route add.</p>
+system prompt. It then connects to a llamafile or Ollama server and
+starts an interactive chat session. Cloud providers (Anthropic,
+DeepSeek, Gemini, Mistral, OpenAI) can be added as named routes via
+/route add.</p>
 <p>All file I/O is constrained to the workspace directory (–workdir or
 “.”). A knowledge base is stored at <workdir>/agents/knowledge.db and is
 created automatically on first run. Session recordings (.spmd files) are
@@ -177,13 +179,15 @@ manage the local Ollama server and installed models
 <dd>
 show detailed model information (Ollama only)
 </dd>
-<dt>/route &lt;add NAME URL [MODEL]|rm NAME|list|on|off|status&gt;</dt>
+<dt>/route &lt;add NAME URL [MODEL]|remove NAME|use <a
+href="#name">NAME</a>|list|on|off|status&gt;</dt>
 <dd>
 manage named remote LLM endpoints (<span class="citation"
 data-cites="mention">@mention</span> routing)
 </dd>
-<dt>/llamafile &lt;add [PATH] <a href="#name">NAME</a>|use
-NAME|list|start <a href="#name">NAME</a>|status|drop NAME&gt;</dt>
+<dt>/llamafile &lt;add [PATH] <a href="#name">NAME</a>|use NAME|show <a
+href="#name">NAME</a>|list|start <a href="#name">NAME</a>|status|remove
+NAME|download&gt;</dt>
 <dd>
 manage local llamafile model backends
 </dd>
@@ -222,9 +226,10 @@ start or stop Fountain session recording
 <dd>
 rename the active session file without interrupting recording
 </dd>
-<dt>/session &lt;continue FILE|replay FILE [OUTPUT]&gt;</dt>
+<dt>/session &lt;list|show [FILE]|use FILE|continue FILE|replay FILE
+[OUTPUT]&gt;</dt>
 <dd>
-load history from a prior session or replay its turns
+list, inspect, load, or replay recorded sessions
 </dd>
 </dl>
 <p><strong>Knowledge base</strong></p>

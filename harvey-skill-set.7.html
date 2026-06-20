@@ -21,7 +21,7 @@
 <h1 id="name">NAME</h1>
 <p>SKILL-SET — load and manage named bundles of Harvey skills</p>
 <h1 id="synopsis">SYNOPSIS</h1>
-<p>/skill-set &lt;list|load NAME|info NAME|create
+<p>/skill-set &lt;list|load NAME|show NAME|new
 NAME|status|unload&gt;</p>
 <h1 id="description">DESCRIPTION</h1>
 <p>/skill-set groups multiple skills into a named YAML bundle stored in
@@ -36,10 +36,12 @@ by the name field in their SKILL.md frontmatter
 agents/skills/, count tokens for the combined bodies, and load each
 skill into context. Warns when combined tokens exceed 50 % of the active
 context window; errors when they exceed 100 %.</p>
-<p>info NAME Show the skill-set description and the skills it contains
-without loading.</p>
-<p>create NAME Scaffold a new NAME.yaml in agents/skill-sets/ with
-placeholder content.</p>
+<p>show NAME Show the skill-set description and the skills it contains
+without loading. Alias: info.</p>
+<p>info NAME Alias for show.</p>
+<p>new NAME Scaffold a new NAME.yaml in agents/skill-sets/ with
+placeholder content. Alias: create.</p>
+<p>create NAME Alias for new.</p>
 <p>status Show the currently loaded skill-set (if any).</p>
 <p>unload Clear the active skill-set indicator. The injected context
 remains in history; use /clear if you need a clean slate.</p>
@@ -53,11 +55,11 @@ skills: - fountain-analysis - review-knowledge-base metadata: version:
 <p>Load the fountain bundle:</p>
 <p>/skill-set load fountain</p>
 <p>Show bundle contents without loading:</p>
-<p>/skill-set info fountain</p>
+<p>/skill-set show fountain</p>
 <p>Check what is active:</p>
 <p>/skill-set status</p>
 <p>Create a new bundle:</p>
-<p>/skill-set create my-bundle</p>
+<p>/skill-set new my-bundle</p>
 <h1 id="see-also">SEE ALSO</h1>
 <p>/skill load NAME — load a single skill /skill list — list individual
 skills /help skills — skills system overview</p>

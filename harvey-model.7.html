@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="name">NAME</h1>
+<p>MODEL — backend-agnostic model management and inline switching</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p>/model [list|use NAME|show <a href="#name">NAME</a>|status]</p>
+<p><span class="citation" data-cites="NAME">@NAME [prompt...]</span></p>
+<h1 id="description">DESCRIPTION</h1>
+<p>The /model command manages models across all backends (llamafile and
+Ollama) using a single consistent interface. Use it when you don’t want
+to remember which backend is active.</p>
+<p>The <span class="citation" data-cites="NAME">@NAME</span> prefix
+switches the active model inline, within the current prompt. History is
+preserved — the switch is like a new character entering the scene.</p>
+<h1 id="subcommands">SUBCOMMANDS</h1>
+<p>/model /model show <a href="#name">NAME</a> Print the currently
+active model and backend. If NAME is given, show details for that
+model.</p>
+<p>/model list List all registered models across llamafile and Ollama,
+marking the active entry with an arrow.</p>
+<p>/model use NAME Switch to the named model. Harvey checks llamafile
+models first, then Ollama models. Equivalent to /llamafile use or
+/ollama use depending on where NAME is registered.</p>
+<p>/model status Show whether the active backend is reachable.</p>
+<h1 id="at-mention-switching">AT-MENTION SWITCHING</h1>
+<p>Prefix any prompt with <span class="citation"
+data-cites="NAME">@NAME</span> to switch to that model for this turn and
+all subsequent turns:</p>
+<p><span class="citation" data-cites="phi-mini">@phi-mini</span>
+summarise this in under 100 words</p>
+<p>If NAME is not recognised, the @ prefix is treated as part of the
+prompt and no switch occurs. History is never cleared on a switch — the
+new model sees the full conversation so far.</p>
+<p>Switch notes are written to the session file: [[model switch:
+phi-mini (llamafile) at 2026-06-20 14:32:11]]</p>
+<h1 id="model-aliases">MODEL ALIASES</h1>
+<p>/model alias list List all defined short-name aliases.</p>
+<p>/model alias add ALIAS FULL_NAME Define an alias (also accepts:
+set).</p>
+<p>/model alias remove ALIAS Remove an alias (also accepts: rm,
+delete).</p>
+<p>Aliases are resolved in <span class="citation"
+data-cites="NAME">@NAME</span> switching and /model use.</p>
+<h1 id="see-also">SEE ALSO</h1>
+<p>harvey-llamafile(7), harvey-ollama(7), harvey-routing(7)</p>
+</section>
+</body>
+</html>

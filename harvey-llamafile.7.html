@@ -54,9 +54,17 @@ bottom.</p>
 <p>/llamafile start <a href="#name">NAME</a> Start the active (or named)
 model’s server without changing the active setting. Useful after Harvey
 restarts.</p>
+<p>/llamafile show <a href="#name">NAME</a> Show details for a
+registered model: path, file size, and context length. If NAME is
+omitted, shows the active model.</p>
 <p>/llamafile status Show the active model, API URL, reachability,
 process ownership, discovery directory, and number of registered
 models.</p>
+<p>/llamafile remove NAME Unregister a model from agents/harvey.yaml.
+The llamafile binary itself is not deleted. Alias: drop.</p>
+<p>/llamafile drop NAME Alias for remove.</p>
+<p>/llamafile download Print a curated table of recommended llamafile
+models with sizes and download URLs for copy-pasting into wget/curl.</p>
 <h1 id="configuration">CONFIGURATION</h1>
 <p>In agents/harvey.yaml:</p>
 <p>llamafile: models_dir: ~/Models # optional; $HOME/Models is the

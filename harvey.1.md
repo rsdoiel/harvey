@@ -1,4 +1,4 @@
-%harvey(1) user manual | version 0.0.13 7ec384f
+%harvey(1) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -16,15 +16,16 @@ harvey is a terminal agent for local large language models. It was
 inspired by Claude Code but focused on working with small language models
 in small computer environments like a Raspberry Pi computer. The
 inspiration was to run an agent locally. harvey supports running models
-via LLamafiles and models provided Ollama. It can run larger models on more
-capable computers too. harvey can be compiled to run on any system
-that is supported by the Go programming language. The project distributes
-executable versions that are suitable to run under Linux, macOS and Windows
-for x86_64 and aarch64 computers.
+via llamafile (self-contained model executables from Mozilla) and via
+Ollama. It can run larger models on more capable computers too. harvey
+can be compiled to run on any system that is supported by the Go
+programming language. The project distributes executable versions that are
+suitable to run under Linux, macOS and Windows for x86_64 and aarch64
+computers.
 
 harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It then connects to a local Ollama server and starts an
-interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
+system prompt. It then connects to a llamafile or Ollama server and starts
+an interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
 Mistral, OpenAI) can be added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
@@ -136,10 +137,10 @@ are also available from the shell: harvey --help TOPIC.
 /inspect [MODEL]
 : show detailed model information (Ollama only)
 
-/route <add NAME URL [MODEL]|rm NAME|list|on|off|status>
+/route <add NAME URL [MODEL]|remove NAME|use [NAME]|list|on|off|status>
 : manage named remote LLM endpoints (@mention routing)
 
-/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status|drop NAME>
+/llamafile <add [PATH] [NAME]|use NAME|show [NAME]|list|start [NAME]|status|remove NAME|download>
 : manage local llamafile model backends
 
 **Context and history**
@@ -167,8 +168,8 @@ are also available from the shell: harvey --help TOPIC.
 /rename NAME
 : rename the active session file without interrupting recording
 
-/session <continue FILE|replay FILE [OUTPUT]>
-: load history from a prior session or replay its turns
+/session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>
+: list, inspect, load, or replay recorded sessions
 
 **Knowledge base**
 

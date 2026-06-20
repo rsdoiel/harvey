@@ -19,19 +19,32 @@
 </nav>
 <section>
 <h1 id="name">NAME</h1>
-<p>SESSION — continue or replay recorded conversations</p>
+<p>SESSION — list, inspect, continue, or replay recorded
+conversations</p>
 <h1 id="synopsis">SYNOPSIS</h1>
-<p>/session continue FILE /session replay FILE [OUTPUT]</p>
+<p>/session list /session show [FILE] /session use FILE /session
+continue FILE /session replay FILE [OUTPUT]</p>
 <h1 id="description">DESCRIPTION</h1>
 <p>Harvey saves every conversation to a Fountain .spmd file. The
-/session command lets you reload those files in two distinct ways:</p>
-<p>continue — restore the conversation history and keep chatting. replay
-— re-send the original user turns to the current model and record fresh
-responses.</p>
-<h1 id="continue">CONTINUE</h1>
-<p>/session continue FILE loads all turns from FILE into the current
-history and returns you to the REPL. The model sees the full prior
-conversation as if it had been running the whole time.</p>
+/session command lets you browse those files and reload them in two
+distinct ways:</p>
+<p>continue / use — restore the conversation history and keep chatting.
+replay — re-send the original user turns to the current model and record
+fresh responses.</p>
+<h1 id="list">LIST</h1>
+<p>/session list prints the recorded sessions in
+<workdir>/agents/sessions/, one per line with the filename and
+last-modified timestamp.</p>
+<h1 id="show">SHOW</h1>
+<p>/session show [FILE] displays metadata for FILE without loading it:
+date, model used, turn count, and the opening user prompt. If FILE is
+omitted and a recording is currently active, the active file is
+shown.</p>
+<h1 id="continue-use">CONTINUE / USE</h1>
+<p>/session use FILE (alias: /session continue FILE) loads all turns
+from FILE into the current history and returns you to the REPL. The
+model sees the full prior conversation as if it had been running the
+whole time.</p>
 <p>Use continue to:</p>
 <ul>
 <li>Resume work across Harvey restarts.</li>
@@ -40,7 +53,7 @@ conversation as if it had been running the whole time.</p>
 </ul>
 <p>Harvey also offers to continue the most recently saved session at
 startup; pressing Enter at that prompt is equivalent to /session
-continue.</p>
+use.</p>
 <h1 id="replay">REPLAY</h1>
 <p>/session replay FILE [OUTPUT] re-runs a session by sending each user
 turn to the currently connected model in sequence. The model’s fresh
@@ -61,7 +74,7 @@ the new ones produced by the current model.</p>
 <p>Session files use the Fountain screenplay format with a .spmd
 extension. Each exchange is an INT scene with speaker labels (RSDOIEL,
 HARVEY, model name). These files are plain text and human-readable.</p>
-<p>Default save location: <workdir>/agents/sessions/ File naming:<br />
+<p>Default save location: <workdir>/agents/sessions/ File naming:
 harvey-session-YYYYMMDD-HHMMSS.spmd</p>
 <h1 id="cli-flags">CLI FLAGS</h1>
 <p>The same operations are available as startup flags:</p>

@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -76,7 +76,11 @@ Cloud providers (API key read from environment):
   /route add NAME URL [MODEL]        register a remote endpoint
                                        @pi2    ollama://192.168.1.12:11434 llama3.1:8b
                                        @claude anthropic:// claude-sonnet-4-20250514
-  /route rm NAME                     remove a registered endpoint
+  /route remove NAME                 unregister an endpoint (alias: rm)
+  /route rm NAME                     alias for remove
+  /route use [NAME]                  set NAME as the sticky route so all prompts
+                                       dispatch there without an @mention; omit NAME
+                                       to clear the sticky route
   /route models URL                  list models available at a provider URL
                                        useful before /route add to choose a model
   /route probe NAME                  show reachability, model, and tool-call capability

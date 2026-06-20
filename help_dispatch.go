@@ -32,6 +32,8 @@ func HelpTopicsText() string {
   kb              Knowledge base — experiments, observations, and concepts
   learn           Overview of Harvey's three-silo memory architecture
   llamafile       Single-file runnable model backends (llamafile)
+  model           Unified model management across all backends (list, use, show, status)
+  model-alias     @mention inline switching and /model alias short-name management
   loop            Repeat a prompt or command on a timed interval
   memory          Experience memory — mine, list, show, flag, forget
   ollama          Local Ollama service control and model management
@@ -128,7 +130,9 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(LoopHelpText)
 	case "memory", "profile", "recall":
 		f(MemoryHelpText)
-	case "model", "model-alias", "alias":
+	case "model":
+		f(ModelHelpText)
+	case "model-alias", "alias":
 		f(ModelAliasHelpText)
 	case "ollama":
 		f(OllamaHelpText)

@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -49,9 +49,24 @@ Pre-built models are available at:
     Start the active (or named) model's server without changing the
     active setting. Useful after Harvey restarts.
 
+  /llamafile show [NAME]
+    Show details for a registered model: path, file size, and context
+    length. If NAME is omitted, shows the active model.
+
   /llamafile status
     Show the active model, API URL, reachability, process ownership,
     discovery directory, and number of registered models.
+
+  /llamafile remove NAME
+    Unregister a model from agents/harvey.yaml. The llamafile binary itself
+    is not deleted. Alias: drop.
+
+  /llamafile drop NAME
+    Alias for remove.
+
+  /llamafile download
+    Print a curated table of recommended llamafile models with sizes and
+    download URLs for copy-pasting into wget/curl.
 
 # CONFIGURATION
 

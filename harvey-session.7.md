@@ -1,30 +1,44 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
 # NAME
 
-SESSION — continue or replay recorded conversations
+SESSION — list, inspect, continue, or replay recorded conversations
 
 # SYNOPSIS
 
+/session list
+/session show   [FILE]
+/session use    FILE
 /session continue FILE
 /session replay   FILE [OUTPUT]
 
 # DESCRIPTION
 
 Harvey saves every conversation to a Fountain .spmd file. The /session
-command lets you reload those files in two distinct ways:
+command lets you browse those files and reload them in two distinct ways:
 
-  continue  — restore the conversation history and keep chatting.
-  replay    — re-send the original user turns to the current model and
-              record fresh responses.
+  continue / use — restore the conversation history and keep chatting.
+  replay         — re-send the original user turns to the current model and
+                   record fresh responses.
 
-# CONTINUE
+# LIST
 
-/session continue FILE loads all turns from FILE into the current history
-and returns you to the REPL. The model sees the full prior conversation as
-if it had been running the whole time.
+/session list prints the recorded sessions in <workdir>/agents/sessions/,
+one per line with the filename and last-modified timestamp.
+
+# SHOW
+
+/session show [FILE] displays metadata for FILE without loading it: date,
+model used, turn count, and the opening user prompt. If FILE is omitted and
+a recording is currently active, the active file is shown.
+
+# CONTINUE / USE
+
+/session use FILE (alias: /session continue FILE) loads all turns from FILE
+into the current history and returns you to the REPL. The model sees the
+full prior conversation as if it had been running the whole time.
 
 Use continue to:
 
@@ -33,7 +47,7 @@ Use continue to:
   - Inspect and then extend a session that was auto-saved.
 
 Harvey also offers to continue the most recently saved session at startup;
-pressing Enter at that prompt is equivalent to /session continue.
+pressing Enter at that prompt is equivalent to /session use.
 
 # REPLAY
 
@@ -58,7 +72,7 @@ Each exchange is an INT scene with speaker labels (RSDOIEL, HARVEY, model
 name). These files are plain text and human-readable.
 
 Default save location: <workdir>/agents/sessions/
-File naming:          
+File naming:
 harvey-session-YYYYMMDD-HHMMSS.spmd
 
 # CLI FLAGS
