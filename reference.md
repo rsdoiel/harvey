@@ -54,10 +54,18 @@ All Harvey commands are organized into logical categories. Each command has its 
 
 - **[harvey-kb.7.md](harvey-kb.7.md)** — Query and update the SQLite knowledge base
 
+### Llamafile Integration
+
+- **[harvey-llamafile.7.md](harvey-llamafile.7.md)** — Manage llamafile backends: `/llamafile add|use|list|start|status|remove|download`
+
 ### Ollama Integration
 
 - **[harvey-ollama.7.md](harvey-ollama.7.md)** — Manage the local Ollama server and installed models
-- **[harvey-model-alias.7.md](harvey-model-alias.7.md)** — Create and manage model aliases
+
+### Unified Model Management
+
+- **[harvey-model-alias.7.md](harvey-model-alias.7.md)** — `@NAME` inline model switching and `/model alias` short-name definitions
+- `/model list|use NAME|show|status` — backend-agnostic model commands (see harvey-model-alias.7.md)
 
 ### Routing
 

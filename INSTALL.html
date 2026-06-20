@@ -1,74 +1,302 @@
 <!DOCTYPE html>
-<html lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-    <title>Harvey</title>
-    <link rel="stylesheet" href="css/site.css">
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>INSTALL</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
-<nav>
-<ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">Harvey</a></li>
-    <li><a href="LICENSE">LICENSE</a></li>
-    <li><a href="INSTALL.html">INSTALL</a></li>
-    <li><a href="user_manual.html">User Manual</a></li>
-    <li><a href="about.html">About</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
-</ul>
-</nav>
-<section>
+<header id="title-block-header">
+<h1 class="title">INSTALL</h1>
+</header>
 <h1 id="installation-harvey">Installation <strong>harvey</strong></h1>
-<p><strong>harvey</strong> Harvey is an agent REPL written in Go and
-designed to use Ollama server to access language models locally. It is a
-terminal based application.</p>
-<p>The Harvey name was inspired by the play of that name by Mary Chase.
-I saw parallels between the story Harvey and what I see as my personal
-language model agent. Many people think of agents only in the context of
-very big companies. I think of my little computers and what they can
-accomplish with their own agent. Harvey, as a small agent for small and
-tiny computers, is a play on a mythic creature. Harvey is a Púca, a
-software Púca. Harvey can be fun for those who take time for it. It runs
-on a little computers. Have an adventure and some fun with Harvey.</p>
-<h2 id="quick-install-with-curl-or-irm">Quick install with curl or
-irm</h2>
-<p>There is an experimental installer.sh script that can be run with the
-following command to install latest table release. This may work for
-macOS, Linux and if you’re using Windows with the Unix subsystem. This
-would be run from your shell (e.g. Terminal on macOS).</p>
+<p><strong>harvey</strong> is a terminal coding agent that runs language
+models locally. No cloud account or API key required.</p>
+<h2 id="quick-start-llamafile-recommended">Quick start (Llamafile —
+recommended)</h2>
+<p>The simplest way to get Harvey running is with a llamafile — a single
+self-contained file that bundles a language model and its own HTTP
+server.</p>
+<ol type="1">
+<li><p>Download a llamafile from: <a
+href="https://huggingface.co/Mozilla/llamafile-models"
+class="uri">https://huggingface.co/Mozilla/llamafile-models</a></p>
+<p>Recommended:</p>
+<ul>
+<li><code>Qwen2.5-Coder-7B-Q5_K_S.llamafile</code> (~5 GB, good for most
+hardware)</li>
+<li><code>Phi-3.5-mini-instruct-Q4_K_M.llamafile</code> (~2 GB, low-VRAM
+/ CPU)</li>
+</ul></li>
+<li><p>Place it in <code>~/Models/</code> and make it executable (Linux
+/ macOS):</p>
+<pre class="shell"><code>chmod +x ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile</code></pre></li>
+<li><p>Install Harvey (see below), then run it in your project
+directory:</p>
+<pre class="shell"><code>cd ~/myproject
+harvey</code></pre>
+<p>Harvey finds the llamafile automatically and connects.</p></li>
+</ol>
+<h2 id="quick-start-ollama-optional">Quick start (Ollama —
+optional)</h2>
+<p>If you prefer a persistent model server or want access to the full
+Ollama model library:</p>
+<pre class="shell"><code># Install Ollama from https://ollama.com/download, then:
+ollama pull qwen2.5-coder:7b</code></pre>
+<p>Harvey detects Ollama automatically on startup.</p>
+<h2 id="installing-harvey">Installing Harvey</h2>
+<h3 id="installer-script-linux-macos-wsl">Installer script (Linux /
+macOS / WSL)</h3>
 <pre class="shell"><code>curl https://rsdoiel.github.io/harvey/installer.sh | sh</code></pre>
-<p>This will install the programs included in harvey in your
-<code>$HOME/bin</code> directory.</p>
-<p>If you are running Windows 10 or 11 use the Powershell command
-below.</p>
-<div class="sourceCode" id="cb2"><pre
-class="sourceCode ps1"><code class="sourceCode powershell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">irm</span> https<span class="op">://</span>rsdoiel<span class="op">.</span><span class="fu">github</span><span class="op">.</span><span class="fu">io</span><span class="op">/</span>harvey<span class="op">/</span>installer<span class="op">.</span><span class="fu">ps1</span> <span class="op">|</span> <span class="fu">iex</span></span></code></pre></div>
-<h3 id="if-your-are-running-macos-or-windows">If your are running macOS
-or Windows</h3>
-<p>You may get security warnings if you are using macOS or Windows. See
-the notes for the specific operating system you’re using to fix
-issues.</p>
+<p>This installs Harvey into <code>$HOME/bin/</code>.</p>
+<h3 id="windows-powershell">Windows (PowerShell)</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode ps1"><code class="sourceCode powershell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">irm</span> https<span class="op">://</span>rsdoiel<span class="op">.</span><span class="fu">github</span><span class="op">.</span><span class="fu">io</span><span class="op">/</span>harvey<span class="op">/</span>installer<span class="op">.</span><span class="fu">ps1</span> <span class="op">|</span> <span class="fu">iex</span></span></code></pre></div>
+<h3 id="security-warnings-macos-windows">Security warnings (macOS /
+Windows)</h3>
+<p>If you see a security warning about an unverified developer, see:</p>
 <ul>
 <li><a href="INSTALL_NOTES_macOS.html">INSTALL_NOTES_macOS.md</a></li>
 <li><a
 href="INSTALL_NOTES_Windows.html">INSTALL_NOTES_Windows.md</a></li>
 </ul>
-<h2 id="installing-from-source">Installing from source</h2>
-<h3 id="required-software">Required software</h3>
-<ul>
-<li>Go &gt;= 1.26.3</li>
-</ul>
-<h3 id="steps">Steps</h3>
-<ol type="1">
-<li>git clone https://github.com/rsdoiel/harvey</li>
-<li>Change directory into the <code>harvey</code> directory</li>
-<li>Make to build, test and install</li>
-</ol>
+<h3 id="installing-from-source">Installing from source</h3>
+<p><strong>Requirements:</strong> Go &gt;= 1.26.3</p>
 <pre class="shell"><code>git clone https://github.com/rsdoiel/harvey
 cd harvey
 make
 make test
 make install</code></pre>
-</section>
 </body>
 </html>

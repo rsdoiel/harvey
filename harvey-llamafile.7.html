@@ -1,23 +1,184 @@
 <!DOCTYPE html>
-<html lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-    <title>Harvey</title>
-    <link rel="stylesheet" href="css/site.css">
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="R. S. Doiel" />
+  <meta name="dcterms.date" content="2026-06-20" />
+  <title>harvey-llamafile.7</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
-<nav>
-<ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">Harvey</a></li>
-    <li><a href="LICENSE">LICENSE</a></li>
-    <li><a href="INSTALL.html">INSTALL</a></li>
-    <li><a href="user_manual.html">User Manual</a></li>
-    <li><a href="about.html">About</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
-</ul>
-</nav>
-<section>
+<header id="title-block-header">
+<h1 class="title">harvey-llamafile.7</h1>
+<p class="author">R. S. Doiel</p>
+<p class="date">2026-06-20</p>
+</header>
 <h1 id="name">NAME</h1>
 <p>LLAMAFILE COMMANDS</p>
 <h1 id="synopsis">SYNOPSIS</h1>
@@ -27,23 +188,20 @@
 is a self-contained executable that bundles a GGUF model and an HTTP
 inference server into a single file — no separate server installation
 required.</p>
-<p>Llamafile is a project by Mozilla that makes it easy to distribute
-and run local LLMs on any platform. Learn more at: <a
+<p>Llamafile is a project by Mozilla. Learn more at: <a
 href="https://github.com/mozilla-ai/llamafile"
 class="uri">https://github.com/mozilla-ai/llamafile</a></p>
-<p>Harvey assumes models are stored in $HOME/Models by default. Place
-.llamafile executables there and use /llamafile add to register and
-connect to them.</p>
-<p>Pre-built models are available at: <a
-href="https://huggingface.co/Mozilla/llamafile-models"
-class="uri">https://huggingface.co/Mozilla/llamafile-models</a></p>
+<p>Harvey scans $HOME/Models for .llamafile executables at startup and
+connects automatically when an active model is registered. Use
+/llamafile add to register a model for the first time.</p>
 <h1 id="subcommands">SUBCOMMANDS</h1>
 <p>/llamafile add [PATH] <a href="#name">NAME</a> Register a model and
 connect to it immediately. If PATH is omitted, Harvey scans the
 discovery directory ($HOME/Models by default) and shows a numbered
-picker. NAME is derived from the filename if not given. The choice is
-saved to agents/harvey.yaml so Harvey connects automatically on next
-start.</p>
+picker. NAME is derived from the filename if not given. When a llamafile
+server is already running, Harvey offers to adopt it rather than
+failing. The choice is saved to agents/harvey.yaml so Harvey connects
+automatically on next start.</p>
 <p>/llamafile use <a href="#name">NAME</a> Switch to a named registered
 model. If NAME is omitted, Harvey shows a numbered picker of registered
 models. The current server is stopped (if Harvey started it) and the new
@@ -57,6 +215,12 @@ restarts.</p>
 <p>/llamafile status Show the active model, API URL, reachability,
 process ownership, discovery directory, and number of registered
 models.</p>
+<p>/llamafile remove NAME /llamafile drop NAME Remove a named model from
+the registry. <code>remove</code> and <code>drop</code> are equivalent;
+<code>remove</code> is the preferred form.</p>
+<p>/llamafile download Print a curated table of recommended models with
+file sizes and download guidance. No network access is performed — use
+the printed URL to download the file, then run /llamafile add.</p>
 <h1 id="configuration">CONFIGURATION</h1>
 <p>In agents/harvey.yaml:</p>
 <p>llamafile: models_dir: ~/Models # optional; $HOME/Models is the
@@ -65,8 +229,13 @@ is the default gpu_layers: 99 # optional; layers to offload to GPU via
 -ngl # default 99 maximises Metal/CUDA offload # set to -1 to force
 CPU-only inference startup_timeout: 120s # optional; time to wait for
 server ready # default is 120 seconds models: - name: qwen-coding path:
-/home/user/Models/Qwen3.5-4B-Q5_K_S.llamafile - name: apertus path:
-/home/user/Models/Apertus-8B-Instruct-2509.llamafile</p>
+/home/user/Models/Qwen3.5-4B-Q5_K_S.llamafile context_length: 16384 #
+optional; probed automatically at startup - name: phi-mini path:
+/home/user/Models/Phi-3.5-mini-instruct-Q4_K_M.llamafile</p>
+<p>The context_length field sets the model’s context window in tokens.
+When omitted, Harvey probes the server after startup and stores the
+value in memory. Set it explicitly to override or to make the [ctx: N%]
+indicator accurate before the first probe.</p>
 <h1 id="environment">ENVIRONMENT</h1>
 <p>HARVEY_LLAMAFILE_DIR Override the discovery directory. Takes
 precedence over the YAML value but is itself overridden by the
@@ -90,10 +259,18 @@ VRAM, or set it to -1 for CPU-only inference.</p>
 server to become ready. If the process exits before the server responds,
 Harvey reports the error and prints any stderr output to help diagnose
 the failure.</p>
+<p>Auto-reconnect: if the llamafile server stops unexpectedly during a
+session, Harvey detects the connection error on the next prompt and
+offers to restart the server automatically before retrying the turn.</p>
+<p>External servers: if a llamafile server is already running when
+Harvey starts (or when you run /llamafile add), Harvey probes /v1/models
+to identify the running model and offers to adopt it as the active model
+without stopping and restarting the server.</p>
 <h1 id="see-also">SEE ALSO</h1>
-<p>/ollama — Ollama model backend management /help routing — add a
-llamafile:// server as a named route /help getting-started — Getting
-started with Harvey</p>
-</section>
+<p>harvey-ollama(7) — Ollama model backend management
+harvey-model-alias(7) — <span class="citation"
+data-cites="mention">@mention</span> switching and model aliases
+harvey-routing(7) — add a llamafile server as a named route
+harvey-getting-started(7) — getting started with Harvey</p>
 </body>
 </html>

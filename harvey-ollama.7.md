@@ -103,3 +103,10 @@ Model aliases:
   /ollama alias remove NAME
     Remove an alias.
 
+# SEE ALSO
+
+  harvey-llamafile(7)    — llamafile backend management
+  harvey-model-alias(7)  — @mention inline switching and /model alias commands
+  harvey-routing(7)      — named remote LLM endpoints
+  harvey-getting-started(7)
+

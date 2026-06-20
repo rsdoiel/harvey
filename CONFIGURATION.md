@@ -450,6 +450,24 @@ model_cache_db: "string (optional, default: agents/model_cache.db)"
 # Behavior
 auto_record: true/false/null  # null = use default (true)
 
+# Llamafile backend
+llamafile:
+  models_dir: ~/Models         # discovery directory; $HOME/Models is the default
+  active: qwen-coding          # name of the active registered model
+  url: http://localhost:8080   # API base URL; this is the default
+  gpu_layers: 99               # GPU layers via -ngl; 99 = maximise, -1 = CPU only
+  startup_timeout: 120s        # how long to wait for the server to become ready
+  models:
+    - name: qwen-coding
+      path: ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
+      context_length: 16384    # optional; probed automatically when omitted
+
+# context_length on a llamafile model entry:
+#   Sets the context window in tokens used for the [ctx: N%] utilization
+#   indicator. When omitted Harvey probes the server's /v1/models endpoint
+#   after startup and stores the result in memory (not persisted to harvey.yaml).
+#   Set it explicitly when the probe is unavailable or you want a fixed value.
+
 # RAG Configuration
 rag:
   enabled: true/false

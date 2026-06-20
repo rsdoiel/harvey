@@ -57,7 +57,9 @@ Harvey is a terminal-based coding agent backed by a local [Ollama](https://ollam
 - **[Model Guide](model_guide.md)** — Model selection guide based on `/ollama probe` results
 - **[Model Cache](MODEL_CACHE.md)** — Model capability caching architecture, database schema, and probing mechanisms
 - **[Routing](ROUTING.md)** — Connect to remote model endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI) via @mention syntax
-- **[Llamafile Notes](Llamafile_notes.md)** — Mozilla AI's single-file runnable models (note: not currently integrated with Harvey)
+- **[Llamafile Commands](harvey-llamafile.7.md)** — Manage llamafile backends: add, use, list, download, remove
+- **[Model & Alias Commands](harvey-model-alias.7.md)** — `@mention` inline model switching and `/model alias` short names
+- **[Unified /model Command](harvey-model-alias.7.md)** — `/model list|use|show|status` works across llamafile and Ollama
 
 ### Sessions & Recording
 

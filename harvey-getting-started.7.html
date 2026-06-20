@@ -1,72 +1,295 @@
 <!DOCTYPE html>
-<html lang="en-US">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-    <title>Harvey</title>
-    <link rel="stylesheet" href="css/site.css">
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>harvey-getting-started.7</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
-<nav>
-<ul>
-    <li><a href="/">Home</a></li>
-    <li><a href="index.html">Harvey</a></li>
-    <li><a href="LICENSE">LICENSE</a></li>
-    <li><a href="INSTALL.html">INSTALL</a></li>
-    <li><a href="user_manual.html">User Manual</a></li>
-    <li><a href="about.html">About</a></li>
-    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
-</ul>
-</nav>
-<section>
+<header id="title-block-header">
+<h1 class="title">harvey-getting-started.7</h1>
+</header>
 <h1 id="getting-started-with-harvey">Getting Started with Harvey</h1>
-<p>Harvey is a terminal coding agent that runs language models locally
-via Ollama. Two prerequisites must be installed before Harvey can work:
-<strong>Ollama</strong> and (optionally) <strong>PDF tools</strong>.</p>
+<p>Harvey is a terminal coding agent that runs language models locally.
+No cloud account or API key required — models run on your machine.</p>
 <hr />
-<h2 id="step-1-install-ollama">Step 1 — Install Ollama</h2>
-<p>Ollama runs language models on your machine. Harvey talks to it to
-generate responses.</p>
-<p><strong>Download:</strong> https://ollama.com/download</p>
-<p>Install for your platform, then pull a starter model:</p>
-<pre><code>ollama pull granite3.3:2b</code></pre>
-<p>That model is small (2 GB) and works well on most hardware. For
-coding-heavy work, try:</p>
+<h2 id="step-1-get-a-model">Step 1 — Get a model</h2>
+<h3 id="option-a-llamafile-recommended-simplest-setup">Option A:
+Llamafile (recommended — simplest setup)</h3>
+<p>A llamafile is a single self-contained file that runs a language
+model with its own built-in server. No separate install required.</p>
+<p><strong>Download a model</strong> from:</p>
+<pre><code>https://huggingface.co/Mozilla/llamafile-models</code></pre>
+<p>Recommended choices:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>Size</th>
+<th>Best for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen2.5-Coder-7B-Q5_K_S.llamafile</td>
+<td>5.1 GB</td>
+<td>Code generation on most hardware</td>
+</tr>
+<tr>
+<td>Qwen2.5-Coder-1.5B-Q4_K_M.llamafile</td>
+<td>1.4 GB</td>
+<td>Low-VRAM or CPU-only machines</td>
+</tr>
+<tr>
+<td>Phi-3.5-mini-instruct-Q4_K_M.llamafile</td>
+<td>2.3 GB</td>
+<td>General tasks, compact</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Place the file in <code>~/Models/</code></strong> (Harvey
+scans this directory automatically).</p>
+<p>Make the file executable (Linux / macOS):</p>
+<pre><code>chmod +x ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile</code></pre>
+<p>That’s it. Skip to Step 2.</p>
+<h3
+id="option-b-ollama-advanced-persistent-server-wider-model-library">Option
+B: Ollama (advanced — persistent server, wider model library)</h3>
+<p>Install Ollama from https://ollama.com/download, then pull a starter
+model:</p>
 <pre><code>ollama pull qwen2.5-coder:7b</code></pre>
-<p>Verify Ollama is running:</p>
+<p>Verify it works:</p>
 <pre><code>ollama list</code></pre>
-<p>If Harvey says it cannot connect to Ollama, start the service:</p>
-<ul>
-<li><strong>macOS / Linux:</strong> <code>ollama serve</code> (or it may
-already run as a daemon)</li>
-<li><strong>Windows:</strong> start the Ollama app from the Start
-menu</li>
-</ul>
+<p>See <code>/help ollama</code> for Harvey’s Ollama command
+reference.</p>
 <hr />
-<h2 id="step-2-install-pdf-tools-optional">Step 2 — Install PDF Tools
+<h2 id="step-2-install-pdf-tools-optional">Step 2 — Install PDF tools
 (optional)</h2>
 <p>Harvey uses <code>pdftotext</code> to extract text from PDF files for
-the RAG store. Harvey works fine without it — you just cannot read
-PDFs.</p>
+the knowledge store. Harvey works fine without it — you just cannot read
+PDFs directly.</p>
 <p><strong>macOS:</strong></p>
 <pre><code>brew install poppler</code></pre>
 <p><strong>Linux (Debian/Ubuntu):</strong></p>
 <pre><code>sudo apt install poppler-utils</code></pre>
 <p><strong>Linux (Fedora/RHEL):</strong></p>
 <pre><code>sudo dnf install poppler-utils</code></pre>
-<p><strong>Windows:</strong> Download poppler for Windows from
+<p><strong>Windows:</strong> Download from
 https://github.com/oschwartz10612/poppler-windows/releases and add the
-<code>bin/</code> folder to your PATH.</p>
+<code>bin/</code> directory to your PATH.</p>
 <hr />
 <h2 id="step-3-start-harvey">Step 3 — Start Harvey</h2>
-<pre><code>harvey</code></pre>
-<p>On first run in a new workspace Harvey will ask you to set up a
-profile. Pick a starting template that fits your role.</p>
+<p>Change to your project directory and run:</p>
+<pre><code>cd ~/myproject
+harvey</code></pre>
+<p>On first start Harvey will: 1. Scan <code>~/Models/</code> for
+llamafile binaries and offer to connect 2. Fall back to Ollama if no
+llamafile is found 3. Ask you to set up a workspace profile (pick a
+template) 4. Drop you into the REPL: <code>harvey &gt;</code></p>
+<p>If no model is found at all, Harvey prints download guidance and lets
+you enter a path to a llamafile before starting.</p>
 <hr />
-<h2 id="more-help">More Help</h2>
-<pre><code>/help ollama       — Harvey&#39;s Ollama command reference
-/help pdf-tools    — PDF tools detail and troubleshooting
-/help memory       — how Harvey remembers things across sessions
-/help rag          — how to ingest documents for retrieval</code></pre>
-</section>
+<h2 id="step-4-first-commands">Step 4 — First commands</h2>
+<pre><code>/help             — list all slash commands
+/status           — show backend, context, and recording status
+/hint             — suggest next steps for knowledge and memory
+/llamafile list   — show registered local models
+/model list       — show all models across all backends</code></pre>
+<h3 id="switch-models-mid-session">Switch models mid-session</h3>
+<p>Prefix any prompt with <code>@model-name</code> to switch model
+inline:</p>
+<pre><code>@phi-mini summarise this function in one sentence</code></pre>
+<p>The conversation history is preserved across the switch.</p>
+<h3 id="common-workflows">Common workflows</h3>
+<pre><code>/read main.go                  — load a file into context
+/search &quot;TODO&quot;                 — search the workspace
+/git diff HEAD                 — see recent changes
+/plan refactor the auth layer  — generate a step-by-step plan
+/loop 30s check test results   — repeat a prompt on an interval</code></pre>
+<hr />
+<h2 id="more-help">More help</h2>
+<pre><code>/help llamafile      — llamafile backend commands
+/help ollama         — Ollama backend commands
+/help model          — unified model management and @mention switching
+/help memory         — how Harvey remembers things across sessions
+/help rag            — ingesting documents for retrieval
+/help plan           — multi-step task planning
+/help loop           — repeating prompts on an interval
+/help pdf-tools      — PDF tools detail and troubleshooting</code></pre>
+<h1 id="see-also">SEE ALSO</h1>
+<p>harvey-llamafile(7), harvey-ollama(7), harvey-model-alias(7),
+harvey-memory(7), harvey-rag(7), harvey-plan(7), harvey-loop(7),
+harvey-hint(7)</p>
 </body>
 </html>

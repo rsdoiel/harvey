@@ -1,52 +1,79 @@
 Installation **harvey**
 ============================
 
-**harvey** Harvey is an agent REPL written in Go and designed to use Ollama server to access language models locally. It is a terminal based application.
+**harvey** is a terminal coding agent that runs language models locally.
+No cloud account or API key required.
 
-The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and what I see as my personal language model agent.  Many people think of agents only in the context of very big companies. I think of my little computers and what they can accomplish with their own agent. Harvey, as a small agent for small and tiny computers, is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.
+## Quick start (Llamafile — recommended)
 
-Quick install with curl or irm
-------------------------------
+The simplest way to get Harvey running is with a llamafile — a single
+self-contained file that bundles a language model and its own HTTP server.
 
-There is an experimental installer.sh script that can be run with the following command to install latest table release. This may work for macOS, Linux and if you’re using Windows with the Unix subsystem. This would be run from your shell (e.g. Terminal on macOS).
+1. Download a llamafile from:
+   <https://huggingface.co/Mozilla/llamafile-models>
 
-~~~shell
+   Recommended:
+   - `Qwen2.5-Coder-7B-Q5_K_S.llamafile` (~5 GB, good for most hardware)
+   - `Phi-3.5-mini-instruct-Q4_K_M.llamafile` (~2 GB, low-VRAM / CPU)
+
+2. Place it in `~/Models/` and make it executable (Linux / macOS):
+
+   ```shell
+   chmod +x ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
+   ```
+
+3. Install Harvey (see below), then run it in your project directory:
+
+   ```shell
+   cd ~/myproject
+   harvey
+   ```
+
+   Harvey finds the llamafile automatically and connects.
+
+## Quick start (Ollama — optional)
+
+If you prefer a persistent model server or want access to the full Ollama
+model library:
+
+```shell
+# Install Ollama from https://ollama.com/download, then:
+ollama pull qwen2.5-coder:7b
+```
+
+Harvey detects Ollama automatically on startup.
+
+## Installing Harvey
+
+### Installer script (Linux / macOS / WSL)
+
+```shell
 curl https://rsdoiel.github.io/harvey/installer.sh | sh
-~~~
+```
 
-This will install the programs included in harvey in your `$HOME/bin` directory.
+This installs Harvey into `$HOME/bin/`.
 
-If you are running Windows 10 or 11 use the Powershell command below.
+### Windows (PowerShell)
 
-~~~ps1
+```ps1
 irm https://rsdoiel.github.io/harvey/installer.ps1 | iex
-~~~
+```
 
-### If your are running macOS or Windows
+### Security warnings (macOS / Windows)
 
-You may get security warnings if you are using macOS or Windows. See the notes for the specific operating system you’re using to fix issues.
+If you see a security warning about an unverified developer, see:
 
 - [INSTALL_NOTES_macOS.md](INSTALL_NOTES_macOS.md)
 - [INSTALL_NOTES_Windows.md](INSTALL_NOTES_Windows.md)
 
-Installing from source
-----------------------
+### Installing from source
 
-### Required software
+**Requirements:** Go >= 1.26.3
 
-- Go >= 1.26.3
-
-### Steps
-
-1. git clone https://github.com/rsdoiel/harvey
-2. Change directory into the `harvey` directory
-3. Make to build, test and install
-
-~~~shell
+```shell
 git clone https://github.com/rsdoiel/harvey
 cd harvey
 make
 make test
 make install
-~~~
-
+```

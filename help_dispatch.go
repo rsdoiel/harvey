@@ -128,6 +128,8 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(LoopHelpText)
 	case "memory", "profile", "recall":
 		f(MemoryHelpText)
+	case "model", "model-alias", "alias":
+		f(ModelAliasHelpText)
 	case "ollama":
 		f(OllamaHelpText)
 	case "pdf-tools", "pdftools", "pdf":
