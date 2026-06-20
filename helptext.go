@@ -3398,4 +3398,25 @@ Write results to a custom directory:
 
 harvey(1), harvey-rag(7)
 `
+
+	// FirstRunWizardText is shown at startup when no backend is reachable and
+	// no backend has been configured. It guides new users to their first model.
+	FirstRunWizardText = `
+Harvey couldn't find a model to connect to.
+
+To get started with a local model (no internet required after download):
+
+  1. Download a llamafile from:
+       https://huggingface.co/Mozilla/llamafile-models
+     Recommended:   Qwen2.5-Coder-7B-Q5_K_S.llamafile  (~5 GB)
+     Low-memory:    Phi-3.5-mini-instruct-Q4_K_M.llamafile  (~2 GB)
+
+  2. Place it in ~/Models/ (or any directory).
+
+  3. Run Harvey again — it will find the file automatically.
+
+Alternatively, install Ollama (https://ollama.com) and pull a model:
+  ollama pull qwen2.5-coder:7b
+
+`
 )

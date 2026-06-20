@@ -4,12 +4,15 @@ package harvey
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // llamafileModelName derives a display/registry name from a llamafile binary
@@ -77,6 +80,83 @@ func scanLlamafileModels(dir string) []string {
 		}
 	}
 	return paths
+}
+
+/** probeRunningLlamafileName queries the /v1/models endpoint of a running
+ * llamafile server and returns the first model's name with the ".gguf" suffix
+ * stripped. Returns "" when the server is unreachable, returns an error, or
+ * the data array is empty.
+ *
+ * Parameters:
+ *   url (string) — base URL of the llamafile server (e.g. "http://localhost:8080").
+ *
+ * Returns:
+ *   string — model name without ".gguf", or "" if unavailable.
+ *
+ * Example:
+ *   name := probeRunningLlamafileName("http://localhost:8080")
+ *   // name == "Qwen3.5-4B-Q5_K_S"
+ */
+func probeRunningLlamafileName(url string) string {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url + "/v1/models")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	defer resp.Body.Close()
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil || len(payload.Data) == 0 {
+		return ""
+	}
+	name := payload.Data[0].ID
+	name = strings.TrimSuffix(name, ".gguf")
+	return name
+}
+
+/** adoptExternalServer offers to register a llamafile server that is already
+ * running at a.Config.LlamafileURL but was not started by this Harvey session.
+ * It probes /v1/models to identify the running model, shows an adoption prompt,
+ * and — if the user accepts — registers the model and wires up the LLM client.
+ *
+ * Parameters:
+ *   a   (*Agent)   — the running Harvey agent.
+ *   out (io.Writer) — destination for status messages and the adoption prompt.
+ *
+ * Returns:
+ *   error — non-nil only on unexpected failures; user declining is not an error.
+ *
+ * Example:
+ *   if ProbeLlamafile(a.Config.LlamafileURL) && a.llamafileProc == nil {
+ *       adoptExternalServer(a, os.Stdout)
+ *   }
+ */
+func adoptExternalServer(a *Agent, out io.Writer) error {
+	name := probeRunningLlamafileName(a.Config.LlamafileURL)
+	if name == "" {
+		name = "external"
+	}
+	fmt.Fprintf(out, "  A llamafile server is already running at %s\n", a.Config.LlamafileURL)
+	fmt.Fprintf(out, "  Detected model: %s\n", name)
+	fmt.Fprint(out, "  Adopt as active model? [Y/n]: ")
+	line, _ := bufio.NewReader(a.In).ReadString('\n')
+	if strings.HasPrefix(strings.TrimSpace(strings.ToLower(line)), "n") {
+		fmt.Fprintln(out, "  Not adopted — stop the server manually to start a different model.")
+		return nil
+	}
+	a.Config.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: name, Path: ""})
+	a.Config.LlamafileActive = name
+	if err := a.useLlamafileEntry(name, out); err != nil {
+		return err
+	}
+	if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
+		fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
+	}
+	fmt.Fprintln(out, green("  ✓")+" Adopted "+name)
+	return nil
 }
 
 /** cmdLlamafile dispatches /llamafile subcommands: add, use, list, start, status.
@@ -162,9 +242,7 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintln(out, "  Stopping current llamafile...")
 		a.stopLlamafileProc()
 	} else if ProbeLlamafile(a.Config.LlamafileURL) {
-		fmt.Fprintf(out, yellow("  ⚠ A llamafile server is already running at %s but was not started by this session.\n"), a.Config.LlamafileURL)
-		fmt.Fprintln(out, "  Stop it manually (e.g. via htop), then run /llamafile use to start the new model.")
-		return nil
+		return adoptExternalServer(a, out)
 	}
 	fmt.Fprintln(out, "  Starting llamafile...")
 	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)

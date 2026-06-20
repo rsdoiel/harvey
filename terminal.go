@@ -74,6 +74,36 @@ func filterEnvironment(env []string) []string {
 	return filterCommandEnvironment(env)
 }
 
+/** runFirstRunWizard prints onboarding text for new users who have no backend
+ * configured, then reads one line of input. An empty line returns an error
+ * (no backend available). A non-empty line is treated as a llamafile path and
+ * passed to cmdLlamafileAdd to register and connect the model.
+ *
+ * Parameters:
+ *   a   (*Agent)   — the running Harvey agent.
+ *   in  (io.Reader) — source for user input (typically a.In or a bufio.Reader).
+ *   out (io.Writer) — destination for the wizard text and prompts.
+ *
+ * Returns:
+ *   error — "no backend available" when the user provides no path; any error
+ *           from cmdLlamafileAdd when the given path is invalid.
+ *
+ * Example:
+ *   if err := runFirstRunWizard(a, reader, out); err != nil {
+ *       // user pressed Enter or path was invalid
+ *   }
+ */
+func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
+	fmt.Fprint(out, FirstRunWizardText)
+	fmt.Fprint(out, "Enter a llamafile path (or press Enter to exit): ")
+	line, _ := bufio.NewReader(in).ReadString('\n')
+	path := strings.TrimSpace(line)
+	if path == "" {
+		return fmt.Errorf("no backend available")
+	}
+	return cmdLlamafileAdd(a, []string{path}, out)
+}
+
 /** activeModelLabel returns a short human-readable label for the currently
  * configured model backend, e.g. "qwen-coding (llamafile)" or "llama3.2:3b (ollama)".
  * Returns "none" when no backend is configured. Llamafile takes priority when
@@ -1354,12 +1384,11 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 		}
 	}
 
+	// No backend reachable and no registered llamafile — guide new users.
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, dim("  No backend selected."))
-	fmt.Fprintln(out, dim("  → If Ollama is installed, use /ollama start once inside."))
-	fmt.Fprintln(out, dim("  → Or pick a llamafile from:"))
-	fmt.Fprintln(out, dim("      https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles"))
-	fmt.Fprintln(out, dim("    Download it to ~/Models, then run /llamafile add to connect."))
+	if err := runFirstRunWizard(a, reader, out); err != nil {
+		fmt.Fprintln(out, dim("  No backend connected — use /llamafile start or /ollama start once inside."))
+	}
 	return nil
 }
 

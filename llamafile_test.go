@@ -1,6 +1,8 @@
 package harvey
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,5 +162,132 @@ func TestCmdLlamafileUse_notRegistered(t *testing.T) {
 	err := cmdLlamafileUse(a, []string{"nonexistent"}, &buf)
 	if err == nil {
 		t.Fatal("expected error for unregistered model name")
+	}
+}
+
+// ─── probeRunningLlamafileName ───────────────────────────────────────────────
+
+func TestProbeRunningLlamafileName_validResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			// Matches the real response shape observed during testing.
+			w.Write([]byte(`{"data":[{"id":"Qwen3.5-4B-Q5_K_S.gguf"}],"object":"list"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	got := probeRunningLlamafileName(srv.URL)
+	want := "Qwen3.5-4B-Q5_K_S"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestProbeRunningLlamafileName_emptyData(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[],"object":"list"}`))
+	}))
+	defer srv.Close()
+
+	if got := probeRunningLlamafileName(srv.URL); got != "" {
+		t.Errorf("expected empty string for empty data, got %q", got)
+	}
+}
+
+func TestProbeRunningLlamafileName_serverError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	if got := probeRunningLlamafileName(srv.URL); got != "" {
+		t.Errorf("expected empty string on server error, got %q", got)
+	}
+}
+
+func TestProbeRunningLlamafileName_unreachable(t *testing.T) {
+	if got := probeRunningLlamafileName("http://127.0.0.1:19993"); got != "" {
+		t.Errorf("expected empty string for unreachable server, got %q", got)
+	}
+}
+
+// ─── adoptExternalServer ────────────────────────────────────────────────────
+
+func TestAdoptExternalServer_userSaysYes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"Qwen3.5-4B-Q5_K_S.gguf"}],"object":"list"}`))
+	}))
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileURL = srv.URL
+	a := NewAgent(cfg, ws)
+	a.In = strings.NewReader("y\n")
+
+	var buf strings.Builder
+	if err := adoptExternalServer(a, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.Config.LlamafileActive == "" {
+		t.Error("expected LlamafileActive to be set after adoption")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Qwen3.5-4B-Q5_K_S") {
+		t.Errorf("expected model name in output, got: %s", out)
+	}
+}
+
+func TestAdoptExternalServer_userSaysNo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"Qwen3.5-4B-Q5_K_S.gguf"}],"object":"list"}`))
+	}))
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileURL = srv.URL
+	a := NewAgent(cfg, ws)
+	a.In = strings.NewReader("n\n")
+
+	var buf strings.Builder
+	if err := adoptExternalServer(a, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.Config.LlamafileActive != "" {
+		t.Error("expected LlamafileActive to remain empty when user declines adoption")
+	}
+}
+
+// ─── runFirstRunWizard ───────────────────────────────────────────────────────
+
+func TestRunFirstRunWizard_emptyInput(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	err := runFirstRunWizard(a, strings.NewReader("\n"), &buf)
+	if err == nil {
+		t.Fatal("expected error when user provides no path")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "llamafile") {
+		t.Errorf("expected wizard text to mention llamafile, got: %s", out)
+	}
+}
+
+func TestRunFirstRunWizard_pathNotFound(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	// Provide a non-existent path — the add flow should fail with a not-found error.
+	err := runFirstRunWizard(a, strings.NewReader("/nonexistent/model.llamafile\n"), &buf)
+	if err == nil {
+		t.Fatal("expected error for non-existent llamafile path")
 	}
 }
