@@ -1,4 +1,4 @@
-%harvey(1) user manual | version 0.0.13 d6c7a45
+%harvey(1) user manual | version 0.0.13 7ec384f
 % R. S. Doiel
 % 2026-06-19
 
@@ -13,12 +13,14 @@ harvey [OPTIONS]
 # DESCRIPTION
 
 harvey is a terminal agent for local large language models. It was
-inspired by Claude Code but focused on working with large language models
-in small computer environments like a Raspberry Pi computer running
-Raspberry Pi OS. While the inspiration was to run an agent locally with
-Ollama it can also be run on larger computers like Linux, macOS and Windows
-systems you find on desktop and laptop computers. It should compile for most
-systems where Ollama is available and Go is supported (example: *BSD).
+inspired by Claude Code but focused on working with small language models
+in small computer environments like a Raspberry Pi computer. The
+inspiration was to run an agent locally. harvey supports running models
+via LLamafiles and models provided Ollama. It can run larger models on more
+capable computers too. harvey can be compiled to run on any system
+that is supported by the Go programming language. The project distributes
+executable versions that are suitable to run under Linux, macOS and Windows
+for x86_64 and aarch64 computers.
 
 harvey looks for HARVEY.md in the current directory and uses it as a
 system prompt. It then connects to a local Ollama server and starts an

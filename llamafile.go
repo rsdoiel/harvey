@@ -185,6 +185,8 @@ func cmdLlamafile(a *Agent, args []string, out io.Writer) error {
 		return cmdLlamafileUse(a, args[1:], out)
 	case "list":
 		return cmdLlamafileList(a, out)
+	case "show":
+		return cmdLlamafileShow(a, args[1:], out)
 	case "start":
 		return cmdLlamafileStart(a, args[1:], out)
 	case "status":
@@ -407,6 +409,54 @@ func cmdLlamafileList(a *Agent, out io.Writer) error {
 		}
 	}
 	fmt.Fprintf(out, "  Discovery directory: %s\n", a.Config.LlamafileModelsDir)
+	return nil
+}
+
+/** cmdLlamafileShow prints details for a registered llamafile model.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent.
+ *   args ([]string)  — optional model NAME; defaults to the active model.
+ *   out  (io.Writer) — output writer.
+ *
+ * Returns:
+ *   error — always nil; errors are printed to out.
+ *
+ * Example:
+ *   /llamafile show
+ *   /llamafile show qwen-coding
+ */
+func cmdLlamafileShow(a *Agent, args []string, out io.Writer) error {
+	name := a.Config.LlamafileActive
+	if len(args) > 0 {
+		name = args[0]
+	}
+	if name == "" {
+		fmt.Fprintln(out, "  No active llamafile model. Use /llamafile add or /llamafile use NAME first.")
+		return nil
+	}
+	entry := a.Config.LlamafileEntryByName(name)
+	if entry == nil {
+		fmt.Fprintf(out, "  llamafile %q not found — use /llamafile list to see registered models.\n", name)
+		return nil
+	}
+	active := ""
+	if entry.Name == a.Config.LlamafileActive {
+		active = " (active)"
+	}
+	fmt.Fprintf(out, "  Name:    %s%s\n", entry.Name, active)
+	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
+	fmt.Fprintf(out, "  Path:    %s\n", absPath)
+	if info, err := os.Stat(absPath); err == nil {
+		fmt.Fprintf(out, "  Size:    %s\n", llamafileFormatBytes(info.Size()))
+	} else {
+		fmt.Fprintln(out, "  Size:    (file not found)")
+	}
+	if entry.ContextLength > 0 {
+		fmt.Fprintf(out, "  Context: %d tokens\n", entry.ContextLength)
+	} else {
+		fmt.Fprintln(out, "  Context: unknown")
+	}
 	return nil
 }
 

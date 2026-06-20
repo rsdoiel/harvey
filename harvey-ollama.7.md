@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 d6c7a45
+%harvey(7) user manual | version 0.0.13 7ec384f
 % R. S. Doiel
 % 2026-06-19
 
@@ -102,11 +102,4 @@ Model aliases:
 
   /ollama alias remove NAME
     Remove an alias.
-
-# SEE ALSO
-
-  harvey-llamafile(7)    — llamafile backend management
-  harvey-model-alias(7)  — @mention inline switching and /model alias commands
-  harvey-routing(7)      — named remote LLM endpoints
-  harvey-getting-started(7)
 

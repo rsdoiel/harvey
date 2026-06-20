@@ -20,7 +20,175 @@
 <section>
 <h1 id="action-items">Action Items</h1>
 <h2 id="bugs">Bugs</h2>
-<h2 id="next-steps">Next Steps</h2>
+<h2 id="release-review">Release Review</h2>
+<ul class="task-list">
+<li><label><input type="checkbox" />Overview.md still reflects a Ollama
+first approach, needs to cover Llamafile support before talking about
+Ollama model support.</label></li>
+<li><label><input type="checkbox" />The helptext.go help guides (help
+text) seem to still be oriented as Ollama first, needs to be LLamafile
+primary while still supporting Ollama models. See
+<code>./bin/harvery --help getting-started</code> output as an
+example</label></li>
+<li><label><input type="checkbox" />Review the helptext.go file, review
+the help text constants to ensure they align with the current
+implementation.</label></li>
+<li><label><input type="checkbox" />Each exported constant needs a brief
+comment identifying it’s purpose as well as related man page
+output.</label></li>
+<li><label><input type="checkbox" />Order the help texts in helptext.go
+to make it easy for humans to review. Example the helptext that is used
+to generate harvey.1 man page, should be at the top. The other help text
+gguides should be grouped around what they cover.</label></li>
+</ul>
+<h2 id="next-v0.0.14-release">Next (v0.0.14 release)</h2>
+<h3 id="llamafile-as-primary-model-system">Llamafile as primary model
+system</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Llamafile becomes primary model
+system alongside Ollama models</label>
+<ul class="task-list">
+<li><label><input type="checkbox" />In startup process before prompting
+user, detect what model systems are available</label></li>
+<li><label><input type="checkbox" />If a session is not being continued,
+present available Llamafiles as the first choice and Ollama models (if
+available) next</label></li>
+<li><label><input type="checkbox" />Bring Llamafile support into parity
+for advanced features like pipelines and routing</label></li>
+<li><label><input type="checkbox" />Update documentation to present
+Llamafile support for basic operation, then include an advanced section
+for working with Ollama models</label></li>
+</ul></li>
+</ul>
+<h3 id="startup-connection">Startup &amp; connection</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Explicit connection feedback — show
+“Connecting to <code>&lt;model&gt;</code> (llamafile)… ✓” during startup
+instead of silent connection; important for slower hardware where users
+can’t tell if Harvey is waiting on the model or hung</label></li>
+<li><label><input type="checkbox" />First-run onboarding when no model
+is found — if neither a llamafile nor Ollama is reachable, run a guided
+mini-wizard: print the HuggingFace Mozilla model list URL and guide the
+user into a <code>/llamafile add</code> flow rather than dropping to an
+error</label></li>
+<li><label><input type="checkbox" />Stale external server adoption —
+when <code>/llamafile add</code> finds a server already running that
+Harvey didn’t start, probe its <code>/v1/models</code> endpoint,
+identify which model it’s serving, and offer to adopt it (register as
+active) rather than just warning and bailing</label></li>
+</ul>
+<h3 id="mid-session-awareness">Mid-session awareness</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Auto-reconnect on dropped llamafile
+— detect when the llamafile process dies mid-session (crash, OOM), and
+on the next prompt offer to restart it with the same model rather than
+presenting an opaque API error</label></li>
+<li><label><input type="checkbox" />Context utilization hint — show a
+subtle <code>[ctx: 72%]</code> indicator in the status line or spinner
+for smaller llamafiles (4B–8B) with tight context windows, so users know
+when to <code>/clear</code></label></li>
+<li><label><input type="checkbox" />Routing feedback in spinner — when
+multi-model routing is active, show which model handled the turn
+(e.g. <code>routed → coding-model</code>) in the transient spinner
+status to make routing transparent and easier to tune</label></li>
+<li><label><input type="checkbox" />At-mention model switch — if the
+command prompt starts with <code>@modelname</code>, treat it as a model
+switch while preserving existing context in the environment</label></li>
+</ul>
+<h3 id="model-management-ergonomics">Model management ergonomics</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Unified <code>/model</code> command
+— <code>/model [list|use NAME|status]</code> that works regardless of
+whether the active backend is llamafile or Ollama, removing the mental
+load of choosing between <code>/llamafile</code> and
+<code>/ollama</code> subcommands</label></li>
+<li><label><input type="checkbox" /><code>/llamafile remove</code> alias
+— add <code>remove</code> as an alias for the <code>drop</code>
+subcommand; <code>remove</code> is more natural English for most
+users</label></li>
+<li><label><input type="checkbox" /><code>/llamafile download</code>
+stub — a command that prints a curated table of recommended models
+(name, size, HuggingFace URL, capability note) formatted for
+copy-pasting into <code>wget</code>/<code>curl</code>, removing the
+friction of finding the right file</label></li>
+</ul>
+<h3 id="session-quality">Session quality</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Record active model in session
+Fountain header — add
+<code>## Model: &lt;name&gt; (&lt;backend&gt;)</code> to the
+<code>.spmd</code> header so session reviews and memory mining have
+model provenance</label></li>
+<li><label><input type="checkbox" />Health check on
+<code>--resume</code> — before loading the resumed session’s context,
+verify the previously-active model is reachable; if not, prompt to
+restart it rather than silently continuing with a dead
+backend</label></li>
+</ul>
+<h3 id="command-vocabulary-consistency">Command vocabulary
+consistency</h3>
+<p>Harvey’s resource commands share a core set of verbs —
+<code>list</code>, <code>add</code>, <code>new</code>, <code>use</code>,
+<code>show</code>, <code>edit</code>, <code>remove</code>,
+<code>rename</code>, <code>status</code> — but coverage is uneven across
+command families. Making the vocabulary consistent lowers the learning
+curve: knowing any one command family teaches you all the others.</p>
+<p><strong><code>remove</code> as the canonical delete verb (aliases
+kept for backwards compat):</strong> - [ ] <code>/rag remove</code> —
+alias for <code>drop</code>; make <code>remove</code> canonical - [ ]
+<code>/route remove</code> — alias for <code>rm</code>; make
+<code>remove</code> canonical - [ ] <code>/llamafile remove</code> —
+already planned above; confirm <code>drop</code> stays as alias</p>
+<p><strong>Missing <code>show</code> subcommands (content/details
+display, distinct from <code>status</code>):</strong> - [ ]
+<code>/llamafile show [NAME]</code> — display registered model details:
+path, size, context length, capabilities from model cache - [ ]
+<code>/rag show [NAME]</code> — display active (or named) store stats:
+chunk count, embedding model, DB path, last ingest date</p>
+<p><strong>Missing <code>use</code> subcommand:</strong> - [ ]
+<code>/route use NAME</code> — set the named route as the default
+without requiring <code>@mention</code> syntax</p>
+<p><strong><code>/session</code> command expansion:</strong> - [ ]
+<code>/session list</code> — list available session files from
+<code>agents/sessions/</code> without restarting Harvey - [ ]
+<code>/session show [PATH]</code> — display session metadata: date,
+model, backend, turn count, opening prompt - [ ]
+<code>/session use PATH</code> (or <code>continue</code>) — alias
+<code>continue</code> as <code>use</code> to match the vocabulary; keep
+<code>continue</code> as alias</p>
+<p><strong>Normalize <code>new</code>/<code>show</code> in skill
+commands:</strong> - [ ] <code>/skill show NAME</code> — alias for
+<code>info</code>; make <code>show</code> canonical, keep
+<code>info</code> as alias - [ ] <code>/skill-set new NAME</code> —
+alias for <code>create</code>; make <code>new</code> canonical, keep
+<code>create</code> as alias - [ ] <code>/skill-set show NAME</code> —
+alias for <code>info</code>; make <code>show</code> canonical, keep
+<code>info</code> as alias</p>
+<p><strong><code>/model alias</code> verb normalization:</strong> - [ ]
+<code>/model alias add ALIAS FULLNAME</code> — alias for
+<code>set</code>; make <code>add</code> the preferred verb, keep
+<code>set</code> as alias</p>
+<p><strong>Documentation of the vocabulary:</strong> - [ ] Add a
+“Command vocabulary” section to <code>user_manual.md</code> and
+<code>getting-started.md</code> explaining the eight core verbs and the
+<code>add</code> vs <code>new</code> distinction so users can predict
+subcommands for any command family</p>
+<h3 id="documentation">Documentation</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Restructure getting-started
+documentation to lead with Llamafile setup, then present Ollama as an
+advanced/alternative option</label></li>
+<li><label><input type="checkbox" />Review all <code>.7.md</code> man
+pages and <code>.md</code> prose docs for coverage gaps introduced by
+v0.0.12–v0.0.13 features (spinner status, profile commands,
+<code>--resume</code>, routing feedback, memory enrichment)</label></li>
+<li><label><input type="checkbox" />Audit cross-references: every new
+command/flag added since v0.0.11 should appear in at least one SEE ALSO
+section and in the user manual index</label></li>
+<li><label><input type="checkbox" />Update CONFIGURATION.md to document
+new config fields added in v0.0.14 (LlamafileContextLength,
+etc.)</label></li>
+</ul>
 </section>
 </body>
 </html>

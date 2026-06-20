@@ -9,66 +9,17 @@ $jsonContent = Get-Content -Raw -Path "codemeta.json" | ConvertFrom-Json
 $projectName = $jsonContent.name
 $versionNo = $jsonContent.version
 
-function Make-Man-Markdown {
-    Write-Host "Generating markdown man pages from help commands..."
-    
-    # Create bin directory if it doesn't exist
-    if (-not (Test-Path -Path "bin")) {
-        New-Item -ItemType Directory -Path "bin" | Out-Null
-    }
-    
-    # Build programs first if they don't exist
-    foreach ($prog in $programs) {
-        if (-not (Test-Path -Path "bin\$prog.exe")) {
-            Write-Host "Building $prog..."
-            Build-It -OutPath "bin\$prog.exe" -SourcePath ".\cmd\$prog"
-            if ($LASTEXITCODE -ne 0) {
-                Write-Error "Build failed for $prog"
-                exit $LASTEXITCODE
-            }
-        }
-    }
-    
-    # Generate main man page (chapter 1)
-    foreach ($prog in $programs) {
-        Write-Host "Generating help documentation for $prog..."
-        & ".\bin\$prog.exe" --help > "$prog.1.md"
-    }
-    
-    # Get list of help topics
-    $helpOutput = & ".\bin\harvey.exe" --help index 2>$null
-    $topics = @()
-    foreach ($line in $helpOutput) {
-        # Match lines that start with spaces followed by a topic name
-        if ($line -match '^\s{2}(\w[\w-]*)') {
-            $topic = $matches[1]
-            if ($topic -notin $topics) {
-                $topics += $topic
-            }
-        }
-    }
-    
-    # Generate topic man pages (chapter 7)
-    foreach ($topic in $topics) {
-        $outputFile = "harvey-$topic.7.md"
-        Write-Host "Generating help documentation for topic: $topic..."
-        & ".\bin\harvey.exe" --help $topic > $outputFile
-    }
-}
-
 function Make-Man {
-    $markdownFiles = Get-ChildItem -File *.1.md,*.3.md,*.7.md
+    $markdownFiles = Get-ChildItem -File *.1.md
     foreach ($file in $markdownFiles) {
         $manName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-        $section = $file.Extension.Substring(1)  # Remove the dot
 
-        $manDir = "man\man$section"
-        if (-not (Test-Path -Path $manDir)) {
-            New-Item -ItemType Directory -Path $manDir | Out-Null
+        if (-not (Test-Path -Path man\man1)) {
+            New-Item -ItemType Directory -Path man\man1 | Out-Null
         }
 
-        Write-Host "Rendering $file as $manDir\$manName"
-        pandoc -f Markdown -t man -o "$manDir\$manName" -s $file
+        Write-Host "Rendering $file as man\man1\$manName"
+        pandoc -f Markdown -t man -o man\man1\$manName -s $file
     }
 }
 
@@ -148,15 +99,8 @@ function Build-It {
     }
 }
 
-# Generate markdown man pages from help commands
-if ($action -eq "man-md") {
-    Make-Man-Markdown
-    Write-Host "Markdown man page generation complete."
-}
-
-# Make the man pages (converts markdown to man format)
+# Make the man pages
 if ($action -eq "man") {
-    Make-Man-Markdown
     Make-Man
 }
 
@@ -169,8 +113,10 @@ if ($action -eq "build") {
             Write-Error "Build failed for $prog"
             exit $LASTEXITCODE
         }
+        Write-Host "Generating help documentation for $prog..."
+        & ".\bin\$prog.exe" --help > "$prog.1.md"
     }
-    Write-Host "Build complete."
+    Write-Host "Build and documentation generation complete."
 }
 
 # Install action

@@ -3,7 +3,7 @@
 
 ## What Harvey Is  
 
-Harvey is an open‑source, cross‑platform terminal REPL (Read‑Eval‑Print Loop) that lets you interact with large language models (LLMs) through a simple, tool‑rich command interface. Built primarily on Ollama with support for cloud providers via named routes, Harvey provides an interactive coding agent experience focused on local model execution.
+Harvey is an open‑source, cross‑platform terminal REPL (Read‑Eval‑Print Loop) that lets you interact with language models (LLMs) through a simple, tool‑rich command interface. Built primarily on Ollama with support for cloud providers via named routes, Harvey provides an interactive coding agent experience focused on local model execution.
 
 ## Why You Might Want to Use It  
 

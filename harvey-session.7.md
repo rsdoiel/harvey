@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 d6c7a45
+%harvey(7) user manual | version 0.0.13 7ec384f
 % R. S. Doiel
 % 2026-06-19
 
@@ -58,7 +58,8 @@ Each exchange is an INT scene with speaker labels (RSDOIEL, HARVEY, model
 name). These files are plain text and human-readable.
 
 Default save location: <workdir>/agents/sessions/
-File naming:          harvey-session-YYYYMMDD-HHMMSS.spmd
+File naming:          
+harvey-session-YYYYMMDD-HHMMSS.spmd
 
 # CLI FLAGS
 

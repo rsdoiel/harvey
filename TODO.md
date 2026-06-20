@@ -3,6 +3,14 @@
 
 ## Bugs
 
+## Release Review
+
+- [ ] Overview.md still reflects a Ollama first approach, needs to cover Llamafile support before talking about Ollama model support.
+- [ ] The helptext.go help guides (help text) seem to still be oriented as Ollama first, needs to be LLamafile primary while still supporting Ollama models. See `./bin/harvery --help getting-started` output as an example
+- [ ] Review the helptext.go file, review the help text constants to ensure they align with the current implementation. 
+- [ ] Each exported constant needs a brief comment identifying it's purpose as well as related man page output. 
+- [ ] Order the help texts in helptext.go to make it easy for humans to review. Example the helptext that is used to generate harvey.1 man page, should be at the top. The other help text gguides should be grouped around what they cover.
+
 ## Next (v0.0.14 release)
 
 ### Llamafile as primary model system
@@ -28,9 +36,9 @@
 
 ### Model management ergonomics
 
-- [ ] Unified `/model` command — `/model [list|use NAME|status]` that works regardless of whether the active backend is llamafile or Ollama, removing the mental load of choosing between `/llamafile` and `/ollama` subcommands
-- [ ] `/llamafile remove` alias — add `remove` as an alias for the `drop` subcommand; `remove` is more natural English for most users
-- [ ] `/llamafile download` stub — a command that prints a curated table of recommended models (name, size, HuggingFace URL, capability note) formatted for copy-pasting into `wget`/`curl`, removing the friction of finding the right file
+- [x] Unified `/model` command — `/model [list|use NAME|show [NAME]|status]` implemented; works regardless of backend (llamafile.go + commands.go:415)
+- [x] `/llamafile remove` alias — `case "drop", "remove":` in llamafile.go:192; `drop` kept as alias
+- [x] `/llamafile download` stub — `case "download":` in llamafile.go:194; `LlamafileDownloadText` in helptext.go
 
 ### Session quality
 
@@ -45,32 +53,32 @@ across command families. Making the vocabulary consistent lowers the learning
 curve: knowing any one command family teaches you all the others.
 
 **`remove` as the canonical delete verb (aliases kept for backwards compat):**
-- [ ] `/rag remove` — alias for `drop`; make `remove` canonical
-- [ ] `/route remove` — alias for `rm`; make `remove` canonical
-- [ ] `/llamafile remove` — already planned above; confirm `drop` stays as alias
+- [x] `/rag remove` — implemented; `case "drop", "remove":` at commands.go:4810
+- [x] `/route remove` — implemented; in subcommand list and handler at commands.go:966
+- [x] `/llamafile remove` — implemented; see Model management ergonomics above
 
 **Missing `show` subcommands (content/details display, distinct from `status`):**
-- [ ] `/llamafile show [NAME]` — display registered model details: path, size, context length, capabilities from model cache
-- [ ] `/rag show [NAME]` — display active (or named) store stats: chunk count, embedding model, DB path, last ingest date
+- [x] `/llamafile show [NAME]` — implemented in llamafile.go:cmdLlamafileShow; shows path, size, context length
+- [x] `/rag show [NAME]` — implemented in commands.go:ragShow; shows db path, embed model, chunk count, model map
 
 **Missing `use` subcommand:**
-- [ ] `/route use NAME` — set the named route as the default without requiring `@mention` syntax
+- [x] `/route use NAME` — implemented; `case "use":` at commands.go:1006; also clears sticky route when NAME omitted
 
 **`/session` command expansion:**
-- [ ] `/session list` — list available session files from `agents/sessions/` without restarting Harvey
-- [ ] `/session show [PATH]` — display session metadata: date, model, backend, turn count, opening prompt
-- [ ] `/session use PATH` (or `continue`) — alias `continue` as `use` to match the vocabulary; keep `continue` as alias
+- [x] `/session list` — implemented; lists .spmd files from agents/sessions/ with timestamps
+- [x] `/session show [PATH]` — implemented at commands.go:3792; shows date, model, turn count, opening prompt
+- [x] `/session use PATH` (or `continue`) — implemented; `case "use", "continue":` at commands.go:3823
 
 **Normalize `new`/`show` in skill commands:**
-- [ ] `/skill show NAME` — alias for `info`; make `show` canonical, keep `info` as alias
-- [ ] `/skill-set new NAME` — alias for `create`; make `new` canonical, keep `create` as alias
-- [ ] `/skill-set show NAME` — alias for `info`; make `show` canonical, keep `info` as alias
+- [x] `/skill show NAME` — implemented; `case "info", "show":` at commands.go:3932
+- [x] `/skill-set new NAME` — implemented; `case "create", "new":` at commands.go:4179
+- [x] `/skill-set show NAME` — implemented; `case "info", "show":` at commands.go:4173
 
 **`/model alias` verb normalization:**
-- [ ] `/model alias add ALIAS FULLNAME` — alias for `set`; make `add` the preferred verb, keep `set` as alias
+- [x] `/model alias add ALIAS FULLNAME` — implemented; `add` is preferred verb, `set` kept as alias; documented in ModelAliasHelpText
 
 **Documentation of the vocabulary:**
-- [ ] Add a "Command vocabulary" section to `user_manual.md` and `getting-started.md` explaining the eight core verbs and the `add` vs `new` distinction so users can predict subcommands for any command family
+- [x] "Command vocabulary" section added to both `user_manual.md` and `getting_started.md` with eight-verb table and `add` vs `new` distinction
 
 ### Documentation
 

@@ -169,7 +169,8 @@ that follows the Agent Skills specification (https://agentskills.io/home).
   /skill                   list all discovered skills
   /skill list              same as above
   /skill load NAME         inject the full skill body into context
-  /skill info NAME         show path, compatibility, and license
+  /skill show NAME         show path, compatibility, and license (alias: info)
+  /skill info NAME         alias for show
   /skill status            count skills by scope
   /skill new               interactive wizard to create a new skill
   /skill run NAME          run a skill (dispatches compiled scripts if available)
@@ -255,7 +256,11 @@ Cloud providers (API key read from environment):
   /route add NAME URL [MODEL]        register a remote endpoint
                                        @pi2    ollama://192.168.1.12:11434 llama3.1:8b
                                        @claude anthropic:// claude-sonnet-4-20250514
-  /route rm NAME                     remove a registered endpoint
+  /route remove NAME                 unregister an endpoint (alias: rm)
+  /route rm NAME                     alias for remove
+  /route use [NAME]                  set NAME as the sticky route so all prompts
+                                       dispatch there without an @mention; omit NAME
+                                       to clear the sticky route
   /route models URL                  list models available at a provider URL
                                        useful before /route add to choose a model
   /route probe NAME                  show reachability, model, and tool-call capability
@@ -324,9 +329,24 @@ Pre-built models are available at:
     Start the active (or named) model's server without changing the
     active setting. Useful after Harvey restarts.
 
+  /llamafile show [NAME]
+    Show details for a registered model: path, file size, and context
+    length. If NAME is omitted, shows the active model.
+
   /llamafile status
     Show the active model, API URL, reachability, process ownership,
     discovery directory, and number of registered models.
+
+  /llamafile remove NAME
+    Unregister a model from agents/harvey.yaml. The llamafile binary itself
+    is not deleted. Alias: drop.
+
+  /llamafile drop NAME
+    Alias for remove.
+
+  /llamafile download
+    Print a curated table of recommended llamafile models with sizes and
+    download URLs for copy-pasting into wget/curl.
 
 # CONFIGURATION
 
@@ -604,27 +624,41 @@ with embedded newlines.
 
 # NAME
 
-SESSION — continue or replay recorded conversations
+SESSION — list, inspect, continue, or replay recorded conversations
 
 # SYNOPSIS
 
+/session list
+/session show   [FILE]
+/session use    FILE
 /session continue FILE
 /session replay   FILE [OUTPUT]
 
 # DESCRIPTION
 
 Harvey saves every conversation to a Fountain .spmd file. The /session
-command lets you reload those files in two distinct ways:
+command lets you browse those files and reload them in two distinct ways:
 
-  continue  — restore the conversation history and keep chatting.
-  replay    — re-send the original user turns to the current model and
-              record fresh responses.
+  continue / use — restore the conversation history and keep chatting.
+  replay         — re-send the original user turns to the current model and
+                   record fresh responses.
 
-# CONTINUE
+# LIST
 
-/session continue FILE loads all turns from FILE into the current history
-and returns you to the REPL. The model sees the full prior conversation as
-if it had been running the whole time.
+/session list prints the recorded sessions in <workdir>/agents/sessions/,
+one per line with the filename and last-modified timestamp.
+
+# SHOW
+
+/session show [FILE] displays metadata for FILE without loading it: date,
+model used, turn count, and the opening user prompt. If FILE is omitted and
+a recording is currently active, the active file is shown.
+
+# CONTINUE / USE
+
+/session use FILE (alias: /session continue FILE) loads all turns from FILE
+into the current history and returns you to the REPL. The model sees the
+full prior conversation as if it had been running the whole time.
 
 Use continue to:
 
@@ -633,7 +667,7 @@ Use continue to:
   - Inspect and then extend a session that was auto-saved.
 
 Harvey also offers to continue the most recently saved session at startup;
-pressing Enter at that prompt is equivalent to /session continue.
+pressing Enter at that prompt is equivalent to /session use.
 
 # REPLAY
 
@@ -658,7 +692,8 @@ Each exchange is an INT scene with speaker labels (RSDOIEL, HARVEY, model
 name). These files are plain text and human-readable.
 
 Default save location: <workdir>/agents/sessions/
-File naming:          harvey-session-YYYYMMDD-HHMMSS.spmd
+File naming:
+harvey-session-YYYYMMDD-HHMMSS.spmd
 
 # CLI FLAGS
 
@@ -936,7 +971,7 @@ RAG — Retrieval-Augmented Generation
 
 # SYNOPSIS
 
-/rag <list|new NAME|switch NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
+/rag <list|new NAME|use NAME|show [NAME]|remove NAME|ingest PATH|status|query TEXT|on|off>
 
 # DESCRIPTION
 
@@ -1083,9 +1118,18 @@ are all low (< 0.3) for a question you expect the store to answer, consider:
   Close the currently open store and activate NAME. The change is persisted
   to agents/harvey.yaml.
 
-/rag drop NAME
+/rag show [NAME]
+  Show details for the named (or active) store: database path, embedding
+  model, chunk count, and model map. If NAME is omitted, the active store
+  is shown.
+
+/rag remove NAME
   Remove a store from the registry after confirmation. The .db file is NOT
   deleted automatically — the path is printed so you can remove it manually.
+  Alias: drop.
+
+/rag drop NAME
+  Alias for remove.
 
 /rag ingest PATH [PATH...]
   Reads each file or directory (recursively), splits text into
@@ -1303,7 +1347,7 @@ SKILL-SET — load and manage named bundles of Harvey skills
 
 # SYNOPSIS
 
-/skill-set <list|load NAME|info NAME|create NAME|status|unload>
+/skill-set <list|load NAME|show NAME|new NAME|status|unload>
 
 # DESCRIPTION
 
@@ -1325,11 +1369,19 @@ load NAME
   when combined tokens exceed 50 % of the active context window; errors
   when they exceed 100 %.
 
-info NAME
+show NAME
   Show the skill-set description and the skills it contains without loading.
+  Alias: info.
+
+info NAME
+  Alias for show.
+
+new NAME
+  Scaffold a new NAME.yaml in agents/skill-sets/ with placeholder content.
+  Alias: create.
 
 create NAME
-  Scaffold a new NAME.yaml in agents/skill-sets/ with placeholder content.
+  Alias for new.
 
 status
   Show the currently loaded skill-set (if any).
@@ -1362,7 +1414,7 @@ Load the fountain bundle:
 
 Show bundle contents without loading:
 
-  /skill-set info fountain
+  /skill-set show fountain
 
 Check what is active:
 
@@ -1370,7 +1422,7 @@ Check what is active:
 
 Create a new bundle:
 
-  /skill-set create my-bundle
+  /skill-set new my-bundle
 
 # SEE ALSO
 
@@ -2565,16 +2617,19 @@ allowlist, workspace permissions, and audit buffer status.
 # DESCRIPTION
 
 {app_name} is a terminal agent for local large language models. It was
-inspired by Claude Code but focused on working with large language models
-in small computer environments like a Raspberry Pi computer running
-Raspberry Pi OS. While the inspiration was to run an agent locally with
-Ollama it can also be run on larger computers like Linux, macOS and Windows
-systems you find on desktop and laptop computers. It should compile for most
-systems where Ollama is available and Go is supported (example: *BSD).
+inspired by Claude Code but focused on working with small language models
+in small computer environments like a Raspberry Pi computer. The
+inspiration was to run an agent locally. {app_name} supports running models
+via llamafile (self-contained model executables from Mozilla) and via
+Ollama. It can run larger models on more capable computers too. {app_name}
+can be compiled to run on any system that is supported by the Go
+programming language. The project distributes executable versions that are
+suitable to run under Linux, macOS and Windows for x86_64 and aarch64
+computers.
 
 {app_name} looks for HARVEY.md in the current directory and uses it as a
-system prompt. It then connects to a local Ollama server and starts an
-interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
+system prompt. It then connects to a llamafile or Ollama server and starts
+an interactive chat session. Cloud providers (Anthropic, DeepSeek, Gemini,
 Mistral, OpenAI) can be added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
@@ -2686,10 +2741,10 @@ are also available from the shell: harvey --help TOPIC.
 /inspect [MODEL]
 : show detailed model information (Ollama only)
 
-/route <add NAME URL [MODEL]|rm NAME|list|on|off|status>
+/route <add NAME URL [MODEL]|remove NAME|use [NAME]|list|on|off|status>
 : manage named remote LLM endpoints (@mention routing)
 
-/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status|drop NAME>
+/llamafile <add [PATH] [NAME]|use NAME|show [NAME]|list|start [NAME]|status|remove NAME|download>
 : manage local llamafile model backends
 
 **Context and history**
@@ -2717,8 +2772,8 @@ are also available from the shell: harvey --help TOPIC.
 /rename NAME
 : rename the active session file without interrupting recording
 
-/session <continue FILE|replay FILE [OUTPUT]>
-: load history from a prior session or replay its turns
+/session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>
+: list, inspect, load, or replay recorded sessions
 
 **Knowledge base**
 

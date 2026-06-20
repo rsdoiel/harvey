@@ -216,7 +216,7 @@ func (a *Agent) registerCommands() {
 			Usage:       "/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status|drop NAME>",
 			Description: "Manage llamafile model backends",
 			Handler:     cmdLlamafile,
-			Subcommands: []string{"add", "use", "list", "start", "status", "remove", "drop", "download"},
+			Subcommands: []string{"add", "use", "show", "list", "start", "status", "remove", "drop", "download"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"use":  llamafileNameCandidates,
 				"drop": llamafileNameCandidates,
@@ -244,7 +244,7 @@ func (a *Agent) registerCommands() {
 			Usage:       "/rag <list|new NAME|use NAME|drop NAME|ingest PATH|status|query TEXT|on|off>",
 			Description: "Manage named RAG knowledge stores for context-augmented generation",
 			Handler:     cmdRag,
-			Subcommands: []string{"list", "new", "use", "remove", "drop", "ingest", "status", "query", "on", "off"},
+			Subcommands: []string{"list", "new", "use", "show", "remove", "drop", "ingest", "status", "query", "on", "off"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"use":    ragStoreNameCandidates,
 				"remove": ragStoreNameCandidates,
@@ -4807,6 +4807,12 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 			args = append(args, chosen)
 		}
 		return ragSwitch(a, args[1], out)
+	case "show":
+		name := ""
+		if len(args) >= 2 {
+			name = args[1]
+		}
+		return ragShow(a, name, out)
 	case "drop", "remove":
 		if len(args) < 2 {
 			items := ragStoreSelectItems(a)
@@ -4899,6 +4905,61 @@ func ragList(a *Agent, out io.Writer) error {
 			marker = "* "
 		}
 		fmt.Fprintf(out, "  %s%-16s %s  (%s)\n", marker, e.Name, e.DBPath, e.EmbeddingModel)
+	}
+	return nil
+}
+
+/** ragShow prints details for a named (or active) RAG store.
+ *
+ * Parameters:
+ *   a    (*Agent)    — Harvey agent.
+ *   name (string)   — store name; empty string selects the active store.
+ *   out  (io.Writer) — output writer.
+ *
+ * Returns:
+ *   error — always nil; errors are printed to out.
+ *
+ * Example:
+ *   /rag show
+ *   /rag show golang
+ */
+func ragShow(a *Agent, name string, out io.Writer) error {
+	var entry *RagStoreEntry
+	if name == "" {
+		entry = a.Config.Memory.ActiveRagStore()
+		if entry == nil {
+			fmt.Fprintln(out, "No store configured. Run /rag new NAME to create one.")
+			return nil
+		}
+	} else {
+		entry = a.Config.Memory.RagStoreByName(name)
+		if entry == nil {
+			fmt.Fprintf(out, "Store %q not found. Use /rag list to see registered stores.\n", name)
+			return nil
+		}
+	}
+	active := ""
+	if entry.Name == a.Config.Memory.RagActive {
+		active = " (active)"
+	}
+	fmt.Fprintf(out, "  Name:          %s%s\n", entry.Name, active)
+	fmt.Fprintf(out, "  Database:      %s\n", entry.DBPath)
+	fmt.Fprintf(out, "  Embed model:   %s\n", entry.EmbeddingModel)
+	if entry.EmbedderKind == "encoderfile" {
+		fmt.Fprintf(out, "  Embedder:      encoderfile (%s)\n", entry.EmbedderURL)
+	}
+	if entry.Name == a.Config.Memory.RagActive && a.Rag != nil {
+		if n, err := a.Rag.Count(); err == nil {
+			fmt.Fprintf(out, "  Chunks:        %d\n", n)
+		}
+	} else {
+		fmt.Fprintln(out, "  Chunks:        (store not open)")
+	}
+	if len(entry.ModelMap) > 0 {
+		fmt.Fprintln(out, "  Model map:")
+		for gen, emb := range entry.ModelMap {
+			fmt.Fprintf(out, "    %-36s → %s\n", gen, emb)
+		}
 	}
 	return nil
 }

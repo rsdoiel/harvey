@@ -1229,3 +1229,76 @@ func TestRouteUse_noArgs_clearsActiveRoute(t *testing.T) {
 		t.Errorf("expected ActiveRoute cleared, got %q", a.ActiveRoute)
 	}
 }
+
+// ─── /rag show ────────────────────────────────────────────────────────────────
+
+func TestRagShow_activeStore(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.Memory.RagStores = []RagStoreEntry{
+		{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"},
+	}
+	cfg.Memory.RagActive = "golang"
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+	if err := cmdRag(a, []string{"show"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "golang") {
+		t.Errorf("expected store name in output, got: %s", out)
+	}
+	if !strings.Contains(out, "nomic-embed-text") {
+		t.Errorf("expected embedding model in output, got: %s", out)
+	}
+	if !strings.Contains(out, "agents/rag/golang.db") {
+		t.Errorf("expected db path in output, got: %s", out)
+	}
+}
+
+func TestRagShow_namedStore(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.Memory.RagStores = []RagStoreEntry{
+		{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"},
+		{Name: "writing", DBPath: "agents/rag/writing.db", EmbeddingModel: "nomic-embed-text"},
+	}
+	cfg.Memory.RagActive = "golang"
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+	if err := cmdRag(a, []string{"show", "writing"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "writing") {
+		t.Errorf("expected 'writing' in output, got: %s", out)
+	}
+	if !strings.Contains(out, "agents/rag/writing.db") {
+		t.Errorf("expected writing db path in output, got: %s", out)
+	}
+}
+
+func TestRagShow_notFound(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	if err := cmdRag(a, []string{"show", "nonexistent"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "not found") && !strings.Contains(buf.String(), "No RAG") {
+		t.Errorf("expected not-found message, got: %s", buf.String())
+	}
+}
+
+func TestRagShow_noActive(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	if err := cmdRag(a, []string{"show"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "No store") && !strings.Contains(out, "no store") && !strings.Contains(out, "not configured") {
+		t.Errorf("expected no-store message, got: %s", out)
+	}
+}
