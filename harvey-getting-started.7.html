@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="getting-started-with-harvey">Getting Started with Harvey</h1>
+<p>Harvey is a terminal coding agent that runs language models locally
+via Ollama. Two prerequisites must be installed before Harvey can work:
+<strong>Ollama</strong> and (optionally) <strong>PDF tools</strong>.</p>
+<hr />
+<h2 id="step-1-install-ollama">Step 1 — Install Ollama</h2>
+<p>Ollama runs language models on your machine. Harvey talks to it to
+generate responses.</p>
+<p><strong>Download:</strong> https://ollama.com/download</p>
+<p>Install for your platform, then pull a starter model:</p>
+<pre><code>ollama pull granite3.3:2b</code></pre>
+<p>That model is small (2 GB) and works well on most hardware. For
+coding-heavy work, try:</p>
+<pre><code>ollama pull qwen2.5-coder:7b</code></pre>
+<p>Verify Ollama is running:</p>
+<pre><code>ollama list</code></pre>
+<p>If Harvey says it cannot connect to Ollama, start the service:</p>
+<ul>
+<li><strong>macOS / Linux:</strong> <code>ollama serve</code> (or it may
+already run as a daemon)</li>
+<li><strong>Windows:</strong> start the Ollama app from the Start
+menu</li>
+</ul>
+<hr />
+<h2 id="step-2-install-pdf-tools-optional">Step 2 — Install PDF Tools
+(optional)</h2>
+<p>Harvey uses <code>pdftotext</code> to extract text from PDF files for
+the RAG store. Harvey works fine without it — you just cannot read
+PDFs.</p>
+<p><strong>macOS:</strong></p>
+<pre><code>brew install poppler</code></pre>
+<p><strong>Linux (Debian/Ubuntu):</strong></p>
+<pre><code>sudo apt install poppler-utils</code></pre>
+<p><strong>Linux (Fedora/RHEL):</strong></p>
+<pre><code>sudo dnf install poppler-utils</code></pre>
+<p><strong>Windows:</strong> Download poppler for Windows from
+https://github.com/oschwartz10612/poppler-windows/releases and add the
+<code>bin/</code> folder to your PATH.</p>
+<hr />
+<h2 id="step-3-start-harvey">Step 3 — Start Harvey</h2>
+<pre><code>harvey</code></pre>
+<p>On first run in a new workspace Harvey will ask you to set up a
+profile. Pick a starting template that fits your role.</p>
+<hr />
+<h2 id="more-help">More Help</h2>
+<pre><code>/help ollama       — Harvey&#39;s Ollama command reference
+/help pdf-tools    — PDF tools detail and troubleshooting
+/help memory       — how Harvey remembers things across sessions
+/help rag          — how to ingest documents for retrieval</code></pre>
+</section>
+</body>
+</html>

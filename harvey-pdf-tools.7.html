@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>Harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section>
+<h1 id="pdf-tools">PDF Tools</h1>
+<p>Harvey uses <code>pdftotext</code> (part of the Poppler suite) to
+extract text from PDF files. This is used by <code>/read-pdf</code> and
+by <code>/rag ingest</code> when ingesting PDF documents into a RAG
+store.</p>
+<p>Harvey works without PDF tools installed — you simply cannot read or
+ingest PDF files.</p>
+<hr />
+<h2 id="installation">Installation</h2>
+<p><strong>macOS:</strong></p>
+<pre><code>brew install poppler</code></pre>
+<p><strong>Linux (Debian/Ubuntu):</strong></p>
+<pre><code>sudo apt install poppler-utils</code></pre>
+<p><strong>Linux (Fedora/RHEL):</strong></p>
+<pre><code>sudo dnf install poppler-utils</code></pre>
+<p><strong>Windows:</strong> Download poppler for Windows from
+https://github.com/oschwartz10612/poppler-windows/releases</p>
+<p>Extract the archive and add the <code>Library/bin/</code> folder to
+your PATH. Restart your terminal after editing PATH.</p>
+<hr />
+<h2 id="verify-installation">Verify Installation</h2>
+<pre><code>pdftotext -v</code></pre>
+<p>You should see a version line. If you see “command not found”, the
+tools are not on your PATH.</p>
+<hr />
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p><strong>Harvey says “pdftotext not found”:</strong> Install Poppler
+using the instructions above, then restart Harvey.</p>
+<p><strong>Text extracted looks garbled:</strong> The PDF may use a
+non-standard font encoding. Try:</p>
+<pre><code>pdftotext -layout yourfile.pdf -</code></pre>
+<p>The <code>-layout</code> flag preserves column structure, which helps
+with tables and multi-column documents.</p>
+<p><strong>Scanned PDFs produce no text:</strong> <code>pdftotext</code>
+only works on PDFs with embedded text. Scanned images require OCR
+(e.g. <code>tesseract</code>), which Harvey does not currently
+support.</p>
+<hr />
+<h2 id="see-also">See Also</h2>
+<pre><code>/help getting-started   — full prerequisites and first-run guide
+/help rag               — ingesting documents into Harvey&#39;s knowledge store</code></pre>
+</section>
+</body>
+</html>
