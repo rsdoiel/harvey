@@ -33,7 +33,7 @@
 - [x] Auto-reconnect on dropped llamafile — `isConnectionError` detects transport failures; REPL loop offers restart via `restartActiveLlamafile` and retries the turn; implemented at terminal.go:917
 - [x] Context utilization hint — `spinnerLabel()` in harvey.go shows `[ctx: N%]` when estimated usage ≥ 50% of `effectiveContextLimit()`
 - [x] Routing feedback in spinner — `routeSpinnerLabel` shows `"@name · model"` in spinner label; `UpdateStatus("routed → name")` on line 2
-- [ ] At-mention model switch — if the command prompt starts with `@modelname`, treat it as a model switch while preserving existing context in the environment
+- [x] At-mention model switch — `@name` now tries route dispatch first, then `attemptModelSwitch` for local models; `@name prompt` switches model and sends prompt to new model with full history preserved; case-insensitive lookup
 
 ### Model management ergonomics
 
