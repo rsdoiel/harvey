@@ -119,6 +119,7 @@ failure.
 
 # SEE ALSO
 
+  /model list|use|show   — backend-agnostic model management across llamafile and Ollama
   /ollama              — Ollama model backend management
   /help routing        — add a llamafile:// server as a named route
   /help getting-started — Getting started with Harvey

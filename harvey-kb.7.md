@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -118,4 +118,10 @@ and RAG to retrieve relevant document passages automatically.
 
 After /kb inject the model sees the full project record as context and can
 answer questions about it, suggest next steps, or help resolve open questions.
+
+# SEE ALSO
+
+  /memory recall         — search all knowledge silos including the KB
+  /rag ingest            — embed documents for semantic retrieval
+  /help learn            — overview of all three memory silos
 

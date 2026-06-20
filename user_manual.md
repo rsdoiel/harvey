@@ -58,11 +58,6 @@ Learning this vocabulary for one command teaches you all the others:
 `/llamafile`, `/rag`, `/route`, `/session`, `/skill`, `/skill-set`, and
 `/memory profile` all follow the same pattern.
 
-### Security Features
-
-- **[Security Guide](SECURITY.md)** — Safe mode, command allowlists, workspace permissions, audit logging, and threat model
-- **[Security Review](SECURITY_REVIEW.md)** — Pre-release security assessment and known limitations
-
 ---
 
 ## 🎯 Advanced Features
@@ -75,7 +70,10 @@ Learning this vocabulary for one command teaches you all the others:
 ### Knowledge Management
 
 - **[Knowledge Base](KNOWLEDGE_BASE.md)** — SQLite-backed knowledge base schema, FTS5 search, CLI commands, and Go API
+- **[KB Commands](harvey-kb.7.md)** — `/kb` slash command reference: projects, observations, concepts
 - **[Memory System](memory-unified-design.md)** — Unified memory architecture with rolling summaries and token budget tracking
+- **[Memory Commands](harvey-memory.7.md)** — `/memory` slash command reference: mine, list, show, flag, forget, profile
+- **[Learn — Memory Overview](harvey-learn.7.md)** — When to use RAG vs memory vs KB; unified recall
 
 ### Model Management
 
@@ -84,13 +82,41 @@ Learning this vocabulary for one command teaches you all the others:
 - **[Model & Alias Commands](harvey-model-alias.7.md)** — `@mention` inline model switching and `/model alias` short names
 - **[Ollama Commands](harvey-ollama.7.md)** — Alternative local backend: service control and model management
 - **[Routing](ROUTING.md)** — Connect to remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI, remote Ollama) via @mention syntax
+- **[Routing Commands](harvey-routing.7.md)** — `/route` slash command reference
 - **[Model Guide](model_guide.md)** — Model selection guide based on capability probing results
 - **[Model Cache](MODEL_CACHE.md)** — Model capability caching architecture, database schema, and probing mechanisms
 
 ### Sessions & Recording
 
 - **[Sessions](SESSIONS.md)** — Session recording, file structure, replay functionality, and programmatic access
+- **[Session Commands](harvey-session.7.md)** — `/session list|show|use|continue|replay` reference
+- **[Record Commands](harvey-record.7.md)** — `/record start|stop|status` reference
 - **[Fountain Format](FOUNTAIN_FORMAT.md)** — Fountain screenplay format specification for conversation recordings
+
+### File & Workspace Operations
+
+- **[Read](harvey-read.7.md)** — Inject workspace files into conversation context
+- **[Read Directory](harvey-read-dir.7.md)** — Read all files in a directory tree into context
+- **[Read PDF](harvey-read-pdf.7.md)** — Extract and inject PDF text (requires poppler)
+- **[Attach](harvey-attach.7.md)** — Attach images, PDFs, or text; auto-selects best representation
+- **[Write](harvey-write.7.md)** — Save the last reply or first code block to a file
+- **[Format](harvey-format.7.md)** — Auto-format source files using language-appropriate tools
+- **[Search](harvey-search.7.md)** — Regex search across workspace files
+- **[Files](harvey-files.7.md)** — List workspace directory contents
+- **[File Tree](harvey-file-tree.7.md)** — Display a recursive directory tree
+
+### Automation & Pipelines
+
+- **[Pipeline](harvey-pipeline.7.md)** — Chain Markdown prompt files with confidence gating
+- **[Plan](harvey-plan.7.md)** — Generate and execute step-by-step task plans with bounded context
+- **[Loop](harvey-loop.7.md)** — Repeat a prompt or command on a fixed interval
+
+### Status & Diagnostics
+
+- **[Status](harvey-status.7.md)** — Show backend, token usage, routing, recording, and debug state
+- **[Hint](harvey-hint.7.md)** — Actionable suggestions for improving results (RAG, memory, KB)
+- **[Inspect](harvey-inspect.7.md)** — Detailed model information (Ollama)
+- **[Summarize](harvey-summarize.7.md)** — Condense history to free context window space (`/compact` alias)
 
 ---
 
@@ -99,7 +125,14 @@ Learning this vocabulary for one command teaches you all the others:
 ### Skills System
 
 - **[Skills Overview](SKILLS.md)** — Extend Harvey with custom skills, including SKILL.md format, discovery paths, compiled skills, triggers, and the skill wizard
+- **[Skills Commands](harvey-skills.7.md)** — `/skill` slash command reference
 - **[Skill Sets](harvey-skill-set.7.md)** — Manage named bundles of skills for specific workflows
+
+### Security
+
+- **[Security Guide](SECURITY.md)** — Safe mode, command allowlists, workspace permissions, audit logging, and threat model
+- **[Security Commands](harvey-security.7.md)** — `/safemode`, `/permissions`, `/audit`, `/security` reference
+- **[Security Review](SECURITY_REVIEW.md)** — Pre-release security assessment and known limitations
 
 ---
 

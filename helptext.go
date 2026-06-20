@@ -449,6 +449,7 @@ failure.
 
 # SEE ALSO
 
+  /model list|use|show   — backend-agnostic model management across llamafile and Ollama
   /ollama              — Ollama model backend management
   /help routing        — add a llamafile:// server as a named route
   /help getting-started — Getting started with Harvey
@@ -726,6 +727,12 @@ Model aliases:
   /ollama alias remove NAME
     Remove an alias.
 
+# SEE ALSO
+
+  /model list|use|show   — backend-agnostic model management across llamafile and Ollama
+  /llamafile             — llamafile model backend management
+  /help routing          — add a remote Ollama server as a named route
+
 `
 
 	// RoutingHelpText is shown by /help routing and harvey --help routing.
@@ -827,6 +834,12 @@ Cloud providers (API key read from environment):
 
 Registered endpoints and the on/off state persist across sessions in
 `+"`"+`<workspace>/agents/routes.json.`+"`"+`
+
+# SEE ALSO
+
+  /model use NAME        — backend-agnostic model switching
+  /llamafile             — local llamafile backend management
+  /help security         — API key filtering for cloud endpoints
 
 `
 
@@ -1896,6 +1909,7 @@ Spinner (transient, not shown by /status)
 # SEE ALSO
 
   /ollama status   — check whether the Ollama daemon is reachable
+  /hint            — actionable suggestions for improving results
   /help ollama     — Ollama server and model management
   /help record     — session recording
 
@@ -2196,6 +2210,7 @@ The same operations are available as startup flags:
 # SEE ALSO
 
   /record          — start or stop session recording manually
+  harvey --resume  — resume the most recent session at startup (no path needed)
   harvey --help    — full CLI flag reference
 
 `
@@ -2444,6 +2459,12 @@ populated automatically by /rag new.
 Old single-store configurations (db_path at the top level of rag:) are
 automatically migrated to a store named "default" on first load.
 
+# SEE ALSO
+
+  /memory recall         — search all knowledge silos including RAG
+  /help learn            — overview of all three memory silos
+  /help kb               — structured knowledge base for experiments
+
 `
 
 	// KBHelpText is shown by /help kb and harvey --help kb.
@@ -2568,6 +2589,12 @@ and RAG to retrieve relevant document passages automatically.
 
 After /kb inject the model sees the full project record as context and can
 answer questions about it, suggest next steps, or help resolve open questions.
+
+# SEE ALSO
+
+  /memory recall         — search all knowledge silos including the KB
+  /rag ingest            — embed documents for semantic retrieval
+  /help learn            — overview of all three memory silos
 
 `
 
@@ -2738,6 +2765,15 @@ memory before the review card is displayed.
   /memory profile edit
   /memory profile use web-developer
   /memory profile rename "Harvey Web Developer"
+
+# SEE ALSO
+
+  /profile               — alias for /memory profile
+  /recall QUERY          — alias for /memory recall
+  /help learn            — overview of all three memory silos
+  /help rag              — RAG store management
+  /help kb               — knowledge base management
+
 `
 
 	// LearnHelpText is shown by /help learn and harvey --help learn.
@@ -2825,6 +2861,8 @@ Check what would improve the current session:
 
 # SEE ALSO
 
+  /profile        — alias for /memory profile (manage workspace profile)
+  /recall QUERY   — alias for /memory recall (search all silos)
   /help rag       — full RAG command reference
   /help memory    — full memory command reference
   /help kb        — full knowledge base reference
@@ -3007,6 +3045,11 @@ that follows the Agent Skills specification (https://agentskills.io/home).
   /skill new               interactive wizard to create a new skill
   /skill run NAME          run a skill (dispatches compiled scripts if available)
 ~~~
+
+# SEE ALSO
+
+  /skill-set load NAME   — load a named bundle of skills
+  /help skill-set        — skill bundle management
 
 `
 
@@ -3221,6 +3264,7 @@ allowlist, workspace permissions, and audit buffer status.
 
 # SEE ALSO
 
+  /safe          — exact alias for /safemode
   /help run      — shell command execution and timeout
   /help routing  — remote endpoint security
 
@@ -3303,6 +3347,13 @@ or forwarded to the next step.
 On success the final step's response is appended to conversation history
 as an assistant turn. On any failure history and the active model are
 unchanged.
+
+# SEE ALSO
+
+  /plan TASK             — generate and execute a step-by-step task plan
+  /loop INTERVAL PROMPT  — repeat a prompt on a fixed interval
+  /help routing          — route pipeline steps to remote models via @mention
+
 `
 
 	// PlanHelpText is shown by /help plan and harvey --help plan.

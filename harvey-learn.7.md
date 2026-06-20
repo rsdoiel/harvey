@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -81,6 +81,8 @@ Check what would improve the current session:
 
 # SEE ALSO
 
+  /profile        — alias for /memory profile (manage workspace profile)
+  /recall QUERY   — alias for /memory recall (search all silos)
   /help rag       — full RAG command reference
   /help memory    — full memory command reference
   /help kb        — full knowledge base reference

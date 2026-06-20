@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -163,3 +163,12 @@ memory before the review card is displayed.
   /memory profile edit
   /memory profile use web-developer
   /memory profile rename "Harvey Web Developer"
+
+# SEE ALSO
+
+  /profile               — alias for /memory profile
+  /recall QUERY          — alias for /memory recall
+  /help learn            — overview of all three memory silos
+  /help rag              — RAG store management
+  /help kb               — knowledge base management
+

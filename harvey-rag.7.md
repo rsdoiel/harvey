@@ -238,3 +238,9 @@ populated automatically by /rag new.
 Old single-store configurations (db_path at the top level of rag:) are
 automatically migrated to a store named "default" on first load.
 
+# SEE ALSO
+
+  /memory recall         — search all knowledge silos including RAG
+  /help learn            — overview of all three memory silos
+  /help kb               — structured knowledge base for experiments
+

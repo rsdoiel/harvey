@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -71,3 +71,10 @@ or forwarded to the next step.
 On success the final step's response is appended to conversation history
 as an assistant turn. On any failure history and the active model are
 unchanged.
+
+# SEE ALSO
+
+  /plan TASK             — generate and execute a step-by-step task plan
+  /loop INTERVAL PROMPT  — repeat a prompt on a fixed interval
+  /help routing          — route pipeline steps to remote models via @mention
+

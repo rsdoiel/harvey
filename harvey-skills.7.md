@@ -171,3 +171,8 @@ that follows the Agent Skills specification (https://agentskills.io/home).
   /skill run NAME          run a skill (dispatches compiled scripts if available)
 ~~~
 
+# SEE ALSO
+
+  /skill-set load NAME   — load a named bundle of skills
+  /help skill-set        — skill bundle management
+

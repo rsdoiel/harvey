@@ -1,4 +1,4 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.13 00feb2f
 % R. S. Doiel
 % 2026-06-19
 
@@ -107,6 +107,7 @@ allowlist, workspace permissions, and audit buffer status.
 
 # SEE ALSO
 
+  /safe          — exact alias for /safemode
   /help run      — shell command execution and timeout
   /help routing  — remote endpoint security
 

@@ -88,5 +88,6 @@ The same operations are available as startup flags:
 # SEE ALSO
 
   /record          — start or stop session recording manually
+  harvey --resume  — resume the most recent session at startup (no path needed)
   harvey --help    — full CLI flag reference
 
