@@ -816,7 +816,7 @@ func (a *Agent) Run(out io.Writer) error {
 				}
 			}()
 
-			sp := newSpinner(out, 0, "@"+name+" · working")
+			sp := newSpinner(out, 0, routeSpinnerLabel(name, ep))
 			sp.UpdateStatus("routed → " + name)
 			reply, dispErr := DispatchToEndpoint(dispCtx, ep, a.History, prompt, a.Config, a.Tools, io.Discard)
 			sp.stop()
@@ -1338,6 +1338,16 @@ func toolCallsFromHistory(msgs []Message) []ToolCallRecord {
 		}
 	}
 	return out
+}
+
+// routeSpinnerLabel returns the spinner label for an @mention dispatch turn.
+// When the endpoint has a model name configured, it is shown alongside the
+// route alias so the user can see exactly which model is handling the request.
+func routeSpinnerLabel(name string, ep *RouteEndpoint) string {
+	if ep != nil && ep.Model != "" {
+		return "@" + name + " · " + ep.Model
+	}
+	return "@" + name + " · working"
 }
 
 // formatStatLine produces the permanent post-response status line.

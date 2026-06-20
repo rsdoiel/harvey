@@ -602,13 +602,28 @@ func (a *Agent) spinnerLabel() string {
 	if a.Client != nil {
 		model = a.Client.Name()
 	}
+
+	// Context utilisation hint — shown when usage is ≥ 50% of the context
+	// window so users on tight-context models know when to /clear.
+	ctxHint := ""
+	if limit := a.effectiveContextLimit(); limit > 0 {
+		var chars int
+		for _, m := range a.History {
+			chars += len(m.Content)
+		}
+		approxTokens := chars / 4 // ~4 chars per token heuristic
+		if pct := approxTokens * 100 / limit; pct >= 50 {
+			ctxHint = fmt.Sprintf(" [ctx: %d%%]", pct)
+		}
+	}
+
 	if a.ActiveSkillSet != "" {
-		return model + " · [" + a.ActiveSkillSet + "]"
+		return model + " · [" + a.ActiveSkillSet + "]" + ctxHint
 	}
 	if a.ActiveSkill != "" {
-		return model + " · " + a.ActiveSkill
+		return model + " · " + a.ActiveSkill + ctxHint
 	}
-	return model
+	return model + ctxHint
 }
 
 /** workspaceFileTree generates a tree-like listing of all non-hidden files

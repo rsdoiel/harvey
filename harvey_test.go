@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -123,5 +124,55 @@ func TestAgentClearHistory_noSystemPrompt(t *testing.T) {
 	a.ClearHistory()
 	if len(a.History) != 0 {
 		t.Errorf("expected empty history, got %d messages", len(a.History))
+	}
+}
+
+// ─── spinnerLabel context hint ────────────────────────────────────────────────
+
+func TestSpinnerLabel_includesCtxHintWhenAboveThreshold(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	// Small context window — 512 tokens.
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "tiny", Path: "/tmp/t.llamafile", ContextLength: 512}}
+	cfg.LlamafileActive = "tiny"
+	a := NewAgent(cfg, ws)
+
+	// Add enough history to exceed 50% of 512 tokens (>256 tokens ≈ >1024 chars).
+	a.AddMessage("user", strings.Repeat("x", 1100))
+
+	label := a.spinnerLabel()
+	if !strings.Contains(label, "ctx:") {
+		t.Errorf("expected [ctx: N%%] in spinner label when usage is high, got: %q", label)
+	}
+}
+
+func TestSpinnerLabel_omitsCtxHintWhenUsageLow(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "big", Path: "/tmp/b.llamafile", ContextLength: 131072}}
+	cfg.LlamafileActive = "big"
+	a := NewAgent(cfg, ws)
+
+	// Very short history — well below threshold.
+	a.AddMessage("user", "hello")
+
+	label := a.spinnerLabel()
+	if strings.Contains(label, "ctx:") {
+		t.Errorf("expected no ctx hint for low usage, got: %q", label)
+	}
+}
+
+func TestSpinnerLabel_omitsCtxHintWhenLimitUnknown(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	// No context length configured (0 = unknown).
+	cfg.LlamafileModels = []LlamafileEntry{{Name: "unknown", Path: "/tmp/u.llamafile"}}
+	cfg.LlamafileActive = "unknown"
+	a := NewAgent(cfg, ws)
+	a.AddMessage("user", strings.Repeat("x", 2000))
+
+	label := a.spinnerLabel()
+	if strings.Contains(label, "ctx:") {
+		t.Errorf("expected no ctx hint when context limit unknown, got: %q", label)
 	}
 }

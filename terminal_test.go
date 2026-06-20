@@ -382,6 +382,30 @@ func newTestBufioReader(s string) *bufio.Reader {
 	return bufio.NewReader(strings.NewReader(s))
 }
 
+// ─── routeSpinnerLabel tests ──────────────────────────────────────────────────
+
+func TestRouteSpinnerLabel_includesModel(t *testing.T) {
+	ep := &RouteEndpoint{Name: "pi2", Model: "llama3.1:8b"}
+	label := routeSpinnerLabel("pi2", ep)
+	if !strings.Contains(label, "llama3.1:8b") {
+		t.Errorf("expected model name in spinner label, got: %q", label)
+	}
+	if !strings.Contains(label, "pi2") {
+		t.Errorf("expected route name in spinner label, got: %q", label)
+	}
+}
+
+func TestRouteSpinnerLabel_fallbackWhenNoModel(t *testing.T) {
+	ep := &RouteEndpoint{Name: "pi2", Model: ""}
+	label := routeSpinnerLabel("pi2", ep)
+	if !strings.Contains(label, "pi2") {
+		t.Errorf("expected route name in fallback label, got: %q", label)
+	}
+	if !strings.Contains(label, "working") {
+		t.Errorf("expected 'working' in fallback label, got: %q", label)
+	}
+}
+
 // ─── --continue / --resume model hint extraction ──────────────────────────────
 
 func TestSelectBackend_extractsModelHintFromContinuePath(t *testing.T) {
