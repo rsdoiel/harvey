@@ -4,6 +4,113 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-20 — Command vocabulary standardised across all resource-management commands
+
+**Context.** Harvey's command families share a common resource-management pattern but use inconsistent verbs: `/llamafile drop`, `/rag drop`, `/route rm`, and `/model alias delete` all mean the same thing; `/skill info` and `/skill-set info` duplicate `/memory profile show`'s pattern under a different name; `/session` has no `list` or `show`; `/route` has no `use`. Users must learn each command family independently rather than applying a single vocabulary pattern. See [llamafile-primary-design.md](llamafile-primary-design.md) and TODO.md.
+
+**Decision.** Standardise on eight core verbs for all resource-management commands: `list`, `add` (register external resource), `new` (create internal item), `use` (activate), `show` (display content/details), `edit` (open in `$EDITOR`), `remove` (delete/unregister), `rename`. Backend service commands additionally support `start`, `stop`, and `status` (health/connection — distinct from `show`). The `add` vs `new` distinction is preserved: `add` registers something that already exists externally (a file path, a URL); `new` creates something Harvey owns (a database, a skill, a plan). Existing non-standard verbs (`drop`, `rm`, `info`, `create`, `set`) are kept as backward-compatible aliases; the canonical verb is the one documented and tab-completed.
+
+**Rejected alternatives.**
+
+- *Rename only the worst offenders* — partial fixes leave the vocabulary inconsistent enough that users still cannot predict subcommands. The value comes from universal coverage.
+- *Single `delete` verb everywhere* — `delete` implies permanent destruction; `remove` better conveys "unregister from Harvey's knowledge" (the underlying file or database is not deleted).
+- *Collapse `add` and `new` into a single verb* — the distinction maps to a real semantic difference users already understand. `add` = "I have a thing, register it"; `new` = "create a thing for me".
+
+**Consequences.**
+
+- `/rag remove`, `/route remove`, `/session list`, `/session show`, `/session use`, `/llamafile show`, `/rag show`, `/route use`, `/skill show`, `/skill-set new`, `/skill-set show`, `/model alias add` are all new subcommand aliases or additions.
+- Existing verbs (`drop`, `rm`, `info`, `create`, `set`, `continue`) remain as aliases; no existing scripts or muscle-memory broken.
+- `user_manual.md` and `getting-started.md` gain a "Command vocabulary" section explaining the eight verbs once, making every command family self-documenting.
+- Tab completion `ArgCompletion` maps for each command are updated to list canonical verbs first.
+
+---
+
+## 2026-06-20 — Llamafile becomes the primary model backend; Ollama is secondary
+
+**Context.** Harvey has supported both Llamafile and Ollama since v0.0.11, but startup logic, documentation, and default prompts all treat Ollama as the assumed backend. New users who want a fully local, no-server-required setup must discover Llamafile through man pages rather than finding it naturally in the startup flow. See [llamafile-primary-design.md](llamafile-primary-design.md).
+
+**Decision.** Reverse the priority: at startup Harvey probes for an active Llamafile first, registered Llamafiles second, Ollama third. The model picker (shown when no session is being continued) lists Llamafile models above Ollama models. `getting-started.md` and `INSTALL.md` lead with the Llamafile path; Ollama is documented as an advanced alternative. Ollama support is fully retained — no existing config or commands change.
+
+**Rejected alternatives.**
+
+- *Keep Ollama as primary, improve Llamafile docs only* — documentation-only change leaves the startup UX inconsistent with the stated priority. New users still encounter Ollama first.
+- *Detect "better" backend heuristically (GPU present → Llamafile, else Ollama)* — GPU detection is platform-specific and error-prone. User intent (registered a Llamafile → prefer Llamafile) is a cleaner signal.
+- *Single `preferred_backend` setting in harvey.yaml* — adds config surface without improving the default experience for users who have not read the config docs.
+
+**Consequences.**
+
+- Startup probing order changes in `terminal.go` backend selection block.
+- `getting-started.md` and `harvey-getting-started.7.md` are rewritten.
+- The model picker presents Llamafile entries before Ollama entries.
+- No breaking changes to `harvey.yaml` schema, API, or slash commands.
+
+---
+
+## 2026-06-20 — At-mention (`@model`) switches the active model while preserving history
+
+**Context.** Switching models mid-session requires `/llamafile use NAME` or `/ollama use NAME`, which breaks conversational flow. Users who want a different model for the next question should be able to express that inline. The theatrical framing — a model switch is a new character entering the scene — also clarifies how downstream systems (memory miner, replay, plan executor) should handle boundaries. See [llamafile-primary-design.md](llamafile-primary-design.md).
+
+**Decision.** If the REPL input begins with `@name` where `name` matches a registered Llamafile or Ollama model, Harvey switches to that model and forwards the remainder as the prompt. Conversation history is preserved unchanged. If `@name` is not recognised, the whole input is forwarded to the current model without warning (false positives on natural `@` mentions are rare enough that silent pass-through is less surprising than an error). Mid-session switches are recorded in the session file as `[[model switch: NAME (BACKEND) at TIMESTAMP]]` Fountain notes rather than starting a new session file — continuing in the same file preserves pre-switch context for memory mining and replay. The memory miner, session replay, and plan executor each gain logic to track model attribution across switch boundaries.
+
+**Rejected alternatives.**
+
+- *Error if `@name` is unknown* — would break natural-language inputs that begin with a person or file mention.
+- *Require separator syntax `@name: rest`* — adds friction; a space is sufficient and consistent with how `@route` mentions already work in routing.
+- *Start a new session file on switch* — orphans the pre-switch context; the `[[model switch: ...]]` note preserves the boundary without splitting the file.
+
+**Consequences.**
+
+- `terminal.go` REPL input handler gains an `@` prefix check before the `/command` check.
+- `attemptModelSwitch(a, name, out)` looks up Llamafiles first, then Ollama models.
+- `Recorder.RecordModelSwitch(model, backend)` writes a Fountain note at the switch point.
+- `NewRecorder` gains a `Backend:` title-page field.
+- Memory miner splits sessions at switch notes and attributes turns to the generating model.
+- Session replay parses switch notes and performs mid-replay model switches.
+- Plan executor supports `[model: name]` step annotations and restores the default model after each annotated step.
+
+---
+
+## 2026-06-20 — Unified `/model` command as a backend-agnostic delegating facade
+
+**Context.** Users who switch between Llamafile and Ollama must remember which backend is active to choose the right command. As more backends are added (remote routes, encoderfiles), per-backend command proliferation increases cognitive load for users who just want to switch models. See [llamafile-primary-design.md](llamafile-primary-design.md).
+
+**Decision.** Add `/model [list|use NAME|show NAME|status]` as a backend-agnostic facade. `/model use NAME` resolves the name by checking Llamafile models first, then Ollama models, then named routes, and delegates to the appropriate backend command. `/model list` merges all backends into one sorted table. The backend-specific commands (`/llamafile`, `/ollama`) are unchanged and remain the authoritative interfaces for backend-specific operations (`/llamafile start`, `/ollama pull`, etc.).
+
+**Rejected alternatives.**
+
+- *Deprecate `/llamafile` and `/ollama` in favour of `/model`* — too disruptive; power users and scripts depend on the specific subcommands.
+- *`/model` with no subcommand shows an interactive picker* — inconsistent with Harvey's pattern: pickers appear when a required argument is omitted from a subcommand, not when the command itself is invoked without arguments.
+- *Top-level `/use NAME`* — shorter but conflicts with the established convention that `use` appears only as a subcommand.
+
+**Consequences.**
+
+- `commands.go` gains a `"model"` registration; `cmdModel` dispatcher added.
+- `/model use NAME` resolves across backends; no new switching code — delegates to existing handlers.
+- `helptext.go` gains `ModelHelpText` and `ModelAliasHelpText` (the latter covering both `/model alias` subcommands and `@mention` switching; source for regenerating the currently sourceless `harvey-model-alias.7.md`).
+
+---
+
+## 2026-06-20 — Context utilization reads `n_ctx` from `/v1/models`; config override available
+
+**Context.** A `[ctx: N%]` indicator requires knowing both the current token count (available from `ChatStats.PromptTokens`) and the model's maximum context window. Context window size is model-specific and not always available at runtime. See [llamafile-primary-design.md](llamafile-primary-design.md).
+
+**Decision.** Priority order for context length: (1) `context_length` field on `LlamafileEntry` in `harvey.yaml` — explicit user override; (2) `data[0].meta.n_ctx` from the `/v1/models` API response — tested on Qwen3.5-2B, Qwen3.5-4B, and Apertus-8B, consistently present across all three model families; (3) `OllamaContextLength` on `Config`, already populated by `ShowModel`; (4) unknown — suppress the indicator entirely. The `n_ctx` value is the *runtime* context window (what llamafile loaded), not `n_ctx_train` (training context). When the probe succeeds and no user config is present, the result is stored in memory only — not written back to `harvey.yaml` — to avoid config churn on every startup.
+
+**Rejected alternatives.**
+
+- *Hardcode context lengths per known model family* — goes stale as model versions change; does not cover user-downloaded custom models.
+- *Always show token count without percentage* — `[tokens: 4.2k]` is informative but gives no sense of urgency; percentage is more actionable for deciding when to `/clear`.
+- *Use `n_ctx_train` as the window size* — this is the training context, which can be 4× larger than the runtime window. Using it would make the utilization % appear artificially low and mislead users.
+
+**Consequences.**
+
+- `LlamafileEntry` gains `ContextLength int \`yaml:"context_length,omitempty"\``.
+- `llamafile_service.go` gains `ProbeLlamafileContextLength(url string) int` parsing `data[0].meta.n_ctx`.
+- `terminal.go` appends `[ctx: N%]` to the post-turn status line when context length is known and non-zero.
+- `CONFIGURATION.md` documents the new `context_length` field on `LlamafileEntry`.
+
+---
+
 ## 2026-06-19 — Tab completion: two-layer design with shared SelectFrom helper
 
 **Context.** Harvey's `buildCompleter()` only completes top-level command names, `@route` references, Ollama model names, and file paths. Users must remember subcommand names by heart and must know exact RAG store/model names to use `use` and `drop` subcommands. Several commands already show numbered pickers when no name is given, but each reimplements the pattern differently. See [tab-completion-design.md](tab-completion-design.md).
