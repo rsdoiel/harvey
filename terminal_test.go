@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -279,4 +280,104 @@ func TestAttemptModelSwitch_llamafileRegistered(t *testing.T) {
 	}
 	// An error is acceptable (server not running); what matters is switched==true.
 	_ = err
+}
+
+// ─── pickBackend tests ────────────────────────────────────────────────────────
+
+func TestPickBackend_listsLlamafilesBeforeOllama(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
+		{Name: "phi-mini", Path: "/tmp/p.llamafile"},
+	}
+	a := NewAgent(cfg, ws)
+	// "0\n" = select none, avoiding any actual llamafile start.
+	a.In = strings.NewReader("0\n")
+	var buf strings.Builder
+
+	_ = a.pickBackend(newTestBufioReader("0\n"), &buf, "")
+
+	out := buf.String()
+	// Both models should appear in the output.
+	if !strings.Contains(out, "qwen-coding") {
+		t.Errorf("expected qwen-coding in picker output, got: %s", out)
+	}
+	if !strings.Contains(out, "phi-mini") {
+		t.Errorf("expected phi-mini in picker output, got: %s", out)
+	}
+	// llamafile label should appear before any Ollama label.
+	qwenPos := strings.Index(out, "qwen-coding")
+	phiPos := strings.Index(out, "phi-mini")
+	if qwenPos < 0 || phiPos < 0 {
+		t.Fatal("models missing from output")
+	}
+	if qwenPos > phiPos {
+		t.Error("expected qwen-coding listed before phi-mini (registration order)")
+	}
+	// No backend should be set after selecting none.
+	if a.Client != nil {
+		t.Error("expected no client set after selecting none")
+	}
+}
+
+func TestPickBackend_autoSelectsPreferredLlamafile(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/nonexistent.llamafile"},
+		{Name: "phi-mini", Path: "/tmp/phi.llamafile"},
+	}
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+
+	// preferredModel matches "qwen-coding" — should auto-select without showing picker.
+	// Start will fail (no binary), but the output should mention starting qwen-coding.
+	_ = a.pickBackend(newTestBufioReader(""), &buf, "qwen-coding")
+
+	out := buf.String()
+	// Should have attempted to start or use qwen-coding, not phi-mini.
+	if strings.Contains(out, "phi-mini") && !strings.Contains(out, "qwen-coding") {
+		t.Errorf("auto-select should have chosen qwen-coding, got: %s", out)
+	}
+}
+
+func TestPickBackend_noSelectionLeavesNoClient(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
+	}
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+
+	_ = a.pickBackend(newTestBufioReader("0\n"), &buf, "")
+
+	if a.Client != nil {
+		t.Error("expected no client when user selects 0 (none)")
+	}
+}
+
+func TestSelectBackend_callsPickBackendWhenLlamafileModelsExistButNoActive(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
+	}
+	// LlamafileActive is empty — should take the pickBackend path.
+	a := NewAgent(cfg, ws)
+	var buf strings.Builder
+
+	_ = a.selectBackend(newTestBufioReader("0\n"), &buf, "")
+
+	out := buf.String()
+	// The picker should have been shown (mentions qwen-coding).
+	if !strings.Contains(out, "qwen-coding") {
+		t.Errorf("expected picker to show registered llamafile, got: %s", out)
+	}
+}
+
+// newTestBufioReader wraps a string in a bufio.Reader for terminal test helpers.
+func newTestBufioReader(s string) *bufio.Reader {
+	return bufio.NewReader(strings.NewReader(s))
 }

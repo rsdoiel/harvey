@@ -1464,7 +1464,7 @@ func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
  *   err := agent.selectBackend(reader, os.Stdout, "GEMMA4")
  */
 func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredModel string) error {
-	// Llamafile takes priority when an active registry entry is configured.
+	// Case 1: Active llamafile configured — probe it, offer to start if down.
 	if entry := a.Config.ActiveLlamafileEntry(); entry != nil {
 		absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 		fmt.Fprintf(out, "\n  Checking llamafile (%s) at %s...\n", entry.Name, a.Config.LlamafileURL)
@@ -1490,6 +1490,13 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 		return nil
 	}
 
+	// Case 2: Registered llamafiles exist but none is active — show combined picker
+	// with llamafiles first, Ollama models second.
+	if len(a.Config.LlamafileModels) > 0 {
+		return a.pickBackend(reader, out, preferredModel)
+	}
+
+	// Case 3: No llamafiles registered — try Ollama.
 	fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.OllamaURL)
 
 	if ProbeOllama(a.Config.OllamaURL) {
@@ -1514,12 +1521,132 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 		}
 	}
 
-	// No backend reachable and no registered llamafile — guide new users.
+	// Case 4: Nothing reachable — guide new users.
 	fmt.Fprintln(out)
 	if err := runFirstRunWizard(a, reader, out); err != nil {
 		fmt.Fprintln(out, dim("  No backend connected — use /llamafile start or /ollama start once inside."))
 	}
 	return nil
+}
+
+/** pickBackend presents a combined numbered list of registered llamafile models
+ * (first) and available Ollama models (second), and lets the user choose one.
+ * If preferredModel matches a registered llamafile name (case-insensitive), it
+ * is selected automatically without showing the picker.
+ *
+ * Parameters:
+ *   reader         (*bufio.Reader) — reads the user's selection.
+ *   out            (io.Writer)     — destination for the picker display.
+ *   preferredModel (string)        — model name hint from a resumed session; "" for none.
+ *
+ * Returns:
+ *   error — on unexpected failures starting a llamafile or listing Ollama models.
+ *
+ * Example:
+ *   err := agent.pickBackend(reader, os.Stdout, "qwen-coding")
+ */
+func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel string) error {
+	// Auto-select when preferredModel matches a registered llamafile.
+	if preferredModel != "" {
+		for i := range a.Config.LlamafileModels {
+			e := &a.Config.LlamafileModels[i]
+			if strings.EqualFold(e.Name, preferredModel) {
+				return a.startAndUseLlamafile(e, out)
+			}
+		}
+	}
+
+	type option struct {
+		label string
+		kind  string // "llamafile" or "ollama"
+		name  string
+	}
+	var opts []option
+
+	for _, e := range a.Config.LlamafileModels {
+		size := ""
+		if absPath := resolveLlamafilePath(e.Path, a.Workspace.Root); absPath != "" {
+			if info, err := os.Stat(absPath); err == nil {
+				size = " (" + llamafileFormatBytes(info.Size()) + ")"
+			}
+		}
+		opts = append(opts, option{
+			label: e.Name + size + dim(" (llamafile)"),
+			kind:  "llamafile",
+			name:  e.Name,
+		})
+	}
+
+	if ProbeOllama(a.Config.OllamaURL) {
+		if summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background()); err == nil {
+			for _, s := range summaries {
+				opts = append(opts, option{
+					label: s.Name + dim(" (ollama)"),
+					kind:  "ollama",
+					name:  s.Name,
+				})
+			}
+		}
+	}
+
+	if len(opts) == 0 {
+		fmt.Fprintln(out)
+		return runFirstRunWizard(a, reader, out)
+	}
+
+	fmt.Fprintln(out, "\n  Available models:")
+	for i, o := range opts {
+		marker := "  "
+		if preferredModel != "" && strings.EqualFold(o.name, preferredModel) {
+			marker = "* "
+		}
+		fmt.Fprintf(out, "  %s[%d] %s\n", marker, i+1, o.label)
+	}
+	fmt.Fprintf(out, "    Select model [1-%d, 0=none, default=1]: ", len(opts))
+
+	line, _ := reader.ReadString('\n')
+	idx := 1
+	if trimmed := strings.TrimSpace(line); trimmed != "" {
+		fmt.Sscanf(trimmed, "%d", &idx)
+	}
+	if idx < 1 || idx > len(opts) {
+		fmt.Fprintln(out, dim("  No backend selected."))
+		return nil
+	}
+
+	chosen := opts[idx-1]
+	if chosen.kind == "llamafile" {
+		entry := a.Config.LlamafileEntryByName(chosen.name)
+		if entry == nil {
+			return fmt.Errorf("pickBackend: entry %q not found", chosen.name)
+		}
+		return a.startAndUseLlamafile(entry, out)
+	}
+	// Ollama model.
+	a.Config.OllamaModel = chosen.name
+	a.Client = newOllamaLLMClient(a.Config.OllamaURL, chosen.name, a.Config.OllamaTimeout)
+	fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen.name))
+	return nil
+}
+
+// startAndUseLlamafile starts the llamafile server for entry (if not already
+// running) and wires it as the active client. On start failure the error is
+// printed and a non-nil error is returned so the caller can react.
+func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error {
+	if ProbeLlamafile(a.Config.LlamafileURL) {
+		fmt.Fprintf(out, "  Using running llamafile at %s\n", a.Config.LlamafileURL)
+		return a.useLlamafileEntry(entry.Name, out)
+	}
+	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
+	fmt.Fprintf(out, "  Starting %s...\n", entry.Name)
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
+	if err != nil {
+		fmt.Fprintf(out, red("  Failed: ")+"%v\n", err)
+		return err
+	}
+	a.stopLlamafileProc()
+	a.llamafileProc = proc
+	return a.useLlamafileEntry(entry.Name, out)
 }
 
 /** pickOllamaModel selects a model from the running Ollama server.
