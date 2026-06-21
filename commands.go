@@ -6184,7 +6184,11 @@ func cmdMemoryProfile(a *Agent, args []string, out io.Writer, store *MemoryStore
 	}
 	switch sub {
 	case "list":
-		return cmdMemoryProfileList(a, args[1:], out, store)
+		var rest []string
+		if len(args) > 1 {
+			rest = args[1:]
+		}
+		return cmdMemoryProfileList(a, rest, out, store)
 	case "show":
 		return cmdMemoryProfileShowContent(a, out, store)
 	case "edit":
