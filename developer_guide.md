@@ -116,7 +116,7 @@ All exported functions, structs/types, interfaces, and constants must be documen
 
 ### For Contributors
 - **[GitHub Issues](https://github.com/rsdoiel/harvey/issues)** — Bug reports and feature requests
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — Contribution guidelines (if available)
+- **[GitHub Issues](https://github.com/rsdoiel/harvey/issues)** — Contribution guidelines, bug reports, and feature requests
 - **[CHANGES.md](CHANGES.md)** — Version history and release notes
 
 ### Related Documentation

@@ -158,7 +158,7 @@ func ParseExpr(src string) (Expr, error) {
 
   26 prompt + 58 reply tokens · 11.2s · 5.2 tok/s
 
-  ┌─ Write: internal/parser/parser.go ─────────────────────────┐
+  ┌─ Write: internal/parser/parser.go ───────────────────────────┐
   │  func ParseExpr(src string) (Expr, error) {
   │      if src == "" {
   │          return nil, fmt.Errorf("parseExpr: empty input")
@@ -514,7 +514,7 @@ func (s *Spinner) run() {
 Harvey will show a box preview and ask for confirmation:
 
 ```
-  ┌─ Write: harvey/spinner.go ──────────────────────────────────┐
+  ┌─ Write: harvey/spinner.go ───────────────────────────────────┐
   │  func (s *Spinner) run() {
   │      ...
   │  }

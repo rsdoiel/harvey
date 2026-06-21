@@ -1,5 +1,32 @@
 # CHANGES
 
+## v0.0.14 (2026-06-21)
+
+### New features
+
+- Llamafile is now the primary language model backend: startup sequence shows registered llamafiles first, auto-selects on preferred model match, then falls back to Ollama models
+- Explicit connection feedback: "Connecting to NAME (llamafile)… ✓" shown in terminal on backend selection and after `startAndUseLlamafile`
+- Stale server adoption: Harvey detects a running llamafile server it did not start, probes its model via `/v1/models`, warns on model mismatch, and adopts it rather than refusing to start
+- `/llamafile show [NAME]`: displays name, path, file size, and configured context length for a registered model
+- `/rag show [NAME]`: displays store name, database path, embedding model, chunk count, and model map
+- Remote RAG ingest extended: `sftp://`, `scp://`, `http://`, and `https://` URIs now supported alongside `s3://`
+- `/read` auto-detects `.pdf` files and extracts text via poppler (pdfinfo + pdftotext), consistent with the `read_file` built-in tool
+- `/status` backend tag and token-count estimate now work for llamafile backends (was Ollama-only)
+- Pipeline context-utilization display now works for llamafile via character estimate (was Ollama-only)
+- Context utilization hint `[ctx: N%]` added to spinner label when estimated token usage reaches 50% of the model's context window
+- Routing feedback in spinner: shows `@route · model` during routed turns when routing is active
+- Model provenance recorded in Fountain session header: `Model:` field now stores `NAME (backend)` (e.g., `QWEN-CODING (llamafile)`) for session replay and audit
+- Health check on `--resume`/`--continue`: session model is extracted before backend selection; a mismatch warning is shown when the resumed model differs from the active backend
+- `@mention` dispatch: routing is tried first when routing is enabled and a route exists; falls back to `attemptModelSwitch` for local model switching; case-insensitive for both llamafile names and model aliases
+- Help system: all 41 help-text constants documented with block comments and reordered into 11 logical groups; `ModelHelpText` dispatch bug fixed (topic was unreachable via `/help model`); `harvey-model.7.md` man page added
+
+### Documentation
+
+- Complete rewrite of `overview.md` with "Natural Language Programming for Scholarly Work" framing
+- `getting_started.md` rewritten llamafile-first with correct Mozilla AI model download URL and startup sequence
+- `user_manual.md` restructured: llamafile-first Model Management section, corrected links, expanded man page index
+- `CONFIGURATION.md` fully updated: all v0.0.14 configuration fields documented (`model_aliases`, `llamafile` with `context_length`, `tools`, `memory` with `rolling_summary` and `knowledge_base`, `rag` nesting, `syntax_highlight`, `auto_format`); SFTP, HTTP, and AWS environment variables added; complete annotated `harvey.yaml` example
+
 ## v0.0.13 (2026-06-19)
 
 ### New features

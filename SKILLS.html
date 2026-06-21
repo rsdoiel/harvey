@@ -21,10 +21,11 @@
 <h1 id="harvey-skills-system">Harvey Skills System</h1>
 <p><em>Version 1.0 — Complete guide to Agent Skills in Harvey</em></p>
 <h2 id="overview">Overview</h2>
-<p>Harvey implements the <strong><a href="https://agentskills.dev">Agent
-Skills</a></strong> specification, which provides a standardized way to
-define, discover, and execute structured tasks across different AI
-agents. Skills allow you to:</p>
+<p>Harvey implements the <strong><a
+href="https://agentskills.io/home">Agent Skills</a></strong>
+specification, which provides a standardized way to define, discover,
+and execute structured tasks across different AI agents. Skills allow
+you to:</p>
 <ul>
 <li><strong>Extend Harvey’s capabilities</strong> without modifying
 code</li>
@@ -52,12 +53,12 @@ triggers.</p>
 
   compile-skill           [project] - Compiles a target SKILL.md into correct compiled.bash and...
   fountain-analysis       [project] - Read and actively monitor a Harvey Fountain screenplay file...
+  fountain-session        [project] - Write a well-formed Harvey session handoff summary as a...
+  harvey-memory           [project] - Load Harvey&#39;s accumulated project memories before working...
+  multi-file              [project] - Generates a bounded-context execution plan when the user asks...
   review-knowledge-base   [project] - Queries knowledge_base.db and delivers a structured report...
-  setup-codemeta...       [project] - Generates or updates a codemeta.json file for an experiment...
-  setup-experiment        [project] - Creates a new experiment directory in the Laboratory...
   setup-knowledge-base    [project] - Creates knowledge_base.db in the workspace...
-  update-knowledge-base   [project] - Adds or updates records in knowledge_base.db...
-  fetch-pg-corpus         [project] - Downloads the Project Gutenberg catalog and full text...</code></pre>
+  update-knowledge-base   [project] - Adds or updates records in knowledge_base.db...</code></pre>
 <h3 id="load-a-skill">Load a Skill</h3>
 <pre><code>harvey&gt; /skill load fountain-analysis
 
@@ -301,7 +302,7 @@ will then follow the skill’s instructions.</p>
 <pre><code>  Name:          fountain-analysis
   Description:   Read and actively monitor a Harvey Fountain...
   Source:        project
-  Path:          /home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md
+  Path:          &lt;workspace&gt;/agents/skills/fountain-analysis/SKILL.md
   License:       AGPL-3.0
   Compatibility: claude-code, harvey
   Variables:
@@ -625,7 +626,7 @@ harvey&gt; /skill compile my-skill</code></pre>
 <h2 id="cross-agent-compatibility">Cross-Agent Compatibility</h2>
 <p>Harvey skills are compatible with <strong>Claude Code</strong> and
 any other agent that implements the <a
-href="https://agentskills.dev">Agent Skills specification</a>.</p>
+href="https://agentskills.io/home">Agent Skills specification</a>.</p>
 <h3 id="shared-skills-directory">Shared Skills Directory</h3>
 <p>Place skills in <code>&lt;workspace&gt;/agents/skills/</code> to make
 them available to all compatible agents:</p>
@@ -652,12 +653,12 @@ class="sourceCode xml"><code class="sourceCode xml"><span id="cb34-1"><a href="#
 <span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>  &lt;<span class="kw">skill</span>&gt;</span>
 <span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">name</span>&gt;fountain-analysis&lt;/<span class="kw">name</span>&gt;</span>
 <span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">description</span>&gt;Read and actively monitor a Harvey Fountain...&lt;/<span class="kw">description</span>&gt;</span>
-<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;/home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;&lt;<span class="kw">workspace</span>&gt;/agents/skills/fountain-analysis/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
 <span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>  &lt;/<span class="kw">skill</span>&gt;</span>
 <span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>  &lt;<span class="kw">skill</span>&gt;</span>
 <span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">name</span>&gt;review-knowledge-base&lt;/<span class="kw">name</span>&gt;</span>
 <span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">description</span>&gt;Queries knowledge_base.db and delivers...&lt;/<span class="kw">description</span>&gt;</span>
-<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;/home/user/Laboratory/agents/skills/review-knowledge-base/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a>    &lt;<span class="kw">location</span>&gt;&lt;<span class="kw">workspace</span>&gt;/agents/skills/review-knowledge-base/SKILL.md&lt;/<span class="kw">location</span>&gt;</span>
 <span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a>  &lt;/<span class="kw">skill</span>&gt;</span>
 <span id="cb34-12"><a href="#cb34-12" aria-hidden="true" tabindex="-1"></a>&lt;/<span class="kw">available_skills</span>&gt;</span>
 <span id="cb34-13"><a href="#cb34-13" aria-hidden="true" tabindex="-1"></a></span>
@@ -669,6 +670,10 @@ class="sourceCode xml"><code class="sourceCode xml"><span id="cb34-1"><a href="#
 <p>Harvey includes these skills out of the box (in
 <code>agents/skills/</code>):</p>
 <table>
+<colgroup>
+<col style="width: 43%" />
+<col style="width: 56%" />
+</colgroup>
 <thead>
 <tr>
 <th scope="col">Skill</th>
@@ -678,42 +683,47 @@ class="sourceCode xml"><code class="sourceCode xml"><span id="cb34-1"><a href="#
 <tbody>
 <tr>
 <td><strong>compile-skill</strong></td>
-<td>Compiles SKILL.md into executable scripts</td>
+<td>Compiles a SKILL.md into <code>compiled.bash</code> and
+<code>compiled.ps1</code> scripts</td>
 </tr>
 <tr>
 <td><strong>fountain-analysis</strong></td>
-<td>Reads and analyzes Fountain session files</td>
+<td>Reads and monitors Harvey Fountain session files
+(<code>.spmd</code>)</td>
+</tr>
+<tr>
+<td><strong>fountain-session</strong></td>
+<td>Writes a well-formed session handoff summary in Fountain format</td>
+</tr>
+<tr>
+<td><strong>harvey-memory</strong></td>
+<td>Loads Harvey’s accumulated workspace memories before a session</td>
+</tr>
+<tr>
+<td><strong>multi-file</strong></td>
+<td>Generates a bounded-context plan for tasks that create multiple
+files</td>
 </tr>
 <tr>
 <td><strong>review-knowledge-base</strong></td>
-<td>Queries and reports on knowledge_base.db</td>
-</tr>
-<tr>
-<td><strong>setup-codemeta…</strong></td>
-<td>Generates codemeta.json for experiments</td>
-</tr>
-<tr>
-<td><strong>setup-experiment</strong></td>
-<td>Creates new experiment directory + git init</td>
+<td>Queries and reports on <code>agents/knowledge.db</code></td>
 </tr>
 <tr>
 <td><strong>setup-knowledge-base</strong></td>
-<td>Initializes knowledge_base.db with schema</td>
+<td>Creates and initializes <code>agents/knowledge.db</code> with the
+standard schema</td>
 </tr>
 <tr>
 <td><strong>update-knowledge-base</strong></td>
-<td>Adds records to knowledge_base.db</td>
-</tr>
-<tr>
-<td><strong>fetch-pg-corpus</strong></td>
-<td>Downloads Project Gutenberg corpus</td>
+<td>Adds experiments, observations, and concepts to
+<code>agents/knowledge.db</code></td>
 </tr>
 </tbody>
 </table>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="https://agentskills.dev">Agent Skills Specification</a> —
-Official spec</li>
+<li><a href="https://agentskills.io/home">Agent Skills Specification</a>
+— Official spec</li>
 <li><a href="agents/skills/">SKILL.md files in agents/skills/</a> —
 Built-in skills</li>
 <li><a

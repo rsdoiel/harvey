@@ -11,7 +11,7 @@ All Harvey commands are organized into logical categories. Each command has its 
 ### Core Commands
 
 - **[harvey.1.md](harvey.1.md)** — Primary man page: name, synopsis, description, options, environment variables, and all available slash commands
-- **[harvey.7.md](harvey.7.md)** — General concepts and overview of Harvey's design philosophy
+- **[overview.md](overview.md)** — General concepts and overview of Harvey's design philosophy
 
 ### File Operations
 

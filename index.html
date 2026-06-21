@@ -18,20 +18,24 @@
 </ul>
 </nav>
 <section>
-<h1 id="harvey">harvey</h1>
+<h1 id="harvey">Harvey</h1>
 <figure>
 <img src="media/harvey.svg" title="project mascot, a Púca"
 alt="Harvey, a six foot six invisible rabbit" />
 <figcaption aria-hidden="true">Harvey, a six foot six invisible
 rabbit</figcaption>
 </figure>
-<p>Harvey is a terminal-based coding agent written in Go. It connects to
-an Ollama server (or other supported providers) to provide an
-interactive REPL for working with language models, with all operations
-sandboxed to a workspace directory. The name comes from Mary Chase’s
-play about a Púca — Harvey is a small, local agent for small computers.
-See <a href="vision.html">Vision</a> for the philosophy behind the
-project.</p>
+<p>Harvey is an agent REPL written in Go and designed to use Llamafile
+models or Ollama server to access language models locally. It is a
+terminal based application.</p>
+<p>The Harvey name was inspired by the play of that name by Mary Chase.
+I saw parallels between the story Harvey and what I see as my personal
+language model agent. Many people think of agents only in the context of
+very big companies. I think of my little computers and what they can
+accomplish with their own agent. Harvey, as a small agent for small and
+tiny computers, is a play on a mythic creature. Harvey is a Púca, a
+software Púca. Harvey can be fun for those who take time for it. It runs
+on a little computers. Have an adventure and some fun with Harvey.</p>
 <h2 id="security-note">Security Note</h2>
 <p>Harvey is <strong>experimental</strong> — a <strong>working proof of
 concept</strong>, not production-ready software. Letting a probabilistic
@@ -42,14 +46,26 @@ risk is never zero. <strong>Don’t use Harvey where the risks might
 endanger your data, people, or planet.</strong> See <a
 href="SECURITY.html">SECURITY.md</a> for details.</p>
 <h2 id="features">Features</h2>
+<h3 id="language-model-support">Language Model Support</h3>
+<ul>
+<li><strong>Llamafile</strong> (primary): register and run local model
+binaries — no server required</li>
+<li><strong>Ollama</strong>: connect to a local Ollama server for
+broader model selection</li>
+<li><strong>Cloud routes</strong>: Anthropic, DeepSeek, Gemini, Mistral,
+and OpenAI via configured routes</li>
+<li>Multi-model dispatch via <code>@mention</code> and model aliasing;
+routing feedback shown in spinner</li>
+</ul>
 <h3 id="core-capabilities">Core Capabilities</h3>
 <ul>
-<li>Interactive terminal REPL for language models, sandboxed to a
-workspace directory</li>
+<li>Interactive terminal REPL sandboxed to a workspace directory</li>
 <li>Auto-execute: tagged code blocks in model replies are written to
-files automatically</li>
+workspace files automatically</li>
 <li><code>HARVEY.md</code> provides a customizable system prompt per
 workspace</li>
+<li>Context utilization hint <code>[ctx: N%]</code> in spinner when
+approaching the model’s context window</li>
 </ul>
 <h3 id="knowledge-memory-sessions">Knowledge, Memory &amp; Sessions</h3>
 <ul>
@@ -58,122 +74,146 @@ rolling summaries, and a SQLite knowledge base</li>
 <li>Sessions recorded as human-readable Fountain screenplay
 (<code>.spmd</code>) files — replay, continue, or mine them for
 memories</li>
+<li>Model provenance recorded in session headers for audit and replay
+accuracy</li>
 <li>Pinned context and conversation summarization to manage the context
 window</li>
 </ul>
-<h3 id="multi-model-routing">Multi-Model &amp; Routing</h3>
-<ul>
-<li>Llamafile integration</li>
-<li>Ollama integration</li>
-<li>Cloud model routes for Anthropic, DeepSeek, Gemini, Mistral, and
-OpenAI</li>
-<li>Multi-model routing via <code>@mention</code> dispatch and model
-aliasing</li>
-</ul>
-<h3 id="security">Security</h3>
-<ul>
-<li>Safe mode with a command allowlist and fine-grained workspace
-permissions</li>
-<li>API key filtering from child processes and an in-memory audit
-log</li>
-</ul>
 <h3 id="file-code-support">File &amp; Code Support</h3>
 <ul>
-<li>Code-aware RAG chunking, doc extraction, and ANSI syntax
+<li>Code-aware RAG chunking, documentation extraction, and ANSI syntax
 highlighting (13 languages)</li>
-<li>Automatic code formatting on <code>write_file</code> (gofmt,
+<li>Automatic code formatting on <code>write_file</code>: gofmt,
 clang-format, black, rustfmt, prettier, and built-in Pascal/Oberon/Basic
-formatters)</li>
-<li>Git integration and PDF text extraction</li>
+formatters</li>
+<li>PDF text extraction via poppler; image reading via vision-capable
+model routes</li>
+<li>Remote RAG ingest: <code>s3://</code>, <code>sftp://</code>,
+<code>scp://</code>, <code>http://</code>, <code>https://</code>
+URIs</li>
 </ul>
 <h3 id="extensibility">Extensibility</h3>
 <ul>
 <li>SKILL.md skills, bundled skill sets, and multi-step prompt
 pipelines</li>
+<li>Git integration and per-workspace profile templates</li>
 </ul>
 <h2 id="quick-start">Quick Start</h2>
 <ol type="1">
-<li><p><strong>Install</strong>: Run the installer for your platform</p>
+<li><p><strong>Download a llamafile</strong> from the <a
+href="https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles">Mozilla
+AI pre-built models page</a> and make it executable</p></li>
+<li><p><strong>Install Harvey</strong>: run the installer for your
+platform</p>
 <ul>
 <li>Linux/macOS: <code>./installer.sh</code></li>
-<li>Windows: Run <code>installer.ps1</code> in PowerShell</li>
+<li>Windows: run <code>installer.ps1</code> in PowerShell</li>
 </ul></li>
 <li><p><strong>Run</strong>: <code>harvey</code></p></li>
 <li><p><strong>Try it</strong>:</p>
-<pre><code>harvey &gt; /read LICENSE
+<pre><code>harvey &gt; /llamafile add /path/to/model.llamafile
+harvey &gt; /read LICENSE
 harvey &gt; /help</code></pre></li>
 </ol>
-<p>See <a href="INSTALL.html">Installation</a> for detailed
-instructions.</p>
+<p>See <a href="getting_started.html">Getting Started</a> and <a
+href="INSTALL.html">Installation</a> for detailed instructions.</p>
 <h2 id="platform-support">Platform Support</h2>
-<p>Harvey runs on: - Linux: x86_64, aarch64, armv7l - macOS: Intel and
-Apple Silicon (M1 and above) - Windows: x86_64 - Raspberry Pi OS</p>
-<h2 id="software-requirements">Software Requirements</h2>
-<ul>
-<li>LLamafile models or Ollama plus Ollama Models</li>
-</ul>
-<h3 id="software-suggestions">Software Suggestions</h3>
-<p>For building Harvey and documentation from source:</p>
-<ul>
-<li>Go &gt;= 1.26.4</li>
-<li>CMTools &gt;= 0.0.46</li>
-<li>Pandoc &gt;= 3.9</li>
-<li>GNU Make &gt;= 3.8</li>
-</ul>
+<p>Harvey runs on: - Linux: x86_64, aarch64, armv7l (including Raspberry
+Pi OS) - macOS: Intel and Apple Silicon (M1 and above) - Windows:
+x86_64</p>
 <h2 id="documentation">Documentation</h2>
 <ul>
-<li><a href="https://github.com/rsdoiel/harvey">GitHub Repository</a> —
-Source code</li>
 <li><a href="user_manual.html">User Manual</a> — Main documentation
 index</li>
 <li><a href="overview.html">Overview</a> — What Harvey is, why you might
-use it, and how to get started</li>
-<li><a href="developer_guide.html">Developer Guide</a> — Architecture,
-conventions, and contributing</li>
-<li><a href="reference.html">Reference Manual</a> — Command and
-configuration reference</li>
-<li><a href="INSTALL.html">Installation</a> — Get Harvey installed on
-your system</li>
+use it, and the design philosophy</li>
 <li><a href="getting_started.html">Getting Started</a> — First session,
 keyboard shortcuts, slash commands</li>
-<li><a href="about.html">About</a> — Project metadata and version
-information</li>
+<li><a href="CONFIGURATION.html">Configuration Reference</a> —
+harvey.yaml fields and environment variables</li>
+<li><a href="INSTALL.html">Installation</a> — Get Harvey installed on
+your system</li>
+<li><a href="developer_guide.html">Developer Guide</a> — Architecture,
+conventions, and contributing</li>
 <li><a href="vision.html">Vision</a> — Philosophy, motivation, and
 future direction</li>
+<li><a href="about.html">About</a> — Project metadata and version
+information</li>
+<li><a href="https://github.com/rsdoiel/harvey">GitHub Repository</a> —
+Source code and issues</li>
 </ul>
 <h2 id="release-notes">Release Notes</h2>
 <ul>
-<li><p>version: 0.0.13</p></li>
+<li><p>version: 0.0.14</p></li>
 <li><p>status: active</p></li>
-<li><p>released: 2026-06-19</p></li>
-<li><p>Added multi-language code-aware chunking for RAG ingestion (C,
-C++, Pascal, Oberon, Lisp, Basic)</p></li>
-<li><p>Added documentation extraction: comment and docstring association
-with symbols for C, C++, Pascal, Oberon, Lisp, Basic</p></li>
-<li><p>Added ANSI syntax highlighting of code blocks in LLM responses
-(13 languages: C, C++, Pascal, Oberon, Lisp, Basic, Go, Python,
-JavaScript, TypeScript, Rust, Shell, SQL); configurable via
-<code>syntax_highlight</code> in harvey.yaml</p></li>
-<li><p>Added automatic code formatting on <code>write_file</code>:
-built-in formatters for Pascal, Oberon, Basic; external pipe-mode
-formatters for Go (gofmt), C/C++ (clang-format), Python (black), Rust
-(rustfmt), JavaScript/TypeScript (prettier); configurable via
-<code>auto_format</code> in harvey.yaml</p></li>
-<li><p>Added <code>/format FILE [FILE...]</code> command to manually
-format workspace source files in-place</p></li>
+<li><p>released: 2026-06-21</p></li>
+<li><p>Llamafile is now the primary language model backend: startup
+sequence shows registered llamafiles first, auto-selects on preferred
+model match, then falls back to Ollama</p></li>
+<li><p>Explicit connection feedback: “Connecting to NAME (llamafile)… ✓”
+shown in terminal on backend selection</p></li>
+<li><p>Stale server adoption: Harvey detects a running llamafile server
+it did not start, probes its model via <code>/v1/models</code>, warns on
+mismatch, and adopts it rather than refusing to start</p></li>
+<li><p><code>/llamafile show [NAME]</code>: displays name, path, file
+size, and configured context length for a registered model</p></li>
+<li><p><code>/rag show [NAME]</code>: displays store name, database
+path, embedding model, chunk count, and model map</p></li>
+<li><p>Remote RAG ingest extended: <code>sftp://</code>,
+<code>scp://</code>, <code>http://</code>, and <code>https://</code>
+URIs now supported alongside <code>s3://</code></p></li>
+<li><p><code>/read</code> auto-detects <code>.pdf</code> files and
+extracts text via poppler (pdfinfo + pdftotext + pdfimages), consistent
+with the <code>read_file</code> built-in tool</p></li>
+<li><p><code>/status</code> backend tag and token-count estimate now
+work for llamafile (was Ollama-only)</p></li>
+<li><p>Pipeline context-utilization display now works for llamafile via
+character estimate (was Ollama-only)</p></li>
+<li><p>Context utilization hint <code>[ctx: N%]</code> added to spinner
+label when estimated token usage reaches 50% of the model’s context
+window</p></li>
+<li><p>Routing feedback in spinner: shows <code>@route · model</code>
+during routed turns when routing is active</p></li>
+<li><p>Model provenance recorded in Fountain session header:
+<code>Model:</code> field now stores <code>NAME (backend)</code> (e.g.,
+<code>QWEN-CODING (llamafile)</code>) for session replay and
+audit</p></li>
+<li><p>Health check on <code>--resume</code>/<code>--continue</code>:
+session model is extracted before backend selection; a mismatch warning
+is shown when the resumed model differs from the active backend</p></li>
+<li><p><code>@mention</code> dispatch: routing is tried first when
+routing is enabled; falls back to local model switch via
+<code>attemptModelSwitch</code>; case-insensitive for both llamafile
+names and model aliases</p></li>
+<li><p>Help system: all 41 help constants documented and reordered into
+11 logical groups; <code>ModelHelpText</code> dispatch bug fixed (topic
+was unreachable); <code>harvey-model.7.md</code> man page added</p></li>
+<li><p>Documentation rewritten with llamafile-first framing and
+natural-language-programming / scholarly-work positioning:
+<code>overview.md</code>, <code>getting_started.md</code>,
+<code>user_manual.md</code>, <code>CONFIGURATION.md</code></p></li>
 </ul>
-<p>See <a href="CHANGES.html">CHANGES.md</a> for detailed release
-history.</p>
 <h3 id="authors">Authors</h3>
 <ul>
-<li><a href="https://orcid.org/0000-0003-0900-6903">R. S. Doiel</a></li>
+<li>Doiel, R. S.</li>
 </ul>
-<h2 id="license">License</h2>
-<p><a href="https://www.gnu.org/licenses/agpl-3.0.txt">AGPL-3.0</a></p>
-<h2 id="getting-help">Getting Help</h2>
+<h2 id="software-requirements">Software Requirements</h2>
+<ul>
+<li>Llamafile v0.10 models or Ollama plus Ollama models</li>
+</ul>
+<h3 id="software-suggestions">Software Suggestions</h3>
+<ul>
+<li>Go &gt;= 1.26.4</li>
+<li>CMTools &gt;= 0.0.45</li>
+<li>Pandoc &gt;= 3.9</li>
+<li>GNU Make &gt;= 3.8</li>
+</ul>
+<h2 id="getting-help-license">Getting Help &amp; License</h2>
 <ul>
 <li><a href="https://github.com/rsdoiel/harvey/issues">GitHub Issues</a>
 — Bug reports and feature requests</li>
+<li><a href="https://www.gnu.org/licenses/agpl-3.0.txt">AGPL-3.0
+License</a></li>
 </ul>
 </section>
 </body>

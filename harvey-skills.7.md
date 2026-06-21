@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 00feb2f
+%harvey(7) user manual | version 0.0.14 24bc5f8
 % R. S. Doiel
-% 2026-06-19
+% 2026-06-21
 
 # NAME
 
@@ -84,7 +84,7 @@ match the parent directory name.
   license: AGPL-3.0
   compatibility: Designed for Harvey (or any agent working in a Go codebase)
   metadata:
-    author: rsdoiel
+    author: you
     version: "1.0"
   ---
 

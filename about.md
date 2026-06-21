@@ -12,30 +12,37 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.13
+version: 0.0.14
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go >= 1.26.4
 
 
-date_released: 2026-06-19
+date_released: 2026-06-21
 ---
 
 About this software
 ===================
 
-## harvey 0.0.13
+## harvey 0.0.14
 
-- `/profile` command: top-level alias for `/memory profile <list|show|edit|use|rename>`
-- `--resume` flag: resumes the most recent session in `agents/sessions/` automatically at startup
-- Spinner live status: tool calls now show a transient status line ("Calling tool…") while waiting for results
-- `assay --llamafile PATH`: evaluate a llamafile binary directly; assay starts/stops the process and derives the model name from the binary path
-- Added web-developer workspace profile template
-- `HARVEY.md`: documented native file-reading for PDF and image files so models call `read_file` directly
-- S3 remote: improved not-found detection for missing keys and buckets; path-style access fixed for non-AWS endpoints
-- `MostRecentSession` helper in `sessions_files.go` for reliable `--resume` behaviour
-- Llamafile: `scanLlamafileModels` now discovers binaries by directory scan
+- Llamafile is now the primary language model backend: startup sequence shows registered llamafiles first, auto-selects on preferred model match, then falls back to Ollama
+- Explicit connection feedback: "Connecting to NAME (llamafile)… ✓" shown in terminal on backend selection
+- Stale server adoption: Harvey detects a running llamafile server it did not start, probes its model via `/v1/models`, warns on mismatch, and adopts it rather than refusing to start
+- `/llamafile show [NAME]`: displays name, path, file size, and configured context length for a registered model
+- `/rag show [NAME]`: displays store name, database path, embedding model, chunk count, and model map
+- Remote RAG ingest extended: `sftp://`, `scp://`, `http://`, and `https://` URIs now supported alongside `s3://`
+- `/read` auto-detects `.pdf` files and extracts text via poppler (pdfinfo + pdftotext + pdfimages), consistent with the `read_file` built-in tool
+- `/status` backend tag and token-count estimate now work for llamafile (was Ollama-only)
+- Pipeline context-utilization display now works for llamafile via character estimate (was Ollama-only)
+- Context utilization hint `[ctx: N%]` added to spinner label when estimated token usage reaches 50% of the model's context window
+- Routing feedback in spinner: shows `@route · model` during routed turns when routing is active
+- Model provenance recorded in Fountain session header: `Model:` field now stores `NAME (backend)` (e.g., `QWEN-CODING (llamafile)`) for session replay and audit
+- Health check on `--resume`/`--continue`: session model is extracted before backend selection; a mismatch warning is shown when the resumed model differs from the active backend
+- `@mention` dispatch: routing is tried first when routing is enabled; falls back to local model switch via `attemptModelSwitch`; case-insensitive for both llamafile names and model aliases
+- Help system: all 41 help constants documented and reordered into 11 logical groups; `ModelHelpText` dispatch bug fixed (topic was unreachable); `harvey-model.7.md` man page added
+- Documentation rewritten with llamafile-first framing and natural-language-programming / scholarly-work positioning: `overview.md`, `getting_started.md`, `user_manual.md`, `CONFIGURATION.md`
 
 ## Authors
 

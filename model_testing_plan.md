@@ -223,7 +223,7 @@ func main() {
 }
 ```
   Ollama (qwen2.5-coder:7b) · 70 reply + 991 ctx · 17.855s · 12.3 tok/s
-  ┌─ Write: cmd/hello/main.go ────────────────────────┐
+  ┌─ Write: cmd/hello/main.go ────────────────────────────┐
   │  package main
   │
   │  import (
@@ -480,7 +480,7 @@ To implement this program, you can follow these steps:
 9. Call the function again with the prompt to display "Goodbye" or "What's your name?". This is done by calling the function with the prompt that starts with `hi`, followed by a space, then the user's name.
 10. The program will terminate when it reaches this point and return `None`.
   1046 prompt + 364 reply tokens · 19.533s · 35.4 tok/s
-  ┌─ Write: go/program ───────────────────────────────┐
+  ┌─ Write: go/program ───────────────────────────────────┐
   │  --name
   │  hi
   │  hi
@@ -661,7 +661,7 @@ func main() {
 }
 ```
   951 prompt + 68 reply tokens · 2m44.781s · 2.8 tok/s
-  ┌─ Write: src/main.go ──────────────────────────────┐
+  ┌─ Write: src/main.go ──────────────────────────────────┐
   │  package main
   │  
   │  import (
@@ -758,7 +758,7 @@ Results from test
 
 	After tagging the code block in an interactive REPL as described above (without needing to run `/apply`), Harvey will automatically write the contents to `cmd/hello/main.go` for you.
 	  1049 prompt + 188 reply tokens · 2m49.45s · 3.5 tok/s
-	  ┌─ Write: cmd/hello/main.go ────────────────────────┐
+	  ┌─ Write: cmd/hello/main.go ────────────────────────────┐
 	  └───────────────────────────────────────────────────────┘
 	  [y]es  [n]o  [A]ll  [q]uit > y
 	  ✓ wrote cmd/hello/main.go (0 bytes)
@@ -855,7 +855,7 @@ Results from test
 	Replace `<name>` with the desired name when prompted.
 	  1036 prompt + 158 reply tokens · 1m12.451s · 7.8 tok/s
 	  ┌─ Write: testout/hello.bash   ← colon-separated lang:path ─┐
-	  └───────────────────────────────────────────────────────┘
+	  └───────────────────────────────────────────────────────────┘
 	  [y]es  [n]o  [A]ll  [q]uit > y
 	  ✓ wrote testout/hello.bash   ← colon-separated lang:path (0 bytes)
 
@@ -1006,7 +1006,7 @@ Results from test
 	}
 	```
 	  964 prompt + 94 reply tokens · 3m3.412s · 2.6 tok/s
-	  ┌─ Write: cmd/hello/main.go ────────────────────────┐
+	  ┌─ Write: cmd/hello/main.go ────────────────────────────┐
 	  │  package main
 	  │  
 	  │  import (
@@ -1063,7 +1063,7 @@ Results from test
 
 	Would you like me to run it for you to see how it works?
 	  964 prompt + 170 reply tokens · 7m26.301s · 1.4 tok/s
-	  ┌─ Write: cmd/hello/main.go ────────────────────────┐
+	  ┌─ Write: cmd/hello/main.go ────────────────────────────┐
 	  │  package main
 	  │  
 	  │  import (
@@ -1118,7 +1118,7 @@ Results from test
 
 	I'll write this to `greet/main.go`. Would you like me to proceed?
 	Ollama (ministral-3:14b) · 133 reply + 936 ctx · 4m39.024s · 3.2 tok/s
-	┌─ Write: greet/main.go ────────────────────────────┐
+	┌─ Write: greet/main.go ────────────────────────────────┐
 	│  package main
 	│
 	│  import (
@@ -1208,7 +1208,7 @@ Results from test
 	```go cmd/hello/main.go 
 	```
 	  953 prompt + 80 reply tokens · 5m45.445s · 1.5 tok/s
-	  ┌─ Write: cmd/hello/main.go ────────────────────────┐
+	  ┌─ Write: cmd/hello/main.go ────────────────────────────┐
 	  └───────────────────────────────────────────────────────┘
 	  [y]es  [n]o  [A]ll  [q]uit >   ✓ wrote cmd/hello/main.go (0 bytes)
 
@@ -1296,7 +1296,7 @@ Results from test
 	}
 	```
 	  1009 prompt + 98 reply tokens · 7m51.028s · 1.5 tok/s
-	  ┌─ Write: cmd/hello/main.go ────────────────────────┐
+	  ┌─ Write: cmd/hello/main.go ────────────────────────────┐
 	  │  package main
 	  │  
 	  │  import (

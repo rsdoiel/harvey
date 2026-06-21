@@ -19,8 +19,72 @@
 </nav>
 <section>
 <h1 id="changes">CHANGES</h1>
-<h2 id="v0.0.13-2026-06-19">v0.0.13 (2026-06-19)</h2>
+<h2 id="v0.0.14-2026-06-21">v0.0.14 (2026-06-21)</h2>
 <h3 id="new-features">New features</h3>
+<ul>
+<li>Llamafile is now the primary language model backend: startup
+sequence shows registered llamafiles first, auto-selects on preferred
+model match, then falls back to Ollama models</li>
+<li>Explicit connection feedback: “Connecting to NAME (llamafile)… ✓”
+shown in terminal on backend selection and after
+<code>startAndUseLlamafile</code></li>
+<li>Stale server adoption: Harvey detects a running llamafile server it
+did not start, probes its model via <code>/v1/models</code>, warns on
+model mismatch, and adopts it rather than refusing to start</li>
+<li><code>/llamafile show [NAME]</code>: displays name, path, file size,
+and configured context length for a registered model</li>
+<li><code>/rag show [NAME]</code>: displays store name, database path,
+embedding model, chunk count, and model map</li>
+<li>Remote RAG ingest extended: <code>sftp://</code>,
+<code>scp://</code>, <code>http://</code>, and <code>https://</code>
+URIs now supported alongside <code>s3://</code></li>
+<li><code>/read</code> auto-detects <code>.pdf</code> files and extracts
+text via poppler (pdfinfo + pdftotext), consistent with the
+<code>read_file</code> built-in tool</li>
+<li><code>/status</code> backend tag and token-count estimate now work
+for llamafile backends (was Ollama-only)</li>
+<li>Pipeline context-utilization display now works for llamafile via
+character estimate (was Ollama-only)</li>
+<li>Context utilization hint <code>[ctx: N%]</code> added to spinner
+label when estimated token usage reaches 50% of the model’s context
+window</li>
+<li>Routing feedback in spinner: shows <code>@route · model</code>
+during routed turns when routing is active</li>
+<li>Model provenance recorded in Fountain session header:
+<code>Model:</code> field now stores <code>NAME (backend)</code> (e.g.,
+<code>QWEN-CODING (llamafile)</code>) for session replay and audit</li>
+<li>Health check on <code>--resume</code>/<code>--continue</code>:
+session model is extracted before backend selection; a mismatch warning
+is shown when the resumed model differs from the active backend</li>
+<li><code>@mention</code> dispatch: routing is tried first when routing
+is enabled and a route exists; falls back to
+<code>attemptModelSwitch</code> for local model switching;
+case-insensitive for both llamafile names and model aliases</li>
+<li>Help system: all 41 help-text constants documented with block
+comments and reordered into 11 logical groups;
+<code>ModelHelpText</code> dispatch bug fixed (topic was unreachable via
+<code>/help model</code>); <code>harvey-model.7.md</code> man page
+added</li>
+</ul>
+<h3 id="documentation">Documentation</h3>
+<ul>
+<li>Complete rewrite of <code>overview.md</code> with “Natural Language
+Programming for Scholarly Work” framing</li>
+<li><code>getting_started.md</code> rewritten llamafile-first with
+correct Mozilla AI model download URL and startup sequence</li>
+<li><code>user_manual.md</code> restructured: llamafile-first Model
+Management section, corrected links, expanded man page index</li>
+<li><code>CONFIGURATION.md</code> fully updated: all v0.0.14
+configuration fields documented (<code>model_aliases</code>,
+<code>llamafile</code> with <code>context_length</code>,
+<code>tools</code>, <code>memory</code> with
+<code>rolling_summary</code> and <code>knowledge_base</code>,
+<code>rag</code> nesting, <code>syntax_highlight</code>,
+<code>auto_format</code>); SFTP, HTTP, and AWS environment variables
+added; complete annotated <code>harvey.yaml</code> example</li>
+</ul>
+<h2 id="v0.0.13-2026-06-19">v0.0.13 (2026-06-19)</h2>
+<h3 id="new-features-1">New features</h3>
 <ul>
 <li><code>/profile</code> command: top-level alias for
 <code>/memory profile &lt;list|show|edit|use|rename&gt;</code> — profile
@@ -57,7 +121,7 @@ by directory scan, fixing cases where auto-discovery missed models not
 registered via <code>/llamafile add</code></li>
 </ul>
 <h2 id="v0.0.12-2026-06-17">v0.0.12 (2026-06-17)</h2>
-<h3 id="new-features-1">New features</h3>
+<h3 id="new-features-2">New features</h3>
 <ul>
 <li>Memory enrichment: added <code>kind</code> field to memory documents
 classifying why knowledge matters
@@ -126,7 +190,7 @@ Metal/CUDA)</li>
 context-injection path instead of erroring out</li>
 </ul>
 <h2 id="v0.0.11-2026-06-11">v0.0.11 (2026-06-11)</h2>
-<h3 id="new-features-2">New features</h3>
+<h3 id="new-features-3">New features</h3>
 <ul>
 <li>Added scholarly identifier extraction and normalization for 14
 identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN,
@@ -146,7 +210,7 @@ papers, institutions, funders) via an identifier type/value pair</li>
 <code>project_fact</code> memory metadata</li>
 </ul>
 <h2 id="v0.0.10-2026-06-09">v0.0.10 (2026-06-09)</h2>
-<h3 id="new-features-3">New features</h3>
+<h3 id="new-features-4">New features</h3>
 <ul>
 <li>Added multi-language code-aware chunking for RAG ingestion (C, C++,
 Pascal, Oberon, Lisp, Basic)</li>
@@ -174,7 +238,7 @@ management</li>
 <li>Added help guides and <code>/status profile</code> display</li>
 </ul>
 <h2 id="v0.0.7-2026-06-02">v0.0.7 (2026-06-02)</h2>
-<h3 id="new-features-4">New features</h3>
+<h3 id="new-features-5">New features</h3>
 <p><strong><code>assay</code> evaluation harness</strong> — a new
 <code>bin/assay</code> tool for running a prompt corpus against one or
 more Ollama models and producing a Markdown report plus JSON results for
@@ -242,7 +306,7 @@ all are now listed under their appropriate sections</li>
 through to the unknown-topic error</li>
 </ul>
 <h2 id="v0.0.6-2026-05-30">v0.0.6 (2026-05-30)</h2>
-<h3 id="new-features-5">New features</h3>
+<h3 id="new-features-6">New features</h3>
 <p><strong>Remote protocol integration</strong> — Harvey can now read
 files from remote storage over <code>s3://</code>, <code>http://</code>,
 <code>https://</code>, <code>sftp://</code>, and <code>scp://</code>

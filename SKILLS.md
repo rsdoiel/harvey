@@ -4,7 +4,7 @@
 
 ## Overview
 
-Harvey implements the **[Agent Skills](https://agentskills.dev)** specification,
+Harvey implements the **[Agent Skills](https://agentskills.io/home)** specification,
 which provides a standardized way to define, discover, and execute structured
 tasks across different AI agents. Skills allow you to:
 
@@ -34,12 +34,12 @@ harvey> /skill list
 
   compile-skill           [project] - Compiles a target SKILL.md into correct compiled.bash and...
   fountain-analysis       [project] - Read and actively monitor a Harvey Fountain screenplay file...
+  fountain-session        [project] - Write a well-formed Harvey session handoff summary as a...
+  harvey-memory           [project] - Load Harvey's accumulated project memories before working...
+  multi-file              [project] - Generates a bounded-context execution plan when the user asks...
   review-knowledge-base   [project] - Queries knowledge_base.db and delivers a structured report...
-  setup-codemeta...       [project] - Generates or updates a codemeta.json file for an experiment...
-  setup-experiment        [project] - Creates a new experiment directory in the Laboratory...
   setup-knowledge-base    [project] - Creates knowledge_base.db in the workspace...
   update-knowledge-base   [project] - Adds or updates records in knowledge_base.db...
-  fetch-pg-corpus         [project] - Downloads the Project Gutenberg catalog and full text...
 ```
 
 ### Load a Skill
@@ -328,7 +328,7 @@ Show detailed metadata about a skill.
   Name:          fountain-analysis
   Description:   Read and actively monitor a Harvey Fountain...
   Source:        project
-  Path:          /home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md
+  Path:          <workspace>/agents/skills/fountain-analysis/SKILL.md
   License:       AGPL-3.0
   Compatibility: claude-code, harvey
   Variables:
@@ -704,7 +704,7 @@ my-skill/
 ## Cross-Agent Compatibility
 
 Harvey skills are compatible with **Claude Code** and any other agent that
-implements the [Agent Skills specification](https://agentskills.dev).
+implements the [Agent Skills specification](https://agentskills.io/home).
 
 ### Shared Skills Directory
 
@@ -743,12 +743,12 @@ skills are available without loading them all. The catalog is formatted as:
   <skill>
     <name>fountain-analysis</name>
     <description>Read and actively monitor a Harvey Fountain...</description>
-    <location>/home/user/Laboratory/agents/skills/fountain-analysis/SKILL.md</location>
+    <location><workspace>/agents/skills/fountain-analysis/SKILL.md</location>
   </skill>
   <skill>
     <name>review-knowledge-base</name>
     <description>Queries knowledge_base.db and delivers...</description>
-    <location>/home/user/Laboratory/agents/skills/review-knowledge-base/SKILL.md</location>
+    <location><workspace>/agents/skills/review-knowledge-base/SKILL.md</location>
   </skill>
 </available_skills>
 
@@ -765,18 +765,18 @@ Harvey includes these skills out of the box (in `agents/skills/`):
 
 | Skill | Purpose |
 |-------|---------|
-| **compile-skill** | Compiles SKILL.md into executable scripts |
-| **fountain-analysis** | Reads and analyzes Fountain session files |
-| **review-knowledge-base** | Queries and reports on knowledge_base.db |
-| **setup-codemeta...** | Generates codemeta.json for experiments |
-| **setup-experiment** | Creates new experiment directory + git init |
-| **setup-knowledge-base** | Initializes knowledge_base.db with schema |
-| **update-knowledge-base** | Adds records to knowledge_base.db |
-| **fetch-pg-corpus** | Downloads Project Gutenberg corpus |
+| **compile-skill** | Compiles a SKILL.md into `compiled.bash` and `compiled.ps1` scripts |
+| **fountain-analysis** | Reads and monitors Harvey Fountain session files (`.spmd`) |
+| **fountain-session** | Writes a well-formed session handoff summary in Fountain format |
+| **harvey-memory** | Loads Harvey's accumulated workspace memories before a session |
+| **multi-file** | Generates a bounded-context plan for tasks that create multiple files |
+| **review-knowledge-base** | Queries and reports on `agents/knowledge.db` |
+| **setup-knowledge-base** | Creates and initializes `agents/knowledge.db` with the standard schema |
+| **update-knowledge-base** | Adds experiments, observations, and concepts to `agents/knowledge.db` |
 
 ## See Also
 
-- [Agent Skills Specification](https://agentskills.dev) — Official spec
+- [Agent Skills Specification](https://agentskills.io/home) — Official spec
 - [SKILL.md files in agents/skills/](agents/skills/) — Built-in skills
 - [fountain-analysis SKILL.md](agents/skills/fountain-analysis/SKILL.md) — Example of comprehensive skill
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Technical details on skill implementation

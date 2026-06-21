@@ -2964,7 +2964,7 @@ match the parent directory name.
   license: AGPL-3.0
   compatibility: Designed for Harvey (or any agent working in a Go codebase)
   metadata:
-    author: rsdoiel
+    author: you
     version: "1.0"
   ---
 

@@ -42,27 +42,27 @@ harvey> /ollama probe llama3.2:latest
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      MODEL CACHE ARCHITECTURE                         │
+│                      MODEL CACHE ARCHITECTURE                       │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────┐  │
-│  │   Ollama        │     │  Model Cache    │     │   Harvey    │  │
-│  │   Server        │────▶│  (SQLite DB)    │────▶│   Startup   │  │
-│  │                 │     │                 │     │             │  │
-│  │ /api/show       │     │ model_cache.db │     │ Load cache  │  │
-│  │ /api/embed      │     │                 │     │             │  │
-│  └─────────────────┘     └─────────────────┘     └─────────────┘  │
-│           │                       │                             │
-│           │ Probe (fast/thorough)  │ Update cache               │
-│           ▼                       ▼                             ▼
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │                    ModelCapability                          │  │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────┐    │
+│  │   Ollama        │     │  Model Cache    │     │   Harvey    │    │
+│  │   Server        │     │  (SQLite DB)    │     │   Startup   │    │
+│  │                 │     │                 │     │             │    │
+│  │ /api/show       │     │ model_cache.db  │     │ Load cache  │    │
+│  │ /api/embed      │     │                 │     │             │    │
+│  └─────────────────┘     └─────────────────┘     └─────────────┘    │
+│          │                       │                         │        │
+│           │ Probe (fast/thorough)  │ Update cache                   │
+│           ▼                       ▼                                 │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                    ModelCapability                            │  │
 │  │  - name, family, parameter_size, quantization                 │  │
-│  │  - size_bytes, context_length                                  │  │
-│  │  - supports_tools, supports_embed (CapabilityStatus enum)    │  │
+│  │  - size_bytes, context_length                                 │  │
+│  │  - supports_tools, supports_embed (CapabilityStatus enum)     │  │
 │  │  - probe_level ("none", "fast", "thorough")                   │  │
-│  │  - probed_at (timestamp)                                        │  │
-│  └─────────────────────────────────────────────────────────────┘  │
+│  │  - probed_at (timestamp)                                      │  │
+│  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
