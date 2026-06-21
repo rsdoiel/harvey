@@ -21,47 +21,7 @@
 <h1 id="action-items">Action Items</h1>
 <h2 id="bugs">Bugs</h2>
 <h2 id="release-review">Release Review</h2>
-<ul class="task-list">
-<li><label><input type="checkbox" />README.md is stale and needs to be
-brought up to date for v0.0.14 improvements</label></li>
-<li><label><input type="checkbox" checked="" />The harvey.1.md
-<code>/read</code> now handles the explicit <code>/read-pdf</code>
-command — <code>cmdRead</code> now auto-detects <code>.pdf</code> files
-and extracts text via poppler (consistent with <code>read_file</code>
-tool); <code>ReadHelpText</code> documents this;
-<code>harvey-read.7.md</code> regenerated</label></li>
-<li><label><input type="checkbox" />Check for broken links in Markdown
-pages (example some of the skills links are broken)</label></li>
-<li><label><input type="checkbox" />Identify missing content (example
-Harvey skills) and review what can be done to fix the
-problem</label></li>
-<li><label><input type="checkbox" />Some of the diagrams written with
-UTF-8 corner and line characters had aslignment issues for the virtical
-bars and corners on the right side</label></li>
-</ul>
-<h2 id="next-v0.0.14-release">Next (v0.0.14 release)</h2>
-<h3 id="llamafile-as-primary-model-system">Llamafile as primary model
-system</h3>
-<ul class="task-list">
-<li><label><input type="checkbox" checked="" />Llamafile becomes primary
-model system alongside Ollama models</label>
-<ul class="task-list">
-<li><label><input type="checkbox" checked="" />In startup process before
-prompting user, detect what model systems are available —
-<code>selectBackend</code> probes llamafile first, then
-Ollama</label></li>
-<li><label><input type="checkbox" checked="" />If a session is not being
-continued, present available Llamafiles as the first choice and Ollama
-models (if available) next — <code>pickBackend</code> shows registered
-llamafiles before Ollama models</label></li>
-<li><label><input type="checkbox" />Bring Llamafile support into parity
-for advanced features like pipelines and routing</label></li>
-<li><label><input type="checkbox" checked="" />Update documentation to
-present Llamafile support for basic operation, then include an advanced
-section for working with Ollama models — getting_started.md and
-user_manual.md restructured</label></li>
-</ul></li>
-</ul>
+<h2 id="next-v0.0.15-release">Next (v0.0.15 release)</h2>
 </section>
 </body>
 </html>

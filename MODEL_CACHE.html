@@ -84,27 +84,27 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /ollama probe llama3.2:latest</span></code></pre></div>
 <h2 id="architecture">Architecture</h2>
 <pre><code>┌─────────────────────────────────────────────────────────────────────┐
-│                      MODEL CACHE ARCHITECTURE                         │
+│                      MODEL CACHE ARCHITECTURE                       │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────┐  │
-│  │   Ollama        │     │  Model Cache    │     │   Harvey    │  │
-│  │   Server        │────▶│  (SQLite DB)    │────▶│   Startup   │  │
-│  │                 │     │                 │     │             │  │
-│  │ /api/show       │     │ model_cache.db │     │ Load cache  │  │
-│  │ /api/embed      │     │                 │     │             │  │
-│  └─────────────────┘     └─────────────────┘     └─────────────┘  │
-│           │                       │                             │
-│           │ Probe (fast/thorough)  │ Update cache               │
-│           ▼                       ▼                             ▼
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │                    ModelCapability                          │  │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────┐    │
+│  │   Ollama        │     │  Model Cache    │     │   Harvey    │    │
+│  │   Server        │     │  (SQLite DB)    │     │   Startup   │    │
+│  │                 │     │                 │     │             │    │
+│  │ /api/show       │     │ model_cache.db  │     │ Load cache  │    │
+│  │ /api/embed      │     │                 │     │             │    │
+│  └─────────────────┘     └─────────────────┘     └─────────────┘    │
+│          │                       │                         │        │
+│           │ Probe (fast/thorough)  │ Update cache                   │
+│           ▼                       ▼                                 │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                    ModelCapability                            │  │
 │  │  - name, family, parameter_size, quantization                 │  │
-│  │  - size_bytes, context_length                                  │  │
-│  │  - supports_tools, supports_embed (CapabilityStatus enum)    │  │
+│  │  - size_bytes, context_length                                 │  │
+│  │  - supports_tools, supports_embed (CapabilityStatus enum)     │  │
 │  │  - probe_level (&quot;none&quot;, &quot;fast&quot;, &quot;thorough&quot;)                   │  │
-│  │  - probed_at (timestamp)                                        │  │
-│  └─────────────────────────────────────────────────────────────┘  │
+│  │  - probed_at (timestamp)                                      │  │
+│  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘</code></pre>
 <h3 id="data-flow">Data Flow</h3>
