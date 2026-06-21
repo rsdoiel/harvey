@@ -92,6 +92,16 @@ func TestMatchesTrigger_multiFilePattern(t *testing.T) {
 	}
 }
 
+func TestMatchesTrigger_keywordNoSubstringFalsePositive(t *testing.T) {
+	// "at" from "at session start" must NOT fire because the filename
+	// Rethinking_Data_Use_in_Large_Language_Models.pdf contains "at" inside
+	// the word "data". Word-boundary matching must prevent this.
+	skill := &SkillMeta{Trigger: "before making changes to this project | at session start | when asked about project history or past decisions"}
+	if MatchesTrigger(skill, "please read Rethinking_Data_Use_in_Large_Language_Models.pdf") {
+		t.Error("want false: keyword 'at' must not match as substring inside 'data' in a filename")
+	}
+}
+
 // ─── SortedSkillNames ────────────────────────────────────────────────────────
 
 func TestSortedSkillNames(t *testing.T) {

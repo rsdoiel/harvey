@@ -173,12 +173,20 @@ func MatchesTrigger(skill *SkillMeta, prompt string) bool {
 		}
 	}
 
+	// Build a single word-boundary regex from all keywords so that short words
+	// like "at" don't fire on substrings like "data" inside a filename.
+	var parts []string
 	for _, kw := range strings.Fields(strings.ToLower(t)) {
-		if strings.Contains(lower, kw) {
-			return true
-		}
+		parts = append(parts, regexp.QuoteMeta(kw))
 	}
-	return false
+	if len(parts) == 0 {
+		return false
+	}
+	re, err := regexp.Compile(`(?i)\b(` + strings.Join(parts, "|") + `)\b`)
+	if err != nil {
+		return false
+	}
+	return re.MatchString(lower)
 }
 
 /** SortedSkillNames returns the skill names from cat in sorted order.
