@@ -3,6 +3,9 @@ package harvey
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -1300,5 +1303,72 @@ func TestRagShow_noActive(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "No store") && !strings.Contains(out, "no store") && !strings.Contains(out, "not configured") {
 		t.Errorf("expected no-store message, got: %s", out)
+	}
+}
+
+// ─── /ollama use (interactive picker) ────────────────────────────────────────
+
+// ollamaTagsMockServer starts an httptest server that returns a two-model
+// /api/tags response and an empty /api/ps response.
+func ollamaTagsMockServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/tags":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"models": []map[string]interface{}{
+					{"name": "llama3.2:3b", "size": 2019393189, "details": map[string]string{"family": "llama"}},
+					{"name": "nomic-embed-text:latest", "size": 274302560, "details": map[string]string{"family": "nomic"}},
+				},
+			})
+		case "/api/ps":
+			json.NewEncoder(w).Encode(map[string]interface{}{"models": []interface{}{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+func TestOllamaUse_noArg_showsNumberedList(t *testing.T) {
+	srv := ollamaTagsMockServer(t)
+	defer srv.Close()
+
+	a := newTestAgent(t)
+	a.Config.OllamaURL = srv.URL
+	a.In = strings.NewReader("0\n") // invalid selection → Cancelled
+
+	var buf strings.Builder
+	err := cmdOllama(a, []string{"use"}, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "llama3.2:3b") {
+		t.Errorf("expected model name in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[") {
+		t.Errorf("expected numbered list brackets in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Cancelled") {
+		t.Errorf("expected Cancelled on invalid selection, got:\n%s", out)
+	}
+}
+
+func TestOllamaUse_noArg_validSelection(t *testing.T) {
+	srv := ollamaTagsMockServer(t)
+	defer srv.Close()
+
+	a := newTestAgent(t)
+	a.Config.OllamaURL = srv.URL
+	a.In = strings.NewReader("1\n") // select first model
+
+	var buf strings.Builder
+	// modelSwitch will fail to connect for the LLM client but should still
+	// attempt the switch and print the model name.
+	cmdOllama(a, []string{"use"}, &buf)
+	out := buf.String()
+	if !strings.Contains(out, "llama3.2:3b") {
+		t.Errorf("expected selected model name in output, got:\n%s", out)
 	}
 }

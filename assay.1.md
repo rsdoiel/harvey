@@ -1,4 +1,4 @@
-%assay(1) user manual | version 0.0.14 ebae45a
+%assay(1) user manual | version 0.0.14 9a88663
 % R. S. Doiel
 % 2026-06-21
 

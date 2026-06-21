@@ -1809,8 +1809,28 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		PrintOllamaEnv(out)
 	case "use":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /ollama use MODEL")
-			return nil
+			if !ProbeOllama(a.Config.OllamaURL) {
+				fmt.Fprintln(out, "  Ollama is not running.")
+				return nil
+			}
+			summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background())
+			if err != nil {
+				return err
+			}
+			if len(summaries) == 0 {
+				fmt.Fprintln(out, "  No models installed. Run: /ollama pull <model>")
+				return nil
+			}
+			ollamaModelTable(a, summaries, out, true)
+			fmt.Fprintf(out, "\nSelect [1-%d]: ", len(summaries))
+			reader := bufio.NewReaderSize(a.In, 1)
+			line, _ := reader.ReadString('\n')
+			n, err := strconv.Atoi(strings.TrimSpace(line))
+			if err != nil || n < 1 || n > len(summaries) {
+				fmt.Fprintln(out, "  Cancelled.")
+				return nil
+			}
+			return modelSwitch(a, summaries[n-1].Name, out)
 		}
 		return modelSwitch(a, args[1], out)
 	case "alias":
