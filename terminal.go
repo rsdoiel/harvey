@@ -103,7 +103,7 @@ func restartActiveLlamafile(a *Agent, out io.Writer) error {
 	a.stopLlamafileProc()
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 	fmt.Fprintf(out, "  Starting %s...\n", entry.Name)
-	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
 	if err != nil {
 		return fmt.Errorf("restart failed: %w", err)
 	}
@@ -1519,7 +1519,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 		fmt.Fprintln(out, " "+yellow("✗")+" not running")
 		if askYesNo(reader, out, fmt.Sprintf("    Start %s now? [Y/n] ", entry.Name), true) {
 			fmt.Fprintf(out, "  Connecting to %s (llamafile)…\n", entry.Name)
-			proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
+			proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
 			if err != nil {
 				fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
 			} else {
@@ -1695,7 +1695,7 @@ func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error
 	}
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 	fmt.Fprintf(out, "  Connecting to %s (llamafile)…\n", entry.Name)
-	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
 	if err != nil {
 		fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
 		return err

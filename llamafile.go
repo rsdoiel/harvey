@@ -249,7 +249,7 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 		return adoptExternalServer(a, out)
 	}
 	fmt.Fprintln(out, "  Starting llamafile...")
-	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
 	if err != nil {
 		return fmt.Errorf("failed to start llamafile: %w", err)
 	}
@@ -366,7 +366,7 @@ func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
 	}
 
 	fmt.Fprintf(out, "  Starting %s...\n", name)
-	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
 	if err != nil {
 		return fmt.Errorf("failed to start llamafile: %w", err)
 	}
@@ -525,7 +525,7 @@ func cmdLlamafileStart(a *Agent, args []string, out io.Writer) error {
 
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 	fmt.Fprintf(out, "  Starting %s...\n", name)
-	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, out)
+	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
 	if err != nil {
 		return fmt.Errorf("failed to start llamafile: %w", err)
 	}

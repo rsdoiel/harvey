@@ -647,8 +647,9 @@ type toolsYAML struct {
 }
 
 type llamafileEntryYAML struct {
-	Name string `yaml:"name"`
-	Path string `yaml:"path"`
+	Name          string `yaml:"name"`
+	Path          string `yaml:"path"`
+	ContextLength int    `yaml:"context_length,omitempty"`
 }
 
 type llamafileYAML struct {
@@ -865,7 +866,7 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	for _, m := range y.Llamafile.Models {
 		cfg.LlamafileModels = append(cfg.LlamafileModels, LlamafileEntry{
-			Name: m.Name, Path: m.Path,
+			Name: m.Name, Path: m.Path, ContextLength: m.ContextLength,
 		})
 	}
 	// Load tool settings
@@ -1110,6 +1111,23 @@ func (c *Config) ActiveLlamafileEntry() *LlamafileEntry {
 	return c.LlamafileEntryByName(c.LlamafileActive)
 }
 
+/** ActiveLlamafileContextLength returns the configured context window size for
+ * the active llamafile model, or 0 when unknown (server default applies).
+ *
+ * Returns:
+ *   int — context window in tokens, or 0.
+ *
+ * Example:
+ *   ctxSize := cfg.ActiveLlamafileContextLength()
+ *   // ctxSize == 49152 when set in harvey.yaml; 0 means use the model default
+ */
+func (c *Config) ActiveLlamafileContextLength() int {
+	if e := c.ActiveLlamafileEntry(); e != nil {
+		return e.ContextLength
+	}
+	return 0
+}
+
 /** LlamafileEntryByName returns a pointer to the named LlamafileEntry, or nil
  * when not found.
  *
@@ -1182,7 +1200,7 @@ func SaveLlamafileConfig(ws *Workspace, cfg *Config) error {
 	}
 	entries := make([]llamafileEntryYAML, len(cfg.LlamafileModels))
 	for i, e := range cfg.LlamafileModels {
-		entries[i] = llamafileEntryYAML{Name: e.Name, Path: e.Path}
+		entries[i] = llamafileEntryYAML{Name: e.Name, Path: e.Path, ContextLength: e.ContextLength}
 	}
 	startupTO := ""
 	if cfg.LlamafileStartupTimeout > 0 && cfg.LlamafileStartupTimeout != 120*time.Second {

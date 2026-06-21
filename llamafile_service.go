@@ -119,6 +119,7 @@ func ProbeLlamafileContextLength(baseURL string) int {
  *   logPath   (string)        — file path for subprocess output; "" discards output.
  *   timeout   (time.Duration) — how long to wait for the server; 0 uses 120s.
  *   gpuLayers (int)           — layers to offload to GPU via -ngl; negative = omit flag (CPU).
+ *   ctxSize   (int)           — context window in tokens passed via -c; 0 uses the model default.
  *   progress  (io.Writer)     — receives a dot every 5 s while waiting; nil = silent.
  *
  * Returns:
@@ -126,9 +127,23 @@ func ProbeLlamafileContextLength(baseURL string) int {
  *   error       — non-nil if the process fails to start or does not respond within timeout.
  *
  * Example:
- *   proc, err := StartLlamafileService("/models/gemma3.llamafile", "http://localhost:8080", "", 120*time.Second, 99, os.Stdout)
+ *   proc, err := StartLlamafileService("/models/gemma3.llamafile", "http://localhost:8080", "", 120*time.Second, 99, 49152, os.Stdout)
  */
-func StartLlamafileService(path, baseURL, logPath string, timeout time.Duration, gpuLayers int, progress io.Writer) (*os.Process, error) {
+// buildLlamafileArgs assembles the argument list for launching a llamafile
+// server process. Negative gpuLayers omits the -ngl flag (CPU-only). Zero
+// ctxSize omits -c (server uses its compiled-in default).
+func buildLlamafileArgs(path, port string, gpuLayers, ctxSize int) []string {
+	args := []string{path, "--server", "--host", "127.0.0.1", "--port", port}
+	if gpuLayers >= 0 {
+		args = append(args, "-ngl", fmt.Sprintf("%d", gpuLayers))
+	}
+	if ctxSize > 0 {
+		args = append(args, "-c", fmt.Sprintf("%d", ctxSize))
+	}
+	return args
+}
+
+func StartLlamafileService(path, baseURL, logPath string, timeout time.Duration, gpuLayers, ctxSize int, progress io.Writer) (*os.Process, error) {
 	// Guard against a crafted harvey.yaml entry executing an arbitrary script.
 	// Only binaries with a recognised llamafile extension are launched.
 	lower := strings.ToLower(path)
@@ -147,10 +162,7 @@ func StartLlamafileService(path, baseURL, logPath string, timeout time.Duration,
 	// APE-format llamafiles (macOS) are rejected by execve; shells handle
 	// them via a POSIX fallback that Go's exec.Command omits. Running through
 	// sh reproduces what the terminal does when you run the file directly.
-	args := []string{path, "--server", "--host", "127.0.0.1", "--port", port}
-	if gpuLayers >= 0 {
-		args = append(args, "-ngl", fmt.Sprintf("%d", gpuLayers))
-	}
+	args := buildLlamafileArgs(path, port, gpuLayers, ctxSize)
 	cmd := exec.Command("/bin/sh", args...)
 
 	// Always capture stderr so we can surface it in error messages.

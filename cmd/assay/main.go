@@ -746,7 +746,7 @@ func main() {
 		}
 		llmURL = fmt.Sprintf("http://localhost:%d", port)
 		fmt.Printf("Starting llamafile %s on %s ...\n", filepath.Base(*llamafilePath), llmURL)
-		proc, err := harvey.StartLlamafileService(*llamafilePath, llmURL, "", 30*time.Second, -1, os.Stdout)
+		proc, err := harvey.StartLlamafileService(*llamafilePath, llmURL, "", 30*time.Second, -1, 0, os.Stdout)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "assay: llamafile: %v\n", err)
 			os.Exit(1)
