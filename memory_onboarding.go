@@ -31,17 +31,11 @@ import (
  *   }
  */
 func NeedsOnboarding(store *MemoryStore) bool {
-	dir := filepath.Join(store.Dir(), string(MemoryTypeWorkspaceProfile))
-	entries, err := os.ReadDir(dir)
+	metas, err := store.List(string(MemoryTypeWorkspaceProfile))
 	if err != nil {
 		return true
 	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".fountain") {
-			return false
-		}
-	}
-	return true
+	return len(metas) == 0
 }
 
 /** RunOnboarding presents a profile template picker, optionally opens the

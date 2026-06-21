@@ -35,13 +35,35 @@ func TestNeedsOnboarding_HasProfile(t *testing.T) {
 	}
 	defer store.Close()
 
-	dir := filepath.Join(store.Dir(), string(MemoryTypeWorkspaceProfile))
-	stub := "---\nid: profile_abc123\ntype: workspace_profile\ncreated_at: \"2026-01-01T00:00:00Z\"\nupdated_at: \"2026-01-01T00:00:00Z\"\nsupersedes: []\ntags: []\ndescription: test\nsummary: test\n---\n\nFADE IN:\n\nINT. MEMORY 2026-01-01 00:00:00\n\nTHE END.\n"
-	if err := os.WriteFile(filepath.Join(dir, "profile_abc123.fountain"), []byte(stub), 0o644); err != nil {
+	doc := NewMemoryDoc("profile_abc123", MemoryTypeWorkspaceProfile, "test", "test", nil)
+	if err := store.Save(doc, nil); err != nil {
 		t.Fatal(err)
 	}
 	if NeedsOnboarding(store) {
-		t.Error("workspace with profile file should not need onboarding")
+		t.Error("workspace with active profile in DB should not need onboarding")
+	}
+}
+
+func TestNeedsOnboarding_ArchivedProfile(t *testing.T) {
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewMemoryStore(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	doc := NewMemoryDoc("profile_abc123", MemoryTypeWorkspaceProfile, "test", "test", nil)
+	if err := store.Save(doc, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Archive("profile_abc123"); err != nil {
+		t.Fatal(err)
+	}
+	if !NeedsOnboarding(store) {
+		t.Error("workspace with only archived profiles should need onboarding")
 	}
 }
 
