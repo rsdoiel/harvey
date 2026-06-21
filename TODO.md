@@ -6,9 +6,10 @@
 ## Release Review
 
 - [ ] README.md is stale and needs to be brought up to date for v0.0.14 improvements
-- [ ] The harvey.1.md `/read` now handles the explicit `/read-pdf` command, update the helptext.go help text to fix
+- [x] The harvey.1.md `/read` now handles the explicit `/read-pdf` command — `cmdRead` now auto-detects `.pdf` files and extracts text via poppler (consistent with `read_file` tool); `ReadHelpText` documents this; `harvey-read.7.md` regenerated
 - [ ] Check for broken links in Markdown pages (example some of the skills links are broken)
 - [ ] Identify missing content (example Harvey skills) and review what can be done to fix the problem
+- [ ] Some of the diagrams written with UTF-8 corner and line characters had aslignment issues for the virtical bars and corners on the right side
 
 ## Next (v0.0.14 release)
 

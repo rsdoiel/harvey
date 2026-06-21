@@ -2582,6 +2582,39 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintf(out, "  ✗ %s: read permission denied\n", rel)
 			continue
 		}
+
+		// PDF files: extract text via poppler instead of reading raw bytes.
+		if strings.ToLower(filepath.Ext(rel)) == ".pdf" {
+			absPath, resolveErr := a.Workspace.AbsPath(rel)
+			if resolveErr != nil {
+				fmt.Fprintf(out, "  ✗ %s: %v\n", rel, resolveErr)
+				continue
+			}
+			result, pdfErr := pdfExtract(absPath, "")
+			if pdfErr != nil {
+				if a.AuditBuffer != nil {
+					a.AuditBuffer.Log(ActionFileRead, rel, StatusError)
+				}
+				fmt.Fprintf(out, "  ✗ %s: %v\n", rel, pdfErr)
+				continue
+			}
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionFileRead, rel, StatusSuccess)
+			}
+			fmt.Fprintf(out, "  ✓ %s (PDF, %d page(s))\n", rel, result.Info.Pages)
+			sb.WriteString("\n```" + rel + "\n")
+			if result.Info.Title != "" {
+				fmt.Fprintf(&sb, "Title: %s\n", result.Info.Title)
+			}
+			sb.WriteString(result.Text)
+			if !strings.HasSuffix(result.Text, "\n") {
+				sb.WriteByte('\n')
+			}
+			sb.WriteString("```\n")
+			ok++
+			continue
+		}
+
 		data, err := a.Workspace.ReadFile(rel)
 		if err != nil {
 			if a.AuditBuffer != nil {

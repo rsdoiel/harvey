@@ -979,6 +979,11 @@ workspace are rejected. Symlinks are not followed. Sensitive files
 The agents/ directory is off-limits to /read to prevent skills and
 configuration from being inadvertently exposed.
 
+PDF support: when FILE has a .pdf extension, /read automatically extracts
+the text using the poppler utilities (pdfinfo, pdftotext, pdfimages) and
+injects the result as plain text — no binary data is sent to the model.
+Use /read-pdf FILE PAGES to extract a specific page range from a large PDF.
+
 Context window impact: reading large files can quickly consume the model's
 context window. Check /status after reading to see the token impact.
 
