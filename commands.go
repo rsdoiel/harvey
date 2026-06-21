@@ -804,8 +804,21 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 		return cmdModelList(a, out)
 	case "use":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "  Usage: /model use NAME")
-			return nil
+			names := allModelNames(a)
+			if len(names) == 0 {
+				fmt.Fprintln(out, "  No models registered. Use /llamafile add, or /ollama use for Ollama models.")
+				return nil
+			}
+			active := a.Config.LlamafileActive
+			items := make([]SelectItem, len(names))
+			for i, n := range names {
+				items[i] = SelectItem{Value: n, Label: n, Active: n == active}
+			}
+			chosen, err := SelectFrom(items, fmt.Sprintf("Select model [1-%d] or enter a name: ", len(items)), a.In, out)
+			if err != nil || chosen == "" {
+				return err
+			}
+			args = append(args, chosen)
 		}
 		switched, err := attemptModelSwitch(a, args[1], out)
 		if err != nil {
@@ -3895,8 +3908,30 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		}
 	case "use", "continue":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /session use FILE")
-			return nil
+			if a.SessionsDir == "" {
+				fmt.Fprintln(out, "  No sessions directory configured.")
+				return nil
+			}
+			files, err := ListSessionFiles(a.SessionsDir)
+			if err != nil {
+				return err
+			}
+			if len(files) == 0 {
+				fmt.Fprintln(out, "  No sessions found. Start a conversation to create one.")
+				return nil
+			}
+			items := make([]SelectItem, len(files))
+			for i, f := range files {
+				items[i] = SelectItem{
+					Value: f.Path,
+					Label: fmt.Sprintf("%-40s  %s", f.Name, f.ModTime.Format("2006-01-02 15:04")),
+				}
+			}
+			chosen, sErr := SelectFrom(items, fmt.Sprintf("Select session [1-%d] or Enter to cancel: ", len(items)), a.In, out)
+			if sErr != nil || chosen == "" {
+				return sErr
+			}
+			args = append(args, chosen)
 		}
 		n, err := a.ContinueFromFountain(args[1])
 		if err != nil {

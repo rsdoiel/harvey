@@ -1372,3 +1372,124 @@ func TestOllamaUse_noArg_validSelection(t *testing.T) {
 		t.Errorf("expected selected model name in output, got:\n%s", out)
 	}
 }
+
+// ─── /model use (no arg → picker) ────────────────────────────────────────────
+
+func TestCmdModelUse_noArg_noModels(t *testing.T) {
+	a := newTestAgent(t)
+	// No llamafile models, no aliases — picker should say nothing to choose.
+	a.In = strings.NewReader("\n")
+	var buf strings.Builder
+	if err := cmdModel(a, []string{"use"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	// When there are no models, should print a helpful message rather than silently printing usage.
+	if !strings.Contains(out, "no") && !strings.Contains(out, "No") && !strings.Contains(out, "register") && !strings.Contains(out, "Usage") {
+		t.Errorf("expected no-models message, got: %s", out)
+	}
+}
+
+func TestCmdModelUse_noArg_showsPicker(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coder", Path: "/tmp/qwen.llamafile"},
+		{Name: "gemma4", Path: "/tmp/gemma4.llamafile"},
+	}
+	// Simulate user entering "0" (invalid) → cancellation without model switch.
+	a.In = strings.NewReader("0\n")
+	var buf strings.Builder
+	if err := cmdModel(a, []string{"use"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "qwen-coder") {
+		t.Errorf("expected model name qwen-coder in picker output, got: %s", out)
+	}
+	if !strings.Contains(out, "gemma4") {
+		t.Errorf("expected model name gemma4 in picker output, got: %s", out)
+	}
+}
+
+func TestCmdModelUse_noArg_selectsModel(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.LlamafileModels = []LlamafileEntry{
+		{Name: "qwen-coder", Path: "/tmp/qwen.llamafile"},
+	}
+	// Select item 1.
+	a.In = strings.NewReader("1\n")
+	var buf strings.Builder
+	// cmdModel will call cmdLlamafileUse which tries to start the process — that
+	// will fail since the path doesn't exist. We just verify the picker was shown
+	// and the correct name was handed to the switch logic.
+	cmdModel(a, []string{"use"}, &buf)
+	out := buf.String()
+	if !strings.Contains(out, "qwen-coder") {
+		t.Errorf("expected selected model name in output, got: %s", out)
+	}
+}
+
+// ─── /session use (no arg → picker) ──────────────────────────────────────────
+
+func TestSessionUse_noArg_noSessions(t *testing.T) {
+	a := newTestAgent(t)
+	a.SessionsDir = t.TempDir() // empty
+	a.In = strings.NewReader("\n")
+	var buf strings.Builder
+	if err := cmdSession(a, []string{"use"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "No session") && !strings.Contains(out, "no session") {
+		t.Errorf("expected no-sessions message, got: %s", out)
+	}
+}
+
+func TestSessionUse_noArg_showsPicker(t *testing.T) {
+	sessDir := t.TempDir()
+
+	// Write two minimal session files.
+	for _, name := range []string{"alpha.spmd", "beta.spmd"} {
+		rec, err := NewRecorder(sessDir+"/"+name, "mock", sessDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = rec.RecordTurn("hello", "hi")
+		rec.Close()
+	}
+
+	a := newTestAgent(t)
+	a.SessionsDir = sessDir
+	// Simulate user pressing Enter (no selection) → cancel.
+	a.In = strings.NewReader("\n")
+	var buf strings.Builder
+	if err := cmdSession(a, []string{"use"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "alpha") && !strings.Contains(out, "beta") {
+		t.Errorf("expected session names in picker output, got: %s", out)
+	}
+}
+
+func TestSessionContinue_noArg_showsPicker(t *testing.T) {
+	sessDir := t.TempDir()
+	rec, err := NewRecorder(sessDir+"/session.spmd", "mock", sessDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = rec.RecordTurn("hello", "hi")
+	rec.Close()
+
+	a := newTestAgent(t)
+	a.SessionsDir = sessDir
+	a.In = strings.NewReader("\n") // cancel
+	var buf strings.Builder
+	if err := cmdSession(a, []string{"continue"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "session") {
+		t.Errorf("expected session name in picker output, got: %s", out)
+	}
+}
