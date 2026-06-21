@@ -21,61 +21,45 @@
 <h1 id="installation-harvey">Installation <strong>harvey</strong></h1>
 <p><strong>harvey</strong> is a terminal coding agent that runs language
 models locally. No cloud account or API key required.</p>
-<h2 id="quick-start-llamafile-recommended">Quick start (Llamafile —
-recommended)</h2>
-<p>The simplest way to get Harvey running is with a llamafile — a single
-self-contained file that bundles a language model and its own HTTP
-server.</p>
-<ol type="1">
-<li><p>Download a llamafile from: <a
-href="https://huggingface.co/Mozilla/llamafile-models"
-class="uri">https://huggingface.co/Mozilla/llamafile-models</a></p>
-<p>Recommended:</p>
+<h2 id="requirements">Requirements</h2>
 <ul>
-<li><code>Qwen2.5-Coder-7B-Q5_K_S.llamafile</code> (~5 GB, good for most
-hardware)</li>
-<li><code>Phi-3.5-mini-instruct-Q4_K_M.llamafile</code> (~2 GB, low-VRAM
-/ CPU)</li>
-</ul></li>
-<li><p>Place it in <code>~/Models/</code> and make it executable (Linux
-/ macOS):</p>
-<pre class="shell"><code>chmod +x ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile</code></pre></li>
-<li><p>Install Harvey (see below), then run it in your project
-directory:</p>
-<pre class="shell"><code>cd ~/myproject
-harvey</code></pre>
-<p>Harvey finds the llamafile automatically and connects.</p></li>
-</ol>
-<h2 id="quick-start-ollama-optional">Quick start (Ollama —
-optional)</h2>
-<p>If you prefer a persistent model server or want access to the full
-Ollama model library:</p>
-<pre class="shell"><code># Install Ollama from https://ollama.com/download, then:
-ollama pull qwen2.5-coder:7b</code></pre>
-<p>Harvey detects Ollama automatically on startup.</p>
-<h2 id="installing-harvey">Installing Harvey</h2>
-<h3 id="installer-script-linux-macos-wsl">Installer script (Linux /
-macOS / WSL)</h3>
-<pre class="shell"><code>curl https://rsdoiel.github.io/harvey/installer.sh | sh</code></pre>
-<p>This installs Harvey into <code>$HOME/bin/</code>.</p>
-<h3 id="windows-powershell">Windows (PowerShell)</h3>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode ps1"><code class="sourceCode powershell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">irm</span> https<span class="op">://</span>rsdoiel<span class="op">.</span><span class="fu">github</span><span class="op">.</span><span class="fu">io</span><span class="op">/</span>harvey<span class="op">/</span>installer<span class="op">.</span><span class="fu">ps1</span> <span class="op">|</span> <span class="fu">iex</span></span></code></pre></div>
-<h3 id="security-warnings-macos-windows">Security warnings (macOS /
-Windows)</h3>
-<p>If you see a security warning about an unverified developer, see:</p>
-<ul>
-<li><a href="INSTALL_NOTES_macOS.html">INSTALL_NOTES_macOS.md</a></li>
-<li><a
-href="INSTALL_NOTES_Windows.html">INSTALL_NOTES_Windows.md</a></li>
+<li>Go &gt;= 1.26.3</li>
+<li>Git</li>
+<li>A running model backend — either <a
+href="https://ollama.com">Ollama</a> or a <a
+href="https://github.com/Mozilla-Ocho/llamafile">llamafile</a></li>
 </ul>
-<h3 id="installing-from-source">Installing from source</h3>
-<p><strong>Requirements:</strong> Go &gt;= 1.26.3</p>
+<h2 id="compile-from-source">Compile from source</h2>
 <pre class="shell"><code>git clone https://github.com/rsdoiel/harvey
 cd harvey
 make
 make test
 make install</code></pre>
+<p><code>make install</code> copies the binaries into
+<code>$HOME/bin/</code> by default. Override with
+<code>make install prefix=/usr/local</code>.</p>
+<h2 id="model-backend">Model backend</h2>
+<h3 id="ollama-recommended">Ollama (recommended)</h3>
+<p>Install Ollama from <a href="https://ollama.com/download"
+class="uri">https://ollama.com/download</a>, then pull a model:</p>
+<pre class="shell"><code>ollama pull qwen2.5-coder:7b</code></pre>
+<p>Harvey detects Ollama automatically on startup.</p>
+<h3 id="llamafile-self-contained-no-install">Llamafile (self-contained,
+no install)</h3>
+<p>Download a pre-built llamafile from: <a
+href="https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles"
+class="uri">https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles</a></p>
+<p>Recommended: - <code>Qwen2.5-Coder-7B-Q5_K_S.llamafile</code> (~5 GB,
+good for most hardware) -
+<code>Phi-3.5-mini-instruct-Q4_K_M.llamafile</code> (~2 GB, low-VRAM /
+CPU)</p>
+<p>Place it in <code>~/Models/</code> and make it executable (Linux /
+macOS):</p>
+<pre class="shell"><code>chmod +x ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile</code></pre>
+<p>Harvey finds the llamafile automatically and connects.</p>
+<h2 id="running-harvey">Running harvey</h2>
+<pre class="shell"><code>cd ~/myproject
+harvey</code></pre>
 </section>
 </body>
 </html>
