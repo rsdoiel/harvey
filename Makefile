@@ -44,7 +44,7 @@ ifeq ($(OS), Windows)
 	EXT = .exe
 endif
 
-build: version.go $(PROGRAMS) man CITATION.cff about.md installer.sh installer.ps1
+build: version.go $(PROGRAMS) man CITATION.cff about.md
 
 version.go: .FORCE
 	cmt codemeta.json version.go
@@ -80,12 +80,6 @@ CITATION.cff: codemeta.json
 
 about.md: codemeta.json $(PROGRAMS)
 	cmt codemeta.json about.md
-
-installer.sh: .FORCE
-	cmt codemeta.json installer.sh
-
-installer.ps1: .FORCE
-	cmt codemeta.json installer.ps1
 
 
 test: $(PACKAGE)
@@ -200,7 +194,7 @@ distribute_docs:
 	@cp -vR man dist/
 	@for DNAME in $(DOCS); do cp -vR $$DNAME dist/; done
 
-release: build installer.sh installer.ps1 save setup_dist distribute_docs dist/Linux-x86_64 dist/Linux-aarch64 dist/macOS-x86_64 dist/macOS-arm64 dist/Windows-x86_64 dist/Windows-arm64 dist/Linux-armv7l
+release: build save setup_dist distribute_docs dist/Linux-x86_64 dist/Linux-aarch64 dist/macOS-x86_64 dist/macOS-arm64 dist/Windows-x86_64 dist/Windows-arm64 dist/Linux-armv7l
 	@printf "\nready to run\n\n\trelease.bash\n\n"
 
 
