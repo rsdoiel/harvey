@@ -1178,6 +1178,11 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 				}
 			}
 		}
+		// Check for Apertus-native <SPECIAL_71>...<SPECIAL_72> tool calls in the
+		// raw response text (llama.cpp does not parse this format server-side).
+		if _, unknowns := tryExecuteApertusToolCalls(a, buf.String(), out); len(unknowns) > 0 {
+			proseUnknownTools = append(proseUnknownTools, unknowns...)
+		}
 		// Code-block extraction: when the model produced fenced code blocks
 		// but made no tool calls, offer to write each block to a file. This
 		// handles small local models that respond with prose + a code block
@@ -2267,6 +2272,37 @@ func (a *Agent) ragAugment(prompt string) string {
 	sb.WriteString("---\n\n")
 	sb.WriteString(prompt)
 	return sb.String()
+}
+
+// tryExecuteApertusToolCalls scans raw response text for Apertus-native
+// <SPECIAL_71>...<SPECIAL_72> tool calls and executes them through the registry.
+// Returns the same (dispatched, unknownNames) contract as tryExecuteProseToolCalls.
+func tryExecuteApertusToolCalls(a *Agent, text string, out io.Writer) (dispatched bool, unknownNames []string) {
+	if a.Tools == nil || !a.Config.ToolsEnabled {
+		return false, nil
+	}
+	calls := ParseApertusToolCalls(text)
+	if len(calls) == 0 {
+		return false, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ex := NewToolExecutor(a.Tools, a.Client, a.Config)
+	ex.DebugLog = a.DebugLog
+	results, _ := ex.ExecuteToolCalls(ctx, calls)
+	for i, r := range results {
+		name := ""
+		if i < len(calls) {
+			name = calls[i].Function.Name
+		}
+		fmt.Fprintf(out, dim(fmt.Sprintf("  [%s]", name))+" %s\n", r.Content)
+		if strings.Contains(r.Content, "unknown tool") {
+			unknownNames = append(unknownNames, name)
+		} else if !strings.HasPrefix(r.Content, "error:") {
+			dispatched = true
+		}
+	}
+	return dispatched, unknownNames
 }
 
 // tryExecuteProseToolCalls parses tool-call-format JSON blocks from blocks and

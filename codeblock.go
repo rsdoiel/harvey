@@ -3,6 +3,7 @@ package harvey
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
@@ -77,6 +78,56 @@ func ParseProseToolCalls(blocks []CodeBlock) []anyllm.ToolCall {
 				Arguments: string(argsRaw),
 			},
 		})
+	}
+	return calls
+}
+
+// apertusToolCallRE matches Apertus-native tool call blocks: <SPECIAL_71>...<SPECIAL_72>.
+var apertusToolCallRE = regexp.MustCompile(`<SPECIAL_71>([\s\S]*?)<SPECIAL_72>`)
+
+/** ParseApertusToolCalls scans raw response text for Apertus-native tool call
+ * blocks and returns them as anyllm.ToolCall values.
+ *
+ * Apertus emits tool calls as <SPECIAL_71>[{"name": args}, ...]<SPECIAL_72>
+ * where each array element is a single-key object: the key is the function name
+ * and the value is the arguments (any JSON value).
+ *
+ * Parameters:
+ *   text (string) — raw LLM response text to scan.
+ *
+ * Returns:
+ *   []anyllm.ToolCall — parsed tool calls; nil when none found.
+ *
+ * Example:
+ *   calls := ParseApertusToolCalls(`<SPECIAL_71>[{"read_file": {"path": "x.go"}}]<SPECIAL_72>`)
+ *   // calls[0].Function.Name == "read_file"
+ */
+func ParseApertusToolCalls(text string) []anyllm.ToolCall {
+	matches := apertusToolCallRE.FindAllStringSubmatch(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	var calls []anyllm.ToolCall
+	for i, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		var entries []map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(strings.TrimSpace(m[1])), &entries); err != nil {
+			continue
+		}
+		for j, entry := range entries {
+			for toolName, argsRaw := range entry {
+				calls = append(calls, anyllm.ToolCall{
+					ID:   fmt.Sprintf("apertus_%d_%d", i, j),
+					Type: "function",
+					Function: anyllm.FunctionCall{
+						Name:      toolName,
+						Arguments: string(argsRaw),
+					},
+				})
+			}
+		}
 	}
 	return calls
 }
