@@ -76,13 +76,14 @@ conventions that reveal their identity and role.
 ## Scene Types
 
 Harvey uses two scene type prefixes from Fountain: **INT.** (Interior) and
-**EXT.** (Exterior). These distinguish whether Harvey is involved in the
-conversation.
+**EXT.** (Exterior). These distinguish **where the computation runs** —
+on the local machine or on a remote system.
 
-### INT. — Interior Scenes (Harvey Involved)
+### INT. — Interior Scenes (Local Computation)
 
-Harvey is acting as the **agent/orchestrator** in these scenes. The scene
-heading lists Harvey and the human participant.
+The computation runs **on the same machine as Harvey**. Harvey is the
+active agent. The scene heading always names HARVEY and the human
+participant.
 
 **Format:**
 ```
@@ -94,22 +95,45 @@ RSDOIEL
 User prompt here...
 
 HARVEY
-Harvey's response (local model) or forwarding...
+Harvey's response using the local model.
 ```
 
 **Use cases:**
 - Harvey responding with its local Ollama/Llamafile model
-- Harvey forwarding to routed Ollama endpoints
-- Harvey forwarding to cloud models via @mention
 - Agent actions (file writes)
 - Skill activations
+- Shell command execution
+- Session context recall (memory injection at session start)
 
-### EXT. — Exterior Scenes (Direct Model-Human)
+### EXT. — Exterior Scenes (Remote Computation)
 
-Direct conversation between a model and human **without Harvey's
-intermediation**. Harvey is not involved in these scenes.
+The computation runs **on a remote system** — a remote Ollama instance,
+a cloud API, or any endpoint reached over the network. Harvey may still
+appear as the routing intermediary, but the model doing the work is
+external.
 
-**Format:**
+The scene heading names the remote endpoint and the human participant
+rather than HARVEY. When Harvey routes the request, HARVEY appears in
+the dialogue as a forwarding character. When the conversation is truly
+direct (no Harvey involvement), HARVEY is absent.
+
+**Format (Harvey routing to remote endpoint):**
+```
+EXT. PI2 AND RSDOIEL 2026-05-04 18:30:00
+
+Harvey routing to PI2 at ollama://192.168.1.2:11434. Workspace: /home/user/project.
+
+RSDOIEL
+@pi2 analyze this data
+
+HARVEY
+Forwarding to PI2.
+
+PI2
+Remote response...
+```
+
+**Format (direct conversation, no Harvey):**
 ```
 EXT. MISTRAL AND RSDOIEL 2026-05-04 18:30:00
 
@@ -123,8 +147,9 @@ Mistral's direct response...
 ```
 
 **Use cases:**
-- Direct API conversations (bypassing Harvey)
-- Hypothetical: Future direct model access
+- Remote Ollama routes (registered via `/route add`, e.g. `@pi2`)
+- Cloud API calls via registered routes (e.g. `@mistral`, `@claude`)
+- Direct API conversations bypassing Harvey
 
 ## Scene Structure
 
@@ -308,14 +333,15 @@ The capital of France is Paris.
 **Character:** HARVEY (Harvey agent with local model)
 **Model:** llama3:latest (from scene description)
 
-### Scenario 2: Harvey Forwarding to Routed Ollama
+### Scenario 2: Harvey Routing to Remote Ollama
 
-Harvey forwards to a remote Ollama instance registered as a route.
+Harvey routes to a remote Ollama instance registered as a route. The
+computation runs on the remote machine, so the scene is **EXT.**
 
 ```
-INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+EXT. PI2 AND RSDOIEL 2026-05-04 18:30:00
 
-Harvey and RSDOIEL are in chat mode. Model: ollama://192.168.1.2:11434. Workspace: /home/user/project.
+Harvey routing to PI2 at ollama://192.168.1.2:11434. Workspace: /home/user/project.
 
 RSDOIEL
 @pi2 analyze this data
@@ -329,15 +355,18 @@ Analysis: The data shows a normal distribution with mean 42.
 
 **Route:** PI2 (registered via `/route add pi2 ollama://192.168.1.2:11434`)
 **Character:** PI2 (the route name as character)
+**Scene:** EXT. — computation on the remote Pi machine
 
-### Scenario 3: Harvey Forwarding to Cloud Model via @mention
+### Scenario 3: Harvey Routing to Cloud Model via @mention
 
-User uses @mention to direct a prompt to a specific cloud model.
+User uses @mention to direct a prompt to a cloud model registered as a
+route. The computation runs on the cloud provider's infrastructure, so
+the scene is **EXT.**
 
 ```
-INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+EXT. MISTRAL AND RSDOIEL 2026-05-04 18:30:00
 
-Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+Harvey routing to MISTRAL (cloud API). Workspace: /home/user/project.
 
 RSDOIEL
 @mistral review this code
@@ -349,12 +378,15 @@ MISTRAL
 The code follows good practices. Consider adding error handling for the edge case at line 42.
 ```
 
-**Character:** MISTRAL (cloud model)
+**Character:** MISTRAL (cloud model, registered as a route)
 **Trigger:** @mention in user dialogue
+**Scene:** EXT. — computation on remote cloud infrastructure
 
-### Scenario 4: Direct External Conversation
+### Scenario 4: Direct External Conversation (No Harvey)
 
-Direct conversation with a model, bypassing Harvey.
+Direct conversation with a remote model, bypassing Harvey entirely.
+EXT. is used because the computation is remote. HARVEY does not appear
+in the dialogue because Harvey is not involved.
 
 ```
 EXT. CLAUDE AND RSDOIEL 2026-05-04 18:30:00
@@ -368,7 +400,9 @@ CLAUDE
 Quantum computing uses quantum bits (qubits) that can exist in superposition...
 ```
 
-**Note:** No HARVEY character appears in EXT. scenes.
+**Note:** HARVEY is absent from the dialogue because Harvey is not the
+routing intermediary. Contrast with Scenarios 2 and 3, where HARVEY
+appears as the forwarding character even though the scene is EXT.
 
 ### Scenario 5: Unfulfilled @mention
 
@@ -414,7 +448,10 @@ CLAUDE
 Second opinion: I agree, but consider adding tests.
 ```
 
-**Note:** Multiple models can appear in a single INT. scene via sequential forwarding.
+**Note:** This scenario only applies when the models are local (e.g.
+local aliases or Llamafile models). If @mistral and @claude are
+registered remote routes, each dispatch creates its own EXT. scene
+rather than appearing together in a single INT. scene.
 
 ## Scene Types Reference
 
@@ -435,7 +472,23 @@ HARVEY
 Response...
 ```
 
-**EXT. example:**
+**EXT. example (Harvey routing):**
+```
+EXT. PI2 AND RSDOIEL 2026-05-04 18:30:00
+
+Harvey routing to PI2 at ollama://192.168.1.2:11434. Workspace: /path.
+
+RSDOIEL
+Prompt...
+
+HARVEY
+Forwarding to PI2.
+
+PI2
+Response...
+```
+
+**EXT. example (direct, no Harvey):**
 ```
 EXT. MISTRAL AND RSDOIEL 2026-05-04 18:30:00
 
@@ -829,12 +882,12 @@ THE END.
 
 ### For Session Recording (Harvey)
 
-1. **Always include** `Model:` and `Workspace:` in scene descriptions
-2. **Use INT.** for all Harvey-mediated conversations
-3. **Use EXT.** only for direct model-human conversations (no Harvey)
-4. **Attribute correctly**: HARVEY for local, ROUTE_NAME for routed, MODEL_NAME for cloud
+1. **Always include** `Model:` or endpoint URL and `Workspace:` in scene descriptions
+2. **Use INT.** when computation runs locally (local Ollama, Llamafile, shell, file writes, skills)
+3. **Use EXT.** when computation runs remotely (registered routes, cloud APIs)
+4. **Include HARVEY** in EXT. dialogue when Harvey is the routing intermediary; omit HARVEY only for truly direct conversations
 5. **Track @mentions**: Note unfulfilled mentions in scene description
-6. **Start new scenes** when model changes (for clarity in analysis)
+6. **Start new scenes** for each discrete interaction (one scene per chat turn, route dispatch, shell command, etc.)
 
 ### For Session Analysis
 
@@ -883,6 +936,7 @@ Older parsers should **gracefully ignore** unknown elements.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2 | 2026-06-24 | Redefined INT./EXT. as local/remote computation; EXT. scenes now used for route dispatch and cloud API calls; added `[[tool:]]`, `[[CHARACTER.tool:]]`, `[[rag:]]`, `[[recall:]]` notes; added `INT. CONTEXT RECALL` scene type |
 | 1.1 | 2026-05-25 | Added `INT. MEMORY <TIMESTAMP>` scene type for memory documents |
 | 1.0 | 2026-05-04 | Initial specification with multi-model character attribution |
 

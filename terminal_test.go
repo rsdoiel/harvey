@@ -480,7 +480,7 @@ func TestSelectBackend_extractsModelHintFromContinuePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRecorder: %v", err)
 	}
-	_ = rec.RecordTurnWithStats("hello", "world", ChatStats{}, nil, "", nil)
+	_ = rec.RecordTurnWithStats("hello", "world", ChatStats{}, nil, "", nil, nil)
 	rec.Close()
 
 	// Set up agent with qwen-coding registered but no active model.

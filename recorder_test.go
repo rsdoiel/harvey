@@ -67,7 +67,7 @@ func TestRecorder_withStats(t *testing.T) {
 
 	stats := ChatStats{PromptTokens: 10, ReplyTokens: 20, Elapsed: 1000000000, TokensPerSec: 20}
 	models := []string{"llama3.2:1b", "Ollama (llama3.1:8b)"}
-	if err := r.RecordTurnWithStats("Hi", "Hello!", stats, models, "Routing to llama3.1:8b", nil); err != nil {
+	if err := r.RecordTurnWithStats("Hi", "Hello!", stats, models, "Routing to llama3.1:8b", nil, nil); err != nil {
 		t.Fatalf("RecordTurnWithStats: %v", err)
 	}
 	r.Close()
@@ -170,6 +170,60 @@ func TestDefaultSessionPath(t *testing.T) {
 }
 
 // ─── RecordModelSwitch ───────────────────────────────────────────────────────
+
+// TestRecordModelSwitch_updatesModelName verifies that after RecordModelSwitch,
+// subsequent RecordTurnWithStats calls use the new model name in the scene
+// header, the "Forwarding to" line, and the speaker name — not the stale name
+// set at NewRecorder time.
+func TestRecordModelSwitch_updatesModelName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+
+	// Recorder starts with no backend (simulates startup before model is chosen).
+	r, err := NewRecorder(path, "none", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User connects Qwen mid-session.
+	if err := r.RecordModelSwitch("qwen-coding", "llamafile"); err != nil {
+		t.Fatalf("RecordModelSwitch: %v", err)
+	}
+
+	// Record a turn — should use the new model name everywhere.
+	if err := r.RecordTurn("Review this code.", "Looks good."); err != nil {
+		t.Fatalf("RecordTurn: %v", err)
+	}
+	r.Close()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	// Scene action line must reference QWEN-CODING. The title page retains NONE
+	// (it records the model active at session start) — that's expected. We only
+	// care that the per-turn scene action and dialogue use the switched model.
+	checks := []struct{ want, notWant string }{
+		// Scene action: "Model: QWEN-CODING. Workspace: ..."
+		{"Model: QWEN-CODING.", ""},
+		// Forwarding dialogue must use new model.
+		{"Forwarding to QWEN-CODING.", "Forwarding to NONE."},
+	}
+	for _, c := range checks {
+		if !strings.Contains(content, c.want) {
+			t.Errorf("expected %q in session after model switch\n---\n%s", c.want, content)
+		}
+		if c.notWant != "" && strings.Contains(content, c.notWant) {
+			t.Errorf("stale %q still present after model switch\n---\n%s", c.notWant, content)
+		}
+	}
+	// Speaker name for the LLM reply must be the new model.
+	if !strings.Contains(content, "\nQWEN-CODING\n") {
+		t.Errorf("expected QWEN-CODING as speaker in dialogue after model switch\n---\n%s", content)
+	}
+}
 
 func TestRecordModelSwitch_writesNote(t *testing.T) {
 	dir := t.TempDir()
@@ -286,7 +340,7 @@ func TestParseFountainSession_stripsBackendSuffix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = r.RecordTurnWithStats("hello", "world", ChatStats{}, nil, "", nil)
+	_ = r.RecordTurnWithStats("hello", "world", ChatStats{}, nil, "", nil, nil)
 	r.Close()
 
 	_, model, _, err := parseFountainSession(path)

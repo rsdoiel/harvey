@@ -132,6 +132,16 @@ func restartActiveLlamafile(a *Agent, out io.Writer) error {
  *   }
  */
 func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
+	// If ~/Models already has .llamafile files, show a picker instead of
+	// asking for a raw path — this is the common case for users who
+	// downloaded a llamafile but haven't registered it yet.
+	if paths := scanLlamafileModels(a.Config.LlamafileModelsDir); len(paths) > 0 {
+		selected, err := llamafilePickFromDir(a, out)
+		if err != nil || selected == "" {
+			return fmt.Errorf("no backend available")
+		}
+		return cmdLlamafileAdd(a, []string{selected}, out)
+	}
 	fmt.Fprint(out, FirstRunWizardText)
 	fmt.Fprint(out, "Enter a llamafile path (or press Enter to exit): ")
 	line, _ := bufio.NewReader(in).ReadString('\n')
@@ -634,6 +644,11 @@ func (a *Agent) Run(out io.Writer) error {
 			continue
 		}
 
+		// charName carries the ALL-CAPS model name for @mention local-switch turns
+		// so tool call notes in the session are attributed to the switched model.
+		// Reset each iteration; set below when attemptModelSwitch succeeds.
+		charName := ""
+
 		// Sticky route: prepend @ActiveRoute when set and no explicit @ prefix given.
 		if a.ActiveRoute != "" && !strings.HasPrefix(input, "@") && !strings.HasPrefix(input, "/") {
 			input = "@" + a.ActiveRoute + " " + input
@@ -835,7 +850,8 @@ func (a *Agent) Run(out io.Writer) error {
 					a.AddMessage("assistant", reply)
 
 					if a.Recorder != nil {
-						if recErr := a.Recorder.RecordTurn(input, reply); recErr != nil {
+						// Route dispatch is remote computation — use EXT. scene.
+						if recErr := a.Recorder.RecordExteriorTurn(strings.ToUpper(name), input, reply); recErr != nil {
 							fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
 						}
 					}
@@ -855,7 +871,10 @@ func (a *Agent) Run(out io.Writer) error {
 					continue // pure model switch, no prompt to send this turn
 				}
 				// Switch succeeded with a trailing prompt — send it to the new model.
+				// Local computation: stays INT., but attribute tool calls to the
+				// switched model by passing its name as charName.
 				input = prompt
+				charName = strings.ToUpper(name)
 				// Fall through to the normal chat path below.
 			} else {
 				// Name not found as a route or local model.
@@ -925,7 +944,7 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}()
 
-		reply, _, turnErr := a.runChatTurn(chatCtx, input, out, reader, true)
+		reply, _, turnErr := a.runChatTurn(chatCtx, input, out, reader, true, charName)
 		close(watchDone)
 		cancelChat()
 
@@ -937,7 +956,7 @@ func (a *Agent) Run(out io.Writer) error {
 			if askYesNo(reader, out, fmt.Sprintf("  Restart %s? [Y/n] ", a.Config.LlamafileActive), true) {
 				if restartErr := restartActiveLlamafile(a, out); restartErr == nil {
 					retryCtx, retryCancel := context.WithCancel(context.Background())
-					reply, _, turnErr = a.runChatTurn(retryCtx, input, out, reader, true)
+					reply, _, turnErr = a.runChatTurn(retryCtx, input, out, reader, true, charName)
 					retryCancel()
 				} else {
 					fmt.Fprintf(out, red("  Restart failed: ")+"%v\n", restartErr)
@@ -1047,7 +1066,7 @@ func (a *Agent) Run(out io.Writer) error {
  *       fmt.Fprintln(out, reply)
  *   }
  */
-func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool) (string, ChatStats, error) {
+func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool, charName string) (string, ChatStats, error) {
 	// Semantic memory injection — fires once per session (or after /clear).
 	if a.memoryContextPending {
 		a.injectMemoryContext(input)
@@ -1055,7 +1074,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	}
 
 	// RAG context injection — prepend relevant chunks before sending.
-	augmented := a.ragAugment(input)
+	augmented, ragInfo := a.ragAugment(input)
 	a.AddMessage("user", augmented)
 
 	// Token-count warning — runs only when the backend is Ollama.
@@ -1102,12 +1121,13 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 		ex.DebugLog = a.DebugLog
 		ex.Status = sp
+		ex.CharacterName = charName
 		var updatedHistory []Message
 		updatedHistory, stats, chatErr = ex.RunToolLoop(ctx, a.History, &buf)
 		if chatErr == nil {
 			// Preserve any intermediate tool-call/result messages added by the loop.
 			a.History = updatedHistory
-			toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:])
+			toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
 		}
 	} else {
 		stats, chatErr = a.Client.Chat(ctx, a.History, &buf)
@@ -1236,7 +1256,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 
 	a.AddMessage("assistant", buf.String())
 	if a.Recorder != nil {
-		if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, "", toolCallRecords); recErr != nil {
+		if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, "", toolCallRecords, ragInfo); recErr != nil {
 			fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
 		}
 	}
@@ -1345,17 +1365,39 @@ func saveCmdHistory(ws *Workspace, le *termlib.LineEditor) {
 }
 
 // toolCallsFromHistory extracts ToolCallRecords from a slice of history
-// messages, collecting every tool call from assistant turns.
-func toolCallsFromHistory(msgs []Message) []ToolCallRecord {
+// messages. It pairs each tool call from assistant turns with its result
+// status from the corresponding tool-role message. charName is stamped onto
+// every record's Character field; pass "" for HARVEY (default, no prefix).
+func toolCallsFromHistory(msgs []Message, charName string) []ToolCallRecord {
+	// Build a map from ToolCallID to result status derived from tool-role messages.
+	resultByID := make(map[string]string)
+	for _, m := range msgs {
+		if m.Role != "tool" || m.ToolCallID == "" {
+			continue
+		}
+		content := strings.TrimSpace(m.Content)
+		first := strings.SplitN(content, "\n", 2)[0]
+		if strings.HasPrefix(first, "error:") {
+			resultByID[m.ToolCallID] = first
+		} else {
+			resultByID[m.ToolCallID] = "ok"
+		}
+	}
 	var out []ToolCallRecord
 	for _, m := range msgs {
 		if m.Role != "assistant" || len(m.ToolCalls) == 0 {
 			continue
 		}
 		for _, tc := range m.ToolCalls {
+			result := resultByID[tc.ID]
+			if result == "" {
+				result = "ok"
+			}
 			out = append(out, ToolCallRecord{
-				Name: tc.Function.Name,
-				Args: tc.Function.Arguments,
+				Name:      tc.Function.Name,
+				Args:      tc.Function.Arguments,
+				Result:    result,
+				Character: charName,
 			})
 		}
 	}
@@ -2219,13 +2261,13 @@ func sessionMemoryDigest(a *Agent, out io.Writer) {
 // results don't waste the limited context window of small models.
 const ragMinScore = 0.3
 
-func (a *Agent) ragAugment(prompt string) string {
+func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
 	if !a.RagOn || a.Rag == nil {
-		return prompt
+		return prompt, nil
 	}
 	entry := a.Config.Memory.ActiveRagStore()
 	if entry == nil || entry.EmbeddingModel == "" {
-		return prompt
+		return prompt, nil
 	}
 
 	// Resolve embedding model for the current generation model.
@@ -2239,7 +2281,7 @@ func (a *Agent) ragAugment(prompt string) string {
 	embedder := NewOllamaEmbedder(a.Config.OllamaURL, embedModel)
 	chunks, err := a.Rag.Query(prompt, embedder, 5)
 	if err != nil || len(chunks) == 0 {
-		return prompt
+		return prompt, nil
 	}
 
 	// Discard chunks below the relevance threshold; they confuse small models
@@ -2251,13 +2293,10 @@ func (a *Agent) ragAugment(prompt string) string {
 		}
 	}
 	if len(relevant) == 0 {
-		return prompt
+		return prompt, nil
 	}
 
-	topScore := 0.0
-	if len(relevant) > 0 {
-		topScore = relevant[0].Score
-	}
+	topScore := relevant[0].Score
 	a.DebugLog.LogRAGInject(entry.Name, prompt, len(relevant), topScore)
 
 	var sb strings.Builder
@@ -2271,7 +2310,7 @@ func (a *Agent) ragAugment(prompt string) string {
 	}
 	sb.WriteString("---\n\n")
 	sb.WriteString(prompt)
-	return sb.String()
+	return sb.String(), &RAGAugmentInfo{StoreName: entry.Name, Chunks: len(relevant), TopScore: topScore}
 }
 
 // tryExecuteApertusToolCalls scans raw response text for Apertus-native

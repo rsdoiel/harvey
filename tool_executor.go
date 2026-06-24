@@ -62,6 +62,7 @@ type ToolExecutor struct {
 	DebugLog             *DebugLog
 	ToolResultCompaction bool           // when true, compact prior tool rounds before each new LLM turn
 	Status               StatusReporter // optional: receives transient status during tool calls
+	CharacterName        string         // ALL-CAPS model name for session attribution; "" = HARVEY (default)
 }
 
 /** NewToolExecutor creates a ToolExecutor from the agent's tool registry,

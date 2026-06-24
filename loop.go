@@ -87,7 +87,7 @@ func runLoopIteration(ctx context.Context, a *Agent, rest string, out io.Writer)
 		_, err := a.dispatch(rest, out)
 		return false, err
 	}
-	_, _, err := a.runChatTurn(ctx, rest, out, nil, false)
+	_, _, err := a.runChatTurn(ctx, rest, out, nil, false, "")
 	return false, err
 }
 

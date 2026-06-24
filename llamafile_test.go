@@ -335,7 +335,9 @@ func TestAdoptExternalServer_userSaysNo(t *testing.T) {
 
 func TestRunFirstRunWizard_emptyInput(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
+	cfg := DefaultConfig()
+	cfg.LlamafileModelsDir = t.TempDir() // empty dir — no .llamafile files
+	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	err := runFirstRunWizard(a, strings.NewReader("\n"), &buf)
 	if err == nil {
@@ -349,12 +351,45 @@ func TestRunFirstRunWizard_emptyInput(t *testing.T) {
 
 func TestRunFirstRunWizard_pathNotFound(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
+	cfg := DefaultConfig()
+	cfg.LlamafileModelsDir = t.TempDir() // empty dir — no .llamafile files
+	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	// Provide a non-existent path — the add flow should fail with a not-found error.
 	err := runFirstRunWizard(a, strings.NewReader("/nonexistent/model.llamafile\n"), &buf)
 	if err == nil {
 		t.Fatal("expected error for non-existent llamafile path")
+	}
+}
+
+// TestRunFirstRunWizard_pickerWhenModelsExist verifies that when LlamafileModelsDir
+// contains .llamafile files, runFirstRunWizard shows the directory picker instead
+// of the generic download-guidance wizard text.
+func TestRunFirstRunWizard_pickerWhenModelsExist(t *testing.T) {
+	modelsDir := t.TempDir()
+	fakePath := filepath.Join(modelsDir, "test-model.llamafile")
+	if err := os.WriteFile(fakePath, []byte("not-a-real-llamafile"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileModelsDir = modelsDir
+	a := NewAgent(cfg, ws)
+	// a.In provides the model name for cmdLlamafileAdd's name prompt.
+	// SelectFrom auto-selects the single file, so only the name line is consumed.
+	a.In = strings.NewReader("my-model\n")
+
+	var buf strings.Builder
+	// An error is expected — the file is not a real llamafile executable.
+	_ = runFirstRunWizard(a, strings.NewReader(""), &buf)
+
+	out := buf.String()
+	if strings.Contains(out, "Harvey couldn't find a model to connect to") {
+		t.Error("wizard download text should NOT be shown when models exist in LlamafileModelsDir")
+	}
+	if !strings.Contains(out, "Llamafiles found in") {
+		t.Errorf("expected directory picker output, got:\n%s", out)
 	}
 }
 

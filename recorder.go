@@ -77,20 +77,40 @@ func fountainSrc(elem *fountain.Element) string {
 	}
 }
 
-// ToolCallRecord holds the name and raw JSON arguments of a single tool
-// invocation, for use in session recording.
+// ToolCallRecord holds the name, raw JSON arguments, result status, and
+// optional character attribution of a single tool invocation, for use in
+// session recording.
 type ToolCallRecord struct {
-	Name string // tool function name, e.g. "read_file"
-	Args string // raw JSON arguments string
+	Name      string // tool function name, e.g. "read_file"
+	Args      string // raw JSON arguments string
+	Result    string // "ok" or "error: <first line>" — empty defaults to "ok"
+	Character string // ALL-CAPS model name when attributed; empty = HARVEY (default)
 }
 
-// formatToolCallAction returns a human-readable Fountain action line for a
-// tool call, e.g. "Harvey calls read_file: {"path": "foo.go"}".
-func formatToolCallAction(tc ToolCallRecord) string {
-	if tc.Args == "" || tc.Args == "{}" || tc.Args == "null" {
-		return "Harvey calls " + tc.Name
+// RAGAugmentInfo holds metadata about a RAG retrieval that fired for a chat
+// turn, for recording as a [[rag: ...]] Fountain note.
+type RAGAugmentInfo struct {
+	StoreName string
+	Chunks    int
+	TopScore  float64
+}
+
+// formatToolCallNote returns the content of a [[...]] Fountain note for a
+// tool call, e.g. "tool: read_file({"path":"foo.go"}) — ok".
+// When tc.Character is set, the prefix becomes "CHARACTER.tool: ...".
+func formatToolCallNote(tc ToolCallRecord) string {
+	nameArgs := tc.Name + "()"
+	if tc.Args != "" && tc.Args != "{}" && tc.Args != "null" {
+		nameArgs = tc.Name + "(" + tc.Args + ")"
 	}
-	return "Harvey calls " + tc.Name + ": " + tc.Args
+	result := tc.Result
+	if result == "" {
+		result = "ok"
+	}
+	if tc.Character != "" {
+		return tc.Character + ".tool: " + nameArgs + " — " + result
+	}
+	return "tool: " + nameArgs + " — " + result
 }
 
 // Recorder writes a Harvey session to a Fountain screenplay source file,
@@ -202,6 +222,9 @@ func (r *Recorder) RecordModelSwitch(newModel, backend string) error {
 	ts := time.Now().Format("2006-01-02 15:04:05")
 	note := fmt.Sprintf("model switch: %s (%s) at %s", newModel, backend, ts)
 	_, err := fmt.Fprintln(r.f, "\n[["+note+"]]")
+	if err == nil {
+		r.modelName = extractModelName(newModel)
+	}
 	return err
 }
 
@@ -231,10 +254,11 @@ func (r *Recorder) Path() string { return r.path }
 //
 //	err := r.RecordTurn("What is 2+2?", "2 + 2 = 4.")
 func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
-	return r.RecordTurnWithStats(userInput, harveyReply, ChatStats{}, nil, "", nil)
+	return r.RecordTurnWithStats(userInput, harveyReply, ChatStats{}, nil, "", nil, nil)
 }
 
-// RecordTurnWithStats appends a full chat turn as a Fountain scene.
+// RecordTurnWithStats appends a full chat turn as a Fountain INT. scene
+// (local computation).
 //
 // Scene structure:
 //
@@ -242,29 +266,32 @@ func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
 //
 //	Harvey and {USER} are in chat mode. Model: {MODEL}. Workspace: {ws}.
 //
+//	[[rag: N chunks from STORE, top score S.SS]]   ← omitted when ragInfo is nil
+//
 //	{USER}
 //	(user's input)
 //
 //	HARVEY
 //	Forwarding to {MODEL}.
 //
-//	Harvey calls tool_name: {...}        ← action block per tool call (omitted when nil)
+//	[[tool: name(args) — status]]   ← Fountain note per tool call (omitted when nil)
 //
 //	{MODEL}
 //	(LLM reply)
 //
-//	Routing to llama3.1:8b              ← routeStep action block (omitted when empty)
+//	Routing to llama3.1:8b          ← routeStep action block (omitted when empty)
 //
 //	{models} · {reply} reply + {ctx} ctx · {elapsed} · {tok/s} tok/s
 //
 // Parameters:
 //
-//	userInput   (string)          — the user's raw input text.
-//	harveyReply (string)          — the LLM's complete response text.
-//	stats       (ChatStats)       — LLM call stats; omitted when empty.
-//	models      ([]string)        — ordered model names that handled the turn; nil for single-model sessions.
-//	routeStep   (string)          — routing decision text; empty when routing is disabled.
+//	userInput   (string)           — the user's raw input text.
+//	harveyReply (string)           — the LLM's complete response text.
+//	stats       (ChatStats)        — LLM call stats; omitted when empty.
+//	models      ([]string)         — ordered model names that handled the turn; nil for single-model sessions.
+//	routeStep   (string)           — routing decision text; empty when routing is disabled.
 //	toolCalls   ([]ToolCallRecord) — structured tool invocations from the tool loop; nil when none.
+//	ragInfo     (*RAGAugmentInfo)  — RAG retrieval metadata; nil when RAG did not fire.
 //
 // Returns:
 //
@@ -272,8 +299,8 @@ func (r *Recorder) RecordTurn(userInput, harveyReply string) error {
 //
 // Example:
 //
-//	err := r.RecordTurnWithStats("Hello", "Hi!", stats, []string{"llama3.2:1b", "Ollama (llama3.1:8b)"}, "Routing to llama3.1:8b", nil)
-func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats ChatStats, models []string, routeStep string, toolCalls []ToolCallRecord) error {
+//	err := r.RecordTurnWithStats("Hello", "Hi!", stats, []string{"llama3.2:1b", "Ollama (llama3.1:8b)"}, "Routing to llama3.1:8b", nil, nil)
+func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats ChatStats, models []string, routeStep string, toolCalls []ToolCallRecord, ragInfo *RAGAugmentInfo) error {
 	ts := time.Now().Format("2006-01-02 15:04:05")
 
 	r.writeSceneHeading(fmt.Sprintf("INT. HARVEY AND %s TALKING %s", r.userName, ts))
@@ -281,10 +308,14 @@ func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats Chat
 		"Harvey and %s are in chat mode. Model: %s. Workspace: %s.",
 		r.userName, r.modelName, r.workspace,
 	))
+	if ragInfo != nil {
+		r.writeNote(fmt.Sprintf("rag: %d chunks from %s, top score %.2f",
+			ragInfo.Chunks, ragInfo.StoreName, ragInfo.TopScore))
+	}
 	r.writeDialogue(r.userName, "", userInput)
 	r.writeDialogue("HARVEY", "", fmt.Sprintf("Forwarding to %s.", r.modelName))
 	for _, tc := range toolCalls {
-		r.writeAction(formatToolCallAction(tc))
+		r.writeNote(formatToolCallNote(tc))
 	}
 	r.writeDialogue(r.modelName, "", harveyReply)
 	if routeStep != "" {
@@ -441,6 +472,72 @@ func (r *Recorder) RecordSkillLoad(name, description, body string) error {
 		r.writeDialogue(skillChar, "", body)
 	}
 
+	return nil
+}
+
+/** RecordContextRecall writes an INT. CONTEXT RECALL scene listing every
+ * memory item injected by UnifiedMemory.Recall at session start. The scene
+ * appears before the first chat turn and is a no-op when results is empty.
+ *
+ * Parameters:
+ *   results ([]UnifiedResult) — items returned by UnifiedMemory.Recall.
+ *
+ * Returns:
+ *   error — if the write fails.
+ *
+ * Example:
+ *   r.RecordContextRecall(results)
+ */
+func (r *Recorder) RecordContextRecall(results []UnifiedResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	r.writeSceneHeading(fmt.Sprintf("INT. CONTEXT RECALL %s", ts))
+	for _, res := range results {
+		r.writeNote(fmt.Sprintf("recall: %s (%s) — score %.2f",
+			res.ID, res.Source, res.Score))
+	}
+	return nil
+}
+
+/** RecordExteriorTurn appends a chat turn as a Fountain EXT. scene for remote
+ * computation (route dispatch to a remote Ollama instance or cloud API).
+ * HARVEY appears as the forwarding character; the remote endpoint replies.
+ *
+ * Scene structure:
+ *
+ *	EXT. {ENDPOINT} AND {USER} {TIMESTAMP}
+ *
+ *	Harvey routing to {ENDPOINT}. Workspace: {ws}.
+ *
+ *	{USER}
+ *	(user's input)
+ *
+ *	HARVEY
+ *	Forwarding to {ENDPOINT}.
+ *
+ *	{ENDPOINT}
+ *	(remote reply)
+ *
+ * Parameters:
+ *   endpoint  (string) — ALL-CAPS route or model name, e.g. "PI2" or "MISTRAL".
+ *   userInput (string) — the user's raw input text.
+ *   reply     (string) — the remote endpoint's response text.
+ *
+ * Returns:
+ *   error — if the write fails.
+ *
+ * Example:
+ *   r.RecordExteriorTurn("PI2", "@pi2 analyze this", "Analysis complete.")
+ */
+func (r *Recorder) RecordExteriorTurn(endpoint, userInput, reply string) error {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	r.writeSceneHeading(fmt.Sprintf("EXT. %s AND %s %s", endpoint, r.userName, ts))
+	r.writeAction(fmt.Sprintf("Harvey routing to %s. Workspace: %s.", endpoint, r.workspace))
+	r.writeDialogue(r.userName, "", userInput)
+	r.writeDialogue("HARVEY", "", fmt.Sprintf("Forwarding to %s.", endpoint))
+	r.writeDialogue(endpoint, "", reply)
 	return nil
 }
 

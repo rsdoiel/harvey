@@ -346,6 +346,9 @@ func (a *Agent) injectMemoryContext(query string) {
 	if err != nil || len(results) == 0 {
 		return
 	}
+	if a.Recorder != nil {
+		_ = a.Recorder.RecordContextRecall(results)
+	}
 	var totalTokens int
 	for _, r := range results {
 		totalTokens += r.Tokens

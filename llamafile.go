@@ -224,7 +224,7 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 	if name == "" {
 		defaultName := llamafileModelName(path)
 		fmt.Fprintf(out, "  Name [%s]: ", defaultName)
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		line, _ := bufio.NewReader(a.In).ReadString('\n')
 		line = strings.TrimSpace(line)
 		if line == "" {
 			name = defaultName

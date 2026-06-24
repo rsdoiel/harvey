@@ -4,6 +4,57 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-24 — INT./EXT. scene prefix redefined as local/remote computation
+
+**Context.** The original Fountain format spec (v1.0–1.1) defined `INT.` as "Harvey is involved as orchestrator" and `EXT.` as "direct model-human conversation without Harvey." This made `EXT.` scenes effectively hypothetical — the recorder never wrote one, because Harvey is always involved. Remote Ollama route dispatches (e.g. `@pi2`) and cloud API calls were both recorded as `INT.` despite running on remote machines. The distinction was meaningless in practice.
+
+**Decision.** Redefine the prefix semantically as **location of computation**: `INT.` = runs on the local machine where Harvey is running; `EXT.` = runs on a remote system. This maps naturally to the theatrical meaning (interior/exterior), gives `EXT.` scenes real-world frequency, and encodes practically important information (network latency, data exposure, cost). Remote Ollama routes and cloud API routes are now `EXT.` HARVEY still appears in `EXT.` scene dialogue as the forwarding character when Harvey initiated the route dispatch; HARVEY is absent only in truly direct conversations (no Harvey involvement). The `RecordExteriorTurn` recorder method writes EXT. scenes; `RecordTurnWithStats` continues to write INT. scenes.
+
+**Rejected alternatives.**
+
+- *Keep the old semantic, just document it better* — the old definition made EXT. permanently dead code and gave parsers no useful locality signal. The new semantic costs nothing to implement and adds real diagnostic value.
+- *Use a `Remote: true` field in the scene description instead of the prefix* — keeps the prefix consistent but buries locality in metadata. The theatrical prefix is the primary structural signal in Fountain; using it for locality is more idiomatic.
+- *Make every forwarded turn EXT. regardless of locality* — local model-switch via `@mention` (where `attemptModelSwitch` succeeds) is still local computation. Only registered route dispatches (`DispatchToEndpoint`) are genuinely remote.
+
+**Consequences.**
+
+- `FOUNTAIN_FORMAT.md` updated to v1.2 with corrected INT./EXT. definitions, updated scenarios 2 and 3, and updated best practices.
+- `recorder.go` gains `RecordExteriorTurn(endpoint, userInput, reply string)`.
+- `terminal.go` route dispatch path calls `RecordExteriorTurn` instead of `RecordTurn`.
+- Existing `.spmd` session files recorded before v0.0.15 have INT. for route dispatches — this is a known inaccuracy, not a migration target.
+
+---
+
+## 2026-06-24 — Fountain sessions become full audit trails (v0.0.15)
+
+**Context.** Corin Wagen's article "Tool Use and AI Scientists" argues that tool calls are the primary mechanism for AI interpretability — the decision trace of what an agent chose to do and why. Harvey's Fountain session files record dialogue, file writes, and shell commands, but tool calls appear only as unstructured prose ("Harvey calls read_file: {args}"), tool results are not recorded, RAG context retrieval leaves no trace, and memory injection at session start is invisible. See [audit-trail-design.md](audit-trail-design.md).
+
+**Decision.** Extend the Fountain format to v1.2 with four new audit elements. A Harvey session file is a *sequence of many scenes* — one per discrete interaction (chat turn, shell command, file write, skill activation). The placement of new elements respects this: notes go inside existing scenes; only one new scene type is added.
+
+- `[[tool: name(args) — status]]` notes replace prose action blocks for tool calls. They appear **inside the existing `INT. HARVEY AND … TALKING` scene** for the turn where the tool loop ran, between HARVEY's forwarding line and the model's reply. Multiple tool-call rounds within one turn produce multiple flat notes in the same scene — no new scene is opened per round.
+- `[[CHARACTER.tool: name(args) — status]]` variant attributes tool calls to a forwarded model in `@mention` turns. Same placement as above; only the prefix changes.
+- `[[rag: N chunks from STORE, top score S.SS]]` notes record RAG retrieval **inside the existing `INT. HARVEY AND … TALKING` scene** for the turn where RAG fired, before the user dialogue line. Turns where RAG did not fire have no `[[rag:]]` note.
+- `INT. CONTEXT RECALL TIMESTAMP` is the only new scene type. It appears once at session start — before the first chat turn — when `UnifiedMemory.Recall` injects memories. It contains `[[recall: ID (SOURCE) — score S.SS]]` notes, one per recalled item.
+
+**Rejected alternatives.**
+
+- *Bridge `audit.jsonl` and Fountain* — routing `AuditBuffer` events to the recorder would couple two unrelated systems (security audit vs. session narrative) and require the audit buffer to hold a recorder reference. Rejected: keep them separate.
+- *Full tool result content in Fountain* — maximally auditable but bloats session files and degrades memory miner quality for large `read_file` or search outputs. Status-only (`ok` / `error: first line`) achieves the diagnostic goal.
+- *RAG note in the scene description block* — the scene description is written at scene open; RAG fires later in `runChatTurn`. A separate note just before user dialogue is temporally accurate.
+- *`INT. TOOL LOOP` scene per tool-call round* — a multi-round tool loop (model calls tool, gets result, calls another tool, gets result, produces final answer) could open a new scene for each round. Rejected: a "turn" from the user's perspective is one request-response cycle; splitting it across multiple scenes makes the session harder to read and harder for the memory miner to extract question-answer pairs. Flat notes inside the single turn scene preserve both.
+- *Per-message character attribution via `Message.Model`* — accurate multi-round character attribution requires tagging each `Message`, which ripples through serialisation, compaction, and replay. Deferred: single character per turn covers the real-world case.
+
+**Consequences.**
+
+- `recorder.go`: `ToolCallRecord` gains `Result` and `Character` fields; `RAGAugmentInfo` struct added; `RecordTurnWithStats` gains `ragInfo *RAGAugmentInfo` parameter; `RecordContextRecall` method added.
+- `terminal.go`: `ragAugment` returns `(string, *RAGAugmentInfo)`; `toolCallsFromHistory` gains `charName string` parameter; `runChatTurn` gains `charName string` parameter.
+- `harvey.go`: `injectMemoryContext` calls `a.Recorder.RecordContextRecall` when results are non-empty.
+- `tool_executor.go`: `ToolExecutor` gains `CharacterName string` field.
+- `FOUNTAIN_FORMAT.md` updated to v1.2 with new syntax and scene type.
+- All existing callers of `RecordTurnWithStats` pass `nil` for the new `ragInfo` parameter; all callers of `toolCallsFromHistory` pass `""` for `charName` except the `@mention` local-switch path.
+
+---
+
 ## 2026-06-20 — Command vocabulary standardised across all resource-management commands
 
 **Context.** Harvey's command families share a common resource-management pattern but use inconsistent verbs: `/llamafile drop`, `/rag drop`, `/route rm`, and `/model alias delete` all mean the same thing; `/skill info` and `/skill-set info` duplicate `/memory profile show`'s pattern under a different name; `/session` has no `list` or `show`; `/route` has no `use`. Users must learn each command family independently rather than applying a single vocabulary pattern. See [llamafile-primary-design.md](llamafile-primary-design.md) and TODO.md.
