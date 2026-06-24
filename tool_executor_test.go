@@ -100,3 +100,57 @@ func TestCompactToolRound_noopOnBadIndex(t *testing.T) {
 		t.Error("history should not be modified for bad indices")
 	}
 }
+
+// TestCompactToolRound_preservesReadFileResult is the regression test for the
+// loop where ToolResultCompaction erased read_file content, causing the model
+// to call read_file again on the next iteration — producing a loop.
+func TestCompactToolRound_preservesReadFileResult(t *testing.T) {
+	history := []Message{
+		{Role: "user", Content: "review this file"},
+		{Role: "assistant", ToolCalls: []anyllm.ToolCall{
+			{ID: "c1", Function: anyllm.FunctionCall{Name: "read_file"}},
+		}},
+		{Role: "tool", Content: "the actual 12 KB file content goes here", ToolCallID: "c1"},
+	}
+
+	compactToolRound(history, 1)
+
+	// Assistant message is still compacted (ToolCalls cleared, summary set).
+	if history[1].Content != "[called: read_file]" {
+		t.Errorf("assistant content wrong: %q", history[1].Content)
+	}
+	// Tool result must NOT be erased — the model needs this content.
+	if history[2].Content == "[done]" {
+		t.Error("read_file result must not be compacted to [done]")
+	}
+	if history[2].Content != "the actual 12 KB file content goes here" {
+		t.Errorf("read_file content changed unexpectedly: %q", history[2].Content)
+	}
+	if history[2].ToolCallID != "c1" {
+		t.Error("ToolCallID must be preserved after compaction")
+	}
+}
+
+// TestCompactToolRound_mixedContentAndActionTools verifies that in a round
+// containing both content tools (read_file) and action tools (write_file),
+// only the action tool result is compacted.
+func TestCompactToolRound_mixedContentAndActionTools(t *testing.T) {
+	history := []Message{
+		{Role: "user", Content: "read then write"},
+		{Role: "assistant", ToolCalls: []anyllm.ToolCall{
+			{ID: "c1", Function: anyllm.FunctionCall{Name: "read_file"}},
+			{ID: "c2", Function: anyllm.FunctionCall{Name: "write_file"}},
+		}},
+		{Role: "tool", Content: "file contents that must survive", ToolCallID: "c1"},
+		{Role: "tool", Content: "wrote 100 bytes to output.txt", ToolCallID: "c2"},
+	}
+
+	compactToolRound(history, 1)
+
+	if history[2].Content != "file contents that must survive" {
+		t.Errorf("read_file content should be preserved, got: %q", history[2].Content)
+	}
+	if history[3].Content != "[done]" {
+		t.Errorf("write_file content should be compacted, got: %q", history[3].Content)
+	}
+}

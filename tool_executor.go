@@ -216,24 +216,32 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 // tool-call round with compact placeholders. This is called before the next
 // LLM turn so the model does not re-process verbose tool outputs from prior
 // rounds. ToolCallID is preserved for protocol correctness; Content is replaced.
+//
+// Results from content-bearing tools (e.g. read_file) are never compacted:
+// erasing them causes the model to re-read the same content on the next
+// iteration, producing an unbounded loop.
 func compactToolRound(history []Message, roundStart int) {
 	if roundStart < 0 || roundStart >= len(history) {
 		return
 	}
-	// Collect tool names from the assistant message at roundStart.
+	// Build a map from ToolCallID → tool name so we can identify content tools.
+	callNames := make(map[string]string)
 	var toolNames []string
 	if history[roundStart].Role == "assistant" {
 		for _, tc := range history[roundStart].ToolCalls {
 			toolNames = append(toolNames, tc.Function.Name)
+			callNames[tc.ID] = tc.Function.Name
 		}
 		history[roundStart].ToolCalls = nil
 		history[roundStart].Content = "[called: " + strings.Join(toolNames, ", ") + "]"
 	}
-	// Compact each tool-result message in this round.
+	// Compact each tool-result message in this round, skipping content tools.
 	for i := roundStart + 1; i < len(history); i++ {
 		if history[i].Role != "tool" {
 			break
 		}
-		history[i].Content = "[done]"
+		if !contentToolNames[callNames[history[i].ToolCallID]] {
+			history[i].Content = "[done]"
+		}
 	}
 }

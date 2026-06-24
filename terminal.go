@@ -175,9 +175,6 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 	for _, e := range a.Config.LlamafileModels {
 		if strings.EqualFold(e.Name, name) {
 			err := cmdLlamafileUse(a, []string{e.Name}, out)
-			if err == nil && a.Recorder != nil {
-				_ = a.Recorder.RecordModelSwitch(e.Name, "llamafile")
-			}
 			return true, err
 		}
 	}
@@ -401,7 +398,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// Banner
 	fmt.Fprintln(out, cyan(bold(sep)))
-	fmt.Fprintf(out, "  %s  %s\n", bold("Harvey"), dim(Version))
+	fmt.Fprintf(out, "  %s  %s\n", bold("Harvey"), dim(Version+" ("+ReleaseHash+")"))
 	fmt.Fprintln(out, cyan(bold(sep)))
 
 	// Workspace
@@ -1165,6 +1162,9 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	fmt.Fprint(out, displayText)
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats, a.effectiveContextLimit())))
+	if warn := groundingCheck(buf.String(), a.History[histLenBeforeChat:]); warn != "" {
+		fmt.Fprintln(out, yellow("  ⚠ ")+warn)
+	}
 	a.recordStats(stats)
 	a.sessionTurns++
 
@@ -1535,6 +1535,9 @@ func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
 		ac.DebugLog = a.DebugLog
 	}
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(name))
+	if a.Recorder != nil {
+		_ = a.Recorder.RecordModelSwitch(name, "llamafile")
+	}
 	return nil
 }
 

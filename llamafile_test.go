@@ -362,6 +362,64 @@ func TestRunFirstRunWizard_pathNotFound(t *testing.T) {
 	}
 }
 
+// TestUseLlamafileEntry_updatesRecorder is the regression test for the bug
+// where /llamafile use (and all other code paths through useLlamafileEntry)
+// did not call RecordModelSwitch, leaving the recorder showing the old model
+// name in all subsequent scene headers and speaker lines.
+func TestUseLlamafileEntry_updatesRecorder(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	a := NewAgent(cfg, ws)
+
+	recPath := filepath.Join(t.TempDir(), "session.fountain")
+	rec, err := NewRecorder(recPath, "none", ws.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Recorder = rec
+
+	var buf strings.Builder
+	_ = a.useLlamafileEntry("apertus", &buf)
+	rec.Close()
+
+	data, _ := os.ReadFile(recPath)
+	content := string(data)
+
+	if !strings.Contains(content, "model switch: apertus (llamafile)") {
+		t.Errorf("expected model switch note after useLlamafileEntry, got:\n%s", content)
+	}
+}
+
+// TestUseLlamafileEntry_subsequentTurnUsesNewModel verifies the full chain:
+// after useLlamafileEntry, RecordTurnWithStats uses the new model name in the
+// scene header and speaker lines — not the stale name from recorder creation.
+func TestUseLlamafileEntry_subsequentTurnUsesNewModel(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+
+	recPath := filepath.Join(t.TempDir(), "session.fountain")
+	rec, _ := NewRecorder(recPath, "none", ws.Root)
+	a.Recorder = rec
+
+	var buf strings.Builder
+	_ = a.useLlamafileEntry("apertus", &buf)
+	_ = rec.RecordTurn("review the file", "Here is my review.")
+	rec.Close()
+
+	data, _ := os.ReadFile(recPath)
+	content := string(data)
+
+	if !strings.Contains(content, "Model: APERTUS.") {
+		t.Errorf("expected APERTUS in scene header after switch, got:\n%s", content)
+	}
+	if strings.Contains(content, "Forwarding to NONE.") {
+		t.Errorf("stale NONE speaker still present after switch:\n%s", content)
+	}
+	if !strings.Contains(content, "Forwarding to APERTUS.") {
+		t.Errorf("expected APERTUS speaker after switch, got:\n%s", content)
+	}
+}
+
 // TestRunFirstRunWizard_pickerWhenModelsExist verifies that when LlamafileModelsDir
 // contains .llamafile files, runFirstRunWizard shows the directory picker instead
 // of the generic download-guidance wizard text.
