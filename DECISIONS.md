@@ -4,6 +4,96 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-25 — Source registry lives in `knowledge.db`; not a separate database
+
+**Context.** The scholarly provenance design (see
+[scholarly-provenance-design.md](scholarly-provenance-design.md))
+requires a `sources` authority table and an `observation_sources` join
+table. Two placement options were considered: a new `provenance.db`
+alongside `knowledge.db`, or new tables inside the existing
+`knowledge.db`.
+
+**Decision.** Add `sources` and `observation_sources` directly to
+`knowledge.db`. The sources table needs to join against `observations`,
+`concepts`, and `kb_fts`, all of which live in `knowledge.db`. SQLite
+cross-database joins via `ATTACH DATABASE` cannot use foreign keys and
+require every query to name the attached database alias, making all
+query code more fragile. A single database with multiple tables is the
+correct SQLite idiom.
+
+**Rejected alternatives.**
+
+- *Separate `provenance.db`* — eliminates foreign keys between
+  observations and sources; requires `ATTACH` in every query that spans
+  the two files; adds a new runtime file that users must back up and
+  move with their workspace.
+- *In-memory provenance (no persistence)* — RAG provenance that
+  disappears on session end has no scholarly value. The whole point is
+  a durable, auditable record.
+
+**Consequences.**
+
+- `knowledge.go` gains DDL for `sources` and `observation_sources` in
+  its `Open` path.
+- The data migration from `observations.source_doi` runs once on first
+  open after upgrade; `source_doi` is retained as a read-only backward-
+  compat column.
+- No new runtime files are introduced; `agents/knowledge.db` remains the
+  single knowledge-base file.
+
+---
+
+## 2026-06-25 — Scholarly provenance: inference-time only; training-time attribution deferred
+
+**Context.** Two Scholarly Kitchen articles (2026-06-17 and 2026-06-25)
+and the Cambridge Scholarly AI Workshop identified that AI systems
+interact with scholarly content at two points: training time (content
+absorbed into model weights) and inference time (content retrieved and
+injected via RAG at query time). The workshop explicitly classified
+training-time attribution as technically intractable at current model
+scales and recommended focusing practical interventions on inference-time
+retrieval.
+
+Harvey's architecture makes inference-time provenance fully tractable:
+the RAG pipeline (`ragAugment`, `RagStore.Query`) has complete
+observability of what was retrieved and from where. Training-time
+attribution for Ollama or Llamafile models is not accessible to Harvey
+and would require coordination with model providers.
+
+**Decision.** The scholarly provenance work (v0.0.15) focuses entirely
+on inference-time provenance:
+1. A minimum provenance payload on RAG chunks (source, DOI, title,
+   version, rights, content hash, retraction flag).
+2. A source registry in `knowledge.db` as the authority for source
+   metadata, linked to observations via `observation_sources`.
+3. Per-source `[[rag-source: ...]]` Fountain notes so session files
+   serve as citable records of what evidence informed each response.
+4. `HARVEY.md` system-prompt guidance to retrieve before generating
+   and to attribute content at the point of use, not post-hoc.
+
+Training-time attribution is explicitly deferred and recorded as out of
+scope, not a gap in the design.
+
+**Rejected alternatives.**
+
+- *Attempt training-data disclosure via model metadata* — Ollama's
+  `/api/show` endpoint returns a Modelfile and template but not a
+  training corpus manifest. No standard interface exists. Not tractable.
+- *Restrict Harvey to models with published data cards* — would exclude
+  most locally-available models and undermine the local-first principle.
+
+**Consequences.**
+
+- See [scholarly-provenance-design.md](scholarly-provenance-design.md)
+  for the full architecture and
+  [scholarly-provenance-plan.md](scholarly-provenance-plan.md) for the
+  phased implementation.
+- Provenance metadata added to `chunks` schema (S1), source registry
+  added to `knowledge.db` (S2), Fountain notes enhanced (S3), `/kb`
+  commands extended (S4).
+
+---
+
 ## 2026-06-24 — INT./EXT. scene prefix redefined as local/remote computation
 
 **Context.** The original Fountain format spec (v1.0–1.1) defined `INT.` as "Harvey is involved as orchestrator" and `EXT.` as "direct model-human conversation without Harvey." This made `EXT.` scenes effectively hypothetical — the recorder never wrote one, because Harvey is always involved. Remote Ollama route dispatches (e.g. `@pi2`) and cloud API calls were both recorded as `INT.` despite running on remote machines. The distinction was meaningless in practice.
