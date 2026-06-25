@@ -246,7 +246,23 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintln(out, "  Stopping current llamafile...")
 		a.stopLlamafileProc()
 	} else if ProbeLlamafile(a.Config.LlamafileURL) {
-		return adoptExternalServer(a, out)
+		// An externally started server is running. Register the entry for future
+		// use, but we cannot stop a server Harvey didn't start.
+		running := probeRunningLlamafileName(a.Config.LlamafileURL)
+		if running == "" {
+			running = "unknown"
+		}
+		fmt.Fprintf(out, "  A llamafile server is already running at %s (model: %s).\n", a.Config.LlamafileURL, running)
+		fmt.Fprintf(out, "  Harvey cannot stop externally started servers.\n")
+		fmt.Fprintf(out, "  Registering %s for later use.\n", name)
+		entry := LlamafileEntry{Name: name, Path: path}
+		a.Config.AddOrUpdateLlamafileEntry(entry)
+		if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
+		} else {
+			fmt.Fprintf(out, dim("  Saved. Use /llamafile use %s after stopping the running server.\n"), name)
+		}
+		return nil
 	}
 	fmt.Fprintln(out, "  Starting llamafile...")
 	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
@@ -363,6 +379,15 @@ func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
 	if a.llamafileProc != nil {
 		fmt.Fprintf(out, "  Stopping %s...\n", a.Config.LlamafileActive)
 		a.stopLlamafileProc()
+	} else if ProbeLlamafile(a.Config.LlamafileURL) {
+		running := probeRunningLlamafileName(a.Config.LlamafileURL)
+		if running == "" {
+			running = "unknown"
+		}
+		fmt.Fprintf(out, "  A llamafile server is already running at %s (model: %s).\n", a.Config.LlamafileURL, running)
+		fmt.Fprintf(out, "  Harvey cannot stop externally started servers.\n")
+		fmt.Fprintf(out, "  Stop it manually, then run /llamafile use %s\n", name)
+		return nil
 	}
 
 	fmt.Fprintf(out, "  Starting %s...\n", name)
