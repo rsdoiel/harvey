@@ -659,4 +659,11 @@ func TestRAGAugment_ReturnsInfo(t *testing.T) {
 	if !strings.Contains(augmented, "### Context") {
 		t.Errorf("augmented prompt missing context header: %s", augmented)
 	}
+	// Sources must be populated with at least the one ingested source path.
+	if len(info.Sources) == 0 {
+		t.Error("expected info.Sources to be non-empty")
+	}
+	if info.Sources[0].Source != "src.go" {
+		t.Errorf("Sources[0].Source = %q, want %q", info.Sources[0].Source, "src.go")
+	}
 }

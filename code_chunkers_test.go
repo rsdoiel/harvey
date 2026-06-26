@@ -557,7 +557,7 @@ func TestRagIngestFile_binarySkipped(t *testing.T) {
 	store, _ := NewRagStore(filepath.Join(dir, "r.db"), "stub")
 	defer store.db.Close()
 
-	n, err := ragIngestFile(store, stubEmbedder{"stub"}, binPath)
+	n, err := ragIngestFile(store, stubEmbedder{"stub"}, binPath, ProvenanceMeta{})
 	if err != nil {
 		t.Errorf("binary file should not return error: %v", err)
 	}
@@ -576,7 +576,7 @@ func TestRagIngestFile_cFileUsesChunker(t *testing.T) {
 	store, _ := NewRagStore(filepath.Join(dir, "r.db"), "stub")
 	defer store.db.Close()
 
-	n, err := ragIngestFile(store, stubEmbedder{"stub"}, cPath)
+	n, err := ragIngestFile(store, stubEmbedder{"stub"}, cPath, ProvenanceMeta{})
 	if err != nil {
 		t.Fatalf("ragIngestFile: %v", err)
 	}
@@ -600,7 +600,7 @@ func TestRagIngestFile_fallbackForUnknownExtension(t *testing.T) {
 	store, _ := NewRagStore(filepath.Join(dir, "r.db"), "stub")
 	defer store.db.Close()
 
-	n, err := ragIngestFile(store, stubEmbedder{"stub"}, mdPath)
+	n, err := ragIngestFile(store, stubEmbedder{"stub"}, mdPath, ProvenanceMeta{})
 	if err != nil {
 		t.Fatalf("ragIngestFile: %v", err)
 	}

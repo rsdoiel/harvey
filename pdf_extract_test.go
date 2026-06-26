@@ -313,7 +313,7 @@ func TestRagIngestPDF_integration(t *testing.T) {
 	}
 	defer store.Close()
 
-	n, diagrams, err := ragIngestPDF(store, pdfMockEmbedder{}, pdf)
+	n, diagrams, err := ragIngestPDF(store, pdfMockEmbedder{}, pdf, ProvenanceMeta{})
 	if err != nil {
 		t.Fatalf("ragIngestPDF: %v", err)
 	}
@@ -322,13 +322,17 @@ func TestRagIngestPDF_integration(t *testing.T) {
 	}
 	t.Logf("ingested %d chunk(s), %d diagram page(s): %v", n, len(diagrams), diagrams)
 
-	// Verify chunk count matches database.
+	// Verify stored chunk count is non-zero and at most n (deduplication may
+	// reduce count below n when the PDF contains identical content chunks).
 	count, err := store.Count()
 	if err != nil {
 		t.Fatalf("Count: %v", err)
 	}
-	if count != int64(n) {
-		t.Errorf("store.Count()=%d, want %d", count, n)
+	if count == 0 {
+		t.Error("expected at least one chunk in store")
+	}
+	if count > int64(n) {
+		t.Errorf("store.Count()=%d exceeds ingested count %d (impossible)", count, n)
 	}
 }
 
@@ -343,7 +347,7 @@ func TestRagIngestPDF_chunkMetadata(t *testing.T) {
 	}
 	defer store.Close()
 
-	if _, _, err := ragIngestPDF(store, pdfMockEmbedder{}, pdf); err != nil {
+	if _, _, err := ragIngestPDF(store, pdfMockEmbedder{}, pdf, ProvenanceMeta{}); err != nil {
 		t.Fatalf("ragIngestPDF: %v", err)
 	}
 
@@ -378,7 +382,7 @@ func TestRagIngestPDF_diagramPageMarker(t *testing.T) {
 	}
 	defer store.Close()
 
-	_, diagrams, err := ragIngestPDF(store, pdfMockEmbedder{}, pdf)
+	_, diagrams, err := ragIngestPDF(store, pdfMockEmbedder{}, pdf, ProvenanceMeta{})
 	if err != nil {
 		t.Fatalf("ragIngestPDF: %v", err)
 	}

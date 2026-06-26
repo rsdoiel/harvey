@@ -1072,6 +1072,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 
 	// RAG context injection — prepend relevant chunks before sending.
 	augmented, ragInfo := a.ragAugment(input)
+	a.LastRAGInfo = ragInfo
 	a.AddMessage("user", augmented)
 
 	// Token-count warning — runs only when the backend is Ollama.
@@ -2317,7 +2318,32 @@ func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
 	}
 	sb.WriteString("---\n\n")
 	sb.WriteString(prompt)
-	return sb.String(), &RAGAugmentInfo{StoreName: entry.Name, Chunks: len(relevant), TopScore: topScore}
+
+	// Deduplicate sources by file path, preserving retrieval rank order.
+	seen := map[string]bool{}
+	var sources []RAGChunkRef
+	for _, c := range relevant {
+		key := c.Source
+		if key == "" {
+			key = c.Content
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		sources = append(sources, RAGChunkRef{
+			Source:      c.Source,
+			SourceURL:   c.SourceURL,
+			SourceDOI:   c.SourceDOI,
+			SourceTitle: c.SourceTitle,
+		})
+	}
+	return sb.String(), &RAGAugmentInfo{
+		StoreName: entry.Name,
+		Chunks:    len(relevant),
+		TopScore:  topScore,
+		Sources:   sources,
+	}
 }
 
 // tryExecuteApertusToolCalls scans raw response text for Apertus-native

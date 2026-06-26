@@ -169,6 +169,8 @@ type Agent struct {
 	ActiveSkill   string         // name of the most recently loaded skill; "" when none
 	ActiveSkillSet string        // name of the currently loaded skill-set bundle; "" when none
 	Tools         *ToolRegistry  // schema-based tool registry; nil when tools are disabled
+	LastRAGInfo            *RAGAugmentInfo // set after each chat turn that fires RAG; cleared by ClearHistory
+	LastObservationID      int64           // ID of the most recently recorded /kb observe; cleared by ClearHistory
 	memoryContextPending   bool         // true after ClearHistory until first user turn injects memories
 	sessionInjectedTokens  int          // tokens injected via UnifiedMemory this session
 	sessionCompressed      bool         // true if rolling summary fired at least once this session
@@ -316,6 +318,8 @@ func (a *Agent) ClearHistory() {
 		a.AddMessage("user", "[pinned context]\n\n"+a.PinnedContext)
 	}
 	a.ActiveSkill = ""
+	a.LastRAGInfo = nil
+	a.LastObservationID = 0
 }
 
 // injectMemoryContext retrieves memories from all silos via UnifiedMemory and

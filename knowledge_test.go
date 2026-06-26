@@ -303,3 +303,216 @@ func containsSubstring(s, sub string) bool {
 	}
 	return false
 }
+
+// ─── S2 source registry ───────────────────────────────────────────────────────
+
+func TestAddSource_Dedup(t *testing.T) {
+	kb := openTestKB(t)
+	id1, err := kb.AddSource(Source{Title: "SPARQL 1.1", IdentifierType: "doi", IdentifierValue: "10.1234/sparql"})
+	if err != nil {
+		t.Fatalf("AddSource: %v", err)
+	}
+	// Second call with the same identifier must return the same ID.
+	id2, err := kb.AddSource(Source{Title: "Different Title", IdentifierType: "doi", IdentifierValue: "10.1234/sparql"})
+	if err != nil {
+		t.Fatalf("AddSource (dup): %v", err)
+	}
+	if id1 != id2 {
+		t.Errorf("expected same ID on duplicate doi, got id1=%d id2=%d", id1, id2)
+	}
+}
+
+func TestAddSource_NoIdentifier(t *testing.T) {
+	kb := openTestKB(t)
+	id1, err := kb.AddSource(Source{Title: "Untitled source"})
+	if err != nil {
+		t.Fatalf("AddSource: %v", err)
+	}
+	// Without an identifier, a second call creates a new row.
+	id2, err := kb.AddSource(Source{Title: "Untitled source"})
+	if err != nil {
+		t.Fatalf("AddSource (second): %v", err)
+	}
+	if id1 == id2 {
+		t.Errorf("expected different IDs for sources without identifiers, got %d", id1)
+	}
+}
+
+func TestListSources(t *testing.T) {
+	kb := openTestKB(t)
+	if _, err := kb.AddSource(Source{Title: "Alpha", IdentifierType: "doi", IdentifierValue: "10.1/a"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kb.AddSource(Source{Title: "Beta", IdentifierType: "doi", IdentifierValue: "10.1/b"}); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := kb.ListSources()
+	if err != nil {
+		t.Fatalf("ListSources: %v", err)
+	}
+	if len(sources) != 2 {
+		t.Fatalf("expected 2 sources, got %d", len(sources))
+	}
+}
+
+func TestShowSource(t *testing.T) {
+	kb := openTestKB(t)
+	id, err := kb.AddSource(Source{
+		Title: "Example Paper", IdentifierType: "doi", IdentifierValue: "10.99/ex",
+		Authors: "Jane Doe", Publisher: "ACM",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := kb.ShowSource(id)
+	if err != nil {
+		t.Fatalf("ShowSource: %v", err)
+	}
+	if s.Title != "Example Paper" {
+		t.Errorf("Title = %q, want %q", s.Title, "Example Paper")
+	}
+	if s.Authors != "Jane Doe" {
+		t.Errorf("Authors = %q, want %q", s.Authors, "Jane Doe")
+	}
+}
+
+func TestRemoveSource_Unlinked(t *testing.T) {
+	kb := openTestKB(t)
+	id, err := kb.AddSource(Source{Title: "Removable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kb.RemoveSource(id); err != nil {
+		t.Fatalf("RemoveSource: %v", err)
+	}
+	if _, err := kb.ShowSource(id); err == nil {
+		t.Error("expected error after removal, got nil")
+	}
+}
+
+func TestRemoveSource_LinkedFails(t *testing.T) {
+	kb := openTestKB(t)
+	pid, _ := kb.AddProject("proj", "")
+	obsID, _ := kb.AddObservation(pid, "note", "some text")
+	srcID, err := kb.AddSource(Source{Title: "Linked"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kb.LinkObservationSource(obsID, srcID, "cited"); err != nil {
+		t.Fatalf("LinkObservationSource: %v", err)
+	}
+	if err := kb.RemoveSource(srcID); err == nil {
+		t.Error("expected error removing linked source, got nil")
+	}
+}
+
+func TestRetractSource(t *testing.T) {
+	kb := openTestKB(t)
+	id, _ := kb.AddSource(Source{Title: "Retractable"})
+	if err := kb.RetractSource(id, "Publisher withdrew"); err != nil {
+		t.Fatalf("RetractSource: %v", err)
+	}
+	s, err := kb.ShowSource(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Retracted {
+		t.Error("expected Retracted=true")
+	}
+	if s.RetractionNote != "Publisher withdrew" {
+		t.Errorf("RetractionNote = %q, want %q", s.RetractionNote, "Publisher withdrew")
+	}
+}
+
+func TestLinkObservationSource_Duplicate(t *testing.T) {
+	kb := openTestKB(t)
+	pid, _ := kb.AddProject("proj", "")
+	obsID, _ := kb.AddObservation(pid, "note", "body text")
+	srcID, _ := kb.AddSource(Source{Title: "Source A"})
+	if err := kb.LinkObservationSource(obsID, srcID, "cited"); err != nil {
+		t.Fatalf("first link: %v", err)
+	}
+	// Duplicate link must be silently ignored.
+	if err := kb.LinkObservationSource(obsID, srcID, "cited"); err != nil {
+		t.Fatalf("duplicate link should not fail: %v", err)
+	}
+}
+
+func TestSourceMigration_ExistingDOI(t *testing.T) {
+	kb := openTestKB(t)
+	pid, _ := kb.AddProject("proj", "")
+	doi := "10.1234/migration-test"
+	// Insert observation with source_doi directly (simulates pre-S2 data).
+	if _, err := kb.db.Exec(
+		`INSERT INTO observations (project_id, kind, body, source_doi) VALUES (?, 'note', 'migrated obs', ?)`,
+		pid, doi,
+	); err != nil {
+		t.Fatalf("insert legacy observation: %v", err)
+	}
+	// Re-open the KB — migration runs on Open.
+	kb.Close()
+	ws, _ := NewWorkspace(t.TempDir())
+	// Reuse same path via a second OpenKnowledgeBase pointing at the same DB file.
+	kb2, err := OpenKnowledgeBase(ws, kb.path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer kb2.Close()
+	sources, err := kb2.ListSources()
+	if err != nil {
+		t.Fatalf("ListSources: %v", err)
+	}
+	found := false
+	for _, s := range sources {
+		if s.IdentifierValue == doi {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected migrated source with doi=%q; sources=%v", doi, sources)
+	}
+}
+
+// ─── S4 observation sources query ────────────────────────────────────────────
+
+func TestObservationSources(t *testing.T) {
+	kb := openTestKB(t)
+	pid, _ := kb.AddProject("proj", "")
+	obsID, _ := kb.AddObservation(pid, "finding", "interesting result")
+	srcA, _ := kb.AddSource(Source{Title: "Paper A", IdentifierType: "doi", IdentifierValue: "10.1/a"})
+	srcB, _ := kb.AddSource(Source{Title: "Paper B", Retracted: false})
+
+	if err := kb.LinkObservationSource(obsID, srcA, "cited"); err != nil {
+		t.Fatalf("LinkObservationSource A: %v", err)
+	}
+	if err := kb.LinkObservationSource(obsID, srcB, "retrieved"); err != nil {
+		t.Fatalf("LinkObservationSource B: %v", err)
+	}
+	// Retract source B so we can verify the warning path.
+	if err := kb.RetractSource(srcB, "Test retraction"); err != nil {
+		t.Fatalf("RetractSource: %v", err)
+	}
+
+	sources, err := kb.ObservationSources(obsID)
+	if err != nil {
+		t.Fatalf("ObservationSources: %v", err)
+	}
+	if len(sources) != 2 {
+		t.Fatalf("expected 2 sources, got %d", len(sources))
+	}
+	foundA, foundBRetracted := false, false
+	for _, s := range sources {
+		if s.Title == "Paper A" && !s.Retracted {
+			foundA = true
+		}
+		if s.Title == "Paper B" && s.Retracted && s.RetractionNote == "Test retraction" {
+			foundBRetracted = true
+		}
+	}
+	if !foundA {
+		t.Error("expected non-retracted Paper A in sources")
+	}
+	if !foundBRetracted {
+		t.Error("expected retracted Paper B in sources")
+	}
+}

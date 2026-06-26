@@ -63,6 +63,37 @@ PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 `
 
+// sourcesSchema creates the sources authority table and observation_sources join
+// table. Applied after the main schema; CREATE TABLE IF NOT EXISTS is idempotent.
+const sourcesSchema = `
+CREATE TABLE IF NOT EXISTS sources (
+    id               INTEGER  PRIMARY KEY AUTOINCREMENT,
+    title            TEXT     NOT NULL,
+    identifier_type  TEXT     NOT NULL DEFAULT '',
+    identifier_value TEXT     NOT NULL DEFAULT '',
+    authors          TEXT     NOT NULL DEFAULT '',
+    published_date   TEXT     NOT NULL DEFAULT '',
+    publisher        TEXT     NOT NULL DEFAULT '',
+    rights           TEXT     NOT NULL DEFAULT '',
+    version          TEXT     NOT NULL DEFAULT '',
+    retracted        INTEGER  NOT NULL DEFAULT 0,
+    retraction_note  TEXT     NOT NULL DEFAULT '',
+    first_seen_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_checked_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sources_identifier
+    ON sources(identifier_type, identifier_value)
+    WHERE identifier_type != '' AND identifier_value != '';
+
+CREATE TABLE IF NOT EXISTS observation_sources (
+    observation_id INTEGER NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
+    source_id      INTEGER NOT NULL REFERENCES sources(id)      ON DELETE RESTRICT,
+    relationship   TEXT    NOT NULL DEFAULT 'cited',
+    PRIMARY KEY (observation_id, source_id)
+);
+`
+
 // ftsSchema creates the FTS5 virtual table used by Search. It is applied
 // separately from the main schema so that a missing FTS5 compile flag does not
 // prevent the knowledge base from opening.
@@ -223,6 +254,21 @@ func OpenKnowledgeBase(ws *Workspace, customPath string) (*KnowledgeBase, error)
 	for _, stmt := range kbAlterStmts {
 		_, _ = db.Exec(stmt)
 	}
+	if _, err := db.Exec(sourcesSchema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("knowledge: apply sources schema: %w", err)
+	}
+	// One-time data migration: promote existing source_doi values into the
+	// sources authority table and link them via observation_sources.
+	_, _ = db.Exec(`
+		INSERT OR IGNORE INTO sources (title, identifier_type, identifier_value)
+		SELECT 'Source (DOI: ' || source_doi || ')', 'doi', source_doi
+		FROM observations WHERE source_doi != ''`)
+	_, _ = db.Exec(`
+		INSERT OR IGNORE INTO observation_sources (observation_id, source_id, relationship)
+		SELECT o.id, s.id, 'cited'
+		FROM observations o JOIN sources s ON s.identifier_value = o.source_doi
+		WHERE o.source_doi != ''`)
 	kb := &KnowledgeBase{db: db, path: dbPath}
 	if _, err := db.Exec(ftsSchema); err == nil {
 		kb.ftsAvailable = true
@@ -955,4 +1001,273 @@ func (kb *KnowledgeBase) FormatMarkdown(projectID int64) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+// ─── Sources ─────────────────────────────────────────────────────────────────
+
+/** Source is a row in the sources authority table. Each source represents a
+ * citable document or resource that may be linked to observations.
+ *
+ * Fields:
+ *   ID              (int64)  — auto-assigned primary key.
+ *   Title           (string) — human-readable title.
+ *   IdentifierType  (string) — "doi", "url", "isbn", "issn", "arxiv", "urn", or "".
+ *   IdentifierValue (string) — the identifier string, e.g. "10.1234/example".
+ *   Authors         (string) — comma-separated author names.
+ *   PublishedDate   (string) — publication date, YYYY-MM-DD format.
+ *   Publisher       (string) — publisher name.
+ *   Rights          (string) — licence or rights statement.
+ *   Version         (string) — edition or version.
+ *   Retracted       (bool)   — true when the source has been retracted.
+ *   RetractionNote  (string) — free-text note about the retraction.
+ *
+ * Example:
+ *   s := Source{Title: "SPARQL 1.1", IdentifierType: "doi", IdentifierValue: "10.1234/sparql"}
+ *   id, err := kb.AddSource(s)
+ */
+type Source struct {
+	ID              int64
+	Title           string
+	IdentifierType  string
+	IdentifierValue string
+	Authors         string
+	PublishedDate   string
+	Publisher       string
+	Rights          string
+	Version         string
+	Retracted       bool
+	RetractionNote  string
+}
+
+/** AddSource inserts a new source row and returns its auto-assigned ID.
+ * When identifier_type and identifier_value are both non-empty, an existing
+ * row with the same (type, value) pair is returned instead of creating a
+ * duplicate.
+ *
+ * Parameters:
+ *   s (Source) — source metadata; ID field is ignored.
+ *
+ * Returns:
+ *   int64 — the ID of the inserted or existing row.
+ *   error — on database failure.
+ *
+ * Example:
+ *   id, err := kb.AddSource(Source{Title: "SPARQL 1.1", IdentifierType: "doi", IdentifierValue: "10.1234/sparql"})
+ */
+func (kb *KnowledgeBase) AddSource(s Source) (int64, error) {
+	if s.IdentifierType != "" && s.IdentifierValue != "" {
+		var id int64
+		err := kb.db.QueryRow(
+			`SELECT id FROM sources WHERE identifier_type = ? AND identifier_value = ?`,
+			s.IdentifierType, s.IdentifierValue,
+		).Scan(&id)
+		if err == nil {
+			return id, nil
+		}
+	}
+	res, err := kb.db.Exec(
+		`INSERT INTO sources (title, identifier_type, identifier_value, authors, published_date, publisher, rights, version)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.Title, s.IdentifierType, s.IdentifierValue,
+		s.Authors, s.PublishedDate, s.Publisher, s.Rights, s.Version,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+/** ListSources returns all rows in the sources table, ordered by id.
+ *
+ * Returns:
+ *   []Source — all sources; empty slice when none exist.
+ *   error    — on database failure.
+ *
+ * Example:
+ *   sources, err := kb.ListSources()
+ */
+func (kb *KnowledgeBase) ListSources() ([]Source, error) {
+	rows, err := kb.db.Query(
+		`SELECT id, title, identifier_type, identifier_value, retracted, retraction_note
+		 FROM sources ORDER BY id`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Source
+	for rows.Next() {
+		var s Source
+		var retracted int
+		if err := rows.Scan(&s.ID, &s.Title, &s.IdentifierType, &s.IdentifierValue, &retracted, &s.RetractionNote); err != nil {
+			return nil, err
+		}
+		s.Retracted = retracted != 0
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+/** ShowSource returns the full source row for the given id, or an error if
+ * not found.
+ *
+ * Parameters:
+ *   id (int64) — source primary key.
+ *
+ * Returns:
+ *   *Source — the source row.
+ *   error   — sql.ErrNoRows when not found; other errors on db failure.
+ *
+ * Example:
+ *   s, err := kb.ShowSource(1)
+ */
+func (kb *KnowledgeBase) ShowSource(id int64) (*Source, error) {
+	var s Source
+	var retracted int
+	err := kb.db.QueryRow(
+		`SELECT id, title, identifier_type, identifier_value, authors, published_date,
+		        publisher, rights, version, retracted, retraction_note
+		 FROM sources WHERE id = ?`, id,
+	).Scan(&s.ID, &s.Title, &s.IdentifierType, &s.IdentifierValue,
+		&s.Authors, &s.PublishedDate, &s.Publisher, &s.Rights, &s.Version,
+		&retracted, &s.RetractionNote)
+	if err != nil {
+		return nil, err
+	}
+	s.Retracted = retracted != 0
+	return &s, nil
+}
+
+/** RemoveSource deletes the source with the given id. Returns an error if the
+ * source is linked to any observations.
+ *
+ * Parameters:
+ *   id (int64) — source primary key.
+ *
+ * Returns:
+ *   error — if the source is linked or not found.
+ *
+ * Example:
+ *   err := kb.RemoveSource(1) // fails if linked
+ */
+func (kb *KnowledgeBase) RemoveSource(id int64) error {
+	var count int
+	if err := kb.db.QueryRow(
+		`SELECT COUNT(*) FROM observation_sources WHERE source_id = ?`, id,
+	).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("source %d is linked to %d observation(s); unlink first", id, count)
+	}
+	_, err := kb.db.Exec(`DELETE FROM sources WHERE id = ?`, id)
+	return err
+}
+
+/** RetractSource sets retracted=1 and records a retraction note on the source
+ * with the given id.
+ *
+ * Parameters:
+ *   id   (int64)  — source primary key.
+ *   note (string) — free-text retraction note.
+ *
+ * Returns:
+ *   error — on database failure.
+ *
+ * Example:
+ *   err := kb.RetractSource(1, "Retracted 2026-07-01 by publisher")
+ */
+func (kb *KnowledgeBase) RetractSource(id int64, note string) error {
+	_, err := kb.db.Exec(
+		`UPDATE sources SET retracted = 1, retraction_note = ? WHERE id = ?`,
+		note, id,
+	)
+	return err
+}
+
+/** LinkObservationSource creates an observation_sources row linking an
+ * observation to a source. Duplicate links are silently ignored.
+ *
+ * Parameters:
+ *   observationID (int64)  — observation primary key.
+ *   sourceID      (int64)  — source primary key.
+ *   relationship  (string) — label, e.g. "cited" or "retrieved".
+ *
+ * Returns:
+ *   error — on database failure.
+ *
+ * Example:
+ *   err := kb.LinkObservationSource(42, 1, "retrieved")
+ */
+func (kb *KnowledgeBase) LinkObservationSource(observationID, sourceID int64, relationship string) error {
+	_, err := kb.db.Exec(
+		`INSERT OR IGNORE INTO observation_sources (observation_id, source_id, relationship)
+		 VALUES (?, ?, ?)`,
+		observationID, sourceID, relationship,
+	)
+	return err
+}
+
+/** ObservationSources returns all sources linked to the given observation id,
+ * including retraction state, ordered by source id.
+ *
+ * Parameters:
+ *   observationID (int64) — observation primary key.
+ *
+ * Returns:
+ *   []Source — linked sources; empty slice when none.
+ *   error    — on database failure.
+ *
+ * Example:
+ *   sources, err := kb.ObservationSources(42)
+ */
+func (kb *KnowledgeBase) ObservationSources(observationID int64) ([]Source, error) {
+	rows, err := kb.db.Query(
+		`SELECT s.id, s.title, s.identifier_type, s.identifier_value,
+		        s.retracted, s.retraction_note
+		 FROM sources s
+		 JOIN observation_sources os ON os.source_id = s.id
+		 WHERE os.observation_id = ?
+		 ORDER BY s.id`,
+		observationID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Source
+	for rows.Next() {
+		var s Source
+		var retracted int
+		if err := rows.Scan(&s.ID, &s.Title, &s.IdentifierType, &s.IdentifierValue,
+			&retracted, &s.RetractionNote); err != nil {
+			return nil, err
+		}
+		s.Retracted = retracted != 0
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+/** FindOrCreateSource upserts a source by identifier when one is provided, or
+ * inserts a new source with the given title when no identifier is known.
+ *
+ * Parameters:
+ *   title           (string) — human-readable title or file path.
+ *   identifierType  (string) — "doi", "url", etc.; empty = no identifier.
+ *   identifierValue (string) — the identifier value; empty = no identifier.
+ *
+ * Returns:
+ *   int64 — the ID of the found or created source.
+ *   error — on database failure.
+ *
+ * Example:
+ *   id, err := kb.FindOrCreateSource("spec.md", "doi", "10.1234/example")
+ */
+func (kb *KnowledgeBase) FindOrCreateSource(title, identifierType, identifierValue string) (int64, error) {
+	return kb.AddSource(Source{
+		Title:           title,
+		IdentifierType:  identifierType,
+		IdentifierValue: identifierValue,
+	})
 }

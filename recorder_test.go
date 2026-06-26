@@ -475,6 +475,48 @@ func TestRecordTurnWithStats_NoRAGNote(t *testing.T) {
 	}
 }
 
+func TestRecordTurnWithStats_RAGSourceNotes(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3:latest)", dir)
+
+	ragInfo := &RAGAugmentInfo{
+		StoreName: "docs.db",
+		Chunks:    2,
+		TopScore:  0.91,
+		Sources: []RAGChunkRef{
+			{Source: "paper.md", SourceTitle: "Semantic Search", SourceDOI: "10.1234/sem"},
+			{Source: "guide.md", SourceTitle: "Search Guide", SourceURL: "https://example.org/guide"},
+			{Source: "paper.md"}, // duplicate source — must be deduplicated
+		},
+	}
+	if err := r.RecordTurnWithStats("query", "answer", ChatStats{}, nil, "", nil, ragInfo); err != nil {
+		t.Fatalf("RecordTurnWithStats: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	// Aggregate note must still appear.
+	if !strings.Contains(content, "[[rag: 2 chunks from docs.db, top score 0.91]]") {
+		t.Errorf("missing aggregate [[rag:]] note\n---\n%s", content)
+	}
+	// Source notes with title and doi.
+	if !strings.Contains(content, "[[rag-source: paper.md (Semantic Search, doi:10.1234/sem)]]") {
+		t.Errorf("missing rag-source note for paper.md\n---\n%s", content)
+	}
+	// Source note with URL (no doi).
+	if !strings.Contains(content, "[[rag-source: guide.md (Search Guide, https://example.org/guide)]]") {
+		t.Errorf("missing rag-source note for guide.md\n---\n%s", content)
+	}
+	// Duplicate source must appear only once.
+	count := strings.Count(content, "[[rag-source: paper.md")
+	if count != 1 {
+		t.Errorf("paper.md rag-source note appeared %d times, want exactly 1", count)
+	}
+}
+
 // ─── formatToolCallNote ───────────────────────────────────────────────────────
 
 func TestFormatToolCallNote_NoArgs(t *testing.T) {

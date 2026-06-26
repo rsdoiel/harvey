@@ -497,7 +497,7 @@ func TestRagIngestFile_docsPopulated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n, err := ragIngestFile(store, stubEmbedder{"stub"}, cPath)
+	n, err := ragIngestFile(store, stubEmbedder{"stub"}, cPath, ProvenanceMeta{})
 	if err != nil {
 		t.Fatalf("ragIngestFile: %v", err)
 	}

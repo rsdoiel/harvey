@@ -3,6 +3,7 @@ package harvey
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -206,5 +207,137 @@ func TestEmbeddingMismatch(t *testing.T) {
 	_, err = store.Query("hello", embedB, 1)
 	if err == nil {
 		t.Error("expected mismatch error when querying with wrong embedder")
+	}
+}
+
+// ─── S1 provenance schema ─────────────────────────────────────────────────────
+
+func TestMigrateChunksSchema_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	// Open once — applies all migrations.
+	store1, err := NewRagStore(dbPath, "stub")
+	if err != nil {
+		t.Fatalf("first open: %v", err)
+	}
+	_ = store1.db.Close()
+
+	// Open again — must not fail even though columns now exist.
+	store2, err := NewRagStore(dbPath, "stub")
+	if err != nil {
+		t.Fatalf("second open (idempotency check): %v", err)
+	}
+	defer store2.db.Close()
+}
+
+func TestIngest_ContentHash(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewRagStore(filepath.Join(dir, "test.db"), "stub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.db.Close()
+
+	emb := stubEmbedder{"stub"}
+	const text = "package main"
+
+	if err := store.Ingest("src.go", []string{text}, emb); err != nil {
+		t.Fatalf("first ingest: %v", err)
+	}
+	// Second ingest of the same content must be a no-op (skip, not duplicate).
+	if err := store.Ingest("src.go", []string{text}, emb); err != nil {
+		t.Fatalf("second ingest: %v", err)
+	}
+
+	var count int
+	if err := store.db.QueryRow(`SELECT count(*) FROM chunks WHERE source = 'src.go'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 chunk after two identical ingests, got %d", count)
+	}
+
+	// Verify the content_hash column is populated.
+	var hash string
+	if err := store.db.QueryRow(`SELECT content_hash FROM chunks WHERE source = 'src.go'`).Scan(&hash); err != nil {
+		t.Fatal(err)
+	}
+	if hash == "" {
+		t.Error("expected non-empty content_hash after ingest")
+	}
+}
+
+func TestIngest_ProvenanceMeta(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewRagStore(filepath.Join(dir, "test.db"), "stub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.db.Close()
+
+	emb := stubEmbedder{"stub"}
+	meta := ProvenanceMeta{
+		DOI:   "10.1234/example",
+		Title: "Example Paper",
+		URL:   "https://example.org/paper",
+	}
+	if err := store.Ingest("paper.md", []string{"Abstract text"}, emb, meta); err != nil {
+		t.Fatalf("ingest with meta: %v", err)
+	}
+
+	var doi, title, url string
+	if err := store.db.QueryRow(
+		`SELECT source_doi, source_title, source_url FROM chunks WHERE source = 'paper.md'`,
+	).Scan(&doi, &title, &url); err != nil {
+		t.Fatalf("query provenance fields: %v", err)
+	}
+	if doi != "10.1234/example" {
+		t.Errorf("source_doi: got %q, want %q", doi, "10.1234/example")
+	}
+	if title != "Example Paper" {
+		t.Errorf("source_title: got %q, want %q", title, "Example Paper")
+	}
+	if url != "https://example.org/paper" {
+		t.Errorf("source_url: got %q, want %q", url, "https://example.org/paper")
+	}
+}
+
+// ─── S3 provenance fields in Query ───────────────────────────────────────────
+
+func TestQuery_ProvenanceFields(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewRagStore(filepath.Join(dir, "test.db"), "stub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.db.Close()
+
+	emb := stubEmbedder{"stub"}
+	meta := ProvenanceMeta{
+		DOI:   "10.1234/prov-query",
+		Title: "Provenance Query Test",
+		URL:   "https://example.org/prov",
+	}
+	if err := store.Ingest("paper.md", []string{"some content"}, emb, meta); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	chunks, err := store.Query("some content", emb, 1)
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("expected at least one result")
+	}
+	c := chunks[0]
+	if c.SourceDOI != "10.1234/prov-query" {
+		t.Errorf("SourceDOI = %q, want %q", c.SourceDOI, "10.1234/prov-query")
+	}
+	if c.SourceTitle != "Provenance Query Test" {
+		t.Errorf("SourceTitle = %q, want %q", c.SourceTitle, "Provenance Query Test")
+	}
+	if c.SourceURL != "https://example.org/prov" {
+		t.Errorf("SourceURL = %q, want %q", c.SourceURL, "https://example.org/prov")
 	}
 }

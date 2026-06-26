@@ -40,27 +40,27 @@
 
 ### Scholarly provenance (see [scholarly-provenance-plan.md](scholarly-provenance-plan.md))
 
-- **S1** — RAG chunk provenance schema: add `indexed_at`, `content_hash`,
+- ~~**S1** — RAG chunk provenance schema: add `indexed_at`, `content_hash`,
   `source_url`, `source_doi`, `source_title`, `source_version`, `rights`,
   `retracted`, `retraction_note` columns to `chunks` table via idempotent
   `ALTER TABLE` migration in `RagStore.Open`; compute SHA-256 content hash on
   ingest for change detection; add `--doi`, `--url`, `--title`, `--version`,
-  `--rights` flags to `/rag ingest`.
+  `--rights` flags to `/rag ingest`.~~ **Done** — provenance columns added via idempotent ALTER; SHA-256 dedup with stale-chunk cleanup; flags wired to `/rag ingest`; 3 new tests pass; `TestRagIngestPDF_integration` assertion relaxed for dedup.
 
-- **S2** — Source registry in `knowledge.db`: add `sources` authority table
+- ~~**S2** — Source registry in `knowledge.db`: add `sources` authority table
   and `observation_sources` join table; migrate existing `source_doi` values
   from `observations`; add `/kb source {add,list,show,remove}` and
-  `/kb retract` commands.
+  `/kb retract` commands.~~ **Done** — `sourcesSchema` with UNIQUE index; one-time DOI migration in `OpenKnowledgeBase`; `AddSource`, `ListSources`, `ShowSource`, `RemoveSource`, `RetractSource`, `LinkObservationSource`, `FindOrCreateSource` implemented; `/kb source` and `/kb retract` commands wired; 9 tests pass.
 
-- **S3** — Source-level Fountain notes: extend `RAGAugmentInfo` with
+- ~~**S3** — Source-level Fountain notes: extend `RAGAugmentInfo` with
   `Sources []RAGChunkRef`; emit deduplicated `[[rag-source: path[:lines]
   (title, doi:DOI)]]` notes after the existing `[[rag: ...]]` aggregate note.
-  Depends on S1.
+  Depends on S1.~~ **Done** — `RAGChunkRef` struct added to `recorder.go`; `Sources []RAGChunkRef` added to `RAGAugmentInfo`; `Query` now fetches `source_url`, `source_doi`, `source_title` from DB; `ragAugment` deduplicates by source path and populates `Sources`; `RecordTurnWithStats` emits per-source `[[rag-source:]]` notes with dedup guard; 3 tests pass.
 
-- **S4** — Observation attribution: add `lastRAGInfo *RAGAugmentInfo` to
+- ~~**S4** — Observation attribution: add `lastRAGInfo *RAGAugmentInfo` to
   `Agent`; prompt in `/kb observe` to auto-link retrieved sources; add
   `/kb cite SOURCE_ID` for manual linking; show source attribution with
-  retraction warnings in `/kb show`. Depends on S2 and S3.
+  retraction warnings in `/kb show`. Depends on S2 and S3.~~ **Done** — `LastRAGInfo` and `LastObservationID` added to `Agent`; cleared by `ClearHistory`; set after each RAG-augmented chat turn; `kbObserve` hints available sources; `/kb cite` links sources to last observation; `/kb show` displays sources with retraction warnings; `ObservationSources` query added to `knowledge.go`; 8 tests pass; `go test -race ./...` clean.
 
 - **HARVEY.md** — Add a Provenance section instructing the model to attribute
   retrieved content at the point of use, not post-hoc.

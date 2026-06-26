@@ -87,12 +87,23 @@ type ToolCallRecord struct {
 	Character string // ALL-CAPS model name when attributed; empty = HARVEY (default)
 }
 
+// RAGChunkRef carries provenance metadata for a single retrieved RAG chunk,
+// used to emit per-source [[rag-source:]] Fountain notes.
+type RAGChunkRef struct {
+	Source      string // file path or store key
+	SourceURL   string
+	SourceDOI   string
+	SourceTitle string
+}
+
 // RAGAugmentInfo holds metadata about a RAG retrieval that fired for a chat
 // turn, for recording as a [[rag: ...]] Fountain note.
 type RAGAugmentInfo struct {
 	StoreName string
 	Chunks    int
 	TopScore  float64
+	// Sources holds deduplicated source refs ordered by retrieval rank.
+	Sources []RAGChunkRef
 }
 
 // formatToolCallNote returns the content of a [[...]] Fountain note for a
@@ -311,6 +322,27 @@ func (r *Recorder) RecordTurnWithStats(userInput, harveyReply string, stats Chat
 	if ragInfo != nil {
 		r.writeNote(fmt.Sprintf("rag: %d chunks from %s, top score %.2f",
 			ragInfo.Chunks, ragInfo.StoreName, ragInfo.TopScore))
+		seen := map[string]bool{}
+		for _, src := range ragInfo.Sources {
+			if seen[src.Source] {
+				continue
+			}
+			seen[src.Source] = true
+			note := "rag-source: " + src.Source
+			var meta []string
+			if src.SourceTitle != "" {
+				meta = append(meta, src.SourceTitle)
+			}
+			if src.SourceDOI != "" {
+				meta = append(meta, "doi:"+src.SourceDOI)
+			} else if src.SourceURL != "" {
+				meta = append(meta, src.SourceURL)
+			}
+			if len(meta) > 0 {
+				note += " (" + strings.Join(meta, ", ") + ")"
+			}
+			r.writeNote(note)
+		}
 	}
 	r.writeDialogue(r.userName, "", userInput)
 	r.writeDialogue("HARVEY", "", fmt.Sprintf("Forwarding to %s.", r.modelName))

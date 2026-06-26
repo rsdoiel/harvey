@@ -3,10 +3,13 @@ package harvey
 import (
 	"bytes"
 	"cmp"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -57,10 +60,13 @@ type RagStore struct {
  *   for _, c := range chunks { fmt.Printf("[%.2f] %s\n", c.Score, c.Content) }
  */
 type Chunk struct {
-	ID      int64
-	Content string
-	Score   float64
-	Source  string
+	ID          int64
+	Content     string
+	Score       float64
+	Source      string
+	SourceURL   string
+	SourceDOI   string
+	SourceTitle string
 }
 
 /** NewRagStore opens (or creates) the RAG SQLite database at dbPath and
@@ -106,9 +112,12 @@ func NewRagStore(dbPath, embeddingModel string) (*RagStore, error) {
 		return nil, err
 	}
 
-	// Migration: add source column to databases created before it was introduced.
-	// SQLite returns "duplicate column name" if the column already exists; ignore that.
+	// Lazy migrations: add columns to databases created before they were introduced.
+	// SQLite returns "duplicate column name" if a column already exists; ignore that.
 	_, _ = db.Exec(`ALTER TABLE chunks ADD COLUMN source TEXT NOT NULL DEFAULT ''`)
+	for _, stmt := range provenanceAlterStmts {
+		_, _ = db.Exec(stmt)
+	}
 
 	return &RagStore{db: db, embeddingModel: embeddingModel}, nil
 }
@@ -129,9 +138,25 @@ func NewRagStore(dbPath, embeddingModel string) (*RagStore, error) {
  * Example:
  *   err := store.Ingest("harvey/README.md", []string{"The sky is blue"}, embedder)
  */
-func (r *RagStore) Ingest(source string, texts []string, embedder Embedder) error {
+func (r *RagStore) Ingest(source string, texts []string, embedder Embedder, meta ...ProvenanceMeta) error {
 	if embedder.Name() != r.embeddingModel {
 		return errors.New("embedding model mismatch")
+	}
+
+	m := ProvenanceMeta{}
+	if len(meta) > 0 {
+		m = meta[0]
+	}
+
+	// Collect content hashes for all incoming chunks so we can remove stale rows.
+	type entry struct {
+		text string
+		hash string
+	}
+	entries := make([]entry, len(texts))
+	for i, t := range texts {
+		h := sha256.Sum256([]byte(t))
+		entries[i] = entry{text: t, hash: hex.EncodeToString(h[:])}
 	}
 
 	tx, err := r.db.Begin()
@@ -140,14 +165,33 @@ func (r *RagStore) Ingest(source string, texts []string, embedder Embedder) erro
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("INSERT INTO chunks(content, embedding, source) VALUES (?, ?, ?)")
+	// Remove stale chunks: rows from this source whose hash is not in the new set.
+	if len(entries) > 0 {
+		placeholders := make([]string, len(entries))
+		args := make([]any, 1+len(entries))
+		args[0] = source
+		for i, e := range entries {
+			placeholders[i] = "?"
+			args[i+1] = e.hash
+		}
+		_, _ = tx.Exec(
+			fmt.Sprintf("DELETE FROM chunks WHERE source = ? AND content_hash NOT IN (%s)",
+				strings.Join(placeholders, ",")),
+			args...,
+		)
+	}
+
+	const insertQ = `INSERT INTO chunks(content, embedding, source, content_hash, source_url, source_doi, source_title, source_version, rights)
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+		WHERE NOT EXISTS (SELECT 1 FROM chunks WHERE source = ? AND content_hash = ?)`
+	stmt, err := tx.Prepare(insertQ)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	for _, text := range texts {
-		vec, err := embedder.Embed(text)
+	for _, e := range entries {
+		vec, err := embedder.Embed(e.text)
 		if err != nil {
 			return err
 		}
@@ -155,7 +199,10 @@ func (r *RagStore) Ingest(source string, texts []string, embedder Embedder) erro
 		if err != nil {
 			return err
 		}
-		if _, err = stmt.Exec(text, blob, source); err != nil {
+		if _, err = stmt.Exec(
+			e.text, blob, source, e.hash, m.URL, m.DOI, m.Title, m.Version, m.Rights,
+			source, e.hash,
+		); err != nil {
 			return err
 		}
 	}
@@ -178,6 +225,43 @@ var enrichedAlterStmts = []string{
 	`ALTER TABLE chunks ADD COLUMN citations   TEXT NOT NULL DEFAULT ''`,
 }
 
+// provenanceAlterStmts add scholarly-provenance columns to pre-existing RAG
+// stores. Applied eagerly in NewRagStore; SQLite duplicate-column errors are ignored.
+var provenanceAlterStmts = []string{
+	`ALTER TABLE chunks ADD COLUMN indexed_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+	`ALTER TABLE chunks ADD COLUMN content_hash   TEXT     NOT NULL DEFAULT ''`,
+	`ALTER TABLE chunks ADD COLUMN source_url     TEXT     NOT NULL DEFAULT ''`,
+	`ALTER TABLE chunks ADD COLUMN source_doi     TEXT     NOT NULL DEFAULT ''`,
+	`ALTER TABLE chunks ADD COLUMN source_title   TEXT     NOT NULL DEFAULT ''`,
+	`ALTER TABLE chunks ADD COLUMN source_version TEXT     NOT NULL DEFAULT ''`,
+	`ALTER TABLE chunks ADD COLUMN rights         TEXT     NOT NULL DEFAULT ''`,
+	`ALTER TABLE chunks ADD COLUMN retracted      INTEGER  NOT NULL DEFAULT 0`,
+	`ALTER TABLE chunks ADD COLUMN retraction_note TEXT    NOT NULL DEFAULT ''`,
+}
+
+/** ProvenanceMeta carries scholarly-provenance metadata for a batch of chunks
+ * ingested from a single source. All fields are optional; empty values are
+ * stored as empty strings.
+ *
+ * Fields:
+ *   URL     (string) — source URL.
+ *   DOI     (string) — Digital Object Identifier, e.g. "10.1234/example".
+ *   Title   (string) — human-readable title of the source document.
+ *   Version (string) — version or edition of the source.
+ *   Rights  (string) — licence or rights statement.
+ *
+ * Example:
+ *   meta := ProvenanceMeta{DOI: "10.1234/sparql", Title: "SPARQL 1.1"}
+ *   err  := store.Ingest("spec.md", chunks, embedder, meta)
+ */
+type ProvenanceMeta struct {
+	URL     string
+	DOI     string
+	Title   string
+	Version string
+	Rights  string
+}
+
 /** IngestEnriched embeds each EnrichedChunk using embedder and stores the
  * resulting vectors alongside source-location and semantic metadata.  The
  * chunks table is lazily migrated with ALTER TABLE … ADD COLUMN on first use,
@@ -195,7 +279,7 @@ var enrichedAlterStmts = []string{
  * Example:
  *   err := store.IngestEnriched("main.c", chunks, embedder)
  */
-func (r *RagStore) IngestEnriched(source string, chunks []EnrichedChunk, embedder Embedder) error {
+func (r *RagStore) IngestEnriched(source string, chunks []EnrichedChunk, embedder Embedder, meta ...ProvenanceMeta) error {
 	if embedder.Name() != r.embeddingModel {
 		return errors.New("embedding model mismatch")
 	}
@@ -204,24 +288,57 @@ func (r *RagStore) IngestEnriched(source string, chunks []EnrichedChunk, embedde
 		_, _ = r.db.Exec(stmt)
 	}
 
+	m := ProvenanceMeta{}
+	if len(meta) > 0 {
+		m = meta[0]
+	}
+
+	// Collect content hashes so we can remove stale rows from this source.
+	type entry struct {
+		chunk EnrichedChunk
+		hash  string
+	}
+	entries := make([]entry, len(chunks))
+	for i, c := range chunks {
+		h := sha256.Sum256([]byte(c.Content))
+		entries[i] = entry{chunk: c, hash: hex.EncodeToString(h[:])}
+	}
+
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
+	// Remove stale chunks: rows from this source whose hash is not in the new set.
+	if len(entries) > 0 {
+		placeholders := make([]string, len(entries))
+		args := make([]any, 1+len(entries))
+		args[0] = source
+		for i, e := range entries {
+			placeholders[i] = "?"
+			args[i+1] = e.hash
+		}
+		_, _ = tx.Exec(
+			fmt.Sprintf("DELETE FROM chunks WHERE source = ? AND content_hash NOT IN (%s)",
+				strings.Join(placeholders, ",")),
+			args...,
+		)
+	}
+
 	const q = `INSERT INTO chunks(content, embedding, source,
 		start_line, start_col, end_line, end_col, chunk_type, symbols, docs,
-		identifiers, citations)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		identifiers, citations, content_hash, source_url, source_doi, source_title, source_version, rights)
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		WHERE NOT EXISTS (SELECT 1 FROM chunks WHERE source = ? AND content_hash = ?)`
 	stmt, err := tx.Prepare(q)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	for _, chunk := range chunks {
-		vec, err := embedder.Embed(chunk.Content)
+	for _, e := range entries {
+		vec, err := embedder.Embed(e.chunk.Content)
 		if err != nil {
 			return err
 		}
@@ -229,22 +346,24 @@ func (r *RagStore) IngestEnriched(source string, chunks []EnrichedChunk, embedde
 		if err != nil {
 			return err
 		}
-		syms := strings.Join(chunk.Symbols, ",")
+		syms := strings.Join(e.chunk.Symbols, ",")
 		identifiers := "{}"
-		if chunk.Identifiers != nil {
-			b, err := json.Marshal(chunk.Identifiers)
+		if e.chunk.Identifiers != nil {
+			b, err := json.Marshal(e.chunk.Identifiers)
 			if err != nil {
 				return err
 			}
 			identifiers = string(b)
 		}
-		citations := strings.Join(chunk.Citations, ",")
+		citations := strings.Join(e.chunk.Citations, ",")
 		if _, err = stmt.Exec(
-			chunk.Content, blob, source,
-			chunk.StartLine, chunk.StartCol,
-			chunk.EndLine, chunk.EndCol,
-			chunk.ChunkType, syms, chunk.Docs,
+			e.chunk.Content, blob, source,
+			e.chunk.StartLine, e.chunk.StartCol,
+			e.chunk.EndLine, e.chunk.EndCol,
+			e.chunk.ChunkType, syms, e.chunk.Docs,
 			identifiers, citations,
+			e.hash, m.URL, m.DOI, m.Title, m.Version, m.Rights,
+			source, e.hash,
 		); err != nil {
 			return err
 		}
@@ -278,7 +397,9 @@ func (r *RagStore) Query(query string, embedder Embedder, topK int) ([]Chunk, er
 		return nil, err
 	}
 
-	rows, err := r.db.Query("SELECT id, content, embedding, source FROM chunks")
+	rows, err := r.db.Query(
+		"SELECT id, content, embedding, source, source_url, source_doi, source_title FROM chunks",
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -292,9 +413,9 @@ func (r *RagStore) Query(query string, embedder Embedder, topK int) ([]Chunk, er
 	var results []scored
 	for rows.Next() {
 		var id int64
-		var content, source string
+		var content, source, sourceURL, sourceDOI, sourceTitle string
 		var blob []byte
-		if err := rows.Scan(&id, &content, &blob, &source); err != nil {
+		if err := rows.Scan(&id, &content, &blob, &source, &sourceURL, &sourceDOI, &sourceTitle); err != nil {
 			return nil, err
 		}
 		vec, err := deserialize(blob)
@@ -302,7 +423,10 @@ func (r *RagStore) Query(query string, embedder Embedder, topK int) ([]Chunk, er
 			return nil, err
 		}
 		results = append(results, scored{
-			chunk: Chunk{ID: id, Content: content, Source: source},
+			chunk: Chunk{
+				ID: id, Content: content, Source: source,
+				SourceURL: sourceURL, SourceDOI: sourceDOI, SourceTitle: sourceTitle,
+			},
 			score: cosineSimilarity(queryVec, vec),
 		})
 	}
