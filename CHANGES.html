@@ -20,8 +20,64 @@
 </nav>
 <section id="main-content">
 <h1 id="changes">CHANGES</h1>
-<h2 id="v0.0.14-2026-06-21">v0.0.14 (2026-06-21)</h2>
+<h2 id="v0.0.15-2026-06-26">v0.0.15 (2026-06-26)</h2>
 <h3 id="new-features">New features</h3>
+<ul>
+<li><code>/model mode [MODEL] {structured|prose|inject|none}</code>: set
+or display the tool-execution strategy for a model. The mode is
+persisted in the model cache (<code>agents/model_cache.db</code>) and
+survives sessions and re-probes. Modes: <code>structured</code> (OpenAI
+tool_calls), <code>prose</code> (JSON-fence fallback),
+<code>inject</code> (pre-inject file content, no tool calls),
+<code>none</code> (plain text).</li>
+<li>File-reference injection (option 1): when a model’s tool mode is
+<code>inject</code> or when the cache shows it does not reliably call
+tools, Harvey now automatically scans the user’s prompt for path-like
+tokens, reads any matching workspace files (≤ 64 KB, text extensions
+only), and prepends their content as <code>### File:</code> blocks
+before sending the prompt. Models that ignore the tools schema can now
+work with file content without the user manually pasting it.</li>
+<li>Cannot-read retry (option 2): if a model responds with a phrase
+indicating it cannot access a file (e.g. “I cannot directly read files
+on your system”), Harvey retries the turn once with the referenced file
+content pre-loaded via file-reference injection. The retry uses
+<code>RunToolLoop</code> when the model is in structured mode so tool
+calls in the retry response are correctly dispatched.</li>
+<li><code>ModelCapability.ToolMode</code> field and
+<code>ToolMode*</code> constants added to the model cache. The
+<code>tool_mode</code> column is added to existing databases
+automatically on first open (idempotent <code>ALTER TABLE</code>).</li>
+</ul>
+<h3 id="bug-fixes">Bug fixes</h3>
+<ul>
+<li><code>FastProbeModel</code> no longer sets
+<code>ToolMode = ToolModeStructured</code> when probing a tool-capable
+model. Re-probing now preserves any mode the user set via
+<code>/model mode</code>. Tool dispatch continues to work via the
+existing <code>SupportsTools == CapYes</code> fallback in
+<code>toolsReliable()</code>.</li>
+<li>Option-2 retry: <code>toolCallRecords</code> is now cleared before
+the history rollback, preventing rolled-back tool calls from appearing
+in the Fountain session transcript paired with the retry response.</li>
+<li>Option-2 retry: <code>noToolCalls</code> is now computed correctly
+after an option-2 retry. A <code>hadToolCalls</code> flag is captured
+before the rollback so that <code>autoExecuteReply</code> does not fire
+on the retry response when the first pass executed tool calls.</li>
+<li>Option-2 retry: when <code>useStructuredTools</code> is true, the
+retry now calls <code>RunToolLoop</code> instead of
+<code>Client.Chat</code> directly, so structured tool calls in the retry
+response are correctly dispatched and recorded.</li>
+<li><code>cantReadPhrases</code> entry
+<code>"please provide the file"</code> tightened to
+<code>"please provide the file content"</code> to avoid spurious retries
+when a model asks for a file <em>path</em> rather than refusing file
+access.</li>
+<li>Exported <code>ToolMode*</code> constants now have
+<code>/** … */</code> block-doc comments per the project documentation
+convention.</li>
+</ul>
+<h2 id="v0.0.14-2026-06-21">v0.0.14 (2026-06-21)</h2>
+<h3 id="new-features-1">New features</h3>
 <ul>
 <li>Llamafile is now the primary language model backend: startup
 sequence shows registered llamafiles first, auto-selects on preferred
@@ -85,7 +141,7 @@ configuration fields documented (<code>model_aliases</code>,
 added; complete annotated <code>harvey.yaml</code> example</li>
 </ul>
 <h2 id="v0.0.13-2026-06-19">v0.0.13 (2026-06-19)</h2>
-<h3 id="new-features-1">New features</h3>
+<h3 id="new-features-2">New features</h3>
 <ul>
 <li><code>/profile</code> command: top-level alias for
 <code>/memory profile &lt;list|show|edit|use|rename&gt;</code> — profile
@@ -108,7 +164,7 @@ the model name from the binary path</li>
 <code>read_file</code> directly without asking the user to convert
 files</li>
 </ul>
-<h3 id="bug-fixes">Bug fixes</h3>
+<h3 id="bug-fixes-1">Bug fixes</h3>
 <ul>
 <li>S3 remote: improved not-found detection for missing keys and missing
 buckets; path-style access now correctly enabled for non-AWS
@@ -122,7 +178,7 @@ by directory scan, fixing cases where auto-discovery missed models not
 registered via <code>/llamafile add</code></li>
 </ul>
 <h2 id="v0.0.12-2026-06-17">v0.0.12 (2026-06-17)</h2>
-<h3 id="new-features-2">New features</h3>
+<h3 id="new-features-3">New features</h3>
 <ul>
 <li>Memory enrichment: added <code>kind</code> field to memory documents
 classifying why knowledge matters
@@ -172,7 +228,7 @@ instead of silently continuing</li>
 <li>Plan execution: steps with blocked or failed tool calls are no
 longer auto-marked complete</li>
 </ul>
-<h3 id="bug-fixes-1">Bug fixes</h3>
+<h3 id="bug-fixes-2">Bug fixes</h3>
 <ul>
 <li>Llamafile: fixed exec format error on macOS (APE binaries now
 launched via <code>/bin/sh</code>)</li>
@@ -191,7 +247,7 @@ Metal/CUDA)</li>
 context-injection path instead of erroring out</li>
 </ul>
 <h2 id="v0.0.11-2026-06-11">v0.0.11 (2026-06-11)</h2>
-<h3 id="new-features-3">New features</h3>
+<h3 id="new-features-4">New features</h3>
 <ul>
 <li>Added scholarly identifier extraction and normalization for 14
 identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN,
@@ -211,7 +267,7 @@ papers, institutions, funders) via an identifier type/value pair</li>
 <code>project_fact</code> memory metadata</li>
 </ul>
 <h2 id="v0.0.10-2026-06-09">v0.0.10 (2026-06-09)</h2>
-<h3 id="new-features-4">New features</h3>
+<h3 id="new-features-5">New features</h3>
 <ul>
 <li>Added multi-language code-aware chunking for RAG ingestion (C, C++,
 Pascal, Oberon, Lisp, Basic)</li>
@@ -239,7 +295,7 @@ management</li>
 <li>Added help guides and <code>/status profile</code> display</li>
 </ul>
 <h2 id="v0.0.7-2026-06-02">v0.0.7 (2026-06-02)</h2>
-<h3 id="new-features-5">New features</h3>
+<h3 id="new-features-6">New features</h3>
 <p><strong><code>assay</code> evaluation harness</strong> — a new
 <code>bin/assay</code> tool for running a prompt corpus against one or
 more Ollama models and producing a Markdown report plus JSON results for
@@ -292,7 +348,7 @@ store, chunk count, RAG on/off)</li>
 is saved to <code>agents/harvey_history</code> on exit (capped at 1000
 entries, most recent kept) and reloaded on the next startup; history is
 per-workspace to avoid leaking commands and paths between projects.</p>
-<h3 id="bug-fixes-2">Bug fixes</h3>
+<h3 id="bug-fixes-3">Bug fixes</h3>
 <ul>
 <li>Removed unreachable dead code (<code>cmdRunCtx</code>,
 <code>extractRunSuggestions</code>) that was missing the safe-mode
@@ -307,7 +363,7 @@ all are now listed under their appropriate sections</li>
 through to the unknown-topic error</li>
 </ul>
 <h2 id="v0.0.6-2026-05-30">v0.0.6 (2026-05-30)</h2>
-<h3 id="new-features-6">New features</h3>
+<h3 id="new-features-7">New features</h3>
 <p><strong>Remote protocol integration</strong> — Harvey can now read
 files from remote storage over <code>s3://</code>, <code>http://</code>,
 <code>https://</code>, <code>sftp://</code>, and <code>scp://</code>
@@ -382,7 +438,7 @@ hangs when a server stalls after accepting the connection.</li>
 <code>HTTP_BEARER_TOKEN</code>, <code>HTTP_BASIC_PASSWORD</code> from
 child-process environments.</li>
 </ul>
-<h3 id="bug-fixes-3">Bug fixes</h3>
+<h3 id="bug-fixes-4">Bug fixes</h3>
 <ul>
 <li>Fixed tools-loop processing problem where the model’s tool-call
 responses were not advancing the conversation correctly</li>

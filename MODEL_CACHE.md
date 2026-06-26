@@ -91,21 +91,25 @@ harvey> /ollama probe llama3.2:latest
 
 ```sql
 CREATE TABLE IF NOT EXISTS model_capabilities (
-    name           TEXT PRIMARY KEY,
-    family         TEXT    NOT NULL DEFAULT '',
-    parameter_size TEXT    NOT NULL DEFAULT '',
-    quantization   TEXT    NOT NULL DEFAULT '',
-    size_bytes     INTEGER NOT NULL DEFAULT 0,
-    context_length INTEGER NOT NULL DEFAULT 0,
-    supports_tools INTEGER NOT NULL DEFAULT -1,
-    supports_embed INTEGER NOT NULL DEFAULT -1,
-    probe_level    TEXT    NOT NULL DEFAULT 'none',
-    probed_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    name                   TEXT PRIMARY KEY,
+    family                 TEXT    NOT NULL DEFAULT '',
+    parameter_size         TEXT    NOT NULL DEFAULT '',
+    quantization           TEXT    NOT NULL DEFAULT '',
+    size_bytes             INTEGER NOT NULL DEFAULT 0,
+    context_length         INTEGER NOT NULL DEFAULT 0,
+    supports_tools         INTEGER NOT NULL DEFAULT -1,
+    supports_embed         INTEGER NOT NULL DEFAULT -1,
+    supports_tagged_blocks INTEGER NOT NULL DEFAULT -1,
+    tool_mode              TEXT    NOT NULL DEFAULT '',
+    probe_level            TEXT    NOT NULL DEFAULT 'none',
+    probed_at              DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 ```
+
+Columns added after the initial schema are migrated automatically via `ALTER TABLE … ADD COLUMN` when `OpenModelCache` is called. Existing rows receive the column default (`-1` for integer capabilities, `''` for `tool_mode`).
 
 ### Table Columns
 
@@ -119,6 +123,8 @@ PRAGMA journal_mode = WAL;
 | `context_length` | INTEGER | Context window in tokens; 0 = unknown |
 | `supports_tools` | INTEGER | CapabilityStatus enum: -1=unknown, 0=no, 1=yes |
 | `supports_embed` | INTEGER | CapabilityStatus enum: -1=unknown, 0=no, 1=yes |
+| `supports_tagged_blocks` | INTEGER | CapabilityStatus enum: -1=unknown, 0=no, 1=yes |
+| `tool_mode` | TEXT | Explicit tool-execution mode; `''`=auto, `structured`, `prose`, `inject`, `none` |
 | `probe_level` | TEXT | "none", "fast", or "thorough" |
 | `probed_at` | DATETIME | When the last probe ran |
 
@@ -156,18 +162,38 @@ Holds all cached metadata for a single model.
 
 ```go
 type ModelCapability struct {
-    Name          string           // Full model identifier
-    Family        string           // Model family
-    ParameterSize string           // Human-readable size
-    Quantization  string           // Quantization level
-    SizeBytes     int64            // Bytes on disk
-    ContextLength int              // Context window in tokens
-    SupportsTools CapabilityStatus // Tool/function calling support
-    SupportsEmbed CapabilityStatus // Embedding support
-    ProbeLevel    string           // "none", "fast", or "thorough"
-    ProbedAt      time.Time        // When last probed
+    Name                 string           // Full model identifier
+    Family               string           // Model family
+    ParameterSize        string           // Human-readable size
+    Quantization         string           // Quantization level
+    SizeBytes            int64            // Bytes on disk
+    ContextLength        int              // Context window in tokens
+    SupportsTools        CapabilityStatus // Tool/function calling support
+    SupportsEmbed        CapabilityStatus // Embedding support
+    SupportsTaggedBlocks CapabilityStatus // Path-tagged code block support
+    ToolMode             string           // Explicit execution strategy; see ToolMode* constants
+    ProbeLevel           string           // "none", "fast", or "thorough"
+    ProbedAt             time.Time        // When last probed
 }
 ```
+
+#### `ToolMode` constants
+
+The `ToolMode` field overrides the auto-detected `SupportsTools` capability
+when choosing a tool-execution strategy. The zero value (`""`) means auto.
+
+```go
+const (
+    ToolModeAuto       = ""           // Use SupportsTools==CapYes to decide
+    ToolModeStructured = "structured" // Force OpenAI tool_calls (RunToolLoop)
+    ToolModeProse      = "prose"      // Force JSON-fence prose fallback
+    ToolModeInject     = "inject"     // Pre-inject file content; no tool calls
+    ToolModeNone       = "none"       // Plain text; no tools, no injection
+)
+```
+
+Set via `/model mode` inside Harvey. Re-probing a model does **not** overwrite
+a user-set `ToolMode` — only an explicit `/model mode` command changes it.
 
 #### `ModelCache`
 
@@ -346,6 +372,28 @@ harvey> /ollama probe llama3.2:latest
 harvey> /ollama probe --all
 ```
 
+### Setting Tool Mode
+
+Override the auto-detected tool execution strategy for a model:
+
+```bash
+# Show the current mode for the active model
+harvey> /model mode
+
+# Force file-injection mode for a small model that ignores the tools schema
+harvey> /model mode phi4:latest inject
+
+# Force structured tool_calls for a model whose probe result was wrong
+harvey> /model mode granite4.1:8b structured
+
+# Reset to auto-detection (clears the override)
+# Note: /model mode auto is planned for v0.0.16; until then, use:
+sqlite3 agents/model_cache.db "UPDATE model_capabilities SET tool_mode='' WHERE name='phi4:latest'"
+```
+
+Tool modes survive `/ollama probe` — re-probing a model does not overwrite a
+mode set via `/model mode`.
+
 ### Checking Model Capabilities
 
 ```bash
@@ -456,8 +504,10 @@ The database is configured with:
 | Outdated cache entries | Model updated in Ollama | Re-probe the model or delete and re-probe |
 | Database locked | Multiple connections | Harvey uses MaxOpenConns(1) to prevent this |
 | "None" probe level | Model never probed | Run a probe to populate |
-| Incorrect tool support | Heuristic detection failed | Use thorough probe or manually verify |
+| Incorrect tool support | Heuristic detection failed | Use `/model mode structured` or `inject` to override |
 | Incorrect embed support | Keyword detection failed | Use thorough probe for definitive answer |
+| Model ignores tools schema | Small model, no native tool support | Use `/model mode inject` to enable file injection |
+| Tool mode reset unexpectedly | Manual DB edit or schema migration | Re-run `/model mode MODEL MODE` to restore |
 
 ### Force Re-probe
 

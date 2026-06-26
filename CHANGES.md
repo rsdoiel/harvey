@@ -1,5 +1,53 @@
 # CHANGES
 
+## v0.0.15 (2026-06-26)
+
+### New features
+
+- `/model mode [MODEL] {structured|prose|inject|none}`: set or display the
+  tool-execution strategy for a model. The mode is persisted in the model
+  cache (`agents/model_cache.db`) and survives sessions and re-probes.
+  Modes: `structured` (OpenAI tool_calls), `prose` (JSON-fence fallback),
+  `inject` (pre-inject file content, no tool calls), `none` (plain text).
+- File-reference injection (option 1): when a model's tool mode is `inject`
+  or when the cache shows it does not reliably call tools, Harvey now
+  automatically scans the user's prompt for path-like tokens, reads any
+  matching workspace files (≤ 64 KB, text extensions only), and prepends
+  their content as `### File:` blocks before sending the prompt. Models that
+  ignore the tools schema can now work with file content without the user
+  manually pasting it.
+- Cannot-read retry (option 2): if a model responds with a phrase indicating
+  it cannot access a file (e.g. "I cannot directly read files on your
+  system"), Harvey retries the turn once with the referenced file content
+  pre-loaded via file-reference injection. The retry uses `RunToolLoop` when
+  the model is in structured mode so tool calls in the retry response are
+  correctly dispatched.
+- `ModelCapability.ToolMode` field and `ToolMode*` constants added to the
+  model cache. The `tool_mode` column is added to existing databases
+  automatically on first open (idempotent `ALTER TABLE`).
+
+### Bug fixes
+
+- `FastProbeModel` no longer sets `ToolMode = ToolModeStructured` when
+  probing a tool-capable model. Re-probing now preserves any mode the user
+  set via `/model mode`. Tool dispatch continues to work via the existing
+  `SupportsTools == CapYes` fallback in `toolsReliable()`.
+- Option-2 retry: `toolCallRecords` is now cleared before the history
+  rollback, preventing rolled-back tool calls from appearing in the Fountain
+  session transcript paired with the retry response.
+- Option-2 retry: `noToolCalls` is now computed correctly after an option-2
+  retry. A `hadToolCalls` flag is captured before the rollback so that
+  `autoExecuteReply` does not fire on the retry response when the first pass
+  executed tool calls.
+- Option-2 retry: when `useStructuredTools` is true, the retry now calls
+  `RunToolLoop` instead of `Client.Chat` directly, so structured tool calls
+  in the retry response are correctly dispatched and recorded.
+- `cantReadPhrases` entry `"please provide the file"` tightened to
+  `"please provide the file content"` to avoid spurious retries when a model
+  asks for a file *path* rather than refusing file access.
+- Exported `ToolMode*` constants now have `/** … */` block-doc comments
+  per the project documentation convention.
+
 ## v0.0.14 (2026-06-21)
 
 ### New features

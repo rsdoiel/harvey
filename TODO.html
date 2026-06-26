@@ -21,105 +21,141 @@
 <section id="main-content">
 <h1 id="action-items">Action Items</h1>
 <h2 id="bugs">Bugs</h2>
-<ul>
-<li><p><code>/model use</code> (no arg): prints usage error instead of
-showing a picker of registered llamafile models and aliases. Should call
-SelectFromStrings(allModelNames(a), …) when len(args) &lt; 2, matching
-the UX of /ollama use, /llamafile use, and /rag use.</p></li>
-<li><p><code>/session use</code> / <code>/session continue</code> (no
-arg): prints usage error instead of showing a picker of available
-session files. Should call ListSessionFiles(a.SessionsDir) and
-SelectFrom when len(args) &lt; 2, matching the UX of /rag use and
-/llamafile use.</p></li>
-</ul>
 <h2 id="release-review">Release Review</h2>
 <h2 id="next-v0.0.15-release">Next (v0.0.15 release)</h2>
-<h3 id="audit-trail-enhancements-see-audit-trail-plan.md">Audit trail
-enhancements (see <a
-href="audit-trail-plan.html">audit-trail-plan.md</a>)</h3>
-<ul>
-<li><p><strong>W0</strong> — Update <code>FOUNTAIN_FORMAT.md</code> to
-v1.2: correct INT./EXT. semantic (INT. = local computation, EXT. =
-remote); add new notation to spec before any code changes.</p></li>
-<li><p><strong>W1</strong> — Structured
-<code>[[tool: name(args) — status]]</code> notes: replace prose action
-blocks with parseable Fountain notes; add <code>Result</code> and
-<code>Character</code> fields to <code>ToolCallRecord</code>; extend
-<code>toolCallsFromHistory</code> to pair calls with tool-role message
-results.</p></li>
-<li><p><strong>W2</strong> — RAG provenance notes: change
-<code>ragAugment</code> to return
-<code>(string, *RAGAugmentInfo)</code>; emit
-<code>[[rag: N chunks from STORE, top score S.SS]]</code> note inside
-the turn’s scene before user dialogue.</p></li>
-<li><p><strong>W3</strong> — <code>INT. CONTEXT RECALL</code> scene: add
-<code>RecordContextRecall</code> to <code>Recorder</code>; call from
-<code>injectMemoryContext</code> when <code>UnifiedMemory.Recall</code>
-returns non-empty results; write one
-<code>[[recall: ID (SOURCE) — score S.SS]]</code> note per recalled
-item.</p></li>
-<li><p><strong>W4</strong> — EXT. scenes + character-attributed tool
-calls: add <code>RecordExteriorTurn</code> to <code>Recorder</code> for
-remote route dispatches; pass <code>charName</code> through
-<code>runChatTurn</code> → <code>toolCallsFromHistory</code> for local
-<code>@mention</code> switches; add <code>CharacterName</code> to
-<code>ToolExecutor</code>.</p></li>
+<h3 id="bug-fixes-must-clear-before-tagging">Bug fixes (must clear
+before tagging)</h3>
+<ul class="task-list">
+<li><p><label><input type="checkbox"
+checked="" /><strong>ollama.go:486</strong> —
+<code>FastProbeModel</code> sets
+<code>cap.ToolMode = ToolModeStructured</code> unconditionally for
+tool-capable models. <code>ModelCache.Set</code> UPSERTs this, silently
+overwriting any mode the user set via <code>/model mode</code>. Fix:
+removed <code>cap.ToolMode = ToolModeStructured</code> from
+FastProbeModel; toolsReliable() falls through to SupportsTools==CapYes
+correctly.</label></p></li>
+<li><p><label><input type="checkbox"
+checked="" /><strong>terminal.go:1297</strong> — After option-2 retry,
+<code>toolCallRecords</code> still holds records from the first-pass
+<code>RunToolLoop</code> (populated at line 1141) even though those
+history entries were rolled back at line 1181. Fix: set
+<code>toolCallRecords = nil</code> at the top of the option-2 block
+before rolling back history.</label></p></li>
+<li><p><label><input type="checkbox"
+checked="" /><strong>terminal.go:1321</strong> — After option-2 retry,
+<code>noToolCalls</code> was always <code>true</code>. Fix: capture
+<code>hadToolCalls := len(a.History) &gt; histLenBeforeChat</code>
+before option-2 fires, then compute
+<code>noToolCalls := !hadToolCalls &amp;&amp; len(a.History) == histLenBeforeChat</code>.</label></p></li>
+<li><p><label><input type="checkbox"
+checked="" /><strong>terminal.go:1185</strong> — Option-2 retry called
+<code>a.Client.Chat</code> directly, bypassing <code>RunToolLoop</code>.
+Fix: when <code>useStructuredTools</code> is true, option-2 retry now
+uses <code>RunToolLoop</code> (with a fresh spinner) and updates
+<code>toolCallRecords</code> from the retry’s history
+slice.</label></p></li>
+<li><p><label><input type="checkbox"
+checked="" /><strong>terminal.go:1203</strong> — After option-2 retry
+with RunToolLoop, <code>a.History[histLenBeforeChat:]</code> now
+correctly contains the retry’s tool-call messages (populated by the
+fixed retry path). groundingCheck uses these
+automatically.</label></p></li>
+<li><p><label><input type="checkbox"
+checked="" /><strong>file_inject.go:116</strong> —
+<code>cantReadPhrases</code> entry
+<code>"please provide the file"</code> was too broad. Fix: tightened to
+<code>"please provide the file content"</code>.</label></p></li>
+<li><p><label><input type="checkbox"
+checked="" /><strong>model_cache.go:47</strong> — Exported
+<code>ToolMode*</code> constants now have <code>/** ... */</code>
+block-doc comments with Description and Example sections as required by
+CLAUDE.md.</label></p></li>
 </ul>
-<h3 id="scholarly-provenance-see-scholarly-provenance-plan.md">Scholarly
-provenance (see <a
-href="scholarly-provenance-plan.html">scholarly-provenance-plan.md</a>)</h3>
-<ul>
-<li><p><strong>S1</strong> — RAG chunk provenance schema: add
-<code>indexed_at</code>, <code>content_hash</code>,
-<code>source_url</code>, <code>source_doi</code>,
-<code>source_title</code>, <code>source_version</code>,
-<code>rights</code>, <code>retracted</code>,
-<code>retraction_note</code> columns to <code>chunks</code> table via
-idempotent <code>ALTER TABLE</code> migration in
-<code>RagStore.Open</code>; compute SHA-256 content hash on ingest for
-change detection; add <code>--doi</code>, <code>--url</code>,
-<code>--title</code>, <code>--version</code>, <code>--rights</code>
-flags to <code>/rag ingest</code>.</p></li>
-<li><p><strong>S2</strong> — Source registry in
-<code>knowledge.db</code>: add <code>sources</code> authority table and
-<code>observation_sources</code> join table; migrate existing
-<code>source_doi</code> values from <code>observations</code>; add
-<code>/kb source {add,list,show,remove}</code> and
-<code>/kb retract</code> commands.</p></li>
-<li><p><strong>S3</strong> — Source-level Fountain notes: extend
-<code>RAGAugmentInfo</code> with <code>Sources []RAGChunkRef</code>;
-emit deduplicated
-<code>[[rag-source: path[:lines] (title, doi:DOI)]]</code> notes after
-the existing <code>[[rag: ...]]</code> aggregate note. Depends on
-S1.</p></li>
-<li><p><strong>S4</strong> — Observation attribution: add
-<code>lastRAGInfo *RAGAugmentInfo</code> to <code>Agent</code>; prompt
-in <code>/kb observe</code> to auto-link retrieved sources; add
-<code>/kb cite SOURCE_ID</code> for manual linking; show source
-attribution with retraction warnings in <code>/kb show</code>. Depends
-on S2 and S3.</p></li>
-<li><p><strong>HARVEY.md</strong> — Add a Provenance section instructing
-the model to attribute retrieved content at the point of use, not
-post-hoc.</p></li>
+<h3 id="release-steps-after-bugs-cleared">Release steps (after bugs
+cleared)</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Bump <code>codemeta.json</code>
+version to 0.0.15, update <code>releaseDate</code> and
+<code>releaseNotes</code></label></li>
+<li><label><input type="checkbox" />Regenerate <code>version.go</code>:
+<code>cmt codemeta.json version.go</code></label></li>
+<li><label><input type="checkbox" />Commit and tag
+<code>v0.0.15</code></label></li>
 </ul>
-<h2 id="llama.cpp-server-side-tool-call-parsing-for-apertus">llama.cpp
-server-side tool call parsing for Apertus</h2>
-<p>Apertus 4B uses a native tool call format
-(<code>&lt;SPECIAL_71&gt;[{"tool_name": args}]&lt;SPECIAL_72&gt;</code>)
-that llama.cpp’s server does not recognise as structured tool calls.
-Apertus tool calls currently travel as raw text in the API content field
-and are parsed client-side by Harvey’s prose fallback
-(<code>tryExecuteApertusToolCalls</code> in
-<code>terminal.go</code>).</p>
-<p>When llama.cpp adds support for registering a custom tool-call token
-pattern (or adds built-in Apertus support), update
-<code>templates/apertus-4b-toolcall.jinja</code> in the henry project to
-register the token pair so the server converts them to OpenAI API
-<code>tool_calls</code> in the response. That would enable full
-multi-turn structured tool use instead of the current single-turn prose
-fallback.</p>
-<p>Track: https://github.com/ggml-org/llama.cpp/issues — search “custom
-tool call format” or “Apertus”.</p>
+<h2 id="deferred-to-v0.0.16">Deferred to v0.0.16</h2>
+<h3 id="option-2-reactive-retry-surgical-rollback">Option 2 reactive
+retry — surgical rollback</h3>
+<p>See <a href="audit-trail-plan.html">audit-trail-plan.md</a> W1 and
+the small-model tool-use mitigation work (file_inject.go option 2).</p>
+<ul class="task-list">
+<li><label><input type="checkbox" />The current retry in
+<code>terminal.go</code> calls <code>Client.Chat</code> directly and
+rolls back the full history by one message. When
+<code>RunToolLoop</code> added intermediate tool-call/tool-result
+messages before the refusal, those are silently dropped. Implement a
+surgical rollback that only removes the assistant refusal message and
+re-adds the augmented user message, preserving prior tool loop
+history.</label></li>
+</ul>
+<h3
+id="model-mode-model-auto-reset-to-auto"><code>/model mode MODEL auto</code>
+— reset to auto</h3>
+<p>See <a href="audit-trail-plan.html">audit-trail-plan.md</a> option 3
+(<code>/model mode</code> command, <code>model_cache.go</code>).</p>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>/model mode</code> currently
+accepts <code>structured</code>, <code>prose</code>,
+<code>inject</code>, and <code>none</code> but has no <code>auto</code>
+value to clear an explicit override and return the model to
+capability-detected defaults. Add <code>auto</code> as a valid mode that
+sets <code>tool_mode = ''</code> (empty) in
+<code>model_capabilities</code>, restoring <code>modelToolMode()</code>
+fallback to <code>CapabilityStatus</code>.</label></li>
+</ul>
+<h3 id="retraction-monitoring-service">Retraction monitoring
+service</h3>
+<p>See <a
+href="scholarly-provenance-plan.html">scholarly-provenance-plan.md</a>
+S2 and <a
+href="scholarly-provenance-design.html">scholarly-provenance-design.md</a>.</p>
+<ul class="task-list">
+<li><label><input type="checkbox" />The <code>sources</code> table in
+<code>knowledge.db</code> already has <code>retracted INTEGER</code> and
+<code>retraction_note TEXT</code> columns for manual marking (via
+<code>/kb retract</code>). Add a periodic background check against the
+Retraction Watch API (<code>retractionwatch.com</code>) that flags
+retracted DOIs automatically. A <code>/kb check-retractions</code>
+command (or scheduled task) should query registered sources with
+<code>identifier_type = 'doi'</code> and update
+<code>retracted</code>/<code>retraction_note</code> on
+hits.</label></li>
+</ul>
+<h3 id="llama.cpp-apertus-tool-call-format">llama.cpp Apertus tool-call
+format</h3>
+<p>See <code>henry</code> project
+(<code>henry-handoff-20260622-llamafile-factory.spmd</code>).</p>
+<ul class="task-list">
+<li><label><input type="checkbox" />When llama.cpp gains stable custom
+token support, update <code>templates/apertus-4b-toolcall.jinja</code>
+in the <code>henry</code> project to use structured tool-call tokens
+instead of the current prose JSON fence workaround. Retest with Apertus
+4B via <code>bin/assay --llamafile</code>.</label></li>
+</ul>
+<h3 id="dual-rag-injection-audit">Dual RAG injection audit</h3>
+<p>See <a href="DECISIONS.html">DECISIONS.md</a> (2026-06-02 — Dual RAG
+injection audit, deferred).</p>
+<ul class="task-list">
+<li><label><input type="checkbox" />Users with both
+<code>memory.enabled</code> and <code>rag.enabled</code> receive RAG
+content twice per turn: once via <code>UnifiedMemory.Recall()</code> at
+session start and once via <code>ragAugment()</code> per prompt. Audit
+the overlap and either (a) skip RAG chunks in
+<code>UnifiedMemory.Recall()</code> when <code>a.RagOn</code> is true,
+or (b) make <code>ragAugment</code> a no-op when
+<code>UnifiedMemory</code> already injected from the same store this
+session.</label></li>
+</ul>
 </section>
 </body>
 </html>

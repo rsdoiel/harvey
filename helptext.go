@@ -467,7 +467,7 @@ MODEL — backend-agnostic model management and inline switching
 
 # SYNOPSIS
 
-/model [list|use NAME|show [NAME]|status]
+/model [list|use NAME|show [NAME]|status|mode [MODEL] MODE]
 
 @NAME [prompt...]
 
@@ -498,6 +498,35 @@ History is preserved — the switch is like a new character entering the scene.
 
   /model status
     Show whether the active backend is reachable.
+
+  /model mode
+    Show the tool-execution mode for the active model.
+
+  /model mode MODE
+    Set the tool-execution mode for the active model. MODE must be one of:
+
+      structured   Force OpenAI-style tool_calls (RunToolLoop). Use when the
+                   model supports structured tool calls but the auto-probe
+                   disagrees.
+
+      prose        Force the prose JSON-fence fallback path. The model is
+                   expected to emit JSON fenced blocks instead of structured
+                   tool_calls.
+
+      inject       Disable tool calling entirely; Harvey pre-injects the
+                   content of any files mentioned in the prompt directly into
+                   the context window. Best for models that ignore the tools
+                   schema.
+
+      none         Disable tools and file injection; plain text only.
+
+  /model mode MODEL MODE
+    Set the tool-execution mode for a named model (need not be the active one).
+    Useful for pre-configuring a model before switching to it.
+
+  The mode is persisted in the model cache (agents/model_cache.db) and survives
+  across sessions. It overrides the auto-detected capability from /ollama probe.
+  Requires /ollama probe to have run at least once for the model.
 
 # AT-MENTION SWITCHING
 

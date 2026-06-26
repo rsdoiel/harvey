@@ -21,7 +21,7 @@
 <section id="main-content">
 <h1 id="harvey-fountain-format-specification">Harvey Fountain Format
 Specification</h1>
-<p><em>Version 1.0 — Multi-model character attribution for Harvey
+<p><em>Version 1.2 — Multi-model character attribution for Harvey
 session recordings</em></p>
 <hr />
 <h2 id="overview">Overview</h2>
@@ -414,6 +414,48 @@ yes
 [[write: path/to/error — error: permission denied]]</code></pre>
 <p>Status values: <code>ok</code>, <code>skipped</code>,
 <code>error: &lt;message&gt;</code></p>
+<h4 id="tool-call-notes">Tool Call Notes</h4>
+<p>Notes emitted inside a chat scene for each tool invoked during the
+turn. They appear between HARVEY’s forwarding line and the model’s
+reply.</p>
+<pre><code>[[tool: name(args) — status]]
+[[CHARACTER.tool: name(args) — status]]</code></pre>
+<p>Status values: <code>ok</code>,
+<code>error: &lt;first line of error&gt;</code></p>
+<p>The <code>CHARACTER.tool:</code> prefix is used when a remote model
+invoked the tool (e.g. in a local <span class="citation"
+data-cites="mention">@mention</span> model-switch scene). Omit args when
+the call had none or the args object is empty.</p>
+<p><strong>Example:</strong></p>
+<pre><code>HARVEY
+Forwarding to LLAMA3.
+
+[[tool: read_file({&quot;path&quot;:&quot;harvey.go&quot;}) — ok]]
+[[tool: run_shell({&quot;cmd&quot;:&quot;go build ./...&quot;}) — error: exit 1]]
+
+LLAMA3
+There is a compilation error on line 42.</code></pre>
+<h4 id="rag-provenance-notes">RAG Provenance Notes</h4>
+<p>Emitted inside the chat scene before the user’s dialogue, when RAG
+retrieval returned chunks for the turn.</p>
+<pre><code>[[rag: N chunks from STORE, top score S.SS]]</code></pre>
+<p>Turns where RAG did not fire produce no <code>[[rag:]]</code>
+line.</p>
+<p><strong>Example:</strong></p>
+<pre><code>[[rag: 3 chunks from rag_store.db, top score 0.87]]
+
+RSDOIEL
+How do I initialise a Go module?</code></pre>
+<h4 id="context-recall-notes">Context Recall Notes</h4>
+<p>Emitted in the <code>INT. CONTEXT RECALL</code> scene at session
+start (see Scene Types Reference). One note per recalled memory
+item.</p>
+<pre><code>[[recall: ID (SOURCE) — score S.SS]]</code></pre>
+<p><strong>Example:</strong></p>
+<pre><code>INT. CONTEXT RECALL 2026-06-24 10:00:01
+
+[[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
+[[recall: tool_use_d55f70 (tool_use) — score 0.75]]</code></pre>
 <h4 id="session-end">Session End</h4>
 <p>Every session file must end with:</p>
 <pre><code>THE END.</code></pre>
@@ -578,6 +620,16 @@ Prompt...
 
 MISTRAL
 Response...</code></pre>
+<h3 id="context-recall-scene-int.-context-recall">Context Recall Scene
+(<code>INT. CONTEXT RECALL</code>)</h3>
+<p>Written once at session start, before the first chat scene, when
+<code>UnifiedMemory.Recall</code> returns one or more results. One
+<code>[[recall:]]</code> note per recalled memory item. Skipped entirely
+when memory injection is off or no items were recalled.</p>
+<pre><code>INT. CONTEXT RECALL 2026-06-24 10:00:01
+
+[[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
+[[recall: tool_use_d55f70 (tool_use) — score 0.75]]</code></pre>
 <h3 id="agent-mode-scenes-int.-agent-mode">Agent Mode Scenes
 (<code>INT. AGENT MODE</code>)</h3>
 <p>File write operations and other agent actions.</p>
@@ -787,24 +839,30 @@ and first ALL-CAPS character</li>
 <li>Forwarding: <code>^Forwarding to ([A-Z0-9_-]+)\.$</code></li>
 <li>File write:
 <code>^\[\[write: (.+) — (ok|skipped|error:.+)\]\]</code></li>
+<li>Tool note:
+<code>^\[\[(?:([A-Z0-9_-]+)\.)?tool: (.+) — (ok|error:.+)\]\]</code></li>
+<li>RAG note:
+<code>^\[\[rag: (\d+) chunks from (.+), top score ([\d.]+)\]\]</code></li>
+<li>Recall note:
+<code>^\[\[recall: (\S+) \((\S+)\) — score ([\d.]+)\]\]</code></li>
 <li><span class="citation" data-cites="mention">@mention</span>:
 <code>@([a-zA-Z][a-zA-Z0-9_-]*)</code></li>
 </ul></li>
 </ol>
 <h3 id="character-type-detection">Character Type Detection</h3>
-<div class="sourceCode" id="cb28"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pseudocode</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> character_type(name, scene_description, known_routes, author):</span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> name <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span>:</span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;harvey-native&quot;</span></span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="kw">in</span> known_routes:</span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;routed-ollama&quot;</span></span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="op">==</span> author:</span>
-<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;human&quot;</span></span>
-<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> is_all_caps_alphanumeric(name):</span>
-<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;cloud-model&quot;</span></span>
-<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
-<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb35"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pseudocode</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> character_type(name, scene_description, known_routes, author):</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> name <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span>:</span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;harvey-native&quot;</span></span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="kw">in</span> known_routes:</span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;routed-ollama&quot;</span></span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="op">==</span> author:</span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;human&quot;</span></span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> is_all_caps_alphanumeric(name):</span>
+<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;cloud-model&quot;</span></span>
+<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb35-12"><a href="#cb35-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span></code></pre></div>
 <h2 id="complete-example-sessions">Complete Example Sessions</h2>
 <h3 id="example-1-basic-harvey-session-local-model">Example 1: Basic
 Harvey Session (Local Model)</h3>
@@ -995,8 +1053,9 @@ status?</p>
 <td>Warn: “INT. scene without HARVEY”</td>
 </tr>
 <tr>
-<td>HARVEY in EXT. scene</td>
-<td>Warn: “EXT. scene contains HARVEY”</td>
+<td>HARVEY in EXT. scene without routing action</td>
+<td>Warn: “EXT. scene has HARVEY but no ‘Harvey routing to’ action
+line”</td>
 </tr>
 <tr>
 <td>Unknown character type</td>

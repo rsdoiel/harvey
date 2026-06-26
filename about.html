@@ -20,52 +20,33 @@
 </nav>
 <section id="main-content">
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.14">harvey 0.0.14</h2>
+<h2 id="harvey-0.0.15">harvey 0.0.15</h2>
 <ul>
-<li>Llamafile is now the primary language model backend: startup
-sequence shows registered llamafiles first, auto-selects on preferred
-model match, then falls back to Ollama</li>
-<li>Explicit connection feedback: “Connecting to NAME (llamafile)… ✓”
-shown in terminal on backend selection</li>
-<li>Stale server adoption: Harvey detects a running llamafile server it
-did not start, probes its model via <code>/v1/models</code>, warns on
-mismatch, and adopts it rather than refusing to start</li>
-<li><code>/llamafile show [NAME]</code>: displays name, path, file size,
-and configured context length for a registered model</li>
-<li><code>/rag show [NAME]</code>: displays store name, database path,
-embedding model, chunk count, and model map</li>
-<li>Remote RAG ingest extended: <code>sftp://</code>,
-<code>scp://</code>, <code>http://</code>, and <code>https://</code>
-URIs now supported alongside <code>s3://</code></li>
-<li><code>/read</code> auto-detects <code>.pdf</code> files and extracts
-text via poppler (pdfinfo + pdftotext + pdfimages), consistent with the
-<code>read_file</code> built-in tool</li>
-<li><code>/status</code> backend tag and token-count estimate now work
-for llamafile (was Ollama-only)</li>
-<li>Pipeline context-utilization display now works for llamafile via
-character estimate (was Ollama-only)</li>
-<li>Context utilization hint <code>[ctx: N%]</code> added to spinner
-label when estimated token usage reaches 50% of the model’s context
-window</li>
-<li>Routing feedback in spinner: shows <code>@route · model</code>
-during routed turns when routing is active</li>
-<li>Model provenance recorded in Fountain session header:
-<code>Model:</code> field now stores <code>NAME (backend)</code> (e.g.,
-<code>QWEN-CODING (llamafile)</code>) for session replay and audit</li>
-<li>Health check on <code>--resume</code>/<code>--continue</code>:
-session model is extracted before backend selection; a mismatch warning
-is shown when the resumed model differs from the active backend</li>
-<li><code>@mention</code> dispatch: routing is tried first when routing
-is enabled; falls back to local model switch via
-<code>attemptModelSwitch</code>; case-insensitive for both llamafile
-names and model aliases</li>
-<li>Help system: all 41 help constants documented and reordered into 11
-logical groups; <code>ModelHelpText</code> dispatch bug fixed (topic was
-unreachable); <code>harvey-model.7.md</code> man page added</li>
-<li>Documentation rewritten with llamafile-first framing and
-natural-language-programming / scholarly-work positioning:
-<code>overview.md</code>, <code>getting_started.md</code>,
-<code>user_manual.md</code>, <code>CONFIGURATION.md</code></li>
+<li><code>/model mode [MODEL] {structured|prose|inject|none}</code>: set
+or display the tool-execution strategy for a model; persisted in the
+model cache and survives re-probes</li>
+<li>File-reference injection: when a model does not reliably call tools,
+Harvey pre-injects the content of workspace files mentioned in the
+prompt as <code>### File:</code> blocks</li>
+<li>Cannot-read retry: if a model responds indicating it cannot access a
+file, Harvey retries once with file content pre-loaded; retry uses
+RunToolLoop when in structured mode</li>
+<li><code>ModelCapability.ToolMode</code> field and
+<code>ToolMode*</code> constants added; <code>tool_mode</code> column
+added to the model cache database with automatic migration</li>
+<li>Bug fix: <code>FastProbeModel</code> no longer overwrites a user-set
+tool mode on re-probe</li>
+<li>Bug fix: option-2 retry now clears stale
+<code>toolCallRecords</code> before history rollback, preventing
+inconsistent session transcripts</li>
+<li>Bug fix: <code>noToolCalls</code> computed correctly after option-2
+retry using pre-rollback <code>hadToolCalls</code> flag</li>
+<li>Bug fix: option-2 retry uses <code>RunToolLoop</code> (not bare
+<code>Client.Chat</code>) when in structured-tools mode</li>
+<li>Bug fix: <code>cantReadPhrases</code> entry tightened from
+<code>"please provide the file"</code> to
+<code>"please provide the file content"</code> to avoid spurious
+retries</li>
 </ul>
 <h2 id="authors">Authors</h2>
 <ul>
