@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-scholarly-provenance-implementation-plan">Harvey
+Scholarly Provenance — Implementation Plan</h1>
+<p>See <a
+href="scholarly-provenance-design.html">scholarly-provenance-design.md</a>
+for the full design rationale, gap analysis, and alternatives
+considered.</p>
+<p>Target version: <strong>v0.0.15</strong></p>
+<p>Work items are labeled S1 → S4. S1 (RAG schema) and S2 (knowledge.db
+source registry) are independent and can proceed in parallel. S3
+(Fountain notes) depends on S1. S4 (observation attribution) depends on
+both S2 and S3.</p>
+<hr />
+<h2 id="s1-rag-chunk-provenance-schema">S1 — RAG Chunk Provenance
+Schema</h2>
+<p><strong>Goal:</strong> Add minimum provenance fields to the
+<code>chunks</code> table in every RAG store, and surface metadata flags
+on <code>/rag ingest</code> so users can annotate scholarly content at
+ingest time.</p>
+<h3 id="schema-migration">Schema migration</h3>
+<p>Harvey opens each RAG store with <code>RagStore.Open</code>. Add a
+<code>migrateChunksSchema(db *sql.DB) error</code> helper called from
+<code>Open</code> (immediately after the
+<code>CREATE TABLE IF NOT EXISTS chunks ...</code> statement). The
+helper applies each <code>ALTER TABLE</code> inside its own
+<code>IF NOT EXISTS</code> check pattern (try/ignore SQLITE_ERROR
+1):</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> indexed_at      DATETIME <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="fu">CURRENT_TIMESTAMP</span>;</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> content_hash    TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> source_url      TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> source_doi      TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> source_title    TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> source_version  TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> rights          TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> retracted       <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>;</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> retraction_note TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span></code></pre></div>
+<p>SQLite’s <code>ALTER TABLE ADD COLUMN</code> is idempotent with
+respect to duplicate column names — it fails with
+<code>duplicate column name</code> which the migration helper catches
+and ignores. Existing stores are upgraded on first open; no manual
+migration step is needed.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rag_support.go</code></td>
+<td>Add <code>migrateChunksSchema(db)</code> call in <code>Open</code>.
+Add <code>ProvenanceMeta</code> struct (fields: <code>URL</code>,
+<code>DOI</code>, <code>Title</code>, <code>Version</code>,
+<code>Rights</code>) passed through <code>Ingest</code>. Compute SHA-256
+<code>content_hash</code> in <code>Ingest</code> before insert. Add
+<code>indexed_at = CURRENT_TIMESTAMP</code> on insert.</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td><code>/rag ingest</code> gains <code>--title</code>,
+<code>--doi</code>, <code>--url</code>, <code>--version</code>,
+<code>--rights</code> flags. Pass values as <code>ProvenanceMeta</code>
+to <code>Ingest</code>.</td>
+</tr>
+<tr>
+<td><code>rag_support_test.go</code></td>
+<td>Add <code>TestMigrateChunksSchema_Idempotent</code> (run migration
+twice; no error). Add <code>TestIngest_ContentHash</code> (ingest same
+content twice; verify second call is a no-op; verify hash matches). Add
+<code>TestIngest_ProvenanceMeta</code> (ingest with DOI; query back and
+verify <code>source_doi</code> set).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="new-provenancemeta-struct-in-rag_support.go">New
+<code>ProvenanceMeta</code> struct (in <code>rag_support.go</code>)</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ProvenanceMeta <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    URL     <span class="dt">string</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    DOI     <span class="dt">string</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    Title   <span class="dt">string</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    Version <span class="dt">string</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    Rights  <span class="dt">string</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>Ingest</code> gains a variadic
+<code>meta ...ProvenanceMeta</code> parameter to keep existing callers
+(tests, assay) unchanged. When no meta is provided, all provenance
+fields default to empty.</p>
+<h3 id="content-hash-logic">Content hash logic</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>h <span class="op">:=</span> sha256<span class="op">.</span>Sum256<span class="op">([]</span><span class="dt">byte</span><span class="op">(</span>chunk<span class="op">.</span>Content<span class="op">))</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>hash <span class="op">:=</span> hex<span class="op">.</span>EncodeToString<span class="op">(</span>h<span class="op">[:])</span></span></code></pre></div>
+<p>On insert, check for an existing row with matching
+<code>source</code> and <code>content_hash</code>. If found, skip the
+insert (chunk unchanged). If found with a different hash, delete the old
+row and insert fresh (source content changed; <code>indexed_at</code>
+resets to now).</p>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>Opening an existing <code>harvey.db</code> or
+<code>sparqlset.db</code> adds the new columns without error or data
+loss.</li>
+<li><code>/rag ingest README.md --doi 10.1234/x --title "Harvey README"</code>
+sets <code>source_doi</code> and <code>source_title</code> on all
+ingested chunks.</li>
+<li>Re-ingesting an unchanged file skips the insert (no duplicate
+chunks).</li>
+<li>Re-ingesting a changed file replaces old chunks.</li>
+</ul>
+<hr />
+<h2 id="s2-source-registry-in-knowledge.db">S2 — Source Registry in
+<code>knowledge.db</code></h2>
+<p><strong>Goal:</strong> Add a <code>sources</code> authority table and
+<code>observation_sources</code> join table to
+<code>knowledge.db</code>. Provide <code>/kb source</code> commands for
+managing the registry. Migrate existing <code>source_doi</code>
+values.</p>
+<h3 id="schema-migration-1">Schema migration</h3>
+<p>Add to <code>KnowledgeDB.Open</code> (after existing
+<code>CREATE TABLE IF NOT EXISTS</code> statements):</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> <span class="cf">IF</span> <span class="kw">NOT</span> <span class="kw">EXISTS</span> sources (</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>               <span class="dt">INTEGER</span>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span> AUTOINCREMENT,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    title            TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    identifier_type  TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    identifier_value TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    authors          TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    published_date   TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    publisher        TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    rights           TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    version          TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    retracted        <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    retraction_note  TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    first_seen_at    DATETIME <span class="kw">DEFAULT</span> <span class="fu">CURRENT_TIMESTAMP</span>,</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    last_checked_at  DATETIME <span class="kw">DEFAULT</span> <span class="fu">CURRENT_TIMESTAMP</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">UNIQUE</span> <span class="kw">INDEX</span> <span class="cf">IF</span> <span class="kw">NOT</span> <span class="kw">EXISTS</span> idx_sources_identifier</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    <span class="kw">ON</span> sources(identifier_type, identifier_value)</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    <span class="kw">WHERE</span> identifier_type <span class="op">!=</span> <span class="st">&#39;&#39;</span> <span class="kw">AND</span> identifier_value <span class="op">!=</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> <span class="cf">IF</span> <span class="kw">NOT</span> <span class="kw">EXISTS</span> observation_sources (</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>    observation_id <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">REFERENCES</span> observations(<span class="kw">id</span>) <span class="kw">ON</span> <span class="kw">DELETE</span> <span class="kw">CASCADE</span>,</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>    source_id      <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">REFERENCES</span> sources(<span class="kw">id</span>)      <span class="kw">ON</span> <span class="kw">DELETE</span> <span class="kw">RESTRICT</span>,</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>    relationship   TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;cited&#39;</span>,</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (observation_id, source_id)</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<p><code>CREATE TABLE IF NOT EXISTS</code> is already idempotent. No
+<code>ALTER TABLE</code> needed; these are new tables.</p>
+<h3 id="data-migration">Data migration</h3>
+<p>After the schema migration, run a one-time data migration:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">INSERT</span> <span class="kw">OR</span> IGNORE <span class="kw">INTO</span> sources (title, identifier_type, identifier_value)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="st">&#39;Source (DOI: &#39;</span> <span class="op">||</span> source_doi <span class="op">||</span> <span class="st">&#39;)&#39;</span>, <span class="st">&#39;doi&#39;</span>, source_doi</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> observations</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> source_doi <span class="op">!=</span> <span class="st">&#39;&#39;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="kw">ON</span> CONFLICT DO <span class="kw">NOTHING</span>;</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="kw">INSERT</span> <span class="kw">OR</span> IGNORE <span class="kw">INTO</span> observation_sources (observation_id, source_id, relationship)</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> o.<span class="kw">id</span>, s.<span class="kw">id</span>, <span class="st">&#39;cited&#39;</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> observations o</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="kw">JOIN</span> sources s <span class="kw">ON</span> s.identifier_value <span class="op">=</span> o.source_doi</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> o.source_doi <span class="op">!=</span> <span class="st">&#39;&#39;</span>;</span></code></pre></div>
+<p>The <code>source_doi</code> column on <code>observations</code> is
+kept read-only after migration. New code reads from
+<code>observation_sources</code>; old code (or direct SQL queries by the
+user) continues to see <code>source_doi</code>.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>knowledge.go</code></td>
+<td>Add <code>sources</code> and <code>observation_sources</code> DDL to
+<code>Open</code>. Add data migration helper. Add
+<code>AddSource</code>, <code>LinkObservationSource</code>,
+<code>ListSources</code>, <code>ShowSource</code>,
+<code>RemoveSource</code>, <code>RetractSource</code> functions.</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>Add <code>/kb source</code> command family dispatcher. Wire
+<code>cmdKBSource{Add,List,Show,Remove,Retract}</code> handlers.</td>
+</tr>
+<tr>
+<td><code>helptext.go</code></td>
+<td>Add <code>KBSourceHelpText</code>.</td>
+</tr>
+<tr>
+<td><code>knowledge_test.go</code></td>
+<td>Add tests: <code>TestAddSource</code>,
+<code>TestLinkObservationSource</code>,
+<code>TestSourceMigration</code>, <code>TestRetractSource</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="kb-source-command-detail"><code>/kb source</code> command
+detail</h3>
+<p><code>/kb source add</code> with no flags opens an interactive
+prompts sequence (using the existing
+<code>SelectFrom</code>/<code>promptLine</code> pattern):</p>
+<pre><code>Title: _
+Identifier type (doi/url/isbn/issn/arxiv/urn/none): _
+Identifier value: _
+Authors (optional): _
+Published date (YYYY-MM-DD, optional): _
+Publisher (optional): _
+Rights (optional): _
+Version (optional): _</code></pre>
+<p>With flags, skips prompts for supplied values and defaults the
+rest.</p>
+<p><code>/kb source list</code> output (tabular):</p>
+<pre><code>ID  Title                            Identifier          Retracted
+1   SPARQL 1.1 Query Language        doi:10.1234/sparql  no
+2   Harvey README                    —                   no</code></pre>
+<p><code>/kb retract ID --note NOTE</code> sets
+<code>retracted = 1</code> and stores the note. A subsequent
+<code>/kb source list</code> marks retracted rows with
+<code>[RETRACTED]</code>. The observation_sources rows are NOT deleted —
+the historical attribution is preserved; only the source’s current
+validity status changes.</p>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>Opening <code>knowledge.db</code> with existing
+<code>source_doi</code> observations migrates them into
+<code>sources</code> and <code>observation_sources</code>.</li>
+<li><code>/kb source add --doi 10.1234/sparql --title "SPARQL 1.1"</code>
+inserts a row and prints the assigned ID.</li>
+<li><code>/kb source list</code> shows the registered source.</li>
+<li><code>/kb retract 1 --note "Retracted 2026-07-01"</code> sets the
+flag.</li>
+<li>A subsequent <code>/kb source list</code> shows
+<code>[RETRACTED]</code> next to id=1.</li>
+<li><code>/kb source remove 1</code> fails (linked observations) with a
+clear error.</li>
+</ul>
+<hr />
+<h2 id="s3-source-level-fountain-notes">S3 — Source-Level Fountain
+Notes</h2>
+<p><strong>Goal:</strong> Extend <code>RAGAugmentInfo</code> with
+per-chunk source references and emit <code>[[rag-source: ...]]</code>
+notes in session files after the existing <code>[[rag: ...]]</code>
+aggregate note.</p>
+<p>This work item depends on S1 (provenance columns must exist to
+populate <code>RAGChunkRef</code>).</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>recorder.go</code></td>
+<td>Add
+<code>RAGChunkRef struct { Source, DOI, Title, Lines string }</code>.
+Add <code>Sources []RAGChunkRef</code> field to
+<code>RAGAugmentInfo</code>. In <code>RecordTurnWithStats</code>, after
+writing <code>[[rag: ...]]</code>, iterate <code>ragInfo.Sources</code>
+and emit one <code>[[rag-source: ...]]</code> note per entry.</td>
+</tr>
+<tr>
+<td><code>rag_support.go</code></td>
+<td>Extend <code>Query</code> to return <code>[]EnrichedChunk</code>
+with provenance fields populated from the new columns. Populate
+<code>RAGChunkRef</code> per returned chunk in <code>ragAugment</code>.
+Deduplicate by <code>Source</code> value before populating
+<code>RAGAugmentInfo.Sources</code>.</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td><code>ragAugment</code> already returns
+<code>*RAGAugmentInfo</code>; add source-ref population logic.</td>
+</tr>
+<tr>
+<td><code>recorder_test.go</code></td>
+<td>Add <code>TestRecordTurnWithStats_RAGSourceNotes</code> — non-nil
+Sources slice; verify one <code>[[rag-source: ...]]</code> line per
+entry, in order, after <code>[[rag: ...]]</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rag-source-...-format-function"><code>[[rag-source: ...]]</code>
+format function</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> formatRAGSourceNote<span class="op">(</span>r RAGChunkRef<span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    loc <span class="op">:=</span> r<span class="op">.</span>Source</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> r<span class="op">.</span>Lines <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>        loc <span class="op">+=</span> <span class="st">&quot;:&quot;</span> <span class="op">+</span> r<span class="op">.</span>Lines</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> r<span class="op">.</span>Title <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> r<span class="op">.</span>DOI <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;rag-source: &quot;</span> <span class="op">+</span> loc</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    meta <span class="op">:=</span> r<span class="op">.</span>Title</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> r<span class="op">.</span>DOI <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> meta <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>            meta <span class="op">+=</span> <span class="st">&quot;, doi:&quot;</span> <span class="op">+</span> r<span class="op">.</span>DOI</span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>            meta <span class="op">=</span> <span class="st">&quot;doi:&quot;</span> <span class="op">+</span> r<span class="op">.</span>DOI</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">&quot;rag-source: &quot;</span> <span class="op">+</span> loc <span class="op">+</span> <span class="st">&quot; (&quot;</span> <span class="op">+</span> meta <span class="op">+</span> <span class="st">&quot;)&quot;</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="deduplication-logic-in-ragaugment">Deduplication logic (in
+<code>ragAugment</code>)</h3>
+<p>After collecting all returned chunks, build a
+<code>seen map[string]bool</code> keyed on <code>chunk.Source</code>.
+Only append the first <code>RAGChunkRef</code> for each distinct source.
+Sort by descending similarity score before deduplication so the
+highest-scoring source for each document appears.</p>
+<h3 id="expected-fountain-output">Expected Fountain output</h3>
+<pre><code>[[rag: 3 chunks from sparqlset.db, top score 0.87]]
+[[rag-source: sparql-spec.md:45–72 (SPARQL 1.1 Query Language, doi:10.1234/sparql)]]
+[[rag-source: example-queries.go:12–30]]
+[[rag-source: README.md]]</code></pre>
+<p>Existing stores with no provenance metadata (all empty strings)
+produce:</p>
+<pre><code>[[rag: 3 chunks from sparqlset.db, top score 0.87]]
+[[rag-source: sparql-spec.md:45–72]]
+[[rag-source: example-queries.go:12–30]]
+[[rag-source: README.md]]</code></pre>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>After S1 migration, ingesting a file with <code>--doi</code> and
+re-running a RAG-augmented turn produces
+<code>[[rag-source: ...]]</code> notes with DOI.</li>
+<li>Existing stores (no provenance metadata) produce source notes with
+only file paths — no empty parenthetical.</li>
+<li>Duplicate chunks from the same source file produce a single
+<code>[[rag-source:]]</code> note, not multiple.</li>
+</ul>
+<hr />
+<h2 id="s4-observation-attribution">S4 — Observation Attribution</h2>
+<p><strong>Goal:</strong> Connect <code>/kb observe</code> to the RAG
+sources retrieved in the preceding turn, and add <code>/kb cite</code>
+for manual source linking. Display sources in <code>/kb show</code>.</p>
+<p>This work item depends on both S2 (source registry) and S3 (per-turn
+source refs stored in <code>RAGAugmentInfo</code>).</p>
+<h3 id="state-threading">State threading</h3>
+<p>The agent needs to carry the most recent <code>RAGAugmentInfo</code>
+across from a chat turn into the subsequent <code>/kb observe</code>
+command. Add a <code>lastRAGInfo *RAGAugmentInfo</code> field to the
+<code>Agent</code> struct. Set it in <code>runChatTurn</code> after
+<code>ragAugment</code> returns. Reset to <code>nil</code> on clear
+(<code>/clear</code>).</p>
+<h3 id="files-to-modify-3">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey.go</code></td>
+<td>Add <code>lastRAGInfo *RAGAugmentInfo</code> to
+<code>Agent</code>.</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Set <code>a.lastRAGInfo = ragInfo</code> after
+<code>ragAugment</code> call in <code>runChatTurn</code>. Clear on
+<code>/clear</code>.</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td>In <code>cmdKBObserve</code>: after recording observation, check
+<code>a.lastRAGInfo</code>. If non-nil and non-empty sources, print
+source list and prompt <code>Link? [Y/n]</code>. On yes, call
+<code>a.KB.FindOrCreateSource</code> per RAGChunkRef and
+<code>a.KB.LinkObservationSource</code>. Add <code>cmdKBCite</code> for
+<code>/kb cite SOURCE_ID [--obs N]</code>. Extend <code>cmdKBShow</code>
+to query <code>observation_sources JOIN sources</code>.</td>
+</tr>
+<tr>
+<td><code>knowledge.go</code></td>
+<td>Add <code>FindOrCreateSource(ref RAGChunkRef) (int64, error)</code>
+— upsert by (identifier_type, identifier_value) when DOI present;
+otherwise insert new source with <code>title = source</code> path.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="kb-cite-usage"><code>/kb cite</code> usage</h3>
+<pre><code>/kb cite 1           # link source id=1 to the most recent observation, relationship=cited
+/kb cite 1 --obs 42  # link source id=1 to observation id=42</code></pre>
+<h3 id="kb-show-output-with-sources"><code>/kb show</code> output with
+sources</h3>
+<pre><code>Observation #42 [finding] (2026-06-25 14:23:11)
+  SPARQL federation queries require SERVICE blocks to reference
+  remote endpoints…
+
+Sources:
+  [1] SPARQL 1.1 Query Language (doi:10.1234/sparql) — retrieved
+  [2] example-queries.go — retrieved</code></pre>
+<p>When a source is marked retracted, its line gets a
+<code>[RETRACTED]</code> suffix and a one-line warning is printed:</p>
+<pre><code>  [1] SPARQL 1.1 Query Language (doi:10.1234/sparql) — retrieved [RETRACTED]
+⚠ Source 1 is marked retracted: &quot;Retracted 2026-07-01&quot;</code></pre>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>After a RAG-augmented turn, <code>/kb observe "my note"</code>
+prompts with the retrieved source list and links on confirmation.</li>
+<li><code>/kb show 42</code> lists linked sources with relationship
+labels.</li>
+<li><code>/kb cite 1</code> links source 1 to the last observation.</li>
+<li>A retracted source displays a warning in <code>/kb show</code>.</li>
+<li><code>a.lastRAGInfo</code> is <code>nil</code> (no prompt) when RAG
+did not fire.</li>
+</ul>
+<hr />
+<h2 id="full-test-run-after-all-four-work-items">Full test run (after
+all four work items)</h2>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> harvey</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build <span class="at">-o</span> bin/harvey cmd/harvey/<span class="pp">*</span>.go</span></code></pre></div>
+<p>Manual smoke test:</p>
+<ol type="1">
+<li>Ingest a file with provenance:
+<code>/rag ingest docs/paper.md --doi 10.5555/test --title "Test Paper"</code></li>
+<li>Ask a question that retrieves chunks from that file.</li>
+<li>Inspect the session <code>.spmd</code> file:
+<ul>
+<li><code>[[rag: N chunks ...]]</code> aggregate note present</li>
+<li><code>[[rag-source: docs/paper.md (Test Paper, doi:10.5555/test)]]</code>
+note present</li>
+</ul></li>
+<li>Run <code>/kb observe "key finding"</code> — see source prompt,
+confirm.</li>
+<li>Run <code>/kb show &lt;id&gt;</code> — see source listed as
+<code>retrieved</code>.</li>
+<li>Run <code>/kb source list</code> — see the source registered.</li>
+<li>Run
+<code>/kb retract &lt;id&gt; --note "test retraction"</code>.</li>
+<li>Run <code>/kb show &lt;obs-id&gt;</code> — see
+<code>[RETRACTED]</code> warning.</li>
+</ol>
+</section>
+</body>
+</html>

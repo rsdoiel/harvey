@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en-US">
 <head>
-    <title>Harvey</title>
+    <title>harvey</title>
     <link rel="stylesheet" href="css/site.css">
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
     <li><a href="/">Home</a></li>
@@ -14,16 +14,260 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="harvey-architecture-ux-decision-log">Harvey — Architecture &amp;
 UX Decision Log</h1>
 <p>This file records significant architectural and UX decisions, their
 rationale, and known trade-offs. New decisions are added at the top.
 Each entry names the decision, the context that prompted it, the chosen
 approach, the rejected alternatives, and the consequences.</p>
+<hr />
+<h2
+id="source-registry-lives-in-knowledge.db-not-a-separate-database">2026-06-25
+— Source registry lives in <code>knowledge.db</code>; not a separate
+database</h2>
+<p><strong>Context.</strong> The scholarly provenance design (see <a
+href="scholarly-provenance-design.html">scholarly-provenance-design.md</a>)
+requires a <code>sources</code> authority table and an
+<code>observation_sources</code> join table. Two placement options were
+considered: a new <code>provenance.db</code> alongside
+<code>knowledge.db</code>, or new tables inside the existing
+<code>knowledge.db</code>.</p>
+<p><strong>Decision.</strong> Add <code>sources</code> and
+<code>observation_sources</code> directly to <code>knowledge.db</code>.
+The sources table needs to join against <code>observations</code>,
+<code>concepts</code>, and <code>kb_fts</code>, all of which live in
+<code>knowledge.db</code>. SQLite cross-database joins via
+<code>ATTACH DATABASE</code> cannot use foreign keys and require every
+query to name the attached database alias, making all query code more
+fragile. A single database with multiple tables is the correct SQLite
+idiom.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Separate <code>provenance.db</code></em> — eliminates foreign
+keys between observations and sources; requires <code>ATTACH</code> in
+every query that spans the two files; adds a new runtime file that users
+must back up and move with their workspace.</li>
+<li><em>In-memory provenance (no persistence)</em> — RAG provenance that
+disappears on session end has no scholarly value. The whole point is a
+durable, auditable record.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>knowledge.go</code> gains DDL for <code>sources</code> and
+<code>observation_sources</code> in its <code>Open</code> path.</li>
+<li>The data migration from <code>observations.source_doi</code> runs
+once on first open after upgrade; <code>source_doi</code> is retained as
+a read-only backward- compat column.</li>
+<li>No new runtime files are introduced;
+<code>agents/knowledge.db</code> remains the single knowledge-base
+file.</li>
+</ul>
+<hr />
+<h2
+id="scholarly-provenance-inference-time-only-training-time-attribution-deferred">2026-06-25
+— Scholarly provenance: inference-time only; training-time attribution
+deferred</h2>
+<p><strong>Context.</strong> Two Scholarly Kitchen articles (2026-06-17
+and 2026-06-25) and the Cambridge Scholarly AI Workshop identified that
+AI systems interact with scholarly content at two points: training time
+(content absorbed into model weights) and inference time (content
+retrieved and injected via RAG at query time). The workshop explicitly
+classified training-time attribution as technically intractable at
+current model scales and recommended focusing practical interventions on
+inference-time retrieval.</p>
+<p>Harvey’s architecture makes inference-time provenance fully
+tractable: the RAG pipeline (<code>ragAugment</code>,
+<code>RagStore.Query</code>) has complete observability of what was
+retrieved and from where. Training-time attribution for Ollama or
+Llamafile models is not accessible to Harvey and would require
+coordination with model providers.</p>
+<p><strong>Decision.</strong> The scholarly provenance work (v0.0.15)
+focuses entirely on inference-time provenance: 1. A minimum provenance
+payload on RAG chunks (source, DOI, title, version, rights, content
+hash, retraction flag). 2. A source registry in
+<code>knowledge.db</code> as the authority for source metadata, linked
+to observations via <code>observation_sources</code>. 3. Per-source
+<code>[[rag-source: ...]]</code> Fountain notes so session files serve
+as citable records of what evidence informed each response. 4.
+<code>HARVEY.md</code> system-prompt guidance to retrieve before
+generating and to attribute content at the point of use, not
+post-hoc.</p>
+<p>Training-time attribution is explicitly deferred and recorded as out
+of scope, not a gap in the design.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Attempt training-data disclosure via model metadata</em> —
+Ollama’s <code>/api/show</code> endpoint returns a Modelfile and
+template but not a training corpus manifest. No standard interface
+exists. Not tractable.</li>
+<li><em>Restrict Harvey to models with published data cards</em> — would
+exclude most locally-available models and undermine the local-first
+principle.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li>See <a
+href="scholarly-provenance-design.html">scholarly-provenance-design.md</a>
+for the full architecture and <a
+href="scholarly-provenance-plan.html">scholarly-provenance-plan.md</a>
+for the phased implementation.</li>
+<li>Provenance metadata added to <code>chunks</code> schema (S1), source
+registry added to <code>knowledge.db</code> (S2), Fountain notes
+enhanced (S3), <code>/kb</code> commands extended (S4).</li>
+</ul>
+<hr />
+<h2
+id="int.ext.-scene-prefix-redefined-as-localremote-computation">2026-06-24
+— INT./EXT. scene prefix redefined as local/remote computation</h2>
+<p><strong>Context.</strong> The original Fountain format spec
+(v1.0–1.1) defined <code>INT.</code> as “Harvey is involved as
+orchestrator” and <code>EXT.</code> as “direct model-human conversation
+without Harvey.” This made <code>EXT.</code> scenes effectively
+hypothetical — the recorder never wrote one, because Harvey is always
+involved. Remote Ollama route dispatches (e.g. <code>@pi2</code>) and
+cloud API calls were both recorded as <code>INT.</code> despite running
+on remote machines. The distinction was meaningless in practice.</p>
+<p><strong>Decision.</strong> Redefine the prefix semantically as
+<strong>location of computation</strong>: <code>INT.</code> = runs on
+the local machine where Harvey is running; <code>EXT.</code> = runs on a
+remote system. This maps naturally to the theatrical meaning
+(interior/exterior), gives <code>EXT.</code> scenes real-world
+frequency, and encodes practically important information (network
+latency, data exposure, cost). Remote Ollama routes and cloud API routes
+are now <code>EXT.</code> HARVEY still appears in <code>EXT.</code>
+scene dialogue as the forwarding character when Harvey initiated the
+route dispatch; HARVEY is absent only in truly direct conversations (no
+Harvey involvement). The <code>RecordExteriorTurn</code> recorder method
+writes EXT. scenes; <code>RecordTurnWithStats</code> continues to write
+INT. scenes.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Keep the old semantic, just document it better</em> — the old
+definition made EXT. permanently dead code and gave parsers no useful
+locality signal. The new semantic costs nothing to implement and adds
+real diagnostic value.</li>
+<li><em>Use a <code>Remote: true</code> field in the scene description
+instead of the prefix</em> — keeps the prefix consistent but buries
+locality in metadata. The theatrical prefix is the primary structural
+signal in Fountain; using it for locality is more idiomatic.</li>
+<li><em>Make every forwarded turn EXT. regardless of locality</em> —
+local model-switch via <code>@mention</code> (where
+<code>attemptModelSwitch</code> succeeds) is still local computation.
+Only registered route dispatches (<code>DispatchToEndpoint</code>) are
+genuinely remote.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>FOUNTAIN_FORMAT.md</code> updated to v1.2 with corrected
+INT./EXT. definitions, updated scenarios 2 and 3, and updated best
+practices.</li>
+<li><code>recorder.go</code> gains
+<code>RecordExteriorTurn(endpoint, userInput, reply string)</code>.</li>
+<li><code>terminal.go</code> route dispatch path calls
+<code>RecordExteriorTurn</code> instead of <code>RecordTurn</code>.</li>
+<li>Existing <code>.spmd</code> session files recorded before v0.0.15
+have INT. for route dispatches — this is a known inaccuracy, not a
+migration target.</li>
+</ul>
+<hr />
+<h2 id="fountain-sessions-become-full-audit-trails-v0.0.15">2026-06-24 —
+Fountain sessions become full audit trails (v0.0.15)</h2>
+<p><strong>Context.</strong> Corin Wagen’s article “Tool Use and AI
+Scientists” argues that tool calls are the primary mechanism for AI
+interpretability — the decision trace of what an agent chose to do and
+why. Harvey’s Fountain session files record dialogue, file writes, and
+shell commands, but tool calls appear only as unstructured prose
+(“Harvey calls read_file: {args}”), tool results are not recorded, RAG
+context retrieval leaves no trace, and memory injection at session start
+is invisible. See <a
+href="audit-trail-design.html">audit-trail-design.md</a>.</p>
+<p><strong>Decision.</strong> Extend the Fountain format to v1.2 with
+four new audit elements. A Harvey session file is a <em>sequence of many
+scenes</em> — one per discrete interaction (chat turn, shell command,
+file write, skill activation). The placement of new elements respects
+this: notes go inside existing scenes; only one new scene type is
+added.</p>
+<ul>
+<li><code>[[tool: name(args) — status]]</code> notes replace prose
+action blocks for tool calls. They appear <strong>inside the existing
+<code>INT. HARVEY AND … TALKING</code> scene</strong> for the turn where
+the tool loop ran, between HARVEY’s forwarding line and the model’s
+reply. Multiple tool-call rounds within one turn produce multiple flat
+notes in the same scene — no new scene is opened per round.</li>
+<li><code>[[CHARACTER.tool: name(args) — status]]</code> variant
+attributes tool calls to a forwarded model in <code>@mention</code>
+turns. Same placement as above; only the prefix changes.</li>
+<li><code>[[rag: N chunks from STORE, top score S.SS]]</code> notes
+record RAG retrieval <strong>inside the existing
+<code>INT. HARVEY AND … TALKING</code> scene</strong> for the turn where
+RAG fired, before the user dialogue line. Turns where RAG did not fire
+have no <code>[[rag:]]</code> note.</li>
+<li><code>INT. CONTEXT RECALL TIMESTAMP</code> is the only new scene
+type. It appears once at session start — before the first chat turn —
+when <code>UnifiedMemory.Recall</code> injects memories. It contains
+<code>[[recall: ID (SOURCE) — score S.SS]]</code> notes, one per
+recalled item.</li>
+</ul>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Bridge <code>audit.jsonl</code> and Fountain</em> — routing
+<code>AuditBuffer</code> events to the recorder would couple two
+unrelated systems (security audit vs. session narrative) and require the
+audit buffer to hold a recorder reference. Rejected: keep them
+separate.</li>
+<li><em>Full tool result content in Fountain</em> — maximally auditable
+but bloats session files and degrades memory miner quality for large
+<code>read_file</code> or search outputs. Status-only (<code>ok</code> /
+<code>error: first line</code>) achieves the diagnostic goal.</li>
+<li><em>RAG note in the scene description block</em> — the scene
+description is written at scene open; RAG fires later in
+<code>runChatTurn</code>. A separate note just before user dialogue is
+temporally accurate.</li>
+<li><em><code>INT. TOOL LOOP</code> scene per tool-call round</em> — a
+multi-round tool loop (model calls tool, gets result, calls another
+tool, gets result, produces final answer) could open a new scene for
+each round. Rejected: a “turn” from the user’s perspective is one
+request-response cycle; splitting it across multiple scenes makes the
+session harder to read and harder for the memory miner to extract
+question-answer pairs. Flat notes inside the single turn scene preserve
+both.</li>
+<li><em>Per-message character attribution via
+<code>Message.Model</code></em> — accurate multi-round character
+attribution requires tagging each <code>Message</code>, which ripples
+through serialisation, compaction, and replay. Deferred: single
+character per turn covers the real-world case.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>recorder.go</code>: <code>ToolCallRecord</code> gains
+<code>Result</code> and <code>Character</code> fields;
+<code>RAGAugmentInfo</code> struct added;
+<code>RecordTurnWithStats</code> gains
+<code>ragInfo *RAGAugmentInfo</code> parameter;
+<code>RecordContextRecall</code> method added.</li>
+<li><code>terminal.go</code>: <code>ragAugment</code> returns
+<code>(string, *RAGAugmentInfo)</code>;
+<code>toolCallsFromHistory</code> gains <code>charName string</code>
+parameter; <code>runChatTurn</code> gains <code>charName string</code>
+parameter.</li>
+<li><code>harvey.go</code>: <code>injectMemoryContext</code> calls
+<code>a.Recorder.RecordContextRecall</code> when results are
+non-empty.</li>
+<li><code>tool_executor.go</code>: <code>ToolExecutor</code> gains
+<code>CharacterName string</code> field.</li>
+<li><code>FOUNTAIN_FORMAT.md</code> updated to v1.2 with new syntax and
+scene type.</li>
+<li>All existing callers of <code>RecordTurnWithStats</code> pass
+<code>nil</code> for the new <code>ragInfo</code> parameter; all callers
+of <code>toolCallsFromHistory</code> pass <code>""</code> for
+<code>charName</code> except the <code>@mention</code> local-switch
+path.</li>
+</ul>
 <hr />
 <h2
 id="command-vocabulary-standardised-across-all-resource-management-commands">2026-06-20

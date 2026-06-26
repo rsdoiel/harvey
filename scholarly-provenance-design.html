@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-scholarly-provenance-design">Harvey Scholarly Provenance
+— Design</h1>
+<p><strong>Status (2026-06-25):</strong> Design draft for v0.0.15. See
+<a
+href="scholarly-provenance-plan.html">scholarly-provenance-plan.md</a>
+for the phased implementation plan.</p>
+<p><strong>References:</strong></p>
+<ul>
+<li><p>“Attribution, Provenance, Reference, Citation, and AI for
+Research Applications: Understanding the Differences” — <em>The
+Scholarly Kitchen</em>, 2026-06-17. Establishes the conceptual
+distinctions between attribution, provenance, reference, and citation in
+AI research contexts. Identifies citation-after-generation as a failure
+of scholarly integrity.</p></li>
+<li><p>“Making AI Use of Scholarly Content Traceable, Measurable, and
+Trustworthy” — Meeting report from the Cambridge Scholarly AI Workshop
+(Cambridge University Press, COUNTER, NISO), <em>The Scholarly
+Kitchen</em>, 2026-06-25. Identifies practical interventions at content
+retrieval points and defines a minimum provenance payload for
+AI-retrieved scholarly content.</p></li>
+</ul>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>The Cambridge workshop identified that AI tools interact with
+scholarly content at two distinct points: <strong>training time</strong>
+(content absorbed into model weights) and <strong>inference
+time</strong> (content retrieved and injected at query time). The
+workshop explicitly classified training-time attribution as technically
+intractable and concentrated its recommendations on inference-time
+retrieval — specifically, the RAG pattern that Harvey already uses.</p>
+<p>The workshop’s minimum provenance payload for retrieved content
+includes:</p>
+<ul>
+<li>Persistent identifiers and source locations</li>
+<li>Timestamps and content hashes</li>
+<li>Version information</li>
+<li>Copyright and rights information</li>
+<li>Retraction flags and expressions of concern</li>
+</ul>
+<p>Harvey’s RAG system (<code>rag_support.go</code>,
+<code>agents/rag/*.db</code>) sits precisely at this intervention point.
+Harvey also accumulates scholarly observations in
+<code>agents/knowledge.db</code>. Both systems have provenance gaps that
+prevent session files and knowledge-base entries from serving as
+traceable, verifiable scholarly records.</p>
+<p>The Scholarly Kitchen article adds a second concern: AI systems often
+<strong>generate first, then layer citations on afterward</strong> —
+inverting the scholarly process. The evidential chain is broken when
+citations appear post-hoc rather than as the basis for a claim. Harvey’s
+RAG pattern retrieve-then-generate should be codified and visible in
+session records.</p>
+<hr />
+<h2 id="current-state-gap-analysis">Current state gap analysis</h2>
+<h3 id="rag-chunk-store-chunks-table-in-harvey.db-sparqlset.db">RAG
+chunk store (<code>chunks</code> table in <code>harvey.db</code>,
+<code>sparqlset.db</code>)</h3>
+<table>
+<colgroup>
+<col style="width: 36%" />
+<col style="width: 40%" />
+<col style="width: 22%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Column</th>
+<th scope="col">Present</th>
+<th scope="col">Gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source</code></td>
+<td>✓ (file path)</td>
+<td>No URL, DOI, or external identifier</td>
+</tr>
+<tr>
+<td><code>start_line</code> … <code>end_col</code></td>
+<td>✓ (code location)</td>
+<td>No <code>indexed_at</code> timestamp</td>
+</tr>
+<tr>
+<td><code>content</code></td>
+<td>✓</td>
+<td>No <code>content_hash</code> for change detection</td>
+</tr>
+<tr>
+<td><code>chunk_type</code>, <code>symbols</code>,
+<code>docs</code></td>
+<td>✓</td>
+<td>No version, rights, or retraction flag</td>
+</tr>
+</tbody>
+</table>
+<p>All provenance fields beyond the local file path are absent. A chunk
+from a retracted paper, an outdated preprint, or a proprietary document
+is indistinguishable from any other chunk.</p>
+<h3 id="knowledge-base-agentsknowledge.db">Knowledge base
+(<code>agents/knowledge.db</code>)</h3>
+<table>
+<colgroup>
+<col style="width: 39%" />
+<col style="width: 39%" />
+<col style="width: 21%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Feature</th>
+<th scope="col">Present</th>
+<th scope="col">Gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observations.source_doi</code></td>
+<td>✓ (single DOI text column)</td>
+<td>One source per observation; DOI-only; no title, authors, rights,
+retraction</td>
+</tr>
+<tr>
+<td><code>concepts.identifier_type/value</code></td>
+<td>✓ (proto-PID pattern)</td>
+<td>Per-concept, not per-source; no observation→source join</td>
+</tr>
+<tr>
+<td><code>kb_fts.source_type/source_id</code></td>
+<td>✓ (FTS index)</td>
+<td>Search index only; not an authority source registry</td>
+</tr>
+</tbody>
+</table>
+<p>There is no source registry. Multiple sources per observation cannot
+be expressed. The <code>source_doi</code> field is frequently empty
+because the ingestion workflow provides no friction-free path to record
+it.</p>
+<h3 id="fountain-session-files">Fountain session files</h3>
+<p>The v1.2 audit trail (introduced in v0.0.15) records:</p>
+<pre><code>[[rag: 3 chunks from sparqlset.db, top score 0.87]]</code></pre>
+<p>This note captures aggregate retrieval stats but not which documents
+the chunks came from. A session auditor cannot determine whether the
+model’s answer was informed by a primary source, a Wikipedia mirror, or
+a retracted preprint.</p>
+<hr />
+<h2 id="design-goals">Design goals</h2>
+<ol type="1">
+<li><p><strong>Minimum provenance payload in RAG chunks.</strong> Add
+metadata fields to the <code>chunks</code> table aligned with the
+Cambridge workshop recommendations. All fields are optional with
+empty/zero defaults so existing stores upgrade without migration data
+loss.</p></li>
+<li><p><strong>Authority source registry.</strong> Add a
+<code>sources</code> table to <code>knowledge.db</code> as the single
+authority for source metadata. Sources are registered once and
+referenced by observations and RAG chunks via foreign keys.</p></li>
+<li><p><strong>Observation-to-source attribution chain.</strong> Replace
+the single <code>observations.source_doi</code> column with a proper
+<code>observation_sources</code> join table supporting multiple sources
+per observation, multiple identifier types, and relationship
+classification.</p></li>
+<li><p><strong>Source-level Fountain notes.</strong> Extend the
+<code>[[rag: ...]]</code> note to enumerate distinct source documents
+retrieved in each turn, including any DOI or title metadata available,
+so session files serve as citable records of what evidence informed each
+response.</p></li>
+<li><p><strong>Retrieval discipline in system context.</strong> Document
+in <code>HARVEY.md</code> that retrieved content must be attributed at
+the point of use, not post-hoc, so the model internalises this as a
+behavioral principle.</p></li>
+</ol>
+<hr />
+<h2 id="architecture">Architecture</h2>
+<h3 id="s1-rag-chunk-provenance-schema">S1 — RAG Chunk Provenance
+Schema</h3>
+<p><strong>Current state.</strong> The <code>chunks</code> table (shared
+schema in both <code>harvey.db</code> and <code>sparqlset.db</code>) has
+no timestamp, no content hash, and no external source identifier.
+<code>source</code> stores only a local file path or URL string without
+structure.</p>
+<p><strong>Change.</strong> Add provenance columns via
+<code>ALTER TABLE</code>. All new columns have safe defaults so existing
+stores are immediately queryable after the schema migration without
+re-ingesting content.</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> indexed_at     DATETIME <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="fu">CURRENT_TIMESTAMP</span>;</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> content_hash   TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> source_url     TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> source_doi     TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> source_title   TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> source_version TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> rights         TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> retracted      <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>;</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> chunks <span class="kw">ADD</span> <span class="kw">COLUMN</span> retraction_note TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>;</span></code></pre></div>
+<p><strong><code>content_hash</code> computation.</strong> SHA-256 of
+the raw <code>content</code> string, encoded as lowercase hex. Computed
+by <code>RagStore.Ingest</code> before writing. When a subsequent ingest
+of the same <code>source</code> finds a matching
+<code>content_hash</code>, the chunk is skipped as unchanged. When the
+hash differs, the old chunk is replaced and <code>indexed_at</code> is
+updated.</p>
+<p><strong><code>/rag ingest</code> flags (new).</strong> Source
+metadata cannot be inferred from file content alone for scholarly
+documents. New optional flags allow the user to annotate at ingest
+time:</p>
+<pre><code>/rag ingest FILE [--title TITLE] [--doi DOI] [--url URL]
+                 [--version VERSION] [--rights RIGHTS]</code></pre>
+<p>When <code>--doi</code> is given, <code>source_doi</code> is set on
+all chunks from that ingest run. When <code>--url</code> is given and
+<code>source</code> is already a URL (remote ingest),
+<code>source_url</code> copies it; for local files
+<code>source_url</code> is the provided flag value.
+<code>source_title</code> defaults to the filename stem when not
+specified and no <code>--title</code> flag is given.</p>
+<h3 id="s2-source-registry-in-knowledge.db">S2 — Source Registry in
+<code>knowledge.db</code></h3>
+<p><strong>Current state.</strong> <code>observations.source_doi</code>
+is a single TEXT column with no joins, no title or author metadata, and
+no retraction tracking. <code>concepts.identifier_type/value</code>
+supports PIDs per concept but not per source document.</p>
+<p><strong>Change.</strong> Add two new tables to
+<code>knowledge.db</code>.</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> sources (</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>               <span class="dt">INTEGER</span>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span> AUTOINCREMENT,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    title            TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    identifier_type  TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    identifier_value TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    authors          TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    published_date   TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    publisher        TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    rights           TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    version          TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    retracted        <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    retraction_note  TEXT     <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    first_seen_at    DATETIME <span class="kw">DEFAULT</span> <span class="fu">CURRENT_TIMESTAMP</span>,</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    last_checked_at  DATETIME <span class="kw">DEFAULT</span> <span class="fu">CURRENT_TIMESTAMP</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> observation_sources (</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    observation_id <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">REFERENCES</span> observations(<span class="kw">id</span>) <span class="kw">ON</span> <span class="kw">DELETE</span> <span class="kw">CASCADE</span>,</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    source_id      <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">REFERENCES</span> sources(<span class="kw">id</span>)      <span class="kw">ON</span> <span class="kw">DELETE</span> <span class="kw">RESTRICT</span>,</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>    relationship   TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;cited&#39;</span>,</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (observation_id, source_id)</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<p><code>identifier_type</code> values follow the existing
+<code>concepts</code> convention: <code>doi</code>, <code>url</code>,
+<code>isbn</code>, <code>issn</code>, <code>arxiv</code>,
+<code>urn</code>, <code>handle</code>. The pair
+(<code>identifier_type</code>, <code>identifier_value</code>) must be
+unique when both are non-empty — enforced by a partial unique index.</p>
+<p><code>relationship</code> in <code>observation_sources</code>
+classifies how the source relates to the observation: -
+<code>cited</code> — user explicitly named this source when recording
+the observation - <code>retrieved</code> — Harvey’s RAG system returned
+chunks from this source during the turn when the observation was
+recorded - <code>inferred</code> — the model drew on this source without
+explicit retrieval (rare; for manual annotation only)</p>
+<p><strong>Migration.</strong> Existing <code>observations</code> rows
+where <code>source_doi != ''</code> are migrated: a row is inserted into
+<code>sources</code> (with <code>identifier_type = 'doi'</code>,
+<code>identifier_value = source_doi</code>) and linked via
+<code>observation_sources</code> with
+<code>relationship = 'cited'</code>. The <code>source_doi</code> column
+is retained for backward compatibility but treated as read-only after
+migration.</p>
+<p><strong>New <code>/kb source</code> command family.</strong></p>
+<table>
+<colgroup>
+<col style="width: 52%" />
+<col style="width: 47%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/kb source add</code></td>
+<td>Interactive prompts for title, identifier, authors, date,
+rights</td>
+</tr>
+<tr>
+<td><code>/kb source add --doi DOI --title TITLE [--authors A] [--published DATE] [--rights R]</code></td>
+<td>Non-interactive add</td>
+</tr>
+<tr>
+<td><code>/kb source list</code></td>
+<td>Tabular list: id, title, identifier, retracted flag</td>
+</tr>
+<tr>
+<td><code>/kb source show ID</code></td>
+<td>Full metadata for one source</td>
+</tr>
+<tr>
+<td><code>/kb source remove ID</code></td>
+<td>Remove source if no linked observations</td>
+</tr>
+<tr>
+<td><code>/kb retract ID --note NOTE</code></td>
+<td>Set <code>retracted = 1</code> and <code>retraction_note</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="s3-source-level-fountain-notes">S3 — Source-Level Fountain
+Notes</h3>
+<p><strong>Current state.</strong>
+<code>[[rag: 3 chunks from sparqlset.db, top score 0.87]]</code>
+captures aggregate retrieval stats but not per-document source
+attribution.</p>
+<p><strong>Change.</strong> Extend <code>RAGAugmentInfo</code> to carry
+per-chunk source references. Add a second class of note,
+<code>[[rag-source: ...]]</code>, emitted once per distinct source
+document referenced in the retrieved chunks.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> RAGChunkRef <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    Source  <span class="dt">string</span>  <span class="co">// file path or URL (the existing chunks.source value)</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    DOI     <span class="dt">string</span>  <span class="co">// chunks.source_doi if set</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    Title   <span class="dt">string</span>  <span class="co">// chunks.source_title if set</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    Lines   <span class="dt">string</span>  <span class="co">// &quot;12–45&quot; for code chunks; empty for prose</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co">// RAGAugmentInfo gains a Sources field (existing fields unchanged):</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> RAGAugmentInfo <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    StoreName <span class="dt">string</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    Chunks    <span class="dt">int</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    TopScore  <span class="dt">float64</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>    Sources   <span class="op">[]</span>RAGChunkRef  <span class="co">// deduplicated by Source value</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The <code>[[rag: ...]]</code> summary note is unchanged. When
+<code>Sources</code> is non-empty, one <code>[[rag-source: ...]]</code>
+note follows per distinct source:</p>
+<pre><code>[[rag: 3 chunks from sparqlset.db, top score 0.87]]
+[[rag-source: sparql-spec.md:45–72 (SPARQL 1.1 Query Language, doi:10.1234/sparql)]]
+[[rag-source: example-queries.go:12–30]]
+[[rag-source: README.md]]</code></pre>
+<p>Format rule: <code>SOURCE[:LINES] [(TITLE[, doi:DOI])]</code>. The
+title and DOI parenthetical is omitted when both are empty (existing
+ingests without metadata). Lines are omitted for prose chunks. Sources
+are deduplicated and sorted by descending similarity score — the most
+relevant source first.</p>
+<p><strong>Where notes appear.</strong> The <code>[[rag-source:]]</code>
+notes follow immediately after the existing <code>[[rag: ...]]</code>
+aggregate note, inside the <code>INT. HARVEY AND … TALKING</code> scene
+for the turn where RAG fired, before the user’s dialogue line. No change
+to placement logic in <code>RecordTurnWithStats</code>.</p>
+<h3 id="s4-observation-attribution-in-kb-observe">S4 — Observation
+Attribution in <code>/kb observe</code></h3>
+<p><strong>Current state.</strong> <code>/kb observe</code> records a
+free-text observation and asks for a <code>source_doi</code>. No
+connection exists between the observation’s source and the RAG chunks
+retrieved in the preceding turn.</p>
+<p><strong>Change.</strong> When <code>/kb observe</code> runs and the
+preceding turn had a non-nil <code>RAGAugmentInfo.Sources</code>, Harvey
+offers to auto-link the observation to the RAG-retrieved sources:</p>
+<pre><code>Observation recorded (id=42).
+RAG retrieved 3 chunks from sparqlset.db this turn.
+  Source: sparql-spec.md (doi:10.1234/sparql)
+  Source: example-queries.go
+Link this observation to these sources? [Y/n]</code></pre>
+<p>If yes, Harvey looks up or creates <code>sources</code> entries for
+each <code>RAGChunkRef</code> and inserts
+<code>observation_sources</code> rows with
+<code>relationship = 'retrieved'</code>. The user can also add explicit
+citations with <code>/kb cite SOURCE_ID [--obs OBSERVATION_ID]</code>
+(defaults to the most recent observation).</p>
+<p><strong><code>/kb show</code> output.</strong> When sources are
+linked, <code>/kb show</code> appends a Sources section:</p>
+<pre><code>Observation #42 [finding] (2026-06-25 14:23:11)
+  SPARQL federation queries require SERVICE blocks…
+
+Sources:
+  [1] SPARQL 1.1 Query Language (doi:10.1234/sparql) — retrieved
+  [2] example-queries.go — retrieved</code></pre>
+<hr />
+<h2 id="retrieval-discipline-in-harvey.md">Retrieval discipline in
+<code>HARVEY.md</code></h2>
+<p>Add a short <strong>Provenance</strong> section to
+<code>HARVEY.md</code> (the system prompt) documenting the intended
+behavioral norm:</p>
+<blockquote>
+<p>When you answer a question using content from the RAG context block,
+attribute that content to its source at the point you use it. Do not
+generate claims and then search for citations afterward. If you cannot
+identify a source for a claim, say so explicitly rather than asserting
+it as fact.</p>
+</blockquote>
+<p>This is a behavioral guideline enforced through the system prompt,
+not a code constraint. The guideline will be more effective with smaller
+models when RAG retrieval also surfaces clear source metadata (S3).</p>
+<hr />
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<p><strong>Training-time attribution.</strong> Tracking which documents
+went into the model’s weights is technically intractable, as the
+Cambridge workshop concluded. This design focuses entirely on
+inference-time provenance, where Harvey has full observability through
+the RAG pipeline.</p>
+<p><strong>Single <code>source_doi</code> column vs. source
+registry.</strong> The existing <code>observations.source_doi</code> is
+a single DOI text field. It cannot express multiple sources per
+observation, non-DOI identifiers (URLs, ISBNs, arXiv IDs), or source
+metadata (title, authors, rights, retraction status). A proper
+<code>sources</code> authority table with
+<code>observation_sources</code> join table adds one more schema layer
+but enables correct attribution semantics. The single column is retained
+as a migration path and backward-compat read.</p>
+<p><strong>Separate provenance database.</strong> A dedicated
+<code>provenance.db</code> alongside <code>knowledge.db</code> would
+isolate the schema change. Rejected because <code>sources</code> needs
+to join against <code>observations</code>, <code>concepts</code>, and
+<code>kb_fts</code>, which are all in <code>knowledge.db</code>.
+Cross-database joins in SQLite require <code>ATTACH</code> and cannot
+use foreign keys. A single database with multiple tables is the correct
+SQLite idiom.</p>
+<p><strong>Per-chunk vs. per-source Fountain notes.</strong> Per-chunk
+notes would emit one line for every retrieved chunk — up to 10 or more
+per turn — making session files verbose and harder to mine. Per-source
+deduplication (one note per distinct source document) captures the
+provenance question that matters: “which works informed this answer?”
+without the noise of which paragraph within the work was retrieved. A
+session with 10 chunks from 3 source documents produces 3
+<code>[[rag-source:]]</code> notes, not 10.</p>
+<p><strong>Content hash as cryptographic proof.</strong> SHA-256 of the
+chunk content is not a security guarantee (the file could be tampered
+before ingest) but is sufficient for the primary use case: detecting
+whether a source has changed since it was last ingested. When a
+re-ingest finds a changed hash, Harvey can warn the user that cached
+chunks may be stale.</p>
+<p><strong>Retrieval-first enforcement in code.</strong> The ideal
+system would reject any response that makes a citation without a matched
+RAG source and inject a correction. This requires deep integration with
+the chat loop and reliable citation detection, both of which are beyond
+the scope of this work. The behavioral norm in <code>HARVEY.md</code>
+achieves partial effect with small models and will improve as RAG source
+metadata becomes richer through S1–S3.</p>
+<p><strong>Retraction monitoring service.</strong> Automatically
+checking registered DOIs against retraction databases (Retraction Watch,
+CrossRef) on a schedule would surface stale scholarly content
+proactively. Deferred: this requires outbound network calls, a new
+background process, and policy decisions about frequency and authority.
+The schema includes <code>retracted</code> and
+<code>retraction_note</code> fields so manual retraction marking works
+immediately, and the monitoring service can be added later without
+schema changes.</p>
+</section>
+</body>
+</html>

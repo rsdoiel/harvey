@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en-US">
 <head>
-    <title>Harvey</title>
+    <title>harvey</title>
     <link rel="stylesheet" href="css/site.css">
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
     <li><a href="/">Home</a></li>
@@ -14,14 +14,112 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="action-items">Action Items</h1>
 <h2 id="bugs">Bugs</h2>
+<ul>
+<li><p><code>/model use</code> (no arg): prints usage error instead of
+showing a picker of registered llamafile models and aliases. Should call
+SelectFromStrings(allModelNames(a), …) when len(args) &lt; 2, matching
+the UX of /ollama use, /llamafile use, and /rag use.</p></li>
+<li><p><code>/session use</code> / <code>/session continue</code> (no
+arg): prints usage error instead of showing a picker of available
+session files. Should call ListSessionFiles(a.SessionsDir) and
+SelectFrom when len(args) &lt; 2, matching the UX of /rag use and
+/llamafile use.</p></li>
+</ul>
 <h2 id="release-review">Release Review</h2>
 <h2 id="next-v0.0.15-release">Next (v0.0.15 release)</h2>
+<h3 id="audit-trail-enhancements-see-audit-trail-plan.md">Audit trail
+enhancements (see <a
+href="audit-trail-plan.html">audit-trail-plan.md</a>)</h3>
+<ul>
+<li><p><strong>W0</strong> — Update <code>FOUNTAIN_FORMAT.md</code> to
+v1.2: correct INT./EXT. semantic (INT. = local computation, EXT. =
+remote); add new notation to spec before any code changes.</p></li>
+<li><p><strong>W1</strong> — Structured
+<code>[[tool: name(args) — status]]</code> notes: replace prose action
+blocks with parseable Fountain notes; add <code>Result</code> and
+<code>Character</code> fields to <code>ToolCallRecord</code>; extend
+<code>toolCallsFromHistory</code> to pair calls with tool-role message
+results.</p></li>
+<li><p><strong>W2</strong> — RAG provenance notes: change
+<code>ragAugment</code> to return
+<code>(string, *RAGAugmentInfo)</code>; emit
+<code>[[rag: N chunks from STORE, top score S.SS]]</code> note inside
+the turn’s scene before user dialogue.</p></li>
+<li><p><strong>W3</strong> — <code>INT. CONTEXT RECALL</code> scene: add
+<code>RecordContextRecall</code> to <code>Recorder</code>; call from
+<code>injectMemoryContext</code> when <code>UnifiedMemory.Recall</code>
+returns non-empty results; write one
+<code>[[recall: ID (SOURCE) — score S.SS]]</code> note per recalled
+item.</p></li>
+<li><p><strong>W4</strong> — EXT. scenes + character-attributed tool
+calls: add <code>RecordExteriorTurn</code> to <code>Recorder</code> for
+remote route dispatches; pass <code>charName</code> through
+<code>runChatTurn</code> → <code>toolCallsFromHistory</code> for local
+<code>@mention</code> switches; add <code>CharacterName</code> to
+<code>ToolExecutor</code>.</p></li>
+</ul>
+<h3 id="scholarly-provenance-see-scholarly-provenance-plan.md">Scholarly
+provenance (see <a
+href="scholarly-provenance-plan.html">scholarly-provenance-plan.md</a>)</h3>
+<ul>
+<li><p><strong>S1</strong> — RAG chunk provenance schema: add
+<code>indexed_at</code>, <code>content_hash</code>,
+<code>source_url</code>, <code>source_doi</code>,
+<code>source_title</code>, <code>source_version</code>,
+<code>rights</code>, <code>retracted</code>,
+<code>retraction_note</code> columns to <code>chunks</code> table via
+idempotent <code>ALTER TABLE</code> migration in
+<code>RagStore.Open</code>; compute SHA-256 content hash on ingest for
+change detection; add <code>--doi</code>, <code>--url</code>,
+<code>--title</code>, <code>--version</code>, <code>--rights</code>
+flags to <code>/rag ingest</code>.</p></li>
+<li><p><strong>S2</strong> — Source registry in
+<code>knowledge.db</code>: add <code>sources</code> authority table and
+<code>observation_sources</code> join table; migrate existing
+<code>source_doi</code> values from <code>observations</code>; add
+<code>/kb source {add,list,show,remove}</code> and
+<code>/kb retract</code> commands.</p></li>
+<li><p><strong>S3</strong> — Source-level Fountain notes: extend
+<code>RAGAugmentInfo</code> with <code>Sources []RAGChunkRef</code>;
+emit deduplicated
+<code>[[rag-source: path[:lines] (title, doi:DOI)]]</code> notes after
+the existing <code>[[rag: ...]]</code> aggregate note. Depends on
+S1.</p></li>
+<li><p><strong>S4</strong> — Observation attribution: add
+<code>lastRAGInfo *RAGAugmentInfo</code> to <code>Agent</code>; prompt
+in <code>/kb observe</code> to auto-link retrieved sources; add
+<code>/kb cite SOURCE_ID</code> for manual linking; show source
+attribution with retraction warnings in <code>/kb show</code>. Depends
+on S2 and S3.</p></li>
+<li><p><strong>HARVEY.md</strong> — Add a Provenance section instructing
+the model to attribute retrieved content at the point of use, not
+post-hoc.</p></li>
+</ul>
+<h2 id="llama.cpp-server-side-tool-call-parsing-for-apertus">llama.cpp
+server-side tool call parsing for Apertus</h2>
+<p>Apertus 4B uses a native tool call format
+(<code>&lt;SPECIAL_71&gt;[{"tool_name": args}]&lt;SPECIAL_72&gt;</code>)
+that llama.cpp’s server does not recognise as structured tool calls.
+Apertus tool calls currently travel as raw text in the API content field
+and are parsed client-side by Harvey’s prose fallback
+(<code>tryExecuteApertusToolCalls</code> in
+<code>terminal.go</code>).</p>
+<p>When llama.cpp adds support for registering a custom tool-call token
+pattern (or adds built-in Apertus support), update
+<code>templates/apertus-4b-toolcall.jinja</code> in the henry project to
+register the token pair so the server converts them to OpenAI API
+<code>tool_calls</code> in the response. That would enable full
+multi-turn structured tool use instead of the current single-turn prose
+fallback.</p>
+<p>Track: https://github.com/ggml-org/llama.cpp/issues — search “custom
+tool call format” or “Apertus”.</p>
 </section>
 </body>
 </html>

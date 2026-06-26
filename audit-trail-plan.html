@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-audit-trail-enhancements-implementation-plan">Harvey
+Audit Trail Enhancements — Implementation Plan</h1>
+<p>See <a href="audit-trail-design.html">audit-trail-design.md</a> for
+the full design rationale and architecture decisions, including the
+scene model that explains where each new element appears within a
+multi-scene session file.</p>
+<p>Target version: <strong>v0.0.15</strong></p>
+<p>Work items are ordered W1 → W2 → W3 → W4. Each is independent and
+compiles, passes tests, and provides standalone value on its own. W1
+establishes the <code>writeNote</code> pattern reused by W2; W4 builds
+on the <code>Character</code> field added in W1.</p>
+<p><strong>Key placement rule:</strong> <code>[[tool:]]</code> and
+<code>[[rag:]]</code> notes are written <em>inside</em> the scene that
+<code>RecordTurnWithStats</code> (INT.) or
+<code>RecordExteriorTurn</code> (EXT.) opens for each chat turn.
+<code>INT. CONTEXT RECALL</code> is the only new scene type; it is
+written once before the first chat turn.</p>
+<hr />
+<h2 id="w0-update-fountain_format.md-to-v1.2">W0 — Update
+<code>FOUNTAIN_FORMAT.md</code> to v1.2</h2>
+<p><strong>Goal:</strong> Correct the INT./EXT. semantic and document
+all new notation before any code changes, so the implementation has a
+clear spec to target. This is a documentation-only step; no Go files
+change.</p>
+<p><strong>INT./EXT. correction.</strong> The v1.1 spec incorrectly
+defined <code>EXT.</code> as “no Harvey involvement” (hypothetical). The
+correct reading is geographical: <code>INT.</code> = local machine,
+<code>EXT.</code> = remote system. Route dispatches and cloud API calls
+are EXT. even though Harvey routes them.</p>
+<h3 id="changes-to-fountain_format.md">Changes to
+<code>FOUNTAIN_FORMAT.md</code></h3>
+<table>
+<colgroup>
+<col style="width: 52%" />
+<col style="width: 47%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Section</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scene Types — INT. definition</td>
+<td>“Harvey involved” → “computation runs locally”</td>
+</tr>
+<tr>
+<td>Scene Types — INT. use cases</td>
+<td>Remove remote routing and cloud <span class="citation"
+data-cites="mention">@mention</span> (now EXT.)</td>
+</tr>
+<tr>
+<td>Scene Types — EXT. definition</td>
+<td>“No Harvey” → “computation runs remotely”; add routing sub-case
+showing HARVEY in dialogue</td>
+</tr>
+<tr>
+<td>Scene Types — EXT. use cases</td>
+<td>Add remote Ollama routes and cloud API routes</td>
+</tr>
+<tr>
+<td>Scenarios 2 &amp; 3</td>
+<td>Change from INT. to EXT. scene headings and descriptions</td>
+</tr>
+<tr>
+<td>Scenario 4</td>
+<td>Update note: HARVEY absent only when truly direct (no routing)</td>
+</tr>
+<tr>
+<td>Scenario 6</td>
+<td>Add note: remote <span class="citation"
+data-cites="mention">@mention</span> routes each create their own EXT.
+scene</td>
+</tr>
+<tr>
+<td>Scene Types Reference</td>
+<td>Add EXT. routing example alongside existing EXT. direct example</td>
+</tr>
+<tr>
+<td>Best Practices</td>
+<td>Update INT./EXT. guidance to match new semantic</td>
+</tr>
+<tr>
+<td>Changelog</td>
+<td>Add v1.2 entry</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>FOUNTAIN_FORMAT.md</code> version is 1.2 in the
+Changelog.</li>
+<li>INT. definition no longer mentions routing or cloud models.</li>
+<li>EXT. definition covers both routing (HARVEY in dialogue) and direct
+(no HARVEY) sub-cases.</li>
+<li>Scenarios 2 and 3 use <code>EXT.</code> headings.</li>
+</ul>
+<hr />
+<h2 id="w1-structured-tool-...-notes">W1 — Structured
+<code>[[tool: ...]]</code> notes</h2>
+<p><strong>Goal:</strong> Replace prose action blocks for tool calls
+with parseable Fountain notes that also record result status, inside the
+existing per-turn scene.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>recorder.go</code></td>
+<td>Add <code>Result string</code>, <code>Character string</code> to
+<code>ToolCallRecord</code>. Rename <code>formatToolCallAction</code> →
+<code>formatToolCallNote</code>; change return to note content for
+<code>writeNote</code>. In <code>RecordTurnWithStats</code>, switch
+<code>writeAction(formatToolCallAction(tc))</code> →
+<code>writeNote(formatToolCallNote(tc))</code>.</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Extend <code>toolCallsFromHistory</code> to build a
+<code>map[ToolCallID]string</code> from <code>Role=="tool"</code>
+messages, then set each <code>ToolCallRecord.Result</code> to
+<code>"ok"</code> or <code>"error: &lt;first line&gt;"</code>. Add
+<code>charName string</code> parameter (pass <code>""</code> from
+existing call site).</td>
+</tr>
+<tr>
+<td><code>FOUNTAIN_FORMAT.md</code></td>
+<td>Add <code>[[tool: name(args) — status]]</code> to Special Syntax
+section. Begin v1.2 changelog entry.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="formattoolcallnote-logic"><code>formatToolCallNote</code>
+logic</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> formatToolCallNote<span class="op">(</span>tc ToolCallRecord<span class="op">)</span> <span class="dt">string</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    nameArgs <span class="op">:=</span> tc<span class="op">.</span>Name <span class="op">+</span> <span class="st">&quot;()&quot;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> tc<span class="op">.</span>Args <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> tc<span class="op">.</span>Args <span class="op">!=</span> <span class="st">&quot;{}&quot;</span> <span class="op">&amp;&amp;</span> tc<span class="op">.</span>Args <span class="op">!=</span> <span class="st">&quot;null&quot;</span> <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>        nameArgs <span class="op">=</span> tc<span class="op">.</span>Name <span class="op">+</span> <span class="st">&quot;(&quot;</span> <span class="op">+</span> tc<span class="op">.</span>Args <span class="op">+</span> <span class="st">&quot;)&quot;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    result <span class="op">:=</span> tc<span class="op">.</span>Result</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> result <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>        result <span class="op">=</span> <span class="st">&quot;ok&quot;</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> tc<span class="op">.</span>Character <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> tc<span class="op">.</span>Character <span class="op">+</span> <span class="st">&quot;.tool: &quot;</span> <span class="op">+</span> nameArgs <span class="op">+</span> <span class="st">&quot; — &quot;</span> <span class="op">+</span> result</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">&quot;tool: &quot;</span> <span class="op">+</span> nameArgs <span class="op">+</span> <span class="st">&quot; — &quot;</span> <span class="op">+</span> result</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3
+id="toolcallsfromhistory-extension"><code>toolCallsFromHistory</code>
+extension</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> toolCallsFromHistory<span class="op">(</span>msgs <span class="op">[]</span>Message<span class="op">,</span> charName <span class="dt">string</span><span class="op">)</span> <span class="op">[]</span>ToolCallRecord <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Build result map from tool-role messages.</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    resultByID <span class="op">:=</span> <span class="bu">make</span><span class="op">(</span><span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span><span class="dt">string</span><span class="op">)</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> m <span class="op">:=</span> <span class="kw">range</span> msgs <span class="op">{</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m<span class="op">.</span>Role <span class="op">==</span> <span class="st">&quot;tool&quot;</span> <span class="op">&amp;&amp;</span> m<span class="op">.</span>ToolCallID <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>            content <span class="op">:=</span> strings<span class="op">.</span>TrimSpace<span class="op">(</span>m<span class="op">.</span>Content<span class="op">)</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>            first <span class="op">:=</span> strings<span class="op">.</span>SplitN<span class="op">(</span>content<span class="op">,</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> <span class="dv">2</span><span class="op">)[</span><span class="dv">0</span><span class="op">]</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> strings<span class="op">.</span>HasPrefix<span class="op">(</span>first<span class="op">,</span> <span class="st">&quot;error:&quot;</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>                resultByID<span class="op">[</span>m<span class="op">.</span>ToolCallID<span class="op">]</span> <span class="op">=</span> first</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>                resultByID<span class="op">[</span>m<span class="op">.</span>ToolCallID<span class="op">]</span> <span class="op">=</span> <span class="st">&quot;ok&quot;</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Extract calls from assistant messages.</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> out <span class="op">[]</span>ToolCallRecord</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> m <span class="op">:=</span> <span class="kw">range</span> msgs <span class="op">{</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m<span class="op">.</span>Role <span class="op">!=</span> <span class="st">&quot;assistant&quot;</span> <span class="op">||</span> <span class="bu">len</span><span class="op">(</span>m<span class="op">.</span>ToolCalls<span class="op">)</span> <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>            <span class="cf">continue</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> _<span class="op">,</span> tc <span class="op">:=</span> <span class="kw">range</span> m<span class="op">.</span>ToolCalls <span class="op">{</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>            result <span class="op">:=</span> resultByID<span class="op">[</span>tc<span class="op">.</span>ID<span class="op">]</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> result <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>                result <span class="op">=</span> <span class="st">&quot;ok&quot;</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>            out <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>out<span class="op">,</span> ToolCallRecord<span class="op">{</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>                Name<span class="op">:</span>      tc<span class="op">.</span>Function<span class="op">.</span>Name<span class="op">,</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>                Args<span class="op">:</span>      tc<span class="op">.</span>Function<span class="op">.</span>Arguments<span class="op">,</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>                Result<span class="op">:</span>    result<span class="op">,</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>                Character<span class="op">:</span> charName<span class="op">,</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>            <span class="op">})</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> out</span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Update the existing call site in <code>terminal.go</code> to pass
+<code>""</code> as <code>charName</code>. W4 will change this to the
+<span class="citation" data-cites="mention">@mention</span> model
+name.</p>
+<h3 id="expected-scene-output">Expected scene output</h3>
+<p>Tool notes appear between HARVEY’s forwarding line and the model’s
+reply, inside the existing <code>INT. HARVEY AND … TALKING</code>
+scene:</p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:02:30
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+Does harvey.go compile cleanly?
+
+HARVEY
+Forwarding to LLAMA3.
+
+[[tool: read_file({&quot;path&quot;:&quot;harvey.go&quot;}) — ok]]
+[[tool: run_shell({&quot;cmd&quot;:&quot;go build ./...&quot;}) — error: exit 1]]
+
+LLAMA3
+There is a compilation error on line 42.</code></pre>
+<p>Multiple tool-call rounds within a single turn (multi-step tool loop)
+produce multiple flat notes in the same scene — no new scene is opened
+between rounds.</p>
+<h3 id="tests-to-add-in-existing-recorder_test.go-or-new-file">Tests to
+add (in existing <code>recorder_test.go</code> or new file)</h3>
+<ul>
+<li><code>TestFormatToolCallNote_NoArgs</code> —
+<code>{Name:"list_files", Args:"", Result:"ok"}</code> →
+<code>"tool: list_files() — ok"</code></li>
+<li><code>TestFormatToolCallNote_WithArgs</code> — args present,
+<code>result="error: exit 1"</code> → correct note string</li>
+<li><code>TestFormatToolCallNote_WithCharacter</code> —
+<code>Character:"MISTRAL"</code> → <code>"MISTRAL.tool: ..."</code></li>
+<li><code>TestToolCallsFromHistory_ResultExtraction</code> — history
+slice with assistant + tool messages; verify <code>Result</code> field
+populated correctly</li>
+</ul>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>Session files contain <code>[[tool: ...]]</code> notes between
+HARVEY’s forwarding line and the model reply, inside the existing
+<code>INT. HARVEY AND … TALKING</code> scene.</li>
+<li>Tool results from <code>tool</code>-role messages are correctly
+decoded as <code>ok</code> or <code>error: ...</code>.</li>
+<li>Turns with no tool calls produce no <code>[[tool:]]</code>
+lines.</li>
+</ul>
+<hr />
+<h2 id="w2-rag-provenance-notes">W2 — RAG provenance notes</h2>
+<p><strong>Goal:</strong> Record which RAG store was queried, how many
+chunks were returned, and the top similarity score, as a Fountain note
+inside the turn’s scene, before each turn where RAG fired.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>recorder.go</code></td>
+<td>Add
+<code>RAGAugmentInfo struct { StoreName string; Chunks int; TopScore float64 }</code>.
+Add <code>ragInfo *RAGAugmentInfo</code> as last parameter to
+<code>RecordTurnWithStats</code>. When non-nil, emit
+<code>[[rag: N chunks from STORE, top score S.SS]]</code> note after
+scene action block, before user dialogue. Update <code>RecordTurn</code>
+wrapper to pass <code>nil</code>.</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Change <code>ragAugment(prompt string) string</code> →
+<code>ragAugment(prompt string) (string, *RAGAugmentInfo)</code>. Return
+<code>nil</code> when RAG does not fire; return
+<code>&amp;RAGAugmentInfo{...}</code> using values already computed for
+<code>DebugLog.LogRAGInject</code>. Update call site at line 1058. Pass
+<code>ragInfo</code> to <code>RecordTurnWithStats</code> at line
+1239.</td>
+</tr>
+<tr>
+<td><code>replay.go</code></td>
+<td>Update <code>RecordTurnWithStats</code> call at line 230 to pass
+<code>nil</code> for <code>ragInfo</code>.</td>
+</tr>
+<tr>
+<td><code>terminal_test.go</code>, <code>recorder_test.go</code></td>
+<td>Update <code>RecordTurnWithStats</code> calls to pass
+<code>nil</code>.</td>
+</tr>
+<tr>
+<td><code>FOUNTAIN_FORMAT.md</code></td>
+<td>Add <code>[[rag: N chunks from STORE, top score S.SS]]</code> to
+Special Syntax section.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ragaugment-return-change"><code>ragAugment</code> return
+change</h3>
+<p>The function already computes <code>topScore</code> and
+<code>entry.Name</code> before calling
+<code>DebugLog.LogRAGInject</code>. Return
+<code>&amp;RAGAugmentInfo{StoreName: entry.Name, Chunks: len(relevant), TopScore: topScore}</code>
+on the successful path; <code>nil</code> on all early-return paths.</p>
+<h3 id="note-placement-in-recordturnwithstats">Note placement in
+<code>RecordTurnWithStats</code></h3>
+<p>The <code>[[rag:]]</code> note is the first element written inside
+the scene after the action block (scene description), before the user’s
+dialogue. This placement is accurate to the execution order: RAG context
+was prepended to the user’s prompt before the turn began.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// After r.writeAction(...) for the scene description:</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> ragInfo <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>writeNote<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;rag: %d chunks from %s, top score %.2f&quot;</span><span class="op">,</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        ragInfo<span class="op">.</span>Chunks<span class="op">,</span> ragInfo<span class="op">.</span>StoreName<span class="op">,</span> ragInfo<span class="op">.</span>TopScore<span class="op">))</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co">// Then: r.writeDialogue(r.userName, ...)</span></span></code></pre></div>
+<h3 id="expected-scene-output-1">Expected scene output</h3>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:01:10
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+[[rag: 3 chunks from rag_store.db, top score 0.87]]
+
+RSDOIEL
+How do I initialise a Go module?
+
+HARVEY
+Forwarding to LLAMA3.
+
+LLAMA3
+Run: go mod init &lt;module-path&gt;</code></pre>
+<p>Turns where RAG did not fire have no <code>[[rag:]]</code> line. The
+note does not appear in shell scenes, agent mode scenes, or any scene
+other than the chat turn where RAG retrieved chunks.</p>
+<h3 id="tests-to-add">Tests to add</h3>
+<ul>
+<li><code>TestRecordTurnWithStats_RAGNote</code> — pass non-nil
+<code>RAGAugmentInfo</code>; verify <code>[[rag: ...]]</code> note
+appears in output before user dialogue, inside the scene.</li>
+<li><code>TestRecordTurnWithStats_NoRAGNote</code> — pass
+<code>nil</code> ragInfo; verify no <code>[[rag:]]</code> line in
+output.</li>
+<li><code>TestRAGAugmentReturnsInfo</code> — use a mock RAG store;
+verify <code>ragAugment</code> returns non-nil
+<code>*RAGAugmentInfo</code> when chunks are found, <code>nil</code>
+when RAG is off.</li>
+</ul>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>Session files contain <code>[[rag: ...]]</code> before the user
+dialogue in turns where RAG fired.</li>
+<li>Sessions with RAG off or no matching chunks contain no
+<code>[[rag:]]</code> lines.</li>
+</ul>
+<hr />
+<h2 id="w3-int.-context-recall-scene">W3 —
+<code>INT. CONTEXT RECALL</code> scene</h2>
+<p><strong>Goal:</strong> Write a dedicated scene at session start
+listing every memory item injected by <code>UnifiedMemory.Recall</code>,
+so the session’s starting knowledge state is auditable.</p>
+<p>This is the only work item that adds a <strong>new scene
+type</strong>. All other new elements (W1, W2, W4) are notes inside
+existing scenes.</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>recorder.go</code></td>
+<td>Add <code>RecordContextRecall(results []UnifiedResult) error</code>
+method. Writes <code>INT. CONTEXT RECALL TIMESTAMP</code> scene heading,
+then one <code>[[recall: ID (SOURCE) — score S.SS]]</code> note per
+result. No-op when <code>len(results) == 0</code>.</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>In <code>injectMemoryContext</code> (line 324), after
+<code>um.Recall</code> returns non-empty <code>results</code> and before
+<code>a.AddMessage("user", FormatContext(results))</code>, add:
+<code>if a.Recorder != nil { _ = a.Recorder.RecordContextRecall(results) }</code></td>
+</tr>
+<tr>
+<td><code>FOUNTAIN_FORMAT.md</code></td>
+<td>Add <code>INT. CONTEXT RECALL</code> to Scene Types Reference table.
+Note: written once at session start, never mid-session.</td>
+</tr>
+</tbody>
+</table>
+<h3
+id="recordcontextrecall-implementation"><code>RecordContextRecall</code>
+implementation</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>Recorder<span class="op">)</span> RecordContextRecall<span class="op">(</span>results <span class="op">[]</span>UnifiedResult<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>results<span class="op">)</span> <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    ts <span class="op">:=</span> time<span class="op">.</span>Now<span class="op">().</span>Format<span class="op">(</span><span class="st">&quot;2006-01-02 15:04:05&quot;</span><span class="op">)</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>writeSceneHeading<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;INT. CONTEXT RECALL %s&quot;</span><span class="op">,</span> ts<span class="op">))</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> res <span class="op">:=</span> <span class="kw">range</span> results <span class="op">{</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        r<span class="op">.</span>writeNote<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;recall: %s (%s) — score %.2f&quot;</span><span class="op">,</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>            res<span class="op">.</span>ID<span class="op">,</span> res<span class="op">.</span>Source<span class="op">,</span> res<span class="op">.</span>Score<span class="op">))</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="expected-scene-output-2">Expected scene output</h3>
+<p>The <code>INT. CONTEXT RECALL</code> scene appears after
+<code>FADE IN:</code> and before the first
+<code>INT. HARVEY AND … TALKING</code> scene:</p>
+<pre><code>FADE IN:
+
+
+INT. CONTEXT RECALL 2026-06-24 10:00:01
+
+[[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
+[[recall: tool_use_d55f70 (tool_use) — score 0.75]]
+
+
+INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:00:05
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+(first user prompt of the session)
+...</code></pre>
+<p>Sessions with memory injection disabled or no recalled items skip the
+<code>INT. CONTEXT RECALL</code> scene entirely — the first scene is the
+first chat turn.</p>
+<h3 id="tests-to-add-1">Tests to add</h3>
+<ul>
+<li><code>TestRecordContextRecall_NonEmpty</code> — pass two
+<code>UnifiedResult</code> values; verify scene heading and two
+<code>[[recall: ...]]</code> notes appear in output, in document order
+(scene before first chat turn).</li>
+<li><code>TestRecordContextRecall_Empty</code> — pass empty slice;
+verify nothing is written.</li>
+</ul>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>Sessions where memories were recalled begin with an
+<code>INT. CONTEXT RECALL</code> scene before the first chat scene.</li>
+<li>Sessions with memory injection off or no recalled items open
+directly with the first <code>INT. HARVEY AND … TALKING</code>
+scene.</li>
+</ul>
+<hr />
+<h2
+id="w4-ext.-scenes-for-remote-routes-character-attributed-tool-calls">W4
+— EXT. scenes for remote routes + character-attributed tool calls</h2>
+<p><strong>Goal:</strong> Two related changes that both stem from the
+INT./EXT. correction in W0:</p>
+<ol type="1">
+<li><strong><code>RecordExteriorTurn</code></strong> — a new
+<code>Recorder</code> method that writes an <code>EXT.</code> scene for
+remote route dispatches, replacing the current <code>RecordTurn</code>
+(which writes INT.) in the route dispatch path.</li>
+<li><strong>Character-attributed tool notes</strong> — when a remote
+route uses tools, label the notes with the route/model name using the
+<code>CHARACTER.tool:</code> prefix inside the EXT. scene.</li>
+</ol>
+<p><strong>Scope.</strong> Remote route dispatch goes through
+<code>DispatchToEndpoint</code> in <code>terminal.go</code>. Local
+<code>@mention</code> model switches (where
+<code>attemptModelSwitch</code> succeeds) continue to use
+<code>runChatTurn</code> and produce INT. scenes — those are not remote
+computation. The <code>Character</code> field on
+<code>ToolCallRecord</code> (added in W1) handles the note prefix once
+the character name is known.</p>
+<h3 id="files-to-modify-3">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>recorder.go</code></td>
+<td>Add
+<code>RecordExteriorTurn(endpoint, userInput, reply string) error</code>
+method. Writes <code>EXT. {ENDPOINT} AND {USER} {TIMESTAMP}</code> scene
+with HARVEY as forwarding character. <code>Character string</code> on
+<code>ToolCallRecord</code> already handles attributed note prefix
+(W1).</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>In the route dispatch path (around line 837–841), replace
+<code>a.Recorder.RecordTurn(input, reply)</code> with
+<code>a.Recorder.RecordExteriorTurn(strings.ToUpper(name), input, reply)</code>.
+Also pass <code>charName = strings.ToUpper(name)</code> through
+<code>runChatTurn</code> → <code>toolCallsFromHistory</code> for the
+local <span class="citation" data-cites="mention">@mention</span> switch
+path.</td>
+</tr>
+<tr>
+<td><code>tool_executor.go</code></td>
+<td>Add <code>CharacterName string</code> field to
+<code>ToolExecutor</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3
+id="recordexteriorturn-implementation"><code>RecordExteriorTurn</code>
+implementation</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>Recorder<span class="op">)</span> RecordExteriorTurn<span class="op">(</span>endpoint<span class="op">,</span> userInput<span class="op">,</span> reply <span class="dt">string</span><span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    ts <span class="op">:=</span> time<span class="op">.</span>Now<span class="op">().</span>Format<span class="op">(</span><span class="st">&quot;2006-01-02 15:04:05&quot;</span><span class="op">)</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>writeSceneHeading<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;EXT. %s AND %s %s&quot;</span><span class="op">,</span> endpoint<span class="op">,</span> r<span class="op">.</span>userName<span class="op">,</span> ts<span class="op">))</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>writeAction<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Harvey routing to %s. Workspace: %s.&quot;</span><span class="op">,</span> endpoint<span class="op">,</span> r<span class="op">.</span>workspace<span class="op">,</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">))</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>writeDialogue<span class="op">(</span>r<span class="op">.</span>userName<span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">,</span> userInput<span class="op">)</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>writeDialogue<span class="op">(</span><span class="st">&quot;HARVEY&quot;</span><span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">,</span> fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">&quot;Forwarding to %s.&quot;</span><span class="op">,</span> endpoint<span class="op">))</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    r<span class="op">.</span>writeDialogue<span class="op">(</span>endpoint<span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">,</span> reply<span class="op">)</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Note: <code>RecordExteriorTurn</code> does not accept tool calls or
+RAG info for v0.0.15. RAG does not fire on the route dispatch path (RAG
+augmentation runs inside <code>runChatTurn</code>, which is not called
+for remote route dispatches). Tool calls from remote routes are not yet
+captured in the tool loop (that would require
+<code>DispatchToEndpoint</code> to return them).</p>
+<h3 id="character-attribution-for-local-mention-switch">Character
+attribution for local <span class="citation"
+data-cites="mention">@mention</span> switch</h3>
+<p>For the local model-switch path (<code>attemptModelSwitch</code>
+success → falls through to <code>runChatTurn</code>), pass
+<code>charName string</code> through <code>runChatTurn</code> →
+<code>toolCallsFromHistory</code>. Set
+<code>ex.CharacterName = charName</code> before
+<code>RunToolLoop</code>. In all normal callers pass
+<code>""</code>.</p>
+<h3 id="expected-scene-output-remote-route">Expected scene output
+(remote route)</h3>
+<pre><code>EXT. MISTRAL AND RSDOIEL 2026-06-24 10:04:00
+
+Harvey routing to MISTRAL. Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+@mistral review this fix
+
+HARVEY
+Forwarding to MISTRAL.
+
+MISTRAL
+The fix looks correct. The variable should be declared at line 38.</code></pre>
+<h3 id="expected-scene-output-local-mention-switch-with-tools">Expected
+scene output (local <span class="citation"
+data-cites="mention">@mention</span> switch with tools)</h3>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:04:00
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+@llama3 review this fix
+
+HARVEY
+Forwarding to LLAMA3.
+
+[[LLAMA3.tool: read_file({&quot;path&quot;:&quot;harvey.go&quot;}) — ok]]
+
+LLAMA3
+The fix looks correct.</code></pre>
+<h3 id="tests-to-add-2">Tests to add</h3>
+<ul>
+<li><code>TestRecordExteriorTurn</code> — verify EXT. scene heading,
+HARVEY forwarding line, endpoint reply in output.</li>
+<li><code>TestToolCallsFromHistory_WithCharName</code> — pass
+<code>charName="LLAMA3"</code>; verify all records have
+<code>Character="LLAMA3"</code>.</li>
+</ul>
+<h3 id="acceptance-criteria-4">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> and <code>go test -race</code> pass.</li>
+<li>Remote route dispatches produce
+<code>EXT. ENDPOINT AND USER TIMESTAMP</code> scenes.</li>
+<li>Local <span class="citation" data-cites="mention">@mention</span>
+switches continue to produce <code>INT. HARVEY AND … TALKING</code>
+scenes.</li>
+<li>Tool notes in EXT. scenes carry <code>ENDPOINT.tool:</code>
+prefix.</li>
+<li>Tool notes in local <span class="citation"
+data-cites="mention">@mention</span> INT. scenes carry the switched
+model name as prefix.</li>
+</ul>
+<hr />
+<h2 id="fountain-format-changelog-entry">Fountain format changelog
+entry</h2>
+<p>Add to <code>FOUNTAIN_FORMAT.md</code> Changelog table:</p>
+<pre><code>| 1.2 | 2026-06-24 | [[tool:]], [[CHARACTER.tool:]], [[rag:]], [[recall:]] notes; INT. CONTEXT RECALL scene |</code></pre>
+<hr />
+<h2 id="full-test-run-after-all-four-work-items">Full test run (after
+all four work items)</h2>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> harvey</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build <span class="at">-o</span> bin/harvey cmd/harvey/<span class="pp">*</span>.go</span></code></pre></div>
+<p>Manual smoke test: start Harvey with tools enabled and RAG on, run
+two chat turns (one with tool calls, one with RAG retrieval), then
+inspect the <code>.spmd</code> session file to confirm: -
+<code>INT. CONTEXT RECALL</code> scene (if memories exist) appears
+before the first chat scene - <code>[[rag: ...]]</code> note appears
+inside the RAG turn’s scene, before user dialogue -
+<code>[[tool: ...]]</code> notes appear inside the tool turn’s scene,
+between HARVEY’s forwarding line and the model reply - No extra scenes
+were created for tool loop rounds or RAG retrieval</p>
+</section>
+</body>
+</html>

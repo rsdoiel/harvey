@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en-US">
 <head>
-    <title>Harvey</title>
+    <title>harvey</title>
     <link rel="stylesheet" href="css/site.css">
 </head>
 <body>
-<!-- <a href="#main-content" class="visually-hidden">skip to main content</a> -->
+<a href="#main-content" class="visually-hidden">skip to main content</a>
 <nav>
 <ul>
     <li><a href="/">Home</a></li>
@@ -14,10 +14,11 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
-<section>
+<section id="main-content">
 <h1 id="harvey-fountain-format-specification">Harvey Fountain Format
 Specification</h1>
 <p><em>Version 1.0 — Multi-model character attribution for Harvey
@@ -197,11 +198,13 @@ conversation without Harvey)</p>
 <h2 id="scene-types">Scene Types</h2>
 <p>Harvey uses two scene type prefixes from Fountain:
 <strong>INT.</strong> (Interior) and <strong>EXT.</strong> (Exterior).
-These distinguish whether Harvey is involved in the conversation.</p>
-<h3 id="int.-interior-scenes-harvey-involved">INT. — Interior Scenes
-(Harvey Involved)</h3>
-<p>Harvey is acting as the <strong>agent/orchestrator</strong> in these
-scenes. The scene heading lists Harvey and the human participant.</p>
+These distinguish <strong>where the computation runs</strong> — on the
+local machine or on a remote system.</p>
+<h3 id="int.-interior-scenes-local-computation">INT. — Interior Scenes
+(Local Computation)</h3>
+<p>The computation runs <strong>on the same machine as Harvey</strong>.
+Harvey is the active agent. The scene heading always names HARVEY and
+the human participant.</p>
 <p><strong>Format:</strong></p>
 <pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
 
@@ -211,18 +214,35 @@ RSDOIEL
 User prompt here...
 
 HARVEY
-Harvey&#39;s response (local model) or forwarding...</code></pre>
+Harvey&#39;s response using the local model.</code></pre>
 <p><strong>Use cases:</strong> - Harvey responding with its local
-Ollama/Llamafile model - Harvey forwarding to routed Ollama endpoints -
-Harvey forwarding to cloud models via <span class="citation"
-data-cites="mention">@mention</span> - Agent actions (file writes) -
-Skill activations</p>
-<h3 id="ext.-exterior-scenes-direct-model-human">EXT. — Exterior Scenes
-(Direct Model-Human)</h3>
-<p>Direct conversation between a model and human <strong>without
-Harvey’s intermediation</strong>. Harvey is not involved in these
-scenes.</p>
-<p><strong>Format:</strong></p>
+Ollama/Llamafile model - Agent actions (file writes) - Skill activations
+- Shell command execution - Session context recall (memory injection at
+session start)</p>
+<h3 id="ext.-exterior-scenes-remote-computation">EXT. — Exterior Scenes
+(Remote Computation)</h3>
+<p>The computation runs <strong>on a remote system</strong> — a remote
+Ollama instance, a cloud API, or any endpoint reached over the network.
+Harvey may still appear as the routing intermediary, but the model doing
+the work is external.</p>
+<p>The scene heading names the remote endpoint and the human participant
+rather than HARVEY. When Harvey routes the request, HARVEY appears in
+the dialogue as a forwarding character. When the conversation is truly
+direct (no Harvey involvement), HARVEY is absent.</p>
+<p><strong>Format (Harvey routing to remote endpoint):</strong></p>
+<pre><code>EXT. PI2 AND RSDOIEL 2026-05-04 18:30:00
+
+Harvey routing to PI2 at ollama://192.168.1.2:11434. Workspace: /home/user/project.
+
+RSDOIEL
+@pi2 analyze this data
+
+HARVEY
+Forwarding to PI2.
+
+PI2
+Remote response...</code></pre>
+<p><strong>Format (direct conversation, no Harvey):</strong></p>
 <pre><code>EXT. MISTRAL AND RSDOIEL 2026-05-04 18:30:00
 
 MISTRAL and RSDOIEL in direct conversation. Workspace: /home/user/project.
@@ -232,8 +252,10 @@ Direct prompt to Mistral...
 
 MISTRAL
 Mistral&#39;s direct response...</code></pre>
-<p><strong>Use cases:</strong> - Direct API conversations (bypassing
-Harvey) - Hypothetical: Future direct model access</p>
+<p><strong>Use cases:</strong> - Remote Ollama routes (registered via
+<code>/route add</code>, e.g. <code>@pi2</code>) - Cloud API calls via
+registered routes (e.g. <code>@mistral</code>, <code>@claude</code>) -
+Direct API conversations bypassing Harvey</p>
 <h2 id="scene-structure">Scene Structure</h2>
 <h3 id="title-block-before-fade-in">Title Block (Before FADE IN:)</h3>
 <p>The title block contains metadata about the session. All fields are
@@ -412,13 +434,14 @@ HARVEY
 The capital of France is Paris.</code></pre>
 <p><strong>Character:</strong> HARVEY (Harvey agent with local model)
 <strong>Model:</strong> llama3:latest (from scene description)</p>
-<h3 id="scenario-2-harvey-forwarding-to-routed-ollama">Scenario 2:
-Harvey Forwarding to Routed Ollama</h3>
-<p>Harvey forwards to a remote Ollama instance registered as a
-route.</p>
-<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+<h3 id="scenario-2-harvey-routing-to-remote-ollama">Scenario 2: Harvey
+Routing to Remote Ollama</h3>
+<p>Harvey routes to a remote Ollama instance registered as a route. The
+computation runs on the remote machine, so the scene is
+<strong>EXT.</strong></p>
+<pre><code>EXT. PI2 AND RSDOIEL 2026-05-04 18:30:00
 
-Harvey and RSDOIEL are in chat mode. Model: ollama://192.168.1.2:11434. Workspace: /home/user/project.
+Harvey routing to PI2 at ollama://192.168.1.2:11434. Workspace: /home/user/project.
 
 RSDOIEL
 @pi2 analyze this data
@@ -430,16 +453,18 @@ PI2
 Analysis: The data shows a normal distribution with mean 42.</code></pre>
 <p><strong>Route:</strong> PI2 (registered via
 <code>/route add pi2 ollama://192.168.1.2:11434</code>)
-<strong>Character:</strong> PI2 (the route name as character)</p>
-<h3
-id="scenario-3-harvey-forwarding-to-cloud-model-via-mention">Scenario 3:
-Harvey Forwarding to Cloud Model via <span class="citation"
+<strong>Character:</strong> PI2 (the route name as character)
+<strong>Scene:</strong> EXT. — computation on the remote Pi machine</p>
+<h3 id="scenario-3-harvey-routing-to-cloud-model-via-mention">Scenario
+3: Harvey Routing to Cloud Model via <span class="citation"
 data-cites="mention">@mention</span></h3>
 <p>User uses <span class="citation" data-cites="mention">@mention</span>
-to direct a prompt to a specific cloud model.</p>
-<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
+to direct a prompt to a cloud model registered as a route. The
+computation runs on the cloud provider’s infrastructure, so the scene is
+<strong>EXT.</strong></p>
+<pre><code>EXT. MISTRAL AND RSDOIEL 2026-05-04 18:30:00
 
-Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+Harvey routing to MISTRAL (cloud API). Workspace: /home/user/project.
 
 RSDOIEL
 @mistral review this code
@@ -449,12 +474,16 @@ Forwarding to MISTRAL.
 
 MISTRAL
 The code follows good practices. Consider adding error handling for the edge case at line 42.</code></pre>
-<p><strong>Character:</strong> MISTRAL (cloud model)
-<strong>Trigger:</strong> <span class="citation"
-data-cites="mention">@mention</span> in user dialogue</p>
-<h3 id="scenario-4-direct-external-conversation">Scenario 4: Direct
-External Conversation</h3>
-<p>Direct conversation with a model, bypassing Harvey.</p>
+<p><strong>Character:</strong> MISTRAL (cloud model, registered as a
+route) <strong>Trigger:</strong> <span class="citation"
+data-cites="mention">@mention</span> in user dialogue
+<strong>Scene:</strong> EXT. — computation on remote cloud
+infrastructure</p>
+<h3 id="scenario-4-direct-external-conversation-no-harvey">Scenario 4:
+Direct External Conversation (No Harvey)</h3>
+<p>Direct conversation with a remote model, bypassing Harvey entirely.
+EXT. is used because the computation is remote. HARVEY does not appear
+in the dialogue because Harvey is not involved.</p>
 <pre><code>EXT. CLAUDE AND RSDOIEL 2026-05-04 18:30:00
 
 CLAUDE and RSDOIEL in direct conversation. Workspace: /home/user/project.
@@ -464,8 +493,10 @@ Explain quantum computing
 
 CLAUDE
 Quantum computing uses quantum bits (qubits) that can exist in superposition...</code></pre>
-<p><strong>Note:</strong> No HARVEY character appears in EXT.
-scenes.</p>
+<p><strong>Note:</strong> HARVEY is absent from the dialogue because
+Harvey is not the routing intermediary. Contrast with Scenarios 2 and 3,
+where HARVEY appears as the forwarding character even though the scene
+is EXT.</p>
 <h3 id="scenario-5-unfulfilled-mention">Scenario 5: Unfulfilled <span
 class="citation" data-cites="mention">@mention</span></h3>
 <p>User mentions a model that doesn’t respond.</p>
@@ -504,8 +535,12 @@ Forwarding to CLAUDE.
 
 CLAUDE
 Second opinion: I agree, but consider adding tests.</code></pre>
-<p><strong>Note:</strong> Multiple models can appear in a single INT.
-scene via sequential forwarding.</p>
+<p><strong>Note:</strong> This scenario only applies when the models are
+local (e.g. local aliases or Llamafile models). If <span
+class="citation" data-cites="mistral">@mistral</span> and <span
+class="citation" data-cites="claude">@claude</span> are registered
+remote routes, each dispatch creates its own EXT. scene rather than
+appearing together in a single INT. scene.</p>
 <h2 id="scene-types-reference">Scene Types Reference</h2>
 <h3 id="chat-scenes-int.-and-talking-or-ext.-and">Chat Scenes
 (<code>INT. … AND … TALKING</code> or <code>EXT. … AND …</code>)</h3>
@@ -520,7 +555,20 @@ Prompt...
 
 HARVEY
 Response...</code></pre>
-<p><strong>EXT. example:</strong></p>
+<p><strong>EXT. example (Harvey routing):</strong></p>
+<pre><code>EXT. PI2 AND RSDOIEL 2026-05-04 18:30:00
+
+Harvey routing to PI2 at ollama://192.168.1.2:11434. Workspace: /path.
+
+RSDOIEL
+Prompt...
+
+HARVEY
+Forwarding to PI2.
+
+PI2
+Response...</code></pre>
+<p><strong>EXT. example (direct, no Harvey):</strong></p>
 <pre><code>EXT. MISTRAL AND RSDOIEL 2026-05-04 18:30:00
 
 MISTRAL and RSDOIEL in direct conversation. Workspace: /path.
@@ -744,19 +792,19 @@ and first ALL-CAPS character</li>
 </ul></li>
 </ol>
 <h3 id="character-type-detection">Character Type Detection</h3>
-<div class="sourceCode" id="cb26"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pseudocode</span></span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> character_type(name, scene_description, known_routes, author):</span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> name <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span>:</span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;harvey-native&quot;</span></span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="kw">in</span> known_routes:</span>
-<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;routed-ollama&quot;</span></span>
-<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="op">==</span> author:</span>
-<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;human&quot;</span></span>
-<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> is_all_caps_alphanumeric(name):</span>
-<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;cloud-model&quot;</span></span>
-<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
-<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pseudocode</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> character_type(name, scene_description, known_routes, author):</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> name <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span>:</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;harvey-native&quot;</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="kw">in</span> known_routes:</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;routed-ollama&quot;</span></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="op">==</span> author:</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;human&quot;</span></span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> is_all_caps_alphanumeric(name):</span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;cloud-model&quot;</span></span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span></code></pre></div>
 <h2 id="complete-example-sessions">Complete Example Sessions</h2>
 <h3 id="example-1-basic-harvey-session-local-model">Example 1: Basic
 Harvey Session (Local Model)</h3>
@@ -983,18 +1031,20 @@ status?</p>
 <h3 id="for-session-recording-harvey">For Session Recording
 (Harvey)</h3>
 <ol type="1">
-<li><strong>Always include</strong> <code>Model:</code> and
-<code>Workspace:</code> in scene descriptions</li>
-<li><strong>Use INT.</strong> for all Harvey-mediated conversations</li>
-<li><strong>Use EXT.</strong> only for direct model-human conversations
-(no Harvey)</li>
-<li><strong>Attribute correctly</strong>: HARVEY for local, ROUTE_NAME
-for routed, MODEL_NAME for cloud</li>
+<li><strong>Always include</strong> <code>Model:</code> or endpoint URL
+and <code>Workspace:</code> in scene descriptions</li>
+<li><strong>Use INT.</strong> when computation runs locally (local
+Ollama, Llamafile, shell, file writes, skills)</li>
+<li><strong>Use EXT.</strong> when computation runs remotely (registered
+routes, cloud APIs)</li>
+<li><strong>Include HARVEY</strong> in EXT. dialogue when Harvey is the
+routing intermediary; omit HARVEY only for truly direct
+conversations</li>
 <li><strong>Track <span class="citation"
 data-cites="mentions">@mentions</span></strong>: Note unfulfilled
 mentions in scene description</li>
-<li><strong>Start new scenes</strong> when model changes (for clarity in
-analysis)</li>
+<li><strong>Start new scenes</strong> for each discrete interaction (one
+scene per chat turn, route dispatch, shell command, etc.)</li>
 </ol>
 <h3 id="for-session-analysis">For Session Analysis</h3>
 <ol type="1">
@@ -1057,6 +1107,15 @@ elements.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>1.2</td>
+<td>2026-06-24</td>
+<td>Redefined INT./EXT. as local/remote computation; EXT. scenes now
+used for route dispatch and cloud API calls; added
+<code>[[tool:]]</code>, <code>[[CHARACTER.tool:]]</code>,
+<code>[[rag:]]</code>, <code>[[recall:]]</code> notes; added
+<code>INT. CONTEXT RECALL</code> scene type</td>
+</tr>
 <tr>
 <td>1.1</td>
 <td>2026-05-25</td>

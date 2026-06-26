@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-audit-trail-enhancements-design">Harvey Audit Trail
+Enhancements — Design</h1>
+<p><strong>Status (2026-06-24):</strong> Design draft for v0.0.15. See
+<a href="audit-trail-plan.html">audit-trail-plan.md</a> for the phased
+implementation plan.</p>
+<p><strong>References:</strong> - “Tool Use and AI Scientists” — Corin
+Wagen, <em>Chemical Weapons Avoidance Newsletter</em>
+(cwagen.substack.com, 2026). Primary motivating article. Argues that
+tool calls are the primary mechanism for AI interpretability, serving as
+an audit log of agent decisions.</p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>Wagen’s article identifies four advantages of tool use in AI systems:
+domain-specific knowledge integration, external reality checks,
+computational efficiency, and — most relevant here —
+<strong>interpretability through audit trails</strong>. Tool calls
+create transparent decision logs that allow users to understand and
+verify AI reasoning and rapidly diagnose failures.</p>
+<p>Harvey’s Fountain session format records dialogue, file writes, and
+shell commands, but has four gaps that prevent sessions from serving as
+full audit trails:</p>
+<ol type="1">
+<li><p><strong>Tool calls are unstructured.</strong> Structured tool
+loop calls appear as prose action blocks (“Harvey calls read_file:
+{args}”) rather than parseable notes. Tool results are not recorded at
+all, so there is no way to know from the session whether a tool
+succeeded or failed.</p></li>
+<li><p><strong>RAG retrieval is invisible.</strong> When
+<code>ragAugment</code> prepends context chunks to the user’s prompt, no
+trace appears in the session file. If Harvey gives a wrong answer
+because a stale or irrelevant chunk was injected, the session provides
+no diagnostic evidence.</p></li>
+<li><p><strong>Memory injection is invisible.</strong>
+<code>UnifiedMemory.Recall</code> fires once per session and injects
+workspace profiles and prior memories into the system context. This
+injection leaves no trace in the Fountain file — a reader cannot see
+what prior knowledge shaped the session.</p></li>
+<li><p><strong>Multi-model tool calls are unattributed.</strong> When a
+user invokes <code>@mention</code> to forward a turn to a routed model
+(e.g. <code>@mistral</code>), any tool calls made during that turn are
+attributed to HARVEY rather than to the model that requested
+them.</p></li>
+</ol>
+<hr />
+<h2 id="scene-model">Scene model</h2>
+<p>A Harvey Fountain session file is a <strong>sequence of many
+scenes</strong>, not a single scene. Each discrete interaction — a chat
+turn, a shell command, a file write group, a skill activation — opens
+its own scene with a timestamped heading.
+<code>RecordTurnWithStats</code> writes a new
+<code>INT. HARVEY AND RSDOIEL TALKING TIMESTAMP</code> heading for
+<strong>every chat turn</strong>. A session with ten chat turns, two
+shell commands, and one file write contains thirteen or more scenes.</p>
+<p>Understanding this is essential to placing the new audit elements
+correctly:</p>
+<ul>
+<li><code>[[tool: ...]]</code> and <code>[[rag: ...]]</code> notes are
+<strong>not new scenes</strong>. They are Fountain notes written
+<strong>inside the existing per-turn
+<code>INT. HARVEY AND RSDOIEL TALKING</code> scene</strong> for the turn
+where they occurred.</li>
+<li><code>INT. CONTEXT RECALL</code> <strong>is</strong> a new scene
+type. It appears once at the start of a session, before the first chat
+turn, when <code>UnifiedMemory.Recall</code> returns non-empty
+results.</li>
+</ul>
+<p>A complete session file with all four new elements looks like
+this:</p>
+<pre><code>Title: Harvey Session
+Credit: Recorded by Harvey
+Author: RSDOIEL
+Date: 2026-06-24 10:00:00
+Draft date: 2026-06-24
+
+FADE IN:
+
+
+INT. CONTEXT RECALL 2026-06-24 10:00:01          ← new scene (W3), once only
+
+[[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
+[[recall: tool_use_d55f70 (tool_use) — score 0.75]]
+
+
+INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:00:05   ← turn 1, no tools, no RAG
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+What is 2+2?
+
+HARVEY
+Forwarding to LLAMA3.
+
+LLAMA3
+4
+
+
+INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:01:10   ← turn 2, RAG fired (W2)
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+[[rag: 3 chunks from rag_store.db, top score 0.87]]
+
+RSDOIEL
+How do I initialise a Go module?
+
+HARVEY
+Forwarding to LLAMA3.
+
+LLAMA3
+Run: go mod init &lt;module-path&gt;
+
+
+INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:02:30   ← turn 3, tool loop (W1)
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+Does harvey.go compile cleanly?
+
+HARVEY
+Forwarding to LLAMA3.
+
+[[tool: read_file({&quot;path&quot;:&quot;harvey.go&quot;}) — ok]]
+[[tool: run_shell({&quot;cmd&quot;:&quot;go build ./...&quot;}) — error: exit 1]]
+
+LLAMA3
+There is a compilation error. Line 42 references an undefined variable.
+
+
+INT. SHELL 2026-06-24 10:03:15                        ← separate scene for shell cmd
+
+RSDOIEL
+! go build ./...
+
+SHELL
+./harvey.go:42:5: undefined: foo
+
+[[shell: go build ./... — exit 1]]
+
+
+EXT. MISTRAL AND RSDOIEL 2026-06-24 10:04:00          ← remote route (W4)
+
+Harvey routing to MISTRAL (cloud API). Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+@mistral review this fix
+
+HARVEY
+Forwarding to MISTRAL.
+
+[[MISTRAL.tool: read_file({&quot;path&quot;:&quot;harvey.go&quot;}) — ok]]
+
+MISTRAL
+The fix looks correct. The variable should be declared at line 38.
+
+
+THE END.</code></pre>
+<p>This illustrates the central rule: <strong>a new scene opens for each
+interaction; notes appear inside the scene where they occur</strong>. A
+multi-round tool loop (model calls tool, gets result, calls another
+tool, gets result, produces final answer) generates multiple
+<code>[[tool: ...]]</code> notes all within the same
+<code>INT. HARVEY AND RSDOIEL TALKING</code> scene — not in separate
+scenes. See the “Alternatives considered” section for why.</p>
+<hr />
+<h2 id="int.ext.-semantic-correction">INT./EXT. semantic correction</h2>
+<p>The existing <code>FOUNTAIN_FORMAT.md</code> v1.1 defined
+<code>INT.</code> as “Harvey is involved” and <code>EXT.</code> as
+“direct model-human, no Harvey” — making <code>EXT.</code> effectively
+hypothetical and unused. The recorder always wrote <code>INT.</code> for
+every scene, including remote route dispatches and cloud API calls.</p>
+<p>The correct reading of the theatrical metaphor is geographical:
+<strong><code>INT.</code> = computation happening on the local machine;
+<code>EXT.</code> = computation happening on a remote system.</strong>
+This makes <code>EXT.</code> scenes practically meaningful and
+frequent:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Interaction</th>
+<th scope="col">Old</th>
+<th scope="col">Corrected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Local Ollama / Llamafile</td>
+<td>INT.</td>
+<td>INT. (unchanged)</td>
+</tr>
+<tr>
+<td>Shell command</td>
+<td>INT.</td>
+<td>INT. (unchanged)</td>
+</tr>
+<tr>
+<td>File write / agent action</td>
+<td>INT.</td>
+<td>INT. (unchanged)</td>
+</tr>
+<tr>
+<td>Skill activation</td>
+<td>INT.</td>
+<td>INT. (unchanged)</td>
+</tr>
+<tr>
+<td>Context recall</td>
+<td>INT.</td>
+<td>INT. (unchanged)</td>
+</tr>
+<tr>
+<td>Remote Ollama route (<code>@pi2</code>)</td>
+<td>INT. (wrong)</td>
+<td><strong>EXT.</strong></td>
+</tr>
+<tr>
+<td>Cloud API route (<code>@mistral</code>)</td>
+<td>INT. (wrong)</td>
+<td><strong>EXT.</strong></td>
+</tr>
+<tr>
+<td>Direct model-human (no Harvey)</td>
+<td>EXT. (hypothetical)</td>
+<td>EXT. (confirmed)</td>
+</tr>
+</tbody>
+</table>
+<p>When Harvey routes to a remote endpoint, HARVEY still appears in the
+EXT. scene as the forwarding character. HARVEY is absent only when the
+conversation is truly direct (no Harvey involvement at all).</p>
+<p>Updating the spec is <strong>W0</strong> — the first step before any
+code changes — so that the recorder implementation has a clear spec to
+target.</p>
+<hr />
+<h2 id="design-principles">Design principles</h2>
+<p><strong>Keep <code>audit.jsonl</code> separate.</strong> Harvey
+already has <code>audit.go</code>, a ring-buffer + NDJSON log at
+<code>agents/audit.jsonl</code>. This log targets machine-readable
+security auditing (<code>/audit show</code>). The new Fountain notes
+target human readability and memory-miner parsability within
+<code>.spmd</code> session files. Bridging the two systems would couple
+unrelated concerns and add complexity without clear benefit.</p>
+<p><strong>Status-only for tool results.</strong> Tool output can be
+very large (e.g. <code>read_file</code> returning a whole source file).
+Recording the full content would bloat session files and confuse the
+memory miner. A status-only record — <code>ok</code> or
+<code>error: &lt;first line&gt;</code> — conveys what matters for audit
+purposes without the content.</p>
+<p><strong>Notes inside scenes, not new scenes.</strong>
+<code>[[tool:]]</code> and <code>[[rag:]]</code> elements belong inside
+the existing per-turn scene, not in separate scenes of their own. A
+“turn” from the user’s perspective is one request-response cycle;
+splitting it across multiple scenes would make sessions harder to read
+and harder to mine. <code>INT. CONTEXT RECALL</code> is the only new
+scene type because memory injection is a distinct pre-session event, not
+part of any individual turn.</p>
+<p><strong>Silent when nothing fires.</strong> RAG provenance and
+context recall notes are emitted only when something actually happened.
+A session with RAG off and no memories should not contain empty
+<code>[[rag: 0 chunks]]</code> or <code>INT. CONTEXT RECALL</code>
+scenes.</p>
+<p><strong>Fountain v1.2.</strong> The new notation extends the format
+with four new <code>[[...]]</code> note types and one new scene type.
+Older parsers that do not recognise these elements should ignore them
+gracefully (the Fountain spec permits unknown elements).</p>
+<hr />
+<h2 id="architecture">Architecture</h2>
+<h3 id="w1-structured-tool-...-notes">W1 — Structured
+<code>[[tool: ...]]</code> notes</h3>
+<p><strong>Current state.</strong>
+<code>ToolCallRecord{Name, Args}</code> captures tool calls from
+<code>toolCallsFromHistory</code> (which scans assistant-role messages
+in history). <code>formatToolCallAction</code> emits a prose action
+block. <code>RecordTurnWithStats</code> calls <code>writeAction</code>
+for each record.</p>
+<p><strong>Change.</strong> Add <code>Result string</code> and
+<code>Character string</code> to <code>ToolCallRecord</code>. Extend
+<code>toolCallsFromHistory</code> to also scan tool-role messages and
+pair each call with its result status. Rename
+<code>formatToolCallAction</code> → <code>formatToolCallNote</code>;
+change it to return note content (without <code>[[</code> brackets) for
+<code>writeNote</code>. In <code>RecordTurnWithStats</code>, switch from
+<code>writeAction</code> to <code>writeNote</code>.</p>
+<p><strong>Where the notes appear.</strong> Tool call notes are written
+inside the <code>INT. HARVEY AND RSDOIEL TALKING</code> scene opened by
+<code>RecordTurnWithStats</code> for that turn, between HARVEY’s
+forwarding line and the model’s reply. Multiple rounds of a tool loop
+(e.g. model calls two tools before giving its final answer) produce
+multiple flat notes in the same scene:</p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:02:30
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+Does harvey.go compile cleanly?
+
+HARVEY
+Forwarding to LLAMA3.
+
+[[tool: read_file({&quot;path&quot;:&quot;harvey.go&quot;}) — ok]]
+[[tool: run_shell({&quot;cmd&quot;:&quot;go build ./...&quot;}) — error: exit 1]]
+
+LLAMA3
+There is a compilation error on line 42.</code></pre>
+<p><strong>How result status is derived.</strong> Tool-role messages
+whose <code>Content</code> starts with <code>"error:"</code> (the
+convention set by <code>ExecuteToolCalls</code> in
+<code>tool_executor.go</code>) are recorded as
+<code>error: &lt;first line&gt;</code>. All others are <code>ok</code>.
+This avoids any changes to the executor.</p>
+<h3 id="w2-rag-provenance-notes">W2 — RAG provenance notes</h3>
+<p><strong>Current state.</strong>
+<code>ragAugment(prompt string) string</code> returns the augmented
+prompt and calls <code>a.DebugLog.LogRAGInject(...)</code> with the
+store name, chunk count, and top score. That information is not
+forwarded to the recorder.</p>
+<p><strong>Change.</strong> Add
+<code>RAGAugmentInfo{StoreName, Chunks, TopScore}</code> (in
+<code>recorder.go</code> alongside <code>ToolCallRecord</code>). Change
+<code>ragAugment</code> to return
+<code>(string, *RAGAugmentInfo)</code>, returning <code>nil</code> when
+RAG did not fire. Add <code>ragInfo *RAGAugmentInfo</code> to
+<code>RecordTurnWithStats</code>. When non-nil, emit a
+<code>[[rag: ...]]</code> note inside the turn’s scene, immediately
+after the scene action block and before the user dialogue.</p>
+<p><strong>Where the note appears.</strong> The <code>[[rag:]]</code>
+note is written inside the <code>INT. HARVEY AND RSDOIEL TALKING</code>
+scene for the turn where RAG fired. It appears once per turn where RAG
+retrieved chunks, before the user’s dialogue line (because RAG context
+was prepended to the user’s prompt before it was sent):</p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:01:10
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+[[rag: 3 chunks from rag_store.db, top score 0.87]]
+
+RSDOIEL
+How do I initialise a Go module?
+
+HARVEY
+Forwarding to LLAMA3.
+
+LLAMA3
+Run: go mod init &lt;module-path&gt;</code></pre>
+<p>Turns where RAG did not fire have no <code>[[rag:]]</code> line at
+all.</p>
+<h3 id="w3-int.-context-recall-scene">W3 —
+<code>INT. CONTEXT RECALL</code> scene</h3>
+<p><strong>Current state.</strong> <code>injectMemoryContext</code> (in
+<code>harvey.go</code>) calls
+<code>um.Recall(query, embedder, budget)</code> and formats the results
+as a user message injected into history. The <code>Recorder</code> is on
+the <code>Agent</code> struct but is not called here.</p>
+<p><strong>Change.</strong> Add
+<code>RecordContextRecall(results []UnifiedResult) error</code> to
+<code>Recorder</code>. Call it from <code>injectMemoryContext</code>
+after a non-empty <code>Recall</code> result, guarding against
+<code>nil</code> recorder. The method writes a new
+<code>INT. CONTEXT RECALL TIMESTAMP</code> scene with one
+<code>[[recall: ...]]</code> Fountain note per result.</p>
+<p><strong>Where the scene appears.</strong> Memory injection fires once
+per session (on the first chat turn, before the prompt is sent). The
+<code>INT. CONTEXT RECALL</code> scene is therefore written before the
+first <code>INT. HARVEY AND RSDOIEL TALKING</code> scene — it represents
+the session’s starting knowledge state, not any specific chat turn:</p>
+<pre><code>FADE IN:
+
+
+INT. CONTEXT RECALL 2026-06-24 10:00:01
+
+[[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
+[[recall: tool_use_d55f70 (tool_use) — score 0.75]]
+
+
+INT. HARVEY AND RSDOIEL TALKING 2026-06-24 10:00:05
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+(first user prompt)
+...</code></pre>
+<p><code>UnifiedResult.ID</code> and <code>UnifiedResult.Source</code>
+are already present; no changes to the <code>UnifiedResult</code> struct
+are needed.</p>
+<h3 id="w4-character-attributed-tool-calls">W4 — Character-attributed
+tool calls</h3>
+<p><strong>Current state.</strong> All tool call records carry an
+implicit HARVEY attribution. When the <code>@mention</code> path calls
+<code>DispatchToEndpoint</code> (for routes) or <code>RunToolLoop</code>
+on a forwarded model, the model that requested the tool calls is not
+tracked.</p>
+<p><strong>Scope limit for v0.0.15.</strong> Route dispatch
+(<code>DispatchToEndpoint</code>) is handled separately and does not use
+the tool executor loop reviewed here. Character attribution applies to
+the local <code>RunToolLoop</code> path when Harvey switches models via
+<code>@mention</code> (local model switch, not remote route dispatch).
+Multi-character mixed-model loops (where different models make different
+rounds of tool calls within a single turn) are deferred — v0.0.15
+applies one character name per turn.</p>
+<p><strong>Change.</strong> Add <code>Character string</code> to
+<code>ToolCallRecord</code> and <code>CharacterName string</code> to
+<code>ToolExecutor</code>. In <code>terminal.go</code>, the
+<code>@mention</code> local-switch path creates a
+<code>ToolExecutor</code> after switching models; set
+<code>ex.CharacterName = strings.ToUpper(mentionName)</code> there.
+Update <code>toolCallsFromHistory</code> to accept
+<code>charName string</code> and stamp all extracted records with
+it.</p>
+<p><strong>Where the attributed notes appear.</strong> When Harvey
+routes to a remote endpoint the scene is <code>EXT.</code> (remote
+computation). Character-attributed tool notes appear inside that EXT.
+scene, between HARVEY’s forwarding line and the remote model’s
+reply:</p>
+<pre><code>EXT. MISTRAL AND RSDOIEL 2026-06-24 10:04:00
+
+Harvey routing to MISTRAL (cloud API). Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+@mistral review this fix
+
+HARVEY
+Forwarding to MISTRAL.
+
+[[MISTRAL.tool: read_file({&quot;path&quot;:&quot;harvey.go&quot;}) — ok]]
+
+MISTRAL
+The fix looks correct.</code></pre>
+<hr />
+<h2 id="fountain-format-v1.2-additions">Fountain format v1.2
+additions</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Syntax</th>
+<th scope="col">Where it appears</th>
+<th scope="col">When written</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[[tool: name(args) — status]]</code></td>
+<td>Inside <code>INT. HARVEY AND … TALKING</code> scene</td>
+<td>Each structured tool call in a tool loop</td>
+</tr>
+<tr>
+<td><code>[[CHARACTER.tool: name(args) — status]]</code></td>
+<td>Inside <code>INT. HARVEY AND … TALKING</code> scene</td>
+<td>Same, when model attribution is known</td>
+</tr>
+<tr>
+<td><code>[[rag: N chunks from STORE, top score S.SS]]</code></td>
+<td>Inside <code>INT. HARVEY AND … TALKING</code> scene</td>
+<td>RAG context was injected for this turn</td>
+</tr>
+<tr>
+<td><code>[[recall: ID (SOURCE) — score S.SS]]</code></td>
+<td>Inside <code>INT. CONTEXT RECALL</code> scene</td>
+<td>One item recalled at session start</td>
+</tr>
+</tbody>
+</table>
+<p>New scene type: <code>INT. CONTEXT RECALL TIMESTAMP</code> — written
+once at session start when <code>UnifiedMemory.Recall</code> returns
+non-empty results. Never appears mid-session.</p>
+<hr />
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<p><strong>Bridge <code>audit.jsonl</code> and Fountain.</strong>
+Routing <code>AuditBuffer.Add</code> to also write a Fountain note would
+unify the two paths. Rejected: the audit buffer is initialised before
+the recorder, and its events (command execution, file reads, security
+checks) are lower-level than what belongs in the session narrative.
+Coupling them would require the audit buffer to hold a recorder
+reference and complicate shutdown order.</p>
+<p><strong>Full tool result content in Fountain.</strong> Recording the
+full output of each tool call makes sessions maximally auditable.
+Rejected for v0.0.15: <code>read_file</code> on a large source file or a
+broad search result would make session files unwieldy and degrade memory
+miner quality. Status-only achieves the diagnostic goal (did it
+succeed?) without the cost.</p>
+<p><strong><code>[[rag: ...]]</code> as parenthetical in scene
+description.</strong> Placing the RAG note in the scene description line
+(e.g. alongside “Model: … . Workspace: …”) would keep it in a single
+action block. Rejected: the scene description is written once at the
+scene open; RAG fires later in <code>runChatTurn</code>. A separate note
+written just before user dialogue is temporally accurate and avoids
+restructuring <code>RecordTurnWithStats</code>.</p>
+<p><strong><code>INT. TOOL LOOP</code> scene per tool-call
+round.</strong> A structured tool loop can involve multiple model↔︎tool
+rounds (model calls tool, gets result, calls another tool, gets result,
+produces final answer). Each round could be its own
+<code>INT. TOOL LOOP TIMESTAMP</code> scene. Rejected: a “turn” from the
+user’s perspective is one request-response cycle. Splitting it across
+multiple scenes makes the session harder to read (the user’s original
+question and the model’s final answer would be in different scenes) and
+harder to mine (memory extraction relies on question-and-answer locality
+within a scene). Flat notes inside the single turn scene preserve both
+readability and mining quality.</p>
+<p><strong>Per-message character attribution via
+<code>Message.Model</code>.</strong> Accurate multi-round character
+attribution requires tagging each <code>Message</code> with the model
+that produced it. This changes the <code>Message</code> struct and
+ripples through serialisation, history compaction, and replay. Deferred:
+single-character-per-turn covers the real-world case and adds no struct
+changes in v0.0.15.</p>
+</section>
+</body>
+</html>

@@ -216,11 +216,6 @@ section {
      padding-right: 2em;
 }
 
-section > figure > img {
-	max-width: 20%;
-}
-
-
 section > menu {
 	display: flex;
 	list-style: none;
@@ -268,6 +263,10 @@ section a:hover, section a:focus {
  */
 section.widget a, section.widget a:link, section.widget a:visited, section.widget a:active {
     color: var(--color-widget-link, blue);
+}
+
+section > figure > img {
+       max-width: 20%;
 }
 
 aside {
@@ -485,3 +484,72 @@ a.visually-hidden {
     white-space: nowrap;
     border: 0;
 }
+
+/* ============================================
+ * Accessible Table Styles
+ * ============================================ */
+
+table {
+    width: 100%;
+    max-width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+    font-family: var(--font-family-base, Open Sans, Helvetica, Sans-Serif);
+    font-size: var(--font-size-base, 14px);
+}
+
+caption {
+    font-size: 1.1em;
+    font-weight: bold;
+    text-align: left;
+    padding: 0.5em 0;
+    caption-side: top;
+}
+
+th {
+    text-align: left;
+    padding: 0.75em;
+    background-color: var(--color-slategrey, #AAA99F);
+    color: var(--color-bg, white);
+    font-weight: bold;
+    border: 1px solid var(--color-darkgrey, #616265);
+}
+
+td {
+    padding: 0.75em;
+    border: 1px solid var(--color-lightgrey, #C8C8C8);
+    vertical-align: top;
+}
+
+tbody tr:nth-child(even) {
+    background-color: rgba(200, 200, 200, 0.2);
+}
+
+tbody tr:hover,
+tbody tr:focus-within {
+    background-color: rgba(200, 200, 200, 0.4);
+    outline: 2px solid var(--color-primary, #FF6E1E);
+    outline-offset: -2px;
+}
+
+table a, table a:link, table a:visited {
+    color: var(--color-link, #747267);
+    text-decoration: underline;
+}
+
+table a:hover, table a:focus {
+    color: var(--color-primary, #FF6E1E);
+    background-color: rgba(255, 110, 30, 0.1);
+    outline: 2px solid var(--color-primary, #FF6E1E);
+    outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+    table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+}
+
+
