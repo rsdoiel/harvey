@@ -828,6 +828,8 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintf(out, "  Model %q not found — use /llamafile list or /ollama list.\n", args[1])
 		}
 		return nil
+	case "mode":
+		return cmdModelMode(a, args[1:], out)
 	case "status":
 		return cmdModelStatus(a, out)
 	default:
@@ -880,6 +882,101 @@ func cmdModelStatus(a *Agent, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "  Model:  %s\n", label)
 	fmt.Fprintf(out, "  Status: %s\n", status)
+	return nil
+}
+
+// isValidToolMode reports whether s is a recognised tool-mode value.
+func isValidToolMode(s string) bool {
+	switch s {
+	case ToolModeStructured, ToolModeProse, ToolModeInject, ToolModeNone:
+		return true
+	}
+	return false
+}
+
+/** cmdModelMode sets or displays the ToolMode for a model in the cache.
+ *
+ * Usage:
+ *   /model mode                       — show active model's current mode
+ *   /model mode MODE                  — set active model's mode
+ *   /model mode MODEL MODE            — set named model's mode
+ *
+ * Valid modes: structured, prose, inject, none.
+ *
+ * Parameters:
+ *   a    (*Agent)   — the active Harvey agent.
+ *   args ([]string) — subcommand arguments (after "mode").
+ *   out  (io.Writer) — output stream for user-facing messages.
+ *
+ * Returns:
+ *   error — non-nil when the model cache is unavailable.
+ *
+ * Example:
+ *   cmdModel(a, []string{"mode", "inject"}, os.Stdout)
+ */
+func cmdModelMode(a *Agent, args []string, out io.Writer) error {
+	if a.ModelCache == nil {
+		return fmt.Errorf("no model cache — run /probe first to populate it")
+	}
+
+	activeModelName := func() (string, error) {
+		ac, ok := a.Client.(*AnyLLMClient)
+		if !ok {
+			return "", fmt.Errorf("no active Ollama model")
+		}
+		return ac.ModelName(), nil
+	}
+
+	var modelName, mode string
+	switch len(args) {
+	case 0:
+		// Show current mode for the active model.
+		name, err := activeModelName()
+		if err != nil {
+			return err
+		}
+		cap, err := a.ModelCache.Get(name)
+		if err != nil {
+			return err
+		}
+		if cap == nil || cap.ToolMode == ToolModeAuto {
+			fmt.Fprintf(out, "  %s: tool mode auto (not set)\n", name)
+		} else {
+			fmt.Fprintf(out, "  %s: tool mode %s\n", name, cap.ToolMode)
+		}
+		return nil
+	case 1:
+		name, err := activeModelName()
+		if err != nil {
+			return err
+		}
+		modelName = name
+		mode = args[0]
+	case 2:
+		modelName = args[0]
+		mode = args[1]
+	default:
+		fmt.Fprintf(out, "  Usage: /model mode [MODEL] {structured|prose|inject|none}\n")
+		return nil
+	}
+
+	if !isValidToolMode(mode) {
+		fmt.Fprintf(out, "  Unknown mode %q. Valid modes: structured, prose, inject, none\n", mode)
+		return nil
+	}
+
+	cap, err := a.ModelCache.Get(modelName)
+	if err != nil {
+		return err
+	}
+	if cap == nil {
+		cap = &ModelCapability{Name: modelName, ProbeLevel: "none", ProbedAt: time.Now()}
+	}
+	cap.ToolMode = mode
+	if err := a.ModelCache.Set(cap); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "  %s: tool mode set to %s\n", modelName, mode)
 	return nil
 }
 

@@ -483,12 +483,14 @@ func FastProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability
 	if len(detail.Capabilities) > 0 {
 		if capabilitiesContain(detail.Capabilities, "tools") {
 			cap.SupportsTools = CapYes
+			cap.ToolMode = ToolModeStructured
 		} else {
 			cap.SupportsTools = CapNo
 		}
 	} else if detail.Template != "" {
 		if hasToolMarker(detail.Template) {
 			cap.SupportsTools = CapYes
+			cap.ToolMode = ToolModeStructured
 		} else {
 			cap.SupportsTools = CapNo
 		}

@@ -191,6 +191,95 @@ func TestModelCacheAllEmpty(t *testing.T) {
 	}
 }
 
+// ─── ToolMode ─────────────────────────────────────────────────────────────────
+
+func TestModelCache_ToolMode_Default(t *testing.T) {
+	mc := openTestCache(t)
+	if err := mc.Set(&ModelCapability{Name: "x:latest", ProbeLevel: "fast", ProbedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := mc.Get("x:latest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ToolMode != ToolModeAuto {
+		t.Errorf("expected empty ToolMode on new entry; got %q", got.ToolMode)
+	}
+}
+
+func TestModelCache_ToolMode_SetGet(t *testing.T) {
+	mc := openTestCache(t)
+	for _, mode := range []string{ToolModeStructured, ToolModeProse, ToolModeInject, ToolModeNone} {
+		if err := mc.Set(&ModelCapability{Name: "m:latest", ProbeLevel: "fast", ProbedAt: time.Now(), ToolMode: mode}); err != nil {
+			t.Fatalf("Set mode=%q: %v", mode, err)
+		}
+		got, err := mc.Get("m:latest")
+		if err != nil {
+			t.Fatalf("Get mode=%q: %v", mode, err)
+		}
+		if got.ToolMode != mode {
+			t.Errorf("ToolMode: got %q want %q", got.ToolMode, mode)
+		}
+	}
+}
+
+func TestModelCache_ToolMode_All(t *testing.T) {
+	mc := openTestCache(t)
+	if err := mc.Set(&ModelCapability{Name: "a:latest", ProbeLevel: "fast", ProbedAt: time.Now(), ToolMode: ToolModeInject}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := mc.All()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("expected 1 entry; got %d", len(all))
+	}
+	if all[0].ToolMode != ToolModeInject {
+		t.Errorf("All()[0].ToolMode = %q; want %q", all[0].ToolMode, ToolModeInject)
+	}
+}
+
+func TestModelCache_ToolMode_Migration(t *testing.T) {
+	// Simulate a DB that predates the tool_mode column. Open it twice: first
+	// to create the table without the column (using a bare schema), then via
+	// OpenModelCache which should add the column and allow reads.
+	dir := t.TempDir()
+	ws, err := NewWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First open: create the table via the schema (tool_mode will be added by migration).
+	mc, err := OpenModelCache(ws, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Insert a row with no ToolMode (uses default '').
+	if err := mc.Set(&ModelCapability{Name: "old:model", ProbeLevel: "fast", ProbedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	mc.Close()
+
+	// Second open: migration runs again (idempotent) and column already exists.
+	mc2, err := OpenModelCache(ws, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mc2.Close()
+
+	got, err := mc2.Get("old:model")
+	if err != nil {
+		t.Fatalf("Get after migration: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected row to survive migration")
+	}
+	if got.ToolMode != ToolModeAuto {
+		t.Errorf("ToolMode after migration: got %q want %q", got.ToolMode, ToolModeAuto)
+	}
+}
+
 func TestCapabilityStatusString(t *testing.T) {
 	cases := []struct {
 		s    CapabilityStatus

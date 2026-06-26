@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestAgent returns an Agent with a real workspace in a temp directory,
@@ -1632,5 +1633,102 @@ func TestClearHistory_ClearsLastRAGInfo(t *testing.T) {
 	}
 	if a.LastObservationID != 0 {
 		t.Error("expected LastObservationID to be 0 after ClearHistory")
+	}
+}
+
+// ─── /model mode ──────────────────────────────────────────────────────────────
+
+func newTestAgentWithCache(t *testing.T, modelName string) (*Agent, *ModelCache) {
+	t.Helper()
+	a := newTestAgent(t)
+	mc, err := OpenModelCache(a.Workspace, "")
+	if err != nil {
+		t.Fatalf("OpenModelCache: %v", err)
+	}
+	t.Cleanup(func() { mc.Close() })
+	if modelName != "" {
+		if err := mc.Set(&ModelCapability{Name: modelName, ProbeLevel: "fast", ProbedAt: time.Now()}); err != nil {
+			t.Fatalf("Set: %v", err)
+		}
+		a.Client = newOllamaLLMClient("http://localhost:11434", modelName, 0)
+	}
+	a.ModelCache = mc
+	return a, mc
+}
+
+func TestCmdModelMode_SetsActiveModel(t *testing.T) {
+	a, mc := newTestAgentWithCache(t, "phi4:latest")
+
+	var out strings.Builder
+	if err := cmdModel(a, []string{"mode", "inject"}, &out); err != nil {
+		t.Fatalf("cmdModel mode inject: %v", err)
+	}
+
+	got, err := mc.Get("phi4:latest")
+	if err != nil || got == nil {
+		t.Fatalf("Get after mode set: %v, %v", got, err)
+	}
+	if got.ToolMode != ToolModeInject {
+		t.Errorf("ToolMode: got %q want %q", got.ToolMode, ToolModeInject)
+	}
+	if !strings.Contains(out.String(), "inject") {
+		t.Errorf("expected confirmation in output; got: %s", out.String())
+	}
+}
+
+func TestCmdModelMode_SetsNamedModel(t *testing.T) {
+	a, mc := newTestAgentWithCache(t, "granite4.1:8b")
+
+	var out strings.Builder
+	if err := cmdModel(a, []string{"mode", "llama3.2:latest", "prose"}, &out); err != nil {
+		t.Fatalf("cmdModel mode llama3.2 prose: %v", err)
+	}
+
+	got, err := mc.Get("llama3.2:latest")
+	if err != nil || got == nil {
+		t.Fatalf("Get llama3.2 after mode set: %v, %v", got, err)
+	}
+	if got.ToolMode != ToolModeProse {
+		t.Errorf("ToolMode: got %q want %q", got.ToolMode, ToolModeProse)
+	}
+}
+
+func TestCmdModelMode_InvalidMode(t *testing.T) {
+	a, _ := newTestAgentWithCache(t, "phi4:latest")
+
+	var out strings.Builder
+	if err := cmdModel(a, []string{"mode", "turbo"}, &out); err != nil {
+		t.Fatalf("unexpected error for invalid mode: %v", err)
+	}
+	if !strings.Contains(out.String(), "Unknown mode") && !strings.Contains(out.String(), "unknown mode") {
+		t.Errorf("expected unknown mode message; got: %s", out.String())
+	}
+}
+
+func TestCmdModelMode_NoModelCache(t *testing.T) {
+	a := newTestAgent(t)
+	a.ModelCache = nil
+	a.Client = newOllamaLLMClient("http://localhost:11434", "phi4:latest", 0)
+
+	var out strings.Builder
+	err := cmdModel(a, []string{"mode", "inject"}, &out)
+	if err == nil {
+		t.Error("expected error when ModelCache is nil")
+	}
+}
+
+func TestCmdModelMode_ShowCurrentMode(t *testing.T) {
+	a, mc := newTestAgentWithCache(t, "phi4:latest")
+	// Pre-set a mode so show has something to report.
+	if err := mc.Set(&ModelCapability{Name: "phi4:latest", ToolMode: ToolModeNone, ProbeLevel: "fast", ProbedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if err := cmdModel(a, []string{"mode"}, &out); err != nil {
+		t.Fatalf("cmdModel mode (show): %v", err)
+	}
+	if !strings.Contains(out.String(), "none") {
+		t.Errorf("expected mode in output; got: %s", out.String())
 	}
 }

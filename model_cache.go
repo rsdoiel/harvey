@@ -41,6 +41,16 @@ PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 `
 
+// Tool mode constants control which execution path Harvey uses for a given model.
+// ToolModeAuto is the zero value — falls back to CapabilityStatus-based logic.
+const (
+	ToolModeAuto       = ""           // unset; fall back to CapabilityStatus
+	ToolModeStructured = "structured" // model uses OpenAI-style structured tool_calls
+	ToolModeProse      = "prose"      // model emits JSON fenced blocks; prose fallback only
+	ToolModeInject     = "inject"     // skip tools; pre-inject file content from prompt
+	ToolModeNone       = "none"       // no tools, no injection; plain text only
+)
+
 /** CapabilityStatus records whether a model capability has been confirmed,
  * denied, or not yet probed.
  *
@@ -94,6 +104,7 @@ func (c CapabilityStatus) String() string {
  *   SupportsTools         (CapabilityStatus) — whether the model supports tool/function calling.
  *   SupportsEmbed         (CapabilityStatus) — whether the model can produce embeddings.
  *   SupportsTaggedBlocks  (CapabilityStatus) — whether the model reliably emits path-tagged code blocks.
+ *   ToolMode              (string)           — explicit execution strategy; one of ToolModeAuto/Structured/Prose/Inject/None.
  *   ProbeLevel            (string)           — "none", "fast", or "thorough".
  *   ProbedAt              (time.Time)        — when the last probe ran.
  *
@@ -111,6 +122,7 @@ type ModelCapability struct {
 	SupportsTools        CapabilityStatus
 	SupportsEmbed        CapabilityStatus
 	SupportsTaggedBlocks CapabilityStatus
+	ToolMode             string
 	ProbeLevel           string
 	ProbedAt             time.Time
 }
@@ -185,6 +197,7 @@ func OpenModelCache(ws *Workspace, customPath string) (*ModelCache, error) {
 	// SQLite returns "duplicate column name" if the column already exists; we
 	// silently ignore that error so this is safe to run on every open.
 	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN supports_tagged_blocks INTEGER NOT NULL DEFAULT -1`)
+	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN tool_mode TEXT NOT NULL DEFAULT ''`)
 	return &ModelCache{db: db, path: dbPath}, nil
 }
 
@@ -220,7 +233,7 @@ func (mc *ModelCache) Close() error {
 func (mc *ModelCache) Get(name string) (*ModelCapability, error) {
 	const q = `
 	SELECT name, family, parameter_size, quantization, size_bytes,
-	       context_length, supports_tools, supports_embed, supports_tagged_blocks, probe_level, probed_at
+	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, probe_level, probed_at
 	FROM model_capabilities WHERE name = ?`
 	row := mc.db.QueryRow(q, name)
 	c, err := scanCapability(row)
@@ -250,8 +263,8 @@ func (mc *ModelCache) Set(cap *ModelCapability) error {
 	const q = `
 	INSERT INTO model_capabilities
 	    (name, family, parameter_size, quantization, size_bytes,
-	     context_length, supports_tools, supports_embed, supports_tagged_blocks, probe_level, probed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	     context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, probe_level, probed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(name) DO UPDATE SET
 	    family                 = excluded.family,
 	    parameter_size         = excluded.parameter_size,
@@ -261,13 +274,14 @@ func (mc *ModelCache) Set(cap *ModelCapability) error {
 	    supports_tools         = excluded.supports_tools,
 	    supports_embed         = excluded.supports_embed,
 	    supports_tagged_blocks = excluded.supports_tagged_blocks,
+	    tool_mode              = excluded.tool_mode,
 	    probe_level            = excluded.probe_level,
 	    probed_at              = excluded.probed_at`
 	_, err := mc.db.Exec(q,
 		cap.Name, cap.Family, cap.ParameterSize, cap.Quantization,
 		cap.SizeBytes, cap.ContextLength,
 		int(cap.SupportsTools), int(cap.SupportsEmbed), int(cap.SupportsTaggedBlocks),
-		cap.ProbeLevel, cap.ProbedAt,
+		cap.ToolMode, cap.ProbeLevel, cap.ProbedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("model_cache: set %s: %w", cap.Name, err)
@@ -308,7 +322,7 @@ func (mc *ModelCache) Delete(name string) error {
 func (mc *ModelCache) All() ([]ModelCapability, error) {
 	const q = `
 	SELECT name, family, parameter_size, quantization, size_bytes,
-	       context_length, supports_tools, supports_embed, supports_tagged_blocks, probe_level, probed_at
+	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, probe_level, probed_at
 	FROM model_capabilities ORDER BY name`
 	rows, err := mc.db.Query(q)
 	if err != nil {
@@ -344,7 +358,7 @@ func scanCapability(s scanner) (*ModelCapability, error) {
 		&c.Name, &c.Family, &c.ParameterSize, &c.Quantization,
 		&c.SizeBytes, &c.ContextLength,
 		&tools, &embed, &tagged,
-		&c.ProbeLevel, &probedAt,
+		&c.ToolMode, &c.ProbeLevel, &probedAt,
 	)
 	if err != nil {
 		return nil, err

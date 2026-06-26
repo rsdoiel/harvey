@@ -1122,7 +1122,13 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	var stats ChatStats
 	var chatErr error
 	var toolCallRecords []ToolCallRecord
-	if a.Tools != nil && a.Config.ToolsEnabled {
+	// Use RunToolLoop only when tools are configured AND the model's ToolMode
+	// allows structured calls. Explicit modes prose/inject/none bypass the loop.
+	useStructuredTools := a.Tools != nil && a.Config.ToolsEnabled
+	if mode := a.modelToolMode(); mode == ToolModeProse || mode == ToolModeInject || mode == ToolModeNone {
+		useStructuredTools = false
+	}
+	if useStructuredTools {
 		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 		ex.DebugLog = a.DebugLog
 		ex.Status = sp
