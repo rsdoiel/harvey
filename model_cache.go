@@ -41,15 +41,49 @@ PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 `
 
-// Tool mode constants control which execution path Harvey uses for a given model.
-// ToolModeAuto is the zero value — falls back to CapabilityStatus-based logic.
-const (
-	ToolModeAuto       = ""           // unset; fall back to CapabilityStatus
-	ToolModeStructured = "structured" // model uses OpenAI-style structured tool_calls
-	ToolModeProse      = "prose"      // model emits JSON fenced blocks; prose fallback only
-	ToolModeInject     = "inject"     // skip tools; pre-inject file content from prompt
-	ToolModeNone       = "none"       // no tools, no injection; plain text only
-)
+/** ToolModeAuto is the zero value for the ToolMode field of ModelCapability.
+ * When ToolMode is Auto, Harvey falls back to CapabilityStatus-based logic:
+ * toolsReliable() returns true iff SupportsTools == CapYes.
+ *
+ * Example:
+ *   cap.ToolMode = ToolModeAuto // clear a previously set override
+ */
+const ToolModeAuto = ""
+
+/** ToolModeStructured forces Harvey to use the OpenAI-style structured
+ * tool_calls API path (RunToolLoop) for the model, regardless of the
+ * SupportsTools capability status.
+ *
+ * Example:
+ *   cap.ToolMode = ToolModeStructured
+ */
+const ToolModeStructured = "structured"
+
+/** ToolModeProse forces Harvey to use the prose JSON-fence fallback for the
+ * model (tryExecuteProseToolCalls). RunToolLoop is bypassed even when
+ * SupportsTools == CapYes.
+ *
+ * Example:
+ *   cap.ToolMode = ToolModeProse
+ */
+const ToolModeProse = "prose"
+
+/** ToolModeInject tells Harvey to skip tool calling entirely and pre-inject
+ * file content from the prompt directly (injectFileContext). Used for models
+ * that reliably ignore the tools schema.
+ *
+ * Example:
+ *   cap.ToolMode = ToolModeInject
+ */
+const ToolModeInject = "inject"
+
+/** ToolModeNone disables both tool calling and file injection for the model.
+ * Harvey sends the prompt as plain text and does not attempt any tool dispatch.
+ *
+ * Example:
+ *   cap.ToolMode = ToolModeNone
+ */
+const ToolModeNone = "none"
 
 /** CapabilityStatus records whether a model capability has been confirmed,
  * denied, or not yet probed.

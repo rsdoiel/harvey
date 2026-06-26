@@ -1170,6 +1170,11 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		return "", ChatStats{}, chatErr
 	}
 
+	// hadToolCalls records whether the first pass used RunToolLoop and executed
+	// at least one tool. Captured before option-2 may roll back history so that
+	// noToolCalls is accurate even after the rollback+retry.
+	hadToolCalls := len(a.History) > histLenBeforeChat
+
 	// Option 2: if the model claimed it cannot read files, retry once with file
 	// content pre-loaded. Only fires when injection would add something new (i.e.,
 	// option 1 didn't already inject the same content via toolsReliable==false).
@@ -1177,12 +1182,29 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		retryAugmented := injectFileContext(a.Workspace, augmented)
 		if retryAugmented != augmented {
 			fmt.Fprintln(out, yellow("  ⚠")+" Model declined file access; retrying with content pre-loaded.")
+			// First-pass tool call records are invalid after rollback.
+			toolCallRecords = nil
 			// Roll back to just before the user message so we can replace it.
 			a.History = a.History[:histLenBeforeChat-1]
 			a.AddMessage("user", retryAugmented)
 			buf.Reset()
 			var retryStats ChatStats
-			retryStats, chatErr = a.Client.Chat(ctx, a.History, &buf)
+			if useStructuredTools {
+				retrySp := newSpinner(out, a.estimateDuration(), spLabel)
+				ex := NewToolExecutor(a.Tools, a.Client, a.Config)
+				ex.DebugLog = a.DebugLog
+				ex.Status = retrySp
+				ex.CharacterName = charName
+				var updatedHistory []Message
+				updatedHistory, retryStats, chatErr = ex.RunToolLoop(ctx, a.History, &buf)
+				retrySp.stop()
+				if chatErr == nil {
+					a.History = updatedHistory
+					toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
+				}
+			} else {
+				retryStats, chatErr = a.Client.Chat(ctx, a.History, &buf)
+			}
 			if chatErr == nil {
 				stats = retryStats
 			} else {
@@ -1206,10 +1228,11 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	a.recordStats(stats)
 	a.sessionTurns++
 
-	// noToolCalls is true when the model did not invoke any tools this turn.
-	// Captured before AddMessage so the value is valid at both the code-block
-	// extraction guard below and the autoExecuteReply guard further down.
-	noToolCalls := len(a.History) == histLenBeforeChat
+	// noToolCalls is true when neither the first pass nor the retry executed
+	// any tool calls. hadToolCalls guards against option-2's rollback making
+	// the history length temporarily equal to histLenBeforeChat even when the
+	// first pass ran tools (whose side-effects are already real).
+	noToolCalls := !hadToolCalls && len(a.History) == histLenBeforeChat
 
 	var proseUnknownTools []string
 	if a.Workspace != nil && noToolCalls {

@@ -113,7 +113,7 @@ var cantReadPhrases = []string{
 	"i'm unable to access",
 	"i cannot access",
 	"i can't access the file",
-	"please provide the file",
+	"please provide the file content",
 	"please provide the content",
 	"please share the file",
 	"please paste the",

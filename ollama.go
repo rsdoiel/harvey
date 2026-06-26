@@ -480,17 +480,18 @@ func FastProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability
 	}
 
 	// Tool support: prefer the capabilities array; fall back to template markers.
+	// ToolMode is intentionally left as ToolModeAuto so that toolsReliable()
+	// falls through to the SupportsTools==CapYes check. This preserves any
+	// mode the user set via /model mode across re-probes.
 	if len(detail.Capabilities) > 0 {
 		if capabilitiesContain(detail.Capabilities, "tools") {
 			cap.SupportsTools = CapYes
-			cap.ToolMode = ToolModeStructured
 		} else {
 			cap.SupportsTools = CapNo
 		}
 	} else if detail.Template != "" {
 		if hasToolMarker(detail.Template) {
 			cap.SupportsTools = CapYes
-			cap.ToolMode = ToolModeStructured
 		} else {
 			cap.SupportsTools = CapNo
 		}
