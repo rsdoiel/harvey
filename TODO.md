@@ -76,9 +76,13 @@ don't reliably fire structured tool calls even when the schema is provided.
   files" class of failure.~~ **Done** — `injectFileContext` + `toolsReliable()` in
   `file_inject.go`; hooked in `runChatTurn`; 15 tests pass; `go test ./...` clean.
 
-- **Option 2** — "Can't read" retry detection: after a response that matches patterns
+- ~~**Option 2** — "Can't read" retry detection: after a response that matches patterns
   like *"I don't have the capability"* or *"please provide the file"*, auto-retry the
-  prompt with file content pre-loaded. Reactive safety net complementing option 1.
+  prompt with file content pre-loaded. Reactive safety net complementing option 1.~~
+  **Done** — `looksLikeCantReadFile` + `toolsReliableOverride` hook in `file_inject.go`;
+  retry block in `runChatTurn` between error handling and display; `injectFileContext`
+  made idempotent (skips `### File: tok` already present); 6 new tests pass;
+  `go test -race ./...` clean.
 
 - **Option 3** — Per-model `ToolMode` in `harvey.yaml`: add a `tool_mode` field
   (`structured | prose | inject | none`) so the model probe (or user override) can

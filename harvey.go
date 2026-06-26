@@ -171,6 +171,10 @@ type Agent struct {
 	Tools         *ToolRegistry  // schema-based tool registry; nil when tools are disabled
 	LastRAGInfo            *RAGAugmentInfo // set after each chat turn that fires RAG; cleared by ClearHistory
 	LastObservationID      int64           // ID of the most recently recorded /kb observe; cleared by ClearHistory
+	// toolsReliableOverride, when non-nil, overrides the capability-based logic
+	// in toolsReliable(). Set in tests to simulate a known-reliable or
+	// known-unreliable model without requiring a real AnyLLMClient.
+	toolsReliableOverride func() bool
 	memoryContextPending   bool         // true after ClearHistory until first user turn injects memories
 	sessionInjectedTokens  int          // tokens injected via UnifiedMemory this session
 	sessionCompressed      bool         // true if rolling summary fired at least once this session

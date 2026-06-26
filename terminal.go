@@ -1163,6 +1163,30 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		a.History = a.History[:len(a.History)-1]
 		return "", ChatStats{}, chatErr
 	}
+
+	// Option 2: if the model claimed it cannot read files, retry once with file
+	// content pre-loaded. Only fires when injection would add something new (i.e.,
+	// option 1 didn't already inject the same content via toolsReliable==false).
+	if looksLikeCantReadFile(buf.String()) {
+		retryAugmented := injectFileContext(a.Workspace, augmented)
+		if retryAugmented != augmented {
+			fmt.Fprintln(out, yellow("  ⚠")+" Model declined file access; retrying with content pre-loaded.")
+			// Roll back to just before the user message so we can replace it.
+			a.History = a.History[:histLenBeforeChat-1]
+			a.AddMessage("user", retryAugmented)
+			buf.Reset()
+			var retryStats ChatStats
+			retryStats, chatErr = a.Client.Chat(ctx, a.History, &buf)
+			if chatErr == nil {
+				stats = retryStats
+			} else {
+				// Retry failed — restore history and surface the error.
+				a.History = a.History[:len(a.History)-1]
+				return "", ChatStats{}, fmt.Errorf("retry: %w", chatErr)
+			}
+		}
+	}
+
 	displayText := buf.String()
 	if a.Config.SyntaxHighlight {
 		displayText = highlightCodeBlocks(displayText)
