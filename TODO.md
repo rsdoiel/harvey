@@ -3,47 +3,12 @@
 
 ## Bugs
 
-## Release Review
+- [ ] I am hitting context limits when reading content from the file system even when the size of document appears much smaller than context available
 
-## Next (v0.0.15 release)
+## v0.0.16 development cycle
 
-### Bug fixes (must clear before tagging)
+- [ ] Make sure LLamafile support is at parity with Ollama support, example creation and use of RAG with Llamafiles
 
-- [x] **ollama.go:486** — `FastProbeModel` sets `cap.ToolMode = ToolModeStructured`
-  unconditionally for tool-capable models. `ModelCache.Set` UPSERTs this, silently overwriting
-  any mode the user set via `/model mode`. Fix: removed `cap.ToolMode = ToolModeStructured` from
-  FastProbeModel; toolsReliable() falls through to SupportsTools==CapYes correctly.
-
-- [x] **terminal.go:1297** — After option-2 retry, `toolCallRecords` still holds records from
-  the first-pass `RunToolLoop` (populated at line 1141) even though those history entries were
-  rolled back at line 1181. Fix: set `toolCallRecords = nil` at the top of the option-2 block
-  before rolling back history.
-
-- [x] **terminal.go:1321** — After option-2 retry, `noToolCalls` was always `true`. Fix: capture
-  `hadToolCalls := len(a.History) > histLenBeforeChat` before option-2 fires, then compute
-  `noToolCalls := !hadToolCalls && len(a.History) == histLenBeforeChat`.
-
-- [x] **terminal.go:1185** — Option-2 retry called `a.Client.Chat` directly, bypassing
-  `RunToolLoop`. Fix: when `useStructuredTools` is true, option-2 retry now uses `RunToolLoop`
-  (with a fresh spinner) and updates `toolCallRecords` from the retry's history slice.
-
-- [x] **terminal.go:1203** — After option-2 retry with RunToolLoop, `a.History[histLenBeforeChat:]`
-  now correctly contains the retry's tool-call messages (populated by the fixed retry path).
-  groundingCheck uses these automatically.
-
-- [x] **file_inject.go:116** — `cantReadPhrases` entry `"please provide the file"` was too broad.
-  Fix: tightened to `"please provide the file content"`.
-
-- [x] **model_cache.go:47** — Exported `ToolMode*` constants now have `/** ... */` block-doc
-  comments with Description and Example sections as required by CLAUDE.md.
-
-### Release steps (after bugs cleared)
-
-- [ ] Bump `codemeta.json` version to 0.0.15, update `releaseDate` and `releaseNotes`
-- [ ] Regenerate `version.go`: `cmt codemeta.json version.go`
-- [ ] Commit and tag `v0.0.15`
-
-## Deferred to v0.0.16
 
 ### Option 2 reactive retry — surgical rollback
 See [audit-trail-plan.md](audit-trail-plan.md) W1 and the small-model tool-use mitigation work
