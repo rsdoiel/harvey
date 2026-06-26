@@ -1073,6 +1073,13 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	// RAG context injection — prepend relevant chunks before sending.
 	augmented, ragInfo := a.ragAugment(input)
 	a.LastRAGInfo = ragInfo
+
+	// File-reference injection — for models that don't reliably call read_file,
+	// resolve any mentioned file paths and prepend their content directly.
+	if !a.toolsReliable() {
+		augmented = injectFileContext(a.Workspace, augmented)
+	}
+
 	a.AddMessage("user", augmented)
 
 	// Token-count warning — runs only when the backend is Ollama.

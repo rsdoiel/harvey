@@ -65,6 +65,25 @@
 - **HARVEY.md** — Add a Provenance section instructing the model to attribute
   retrieved content at the point of use, not post-hoc.
 
+## Small model tool-use mitigations
+
+These address the general problem that small models (Phi4, Llama3, Apertus, etc.)
+don't reliably fire structured tool calls even when the schema is provided.
+
+- ~~**Option 1** — Pre-resolve file paths: when `toolsReliable()` is false, scan the
+  user prompt for path-like tokens, read matching files within the workspace, and
+  prepend their content before sending. Fixes the "I don't have the ability to read
+  files" class of failure.~~ **Done** — `injectFileContext` + `toolsReliable()` in
+  `file_inject.go`; hooked in `runChatTurn`; 15 tests pass; `go test ./...` clean.
+
+- **Option 2** — "Can't read" retry detection: after a response that matches patterns
+  like *"I don't have the capability"* or *"please provide the file"*, auto-retry the
+  prompt with file content pre-loaded. Reactive safety net complementing option 1.
+
+- **Option 3** — Per-model `ToolMode` in `harvey.yaml`: add a `tool_mode` field
+  (`structured | prose | inject | none`) so the model probe (or user override) can
+  set the injection strategy explicitly per model.
+
 ## llama.cpp server-side tool call parsing for Apertus
 
 Apertus 4B uses a native tool call format (`<SPECIAL_71>[{"tool_name": args}]<SPECIAL_72>`)
