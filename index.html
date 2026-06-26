@@ -92,6 +92,9 @@ model routes</li>
 <li>Remote RAG ingest: <code>s3://</code>, <code>sftp://</code>,
 <code>scp://</code>, <code>http://</code>, <code>https://</code>
 URIs</li>
+<li>File-reference injection: for models that ignore the tools schema,
+Harvey pre-injects workspace files mentioned in the prompt so they can
+still work with file content</li>
 </ul>
 <h3 id="extensibility">Extensibility</h3>
 <ul>
@@ -145,54 +148,30 @@ Source code and issues</li>
 </ul>
 <h2 id="release-notes">Release Notes</h2>
 <ul>
-<li><p>version: 0.0.14</p></li>
+<li><p>version: 0.0.15</p></li>
 <li><p>status: active</p></li>
-<li><p>released: 2026-06-21</p></li>
-<li><p>Llamafile is now the primary language model backend: startup
-sequence shows registered llamafiles first, auto-selects on preferred
-model match, then falls back to Ollama</p></li>
-<li><p>Explicit connection feedback: “Connecting to NAME (llamafile)… ✓”
-shown in terminal on backend selection</p></li>
-<li><p>Stale server adoption: Harvey detects a running llamafile server
-it did not start, probes its model via <code>/v1/models</code>, warns on
-mismatch, and adopts it rather than refusing to start</p></li>
-<li><p><code>/llamafile show [NAME]</code>: displays name, path, file
-size, and configured context length for a registered model</p></li>
-<li><p><code>/rag show [NAME]</code>: displays store name, database
-path, embedding model, chunk count, and model map</p></li>
-<li><p>Remote RAG ingest extended: <code>sftp://</code>,
-<code>scp://</code>, <code>http://</code>, and <code>https://</code>
-URIs now supported alongside <code>s3://</code></p></li>
-<li><p><code>/read</code> auto-detects <code>.pdf</code> files and
-extracts text via poppler (pdfinfo + pdftotext + pdfimages), consistent
-with the <code>read_file</code> built-in tool</p></li>
-<li><p><code>/status</code> backend tag and token-count estimate now
-work for llamafile (was Ollama-only)</p></li>
-<li><p>Pipeline context-utilization display now works for llamafile via
-character estimate (was Ollama-only)</p></li>
-<li><p>Context utilization hint <code>[ctx: N%]</code> added to spinner
-label when estimated token usage reaches 50% of the model’s context
-window</p></li>
-<li><p>Routing feedback in spinner: shows <code>@route · model</code>
-during routed turns when routing is active</p></li>
-<li><p>Model provenance recorded in Fountain session header:
-<code>Model:</code> field now stores <code>NAME (backend)</code> (e.g.,
-<code>QWEN-CODING (llamafile)</code>) for session replay and
-audit</p></li>
-<li><p>Health check on <code>--resume</code>/<code>--continue</code>:
-session model is extracted before backend selection; a mismatch warning
-is shown when the resumed model differs from the active backend</p></li>
-<li><p><code>@mention</code> dispatch: routing is tried first when
-routing is enabled; falls back to local model switch via
-<code>attemptModelSwitch</code>; case-insensitive for both llamafile
-names and model aliases</p></li>
-<li><p>Help system: all 41 help constants documented and reordered into
-11 logical groups; <code>ModelHelpText</code> dispatch bug fixed (topic
-was unreachable); <code>harvey-model.7.md</code> man page added</p></li>
-<li><p>Documentation rewritten with llamafile-first framing and
-natural-language-programming / scholarly-work positioning:
-<code>overview.md</code>, <code>getting_started.md</code>,
-<code>user_manual.md</code>, <code>CONFIGURATION.md</code></p></li>
+<li><p>released: 2026-06-26</p></li>
+<li><p><code>/model mode [MODEL] {structured|prose|inject|none}</code>:
+set or display the tool-execution strategy for a model; persisted in the
+model cache and survives re-probes</p></li>
+<li><p>File-reference injection: when a model does not reliably call
+tools, Harvey pre-injects the content of workspace files mentioned in
+the prompt as <code>### File:</code> blocks</p></li>
+<li><p>Cannot-read retry: if a model responds indicating it cannot
+access a file, Harvey retries once with file content pre-loaded; retry
+uses <code>RunToolLoop</code> when in structured mode so tool calls are
+correctly dispatched</p></li>
+<li><p><code>ModelCapability.ToolMode</code> field and
+<code>ToolMode*</code> constants added to the model cache;
+<code>tool_mode</code> column migrated automatically on first
+open</p></li>
+<li><p>Bug fix: re-probing a model no longer overwrites a user-set tool
+mode</p></li>
+<li><p>Bug fix: option-2 retry session recording,
+<code>noToolCalls</code> flag, and <code>RunToolLoop</code> dispatch
+corrected</p></li>
+<li><p>Bug fix: <code>"please provide the file"</code> refusal phrase
+tightened to avoid spurious retries on benign model responses</p></li>
 </ul>
 <h3 id="authors">Authors</h3>
 <ul>

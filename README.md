@@ -36,6 +36,7 @@ Harvey is **experimental** — a **working proof of concept**, not production-re
 - Automatic code formatting on `write_file`: gofmt, clang-format, black, rustfmt, prettier, and built-in Pascal/Oberon/Basic formatters
 - PDF text extraction via poppler; image reading via vision-capable model routes
 - Remote RAG ingest: `s3://`, `sftp://`, `scp://`, `http://`, `https://` URIs
+- File-reference injection: for models that ignore the tools schema, Harvey pre-injects workspace files mentioned in the prompt so they can still work with file content
 
 ### Extensibility
 - SKILL.md skills, bundled skill sets, and multi-step prompt pipelines
@@ -78,26 +79,17 @@ Harvey runs on:
 
 ## Release Notes
 
-- version: 0.0.14
+- version: 0.0.15
 - status: active
-- released: 2026-06-21
+- released: 2026-06-26
 
-- Llamafile is now the primary language model backend: startup sequence shows registered llamafiles first, auto-selects on preferred model match, then falls back to Ollama
-- Explicit connection feedback: "Connecting to NAME (llamafile)… ✓" shown in terminal on backend selection
-- Stale server adoption: Harvey detects a running llamafile server it did not start, probes its model via `/v1/models`, warns on mismatch, and adopts it rather than refusing to start
-- `/llamafile show [NAME]`: displays name, path, file size, and configured context length for a registered model
-- `/rag show [NAME]`: displays store name, database path, embedding model, chunk count, and model map
-- Remote RAG ingest extended: `sftp://`, `scp://`, `http://`, and `https://` URIs now supported alongside `s3://`
-- `/read` auto-detects `.pdf` files and extracts text via poppler (pdfinfo + pdftotext + pdfimages), consistent with the `read_file` built-in tool
-- `/status` backend tag and token-count estimate now work for llamafile (was Ollama-only)
-- Pipeline context-utilization display now works for llamafile via character estimate (was Ollama-only)
-- Context utilization hint `[ctx: N%]` added to spinner label when estimated token usage reaches 50% of the model's context window
-- Routing feedback in spinner: shows `@route · model` during routed turns when routing is active
-- Model provenance recorded in Fountain session header: `Model:` field now stores `NAME (backend)` (e.g., `QWEN-CODING (llamafile)`) for session replay and audit
-- Health check on `--resume`/`--continue`: session model is extracted before backend selection; a mismatch warning is shown when the resumed model differs from the active backend
-- `@mention` dispatch: routing is tried first when routing is enabled; falls back to local model switch via `attemptModelSwitch`; case-insensitive for both llamafile names and model aliases
-- Help system: all 41 help constants documented and reordered into 11 logical groups; `ModelHelpText` dispatch bug fixed (topic was unreachable); `harvey-model.7.md` man page added
-- Documentation rewritten with llamafile-first framing and natural-language-programming / scholarly-work positioning: `overview.md`, `getting_started.md`, `user_manual.md`, `CONFIGURATION.md`
+- `/model mode [MODEL] {structured|prose|inject|none}`: set or display the tool-execution strategy for a model; persisted in the model cache and survives re-probes
+- File-reference injection: when a model does not reliably call tools, Harvey pre-injects the content of workspace files mentioned in the prompt as `### File:` blocks
+- Cannot-read retry: if a model responds indicating it cannot access a file, Harvey retries once with file content pre-loaded; retry uses `RunToolLoop` when in structured mode so tool calls are correctly dispatched
+- `ModelCapability.ToolMode` field and `ToolMode*` constants added to the model cache; `tool_mode` column migrated automatically on first open
+- Bug fix: re-probing a model no longer overwrites a user-set tool mode
+- Bug fix: option-2 retry session recording, `noToolCalls` flag, and `RunToolLoop` dispatch corrected
+- Bug fix: `"please provide the file"` refusal phrase tightened to avoid spurious retries on benign model responses
 
 
 ### Authors
