@@ -133,6 +133,7 @@ type Config struct {
 	LlamafileModelsDir      string        // discovery directory; default "$HOME/Models"
 	LlamafileStartupTimeout time.Duration // how long to wait for the server to respond; default 120s
 	LlamafileGPULayers      int           // layers to offload to GPU via -ngl; -1 = let llamafile decide (CPU), 99 = maximise GPU
+	LlamafileMaxTokens      int           // max tokens per completion; 0 = no limit (use model default)
 	// Model aliases: short name → full Ollama model identifier
 	ModelAliases map[string]string
 	// Tool settings
@@ -658,6 +659,7 @@ type llamafileYAML struct {
 	URL            string               `yaml:"url,omitempty"`
 	StartupTimeout string               `yaml:"startup_timeout,omitempty"` // e.g. "120s", "2m"
 	GPULayers      *int                 `yaml:"gpu_layers,omitempty"`      // -ngl value; nil = use default (99)
+	MaxTokens      int                  `yaml:"max_tokens,omitempty"`      // cap on tokens per completion; 0 = no limit
 	Models         []llamafileEntryYAML `yaml:"models,omitempty"`
 }
 
@@ -863,6 +865,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	if y.Llamafile.GPULayers != nil {
 		cfg.LlamafileGPULayers = *y.Llamafile.GPULayers
+	}
+	if y.Llamafile.MaxTokens > 0 {
+		cfg.LlamafileMaxTokens = y.Llamafile.MaxTokens
 	}
 	for _, m := range y.Llamafile.Models {
 		cfg.LlamafileModels = append(cfg.LlamafileModels, LlamafileEntry{
@@ -1216,6 +1221,7 @@ func SaveLlamafileConfig(ws *Workspace, cfg *Config) error {
 		URL:            cfg.LlamafileURL,
 		StartupTimeout: startupTO,
 		GPULayers:      gpuLayers,
+		MaxTokens:      cfg.LlamafileMaxTokens,
 		Models:         entries,
 	}
 	out, err := yaml.Marshal(&y)

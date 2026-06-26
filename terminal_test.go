@@ -2,12 +2,17 @@ package harvey
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // makeTestTree creates a temporary directory tree for completion tests:
@@ -505,5 +510,153 @@ func TestSelectBackend_extractsModelHintFromContinuePath(t *testing.T) {
 	// The auto-selection path connects the client.
 	if a.Client == nil {
 		t.Error("expected Client to be set after auto-selection from session hint")
+	}
+}
+
+// ─── toolCallsFromHistory ─────────────────────────────────────────────────────
+
+func TestToolCallsFromHistory_ResultExtraction(t *testing.T) {
+	msgs := []Message{
+		{
+			Role: "assistant",
+			ToolCalls: []anyllm.ToolCall{
+				{ID: "tc1", Function: anyllm.FunctionCall{Name: "read_file", Arguments: `{"path":"harvey.go"}`}},
+				{ID: "tc2", Function: anyllm.FunctionCall{Name: "run_shell", Arguments: `{"cmd":"go build ./..."}`}},
+			},
+		},
+		{Role: "tool", Content: "file contents here", ToolCallID: "tc1"},
+		{Role: "tool", Content: "error: exit status 1\nmore detail", ToolCallID: "tc2"},
+	}
+
+	records := toolCallsFromHistory(msgs, "")
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(records))
+	}
+	if records[0].Result != "ok" {
+		t.Errorf("tc1 result: got %q, want %q", records[0].Result, "ok")
+	}
+	if records[1].Result != "error: exit status 1" {
+		t.Errorf("tc2 result: got %q, want %q", records[1].Result, "error: exit status 1")
+	}
+}
+
+func TestToolCallsFromHistory_WithCharName(t *testing.T) {
+	msgs := []Message{
+		{
+			Role: "assistant",
+			ToolCalls: []anyllm.ToolCall{
+				{ID: "tc1", Function: anyllm.FunctionCall{Name: "list_files", Arguments: ""}},
+			},
+		},
+		{Role: "tool", Content: "file1.go\nfile2.go", ToolCallID: "tc1"},
+	}
+
+	records := toolCallsFromHistory(msgs, "LLAMA3")
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Character != "LLAMA3" {
+		t.Errorf("Character: got %q, want %q", records[0].Character, "LLAMA3")
+	}
+}
+
+func TestToolCallsFromHistory_NoToolCalls(t *testing.T) {
+	msgs := []Message{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "world"},
+	}
+	records := toolCallsFromHistory(msgs, "")
+	if len(records) != 0 {
+		t.Errorf("expected 0 records for history with no tool calls, got %d", len(records))
+	}
+}
+
+// ─── ragAugment ───────────────────────────────────────────────────────────────
+
+// fakeOllamaEmbedServer starts an httptest server that responds to POST
+// /api/embed with a fixed embedding vector, mimicking the Ollama embed API.
+func fakeOllamaEmbedServer(t *testing.T, vec []float64) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/embed" {
+			http.NotFound(w, r)
+			return
+		}
+		type resp struct {
+			Embeddings [][]float64 `json:"embeddings"`
+		}
+		_ = json.NewEncoder(w).Encode(resp{Embeddings: [][]float64{vec}})
+	}))
+}
+
+func TestRAGAugment_RagOff(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	a.RagOn = false
+	out, info := a.ragAugment("hello")
+	if out != "hello" || info != nil {
+		t.Errorf("expected (prompt, nil) when RagOn=false, got (%q, %v)", out, info)
+	}
+}
+
+func TestRAGAugment_NilStore(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	a.RagOn = true
+	a.Rag = nil
+	out, info := a.ragAugment("hello")
+	if out != "hello" || info != nil {
+		t.Errorf("expected (prompt, nil) when Rag=nil, got (%q, %v)", out, info)
+	}
+}
+
+func TestRAGAugment_ReturnsInfo(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	// Build a real RagStore using the stubEmbedder (defined in code_chunkers_test.go).
+	store, err := NewRagStore(dbPath, "stub")
+	if err != nil {
+		t.Fatalf("NewRagStore: %v", err)
+	}
+	defer store.db.Close()
+	if err := store.Ingest("src.go", []string{"package main"}, stubEmbedder{"stub"}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	// Fake Ollama embed endpoint returning the same unit vector as the stub embedder.
+	srv := fakeOllamaEmbedServer(t, []float64{1.0, 0.0})
+	defer srv.Close()
+
+	cfg := DefaultConfig()
+	cfg.OllamaURL = srv.URL
+	cfg.Memory.RagStores = []RagStoreEntry{
+		{Name: "test", DBPath: dbPath, EmbeddingModel: "stub"},
+	}
+	cfg.Memory.RagActive = "test"
+
+	ws, _ := NewWorkspace(dir)
+	a := NewAgent(cfg, ws)
+	a.RagOn = true
+	a.Rag = store
+
+	augmented, info := a.ragAugment("package main")
+	if info == nil {
+		t.Fatal("expected non-nil RAGAugmentInfo when chunks found")
+	}
+	if info.StoreName != "test" {
+		t.Errorf("StoreName: got %q, want %q", info.StoreName, "test")
+	}
+	if info.Chunks < 1 {
+		t.Errorf("Chunks: got %d, want >= 1", info.Chunks)
+	}
+	if info.TopScore < ragMinScore {
+		t.Errorf("TopScore %.2f is below ragMinScore %.2f", info.TopScore, ragMinScore)
+	}
+	if !strings.Contains(augmented, "package main") {
+		t.Errorf("augmented prompt missing original text: %s", augmented)
+	}
+	if !strings.Contains(augmented, "### Context") {
+		t.Errorf("augmented prompt missing context header: %s", augmented)
 	}
 }

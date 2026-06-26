@@ -384,6 +384,14 @@ func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
 		if running == "" {
 			running = "unknown"
 		}
+		// If the running model already matches the requested one, adopt it.
+		if strings.EqualFold(running, name) {
+			if err := a.useLlamafileEntry(name, out); err != nil {
+				return err
+			}
+			a.Config.LlamafileActive = name
+			return nil
+		}
 		fmt.Fprintf(out, "  A llamafile server is already running at %s (model: %s).\n", a.Config.LlamafileURL, running)
 		fmt.Fprintf(out, "  Harvey cannot stop externally started servers.\n")
 		fmt.Fprintf(out, "  Stop it manually, then run /llamafile use %s\n", name)

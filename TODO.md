@@ -3,13 +3,11 @@
 
 ## Bugs
 
-- `/model use` (no arg): prints usage error instead of showing a picker of registered
-  llamafile models and aliases. Should call SelectFromStrings(allModelNames(a), ...) when
-  len(args) < 2, matching the UX of /ollama use, /llamafile use, and /rag use.
+- ~~`/model use` (no arg): prints usage error instead of showing a picker of registered
+  llamafile models and aliases.~~ **Fixed** — picker implemented, tests passing.
 
-- `/session use` / `/session continue` (no arg): prints usage error instead of showing a
-  picker of available session files. Should call ListSessionFiles(a.SessionsDir) and
-  SelectFrom when len(args) < 2, matching the UX of /rag use and /llamafile use.
+- ~~`/session use` / `/session continue` (no arg): prints usage error instead of showing a
+  picker of available session files.~~ **Fixed** — picker implemented, tests passing.
 
 ## Release Review
 
@@ -17,28 +15,28 @@
 
 ### Audit trail enhancements (see [audit-trail-plan.md](audit-trail-plan.md))
 
-- **W0** — Update `FOUNTAIN_FORMAT.md` to v1.2: correct INT./EXT. semantic
+- ~~**W0** — Update `FOUNTAIN_FORMAT.md` to v1.2: correct INT./EXT. semantic
   (INT. = local computation, EXT. = remote); add new notation to spec before
-  any code changes.
+  any code changes.~~ **Done** — version header updated to 1.2; [[tool:]], [[rag:]], [[recall:]] documented in Special Syntax; INT. CONTEXT RECALL in Scene Types Reference; parsing regexes added; validation rule for HARVEY in EXT. corrected.
 
-- **W1** — Structured `[[tool: name(args) — status]]` notes: replace prose
+- ~~**W1** — Structured `[[tool: name(args) — status]]` notes: replace prose
   action blocks with parseable Fountain notes; add `Result` and `Character`
   fields to `ToolCallRecord`; extend `toolCallsFromHistory` to pair calls with
-  tool-role message results.
+  tool-role message results.~~ **Done** — code already implemented; 7 tests added and passing.
 
-- **W2** — RAG provenance notes: change `ragAugment` to return
+- ~~**W2** — RAG provenance notes: change `ragAugment` to return
   `(string, *RAGAugmentInfo)`; emit `[[rag: N chunks from STORE, top score
-  S.SS]]` note inside the turn's scene before user dialogue.
+  S.SS]]` note inside the turn's scene before user dialogue.~~ **Done** — code already implemented; 5 tests added and passing (incl. full round-trip with fake Ollama embed server).
 
-- **W3** — `INT. CONTEXT RECALL` scene: add `RecordContextRecall` to
+- ~~**W3** — `INT. CONTEXT RECALL` scene: add `RecordContextRecall` to
   `Recorder`; call from `injectMemoryContext` when `UnifiedMemory.Recall`
   returns non-empty results; write one `[[recall: ID (SOURCE) — score S.SS]]`
-  note per recalled item.
+  note per recalled item.~~ **Done** — code already implemented; 2 tests added and passing.
 
-- **W4** — EXT. scenes + character-attributed tool calls: add
+- ~~**W4** — EXT. scenes + character-attributed tool calls: add
   `RecordExteriorTurn` to `Recorder` for remote route dispatches; pass
   `charName` through `runChatTurn` → `toolCallsFromHistory` for local
-  `@mention` switches; add `CharacterName` to `ToolExecutor`.
+  `@mention` switches; add `CharacterName` to `ToolExecutor`.~~ **Done** — code already implemented; `TestRecordExteriorTurn` added and passing; `go test -race ./...` clean.
 
 ### Scholarly provenance (see [scholarly-provenance-plan.md](scholarly-provenance-plan.md))
 

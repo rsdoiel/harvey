@@ -331,6 +331,188 @@ func mustRead(t *testing.T, path string) []byte {
 	return b
 }
 
+// ─── RecordExteriorTurn ───────────────────────────────────────────────────────
+
+func TestRecordExteriorTurn(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3:latest)", dir)
+
+	if err := r.RecordExteriorTurn("PI2", "@pi2 analyze this data", "Analysis: normal distribution."); err != nil {
+		t.Fatalf("RecordExteriorTurn: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	checks := []string{
+		"EXT. PI2 AND",
+		"Harvey routing to PI2.",
+		"@pi2 analyze this data",
+		"Forwarding to PI2.",
+		"Analysis: normal distribution.",
+	}
+	for _, want := range checks {
+		if !strings.Contains(content, want) {
+			t.Errorf("expected %q in output\n---\n%s", want, content)
+		}
+	}
+	if strings.Contains(content, "INT.") {
+		t.Errorf("EXT. scene must not contain INT. heading\n---\n%s", content)
+	}
+}
+
+// ─── RecordContextRecall ──────────────────────────────────────────────────────
+
+func TestRecordContextRecall_NonEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3:latest)", dir)
+
+	results := []UnifiedResult{
+		{ID: "workspace_profile_abc123", Source: "workspace_profile", Score: 1.00},
+		{ID: "tool_use_d55f70", Source: "tool_use", Score: 0.75},
+	}
+	if err := r.RecordContextRecall(results); err != nil {
+		t.Fatalf("RecordContextRecall: %v", err)
+	}
+	// Write a chat turn after to confirm scene ordering.
+	_ = r.RecordTurn("first prompt", "first reply")
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	checks := []string{
+		"INT. CONTEXT RECALL",
+		"[[recall: workspace_profile_abc123 (workspace_profile) — score 1.00]]",
+		"[[recall: tool_use_d55f70 (tool_use) — score 0.75]]",
+	}
+	for _, want := range checks {
+		if !strings.Contains(content, want) {
+			t.Errorf("expected %q in output\n---\n%s", want, content)
+		}
+	}
+
+	// CONTEXT RECALL scene must appear before the first chat scene.
+	recallIdx := strings.Index(content, "INT. CONTEXT RECALL")
+	chatIdx := strings.Index(content, "INT. HARVEY AND")
+	if recallIdx == -1 || chatIdx == -1 {
+		t.Fatalf("missing expected scenes in output\n---\n%s", content)
+	}
+	if recallIdx > chatIdx {
+		t.Error("INT. CONTEXT RECALL must appear before the first chat scene")
+	}
+}
+
+func TestRecordContextRecall_Empty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3:latest)", dir)
+
+	if err := r.RecordContextRecall(nil); err != nil {
+		t.Fatalf("RecordContextRecall(nil): %v", err)
+	}
+	if err := r.RecordContextRecall([]UnifiedResult{}); err != nil {
+		t.Fatalf("RecordContextRecall([]): %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if strings.Contains(content, "CONTEXT RECALL") {
+		t.Errorf("expected no CONTEXT RECALL scene for empty results\n---\n%s", content)
+	}
+	if strings.Contains(content, "[[recall:") {
+		t.Errorf("expected no [[recall:]] notes for empty results\n---\n%s", content)
+	}
+}
+
+// ─── RecordTurnWithStats RAG note ─────────────────────────────────────────────
+
+func TestRecordTurnWithStats_RAGNote(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3:latest)", dir)
+
+	ragInfo := &RAGAugmentInfo{StoreName: "docs.db", Chunks: 3, TopScore: 0.87}
+	if err := r.RecordTurnWithStats("How do I init a Go module?", "Run: go mod init", ChatStats{}, nil, "", nil, ragInfo); err != nil {
+		t.Fatalf("RecordTurnWithStats: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	wantNote := "[[rag: 3 chunks from docs.db, top score 0.87]]"
+	ragIdx := strings.Index(content, wantNote)
+	userIdx := strings.Index(content, "How do I init a Go module?")
+	if ragIdx == -1 {
+		t.Errorf("expected %q in output\n---\n%s", wantNote, content)
+	}
+	if userIdx == -1 {
+		t.Errorf("expected user dialogue in output\n---\n%s", content)
+	}
+	if ragIdx != -1 && userIdx != -1 && ragIdx > userIdx {
+		t.Error("[[rag:]] note must appear before user dialogue")
+	}
+}
+
+func TestRecordTurnWithStats_NoRAGNote(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3:latest)", dir)
+
+	if err := r.RecordTurnWithStats("Hello", "Hi!", ChatStats{}, nil, "", nil, nil); err != nil {
+		t.Fatalf("RecordTurnWithStats: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "[[rag:") {
+		t.Errorf("expected no [[rag:]] note when ragInfo is nil\n---\n%s", string(data))
+	}
+}
+
+// ─── formatToolCallNote ───────────────────────────────────────────────────────
+
+func TestFormatToolCallNote_NoArgs(t *testing.T) {
+	tc := ToolCallRecord{Name: "list_files", Args: "", Result: "ok"}
+	got := formatToolCallNote(tc)
+	want := "tool: list_files() — ok"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatToolCallNote_WithArgs(t *testing.T) {
+	tc := ToolCallRecord{Name: "run_shell", Args: `{"cmd":"go build ./..."}`, Result: "error: exit 1"}
+	got := formatToolCallNote(tc)
+	want := `tool: run_shell({"cmd":"go build ./..."}) — error: exit 1`
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatToolCallNote_WithCharacter(t *testing.T) {
+	tc := ToolCallRecord{Name: "read_file", Args: `{"path":"harvey.go"}`, Result: "ok", Character: "MISTRAL"}
+	got := formatToolCallNote(tc)
+	want := `MISTRAL.tool: read_file({"path":"harvey.go"}) — ok`
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatToolCallNote_EmptyResultDefaultsToOk(t *testing.T) {
+	tc := ToolCallRecord{Name: "list_files", Args: ""}
+	got := formatToolCallNote(tc)
+	want := "tool: list_files() — ok"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 // ─── parseFountainSession strips backend suffix from Model field ──────────────
 
 func TestParseFountainSession_stripsBackendSuffix(t *testing.T) {

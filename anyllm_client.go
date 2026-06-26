@@ -40,6 +40,7 @@ type AnyLLMClient struct {
 	provName   string
 	backendURL string
 	DebugLog   *DebugLog
+	maxTokens  int // 0 = no limit
 }
 
 /** NewAnyLLMClient creates an AnyLLMClient wrapping provider.
@@ -153,6 +154,9 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 	}
 	if len(tools) > 0 {
 		params.Tools = tools
+	}
+	if a.maxTokens > 0 {
+		params.MaxTokens = &a.maxTokens
 	}
 
 	a.DebugLog.LogLLMRequest(a.modelName, len(messages), len(tools))
@@ -277,6 +281,17 @@ func (a *AnyLLMClient) Models(ctx context.Context) ([]string, error) {
 
 // Close satisfies LLMClient. any-llm-go providers hold no closeable resources.
 func (a *AnyLLMClient) Close() error { return nil }
+
+/** SetMaxTokens configures the per-request completion token limit.
+ * A value of 0 means no limit (the provider or model decides).
+ *
+ * Parameters:
+ *   n (int) — maximum tokens to generate; 0 = unlimited.
+ *
+ * Example:
+ *   client.SetMaxTokens(4096)
+ */
+func (a *AnyLLMClient) SetMaxTokens(n int) { a.maxTokens = n }
 
 /** ProviderCapabilities returns the feature flags reported by the underlying
  * provider. When the provider does not implement CapabilityProvider, a

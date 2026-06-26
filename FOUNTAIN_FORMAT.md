@@ -1,6 +1,6 @@
 # Harvey Fountain Format Specification
 
-*Version 1.0 — Multi-model character attribution for Harvey session recordings*
+*Version 1.2 — Multi-model character attribution for Harvey session recordings*
 
 ---
 
@@ -303,6 +303,65 @@ yes
 
 Status values: `ok`, `skipped`, `error: <message>`
 
+#### Tool Call Notes
+
+Notes emitted inside a chat scene for each tool invoked during the turn. They appear between HARVEY's forwarding line and the model's reply.
+
+```
+[[tool: name(args) — status]]
+[[CHARACTER.tool: name(args) — status]]
+```
+
+Status values: `ok`, `error: <first line of error>`
+
+The `CHARACTER.tool:` prefix is used when a remote model invoked the tool (e.g. in a local @mention model-switch scene). Omit args when the call had none or the args object is empty.
+
+**Example:**
+```
+HARVEY
+Forwarding to LLAMA3.
+
+[[tool: read_file({"path":"harvey.go"}) — ok]]
+[[tool: run_shell({"cmd":"go build ./..."}) — error: exit 1]]
+
+LLAMA3
+There is a compilation error on line 42.
+```
+
+#### RAG Provenance Notes
+
+Emitted inside the chat scene before the user's dialogue, when RAG retrieval returned chunks for the turn.
+
+```
+[[rag: N chunks from STORE, top score S.SS]]
+```
+
+Turns where RAG did not fire produce no `[[rag:]]` line.
+
+**Example:**
+```
+[[rag: 3 chunks from rag_store.db, top score 0.87]]
+
+RSDOIEL
+How do I initialise a Go module?
+```
+
+#### Context Recall Notes
+
+Emitted in the `INT. CONTEXT RECALL` scene at session start (see Scene Types Reference). One note per recalled memory item.
+
+```
+[[recall: ID (SOURCE) — score S.SS]]
+```
+
+**Example:**
+```
+INT. CONTEXT RECALL 2026-06-24 10:00:01
+
+[[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
+[[recall: tool_use_d55f70 (tool_use) — score 0.75]]
+```
+
 #### Session End
 
 Every session file must end with:
@@ -501,6 +560,17 @@ MISTRAL
 Response...
 ```
 
+### Context Recall Scene (`INT. CONTEXT RECALL`)
+
+Written once at session start, before the first chat scene, when `UnifiedMemory.Recall` returns one or more results. One `[[recall:]]` note per recalled memory item. Skipped entirely when memory injection is off or no items were recalled.
+
+```
+INT. CONTEXT RECALL 2026-06-24 10:00:01
+
+[[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
+[[recall: tool_use_d55f70 (tool_use) — score 0.75]]
+```
+
 ### Agent Mode Scenes (`INT. AGENT MODE`)
 
 File write operations and other agent actions.
@@ -657,6 +727,9 @@ FADE IN:$
 5. **Detect special syntax:**
    - Forwarding: `^Forwarding to ([A-Z0-9_-]+)\.$`
    - File write: `^\[\[write: (.+) — (ok|skipped|error:.+)\]\]`
+   - Tool note: `^\[\[(?:([A-Z0-9_-]+)\.)?tool: (.+) — (ok|error:.+)\]\]`
+   - RAG note: `^\[\[rag: (\d+) chunks from (.+), top score ([\d.]+)\]\]`
+   - Recall note: `^\[\[recall: (\S+) \((\S+)\) — score ([\d.]+)\]\]`
    - @mention: `@([a-zA-Z][a-zA-Z0-9_-]*)`
 
 ### Character Type Detection
@@ -868,7 +941,7 @@ THE END.
 | Character not ALL-CAPS | Warn: "Character name not uppercase: {name}" |
 | Character in INT. scene not in heading | Warn: "Character {name} not in scene heading" |
 | HARVEY missing from INT. scene | Warn: "INT. scene without HARVEY" |
-| HARVEY in EXT. scene | Warn: "EXT. scene contains HARVEY" |
+| HARVEY in EXT. scene without routing action | Warn: "EXT. scene has HARVEY but no 'Harvey routing to' action line" |
 | Unknown character type | Warn: "Unknown character type: {name}" |
 
 ### Model Validation

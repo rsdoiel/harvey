@@ -1530,7 +1530,11 @@ func resolveLlamafilePath(p, root string) string {
  *   return a.useLlamafileEntry("qwen-coding", out)
  */
 func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
-	a.Client = newLlamafileLLMClient(a.Config.LlamafileURL+"/v1", name, a.Config.OllamaTimeout)
+	client := newLlamafileLLMClient(a.Config.LlamafileURL+"/v1", name, a.Config.OllamaTimeout)
+	if a.Config.LlamafileMaxTokens > 0 {
+		client.SetMaxTokens(a.Config.LlamafileMaxTokens)
+	}
+	a.Client = client
 	if ac, ok := a.Client.(*AnyLLMClient); ok && a.DebugLog != nil {
 		ac.DebugLog = a.DebugLog
 	}
