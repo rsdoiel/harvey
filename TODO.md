@@ -1,6 +1,10 @@
 
 # Action Items
 
+## Feature ideas
+
+- [ ] Since small models have limited context before a file is read it the size should be considered, if a prompt needs to read file a chunking approach could be supplied to create a side conversation that works on chunks then jjoins the results into the main convesation context. This needs further exploration but would in enhance the application of using small models in document analaysis
+
 ## Bugs
 
 - [ ] I am hitting context limits when reading content from the file system even when the size of document appears much smaller than context available
