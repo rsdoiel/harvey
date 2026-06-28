@@ -42,11 +42,10 @@ func cmdMemory(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintln(out, "Usage: /memory <mine|list|show|flag|forget|status|recall|profile> [args...]")
 		return nil
 	}
-	store, err := NewMemoryStore(a.Workspace)
-	if err != nil {
-		return fmt.Errorf("/memory: open store: %w", err)
+	if a.Memory == nil || a.Memory.Store == nil {
+		return fmt.Errorf("/memory: memory store not available")
 	}
-	defer store.Close()
+	store := a.Memory.Store
 
 	switch args[0] {
 	case "mine":
@@ -331,8 +330,7 @@ func cmdMemoryRecall(a *Agent, args []string, out io.Writer, store *MemoryStore)
 		embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
 	}
 
-	um := NewUnifiedMemory(store, &a.Config.Memory, a.Workspace)
-	results, err := um.Recall(query, embedder, 0)
+	results, err := a.Memory.Unified.Recall(query, embedder, 0)
 	if err != nil {
 		return fmt.Errorf("memory recall: %w", err)
 	}

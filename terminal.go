@@ -389,6 +389,10 @@ func (a *Agent) Run(out io.Writer) error {
 	// RAG store (optional — only when configured in harvey.yaml)
 	a.initRag(out)
 
+	// Memory subsystems (session-scoped; opened once, closed on exit)
+	a.initMemory(out)
+	defer a.Memory.Close()
+
 	// Sessions directory
 	sessDir, err := ResolveSessionsDir(a.Workspace, a.Config.SessionsDir)
 	if err != nil {
@@ -570,18 +574,16 @@ func (a *Agent) Run(out io.Writer) error {
 	sessionMemoryDigest(a, out)
 
 	// Workspace profile onboarding — runs once when workspace_profile/ is empty.
-	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.ReplayPath == "" {
-		if onboardStore, storeErr := NewMemoryStore(a.Workspace); storeErr == nil {
-			if NeedsOnboarding(onboardStore) {
-				var onboardEmbedder Embedder
-				if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-					onboardEmbedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
-				}
-				if onboardErr := RunOnboarding(a, onboardStore, onboardEmbedder, out, reader); onboardErr != nil {
-					fmt.Fprintf(out, yellow("  ✗")+" Onboarding: %v\n", onboardErr)
-				}
+	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.ReplayPath == "" &&
+		a.Memory != nil && a.Memory.Store != nil {
+		if NeedsOnboarding(a.Memory.Store) {
+			var onboardEmbedder Embedder
+			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+				onboardEmbedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
 			}
-			onboardStore.Close()
+			if onboardErr := RunOnboarding(a, a.Memory.Store, onboardEmbedder, out, reader); onboardErr != nil {
+				fmt.Fprintf(out, yellow("  ✗")+" Onboarding: %v\n", onboardErr)
+			}
 		}
 	}
 
@@ -962,37 +964,33 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintf(out, dim("  Session saved to %s\n"), sessionPath)
 
 		fmt.Fprintln(out, dim("  [auto-mining session for memories — use /memory mine to review manually]"))
-		if memStore, storeErr := NewMemoryStore(a.Workspace); storeErr == nil {
-			manifest, mErr := LoadManifest(memStore.Dir())
+		if a.Memory != nil && a.Memory.Store != nil {
+			manifest, mErr := LoadManifest(a.Memory.Store.Dir())
 			if mErr == nil && !manifest.IsMined(sessionPath) {
 				var embedder Embedder
 				if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
 					embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
 				}
-				miner := NewMiner(memStore, manifest, a.Workspace)
+				miner := NewMiner(a.Memory.Store, manifest, a.Workspace)
 				if mineErr := miner.MineAuto(context.Background(), sessionPath, a, embedder, out); mineErr != nil {
 					fmt.Fprintf(out, "%s Auto-mine: %v\n", yellow("  ✗"), mineErr)
 				}
 			}
-			memStore.Close()
 		}
 	}
 
 	// Record session memory stats for adaptive budget tuning.
-	if a.Config.Memory.Enabled && a.Workspace != nil {
-		if memStore, msErr := NewMemoryStore(a.Workspace); msErr == nil {
-			sessionID := ""
-			if a.Recorder != nil {
-				sessionID = filepath.Base(a.Recorder.Path())
-			}
-			budget := 512
-			if a.Config.OllamaContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
-				budget = int(float64(a.Config.OllamaContextLength) * a.Config.Memory.BudgetPct)
-			}
-			_ = memStore.RecordSessionStats(sessionID, budget, a.sessionInjectedTokens,
-				a.sessionCompressed, a.avgToksPerSec())
-			memStore.Close()
+	if a.Config.Memory.Enabled && a.Memory != nil && a.Memory.Store != nil {
+		sessionID := ""
+		if a.Recorder != nil {
+			sessionID = filepath.Base(a.Recorder.Path())
 		}
+		budget := 512
+		if a.Config.OllamaContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
+			budget = int(float64(a.Config.OllamaContextLength) * a.Config.Memory.BudgetPct)
+		}
+		_ = a.Memory.Store.RecordSessionStats(sessionID, budget, a.sessionInjectedTokens,
+			a.sessionCompressed, a.avgToksPerSec())
 	}
 
 	return nil
@@ -1528,7 +1526,18 @@ func (a *Agent) initRag(out io.Writer) {
 	fmt.Fprintf(out, green("✓")+" RAG store: %s (%s) [%s]\n", entry.Name, entry.DBPath, status)
 }
 
-
+// initMemory opens the session-scoped MemorySystem. Failures are non-fatal —
+// memory features degrade gracefully when the store cannot be opened.
+func (a *Agent) initMemory(out io.Writer) {
+	if !a.Config.Memory.Enabled || a.Workspace == nil {
+		return
+	}
+	ms, err := OpenMemory(a.Workspace, &a.Config.Memory)
+	a.Memory = ms
+	if err != nil {
+		fmt.Fprintf(out, yellow("  ✗")+" Memory store unavailable: %v\n", err)
+	}
+}
 
 // pickSession scans sessDir for .spmd and .fountain files and, if any exist,
 // asks the user whether to resume one. Returns the chosen file path and the
@@ -1919,11 +1928,8 @@ func sessionMemoryDigest(a *Agent, out io.Writer) {
 	}
 
 	// Count unmined sessions via manifest.
-	store, err := NewMemoryStore(a.Workspace)
-	if err == nil {
-		defer store.Close()
-		manifest, err := LoadManifest(store.Dir())
-		if err == nil {
+	if a.Memory != nil && a.Memory.Store != nil {
+		if manifest, err := LoadManifest(a.Memory.Store.Dir()); err == nil {
 			sessDir := a.SessionsDir
 			if sessDir == "" {
 				sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")

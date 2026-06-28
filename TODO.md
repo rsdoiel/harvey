@@ -35,7 +35,7 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 
 ### After R2–R5 stabilize
 
-- [ ] **R6** — Introduce `MemorySystem` aggregate (`memory_system.go`); `OpenMemory`/`Close`; replace 11 separate `NewMemoryStore` opens; add `Memory *MemorySystem` to `Agent`
+- [x] **R6** — Introduce `MemorySystem` aggregate (`memory_system.go`); `OpenMemory`/`Close`; replace 11 separate `NewMemoryStore` opens; add `Memory *MemorySystem` to `Agent`
 - [ ] **R8** — Create `builtin_tools_test.go` with coverage for chunking guard, write_file auto-format, and permission paths
 - [ ] **R7-B** — Group `Config` fields into `OllamaConfig`, `LlamafileConfig`, `SecurityConfig`, `SessionConfig` sub-structs (defer until unified backend design finalised; YAML migration required)
 

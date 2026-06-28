@@ -121,14 +121,10 @@ func memoryTypeCandidates(_ *Agent) []string {
  *   ids := memoryIDCandidates(a) // ["tool_use_a3f891", ...]
  */
 func memoryIDCandidates(a *Agent) []string {
-	if a.Workspace == nil {
+	if a.Memory == nil || a.Memory.Store == nil {
 		return nil
 	}
-	store, err := NewMemoryStore(a.Workspace)
-	if err != nil {
-		return nil
-	}
-	defer store.Close()
+	store := a.Memory.Store
 
 	var ids []string
 	for _, mt := range ValidMemoryTypes {

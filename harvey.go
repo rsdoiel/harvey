@@ -169,6 +169,7 @@ type Agent struct {
 	ActiveSkill   string         // name of the most recently loaded skill; "" when none
 	ActiveSkillSet string        // name of the currently loaded skill-set bundle; "" when none
 	Tools         *ToolRegistry  // schema-based tool registry; nil when tools are disabled
+	Memory        *MemorySystem  // session-scoped memory subsystems; nil until initMemory runs
 	LastRAGInfo            *RAGAugmentInfo // set after each chat turn that fires RAG; cleared by ClearHistory
 	LastObservationID      int64           // ID of the most recently recorded /kb observe; cleared by ClearHistory
 	// toolsReliableOverride, when non-nil, overrides the capability-based logic
@@ -333,11 +334,9 @@ func (a *Agent) injectMemoryContext(query string) {
 	if !a.Config.Memory.Enabled || !a.Config.Memory.InjectOnStart || a.Workspace == nil {
 		return
 	}
-	store, err := NewMemoryStore(a.Workspace)
-	if err != nil {
+	if a.Memory == nil || a.Memory.Unified == nil {
 		return
 	}
-	defer store.Close()
 
 	var embedder Embedder
 	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
@@ -349,8 +348,7 @@ func (a *Agent) injectMemoryContext(query string) {
 		budget = int(float64(a.Config.OllamaContextLength) * a.Config.Memory.BudgetPct)
 	}
 
-	um := NewUnifiedMemory(store, &a.Config.Memory, a.Workspace)
-	results, err := um.Recall(query, embedder, budget)
+	results, err := a.Memory.Unified.Recall(query, embedder, budget)
 	if err != nil || len(results) == 0 {
 		return
 	}

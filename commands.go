@@ -688,33 +688,31 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintln(out, "Recording: off")
 	}
 	// Memory store summary
-	if a.Config.Memory.Enabled && a.Workspace != nil {
-		if store, err := NewMemoryStore(a.Workspace); err == nil {
-			defer store.Close()
-			if n, err := store.Count(); err == nil {
-				sessDir := a.SessionsDir
-				if sessDir == "" {
-					sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")
-				}
-				unminedCount := 0
-				if manifest, err := LoadManifest(store.Dir()); err == nil {
-					if unmined, err := manifest.UnminedSessions(sessDir); err == nil {
-						unminedCount = len(unmined)
-					}
-				}
-				fmt.Fprintf(out, "Memory:    %d active", n)
-				if unminedCount > 0 {
-					fmt.Fprintf(out, "  (%d session(s) unmined)", unminedCount)
-				}
-				fmt.Fprintln(out)
+	if a.Config.Memory.Enabled && a.Memory != nil && a.Memory.Store != nil {
+		store := a.Memory.Store
+		if n, err := store.Count(); err == nil {
+			sessDir := a.SessionsDir
+			if sessDir == "" {
+				sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")
 			}
-			// Active workspace profile
-			if profiles, err := store.List(string(MemoryTypeWorkspaceProfile)); err == nil {
-				if len(profiles) > 0 {
-					fmt.Fprintf(out, "Profile:   %s (%s)\n", profiles[0].Description, profiles[0].ID)
-				} else {
-					fmt.Fprintln(out, "Profile:   (none — run /profile use to set one)")
+			unminedCount := 0
+			if manifest, err := LoadManifest(store.Dir()); err == nil {
+				if unmined, err := manifest.UnminedSessions(sessDir); err == nil {
+					unminedCount = len(unmined)
 				}
+			}
+			fmt.Fprintf(out, "Memory:    %d active", n)
+			if unminedCount > 0 {
+				fmt.Fprintf(out, "  (%d session(s) unmined)", unminedCount)
+			}
+			fmt.Fprintln(out)
+		}
+		// Active workspace profile
+		if profiles, err := store.List(string(MemoryTypeWorkspaceProfile)); err == nil {
+			if len(profiles) > 0 {
+				fmt.Fprintf(out, "Profile:   %s (%s)\n", profiles[0].Description, profiles[0].ID)
+			} else {
+				fmt.Fprintln(out, "Profile:   (none — run /profile use to set one)")
 			}
 		}
 	}
@@ -981,24 +979,18 @@ func cmdHint(a *Agent, _ []string, out io.Writer) error {
 	hints := 0
 
 	// --- Memory store ---
-	if a.Config.Memory.Enabled && a.Workspace != nil {
-		store, err := NewMemoryStore(a.Workspace)
-		if err == nil {
-			defer store.Close()
-			sessDir := a.SessionsDir
-			if sessDir == "" {
-				sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")
-			}
-			manifest, err := LoadManifest(store.Dir())
-			if err == nil {
-				unmined, err := manifest.UnminedSessions(sessDir)
-				if err == nil && len(unmined) > 0 {
-					fmt.Fprintf(out, "  Sessions unmined: %d\n", len(unmined))
-					fmt.Fprintln(out, "    Harvey can extract learnings from these sessions.")
-					fmt.Fprintln(out, "    Run: /memory mine")
-					fmt.Fprintln(out)
-					hints++
-				}
+	if a.Config.Memory.Enabled && a.Memory != nil && a.Memory.Store != nil {
+		sessDir := a.SessionsDir
+		if sessDir == "" {
+			sessDir = filepath.Join(a.Workspace.Root, harveySubdir, "sessions")
+		}
+		if manifest, err := LoadManifest(a.Memory.Store.Dir()); err == nil {
+			if unmined, err := manifest.UnminedSessions(sessDir); err == nil && len(unmined) > 0 {
+				fmt.Fprintf(out, "  Sessions unmined: %d\n", len(unmined))
+				fmt.Fprintln(out, "    Harvey can extract learnings from these sessions.")
+				fmt.Fprintln(out, "    Run: /memory mine")
+				fmt.Fprintln(out)
+				hints++
 			}
 		}
 	}

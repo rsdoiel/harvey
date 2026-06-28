@@ -13,23 +13,24 @@ func TestCmdStatus_ProfileShown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := NewMemoryStore(ws)
+	cfg := DefaultConfig()
+	cfg.Memory.Enabled = true
+
+	ms, err := OpenMemory(ws, &cfg.Memory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer ms.Close()
 
 	ts := "2026-06-05 11:00:00"
 	id := "workspace_profile_status01"
 	doc := NewMemoryDoc(id, MemoryTypeWorkspaceProfile, "Data Scientist — testws", "data scientist", []string{"workspace_profile"})
 	doc.FountainBody = BuildFountainBody(ts, [][2]string{{"HARVEY", "data scientist profile"}})
-	if err := store.Save(doc, nil); err != nil {
+	if err := ms.Store.Save(doc, nil); err != nil {
 		t.Fatalf("save profile: %v", err)
 	}
 
-	cfg := DefaultConfig()
-	cfg.Memory.Enabled = true
-	a := &Agent{Config: cfg, Workspace: ws, commands: make(map[string]*Command)}
+	a := &Agent{Config: cfg, Workspace: ws, Memory: ms, commands: make(map[string]*Command)}
 	a.registerCommands()
 
 	var out strings.Builder
@@ -55,7 +56,14 @@ func TestCmdStatus_NoProfile(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.Memory.Enabled = true
-	a := &Agent{Config: cfg, Workspace: ws, commands: make(map[string]*Command)}
+
+	ms, err := OpenMemory(ws, &cfg.Memory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ms.Close()
+
+	a := &Agent{Config: cfg, Workspace: ws, Memory: ms, commands: make(map[string]*Command)}
 	a.registerCommands()
 
 	var out strings.Builder
