@@ -512,6 +512,143 @@ func TestRunChatTurn_CannotReadRetry_SkipsWhenNoFiles(t *testing.T) {
 	}
 }
 
+// ─── injectOrChunk ────────────────────────────────────────────────────────────
+
+// TestInjectOrChunk_SmallFile verifies that a file within maxInjectFileBytes is
+// injected directly, identical to injectFileContext behaviour.
+func TestInjectOrChunk_SmallFile(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.OllamaContextLength = 8192
+	a.Config.Chunking = DefaultChunkConfig()
+	a.Client = &mockLLMClient{reply: "ok"}
+
+	content := "small file content"
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "small.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	got := a.injectOrChunk(context.Background(), "review small.md", &out)
+
+	if !strings.Contains(got, "### File: small.md") {
+		t.Errorf("expected file header for small file; got:\n%s", got)
+	}
+	if !strings.Contains(got, content) {
+		t.Errorf("expected file content; got:\n%s", got)
+	}
+}
+
+// TestInjectOrChunk_LargeFileChunkingDisabled verifies that a large file is
+// skipped with a hint message when chunking is disabled.
+func TestInjectOrChunk_LargeFileChunkingDisabled(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.OllamaContextLength = 100
+	a.Config.Chunking = DefaultChunkConfig()
+	a.Config.Chunking.Enabled = false
+	a.Client = &mockLLMClient{reply: "ok"}
+
+	big := strings.Repeat("word ", maxInjectFileBytes/4) // > 16KB
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "big.md"), []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	got := a.injectOrChunk(context.Background(), "review big.md", &out)
+
+	if strings.Contains(got, "### File: big.md") {
+		t.Errorf("large file should not be injected when chunking is disabled")
+	}
+	if got != "review big.md" {
+		t.Errorf("prompt should be unchanged when file is skipped; got:\n%s", got)
+	}
+	hint := out.String()
+	if !strings.Contains(hint, "skipping") {
+		t.Errorf("expected skip hint in output; got:\n%s", hint)
+	}
+}
+
+// TestInjectOrChunk_LargeFileUserCancels verifies that typing "no" at the
+// chunk prompt leaves the file uninjected.
+func TestInjectOrChunk_LargeFileUserCancels(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.OllamaContextLength = 100 // tiny context so any large file exceeds budget
+	a.Config.Chunking = DefaultChunkConfig()
+	a.Config.Chunking.Enabled = true
+	a.Client = &mockLLMClient{reply: "chunk summary"}
+	a.In = strings.NewReader("no\n")
+
+	big := strings.Repeat("paragraph text here. ", maxInjectFileBytes/4)
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "large.md"), []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	got := a.injectOrChunk(context.Background(), "review large.md", &out)
+
+	if strings.Contains(got, "### File:") || strings.Contains(got, "### Analysis of") {
+		t.Errorf("cancelled chunking should leave prompt unmodified; got:\n%s", got)
+	}
+	if got != "review large.md" {
+		t.Errorf("prompt should be unchanged after cancel; got:\n%s", got)
+	}
+}
+
+// TestInjectOrChunk_LargeFileRunsChunking verifies that when the user provides
+// an instruction, RunChunkedAnalysis runs and its synthesis is prepended.
+func TestInjectOrChunk_LargeFileRunsChunking(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.OllamaContextLength = 100
+	a.Config.Chunking = DefaultChunkConfig()
+	a.Config.Chunking.Enabled = true
+	a.Client = &mockLLMClient{reply: "chunk summary of this section"}
+	a.In = strings.NewReader("summarise each section\n")
+
+	big := strings.Repeat("This is a paragraph about something important. ", maxInjectFileBytes/4)
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "doc.md"), []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	got := a.injectOrChunk(context.Background(), "review doc.md", &out)
+
+	if !strings.Contains(got, "### Analysis of doc.md") {
+		t.Errorf("expected analysis header in prompt; got:\n%s", got)
+	}
+	if !strings.HasSuffix(got, "review doc.md") {
+		t.Errorf("original prompt should remain at end; got:\n%s", got)
+	}
+}
+
+// TestInjectOrChunk_LargeFileFitsInBudget verifies that a file larger than
+// maxInjectFileBytes but within the context budget is injected directly
+// without prompting the user.
+func TestInjectOrChunk_LargeFileFitsInBudget(t *testing.T) {
+	a := newTestAgent(t)
+	// Very large context limit so the file easily fits in budget.
+	a.Config.OllamaContextLength = 1_000_000
+	a.Config.Chunking = DefaultChunkConfig()
+	a.Config.Chunking.Enabled = true
+	a.Client = &mockLLMClient{reply: "ok"}
+	// a.In defaults to strings.NewReader("") — no input needed since prompt is not shown.
+
+	// File slightly larger than maxInjectFileBytes (16KB) but << 1M-token budget.
+	medium := strings.Repeat("some content ", (maxInjectFileBytes+512)/13)
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "medium.md"), []byte(medium), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	got := a.injectOrChunk(context.Background(), "review medium.md", &out)
+
+	if !strings.Contains(got, "### File: medium.md") {
+		t.Errorf("file within budget should be injected directly; got:\n%s", got)
+	}
+	// No prompt should have been shown.
+	if strings.Contains(out.String(), "Context overflow") {
+		t.Errorf("should not show context-overflow prompt when file fits in budget; out:\n%s", out.String())
+	}
+}
+
 func TestRunChatTurn_CannotReadRetry_SkipsWhenAlreadyInjected(t *testing.T) {
 	a := newTestAgent(t)
 	// File exists but will be injected by option 1 (toolsReliable=false by default

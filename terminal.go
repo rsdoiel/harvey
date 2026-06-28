@@ -1037,8 +1037,9 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 
 	// File-reference injection — for models that don't reliably call read_file,
 	// resolve any mentioned file paths and prepend their content directly.
+	// injectOrChunk extends injectFileContext with chunked analysis for large files.
 	if !a.toolsReliable() {
-		augmented = injectFileContext(a.Workspace, augmented)
+		augmented = a.injectOrChunk(ctx, augmented, out)
 	}
 
 	a.AddMessage("user", augmented)

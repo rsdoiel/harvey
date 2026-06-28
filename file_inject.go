@@ -9,7 +9,9 @@ package harvey
 // they would have received via a read_file tool call.
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -95,6 +97,129 @@ func injectFileContext(ws *Workspace, prompt string) string {
 			continue
 		}
 		fmt.Fprintf(&header, "### File: %s\n\n%s\n\n---\n\n", tok, string(content))
+	}
+
+	if header.Len() == 0 {
+		return prompt
+	}
+	return header.String() + prompt
+}
+
+// injectOrChunk extends the inject path with chunking support. It is called by
+// runChatTurn in place of injectFileContext when !toolsReliable().
+//
+// Files ≤ maxInjectFileBytes are injected directly. Files that exceed the
+// context-budget threshold trigger the interactive promptChunkInstruction →
+// RunChunkedAnalysis flow when chunking is enabled. Files that exceed the cap
+// but fit within the context budget are also injected directly. Files that
+// exceed both the cap and the budget are skipped with a short hint when
+// chunking is disabled or the context limit is unknown.
+func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer) string {
+	if a.Workspace == nil {
+		return prompt
+	}
+	var header strings.Builder
+	seen := map[string]bool{}
+
+	for _, tok := range strings.Fields(prompt) {
+		tok = strings.Trim(tok, ".,;:!?\"'`()")
+		if tok == "" || !looksLikePath(tok) {
+			continue
+		}
+		if seen[tok] {
+			continue
+		}
+		seen[tok] = true
+
+		if strings.Contains(prompt, "### File: "+tok) {
+			continue
+		}
+
+		if !injectableExts[strings.ToLower(filepath.Ext(tok))] {
+			continue
+		}
+
+		absPath, err := a.Workspace.AbsPath(tok)
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(absPath)
+		if err != nil || info.IsDir() {
+			continue
+		}
+
+		if info.Size() <= maxInjectFileBytes {
+			// Within the conservative per-file cap — inject directly.
+			content, err := os.ReadFile(absPath)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(&header, "### File: %s\n\n%s\n\n---\n\n", tok, string(content))
+			continue
+		}
+
+		// File is larger than maxInjectFileBytes.
+		// Try chunked analysis when it is enabled and the LLM is available.
+		if !a.Config.Chunking.Enabled || a.Client == nil {
+			fmt.Fprint(out, dim("  (skipping "+tok+" — file too large to inject; enable chunking: or use the read_file tool)\n"))
+			continue
+		}
+		rem := remainingContext(a)
+		if rem <= 0 {
+			fmt.Fprint(out, dim("  (skipping "+tok+" — context full)\n"))
+			continue
+		}
+		budget := int(float64(rem) * a.Config.Chunking.Threshold)
+		exceeded, size, statErr := fileExceedsBudget(absPath, budget)
+		if statErr != nil {
+			continue
+		}
+		if !exceeded {
+			// Larger than the safety cap but still fits within the context budget.
+			// Inject directly with the global output cap applied.
+			content, err := os.ReadFile(absPath)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(&header, "### File: %s\n\n%s\n\n---\n\n", tok, capOutput(string(content), a.Config.MaxOutputBytes))
+			continue
+		}
+
+		// File exceeds both the safety cap and the context budget: prompt the
+		// user for a chunk instruction and run the map-reduce analysis.
+		lastMsg := lastUserMessage(a)
+		instruction, cancelled := promptChunkInstruction(a.In, out, tok, int(size/4), budget, lastMsg)
+		if cancelled {
+			continue
+		}
+		model := a.Client.Name()
+		if ac, ok := a.Client.(*AnyLLMClient); ok {
+			model = ac.ModelName()
+		}
+		if mentionName, rest, ok := ParseAtMention(instruction); ok {
+			model = mentionName
+			instruction = rest
+		}
+		chunkData, readErr := os.ReadFile(absPath)
+		if readErr != nil {
+			continue
+		}
+		docType := DetectDocType(absPath)
+		chunks := ChunkDocument(string(chunkData), a.Config.Chunking, docType)
+		params := ChunkAnalysisParams{
+			Filename:    filepath.Base(tok),
+			Chunks:      chunks,
+			Instruction: instruction,
+			Model:       model,
+			DocType:     docType,
+			Config:      a.Config.Chunking,
+		}
+		synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, params, out)
+		if synthErr != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Chunked analysis: %v\n", synthErr)
+			continue
+		}
+		fmt.Fprintf(&header, "### Analysis of %s\n\n%s\n\n---\n\n", tok, synthesis)
 	}
 
 	if header.Len() == 0 {

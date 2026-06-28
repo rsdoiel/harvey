@@ -43,16 +43,13 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 
 ## Bugs
 
-- [ ] **Chunked analysis not triggered for large files (W5 wiring incomplete).**
-  W0–W5 are marked done but the pre-read guard in `terminal.go` is not routing
-  large files through `RunChunkedAnalysis`. Observed 2026-06-28: prompting Harvey
-  to review `natural_language_programming.md` (a ~17K-token file) with RAG off
-  sent the full file as a raw prompt, causing an OOM crash on the Pi (8B model,
-  CPU-only, 15.8 GiB RAM). A second attempt with 13K tokens also stalled.
-  `fileExceedsBudget` or the `@mention` routing in W5 is not firing correctly.
-  Must be diagnosed and fixed before chunked analysis can be considered working.
-  See [chunked-analysis-design.md](chunked-analysis-design.md) and
-  [chunked-analysis-plan.md](chunked-analysis-plan.md).
+- [x] **Chunked analysis not triggered for large files (W5 wiring incomplete).**
+  Root cause: the chunking guard only existed in the `read_file` tool handler
+  (structured tool call path). The inject path (`injectOrChunk`, called from
+  `runChatTurn` when `!toolsReliable()`) silently skipped files > 16KB with no
+  chunking fallback. Fixed by replacing `injectFileContext` with `injectOrChunk`
+  in `runChatTurn`, which runs the interactive `promptChunkInstruction` →
+  `RunChunkedAnalysis` flow for large files when chunking is enabled.
 
 - [ ] This ollama model list in harvey's YAML config can become stale over time as I add and remove models, it needs to get cleaned up so it doesn't list models that are not available
 
