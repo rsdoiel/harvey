@@ -31,7 +31,7 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 - [ ] **R5** — Extract 6 backend-startup functions from `terminal.go` into `backend_startup.go`
 - [x] **R2** — Extract `/rag` command + ingest pipeline from `commands.go` into `commands_rag.go` (~1400 lines)
 - [x] **R3** — Extract `/memory` commands from `commands.go` into `commands_memory.go` (~640 lines)
-- [ ] **R4** — Extract `/kb`, `/skill`, `/route` commands from `commands.go` into `commands_kb.go`, `commands_skill.go`, `commands_route.go`
+- [x] **R4** — Extract `/kb`, `/skill`, `/route` commands from `commands.go` into `commands_kb.go`, `commands_skill.go`, `commands_route.go`
 
 ### After R2–R5 stabilize
 
