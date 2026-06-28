@@ -23,7 +23,7 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 - [x] **R0-D** — Move `ragChunk` from `commands.go` to `rag_support.go`
 - [x] **R0-G** — Rename ~9 orphan test files to match the source files they actually test
 - [x] **R0-H** — Remove duplicate `LlamafileEntry` definition from `config.go` (two definitions at ~line 80 and ~line 1090)
-- [ ] **R1** — Move `tryExecuteProseToolCalls` + `tryExecuteApertusToolCalls` from `terminal.go` to `tool_executor.go`
+- [x] **R1** — Move `tryExecuteProseToolCalls` + `tryExecuteApertusToolCalls` from `terminal.go` to `tool_executor.go`
 
 ### After R0+R1 stabilize
 
