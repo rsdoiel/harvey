@@ -1,6 +1,6 @@
 # Harvey Fountain Format Specification
 
-*Version 1.2 — Multi-model character attribution for Harvey session recordings*
+*Version 1.3 — Chunked document analysis scene and notes*
 
 ---
 
@@ -202,8 +202,22 @@ FADE IN:
 INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
 INT. AGENT MODE 2026-05-04 18:35:00
 INT. SKILL FOUNTAIN-ANALYSIS 2026-05-04 18:40:00
+INT. CONTEXT RECALL 2026-06-24 10:00:01
+INT. CHUNK ANALYSIS — document.md 2026-06-27 10:04:08
 EXT. MISTRAL AND RSDOIEL 2026-05-04 18:45:00
 ```
+
+**Special-format headings.** Some scene types do not follow the
+`CHARACTER AND CHARACTER` pattern and instead use a descriptive label.
+These headings are recognised by their fixed prefix:
+
+| Prefix | Scene type |
+|--------|-----------|
+| `INT. CONTEXT RECALL` | Memory injection at session start |
+| `INT. CHUNK ANALYSIS —` | Chunked document analysis (filename follows the dash) |
+| `INT. AGENT MODE` | File write operations |
+| `INT. SKILL` | Skill activation |
+| `INT. SHELL` | Shell command execution |
 
 ### Scene Description
 
@@ -360,6 +374,56 @@ INT. CONTEXT RECALL 2026-06-24 10:00:01
 
 [[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
 [[recall: tool_use_d55f70 (tool_use) — score 0.75]]
+```
+
+#### Chunk Analysis Notes
+
+Three note types appear exclusively inside `INT. CHUNK ANALYSIS` scenes.
+
+**`[[chunk:]]` — analysis header.** Written once at the top of the scene,
+before the RSDOIEL dialogue, recording the parameters of the analysis run.
+
+```
+[[chunk: file=NAME, chunks=N, model=MODEL, boundary=TYPE, chunk-size=N]]
+```
+
+Fields: `file` (base filename), `chunks` (total chunk count), `model`
+(ALL-CAPS model name), `boundary` (`paragraph` or `source`),
+`chunk-size` (target size in bytes).
+
+**`[[chunk-result:]]` — per-chunk status.** One note per chunk, written
+after each map-phase LLM call completes, in order.
+
+```
+[[chunk-result: i/N — ok]]
+[[chunk-result: i/N — error: <first line of error>]]
+```
+
+**`[[synthesis:]]` — synthesis step status.** Written once after all
+chunk results are recorded, before HARVEY's closing line.
+
+```
+[[synthesis: model=MODEL — ok]]
+[[synthesis: model=MODEL — error: <first line of error>]]
+```
+
+**Complete `INT. CHUNK ANALYSIS` scene example:**
+
+```
+INT. CHUNK ANALYSIS — document.md 2026-06-27 10:04:08
+
+[[chunk: file=document.md, chunks=3, model=LLAMA3, boundary=paragraph, chunk-size=6000]]
+
+RSDOIEL
+Summarize the methodology and findings of each section. @llama3
+
+[[chunk-result: 1/3 — ok]]
+[[chunk-result: 2/3 — ok]]
+[[chunk-result: 3/3 — error: context exceeded]]
+[[synthesis: model=LLAMA3 — ok]]
+
+HARVEY
+Chunk analysis complete. Synthesized result injected into conversation.
 ```
 
 #### Session End
@@ -571,6 +635,44 @@ INT. CONTEXT RECALL 2026-06-24 10:00:01
 [[recall: tool_use_d55f70 (tool_use) — score 0.75]]
 ```
 
+### Chunk Analysis Scene (`INT. CHUNK ANALYSIS — FILENAME`)
+
+Written when a file read would overflow the model's remaining context
+and the user chooses to proceed with chunked analysis. The scene opens
+between the turn that triggered the overflow and the turn that receives
+the synthesized result. It records the chunk parameters, the user's
+processing instruction, per-chunk status, and synthesis status.
+
+```
+INT. CHUNK ANALYSIS — report.md 2026-06-27 10:04:08
+
+[[chunk: file=report.md, chunks=12, model=LLAMA3, boundary=paragraph, chunk-size=6000]]
+
+RSDOIEL
+Summarize the methodology and findings of each section. @llama3
+
+[[chunk-result: 1/12 — ok]]
+[[chunk-result: 2/12 — ok]]
+[[chunk-result: 3/12 — ok]]
+[[synthesis: model=LLAMA3 — ok]]
+
+HARVEY
+Chunk analysis complete. Synthesized result injected into conversation.
+```
+
+**Fields in scene heading:** `INT. CHUNK ANALYSIS — ` followed by the
+base filename and a timestamp.
+
+**Notes in scene:**
+- One `[[chunk:]]` header note immediately after the scene heading
+- The RSDOIEL line contains the user's chunk instruction (may include
+  `@model` routing)
+- One `[[chunk-result:]]` note per chunk, in order
+- One `[[synthesis:]]` note as the final note before HARVEY's closing line
+
+The RSDOIEL dialogue line (the chunk instruction) is available to
+`/memory mine` for extraction as a reusable workflow pattern.
+
 ### Agent Mode Scenes (`INT. AGENT MODE`)
 
 File write operations and other agent actions.
@@ -730,7 +832,15 @@ FADE IN:$
    - Tool note: `^\[\[(?:([A-Z0-9_-]+)\.)?tool: (.+) — (ok|error:.+)\]\]`
    - RAG note: `^\[\[rag: (\d+) chunks from (.+), top score ([\d.]+)\]\]`
    - Recall note: `^\[\[recall: (\S+) \((\S+)\) — score ([\d.]+)\]\]`
+   - Chunk header: `^\[\[chunk: file=(.+), chunks=(\d+), model=(.+), boundary=(\w+), chunk-size=(\d+)\]\]`
+   - Chunk result: `^\[\[chunk-result: (\d+)/(\d+) — (ok|error:.+)\]\]`
+   - Synthesis: `^\[\[synthesis: model=(.+) — (ok|error:.+)\]\]`
    - @mention: `@([a-zA-Z][a-zA-Z0-9_-]*)`
+
+6. **Detect special-format scene headings** (do not match the
+   `CHARACTER AND CHARACTER` regex):
+   - Context recall: `^INT\. CONTEXT RECALL (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})$`
+   - Chunk analysis: `^INT\. CHUNK ANALYSIS — (.+) (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})$`
 
 ### Character Type Detection
 
@@ -921,6 +1031,58 @@ Offline-model does not respond.
 THE END.
 ```
 
+### Scenario 7: Chunked Document Analysis
+
+A file read overflows the model's remaining context. The user is alerted
+and provides a chunk instruction. Harvey runs the map-reduce workflow and
+injects the synthesized result back into the main conversation.
+
+```
+INT. HARVEY AND RSDOIEL TALKING 2026-06-27 10:04:00
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+
+RSDOIEL
+Read report.md and summarize the methodology section.
+
+HARVEY
+Context overflow: report.md is approximately 68,000 tokens;
+12,000 tokens remain in current context.
+Enter instructions to process each chunk in turn, or "no" to
+return to the conversation.
+
+
+INT. CHUNK ANALYSIS — report.md 2026-06-27 10:04:08
+
+[[chunk: file=report.md, chunks=4, model=LLAMA3, boundary=paragraph, chunk-size=6000]]
+
+RSDOIEL
+Summarize the methodology and findings of each section. @llama3
+
+[[chunk-result: 1/4 — ok]]
+[[chunk-result: 2/4 — ok]]
+[[chunk-result: 3/4 — ok]]
+[[chunk-result: 4/4 — ok]]
+[[synthesis: model=LLAMA3 — ok]]
+
+HARVEY
+Chunk analysis complete. Synthesized result injected into conversation.
+
+
+INT. HARVEY AND RSDOIEL TALKING 2026-06-27 10:07:45
+
+Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
+
+LLAMA3
+The methodology section describes a three-phase experiment: data
+collection, analysis, and validation...
+```
+
+**Note:** The `INT. CHUNK ANALYSIS` scene is a structured aside. The main
+conversation resumes in a new `INT. HARVEY AND … TALKING` scene after the
+synthesis completes. The synthesized result appears as the model's reply
+in that next scene.
+
 ## Validation Rules
 
 ### Required Elements
@@ -1009,6 +1171,7 @@ Older parsers should **gracefully ignore** unknown elements.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3 | 2026-06-27 | Added `INT. CHUNK ANALYSIS — FILENAME` scene type for chunked document analysis; added `[[chunk:]]`, `[[chunk-result:]]`, `[[synthesis:]]` notes; documented special-format scene heading regex variants |
 | 1.2 | 2026-06-24 | Redefined INT./EXT. as local/remote computation; EXT. scenes now used for route dispatch and cloud API calls; added `[[tool:]]`, `[[CHARACTER.tool:]]`, `[[rag:]]`, `[[recall:]]` notes; added `INT. CONTEXT RECALL` scene type |
 | 1.1 | 2026-05-25 | Added `INT. MEMORY <TIMESTAMP>` scene type for memory documents |
 | 1.0 | 2026-05-04 | Initial specification with multi-model character attribution |

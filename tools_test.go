@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -500,5 +501,129 @@ func TestFormatDuration_singular(t *testing.T) {
 	got := formatDuration(1*24*time.Hour + 1*time.Hour + 1*time.Minute)
 	if !strings.Contains(got, "1 day") || strings.Contains(got, "1 days") {
 		t.Errorf("expected singular 'day', got %q", got)
+	}
+}
+
+// ── read_file chunking guard ──────────────────────────────────────────────────
+
+// makeChunkTestAgent returns an Agent ready for chunking guard tests.
+// contextTokens sets OllamaContextLength so remainingContext is predictable.
+// input is wired to a.In for interactive prompt tests.
+func makeChunkTestAgent(t *testing.T, contextTokens int, input string) (*Agent, string) {
+	t.Helper()
+	a, root := makeTestAgent(t)
+	a.Config.OllamaContextLength = contextTokens
+	a.Config.Chunking = DefaultChunkConfig()
+	a.Client = &mockLLMClient{reply: "chunk synthesis result"}
+	a.In = strings.NewReader(input)
+	return a, root
+}
+
+func TestReadFile_UnderBudget(t *testing.T) {
+	// File is small relative to context — chunking guard must not trigger.
+	a, root := makeChunkTestAgent(t, 100000, "") // plenty of context
+	if err := os.WriteFile(filepath.Join(root, "small.txt"), []byte("hello world"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+	result, err := r.Dispatch(context.Background(), "read_file", `{"path":"small.txt"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "hello world" {
+		t.Errorf("expected file content, got %q", result)
+	}
+}
+
+func TestReadFile_OverBudget_Cancelled(t *testing.T) {
+	// Tiny context, large file, user types "no" → cancelled.
+	a, root := makeChunkTestAgent(t, 10, "no\n") // context so tiny any file overflows
+	content := strings.Repeat("x", 400) // 400 bytes ≈ 100 tokens > budget ~7
+	if err := os.WriteFile(filepath.Join(root, "big.txt"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+	result, err := r.Dispatch(context.Background(), "read_file", `{"path":"big.txt"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "File read cancelled by user." {
+		t.Errorf("expected cancellation message, got %q", result)
+	}
+}
+
+func TestReadFile_OverBudget_ChunkingDisabled(t *testing.T) {
+	// Chunking disabled → file is read normally regardless of size.
+	a, root := makeChunkTestAgent(t, 10, "no\n") // tiny context
+	a.Config.Chunking.Enabled = false
+	content := strings.Repeat("y", 400)
+	if err := os.WriteFile(filepath.Join(root, "big2.txt"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+	result, err := r.Dispatch(context.Background(), "read_file", `{"path":"big2.txt"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "yyyy") {
+		t.Errorf("expected file content when chunking disabled, got %q", result)
+	}
+}
+
+func TestReadFile_OverBudget_AcceptsInstruction(t *testing.T) {
+	// User enters a custom instruction → chunk analysis runs, returns synthesis.
+	a, root := makeChunkTestAgent(t, 10, "Extract all headings.\n")
+	content := strings.Repeat("a", 400)
+	if err := os.WriteFile(filepath.Join(root, "big3.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+	result, err := r.Dispatch(context.Background(), "read_file", `{"path":"big3.md"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// mockLLMClient always returns "chunk synthesis result".
+	if result != "chunk synthesis result" {
+		t.Errorf("expected synthesis result, got %q", result)
+	}
+}
+
+// ── promptChunkInstruction ────────────────────────────────────────────────────
+
+func TestPromptChunkInstruction_UserTypesNo(t *testing.T) {
+	_, cancelled := promptChunkInstruction(strings.NewReader("no\n"), io.Discard, "doc.md", 100, 50, "last msg")
+	if !cancelled {
+		t.Error("expected cancelled=true when user types 'no'")
+	}
+}
+
+func TestPromptChunkInstruction_AcceptsSuggestion(t *testing.T) {
+	instr, cancelled := promptChunkInstruction(strings.NewReader("\n"), io.Discard, "doc.md", 100, 50, "summarize")
+	if cancelled {
+		t.Error("expected cancelled=false when user presses Enter with suggestion")
+	}
+	if instr != "summarize" {
+		t.Errorf("expected suggestion %q, got %q", "summarize", instr)
+	}
+}
+
+func TestPromptChunkInstruction_CustomInstruction(t *testing.T) {
+	instr, cancelled := promptChunkInstruction(strings.NewReader("extract headings\n"), io.Discard, "doc.md", 100, 50, "")
+	if cancelled {
+		t.Error("expected cancelled=false for custom instruction")
+	}
+	if instr != "extract headings" {
+		t.Errorf("expected %q, got %q", "extract headings", instr)
+	}
+}
+
+func TestPromptChunkInstruction_EmptyNoSuggestion(t *testing.T) {
+	_, cancelled := promptChunkInstruction(strings.NewReader("\n"), io.Discard, "doc.md", 100, 50, "")
+	if !cancelled {
+		t.Error("expected cancelled=true when user presses Enter with no suggestion")
 	}
 }

@@ -667,6 +667,27 @@ permissions:
   ".":      [read, write, exec, delete]
   "docs/":  [read]
 
+# ── Chunked document analysis ────────────────────────────────────────────────
+chunking:
+  enabled: true                    # when false, read_file reads files without any size check
+  threshold: 0.80                  # alert fires when file exceeds this fraction of remaining context
+  chunk_size_bytes: 6000           # target size of each chunk in bytes (~1500 tokens)
+  max_chunks: 20                   # warn when a document would produce more than this many chunks
+  overlap: paragraph               # "paragraph" (repeat last unit), "none"; default "paragraph"
+
+# When `chunking.enabled` is true and a file would overflow the remaining
+# context window, Harvey prints an alert and prompts for chunk instructions:
+#
+#   Context overflow: report.md is approximately 8000 tokens; 3600 tokens remain.
+#   Enter instructions to process each chunk in turn, or "no" to return.
+#   [read report.md and extract all section headings]
+#   >
+#
+# The pre-filled suggestion (in brackets) is the last user message. Pressing
+# Enter accepts it; typing a new instruction replaces it; typing "no" cancels.
+# The instruction may begin with @model to route chunk processing to a specific
+# endpoint, e.g. "@phi extract the key findings from each section".
+
 # ── Tool calling ──────────────────────────────────────────────────────────────
 tools:
   enabled: true

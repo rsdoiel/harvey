@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -112,6 +113,59 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				sb.WriteString(result.Text)
 				return capOutput(sb.String(), maxBytes), nil
 			}
+			// ── Chunking pre-read guard ─────────────────────────────────────────
+			if a.Config.Chunking.Enabled && a.Client != nil {
+				if rem := remainingContext(a); rem > 0 {
+					budget := int(float64(rem) * a.Config.Chunking.Threshold)
+					if exceeded, size, statErr := fileExceedsBudget(resolved, budget); statErr == nil && exceeded {
+						lastMsg := lastUserMessage(a)
+						instruction, cancelled := promptChunkInstruction(a.In, os.Stdout, p, int(size/4), budget, lastMsg)
+						if cancelled {
+							return "File read cancelled by user.", nil
+						}
+						// Parse @mention: extract model label, strip from instruction.
+						model := a.Client.Name()
+						if ac, ok := a.Client.(*AnyLLMClient); ok {
+							model = ac.ModelName()
+						}
+						if mentionName, rest, mentionOK := ParseAtMention(instruction); mentionOK {
+							model = mentionName
+							instruction = rest
+						}
+						// Read the full file for chunking.
+						chunkData, readErr := os.ReadFile(resolved)
+						if readErr != nil {
+							if a.AuditBuffer != nil {
+								a.AuditBuffer.Log(ActionFileRead, p, StatusError)
+							}
+							return "", fmt.Errorf("read_file: %w", readErr)
+						}
+						docType := DetectDocType(resolved)
+						chunks := ChunkDocument(string(chunkData), a.Config.Chunking, docType)
+						if len(chunks) > a.Config.Chunking.MaxChunks {
+							fmt.Fprintf(os.Stdout, "Warning: document split into %d chunks (max %d); proceeding.\n",
+								len(chunks), a.Config.Chunking.MaxChunks)
+						}
+						params := ChunkAnalysisParams{
+							Filename:    filepath.Base(p),
+							Chunks:      chunks,
+							Instruction: instruction,
+							Model:       model,
+							DocType:     docType,
+							Config:      a.Config.Chunking,
+						}
+						synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, params, os.Stdout)
+						if synthErr != nil {
+							return "", fmt.Errorf("read_file: chunked analysis: %w", synthErr)
+						}
+						if a.AuditBuffer != nil {
+							a.AuditBuffer.Log(ActionFileRead, p, StatusSuccess)
+						}
+						return synthesis, nil
+					}
+				}
+			}
+			// ── Normal read ─────────────────────────────────────────────────────
 			data, err := os.ReadFile(resolved)
 			if err != nil {
 				if a.AuditBuffer != nil {
@@ -822,4 +876,58 @@ func applyAutoFormat(a *Agent, relPath string, original string) string {
 		return ""
 	}
 	return "formatted"
+}
+
+/** promptChunkInstruction displays the context-overflow alert to out, reads a
+ * chunk instruction from in, and returns it. When the user types "no" (or
+ * presses Enter with no input and no suggestion), cancelled is true.
+ * When the user presses Enter with an empty line and a non-empty suggestion,
+ * the suggestion is accepted and returned as instruction.
+ *
+ * Parameters:
+ *   in               (io.Reader) — source for user input (typically a.In).
+ *   out              (io.Writer) — destination for the alert message.
+ *   filename         (string)    — display name of the file that overflowed context.
+ *   estimatedTokens  (int)       — estimated token count of the file (size/4).
+ *   budget           (int)       — remaining context budget in tokens.
+ *   suggestion       (string)    — pre-filled instruction (last user message); may be empty.
+ *
+ * Returns:
+ *   instruction (string) — the user's chunk prompt, or suggestion when Enter is pressed.
+ *   cancelled   (bool)   — true when the user typed "no" or accepted an empty suggestion.
+ *
+ * Example:
+ *   instr, cancelled := promptChunkInstruction(a.In, os.Stdout, "doc.md", 8000, 3600, lastMsg)
+ */
+func promptChunkInstruction(in io.Reader, out io.Writer, filename string, estimatedTokens, budget int, suggestion string) (instruction string, cancelled bool) {
+	fmt.Fprintf(out, "\nContext overflow: %s is approximately %d tokens; %d tokens remain in current context.\n",
+		filename, estimatedTokens, budget)
+	fmt.Fprintln(out, "Enter instructions to process each chunk in turn, or \"no\" to return.")
+	if suggestion != "" {
+		fmt.Fprintf(out, "[%s]\n", suggestion)
+	}
+	fmt.Fprint(out, "> ")
+	line, _ := bufio.NewReader(in).ReadString('\n')
+	line = strings.TrimSpace(line)
+	if line == "" {
+		if suggestion != "" {
+			return suggestion, false
+		}
+		return "", true
+	}
+	if strings.ToLower(line) == "no" {
+		return "", true
+	}
+	return line, false
+}
+
+// lastUserMessage returns the content of the most recent user-role message in
+// the agent's history, or "" when history is empty or has no user messages.
+func lastUserMessage(a *Agent) string {
+	for i := len(a.History) - 1; i >= 0; i-- {
+		if a.History[i].Role == "user" {
+			return a.History[i].Content
+		}
+	}
+	return ""
 }

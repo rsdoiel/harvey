@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -318,6 +319,135 @@ func TestNewRecorder_modelFieldIncludesBackend_ollama(t *testing.T) {
 	data := string(mustRead(t, filepath.Join(dir, "s.fountain")))
 	if !strings.Contains(data, "Model: GEMMA4 (ollama)") {
 		t.Errorf("expected 'Model: GEMMA4 (ollama)' in title page, got:\n%s", data)
+	}
+}
+
+// ─── RecordChunkAnalysisStart / RecordChunkResult / RecordChunkSynthesis ────
+
+func TestRecordChunkAnalysis_fullSequence(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3.2:1b)", dir)
+
+	cfg := DefaultChunkConfig()
+	if err := r.RecordChunkAnalysisStart("README.md", 3, "llama3.2:1b", DocTypeProse, cfg); err != nil {
+		t.Fatalf("RecordChunkAnalysisStart: %v", err)
+	}
+	for i := 1; i <= 3; i++ {
+		if err := r.RecordChunkResult(i, 3, "llama3.2:1b", fmt.Sprintf("Summary of chunk %d.", i), "ok"); err != nil {
+			t.Fatalf("RecordChunkResult %d: %v", i, err)
+		}
+	}
+	if err := r.RecordChunkSynthesis("llama3.2:1b", "Combined answer.", "ok"); err != nil {
+		t.Fatalf("RecordChunkSynthesis: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	checks := []string{
+		"INT. CHUNK ANALYSIS — README.MD", // scene headings are uppercased by Fountain
+		"Harvey processes README.md as 3 chunks of type prose.",
+		"[[chunk: file=README.md, chunks=3, model=llama3.2:1b, boundary=paragraph, chunk-size=6000]]",
+		"(chunk 1/3)",
+		"Summary of chunk 1.",
+		"[[chunk-result: 1/3 — ok]]",
+		"(chunk 3/3)",
+		"Summary of chunk 3.",
+		"[[chunk-result: 3/3 — ok]]",
+		"HARVEY",
+		"Synthesizing results.",
+		"(synthesis)",
+		"Combined answer.",
+		"[[synthesis: model=llama3.2:1b — ok]]",
+	}
+	for _, want := range checks {
+		if !strings.Contains(content, want) {
+			t.Errorf("expected %q in output\n---\n%s", want, content)
+		}
+	}
+}
+
+func TestRecordChunkAnalysis_sourceDocType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3.2:1b)", dir)
+
+	cfg := DefaultChunkConfig()
+	if err := r.RecordChunkAnalysisStart("main.go", 2, "llama3.2:1b", DocTypeSource, cfg); err != nil {
+		t.Fatalf("RecordChunkAnalysisStart: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	if !strings.Contains(content, "boundary=block") {
+		t.Errorf("DocTypeSource should produce boundary=block\n---\n%s", content)
+	}
+	if !strings.Contains(content, "chunks of type source") {
+		t.Errorf("DocTypeSource should produce 'of type source'\n---\n%s", content)
+	}
+}
+
+func TestRecordChunkResult_errorOutcome(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3.2:1b)", dir)
+	_ = r.RecordChunkAnalysisStart("doc.md", 1, "llama3.2:1b", DocTypeProse, DefaultChunkConfig())
+	if err := r.RecordChunkResult(1, 1, "llama3.2:1b", "", "error: context exceeded"); err != nil {
+		t.Fatalf("RecordChunkResult: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "[[chunk-result: 1/1 — error: context exceeded]]") {
+		t.Errorf("expected error outcome in note\n---\n%s", string(data))
+	}
+}
+
+func TestRecordChunkSynthesis_errorOutcome(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3.2:1b)", dir)
+	_ = r.RecordChunkAnalysisStart("doc.md", 1, "llama3.2:1b", DocTypeProse, DefaultChunkConfig())
+	_ = r.RecordChunkResult(1, 1, "llama3.2:1b", "chunk response", "ok")
+	if err := r.RecordChunkSynthesis("llama3.2:1b", "", "error: timeout"); err != nil {
+		t.Fatalf("RecordChunkSynthesis: %v", err)
+	}
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "[[synthesis: model=llama3.2:1b — error: timeout]]") {
+		t.Errorf("expected error outcome in synthesis note\n---\n%s", string(data))
+	}
+}
+
+func TestRecordChunkAnalysis_sceneAfterChat(t *testing.T) {
+	// Chunk analysis scene must be insertable after a normal chat turn.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.fountain")
+	r, _ := NewRecorder(path, "Ollama (llama3.2:1b)", dir)
+	_ = r.RecordTurn("please analyse this doc", "sure")
+	cfg := DefaultChunkConfig()
+	_ = r.RecordChunkAnalysisStart("report.md", 2, "llama3.2:1b", DocTypeProse, cfg)
+	_ = r.RecordChunkResult(1, 2, "llama3.2:1b", "part 1 summary", "ok")
+	_ = r.RecordChunkResult(2, 2, "llama3.2:1b", "part 2 summary", "ok")
+	_ = r.RecordChunkSynthesis("llama3.2:1b", "full summary", "ok")
+	r.Close()
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	// Chat scene must precede chunk scene.
+	chatIdx := strings.Index(content, "INT. HARVEY AND")
+	chunkIdx := strings.Index(content, "INT. CHUNK ANALYSIS")
+	if chatIdx == -1 || chunkIdx == -1 {
+		t.Fatalf("missing expected scenes\n---\n%s", content)
+	}
+	if chatIdx > chunkIdx {
+		t.Error("chat scene must appear before chunk analysis scene")
 	}
 }
 

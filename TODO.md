@@ -3,15 +3,38 @@
 
 ## Feature ideas
 
-- [ ] Since small models have limited context before a file is read it the size should be considered, if a prompt needs to read file a chunking approach could be supplied to create a side conversation that works on chunks then jjoins the results into the main convesation context. This needs further exploration but would in enhance the application of using small models in document analaysis
+- [x] Chunked document analysis for small models — designed and planned.
+  See [chunked-analysis-design.md](chunked-analysis-design.md) and
+  [chunked-analysis-plan.md](chunked-analysis-plan.md). Work items W0–W5
+  are in the v0.0.16 cycle below.
 
 ## Bugs
 
-- [ ] I am hitting context limits when reading content from the file system even when the size of document appears much smaller than context available
+- [x] Context limits hit even when file appears smaller than context window —
+  root cause identified (Harvey compares against raw window, not remaining
+  context after history). Fixed by W1 in
+  [chunked-analysis-plan.md](chunked-analysis-plan.md).
 
 ## v0.0.16 development cycle
 
 - [ ] Make sure LLamafile support is at parity with Ollama support, example creation and use of RAG with Llamafiles
+
+### Chunked document analysis
+See [chunked-analysis-design.md](chunked-analysis-design.md) and
+[chunked-analysis-plan.md](chunked-analysis-plan.md).
+
+- [x] W0 — Update `FOUNTAIN_FORMAT.md` to v1.3: `INT. CHUNK ANALYSIS` scene,
+  `[[chunk:]]`, `[[chunk-result:]]`, `[[synthesis:]]` notes (doc only, no Go changes)
+- [x] W1 — `context_estimator.go`: `remainingContext`, `fileExceedsBudget`
+  (standalone accounting bug fix; `estimateTokens` reused from `routing.go`)
+- [x] W2 — `chunker.go`: `ChunkDocument`, `DetectDocType`, `ChunkConfig`,
+  `DocType` (paragraph/block splitting with overlap)
+- [x] W3 — `recorder.go`: `RecordChunkAnalysisStart`, `RecordChunkResult`,
+  `RecordChunkSynthesis` methods
+- [x] W4 — `chunk_analyzer.go`: `RunChunkedAnalysis` map-reduce engine
+- [x] W5 — `terminal.go` wiring: pre-read guard, `promptChunkInstruction` alert
+  UX, `@mention` routing, `harvey.yaml` `chunking:` stanza,
+  `CONFIGURATION.md` update
 
 
 ### Option 2 reactive retry — surgical rollback

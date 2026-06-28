@@ -566,3 +566,85 @@ func TestSaveRAGConfig_AliasForSaveMemoryConfig(t *testing.T) {
 		t.Errorf("Memory.RagActive: got %q, want kb", cfg2.Memory.RagActive)
 	}
 }
+
+// ── chunking configuration ────────────────────────────────────────────────────
+
+func TestDefaultConfig_ChunkingDefaults(t *testing.T) {
+	cfg := DefaultConfig()
+	if !cfg.Chunking.Enabled {
+		t.Error("Chunking.Enabled: want true by default")
+	}
+	if cfg.Chunking.Threshold != 0.80 {
+		t.Errorf("Chunking.Threshold: got %v, want 0.80", cfg.Chunking.Threshold)
+	}
+	if cfg.Chunking.ChunkSizeBytes != 6000 {
+		t.Errorf("Chunking.ChunkSizeBytes: got %d, want 6000", cfg.Chunking.ChunkSizeBytes)
+	}
+	if cfg.Chunking.MaxChunks != 20 {
+		t.Errorf("Chunking.MaxChunks: got %d, want 20", cfg.Chunking.MaxChunks)
+	}
+	if cfg.Chunking.Overlap != "paragraph" {
+		t.Errorf("Chunking.Overlap: got %q, want paragraph", cfg.Chunking.Overlap)
+	}
+}
+
+func TestLoadHarveyYAML_ChunkingStanza(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := `chunking:
+  enabled: false
+  threshold: 0.60
+  chunk_size_bytes: 4000
+  max_chunks: 10
+  overlap: none
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Chunking.Enabled {
+		t.Error("Chunking.Enabled: want false after YAML override")
+	}
+	if cfg.Chunking.Threshold != 0.60 {
+		t.Errorf("Chunking.Threshold: got %v, want 0.60", cfg.Chunking.Threshold)
+	}
+	if cfg.Chunking.ChunkSizeBytes != 4000 {
+		t.Errorf("Chunking.ChunkSizeBytes: got %d, want 4000", cfg.Chunking.ChunkSizeBytes)
+	}
+	if cfg.Chunking.MaxChunks != 10 {
+		t.Errorf("Chunking.MaxChunks: got %d, want 10", cfg.Chunking.MaxChunks)
+	}
+	if cfg.Chunking.Overlap != "none" {
+		t.Errorf("Chunking.Overlap: got %q, want none", cfg.Chunking.Overlap)
+	}
+}
+
+func TestLoadHarveyYAML_ChunkingNotSet_KeepsDefaults(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// YAML with no chunking section — defaults must be preserved.
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte("auto_record: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if !cfg.Chunking.Enabled {
+		t.Error("Chunking.Enabled should keep default true when not set in YAML")
+	}
+	if cfg.Chunking.ChunkSizeBytes != 6000 {
+		t.Errorf("Chunking.ChunkSizeBytes should keep default 6000, got %d", cfg.Chunking.ChunkSizeBytes)
+	}
+}

@@ -4,6 +4,181 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-27 — Chunked document analysis uses paragraph/block boundaries, not fixed-size tokens
+
+**Context.** The chunked analysis feature (see
+[chunked-analysis-design.md](chunked-analysis-design.md)) must split a
+document into chunks before the map phase. The three practical options are:
+fixed-size token windows, semantic embedding-based splits, and
+structure-aware splits on natural document boundaries (paragraphs for prose,
+function/block boundaries for source code).
+
+**Decision.** Use structure-aware splitting: paragraph boundaries (double
+newline) for prose document types (`.md`, `.txt`, `.rst`, `.tex`, `.html`),
+and function/block boundaries (blank-line-then-signature heuristic) for
+source code types (`.go`, `.ts`, `.py`, `.js`, `.c`, `.h`, others). Each
+chunk includes the last paragraph or signature of the preceding chunk as
+overlap. Document type is detected by file extension; unknown extensions
+default to paragraph splitting.
+
+Structure-aware chunking is supported by multiple independent studies. The
+Bioengineering evaluation (Gomez-Cabello et al., 2025) found adaptive
+boundary alignment achieved 87% accuracy vs 50% for fixed-size chunking
+across identical RAG pipelines. AutoChunker (Jain et al., ACL 2025)
+demonstrated that preserving document hierarchy at boundaries reduces noise
+and improves chunk coherence. The KES 2026 systematic comparison
+(Śmigielski et al.) confirmed structure-aware outperforms fixed-size across
+diverse document and query types.
+
+**Rejected alternatives.**
+
+- *Fixed-size token windows* — simple to implement but consistently
+  underperforms in the literature. QASC (Rastogi, 2605.22834) found 20%
+  of technical documents yield inconsistent retrieval outcomes for
+  identical queries when chunk size varies, because fixed windows cut
+  across sentence and argument boundaries.
+- *Semantic embedding-based splits* — requires an active embedding model
+  (not guaranteed in all Harvey configurations) and adds indexing latency.
+  Gains over paragraph splitting are modest (Oil & Gas study: structure-
+  aware outperforms semantic at lower computational cost). Deferred.
+- *Language-aware parser for source code* — using `go/parser`,
+  `tree-sitter`, or similar for precise function boundary detection. Adds
+  a per-language dependency tree. The blank-line-then-signature heuristic
+  correctly identifies boundaries in well-formatted Go and TypeScript
+  without any dependency. Deferred until the heuristic proves insufficient.
+
+**Consequences.**
+
+- Document type detection by file extension is required before chunking;
+  unknown types fall back to paragraph splitting.
+- Chunk size (default 1,500 tokens / ~6,000 bytes) and overlap strategy
+  are configurable in `harvey.yaml` under a new `chunking:` stanza.
+- If a document would produce more than `max_chunks` (default 20), Harvey
+  warns the user before proceeding — processing 20 of 100 chunks omits
+  material and the user should know.
+
+---
+
+## 2026-06-27 — Chunked analysis uses map-reduce; sliding window and ephemeral RAG deferred
+
+**Context.** When a document is split into N chunks, Harvey must process
+each chunk and combine the results. Three patterns were considered:
+map-reduce (process chunks independently, synthesize once), sliding-window
+summarization (process chunks sequentially, carry a rolling summary), and
+ephemeral RAG (ingest the file into a temporary vector store and query it).
+
+**Decision.** Use map-reduce. Each chunk is processed independently with
+the user's chunk instruction as the prompt (map phase). After all chunks
+complete, a single synthesis pass combines the partial results into a final
+answer that is injected into the main conversation history (reduce phase).
+The synthesis model defaults to the same model used for the map phase.
+
+DocETL (Shankar et al., 2410.12189) showed that decomposing single-pass
+LLM document operations into map→reduce sequences improved accuracy 21–80%
+over single-pass approaches across four complex document analysis tasks.
+NexusSum (Kim & Kim, ACL 2025) demonstrated a 30% improvement in
+BERTScore F1 using a hierarchical multi-LLM pipeline with controlled
+per-chunk output, the same two-phase structure Harvey adopts here.
+
+**Rejected alternatives.**
+
+- *Sliding-window summarization* — processes chunks sequentially, passing
+  a rolling summary to each subsequent chunk prompt. Information loss
+  compounds at each step; for a 20-chunk document, the summary entering
+  chunk 20 is a distillation of nineteen distillations. ContextWeaver
+  (Wu et al., 2604.23069) confirms that approaches which discard earlier
+  reasoning context degrade multi-step performance. Rejected.
+- *Ephemeral RAG* — ingests the file into a temporary vector store and
+  uses the existing `ragAugment` pipeline to retrieve relevant chunks.
+  Suits retrieval use cases (find relevant chunks) but not analysis use
+  cases (process every chunk). Requires an active embedding model not
+  guaranteed in all Harvey configurations. Deferred as a future option
+  for very large corpora where the user wants to query rather than
+  analyze exhaustively.
+- *Per-chunk user confirmation* — pause after each chunk result for user
+  review before proceeding. Adds control at the cost of 20+ interruptions
+  for a single document. Progress is displayed in the terminal during the
+  map phase but no per-chunk confirmation is required.
+
+**Consequences.**
+
+- The map phase runs unattended; terminal progress (`Processing chunk
+  3/12…`) is the user's visibility into it.
+- The synthesized result is injected into main conversation history as the
+  assistant's response to the original user message; the conversation
+  continues normally from that point.
+- The synthesis prompt is derived automatically from the user's chunk
+  instruction; no second prompt is shown to the user (D4).
+- If any individual chunk fails, Harvey records `error` in the Fountain
+  note for that chunk and continues. A partial synthesis is still
+  attempted; the user is informed of failed chunks in the terminal.
+
+---
+
+## 2026-06-27 — Chunked analysis is user-directed; overflow triggers an alert, not silent chunking
+
+**Context.** When Harvey detects that reading a file would overflow the
+model's remaining context, it must decide whether to chunk silently and
+automatically or to pause and involve the user. The trigger for this
+decision uses two signals: an `os.Stat` byte-size estimate before the file
+is read, and a remaining-context estimate that accounts for current
+history, system prompt, and injected memories (not the raw context window).
+
+**Decision.** Harvey alerts the user rather than chunking silently. The
+alert shows the file name, estimated size, and estimated remaining context,
+then presents the user's most recent message as a pre-filled chunk prompt
+with the instruction: *Enter instructions to process each chunk in turn,
+or "no" to return to the conversation.* The user may edit the prompt,
+accept it as-is, or cancel. The chunk prompt may include an `@model`
+directive, which Harvey's existing `@mention` routing infrastructure uses
+to route each chunk analysis call to the named model.
+
+QASC (Rastogi, 2605.22834) provides direct empirical support: treating
+the user query as a first-class input to segmentation improves relevance
+18–27% over fixed or automatically derived chunking prompts. Chunking
+quality is tied to query specificity; only the user knows what they want
+from each chunk.
+
+The two-signal trigger (byte estimate before read, remaining-context
+estimate accounting for history) addresses the underlying accounting bug:
+Harvey currently compares file size against the raw context window rather
+than the context that remains after history and injected content are
+accounted for. ContextWeaver (Wu et al., 2604.23069) identifies this as
+the primary cause of unexpected context overflow in agentic systems.
+
+**Rejected alternatives.**
+
+- *Silent automatic chunking* — derives the chunk prompt from the original
+  user message and proceeds without interruption. Rejected: (1) a generic
+  "read this file" prompt produces poor chunk results per QASC; (2) silent
+  chunking obscures Harvey's behavior and prevents the user from cancelling
+  before many LLM calls are made; (3) the user may realize the file is
+  irrelevant to their question only when the alert appears.
+- *Trigger on raw context window only* — compare file size against the
+  model's total context window, ignoring existing history. This is the
+  current (buggy) behavior. It causes overflow when the conversation has
+  accumulated significant context. Rejected as the trigger for the new
+  feature; the remaining-context estimate is used instead.
+
+**Consequences.**
+
+- The `read_file` tool path gains a pre-read size check using `os.Stat`
+  and a remaining-context estimate derived from serialized history length.
+- A new alert UX path is required in `terminal.go`; it resembles the
+  existing tool-confirmation flow.
+- `@mention` in the chunk prompt is parsed by the existing routing
+  infrastructure; no new routing code is needed.
+- The chunk sub-conversation (user's instruction, per-chunk status notes,
+  synthesis status) is recorded as a new `INT. CHUNK ANALYSIS` scene in
+  the session `.spmd` file. The user's chunk instruction in that scene is
+  available to `/memory mine` for extraction as a reusable workflow
+  pattern.
+- A new `chunking:` stanza in `harvey.yaml` controls the alert threshold
+  (default 80% of remaining context), chunk size, max chunks, and overlap
+  strategy.
+
+---
+
 ## 2026-06-25 — Source registry lives in `knowledge.db`; not a separate database
 
 **Context.** The scholarly provenance design (see

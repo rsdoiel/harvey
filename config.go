@@ -149,6 +149,8 @@ type Config struct {
 	AutoFormat bool
 	// Memory system: RAG stores, knowledge base, and retrieval settings
 	Memory MemoryConfig
+	// Chunking: context-overflow detection and chunked document analysis settings.
+	Chunking ChunkConfig
 }
 
 /** DefaultConfig returns a Config populated with sensible defaults. WorkDir
@@ -207,6 +209,7 @@ func DefaultConfig() *Config {
 				KeepTurns: 6,
 			},
 		},
+		Chunking: DefaultChunkConfig(),
 	}
 }
 
@@ -638,6 +641,15 @@ type harveyYAML struct {
 	ModelAliases    map[string]string   `yaml:"model_aliases,omitempty"`  // short name → full Ollama model ID
 	Memory          memoryYAML          `yaml:"memory,omitempty"`
 	Llamafile       llamafileYAML       `yaml:"llamafile,omitempty"`
+	Chunking        chunkingYAML        `yaml:"chunking,omitempty"`
+}
+
+type chunkingYAML struct {
+	Enabled        *bool   `yaml:"enabled,omitempty"`
+	Threshold      float64 `yaml:"threshold,omitempty"`
+	ChunkSizeBytes int     `yaml:"chunk_size_bytes,omitempty"`
+	MaxChunks      int     `yaml:"max_chunks,omitempty"`
+	Overlap        string  `yaml:"overlap,omitempty"`
 }
 
 type toolsYAML struct {
@@ -908,6 +920,22 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	if y.Memory.RollingSummary.KeepTurns > 0 {
 		cfg.Memory.RollingSummary.KeepTurns = y.Memory.RollingSummary.KeepTurns
+	}
+	// Load chunking settings.
+	if y.Chunking.Enabled != nil {
+		cfg.Chunking.Enabled = *y.Chunking.Enabled
+	}
+	if y.Chunking.Threshold > 0 {
+		cfg.Chunking.Threshold = y.Chunking.Threshold
+	}
+	if y.Chunking.ChunkSizeBytes > 0 {
+		cfg.Chunking.ChunkSizeBytes = y.Chunking.ChunkSizeBytes
+	}
+	if y.Chunking.MaxChunks > 0 {
+		cfg.Chunking.MaxChunks = y.Chunking.MaxChunks
+	}
+	if y.Chunking.Overlap != "" {
+		cfg.Chunking.Overlap = y.Chunking.Overlap
 	}
 	return nil
 }

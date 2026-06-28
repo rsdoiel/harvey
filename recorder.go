@@ -533,6 +533,89 @@ func (r *Recorder) RecordContextRecall(results []UnifiedResult) error {
 	return nil
 }
 
+/** RecordChunkAnalysisStart opens an INT. CHUNK ANALYSIS scene in the session
+ * recording. Call this once before the first RecordChunkResult of an analysis
+ * pass. The scene heading includes the filename so the session reader can locate
+ * a specific document's analysis without scanning dialogue content.
+ *
+ * Parameters:
+ *   filename    (string)     — the document being analysed (basename or path).
+ *   totalChunks (int)        — number of chunks the document was split into.
+ *   model       (string)     — model name that will process the chunks.
+ *   docType     (DocType)    — DocTypeProse or DocTypeSource (sets boundary label).
+ *   cfg         (ChunkConfig) — chunking configuration (supplies chunk-size).
+ *
+ * Returns:
+ *   error — if the write fails.
+ *
+ * Example:
+ *   r.RecordChunkAnalysisStart("README.md", 5, "llama3.2:1b", DocTypeProse, cfg)
+ */
+func (r *Recorder) RecordChunkAnalysisStart(filename string, totalChunks int, model string, docType DocType, cfg ChunkConfig) error {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	r.writeSceneHeading(fmt.Sprintf("INT. CHUNK ANALYSIS — %s %s", filename, ts))
+
+	boundary := "paragraph"
+	if docType == DocTypeSource {
+		boundary = "block"
+	}
+	docLabel := "prose"
+	if docType == DocTypeSource {
+		docLabel = "source"
+	}
+	r.writeAction(fmt.Sprintf("Harvey processes %s as %d chunks of type %s.", filename, totalChunks, docLabel))
+	r.writeNote(fmt.Sprintf("chunk: file=%s, chunks=%d, model=%s, boundary=%s, chunk-size=%d",
+		filename, totalChunks, model, boundary, cfg.ChunkSizeBytes))
+	return nil
+}
+
+/** RecordChunkResult appends the result of a single chunk pass to the current
+ * INT. CHUNK ANALYSIS scene. Call RecordChunkAnalysisStart before the first
+ * call to this method.
+ *
+ * Parameters:
+ *   n          (int)    — 1-based chunk number.
+ *   total      (int)    — total chunks in this analysis pass.
+ *   chunkModel (string) — model name that processed this chunk.
+ *   response   (string) — the model's response text for this chunk.
+ *   outcome    (string) — "ok" or "error: <message>".
+ *
+ * Returns:
+ *   error — if the write fails.
+ *
+ * Example:
+ *   r.RecordChunkResult(1, 5, "llama3.2:1b", "Summary of chunk 1.", "ok")
+ */
+func (r *Recorder) RecordChunkResult(n, total int, chunkModel, response, outcome string) error {
+	modelChar := extractModelName(chunkModel)
+	r.writeDialogue(modelChar, fmt.Sprintf("chunk %d/%d", n, total), response)
+	r.writeNote(fmt.Sprintf("chunk-result: %d/%d — %s", n, total, outcome))
+	return nil
+}
+
+/** RecordChunkSynthesis appends the synthesis step to the current INT. CHUNK
+ * ANALYSIS scene. Call this after the last RecordChunkResult of an analysis
+ * pass to record Harvey's final combined answer.
+ *
+ * Parameters:
+ *   model    (string) — model used for synthesis (may differ from chunk model).
+ *   response (string) — the synthesis model's response text.
+ *   outcome  (string) — "ok" or "error: <message>".
+ *
+ * Returns:
+ *   error — if the write fails.
+ *
+ * Example:
+ *   r.RecordChunkSynthesis("llama3.2:1b", "Combined answer here.", "ok")
+ */
+func (r *Recorder) RecordChunkSynthesis(model, response, outcome string) error {
+	r.writeDialogue("HARVEY", "", "Synthesizing results.")
+	modelChar := extractModelName(model)
+	r.writeDialogue(modelChar, "synthesis", response)
+	r.writeNote(fmt.Sprintf("synthesis: model=%s — %s", model, outcome))
+	return nil
+}
+
 /** RecordExteriorTurn appends a chat turn as a Fountain EXT. scene for remote
  * computation (route dispatch to a remote Ollama instance or cloud API).
  * HARVEY appears as the forwarding character; the remote endpoint replies.
