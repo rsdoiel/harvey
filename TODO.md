@@ -114,11 +114,44 @@ See `henry` project (`henry-handoff-20260622-llamafile-factory.spmd`).
   tokens instead of the current prose JSON fence workaround. Retest with Apertus 4B via
   `bin/assay --llamafile`.
 
+### Agentic memory tools
+See [agentic-memory-design.md](agentic-memory-design.md) and [agentic-memory-plan.md](agentic-memory-plan.md).
+Inspired by AgeMem (Yu et al., 2025; arXiv:2601.01885v2 — `memory-models/2601.01885v2.pdf`).
+
+- [ ] **M0** — Proactive STM warning: inject system nudge when `remainingContext < stm_warn_pct`
+  (default 20%). Add `STMWarnPct float64` to `ChunkConfig`; check in `runChatTurn`.
+  **Effort:** ~1h. No tool registration required.
+
+- [ ] **M3** — `retrieve_memory(query, top_k)` builtin tool. Wraps `UnifiedMemory.Recall()`;
+  prepends results as a system message. On-demand mid-session LTM retrieval.
+  **Effort:** ~1h.
+
+- [ ] **M1** — `summary_context(span)` builtin tool. Compresses N turns (or "all") into a
+  single summary entry using the active LLM; replaces covered messages in `a.History`.
+  **Effort:** ~2h.
+
+- [ ] **M2** — `filter_context(criteria)` builtin tool. Embeds criteria; removes history
+  messages scoring above θ_f = 0.6 cosine similarity. Falls back to keyword match when
+  no embedder is configured. **Effort:** ~3h.
+
+- [ ] **M4** — `add_memory(content, memory_type, tags)` builtin tool. Wraps `MemoryStore.Save()`;
+  auto-generates ID; safe-mode confirmation; recorder call.
+  **Effort:** ~2h.
+
+- [ ] **M5** — `update_memory(id, content)` and `delete_memory(id)` builtin tools.
+  Update re-saves with new content; delete archives by zeroing confidence.
+  **Effort:** ~2h.
+
 ### Dual RAG injection audit
 See [DECISIONS.md](DECISIONS.md) (2026-06-02 — Dual RAG injection audit, deferred).
+Superseded in part by M6 in [agentic-memory-plan.md](agentic-memory-plan.md): once `retrieve_memory`
+(M3) lands, add `per_prompt: bool` to RAG store config so capable models can drive retrieval themselves.
 
-- [ ] Users with both `memory.enabled` and `rag.enabled` receive RAG content twice per turn:
-  once via `UnifiedMemory.Recall()` at session start and once via `ragAugment()` per prompt.
-  Audit the overlap and either (a) skip RAG chunks in `UnifiedMemory.Recall()` when `a.RagOn`
-  is true, or (b) make `ragAugment` a no-op when `UnifiedMemory` already injected from the same
-  store this session.
+- [ ] **M6** — `rag.per_prompt: bool` config flag (default `true`). When false, `ragAugment()`
+  is a no-op; the model uses `retrieve_memory` instead. Resolves dual-injection for capable models.
+  **Effort:** ~2h. **Dependency:** M3.
+
+- [ ] (Legacy option) Users with both `memory.enabled` and `rag.enabled` receive RAG content
+  twice per turn: once via `UnifiedMemory.Recall()` at session start and once via `ragAugment()`
+  per prompt. M6 above is the preferred resolution; this item tracks the fallback for models
+  without tool support.
