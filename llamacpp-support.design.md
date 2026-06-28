@@ -2,8 +2,14 @@
 
 **Author**: Harvey Team  
 **Date**: 2026-06-28  
-**Status**: Draft  
-**Related**: DECISIONS.md entry "2026-06-28 — Llama.cpp integration via server mode (Option A)"  
+**Status**: Superseded by design exploration — do not implement from this document  
+**Related**: DECISIONS.md entry "2026-06-28 — Local model backend design deferred — unified abstraction under exploration"
+
+> **Implementation is deferred.** This document describes a llama.cpp-specific
+> design that predates the decision to pursue a unified model backend abstraction.
+> It is retained as a reference for llama.cpp-specific details (command vocabulary,
+> GGUF path conventions, startup probing, configuration fields). The authoritative
+> design direction is [unified-model-backend-design.md](unified-model-backend-design.md).  
 
 ---
 

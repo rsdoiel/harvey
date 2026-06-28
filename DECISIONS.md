@@ -4,6 +4,55 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-28 — `/plan` IVR support deferred — design incomplete
+
+**Context.** Harvey's `/plan` feature provides bounded-context task execution but lacks output validation and automatic repair. The Instruct-Validate-Repair (IVR) pattern (from the [Mellea project](https://mellea.ai/blogs/why-mellea/)) was evaluated as a candidate extension. Two integration options were considered: (A) extend `/plan` with opt-in inline validation annotations; or (B) add a new `/ivr` command.
+
+**Decision.** **Deferred to a future phase.** Design review revealed too many open questions to proceed safely in the current release cycle:
+
+- What does "step output" mean for each validation type? `validate: command:go build ./...` clearly tests workspace state after the step, but `validate: regex:^func Test` is ambiguous — does it match the model's raw response text or a file? This distinction determines the entire implementation.
+- The repair prompt design includes "previous output" verbatim, which could overflow the context window of a small model when the prior step produced large text (a build log, a file listing, etc.).
+- The `no_errors` validation type has no deterministic definition — "common error patterns" is LLM-like vagueness in a system that explicitly requires deterministic validation.
+- The relationship between IVR and Harvey's strict output enforcement work (Idea 3 in [capability-adapter-concept.md](capability-adapter-concept.md)) is unexplored. Idea 3 may provide the structural foundation IVR needs before behavioral validation can be layered on top.
+
+**Preferred path when ready.** Option A (extend `/plan` with annotations) remains the correct integration point. Option B (separate `/ivr` command) is rejected — IVR is fundamentally about making `/plan` more reliable, not a separate workflow.
+
+**Consequences.**
+
+- No code changes in this release.
+- [plan-ivr-design.md](plan-ivr-design.md) is marked incomplete and deferred.
+- Idea 3 in [capability-adapter-concept.md](capability-adapter-concept.md) should be developed first; its strict output enforcement pattern may resolve IVR's core validation ambiguity.
+- IVR design resumes after Idea 3 is implemented and the validation-target question is answered.
+
+---
+
+## 2026-06-28 — Local model backend design deferred — unified abstraction under exploration
+
+**Context.** Users want llama.cpp as a Harvey backend for better performance on ARM devices. A server-based integration design was drafted in [llamacpp-support.design.md](llamacpp-support.design.md). Design review identified a broader problem: Ollama and Llamafile management both have reliability issues in their current form, and adding a third ad-hoc backend without resolving the underlying inconsistency would make the situation worse. All three backends (Ollama, Llamafile, llama.cpp) share the same lifecycle concerns — start, stop, status, model listing, client wiring — but are currently implemented independently with different data structures and command patterns.
+
+**Decision.** **Implementation deferred.** The design phase continues toward a unified model backend abstraction covering all three local inference backends. The existing `llamacpp-support.design.md` is a reference, not a finalized design.
+
+The unified design will address:
+- A common `ManagedBackend` interface for lifecycle management (start, stop, status, list models, active model, base URL, new LLM client)
+- Consistent client wiring in `Agent` when the active backend changes — replacing the current split between `OllamaStartedByHarvey bool` and `llamafileProc *os.Process`
+- A unified or parallel command surface that users can discover consistently across backends
+- Server detection and adoption (currently only Llamafile has `adoptExternalServer`; Ollama and llama.cpp need equivalent)
+- PID or process persistence across Harvey sessions for backends Harvey started
+
+**Rejected alternatives.**
+
+- *Direct embedding of llama.cpp via CGO* — too much build complexity and maintenance burden for the Pi-first use case. Remains deferred.
+- *Ollama-only* — insufficient for users who need GGUF control or llama.cpp-specific quantization options.
+- *Proceed with ad-hoc llama.cpp commands* — would entrench the inconsistency rather than fix it.
+
+**Consequences.**
+
+- No new `/llamacpp` command implementation in this release.
+- [llamacpp-support.design.md](llamacpp-support.design.md) retains value as a backend-specific reference.
+- New exploration document: [unified-model-backend-design.md](unified-model-backend-design.md).
+
+---
+
 ## 2026-06-27 — Chunked document analysis uses paragraph/block boundaries, not fixed-size tokens
 
 **Context.** The chunked analysis feature (see

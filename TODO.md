@@ -8,12 +8,53 @@
   [chunked-analysis-plan.md](chunked-analysis-plan.md). Work items W0–W5
   are in the v0.0.16 cycle below.
 
+## Refactoring
+
+See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item specs.
+
+### Do now — before new features
+
+- [ ] **R9** — Lower `maxInjectFileBytes` from 64KB to 16KB in `file_inject.go` (OOM safety; 5 min)
+- [ ] **R0-B** — Delete `filterEnvironment` alias in `terminal.go`; call `filterCommandEnvironment` directly
+- [ ] **R0-A** — Consolidate `estimateTokens` into `context_estimator.go`; remove 3 inline copies
+- [ ] **R0-F** — Merge `ollamaFormatBytes` into `formatBytes` in `commands.go`
+- [ ] **R0-E** — Move `resolveLlamafilePath` from `terminal.go` to `llamafile.go`
+- [ ] **R0-C** — Move `ragAugment` from `terminal.go` to `rag_support.go`
+- [ ] **R0-D** — Move `ragChunk` from `commands.go` to `rag_support.go`
+- [ ] **R0-G** — Rename ~9 orphan test files to match the source files they actually test
+- [ ] **R0-H** — Remove duplicate `LlamafileEntry` definition from `config.go` (two definitions at ~line 80 and ~line 1090)
+- [ ] **R1** — Move `tryExecuteProseToolCalls` + `tryExecuteApertusToolCalls` from `terminal.go` to `tool_executor.go`
+
+### After R0+R1 stabilize
+
+- [ ] **R7-A** — Extract YAML adapter structs from `config.go` into `config_yaml.go`
+- [ ] **R5** — Extract 6 backend-startup functions from `terminal.go` into `backend_startup.go`
+- [ ] **R2** — Extract `/rag` command + ingest pipeline from `commands.go` into `commands_rag.go` (~1400 lines)
+- [ ] **R3** — Extract `/memory` commands from `commands.go` into `commands_memory.go` (~640 lines)
+- [ ] **R4** — Extract `/kb`, `/skill`, `/route` commands from `commands.go` into `commands_kb.go`, `commands_skill.go`, `commands_route.go`
+
+### After R2–R5 stabilize
+
+- [ ] **R6** — Introduce `MemorySystem` aggregate (`memory_system.go`); `OpenMemory`/`Close`; replace 11 separate `NewMemoryStore` opens; add `Memory *MemorySystem` to `Agent`
+- [ ] **R8** — Create `builtin_tools_test.go` with coverage for chunking guard, write_file auto-format, and permission paths
+- [ ] **R7-B** — Group `Config` fields into `OllamaConfig`, `LlamafileConfig`, `SecurityConfig`, `SessionConfig` sub-structs (defer until unified backend design finalised; YAML migration required)
+
+---
+
 ## Bugs
 
-- [x] Context limits hit even when file appears smaller than context window —
-  root cause identified (Harvey compares against raw window, not remaining
-  context after history). Fixed by W1 in
+- [ ] **Chunked analysis not triggered for large files (W5 wiring incomplete).**
+  W0–W5 are marked done but the pre-read guard in `terminal.go` is not routing
+  large files through `RunChunkedAnalysis`. Observed 2026-06-28: prompting Harvey
+  to review `natural_language_programming.md` (a ~17K-token file) with RAG off
+  sent the full file as a raw prompt, causing an OOM crash on the Pi (8B model,
+  CPU-only, 15.8 GiB RAM). A second attempt with 13K tokens also stalled.
+  `fileExceedsBudget` or the `@mention` routing in W5 is not firing correctly.
+  Must be diagnosed and fixed before chunked analysis can be considered working.
+  See [chunked-analysis-design.md](chunked-analysis-design.md) and
   [chunked-analysis-plan.md](chunked-analysis-plan.md).
+
+- [ ] This ollama model list in harvey's YAML config can become stale over time as I add and remove models, it needs to get cleaned up so it doesn't list models that are not available
 
 ## v0.0.16 development cycle
 

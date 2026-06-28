@@ -1182,10 +1182,10 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		retryAugmented := injectFileContext(a.Workspace, augmented)
 		if retryAugmented != augmented {
 			fmt.Fprintln(out, yellow("  ⚠")+" Model declined file access; retrying with content pre-loaded.")
-			// First-pass tool call records are invalid after rollback.
-			toolCallRecords = nil
-			// Roll back to just before the user message so we can replace it.
-			a.History = a.History[:histLenBeforeChat-1]
+			// Surgical rollback: remove only the assistant refusal; preserve
+			// any tool-call/result pairs RunToolLoop added before the refusal
+			// so the retry sees the full prior context.
+			a.History = a.History[:len(a.History)-1]
 			a.AddMessage("user", retryAugmented)
 			buf.Reset()
 			var retryStats ChatStats

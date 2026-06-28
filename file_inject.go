@@ -17,7 +17,10 @@ import (
 
 // maxInjectFileBytes is the per-file size cap for inline injection. Files
 // larger than this are skipped to avoid blowing up the context window.
-const maxInjectFileBytes = 64 * 1024
+// 16 KiB ≈ 4K tokens — safe for an 8B model on CPU with existing history.
+// (64 KiB caused OOM crashes on Pi when combined with session history and
+// injected memories; see small-model-budget-design.md.)
+const maxInjectFileBytes = 16 * 1024
 
 // injectableExts is the set of file extensions treated as injectable text.
 // Binaries, images, and PDFs are excluded (PDFs require extraction tooling).
