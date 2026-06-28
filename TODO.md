@@ -51,7 +51,10 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
   in `runChatTurn`, which runs the interactive `promptChunkInstruction` →
   `RunChunkedAnalysis` flow for large files when chunking is enabled.
 
-- [ ] This ollama model list in harvey's YAML config can become stale over time as I add and remove models, it needs to get cleaned up so it doesn't list models that are not available
+- [x] This ollama model list in harvey's YAML config can become stale over time as I add and remove models, it needs to get cleaned up so it doesn't list models that are not available.
+  Fixed via two mechanisms: (1) `/ollama rm` now immediately prunes `model_aliases` values and
+  `model_map` keys referencing the removed model; (2) new `/ollama clean` subcommand queries the
+  live Ollama model list and prunes all stale references from harvey.yaml in one pass.
 
 ## v0.0.16 development cycle
 

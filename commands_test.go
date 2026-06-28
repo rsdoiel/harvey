@@ -1375,6 +1375,176 @@ func TestOllamaUse_noArg_validSelection(t *testing.T) {
 	}
 }
 
+// ─── removeModelFromConfig ────────────────────────────────────────────────────
+
+func TestRemoveModelFromConfig_AliasRemoved(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases = map[string]string{"g": "granite4.1:3b", "q": "qwen2.5:7b"}
+	changed := removeModelFromConfig(cfg, "granite4.1:3b")
+	if !changed {
+		t.Fatal("expected changed=true when alias value matches")
+	}
+	if _, ok := cfg.ModelAliases["g"]; ok {
+		t.Error("expected alias 'g' to be removed")
+	}
+	if _, ok := cfg.ModelAliases["q"]; !ok {
+		t.Error("expected alias 'q' to remain")
+	}
+}
+
+func TestRemoveModelFromConfig_ModelMapKeyRemoved(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Memory.RagStores = []RagStoreEntry{
+		{
+			Name:     "docs",
+			ModelMap: map[string]string{"granite4.1:3b": "nomic-embed-text:latest", "qwen2.5:7b": "nomic-embed-text:latest"},
+		},
+	}
+	changed := removeModelFromConfig(cfg, "granite4.1:3b")
+	if !changed {
+		t.Fatal("expected changed=true when model_map key matches")
+	}
+	if _, ok := cfg.Memory.RagStores[0].ModelMap["granite4.1:3b"]; ok {
+		t.Error("expected 'granite4.1:3b' key to be removed from model_map")
+	}
+	if _, ok := cfg.Memory.RagStores[0].ModelMap["qwen2.5:7b"]; !ok {
+		t.Error("expected 'qwen2.5:7b' key to remain in model_map")
+	}
+}
+
+func TestRemoveModelFromConfig_NoChange(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases = map[string]string{"g": "granite4.1:3b"}
+	changed := removeModelFromConfig(cfg, "llama3.2:3b") // not present anywhere
+	if changed {
+		t.Error("expected changed=false when model name is not referenced")
+	}
+}
+
+func TestRemoveModelFromConfig_CaseInsensitive(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases = map[string]string{"g": "Granite4.1:3B"}
+	changed := removeModelFromConfig(cfg, "granite4.1:3b")
+	if !changed {
+		t.Error("expected changed=true for case-insensitive match")
+	}
+}
+
+// ─── pruneStaleOllamaRefs ─────────────────────────────────────────────────────
+
+func TestPruneStaleOllamaRefs_RemovesStaleAlias(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.ModelAliases = map[string]string{
+		"g": "granite4.1:3b",   // stale — not in live list
+		"n": "nomic-embed-text:latest", // live — keep
+	}
+
+	var out strings.Builder
+	n, err := pruneStaleOllamaRefs(a, []string{"nomic-embed-text:latest"}, &out)
+	if err != nil {
+		t.Fatalf("pruneStaleOllamaRefs: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 removal, got %d", n)
+	}
+	if _, ok := a.Config.ModelAliases["g"]; ok {
+		t.Error("stale alias 'g' should have been removed")
+	}
+	if _, ok := a.Config.ModelAliases["n"]; !ok {
+		t.Error("live alias 'n' should remain")
+	}
+}
+
+func TestPruneStaleOllamaRefs_RemovesStaleModelMapKey(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.Memory.RagStores = []RagStoreEntry{
+		{
+			Name:     "docs",
+			ModelMap: map[string]string{
+				"granite4.1:3b":          "nomic-embed-text:latest", // stale
+				"nomic-embed-text:latest": "nomic-embed-text:latest", // live (self-map, but valid)
+			},
+		},
+	}
+
+	var out strings.Builder
+	n, err := pruneStaleOllamaRefs(a, []string{"nomic-embed-text:latest"}, &out)
+	if err != nil {
+		t.Fatalf("pruneStaleOllamaRefs: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 removal, got %d", n)
+	}
+	if _, ok := a.Config.Memory.RagStores[0].ModelMap["granite4.1:3b"]; ok {
+		t.Error("stale model_map key should have been removed")
+	}
+}
+
+func TestPruneStaleOllamaRefs_NoStaleRefs(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.ModelAliases = map[string]string{"n": "nomic-embed-text:latest"}
+
+	var out strings.Builder
+	n, err := pruneStaleOllamaRefs(a, []string{"nomic-embed-text:latest", "llama3.2:3b"}, &out)
+	if err != nil {
+		t.Fatalf("pruneStaleOllamaRefs: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 removals when all refs are live, got %d", n)
+	}
+}
+
+// ─── /ollama clean ────────────────────────────────────────────────────────────
+
+func TestCmdOllama_Clean_NoStaleRefs(t *testing.T) {
+	srv := ollamaTagsMockServer(t)
+	defer srv.Close()
+
+	a := newTestAgent(t)
+	a.Config.OllamaURL = srv.URL
+	// Model alias points to a live model.
+	a.Config.ModelAliases = map[string]string{"n": "nomic-embed-text:latest"}
+
+	var buf strings.Builder
+	if err := cmdOllama(a, []string{"clean"}, &buf); err != nil {
+		t.Fatalf("cmdOllama clean: %v", err)
+	}
+	if !strings.Contains(buf.String(), "No stale entries") {
+		t.Errorf("expected 'No stale entries' message, got:\n%s", buf.String())
+	}
+	if _, ok := a.Config.ModelAliases["n"]; !ok {
+		t.Error("live alias should not have been removed")
+	}
+}
+
+func TestCmdOllama_Clean_RemovesStaleRefs(t *testing.T) {
+	srv := ollamaTagsMockServer(t) // serves llama3.2:3b and nomic-embed-text:latest
+	defer srv.Close()
+
+	a := newTestAgent(t)
+	a.Config.OllamaURL = srv.URL
+	// granite4.1:3b is NOT in the mock server's model list — should be pruned.
+	a.Config.ModelAliases = map[string]string{
+		"g": "granite4.1:3b",
+		"l": "llama3.2:3b",
+	}
+
+	var buf strings.Builder
+	if err := cmdOllama(a, []string{"clean"}, &buf); err != nil {
+		t.Fatalf("cmdOllama clean: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Removed") {
+		t.Errorf("expected 'Removed' in output, got:\n%s", out)
+	}
+	if _, ok := a.Config.ModelAliases["g"]; ok {
+		t.Error("stale alias 'g' should have been pruned")
+	}
+	if _, ok := a.Config.ModelAliases["l"]; !ok {
+		t.Error("live alias 'l' should remain")
+	}
+}
+
 // ─── /model use (no arg → picker) ────────────────────────────────────────────
 
 func TestCmdModelUse_noArg_noModels(t *testing.T) {

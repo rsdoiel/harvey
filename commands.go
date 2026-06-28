@@ -204,7 +204,7 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdClear,
 		},
 		"ollama": {
-			Usage:        "/ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|logs|use MODEL|env>",
+			Usage:        "/ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|logs|use MODEL|env|clean>",
 			Description:  "Control the local Ollama service and manage models",
 			Handler:      cmdOllama,
 			Subcommands:  []string{"start", "stop", "status", "list", "ps", "run", "pull", "push", "show", "create", "cp", "rm", "logs", "use", "env", "alias"},
@@ -1309,7 +1309,7 @@ func truncate(s string, n int) string {
  */
 func cmdOllama(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /ollama <start [debug]|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL|--all]|logs|use MODEL|env|alias [NAME FULLNAME]>")
+		fmt.Fprintln(out, "Usage: /ollama <start [debug]|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL|--all]|logs|use MODEL|env|alias [NAME FULLNAME]|clean>")
 		return nil
 	}
 	switch strings.ToLower(args[0]) {
@@ -1454,11 +1454,43 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		if err := cmd.Run(); err != nil {
 			return err
 		}
-		// Remove each successfully deleted model from the cache.
+		// Remove each successfully deleted model from the cache and config.
 		if a.ModelCache != nil {
 			for _, m := range models {
 				_ = a.ModelCache.Delete(m)
 			}
+		}
+		aliasOrRagChanged := false
+		for _, m := range models {
+			if removeModelFromConfig(a.Config, m) {
+				aliasOrRagChanged = true
+			}
+		}
+		if aliasOrRagChanged && a.Workspace != nil {
+			_ = SaveModelAliases(a.Workspace, a.Config)
+			_ = SaveMemoryConfig(a.Workspace, a.Config)
+		}
+	case "clean":
+		if !ProbeOllama(a.Config.OllamaURL) {
+			fmt.Fprintln(out, "  Ollama is not running — cannot check installed models.")
+			return nil
+		}
+		summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background())
+		if err != nil {
+			return fmt.Errorf("/ollama clean: %w", err)
+		}
+		names := make([]string, len(summaries))
+		for i, s := range summaries {
+			names[i] = s.Name
+		}
+		n, err := pruneStaleOllamaRefs(a, names, out)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			fmt.Fprintln(out, "  No stale entries found.")
+		} else {
+			fmt.Fprintf(out, "  Removed %d stale reference(s) from harvey.yaml.\n", n)
 		}
 	case "probe":
 		return ollamaProbe(a, args[1:], out)
@@ -1517,6 +1549,103 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "Unknown ollama subcommand: %s\n", args[0])
 	}
 	return nil
+}
+
+/** removeModelFromConfig removes a single Ollama model name from any
+ * ModelAliases values and from the ModelMap keys of every RAG store in cfg.
+ * It returns true if any entry was removed.
+ *
+ * Parameters:
+ *   cfg  (*Config) — config to mutate in place.
+ *   name (string)  — exact model name to remove (compared case-insensitively).
+ *
+ * Returns:
+ *   bool — true when at least one entry was removed.
+ *
+ * Example:
+ *   changed := removeModelFromConfig(a.Config, "granite4.1:3b")
+ */
+func removeModelFromConfig(cfg *Config, name string) bool {
+	changed := false
+	lower := strings.ToLower(name)
+	for alias, full := range cfg.ModelAliases {
+		if strings.ToLower(full) == lower {
+			delete(cfg.ModelAliases, alias)
+			changed = true
+		}
+	}
+	for i := range cfg.Memory.RagStores {
+		for key := range cfg.Memory.RagStores[i].ModelMap {
+			if strings.ToLower(key) == lower {
+				delete(cfg.Memory.RagStores[i].ModelMap, key)
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+/** pruneStaleOllamaRefs removes model_aliases entries and model_map keys that
+ * reference Ollama models not present in liveModels. Changed config sections
+ * are persisted to harvey.yaml. The number of removed entries is returned.
+ *
+ * Parameters:
+ *   a          (*Agent)   — current agent; provides workspace and config.
+ *   liveModels ([]string) — model names currently installed in Ollama.
+ *   out        (io.Writer) — destination for removal notices.
+ *
+ * Returns:
+ *   int   — total number of stale entries removed.
+ *   error — on save failure; partial cleanup may already have been applied.
+ *
+ * Example:
+ *   n, err := pruneStaleOllamaRefs(a, liveModels, os.Stdout)
+ *   fmt.Printf("removed %d stale entries\n", n)
+ */
+func pruneStaleOllamaRefs(a *Agent, liveModels []string, out io.Writer) (int, error) {
+	live := make(map[string]bool, len(liveModels))
+	for _, m := range liveModels {
+		live[strings.ToLower(m)] = true
+	}
+
+	removed := 0
+	aliasChanged := false
+	ragChanged := false
+
+	// Prune model_aliases whose target model is no longer installed.
+	for alias, full := range a.Config.ModelAliases {
+		if !live[strings.ToLower(full)] {
+			fmt.Fprintf(out, "  removing alias %q → %s (model not installed)\n", alias, full)
+			delete(a.Config.ModelAliases, alias)
+			aliasChanged = true
+			removed++
+		}
+	}
+
+	// Prune model_map keys that reference removed generation models.
+	for i := range a.Config.Memory.RagStores {
+		for key := range a.Config.Memory.RagStores[i].ModelMap {
+			if !live[strings.ToLower(key)] {
+				fmt.Fprintf(out, "  removing model_map key %q from store %q (model not installed)\n",
+					key, a.Config.Memory.RagStores[i].Name)
+				delete(a.Config.Memory.RagStores[i].ModelMap, key)
+				ragChanged = true
+				removed++
+			}
+		}
+	}
+
+	if aliasChanged {
+		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
+			return removed, fmt.Errorf("pruneStaleOllamaRefs: save aliases: %w", err)
+		}
+	}
+	if ragChanged {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
+			return removed, fmt.Errorf("pruneStaleOllamaRefs: save rag config: %w", err)
+		}
+	}
+	return removed, nil
 }
 
 // ollamaModelTable prints the model capability table.

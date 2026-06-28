@@ -720,7 +720,16 @@ Model management:
     Copy an installed model to a new name.
 
   /ollama rm MODEL [MODEL...]
-    Remove one or more installed models.
+    Remove one or more installed models. Also prunes any model_aliases entries
+    and model_map keys in harvey.yaml that referenced the removed model, so the
+    config stays in sync automatically.
+
+  /ollama clean
+    Remove stale Ollama references from harvey.yaml. Queries the live Ollama
+    model list and deletes any model_aliases entries whose target model is no
+    longer installed, and any model_map keys in RAG stores that reference
+    removed models. Run this after pulling or deleting models outside Harvey
+    (e.g. directly via the ollama CLI).
 
   /ollama use MODEL
     Switch the active model to MODEL for the current session without
