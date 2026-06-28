@@ -1902,3 +1902,63 @@ func TestCmdModelMode_ShowCurrentMode(t *testing.T) {
 		t.Errorf("expected mode in output; got: %s", out.String())
 	}
 }
+
+func TestCmdModelMode_AutoClearsOverride(t *testing.T) {
+	a, mc := newTestAgentWithCache(t, "phi4:latest")
+	// Start with an explicit override.
+	if err := mc.Set(&ModelCapability{Name: "phi4:latest", ToolMode: ToolModeInject, ProbeLevel: "fast", ProbedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if err := cmdModel(a, []string{"mode", "auto"}, &out); err != nil {
+		t.Fatalf("cmdModel mode auto: %v", err)
+	}
+
+	got, err := mc.Get("phi4:latest")
+	if err != nil || got == nil {
+		t.Fatalf("Get after mode auto: %v, %v", got, err)
+	}
+	if got.ToolMode != ToolModeAuto {
+		t.Errorf("ToolMode after auto: got %q, want %q (ToolModeAuto)", got.ToolMode, ToolModeAuto)
+	}
+	if !strings.Contains(out.String(), "auto") {
+		t.Errorf("expected 'auto' in confirmation message; got: %s", out.String())
+	}
+}
+
+func TestCmdModelMode_AutoOnNamedModel(t *testing.T) {
+	a, mc := newTestAgentWithCache(t, "granite4.1:8b")
+	if err := mc.Set(&ModelCapability{Name: "llama3.2:latest", ToolMode: ToolModeProse, ProbeLevel: "fast", ProbedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if err := cmdModel(a, []string{"mode", "llama3.2:latest", "auto"}, &out); err != nil {
+		t.Fatalf("cmdModel mode llama3.2 auto: %v", err)
+	}
+
+	got, err := mc.Get("llama3.2:latest")
+	if err != nil || got == nil {
+		t.Fatalf("Get llama3.2 after auto: %v, %v", got, err)
+	}
+	if got.ToolMode != ToolModeAuto {
+		t.Errorf("ToolMode: got %q, want %q (ToolModeAuto)", got.ToolMode, ToolModeAuto)
+	}
+}
+
+func TestCmdModelMode_ShowAutoWhenNotSet(t *testing.T) {
+	a, mc := newTestAgentWithCache(t, "phi4:latest")
+	// Ensure entry exists with no explicit ToolMode.
+	if err := mc.Set(&ModelCapability{Name: "phi4:latest", ToolMode: ToolModeAuto, ProbeLevel: "fast", ProbedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if err := cmdModel(a, []string{"mode"}, &out); err != nil {
+		t.Fatalf("cmdModel mode (show auto): %v", err)
+	}
+	if !strings.Contains(out.String(), "auto") {
+		t.Errorf("expected 'auto' in output when ToolMode is not set; got: %s", out.String())
+	}
+}

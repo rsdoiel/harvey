@@ -91,10 +91,10 @@ See [audit-trail-plan.md](audit-trail-plan.md) W1 and the small-model tool-use m
 ### `/model mode MODEL auto` — reset to auto
 See [audit-trail-plan.md](audit-trail-plan.md) option 3 (`/model mode` command, `model_cache.go`).
 
-- [ ] `/model mode` currently accepts `structured`, `prose`, `inject`, and `none` but has no
+- [x] `/model mode` currently accepts `structured`, `prose`, `inject`, and `none` but has no
   `auto` value to clear an explicit override and return the model to capability-detected defaults.
-  Add `auto` as a valid mode that sets `tool_mode = ''` (empty) in `model_capabilities`, restoring
-  `modelToolMode()` fallback to `CapabilityStatus`.
+  Added `auto` as a valid mode that sets `tool_mode = ''` (ToolModeAuto) in `model_capabilities`,
+  restoring `toolsReliable()` fallback to `CapabilityStatus`.
 
 ### Retraction monitoring service
 See [scholarly-provenance-plan.md](scholarly-provenance-plan.md) S2 and

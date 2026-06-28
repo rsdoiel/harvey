@@ -505,6 +505,10 @@ History is preserved — the switch is like a new character entering the scene.
   /model mode MODE
     Set the tool-execution mode for the active model. MODE must be one of:
 
+      auto         Clear any previously set override and return to the
+                   capability-detected default (SupportsTools flag from
+                   /ollama probe). Use this to undo a manual mode setting.
+
       structured   Force OpenAI-style tool_calls (RunToolLoop). Use when the
                    model supports structured tool calls but the auto-probe
                    disagrees.

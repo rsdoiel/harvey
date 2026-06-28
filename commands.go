@@ -881,9 +881,10 @@ func cmdModelStatus(a *Agent, out io.Writer) error {
 }
 
 // isValidToolMode reports whether s is a recognised tool-mode value.
+// "auto" (the empty-string alias) clears a previously set override.
 func isValidToolMode(s string) bool {
 	switch s {
-	case ToolModeStructured, ToolModeProse, ToolModeInject, ToolModeNone:
+	case "auto", ToolModeStructured, ToolModeProse, ToolModeInject, ToolModeNone:
 		return true
 	}
 	return false
@@ -951,12 +952,12 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 		modelName = args[0]
 		mode = args[1]
 	default:
-		fmt.Fprintf(out, "  Usage: /model mode [MODEL] {structured|prose|inject|none}\n")
+		fmt.Fprintf(out, "  Usage: /model mode [MODEL] {auto|structured|prose|inject|none}\n")
 		return nil
 	}
 
 	if !isValidToolMode(mode) {
-		fmt.Fprintf(out, "  Unknown mode %q. Valid modes: structured, prose, inject, none\n", mode)
+		fmt.Fprintf(out, "  Unknown mode %q. Valid modes: auto, structured, prose, inject, none\n", mode)
 		return nil
 	}
 
@@ -966,6 +967,14 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 	}
 	if cap == nil {
 		cap = &ModelCapability{Name: modelName, ProbeLevel: "none", ProbedAt: time.Now()}
+	}
+	if mode == "auto" {
+		cap.ToolMode = ToolModeAuto
+		if err := a.ModelCache.Set(cap); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "  %s: tool mode reset to auto (capability-detected)\n", modelName)
+		return nil
 	}
 	cap.ToolMode = mode
 	if err := a.ModelCache.Set(cap); err != nil {
