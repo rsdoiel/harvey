@@ -281,7 +281,7 @@ func runPipelineStep(
 		if ac.ProviderName() == "ollama" {
 			n, _ = CountTokens(ctx, ac.BackendURL(), ac.ModelName(), HistoryText(messages))
 		} else {
-			n = len(HistoryText(messages)) / 4
+			n = estimateTokens(HistoryText(messages))
 		}
 		if limit := a.effectiveContextLimit(); limit > 0 && n > 0 {
 			pct := n * 100 / limit

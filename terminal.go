@@ -60,19 +60,6 @@ var safeEnvPrefixes = []string{
 	"HARVEY",
 }
 
-/** filterEnvironment returns a filtered copy of the environment safe to pass to
- * child processes. Delegates to filterCommandEnvironment which is the canonical
- * implementation shared with the /run command.
- *
- * Parameters:
- *   env ([]string) — the original environment in "KEY=VALUE" format.
- *
- * Returns:
- *   []string — filtered environment with only safe variables.
- */
-func filterEnvironment(env []string) []string {
-	return filterCommandEnvironment(env)
-}
 
 // isConnectionError returns true when err indicates a transport-level failure
 // consistent with the llamafile server having stopped: connection refused,
@@ -751,7 +738,7 @@ func (a *Agent) Run(out io.Writer) error {
 				shCmd.Dir = a.Workspace.Root
 			}
 			// Restrict environment to prevent inheriting sensitive variables
-			shCmd.Env = filterEnvironment(os.Environ())
+			shCmd.Env = filterCommandEnvironment(os.Environ())
 			shCmd.Stdout = mw
 			shCmd.Stderr = mw
 			runErr := shCmd.Run()
@@ -1349,10 +1336,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	if a.Config.Memory.RollingSummary.Enabled && a.Client != nil {
 		contextLen := a.effectiveContextLimit()
 		if contextLen > 0 {
-			histTokens := len(HistoryText(a.History)) / 4
-			if histTokens < 1 {
-				histTokens = 1
-			}
+			histTokens := estimateTokens(HistoryText(a.History))
 			if ShouldCompress(histTokens, contextLen, a.Config.Memory.RollingSummary.WarnAtPct) {
 				pct := histTokens * 100 / contextLen
 				fmt.Fprintln(out, dim(fmt.Sprintf("  [context ~%d%% full — compressing older turns]", pct)))
@@ -1568,14 +1552,6 @@ func (a *Agent) initRag(out io.Writer) {
 	fmt.Fprintf(out, green("✓")+" RAG store: %s (%s) [%s]\n", entry.Name, entry.DBPath, status)
 }
 
-// resolveLlamafilePath returns an absolute path for p, resolving workspace-
-// relative paths against root. Absolute paths are returned unchanged.
-func resolveLlamafilePath(p, root string) string {
-	if filepath.IsAbs(p) {
-		return p
-	}
-	return filepath.Join(root, p)
-}
 
 /** useLlamafileEntry wires a.Client to the running llamafile server using
  * the registry entry name as the model identifier.
@@ -2320,91 +2296,6 @@ func sessionMemoryDigest(a *Agent, out io.Writer) {
 	}
 }
 
-// ragAugment prepends relevant RAG chunks to prompt when RAG is enabled.
-// Returns the original prompt unchanged when RAG is off, unconfigured, or
-// when no chunks are retrieved. Errors are silently swallowed so a RAG
-// failure never blocks the chat turn.
-// ragMinScore is the minimum cosine similarity a chunk must have to be injected
-// as context. Chunks scoring below this threshold are discarded so that irrelevant
-// results don't waste the limited context window of small models.
-const ragMinScore = 0.3
-
-func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
-	if !a.RagOn || a.Rag == nil {
-		return prompt, nil
-	}
-	entry := a.Config.Memory.ActiveRagStore()
-	if entry == nil || entry.EmbeddingModel == "" {
-		return prompt, nil
-	}
-
-	// Resolve embedding model for the current generation model.
-	embedModel := entry.EmbeddingModel
-	if entry.ModelMap != nil {
-		if mapped, ok := entry.ModelMap[a.Config.OllamaModel]; ok && mapped != "" {
-			embedModel = mapped
-		}
-	}
-
-	embedder := NewOllamaEmbedder(a.Config.OllamaURL, embedModel)
-	chunks, err := a.Rag.Query(prompt, embedder, 5)
-	if err != nil || len(chunks) == 0 {
-		return prompt, nil
-	}
-
-	// Discard chunks below the relevance threshold; they confuse small models
-	// and waste context tokens without adding useful information.
-	var relevant []Chunk
-	for _, c := range chunks {
-		if c.Score >= ragMinScore {
-			relevant = append(relevant, c)
-		}
-	}
-	if len(relevant) == 0 {
-		return prompt, nil
-	}
-
-	topScore := relevant[0].Score
-	a.DebugLog.LogRAGInject(entry.Name, prompt, len(relevant), topScore)
-
-	var sb strings.Builder
-	sb.WriteString("### Context (from knowledge base)\n\n")
-	for i, c := range relevant {
-		if c.Source != "" {
-			fmt.Fprintf(&sb, "[%d] (source: %s)\n%s\n\n", i+1, c.Source, c.Content)
-		} else {
-			fmt.Fprintf(&sb, "[%d] %s\n\n", i+1, c.Content)
-		}
-	}
-	sb.WriteString("---\n\n")
-	sb.WriteString(prompt)
-
-	// Deduplicate sources by file path, preserving retrieval rank order.
-	seen := map[string]bool{}
-	var sources []RAGChunkRef
-	for _, c := range relevant {
-		key := c.Source
-		if key == "" {
-			key = c.Content
-		}
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		sources = append(sources, RAGChunkRef{
-			Source:      c.Source,
-			SourceURL:   c.SourceURL,
-			SourceDOI:   c.SourceDOI,
-			SourceTitle: c.SourceTitle,
-		})
-	}
-	return sb.String(), &RAGAugmentInfo{
-		StoreName: entry.Name,
-		Chunks:    len(relevant),
-		TopScore:  topScore,
-		Sources:   sources,
-	}
-}
 
 // tryExecuteApertusToolCalls scans raw response text for Apertus-native
 // <SPECIAL_71>...<SPECIAL_72> tool calls and executes them through the registry.

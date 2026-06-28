@@ -14,15 +14,15 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 
 ### Do now — before new features
 
-- [ ] **R9** — Lower `maxInjectFileBytes` from 64KB to 16KB in `file_inject.go` (OOM safety; 5 min)
-- [ ] **R0-B** — Delete `filterEnvironment` alias in `terminal.go`; call `filterCommandEnvironment` directly
-- [ ] **R0-A** — Consolidate `estimateTokens` into `context_estimator.go`; remove 3 inline copies
-- [ ] **R0-F** — Merge `ollamaFormatBytes` into `formatBytes` in `commands.go`
-- [ ] **R0-E** — Move `resolveLlamafilePath` from `terminal.go` to `llamafile.go`
-- [ ] **R0-C** — Move `ragAugment` from `terminal.go` to `rag_support.go`
-- [ ] **R0-D** — Move `ragChunk` from `commands.go` to `rag_support.go`
-- [ ] **R0-G** — Rename ~9 orphan test files to match the source files they actually test
-- [ ] **R0-H** — Remove duplicate `LlamafileEntry` definition from `config.go` (two definitions at ~line 80 and ~line 1090)
+- [x] **R9** — Lower `maxInjectFileBytes` from 64KB to 16KB in `file_inject.go` (OOM safety; 5 min)
+- [x] **R0-B** — Delete `filterEnvironment` alias in `terminal.go`; call `filterCommandEnvironment` directly
+- [x] **R0-A** — Consolidate `estimateTokens` into `context_estimator.go`; remove 3 inline copies
+- [x] **R0-F** — Merge `ollamaFormatBytes` into `formatBytes` in `commands.go`
+- [x] **R0-E** — Move `resolveLlamafilePath` from `terminal.go` to `llamafile.go`
+- [x] **R0-C** — Move `ragAugment` from `terminal.go` to `rag_support.go`
+- [x] **R0-D** — Move `ragChunk` from `commands.go` to `rag_support.go`
+- [x] **R0-G** — Rename ~9 orphan test files to match the source files they actually test
+- [x] **R0-H** — Remove duplicate `LlamafileEntry` definition from `config.go` (two definitions at ~line 80 and ~line 1090)
 - [ ] **R1** — Move `tryExecuteProseToolCalls` + `tryExecuteApertusToolCalls` from `terminal.go` to `tool_executor.go`
 
 ### After R0+R1 stabilize
@@ -82,7 +82,7 @@ See [chunked-analysis-design.md](chunked-analysis-design.md) and
 See [audit-trail-plan.md](audit-trail-plan.md) W1 and the small-model tool-use mitigation work
 (file_inject.go option 2).
 
-- [ ] The current retry in `terminal.go` calls `Client.Chat` directly and rolls back the full
+- [x] The current retry in `terminal.go` calls `Client.Chat` directly and rolls back the full
   history by one message. When `RunToolLoop` added intermediate tool-call/tool-result messages
   before the refusal, those are silently dropped. Implement a surgical rollback that only removes
   the assistant refusal message and re-adds the augmented user message, preserving prior tool

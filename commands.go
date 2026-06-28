@@ -658,7 +658,7 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 			}
 		default:
 			// For llamafile and cloud providers: estimate via character count.
-			n = len(HistoryText(a.History)) / 4
+			n = estimateTokens(HistoryText(a.History))
 			qualifier = "~"
 		}
 		limit := a.effectiveContextLimit()
@@ -2010,10 +2010,14 @@ func ollamaModelTable(a *Agent, summaries []ModelSummary, out io.Writer, numbere
 			prefix = "  "
 		}
 		displayName := prefix + ollamaTruncateName(s.Name, nameW-len(prefix))
+		sizeStr := "—"
+		if s.SizeBytes > 0 {
+			sizeStr = formatBytes(s.SizeBytes)
+		}
 
 		fmt.Fprintf(out, "%-*s  %7s  %-8s  %6s  %5s  %5s  %6s\n",
 			nameW, displayName,
-			ollamaFormatBytes(s.SizeBytes),
+			sizeStr,
 			ollamaTruncateName(s.Family, 8),
 			ollamaFormatCtx(ctx),
 			tools.String(),
@@ -2261,17 +2265,6 @@ func printDirTree(dir, prefix string, out io.Writer) {
 	}
 }
 
-// ollamaFormatBytes returns a human-readable size string from a byte count.
-func ollamaFormatBytes(n int64) string {
-	if n == 0 {
-		return "—"
-	}
-	if gb := float64(n) / (1024 * 1024 * 1024); gb >= 1 {
-		return fmt.Sprintf("%.1f GB", gb)
-	}
-	mb := float64(n) / (1024 * 1024)
-	return fmt.Sprintf("%.0f MB", mb)
-}
 
 // ollamaFormatCtx returns a human-readable context-length string.
 func ollamaFormatCtx(tokens int) string {
@@ -6233,47 +6226,6 @@ func ragIngestPDF(store *RagStore, embedder Embedder, path string, meta Provenan
 	return len(allChunks), result.DiagramPages, nil
 }
 
-// ragChunk splits text into paragraph-sized chunks of at most ~500 characters,
-// further splitting oversized paragraphs at sentence boundaries.
-func ragChunk(text string) []string {
-	const maxChunk = 500
-
-	paragraphs := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n")
-	var chunks []string
-	for _, p := range paragraphs {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if len(p) <= maxChunk {
-			chunks = append(chunks, p)
-			continue
-		}
-		// Split long paragraphs at sentence ends.
-		sentences := strings.FieldsFunc(p, func(r rune) bool {
-			return r == '.' || r == '!' || r == '?'
-		})
-		var buf strings.Builder
-		for _, s := range sentences {
-			s = strings.TrimSpace(s)
-			if s == "" {
-				continue
-			}
-			if buf.Len()+len(s)+2 > maxChunk && buf.Len() > 0 {
-				chunks = append(chunks, buf.String())
-				buf.Reset()
-			}
-			if buf.Len() > 0 {
-				buf.WriteString(". ")
-			}
-			buf.WriteString(s)
-		}
-		if buf.Len() > 0 {
-			chunks = append(chunks, buf.String())
-		}
-	}
-	return chunks
-}
 
 // ragQuery runs a manual retrieval test against the RAG store.
 func ragQuery(a *Agent, query string, out io.Writer) error {

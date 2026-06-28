@@ -292,15 +292,6 @@ func LlamacppAPIURL(u string) string {
 	return base
 }
 
-// estimateTokens returns a fast token count estimate using the 4-bytes-per-token
-// heuristic.
-func estimateTokens(s string) int {
-	n := len(s) / 4
-	if n < 1 {
-		n = 1
-	}
-	return n
-}
 
 /** listModelsForEndpoint returns the available model IDs for the given provider.
  * For Anthropic, the v1/models SDK endpoint is called directly because the

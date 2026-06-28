@@ -82,6 +82,15 @@ func scanLlamafileModels(dir string) []string {
 	return paths
 }
 
+// resolveLlamafilePath returns an absolute path for p, resolving workspace-
+// relative paths against root. Absolute paths are returned unchanged.
+func resolveLlamafilePath(p, root string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(root, p)
+}
+
 /** probeRunningLlamafileName queries the /v1/models endpoint of a running
  * llamafile server and returns the first model's name with the ".gguf" suffix
  * stripped. Returns "" when the server is unreachable, returns an error, or

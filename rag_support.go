@@ -550,3 +550,131 @@ func (r *RagStore) Count() (int64, error) {
 func (r *RagStore) Close() error {
 	return r.db.Close()
 }
+
+// ragChunk splits text into paragraph-sized chunks of at most ~500 characters,
+// further splitting oversized paragraphs at sentence boundaries.
+func ragChunk(text string) []string {
+	const maxChunk = 500
+
+	paragraphs := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n")
+	var chunks []string
+	for _, p := range paragraphs {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if len(p) <= maxChunk {
+			chunks = append(chunks, p)
+			continue
+		}
+		// Split long paragraphs at sentence ends.
+		sentences := strings.FieldsFunc(p, func(r rune) bool {
+			return r == '.' || r == '!' || r == '?'
+		})
+		var buf strings.Builder
+		for _, s := range sentences {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			if buf.Len()+len(s)+2 > maxChunk && buf.Len() > 0 {
+				chunks = append(chunks, buf.String())
+				buf.Reset()
+			}
+			if buf.Len() > 0 {
+				buf.WriteString(". ")
+			}
+			buf.WriteString(s)
+		}
+		if buf.Len() > 0 {
+			chunks = append(chunks, buf.String())
+		}
+	}
+	return chunks
+}
+
+// ragMinScore is the minimum cosine similarity a chunk must have to be injected
+// as context. Chunks scoring below this threshold are discarded so that irrelevant
+// results don't waste the limited context window of small models.
+const ragMinScore = 0.3
+
+// ragAugment prepends relevant RAG chunks to prompt when RAG is enabled.
+// Returns the original prompt unchanged when RAG is off, unconfigured, or
+// when no chunks are retrieved. Errors are silently swallowed so a RAG
+// failure never blocks the chat turn.
+func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
+	if !a.RagOn || a.Rag == nil {
+		return prompt, nil
+	}
+	entry := a.Config.Memory.ActiveRagStore()
+	if entry == nil || entry.EmbeddingModel == "" {
+		return prompt, nil
+	}
+
+	// Resolve embedding model for the current generation model.
+	embedModel := entry.EmbeddingModel
+	if entry.ModelMap != nil {
+		if mapped, ok := entry.ModelMap[a.Config.OllamaModel]; ok && mapped != "" {
+			embedModel = mapped
+		}
+	}
+
+	embedder := NewOllamaEmbedder(a.Config.OllamaURL, embedModel)
+	chunks, err := a.Rag.Query(prompt, embedder, 5)
+	if err != nil || len(chunks) == 0 {
+		return prompt, nil
+	}
+
+	// Discard chunks below the relevance threshold; they confuse small models
+	// and waste context tokens without adding useful information.
+	var relevant []Chunk
+	for _, c := range chunks {
+		if c.Score >= ragMinScore {
+			relevant = append(relevant, c)
+		}
+	}
+	if len(relevant) == 0 {
+		return prompt, nil
+	}
+
+	topScore := relevant[0].Score
+	a.DebugLog.LogRAGInject(entry.Name, prompt, len(relevant), topScore)
+
+	var sb strings.Builder
+	sb.WriteString("### Context (from knowledge base)\n\n")
+	for i, c := range relevant {
+		if c.Source != "" {
+			fmt.Fprintf(&sb, "[%d] (source: %s)\n%s\n\n", i+1, c.Source, c.Content)
+		} else {
+			fmt.Fprintf(&sb, "[%d] %s\n\n", i+1, c.Content)
+		}
+	}
+	sb.WriteString("---\n\n")
+	sb.WriteString(prompt)
+
+	// Deduplicate sources by file path, preserving retrieval rank order.
+	seen := map[string]bool{}
+	var sources []RAGChunkRef
+	for _, c := range relevant {
+		key := c.Source
+		if key == "" {
+			key = c.Content
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		sources = append(sources, RAGChunkRef{
+			Source:      c.Source,
+			SourceURL:   c.SourceURL,
+			SourceDOI:   c.SourceDOI,
+			SourceTitle: c.SourceTitle,
+		})
+	}
+	return sb.String(), &RAGAugmentInfo{
+		StoreName: entry.Name,
+		Chunks:    len(relevant),
+		TopScore:  topScore,
+		Sources:   sources,
+	}
+}

@@ -1078,15 +1078,6 @@ func SaveModelAliases(ws *Workspace, cfg *Config) error {
 
 // ─── LlamafileEntry and registry helpers ─────────────────────────────────────
 
-/** LlamafileEntry describes one registered llamafile model in Harvey's registry.
- *
- * Fields:
- *   Name (string) — short identifier used with /llamafile use, e.g. "qwen-coding".
- *   Path (string) — path to the binary; absolute or workspace-relative.
- *
- * Example:
- *   e := LlamafileEntry{Name: "qwen", Path: "/home/user/Models/Qwen3.5-4B.llamafile"}
- */
 /** LlamafileEntry describes a registered llamafile model.
  *
  * Fields:

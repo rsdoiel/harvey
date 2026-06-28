@@ -2,7 +2,15 @@ package harvey
 
 import "os"
 
-// estimateTokens is defined in routing.go (bytes/4 heuristic, minimum 1).
+// estimateTokens returns a fast token count estimate using the 4-bytes-per-token
+// heuristic. Returns at least 1 so callers can safely divide by the result.
+func estimateTokens(s string) int {
+	n := len(s) / 4
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
 
 /** remainingContext returns the estimated number of tokens available for new
  * content given the agent's current state. It subtracts the token cost of all
