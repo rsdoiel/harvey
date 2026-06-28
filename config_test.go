@@ -327,22 +327,23 @@ func TestMemoryConfig_RemoveRagStore(t *testing.T) {
 	}
 }
 
-// ─── LoadHarveyYAML memory.rag mirror and precedence ─────────────────────────
+// ─── LoadHarveyYAML memory.rag ───────────────────────────────────────────────
 
-func TestLoadHarveyYAML_TopLevelRagMirrorsIntoMemory(t *testing.T) {
+func TestLoadHarveyYAML_MemoryRagLoadsStores(t *testing.T) {
 	dir := t.TempDir()
 	ws := &Workspace{Root: dir}
 	agentsDir := filepath.Join(dir, "agents")
 	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	yamlContent := `rag:
-  enabled: true
-  active: docs
-  stores:
-    - name: docs
-      db_path: agents/rag/docs.db
-      embedding_model: nomic
+	yamlContent := `memory:
+  rag:
+    enabled: true
+    active: docs
+    stores:
+      - name: docs
+        db_path: agents/rag/docs.db
+        embedding_model: nomic
 `
 	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
 		t.Fatal(err)
@@ -362,41 +363,6 @@ func TestLoadHarveyYAML_TopLevelRagMirrorsIntoMemory(t *testing.T) {
 	}
 	if !cfg.Memory.RagEnabled {
 		t.Error("Memory.RagEnabled: got false, want true")
-	}
-}
-
-func TestLoadHarveyYAML_MemoryRagOverridesTopLevel(t *testing.T) {
-	dir := t.TempDir()
-	ws := &Workspace{Root: dir}
-	agentsDir := filepath.Join(dir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	yamlContent := `rag:
-  enabled: true
-  active: old
-  stores:
-    - name: old
-      db_path: agents/rag/old.db
-      embedding_model: nomic
-memory:
-  rag:
-    enabled: true
-    active: new
-    stores:
-      - name: new
-        db_path: agents/rag/new.db
-        embedding_model: nomic
-`
-	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := DefaultConfig()
-	if err := LoadHarveyYAML(ws, cfg); err != nil {
-		t.Fatalf("LoadHarveyYAML: %v", err)
-	}
-	if cfg.Memory.RagActive != "new" {
-		t.Errorf("Memory.RagActive: got %q, want new", cfg.Memory.RagActive)
 	}
 }
 
@@ -446,30 +412,8 @@ func TestDefaultConfig_MemoryCurrentProjectIDZero(t *testing.T) {
 	}
 }
 
-// TestLoadHarveyYAML_KnowledgeDBMirror verifies that a top-level knowledge_db:
-// value is mirrored into cfg.Memory.KnowledgeDB.
-func TestLoadHarveyYAML_KnowledgeDBMirror(t *testing.T) {
-	dir := t.TempDir()
-	ws := &Workspace{Root: dir}
-	agentsDir := filepath.Join(dir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	yamlContent := "knowledge_db: custom/kb.db\n"
-	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := DefaultConfig()
-	if err := LoadHarveyYAML(ws, cfg); err != nil {
-		t.Fatalf("LoadHarveyYAML: %v", err)
-	}
-	if cfg.Memory.KnowledgeDB != "custom/kb.db" {
-		t.Errorf("Memory.KnowledgeDB: got %q, want custom/kb.db", cfg.Memory.KnowledgeDB)
-	}
-}
-
 // TestLoadHarveyYAML_MemoryKnowledgeBasePrecedence verifies that
-// memory.knowledge_base.path overrides the top-level knowledge_db: value.
+// memory.knowledge_base.path is loaded into cfg.Memory.KnowledgeDB.
 func TestLoadHarveyYAML_MemoryKnowledgeBasePrecedence(t *testing.T) {
 	dir := t.TempDir()
 	ws := &Workspace{Root: dir}
@@ -491,7 +435,7 @@ func TestLoadHarveyYAML_MemoryKnowledgeBasePrecedence(t *testing.T) {
 }
 
 // TestSaveMemoryConfig_PersistsKnowledgeDB verifies that SaveMemoryConfig
-// writes KnowledgeDB to both knowledge_db: and memory.knowledge_base.path:.
+// writes KnowledgeDB to memory.knowledge_base.path: and round-trips correctly.
 func TestSaveMemoryConfig_PersistsKnowledgeDB(t *testing.T) {
 	dir := t.TempDir()
 	ws := &Workspace{Root: dir}

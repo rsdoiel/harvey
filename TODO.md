@@ -27,7 +27,7 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 
 ### After R0+R1 stabilize
 
-- [ ] **R7-A** — Extract YAML adapter structs from `config.go` into `config_yaml.go`
+- [x] **R7-A** — Extract YAML adapter structs from `config.go` into `config_yaml.go`
 - [x] **R5** — Extract 6 backend-startup functions from `terminal.go` into `backend_startup.go`
 - [x] **R2** — Extract `/rag` command + ingest pipeline from `commands.go` into `commands_rag.go` (~1400 lines)
 - [x] **R3** — Extract `/memory` commands from `commands.go` into `commands_memory.go` (~640 lines)

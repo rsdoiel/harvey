@@ -597,103 +597,6 @@ func (m *MemoryConfig) RemoveRagStore(name string) {
 	m.RagStores = out
 }
 
-// ragStoreYAML is the on-disk representation of one entry under rag.stores.
-type ragStoreYAML struct {
-	Name           string            `yaml:"name"`
-	DBPath         string            `yaml:"db_path"`
-	EmbeddingModel string            `yaml:"embedding_model"`
-	ModelMap       map[string]string `yaml:"model_map,omitempty"`
-	EmbedderKind   string            `yaml:"embedder_kind,omitempty"`
-	EmbedderURL    string            `yaml:"embedder_url,omitempty"`
-}
-
-// ragYAML is the on-disk representation of the rag: section in harvey.yaml.
-// The Active/Stores fields are the current format. DBPath, EmbeddingModel,
-// and ModelMap are legacy flat fields from before multi-store support; they
-// are read for backward-compat migration and never written.
-type ragYAML struct {
-	Active         string          `yaml:"active,omitempty"`
-	Stores         []ragStoreYAML  `yaml:"stores,omitempty"`
-	Enabled        bool            `yaml:"enabled"`
-	DBPath         string          `yaml:"db_path,omitempty"`
-	EmbeddingModel string          `yaml:"embedding_model,omitempty"`
-	ModelMap       map[string]string `yaml:"model_map,omitempty"`
-}
-
-// harveyYAML is the on-disk representation of harvey/harvey.yaml.
-// KnowledgeDB and RAG are kept for backward-compat reading of old files;
-// SaveMemoryConfig zeroes them before writing so only memory: is emitted.
-type harveyYAML struct {
-	KnowledgeDB     string              `yaml:"knowledge_db,omitempty"`
-	SessionsDir     string              `yaml:"sessions_dir"`
-	AgentsDir       string              `yaml:"agents_dir"`
-	AutoRecord      *bool               `yaml:"auto_record"` // nil = not set (keep default)
-	ModelCacheDB    string              `yaml:"model_cache_db"`
-	RAG             ragYAML             `yaml:"rag,omitempty"`
-	Permissions     map[string][]string `yaml:"permissions,omitempty"`
-	SafeMode        *bool               `yaml:"safe_mode,omitempty"`        // nil = not set (keep default)
-	SyntaxHighlight *bool               `yaml:"syntax_highlight,omitempty"` // nil = not set (keep default)
-	AutoFormat      *bool               `yaml:"auto_format,omitempty"`      // nil = not set (keep default)
-	AllowedCommands []string            `yaml:"allowed_commands,omitempty"`
-	RunTimeout      string              `yaml:"run_timeout,omitempty"`    // e.g. "5m", "300s", "1m 30s", "300"
-	OllamaTimeout   string              `yaml:"ollama_timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
-	Tools           toolsYAML           `yaml:"tools,omitempty"`
-	ModelAliases    map[string]string   `yaml:"model_aliases,omitempty"`  // short name → full Ollama model ID
-	Memory          memoryYAML          `yaml:"memory,omitempty"`
-	Llamafile       llamafileYAML       `yaml:"llamafile,omitempty"`
-	Chunking        chunkingYAML        `yaml:"chunking,omitempty"`
-}
-
-type chunkingYAML struct {
-	Enabled        *bool   `yaml:"enabled,omitempty"`
-	Threshold      float64 `yaml:"threshold,omitempty"`
-	ChunkSizeBytes int     `yaml:"chunk_size_bytes,omitempty"`
-	MaxChunks      int     `yaml:"max_chunks,omitempty"`
-	Overlap        string  `yaml:"overlap,omitempty"`
-}
-
-type toolsYAML struct {
-	Enabled              *bool `yaml:"enabled,omitempty"`
-	MaxToolCallsPerTurn  int   `yaml:"max_tool_calls_per_turn,omitempty"`
-	MaxOutputBytes       int   `yaml:"max_output_bytes,omitempty"`
-	ToolResultCompaction *bool `yaml:"tool_result_compaction,omitempty"`
-}
-
-type llamafileEntryYAML struct {
-	Name          string `yaml:"name"`
-	Path          string `yaml:"path"`
-	ContextLength int    `yaml:"context_length,omitempty"`
-}
-
-type llamafileYAML struct {
-	ModelsDir      string               `yaml:"models_dir,omitempty"`
-	Active         string               `yaml:"active,omitempty"`
-	URL            string               `yaml:"url,omitempty"`
-	StartupTimeout string               `yaml:"startup_timeout,omitempty"` // e.g. "120s", "2m"
-	GPULayers      *int                 `yaml:"gpu_layers,omitempty"`      // -ngl value; nil = use default (99)
-	MaxTokens      int                  `yaml:"max_tokens,omitempty"`      // cap on tokens per completion; 0 = no limit
-	Models         []llamafileEntryYAML `yaml:"models,omitempty"`
-}
-
-type rollingSummaryYAML struct {
-	Enabled   *bool   `yaml:"enabled,omitempty"`
-	WarnAtPct float64 `yaml:"warn_at_pct,omitempty"`
-	KeepTurns int     `yaml:"keep_turns,omitempty"`
-}
-
-type knowledgeBaseYAML struct {
-	Path string `yaml:"path,omitempty"`
-}
-
-type memoryYAML struct {
-	Enabled        *bool               `yaml:"enabled,omitempty"`
-	TopK           int                 `yaml:"top_k,omitempty"`
-	InjectOnStart  *bool               `yaml:"inject_on_start,omitempty"`
-	BudgetPct      float64             `yaml:"budget_pct,omitempty"`
-	RollingSummary rollingSummaryYAML  `yaml:"rolling_summary,omitempty"`
-	RAG            ragYAML             `yaml:"rag,omitempty"`
-	KnowledgeBase  knowledgeBaseYAML   `yaml:"knowledge_base,omitempty"`
-}
 
 // parseDurationString parses a duration from a YAML string value. It accepts:
 //   - Plain integer: treated as seconds (e.g. "300" → 5 minutes)
@@ -745,10 +648,6 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if err := yaml.Unmarshal(data, &y); err != nil {
 		return err
 	}
-	// KnowledgeDB: top-level key for backward compat; memory.knowledge_base.path takes precedence.
-	if y.KnowledgeDB != "" {
-		cfg.Memory.KnowledgeDB = y.KnowledgeDB
-	}
 	if y.Memory.KnowledgeBase.Path != "" {
 		cfg.Memory.KnowledgeDB = y.Memory.KnowledgeBase.Path
 	}
@@ -764,32 +663,7 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.ModelCacheDB != "" {
 		cfg.ModelCacheDB = y.ModelCacheDB
 	}
-	// RAG: top-level rag: key for backward compat; memory.rag: takes precedence when stores are set.
-	if len(y.RAG.Stores) > 0 {
-		cfg.Memory.RagStores = make([]RagStoreEntry, len(y.RAG.Stores))
-		for i, s := range y.RAG.Stores {
-			cfg.Memory.RagStores[i] = RagStoreEntry{
-				Name:           s.Name,
-				DBPath:         s.DBPath,
-				EmbeddingModel: s.EmbeddingModel,
-				ModelMap:       s.ModelMap,
-				EmbedderKind:   s.EmbedderKind,
-				EmbedderURL:    s.EmbedderURL,
-			}
-		}
-		cfg.Memory.RagActive = y.RAG.Active
-	} else if y.RAG.DBPath != "" {
-		// Legacy flat format — migrate to a single "default" entry.
-		cfg.Memory.RagStores = []RagStoreEntry{{
-			Name:           "default",
-			DBPath:         y.RAG.DBPath,
-			EmbeddingModel: y.RAG.EmbeddingModel,
-			ModelMap:       y.RAG.ModelMap,
-		}}
-		cfg.Memory.RagActive = "default"
-	}
-	cfg.Memory.RagEnabled = y.RAG.Enabled
-	// memory.rag: takes precedence over top-level rag: when stores are specified there.
+	// memory.rag: is the canonical RAG configuration location.
 	if len(y.Memory.RAG.Stores) > 0 {
 		cfg.Memory.RagStores = make([]RagStoreEntry, len(y.Memory.RAG.Stores))
 		for i, s := range y.Memory.RAG.Stores {
@@ -968,10 +842,6 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	if data, err := os.ReadFile(yamlPath); err == nil {
 		_ = yaml.Unmarshal(data, &y)
 	}
-	// Clear legacy top-level keys; only memory: is written going forward.
-	y.RAG = ragYAML{}
-	y.KnowledgeDB = ""
-
 	var stores []ragStoreYAML
 	if len(cfg.Memory.RagStores) > 0 {
 		stores = make([]ragStoreYAML, len(cfg.Memory.RagStores))
