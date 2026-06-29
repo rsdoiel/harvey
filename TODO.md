@@ -3,6 +3,8 @@
 
 ## Feature ideas
 
+- [ ] While Harvey should support using Ollama models (including starting/stopping Ollama service if necessary), managing the Ollama models available to fall to the Ollama cli this will give us better alignment with all the models and minimize further the Ollama specific behavior
+  - [ ] When an alias is setup for an Ollama model via `/model use`, it should do a probe to get the model's features this will let us drop the `/ollama probe` and `/ollama probe-all` commands
 - [ ] Once `/memory profile` is enabled there is no way to turn it off
 - [x] Add support for using Llama.cpp to run models
 - [ ] Assay needs to work across model systems, example I should be able to use with Llamafiles or Llama.cpp
