@@ -219,6 +219,12 @@ func (a *Agent) registerCommands() {
 				"drop": llamafileNameCandidates,
 			},
 		},
+		"llamacpp": {
+			Usage:       "/llamacpp <status|list|start PATH|stop|drop NAME>",
+			Description: "Manage llama.cpp (llama-server) backend",
+			Handler:     cmdLlamaCpp,
+			Subcommands: []string{"status", "list", "start", "stop", "drop"},
+		},
 		"kb": {
 			Usage:       "/kb <status|search|inject|project|observe|concept> [args...]",
 			Description: "Manage and query the workspace knowledge base",

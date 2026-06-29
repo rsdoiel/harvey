@@ -137,6 +137,8 @@ type Config struct {
 	LlamafileStartupTimeout time.Duration // how long to wait for the server to respond; default 120s
 	LlamafileGPULayers      int           // layers to offload to GPU via -ngl; -1 = let llamafile decide (CPU), 99 = maximise GPU
 	LlamafileMaxTokens      int           // max tokens per completion; 0 = no limit (use model default)
+	// LlamaCpp backend settings
+	LlamaCpp LlamaCppConfig
 	// Model aliases: short name → full Ollama model identifier
 	ModelAliases map[string]string
 	// Tool settings
@@ -195,6 +197,10 @@ func DefaultConfig() *Config {
 		LlamafileModelsDir:      llamafileDefaultModelsDir(),
 		LlamafileStartupTimeout: 120 * time.Second,
 		LlamafileGPULayers:      99,
+		LlamaCpp: LlamaCppConfig{
+			URL:          "http://127.0.0.1:8081",
+			StartTimeout: 120 * time.Second,
+		},
 		SyntaxHighlight:       true,
 		AutoFormat:            true,
 		ToolsEnabled:          true,
@@ -766,6 +772,30 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 			Name: m.Name, Path: m.Path, ContextLength: m.ContextLength,
 		})
 	}
+	// Load llama.cpp settings
+	if y.LlamaCpp.ServerBin != "" {
+		cfg.LlamaCpp.ServerBin = y.LlamaCpp.ServerBin
+	}
+	if y.LlamaCpp.ModelsDir != "" {
+		cfg.LlamaCpp.ModelsDir = expandTilde(y.LlamaCpp.ModelsDir)
+	}
+	if y.LlamaCpp.URL != "" {
+		cfg.LlamaCpp.URL = y.LlamaCpp.URL
+	}
+	if y.LlamaCpp.CtxSize > 0 {
+		cfg.LlamaCpp.CtxSize = y.LlamaCpp.CtxSize
+	}
+	if y.LlamaCpp.Threads > 0 {
+		cfg.LlamaCpp.Threads = y.LlamaCpp.Threads
+	}
+	if y.LlamaCpp.GPULayers != nil {
+		cfg.LlamaCpp.GPULayers = *y.LlamaCpp.GPULayers
+	}
+	if y.LlamaCpp.StartTimeout != "" {
+		if d, err := parseDurationString(y.LlamaCpp.StartTimeout); err == nil {
+			cfg.LlamaCpp.StartTimeout = d
+		}
+	}
 	// Load tool settings
 	if y.Tools.Enabled != nil {
 		cfg.ToolsEnabled = *y.Tools.Enabled
@@ -955,6 +985,32 @@ func SaveModelAliases(ws *Workspace, cfg *Config) error {
 	return os.WriteFile(yamlPath, out, 0644)
 }
 
+// ─── LlamaCppConfig ───────────────────────────────────────────────────────────
+
+/** LlamaCppConfig holds workspace-level llama.cpp (llama-server) settings.
+ *
+ * Fields:
+ *   ServerBin    (string)        — path to the llama-server binary; defaults to "llama-server" (PATH lookup).
+ *   ModelsDir    (string)        — directory scanned for *.gguf model files; defaults to ~/Models.
+ *   URL          (string)        — API base URL; defaults to http://127.0.0.1:8081.
+ *   CtxSize      (int)           — --ctx-size passed to llama-server; 0 = server default.
+ *   Threads      (int)           — --threads; 0 = server default.
+ *   GPULayers    (int)           — --n-gpu-layers; 0 = CPU-only.
+ *   StartTimeout (time.Duration) — how long to wait for the server to respond on startup; default 120s.
+ *
+ * Example:
+ *   cfg.LlamaCpp = LlamaCppConfig{URL: "http://127.0.0.1:8081", GPULayers: 35}
+ */
+type LlamaCppConfig struct {
+	ServerBin    string        // path to llama-server binary; "" = "llama-server" (PATH lookup)
+	ModelsDir    string        // directory for *.gguf files; "" = llamafileDefaultModelsDir()
+	URL          string        // API base URL; default http://127.0.0.1:8081
+	CtxSize      int           // --ctx-size; 0 = server default
+	Threads      int           // --threads; 0 = server default
+	GPULayers    int           // --n-gpu-layers; 0 = CPU-only
+	StartTimeout time.Duration // startup probe timeout; default 120s
+}
+
 // ─── LlamafileEntry and registry helpers ─────────────────────────────────────
 
 /** LlamafileEntry describes a registered llamafile model.
@@ -1121,6 +1177,54 @@ func SaveLlamafileConfig(ws *Workspace, cfg *Config) error {
 		GPULayers:      gpuLayers,
 		MaxTokens:      cfg.LlamafileMaxTokens,
 		Models:         entries,
+	}
+	out, err := yaml.Marshal(&y)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(yamlPath, out, 0644)
+}
+
+/** SaveLlamaCppConfig writes the llama.cpp settings back to agents/harvey.yaml.
+ * Only the llamacpp: section is updated; all other sections are preserved.
+ *
+ * Parameters:
+ *   ws  (*Workspace) — workspace whose harvey.yaml is updated.
+ *   cfg (*Config)    — source of llama.cpp fields to persist.
+ *
+ * Returns:
+ *   error — on I/O or marshal failure.
+ *
+ * Example:
+ *   if err := SaveLlamaCppConfig(ws, cfg); err != nil {
+ *       fmt.Println("could not save llamacpp config:", err)
+ *   }
+ */
+func SaveLlamaCppConfig(ws *Workspace, cfg *Config) error {
+	yamlPath, err := ws.AbsPath(filepath.Join(harveySubdir, "harvey.yaml"))
+	if err != nil {
+		return err
+	}
+	var y harveyYAML
+	if data, err := os.ReadFile(yamlPath); err == nil {
+		_ = yaml.Unmarshal(data, &y)
+	}
+	startTO := ""
+	if cfg.LlamaCpp.StartTimeout > 0 && cfg.LlamaCpp.StartTimeout != 120*time.Second {
+		startTO = cfg.LlamaCpp.StartTimeout.String()
+	}
+	var gpuLayers *int
+	if cfg.LlamaCpp.GPULayers != 0 {
+		gpuLayers = &cfg.LlamaCpp.GPULayers
+	}
+	y.LlamaCpp = llamacppYAML{
+		ServerBin:    cfg.LlamaCpp.ServerBin,
+		ModelsDir:    cfg.LlamaCpp.ModelsDir,
+		URL:          cfg.LlamaCpp.URL,
+		CtxSize:      cfg.LlamaCpp.CtxSize,
+		Threads:      cfg.LlamaCpp.Threads,
+		GPULayers:    gpuLayers,
+		StartTimeout: startTO,
 	}
 	out, err := yaml.Marshal(&y)
 	if err != nil {

@@ -83,6 +83,27 @@ func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
  *   err := agent.selectBackend(reader, os.Stdout, "GEMMA4")
  */
 func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredModel string) error {
+	// Case 0: llama.cpp models dir has *.gguf files — probe server, offer to start.
+	if len(a.Config.LlamaCpp.ModelsDir) > 0 || a.Config.LlamaCpp.URL != "" {
+		agentsDir := filepath.Join(a.Workspace.Root, "agents")
+		lb := NewLlamaCppBackend(a.Config, agentsDir)
+		if lb.Detect() {
+			a.Backend = lb
+			// Wire a client using the first model name we can detect.
+			if models, err := lb.ListModels(); err == nil && len(models) > 0 {
+				lb.activeModel = models[0].Name
+			}
+			if lb.activeModel != "" {
+				client, err := lb.NewClient()
+				if err == nil {
+					a.Client = client
+					fmt.Fprintf(out, "  Using llama-server at %s (model: %s)\n", lb.BaseURL(), cyan(lb.ActiveModel()))
+					return nil
+				}
+			}
+		}
+	}
+
 	// Case 1: Active llamafile configured — probe it, offer to start if down.
 	if entry := a.Config.ActiveLlamafileEntry(); entry != nil {
 		absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
@@ -353,6 +374,82 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 	a.setOllamaModel(chosen)
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen))
 	return nil
+}
+
+/** tryAdoptPriorBackend reads the PID file left by a previous Harvey session.
+ * If the recorded process is still alive and the backend URL is reachable, it
+ * reconstructs the appropriate ManagedBackend, wires a.Backend and a.Client,
+ * and returns true (the caller should skip selectBackend). If the process is
+ * dead or the URL is unreachable, the stale PID file is deleted and the method
+ * returns false.
+ *
+ * Parameters:
+ *   agentsDir (string)   — directory where the PID file lives.
+ *   out       (io.Writer) — status messages sink.
+ *
+ * Returns:
+ *   bool — true when adoption succeeded and selectBackend should be skipped.
+ *
+ * Example:
+ *   if adopted := a.tryAdoptPriorBackend(agentsDir, out); !adopted {
+ *       _ = a.selectBackend(reader, out, "")
+ *   }
+ */
+func (a *Agent) tryAdoptPriorBackend(agentsDir string, out io.Writer) bool {
+	pid, err := readPIDFile(agentsDir)
+	if err != nil {
+		return false // no PID file, nothing to adopt
+	}
+
+	if !probeOwnedProcess(pid) {
+		fmt.Fprintf(out, dim("  Prior %s server (PID %d) is gone — cleaning up.\n"), pid.Backend, pid.PID)
+		_ = deletePIDFile(agentsDir)
+		return false
+	}
+
+	// Process is alive — check if the URL is still reachable.
+	reachable := false
+	switch pid.Backend {
+	case "llamafile":
+		reachable = ProbeLlamafile(pid.URL)
+	case "llamacpp":
+		reachable = probeLlamaCpp(pid.URL)
+	case "ollama":
+		reachable = ProbeOllama(pid.URL)
+	}
+
+	if !reachable {
+		fmt.Fprintf(out, dim("  Prior %s server (PID %d) is no longer reachable — cleaning up.\n"), pid.Backend, pid.PID)
+		_ = deletePIDFile(agentsDir)
+		return false
+	}
+
+	// Reconstruct the backend and wire it without restarting the server.
+	switch pid.Backend {
+	case "llamafile":
+		lb := NewLlamafileBackend(a.Config, agentsDir, a.Workspace.Root)
+		lb.activeModel = pid.Model
+		lb.running = true
+		a.Backend = lb
+		client := newLlamafileLLMClient(pid.URL+"/v1", pid.Model, a.Config.OllamaTimeout)
+		a.Client = client
+	case "llamacpp":
+		lb := NewLlamaCppBackend(a.Config, agentsDir)
+		lb.activeModel = pid.Model
+		lb.running = true
+		a.Backend = lb
+		client := newLlamafileLLMClient(pid.URL+"/v1", pid.Model, 0)
+		a.Client = client
+	case "ollama":
+		a.setOllamaModel(pid.Model)
+	default:
+		_ = deletePIDFile(agentsDir)
+		return false
+	}
+
+	fmt.Fprintf(out, green("✓")+" Re-adopted prior %s session (PID %d, model: %s)\n",
+		pid.Backend, pid.PID, cyan(pid.Model))
+	return true
 }
 
 // setOllamaModel wires Config.OllamaModel, Client, and Backend for the given Ollama model name.

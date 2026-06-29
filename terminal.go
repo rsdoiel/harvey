@@ -432,9 +432,13 @@ func (a *Agent) Run(out io.Writer) error {
 	// Skills — scan and inject catalog into system prompt
 	a.loadSkills(out)
 
-	// Backend selection — use sessionModel as the preferred model hint.
-	if err := a.selectBackend(reader, out, sessionModel); err != nil {
-		return err
+	// PID re-adoption: if a prior Harvey session left a running backend, adopt it.
+	agentsDir := filepath.Join(a.Workspace.Root, "agents")
+	if adopted := a.tryAdoptPriorBackend(agentsDir, out); !adopted {
+		// Backend selection — use sessionModel as the preferred model hint.
+		if err := a.selectBackend(reader, out, sessionModel); err != nil {
+			return err
+		}
 	}
 
 	// Debug log — open after backend is known so session_start can record the model.
@@ -951,6 +955,13 @@ func (a *Agent) Run(out io.Writer) error {
 	}
 
 	saveCmdHistory(a.Workspace, le)
+
+	// Stop any backend Harvey started and clean up the PID file.
+	if a.Backend != nil && a.Backend.StartedByHarvey() {
+		_ = a.Backend.Stop()
+		_ = deletePIDFile(agentsDir)
+	}
+
 	fmt.Fprintln(out, dim("Goodbye."))
 
 	// Auto-mine on exit when the session had >= 10 user turns.

@@ -45,6 +45,7 @@ type harveyYAML struct {
 	ModelAliases    map[string]string   `yaml:"model_aliases,omitempty"`  // short name → full Ollama model ID
 	Memory          memoryYAML          `yaml:"memory,omitempty"`
 	Llamafile       llamafileYAML       `yaml:"llamafile,omitempty"`
+	LlamaCpp        llamacppYAML        `yaml:"llamacpp,omitempty"`
 	Chunking        chunkingYAML        `yaml:"chunking,omitempty"`
 }
 
@@ -78,6 +79,16 @@ type llamafileYAML struct {
 	GPULayers      *int                 `yaml:"gpu_layers,omitempty"`      // -ngl value; nil = use default (99)
 	MaxTokens      int                  `yaml:"max_tokens,omitempty"`      // cap on tokens per completion; 0 = no limit
 	Models         []llamafileEntryYAML `yaml:"models,omitempty"`
+}
+
+type llamacppYAML struct {
+	ServerBin    string `yaml:"server_bin,omitempty"`    // path to llama-server; "" = PATH lookup
+	ModelsDir    string `yaml:"models_dir,omitempty"`    // directory for *.gguf files
+	URL          string `yaml:"url,omitempty"`           // API base URL; default http://127.0.0.1:8081
+	CtxSize      int    `yaml:"ctx_size,omitempty"`      // --ctx-size; 0 = server default
+	Threads      int    `yaml:"threads,omitempty"`       // --threads; 0 = server default
+	GPULayers    *int   `yaml:"gpu_layers,omitempty"`    // --n-gpu-layers; nil = not set (0 = CPU-only)
+	StartTimeout string `yaml:"start_timeout,omitempty"` // e.g. "120s", "2m"
 }
 
 type rollingSummaryYAML struct {
