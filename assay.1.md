@@ -1,6 +1,6 @@
-%assay(1) user manual | version 0.0.15 e75e640
+%assay(1) user manual | version 0.0.15a 3b811cc
 % R. S. Doiel
-% 2026-06-26
+% 2026-06-28
 
 # NAME
 

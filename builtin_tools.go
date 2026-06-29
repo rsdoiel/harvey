@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -785,6 +786,108 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				return "retrieve_memory: no matching memories found.", nil
 			}
 			return FormatContext(results), nil
+		},
+	)
+
+	// ── summary_context ──────────────────────────────────────────────────────
+	r.RegisterTool(
+		"summary_context",
+		"Compress a span of conversation history into a single summary entry to free up context. "+
+			"'span' is \"all\" (summarise every non-system message) or an integer string like \"10\" "+
+			"to summarise the oldest N non-system messages, leaving the most recent ones intact.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"span": map[string]any{
+					"type":        "string",
+					"description": "\"all\" or an integer N — oldest N non-system messages to summarise",
+				},
+			},
+			"required": []string{"span"},
+		},
+		func(ctx context.Context, args map[string]any) (string, error) {
+			if a.Client == nil {
+				return "summary_context: no LLM client available in this session.", nil
+			}
+			span, _ := args["span"].(string)
+			if span == "" {
+				span = "all"
+			}
+
+			// Separate leading system prompt from conversation turns.
+			var leadingSystem *Message
+			turns := a.History
+			if len(turns) > 0 && turns[0].Role == "system" {
+				msg := turns[0]
+				leadingSystem = &msg
+				turns = turns[1:]
+			}
+
+			// Determine how many turns to summarise.
+			n := len(turns)
+			if strings.ToLower(span) != "all" {
+				if parsed, err := strconv.Atoi(span); err == nil && parsed > 0 && parsed < n {
+					n = parsed
+				}
+			}
+
+			if n < 2 {
+				return "summary_context: not enough history to summarise (need at least 2 non-system messages).", nil
+			}
+
+			toSummarise := turns[:n]
+			keep := turns[n:]
+
+			// Safe-mode guard: describe without modifying history.
+			if a.Config.SafeMode {
+				return fmt.Sprintf(
+					"summary_context [safe mode]: would summarise %d messages into 1 entry (%d messages remain); disable safe mode to apply.",
+					n, len(keep),
+				), nil
+			}
+
+			// Build the summarisation request from the selected turns.
+			var textBuf strings.Builder
+			for _, m := range toSummarise {
+				if m.Content != "" {
+					fmt.Fprintf(&textBuf, "%s: %s\n\n", m.Role, m.Content)
+				}
+			}
+
+			request := []Message{
+				{
+					Role:    "system",
+					Content: "You are a summariser. Summarise the following conversation concisely. Focus on key decisions, files changed, errors resolved, and context the user provided.",
+				},
+				{Role: "user", Content: textBuf.String()},
+			}
+
+			var chatBuf strings.Builder
+			if _, err := a.Client.Chat(ctx, request, &chatBuf); err != nil {
+				return "", fmt.Errorf("summary_context: %w", err)
+			}
+			summary := strings.TrimSpace(chatBuf.String())
+			if summary == "" {
+				return "summary_context: LLM returned an empty summary — history unchanged.", nil
+			}
+
+			tokensSaved := textBuf.Len() / 4
+
+			// Rebuild history: [system_prompt?] + [summary] + [kept turns].
+			summaryMsg := Message{Role: "system", Content: "[Summary] " + summary}
+			newHistory := make([]Message, 0, 2+len(keep))
+			if leadingSystem != nil {
+				newHistory = append(newHistory, *leadingSystem)
+			}
+			newHistory = append(newHistory, summaryMsg)
+			newHistory = append(newHistory, keep...)
+			a.History = newHistory
+
+			if a.Recorder != nil {
+				_ = a.Recorder.RecordAgentAction("summary_context", fmt.Sprintf("%d messages compressed", n), "auto", "ok")
+			}
+
+			return fmt.Sprintf("Summarised %d turns into 1 entry (~%d tokens saved).", n, tokensSaved), nil
 		},
 	)
 

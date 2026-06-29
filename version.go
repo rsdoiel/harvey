@@ -6,13 +6,13 @@ import (
 
 const (
     // Version number of release
-    Version = "0.0.15"
+    Version = "0.0.15a"
 
     // ReleaseDate, the date version.go was generated
-    ReleaseDate = "2026-06-26"
+    ReleaseDate = "2026-06-28"
 
     // ReleaseHash, the Git hash when version.go was generated
-    ReleaseHash = "e75e640"
+    ReleaseHash = "3b811cc"
     LicenseText = `
 harvey is a agent used with local large language models
 Copyright (C) 2026 R. S. Doiel

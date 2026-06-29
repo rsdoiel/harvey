@@ -12,7 +12,7 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.15
+version: 0.0.15a
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
@@ -25,7 +25,7 @@ date_released: 2026-06-26
 About this software
 ===================
 
-## harvey 0.0.15
+## harvey 0.0.15a
 
 - `/model mode [MODEL] {structured|prose|inject|none}`: set or display the tool-execution strategy for a model; persisted in the model cache and survives re-probes
 - File-reference injection: when a model does not reliably call tools, Harvey pre-injects the content of workspace files mentioned in the prompt as `### File:` blocks

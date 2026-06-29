@@ -445,3 +445,132 @@ func TestWriteFile_PathTraversal(t *testing.T) {
 		t.Fatal("write_file: expected error for path traversal, got nil")
 	}
 }
+
+// ─── summary_context ─────────────────────────────────────────────────────────
+
+func TestSummaryContext_NoClient(t *testing.T) {
+	a, reg := newToolAgent(t, nil) // a.Client is nil
+	a.AddMessage("user", "hello")
+	a.AddMessage("assistant", "world")
+
+	result, err := dispatch(t, reg, "summary_context", map[string]any{"span": "all"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "no LLM client") {
+		t.Errorf("expected 'no LLM client' message; got: %q", result)
+	}
+	if len(a.History) != 2 {
+		t.Errorf("history should be unchanged (2 msgs); got %d", len(a.History))
+	}
+}
+
+func TestSummaryContext_SpanAll(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a.Client = &mockLLMClient{reply: "We discussed Go patterns."}
+	a.AddMessage("system", "You are Harvey.")
+	a.AddMessage("user", "question one")
+	a.AddMessage("assistant", "answer one")
+	a.AddMessage("user", "question two")
+	a.AddMessage("assistant", "answer two")
+
+	result, err := dispatch(t, reg, "summary_context", map[string]any{"span": "all"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Summarised") {
+		t.Errorf("expected 'Summarised' in result; got: %q", result)
+	}
+	// system prompt + 1 summary entry
+	if len(a.History) != 2 {
+		t.Errorf("expected 2 history entries (system + summary); got %d", len(a.History))
+	}
+	last := a.History[len(a.History)-1]
+	if last.Role != "system" {
+		t.Errorf("summary entry role = %q, want system", last.Role)
+	}
+	if !strings.Contains(last.Content, "[Summary]") {
+		t.Errorf("expected [Summary] prefix; got: %q", last.Content)
+	}
+	if !strings.Contains(last.Content, "We discussed Go patterns") {
+		t.Errorf("expected LLM reply in summary; got: %q", last.Content)
+	}
+}
+
+func TestSummaryContext_SpanN(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a.Client = &mockLLMClient{reply: "Summary of first three."}
+	for i := 1; i <= 6; i++ {
+		if i%2 == 1 {
+			a.AddMessage("user", fmt.Sprintf("question %d", i))
+		} else {
+			a.AddMessage("assistant", fmt.Sprintf("answer %d", i))
+		}
+	}
+
+	result, err := dispatch(t, reg, "summary_context", map[string]any{"span": "3"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Summarised 3") {
+		t.Errorf("expected 'Summarised 3' in result; got: %q", result)
+	}
+	// 1 summary + 3 remaining
+	if len(a.History) != 4 {
+		t.Errorf("expected 4 history entries (summary + 3 remaining); got %d", len(a.History))
+	}
+	if a.History[0].Role != "system" || !strings.Contains(a.History[0].Content, "[Summary]") {
+		t.Errorf("first entry should be summary system message; got role=%q", a.History[0].Role)
+	}
+}
+
+func TestSummaryContext_SpanExceedsHistory(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a.Client = &mockLLMClient{reply: "Brief summary."}
+	a.AddMessage("user", "msg 1")
+	a.AddMessage("assistant", "resp 1")
+	a.AddMessage("user", "msg 2")
+
+	result, err := dispatch(t, reg, "summary_context", map[string]any{"span": "100"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Summarised 3") {
+		t.Errorf("expected 'Summarised 3' in result; got: %q", result)
+	}
+}
+
+func TestSummaryContext_TooFewMessages(t *testing.T) {
+	a, reg := newToolAgent(t, nil)
+	a.Client = &mockLLMClient{reply: "irrelevant"}
+	a.AddMessage("user", "only one message")
+
+	result, err := dispatch(t, reg, "summary_context", map[string]any{"span": "all"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "not enough") {
+		t.Errorf("expected 'not enough' message; got: %q", result)
+	}
+	if len(a.History) != 1 {
+		t.Errorf("history should be unchanged; got %d entries", len(a.History))
+	}
+}
+
+func TestSummaryContext_SafeMode(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = true })
+	a.Client = &mockLLMClient{reply: "irrelevant"}
+	a.AddMessage("user", "hello")
+	a.AddMessage("assistant", "world")
+
+	result, err := dispatch(t, reg, "summary_context", map[string]any{"span": "all"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "safe mode") {
+		t.Errorf("expected 'safe mode' in result; got: %q", result)
+	}
+	if len(a.History) != 2 {
+		t.Errorf("safe mode must not modify history; got %d entries", len(a.History))
+	}
+}
