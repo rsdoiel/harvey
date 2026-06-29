@@ -3995,6 +3995,20 @@ func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
 		}
 		fmt.Fprintf(out, "  Root:    %s\n", a.Workspace.Root)
 		fmt.Fprintf(out, "  Aliases: %d defined\n", len(a.Config.ModelAliases))
+		// Profile + injection status
+		if a.Config.Memory.Enabled && a.Memory != nil && a.Memory.Store != nil {
+			profiles, err := a.Memory.Store.List(string(MemoryTypeWorkspaceProfile))
+			if err == nil && len(profiles) > 0 {
+				p := profiles[0]
+				inject := "injection off — enable with: memory.inject_on_start: true in harvey.yaml"
+				if a.Config.Memory.InjectOnStart {
+					inject = "injection on"
+				}
+				fmt.Fprintf(out, "  Profile: %q (%s)\n", p.Description, inject)
+			} else {
+				fmt.Fprintln(out, "  Profile: none  (create one with /memory profile new)")
+			}
+		}
 		return nil
 	default:
 		fmt.Fprintf(out, "  Unknown subcommand %q. Usage: /workspace <init [FROM_PATH]|status>\n", sub)
