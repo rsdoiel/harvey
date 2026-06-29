@@ -1,4 +1,4 @@
-%harvey(1) user manual | version 0.0.15a 3517227
+%harvey(1) user manual | version 0.0.15a faf5eb1
 % R. S. Doiel
 % 2026-06-28
 
@@ -46,11 +46,26 @@ Type /help inside the session for available slash commands.
 -l, --license
 : display license information
 
+init <source>
+: seed model aliases from another workspace directory or a .yaml file, then exit.
+  SOURCE may be a workspace directory (reads agents/harvey.yaml inside it) or a
+  standalone .yaml file with a model_aliases: map at the top level.
+
 -m, --model
 : MODEL   Ollama model to use on startup
 
 --ollama URL
 : Ollama base URL (default: http://localhost:11434)
+
+--llamafile PATH
+: connect to PATH for this session (not persisted to harvey.yaml)
+
+--llamafile-url URL
+: override the llamafile API base URL (default: http://localhost:8080)
+
+--llamafile-dir PATH
+: override the llamafile discovery directory (default: ~/Models)
+
 -w, --workdir DIR
 : workspace directory (default: current directory)
 
@@ -131,17 +146,24 @@ are also available from the shell: harvey --help TOPIC.
 
 **Model and backend**
 
-/ollama <start [debug]|stop|status|list|ps|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL]|logs|use MODEL|env|alias NAME FULLNAME>
-: manage the local Ollama server and installed models
+/model [list|use [NAME]|show [NAME]|status|mode [MODEL] MODE|alias ...]
+: unified model management across llamafile, Ollama, and llama.cpp backends;
+  use with no argument shows a combined picker of all locally available models
+
+/workspace <status|init [PATH]>
+: show workspace root, alias count and profile; seed aliases from another workspace
+
+/ollama <start|stop|status|logs|env|pull MODEL|push MODEL|rm MODEL|probe [MODEL]|clean|...>
+: Ollama daemon control and model registry (pull, push, rm, probe)
+
+/llamafile <add [PATH] [NAME]|show [NAME]|list|start [NAME]|status|remove NAME|download>
+: register and manage local llamafile executables
 
 /inspect [MODEL]
 : show detailed model information (Ollama only)
 
 /route <add NAME URL [MODEL]|remove NAME|use [NAME]|list|on|off|status>
 : manage named remote LLM endpoints (@mention routing)
-
-/llamafile <add [PATH] [NAME]|use NAME|show [NAME]|list|start [NAME]|status|remove NAME|download>
-: manage local llamafile model backends
 
 **Context and history**
 
