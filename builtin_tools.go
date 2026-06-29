@@ -789,6 +789,91 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 		},
 	)
 
+	// ── add_memory ───────────────────────────────────────────────────────────
+	r.RegisterTool(
+		"add_memory",
+		"Save a new memory to the persistent memory store. "+
+			"Use this to record important findings, decisions, preferences, or facts that should persist across sessions. "+
+			"memory_type must be one of: tool_use, workflow, user_preference, workspace_profile, project_fact.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"content": map[string]any{
+					"type":        "string",
+					"description": "The memory content to save (used as description and summary)",
+				},
+				"memory_type": map[string]any{
+					"type":        "string",
+					"description": "Memory type: tool_use, workflow, user_preference, workspace_profile, or project_fact",
+					"enum":        []string{"tool_use", "workflow", "user_preference", "workspace_profile", "project_fact"},
+				},
+				"tags": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Optional keyword tags for filtering",
+				},
+			},
+			"required": []string{"content", "memory_type"},
+		},
+		func(_ context.Context, args map[string]any) (string, error) {
+			if a.Memory == nil || a.Memory.Store == nil {
+				return "add_memory: memory store is not available in this session.", nil
+			}
+			content, ok := args["content"].(string)
+			if !ok || strings.TrimSpace(content) == "" {
+				return "", fmt.Errorf("add_memory: content must be a non-empty string")
+			}
+			memTypeStr, ok := args["memory_type"].(string)
+			if !ok || memTypeStr == "" {
+				return "", fmt.Errorf("add_memory: memory_type must be a non-empty string")
+			}
+			if !isValidMemoryType(MemoryType(memTypeStr)) {
+				valid := make([]string, len(ValidMemoryTypes))
+				for i, vt := range ValidMemoryTypes {
+					valid[i] = string(vt)
+				}
+				return fmt.Sprintf("add_memory: invalid memory_type %q; must be one of: %s",
+					memTypeStr, strings.Join(valid, ", ")), nil
+			}
+
+			// Parse optional tags from the JSON array (arrives as []interface{}).
+			var tags []string
+			if raw, hasTag := args["tags"]; hasTag && raw != nil {
+				if arr, ok := raw.([]interface{}); ok {
+					for _, item := range arr {
+						if s, ok := item.(string); ok {
+							tags = append(tags, s)
+						}
+					}
+				}
+			}
+
+			// Safe-mode guard: describe without writing.
+			if a.Config.SafeMode {
+				return fmt.Sprintf(
+					"add_memory [safe mode]: would save %q as %s — disable safe mode to apply.",
+					content, memTypeStr,
+				), nil
+			}
+
+			memType := MemoryType(memTypeStr)
+			id := GenerateMemoryID(memType)
+			doc := NewMemoryDoc(id, memType, content, content, tags)
+			ts := time.Now().UTC().Format("2006-01-02 15:04:05")
+			doc.FountainBody = BuildFountainBody(ts, [][2]string{{"HARVEY", content}})
+
+			if err := a.Memory.Store.Save(doc, nil); err != nil {
+				return "", fmt.Errorf("add_memory: %w", err)
+			}
+
+			if a.Recorder != nil {
+				_ = a.Recorder.RecordAgentAction("add_memory", id+" — "+memTypeStr, "auto", "ok")
+			}
+
+			return "Memory saved: " + id, nil
+		},
+	)
+
 	// ── summary_context ──────────────────────────────────────────────────────
 	r.RegisterTool(
 		"summary_context",

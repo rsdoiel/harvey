@@ -557,6 +557,94 @@ func TestSummaryContext_TooFewMessages(t *testing.T) {
 	}
 }
 
+// ─── add_memory ──────────────────────────────────────────────────────────────
+
+func TestAddMemory_NoMemorySystem(t *testing.T) {
+	_, reg := newToolAgent(t, nil) // a.Memory is nil
+	result, err := dispatch(t, reg, "add_memory", map[string]any{
+		"content":     "always run go test before committing",
+		"memory_type": "tool_use",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "not available") {
+		t.Errorf("expected 'not available' message; got: %q", result)
+	}
+}
+
+func TestAddMemory_InvalidType(t *testing.T) {
+	_, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+
+	result, err := dispatch(t, reg, "add_memory", map[string]any{
+		"content":     "some content",
+		"memory_type": "bogus_type",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "invalid memory_type") {
+		t.Errorf("expected 'invalid memory_type' message; got: %q", result)
+	}
+}
+
+func TestAddMemory_SaveAndList(t *testing.T) {
+	a, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+	a.Config.SafeMode = false
+
+	// Use reg.Dispatch directly to pass a proper JSON array for tags.
+	result, err := reg.Dispatch(context.Background(), "add_memory",
+		`{"content":"prefer uv over pip","memory_type":"user_preference","tags":["python","uv"]}`,
+		1024*1024)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Memory saved:") {
+		t.Errorf("expected 'Memory saved:' in result; got: %q", result)
+	}
+
+	metas, err := ms.Store.List("user_preference")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(metas) == 0 {
+		t.Fatal("expected at least one memory in store after add_memory")
+	}
+	found := false
+	for _, m := range metas {
+		if strings.Contains(m.Description, "prefer uv over pip") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("saved memory should contain the content as description")
+	}
+}
+
+func TestAddMemory_SafeMode(t *testing.T) {
+	// DefaultConfig has SafeMode=true — no override needed.
+	_, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+
+	result, err := dispatch(t, reg, "add_memory", map[string]any{
+		"content":     "some content",
+		"memory_type": "tool_use",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "safe mode") {
+		t.Errorf("expected 'safe mode' in result; got: %q", result)
+	}
+	metas, _ := ms.Store.List("tool_use")
+	if len(metas) != 0 {
+		t.Error("safe mode must not write to the store")
+	}
+}
+
 func TestSummaryContext_SafeMode(t *testing.T) {
 	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = true })
 	a.Client = &mockLLMClient{reply: "irrelevant"}
