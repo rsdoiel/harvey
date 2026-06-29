@@ -298,16 +298,6 @@ func (b *LlamaCppBackend) NewClient() (LLMClient, error) {
 	return newLlamafileLLMClient(b.url+"/v1", b.activeModel, 0), nil
 }
 
-// wireLlamaCppBackend wires a freshly-started LlamaCppBackend as a.Backend.
-func (a *Agent) wireLlamaCppBackend(proc *os.Process, name string) {
-	agentsDir := filepath.Join(a.Workspace.Root, "agents")
-	b := NewLlamaCppBackend(a.Config, agentsDir)
-	b.proc = proc
-	b.activeModel = name
-	b.running = true
-	a.Backend = b
-}
-
 // probeLlamaCpp returns true when the llama-server at baseURL is healthy.
 // It probes GET /health which llama-server serves when ready.
 func probeLlamaCpp(baseURL string) bool {

@@ -3944,7 +3944,7 @@ func promptAction(r *bufio.Reader, out io.Writer, header, preview string) action
  * Example:
  *   agent.autoExecuteReply(replyText, os.Stdout, reader, ctx)
  */
-func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Reader, ctx context.Context) {
+func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Reader, _ context.Context) {
 	if a.Workspace == nil {
 		return
 	}

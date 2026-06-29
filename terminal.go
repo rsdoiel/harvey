@@ -32,35 +32,6 @@ const (
 	sep         = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 )
 
-// sensitiveEnvPrefixes contains environment variable name prefixes that
-// should be EXCLUDED to prevent accidental exposure of sensitive data (e.g., API keys).
-// Variables matching these prefixes will NOT be passed to child processes.
-var sensitiveEnvPrefixes = []string{
-	"ANTHROPIC_API_KEY",
-	"DEEPSEEK_API_KEY",
-	"GEMINI_API_KEY",
-	"GOOGLE_API_KEY",
-	"MISTRAL_API_KEY",
-	"OPENAI_API_KEY",
-}
-
-// safeEnvPrefixes contains environment variable name prefixes that are
-// SAFE to pass to child processes. All other variables are filtered out.
-var safeEnvPrefixes = []string{
-	"PATH",
-	"HOME",
-	"USER",
-	"USERNAME",
-	"SHELL",
-	"TERM",
-	"LANG",
-	"LC_",
-	"PWD",
-	"OLLAMA",
-	"HARVEY",
-}
-
-
 // isConnectionError returns true when err indicates a transport-level failure
 // consistent with the llamafile server having stopped: connection refused,
 // EOF, or reset by peer.
