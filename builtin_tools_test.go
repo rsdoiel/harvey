@@ -446,6 +446,113 @@ func TestWriteFile_PathTraversal(t *testing.T) {
 	}
 }
 
+// ─── filter_context ──────────────────────────────────────────────────────────
+
+func TestFilterContext_EmptyHistory(t *testing.T) {
+	_, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+
+	result, err := dispatch(t, reg, "filter_context", map[string]any{"criteria": "go test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "nothing to filter") {
+		t.Errorf("expected 'nothing to filter'; got: %q", result)
+	}
+}
+
+func TestFilterContext_KeywordRemovesMatch(t *testing.T) {
+	// No RAG store configured → keyword fallback.
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a.AddMessage("system", "You are Harvey.")
+	a.AddMessage("user", "question about go test failures")
+	a.AddMessage("assistant", "here is the answer")
+	a.AddMessage("user", "something completely unrelated")
+
+	result, err := dispatch(t, reg, "filter_context", map[string]any{"criteria": "go test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Filtered 1") {
+		t.Errorf("expected 'Filtered 1'; got: %q", result)
+	}
+	// system + 2 non-matching messages remain
+	if len(a.History) != 3 {
+		t.Errorf("expected 3 remaining messages; got %d", len(a.History))
+	}
+	for _, m := range a.History {
+		if strings.Contains(strings.ToLower(m.Content), "go test") {
+			t.Errorf("filtered message still in history: %q", m.Content)
+		}
+	}
+}
+
+func TestFilterContext_SystemMessagesNeverFiltered(t *testing.T) {
+	// Even if the system message matches the criteria, it must be preserved.
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a.AddMessage("system", "go test is part of the system prompt")
+	a.AddMessage("user", "go test failures are annoying") // matches → removed
+	a.AddMessage("user", "something unrelated")          // no match → kept
+
+	result, err := dispatch(t, reg, "filter_context", map[string]any{"criteria": "go test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Filtered 1") {
+		t.Errorf("expected 'Filtered 1'; got: %q", result)
+	}
+	// system + 1 non-matching user message remain
+	if len(a.History) != 2 {
+		t.Errorf("expected 2 remaining entries; got %d — %v", len(a.History), a.History)
+	}
+	if a.History[0].Role != "system" {
+		t.Errorf("first entry must be the system message; got role=%q", a.History[0].Role)
+	}
+}
+
+func TestFilterContext_NoMatches(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a.AddMessage("user", "unrelated content")
+	a.AddMessage("assistant", "also unrelated")
+
+	result, err := dispatch(t, reg, "filter_context", map[string]any{"criteria": "go test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Filtered 0") {
+		t.Errorf("expected 'Filtered 0'; got: %q", result)
+	}
+	if len(a.History) != 2 {
+		t.Errorf("history should be unchanged; got %d entries", len(a.History))
+	}
+}
+
+func TestFilterContext_SafeMode(t *testing.T) {
+	// DefaultConfig has SafeMode=true.
+	a, reg := newToolAgent(t, nil)
+	a.AddMessage("user", "question about go test")
+	a.AddMessage("assistant", "answer")
+
+	result, err := dispatch(t, reg, "filter_context", map[string]any{"criteria": "go test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "safe mode") {
+		t.Errorf("expected 'safe mode' in result; got: %q", result)
+	}
+	if len(a.History) != 2 {
+		t.Errorf("safe mode must not modify history; got %d entries", len(a.History))
+	}
+}
+
+func TestFilterContext_EmptyCriteria(t *testing.T) {
+	_, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+
+	_, err := dispatch(t, reg, "filter_context", map[string]any{"criteria": ""})
+	if err == nil {
+		t.Fatal("expected error for empty criteria")
+	}
+}
+
 // ─── summary_context ─────────────────────────────────────────────────────────
 
 func TestSummaryContext_NoClient(t *testing.T) {

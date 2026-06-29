@@ -789,6 +789,100 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 		},
 	)
 
+	// ── filter_context ───────────────────────────────────────────────────────
+	// filterThreshold is the cosine similarity above which a message is
+	// considered to match the filter criteria and is removed from history.
+	const filterThreshold = 0.6
+
+	r.RegisterTool(
+		"filter_context",
+		"Remove conversation history messages that match a given criteria. "+
+			"When a RAG store is active, matching uses cosine similarity (threshold 0.6). "+
+			"Otherwise falls back to case-insensitive keyword matching. "+
+			"System messages are never removed.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"criteria": map[string]any{
+					"type":        "string",
+					"description": "Natural-language description or keyword of the content to remove from history",
+				},
+			},
+			"required": []string{"criteria"},
+		},
+		func(_ context.Context, args map[string]any) (string, error) {
+			criteria, ok := args["criteria"].(string)
+			if !ok || strings.TrimSpace(criteria) == "" {
+				return "", fmt.Errorf("filter_context: criteria must be a non-empty string")
+			}
+
+			if len(a.History) == 0 {
+				return "filter_context: nothing to filter.", nil
+			}
+
+			// Try to get a vector embedder from the active RAG store.
+			var embedder Embedder
+			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+				embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+			}
+
+			// Embed the criteria once (fails silently → keyword fallback).
+			var criteriaVec []float64
+			useEmbedding := false
+			if embedder != nil {
+				if vec, err := embedder.Embed(criteria); err == nil {
+					criteriaVec = vec
+					useEmbedding = true
+				}
+			}
+
+			lowerCriteria := strings.ToLower(criteria)
+
+			// Classify each message as keep or remove.
+			var keep []Message
+			removed := 0
+			for _, m := range a.History {
+				if m.Role == "system" {
+					keep = append(keep, m)
+					continue
+				}
+				var matched bool
+				if useEmbedding {
+					msgVec, err := embedder.Embed(m.Content)
+					if err == nil {
+						matched = cosineSimilarity(criteriaVec, msgVec) >= filterThreshold
+					} else {
+						matched = strings.Contains(strings.ToLower(m.Content), lowerCriteria)
+					}
+				} else {
+					matched = strings.Contains(strings.ToLower(m.Content), lowerCriteria)
+				}
+				if matched {
+					removed++
+				} else {
+					keep = append(keep, m)
+				}
+			}
+
+			// Safe-mode guard: describe without modifying.
+			if a.Config.SafeMode {
+				return fmt.Sprintf(
+					"filter_context [safe mode]: would remove %d messages matching %q — disable safe mode to apply.",
+					removed, criteria,
+				), nil
+			}
+
+			a.History = keep
+
+			if a.Recorder != nil {
+				_ = a.Recorder.RecordAgentAction("filter_context",
+					fmt.Sprintf("%d messages removed matching %q", removed, criteria), "auto", "ok")
+			}
+
+			return fmt.Sprintf("Filtered %d messages matching %q.", removed, criteria), nil
+		},
+	)
+
 	// ── add_memory ───────────────────────────────────────────────────────────
 	r.RegisterTool(
 		"add_memory",
