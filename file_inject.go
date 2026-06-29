@@ -165,9 +165,15 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer)
 			continue
 		}
 		rem := remainingContext(a)
-		if rem <= 0 {
+		// Only skip when we positively know the context is full (limit known and
+		// remaining ≤ 0). When the limit is unknown rem is 0 by convention, but
+		// that should not block injection — proceed with the full chunking budget.
+		if rem <= 0 && a.effectiveContextLimit() > 0 {
 			fmt.Fprint(out, dim("  (skipping "+tok+" — context full)\n"))
 			continue
+		}
+		if rem <= 0 {
+			rem = 4096 // context limit unknown — use a conservative default
 		}
 		budget := int(float64(rem) * a.Config.Chunking.Threshold)
 		exceeded, size, statErr := fileExceedsBudget(absPath, budget)

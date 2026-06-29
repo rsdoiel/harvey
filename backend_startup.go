@@ -59,6 +59,8 @@ func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
 	if ac, ok := a.Client.(*AnyLLMClient); ok && a.DebugLog != nil {
 		ac.DebugLog = a.DebugLog
 	}
+	// Keep Active in sync so activeModelLabel and effectiveContextLimit are correct.
+	a.Config.Llamafile.Active = name
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(name))
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordModelSwitch(name, "llamafile")
