@@ -402,7 +402,7 @@ func (a *Agent) registerCommands() {
 			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|drop [NAME]|download|mode [MODEL] MODE|alias ...]",
 			Description: "Unified model management across llamafile, llama.cpp, and Ollama backends",
 			Handler:     cmdModel,
-			Subcommands: []string{"list", "use", "show", "status", "stop", "drop", "download", "mode", "alias"},
+			Subcommands: []string{"list", "use", "show", "status", "stop", "drop", "mode", "alias"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"use":  func(a *Agent) []string { return allModelNames(a) },
 				"drop": llamafileNameCandidates,
