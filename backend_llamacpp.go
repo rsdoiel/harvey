@@ -109,6 +109,22 @@ func (b *LlamaCppBackend) Name() string { return "llamacpp" }
  */
 func (b *LlamaCppBackend) BaseURL() string { return b.url }
 
+/** ModelPath returns the absolute path of the active model file, reconstructed
+ * from modelsDir and activeModel. Returns "" when no model is active.
+ *
+ * Returns:
+ *   string — absolute path ending in ".gguf", or "".
+ *
+ * Example:
+ *   fmt.Println(b.ModelPath()) // "/Users/user/Models/SmolLM3-3B-Instruct-Q4_K_M.gguf"
+ */
+func (b *LlamaCppBackend) ModelPath() string {
+	if b.activeModel == "" {
+		return ""
+	}
+	return filepath.Join(b.modelsDir, b.activeModel+".gguf")
+}
+
 /** ActiveModel returns the name of the model currently in use, or "" when none is set.
  *
  * Returns:

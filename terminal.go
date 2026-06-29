@@ -72,6 +72,21 @@ func restartActiveLlamafile(a *Agent, out io.Writer) error {
 	return a.useLlamafileEntry(entry.Name, out)
 }
 
+// restartActiveLlamaCpp stops and restarts the llama-server for the model
+// that was active when the crash occurred, then rewires a.Client and a.Backend.
+func restartActiveLlamaCpp(a *Agent, out io.Writer) error {
+	b, ok := a.Backend.(*LlamaCppBackend)
+	if !ok || b == nil {
+		return fmt.Errorf("active backend is not llamacpp")
+	}
+	modelPath := b.ModelPath()
+	if modelPath == "" {
+		return fmt.Errorf("cannot restart: active model path unknown")
+	}
+	fmt.Fprintf(out, "  Starting llama-server for %s...\n", b.ActiveModel())
+	return startLlamaCppModelPath(a, modelPath, out)
+}
+
 /** runFirstRunWizard prints onboarding text for new users who have no backend
  * configured, then reads one line of input. An empty line returns an error
  * (no backend available). A non-empty line is treated as a llamafile path and
@@ -913,13 +928,22 @@ func (a *Agent) Run(out io.Writer) error {
 		close(watchDone)
 		cancelChat()
 
-		// Auto-reconnect: when the llamafile server drops mid-session, offer
+		// Auto-reconnect: when the backend server drops mid-session, offer
 		// to restart it and retry the turn rather than surfacing a raw HTTP error.
 		if turnErr != nil && isConnectionError(turnErr) &&
 			a.Backend != nil && a.Backend.StartedByHarvey() && !probeActiveBackend(a) {
-			fmt.Fprintln(out, yellow("  ⚠ The llamafile server stopped unexpectedly."))
-			if askYesNo(reader, out, fmt.Sprintf("  Restart %s? [Y/n] ", a.Config.Llamafile.Active), true) {
-				if restartErr := restartActiveLlamafile(a, out); restartErr == nil {
+			backendName := a.Backend.Name()
+			modelName := a.Backend.ActiveModel()
+			fmt.Fprintf(out, yellow("  ⚠ The %s server stopped unexpectedly.\n"), backendName)
+			if askYesNo(reader, out, fmt.Sprintf("  Restart %s? [Y/n] ", modelName), true) {
+				var restartErr error
+				switch backendName {
+				case "llamacpp":
+					restartErr = restartActiveLlamaCpp(a, out)
+				default:
+					restartErr = restartActiveLlamafile(a, out)
+				}
+				if restartErr == nil {
 					retryCtx, retryCancel := context.WithCancel(context.Background())
 					reply, _, turnErr = a.runChatTurn(retryCtx, input, out, reader, true, charName)
 					retryCancel()
