@@ -168,14 +168,25 @@ func adoptExternalServer(a *Agent, out io.Writer) error {
 	return nil
 }
 
-// switchLlamafileModel starts the named registered llamafile model, stopping
-// any Harvey-managed backend first. Saves the updated active model to config.
-func switchLlamafileModel(a *Agent, name string, out io.Writer) error {
+// switchLlamafileModel starts a llamafile model by name, stopping any
+// Harvey-managed backend first. When the name is not in the registry but
+// diskPath is provided (e.g. from a disk-scan picker), diskPath is used
+// directly. Saves the updated active model to config.
+func switchLlamafileModel(a *Agent, name, diskPath string, out io.Writer) error {
 	entry := a.Config.LlamafileEntryByName(name)
-	if entry == nil {
+	var absPath string
+	switch {
+	case entry != nil:
+		workspaceRoot := ""
+		if a.Workspace != nil {
+			workspaceRoot = a.Workspace.Root
+		}
+		absPath = resolveLlamafilePath(entry.Path, workspaceRoot)
+	case diskPath != "":
+		absPath = diskPath
+	default:
 		return fmt.Errorf("no llamafile registered as %q", name)
 	}
-	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 	if a.Backend != nil && a.Backend.StartedByHarvey() {
 		fmt.Fprintf(out, "  Stopping %s...\n", a.Config.Llamafile.Active)
 		_ = a.Backend.Stop()
@@ -190,7 +201,7 @@ func switchLlamafileModel(a *Agent, name string, out io.Writer) error {
 		return err
 	}
 	a.Config.Llamafile.Active = name
-	if entry.ContextLength == 0 {
+	if entry != nil && entry.ContextLength == 0 {
 		if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
 			entry.ContextLength = ctx
 			a.Config.AddOrUpdateLlamafileEntry(*entry)

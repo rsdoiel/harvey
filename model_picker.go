@@ -147,7 +147,7 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
 	case "ollama":
 		a.setOllamaModel(selected.Name)
 	case "llamafile":
-		if err := switchLlamafileModel(a, selected.Name, out); err != nil {
+		if err := switchLlamafileModel(a, selected.Name, selected.Path, out); err != nil {
 			return err
 		}
 	case "llamacpp":

@@ -134,14 +134,14 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 	// Check llamafile registry first (case-insensitive).
 	for _, e := range a.Config.Llamafile.Models {
 		if strings.EqualFold(e.Name, name) {
-			err := switchLlamafileModel(a, e.Name, out)
+			err := switchLlamafileModel(a, e.Name, "", out)
 			return true, err
 		}
 	}
 	// Check model aliases (stored with lowercase keys).
 	if entry, ok := a.Config.ModelAliases[strings.ToLower(name)]; ok {
 		full := entry.Model
-		err := switchLlamafileModel(a, full, out)
+		err := switchLlamafileModel(a, full, "", out)
 		if err != nil {
 			// Not a llamafile alias — fall through to Ollama.
 			a.Config.Ollama.Model = full
