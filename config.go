@@ -811,6 +811,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.Chunking.Overlap != "" {
 		cfg.Chunking.Overlap = y.Chunking.Overlap
 	}
+	if y.Chunking.STMWarnPct > 0 {
+		cfg.Chunking.STMWarnPct = y.Chunking.STMWarnPct
+	}
 	return nil
 }
 

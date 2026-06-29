@@ -674,6 +674,7 @@ chunking:
   chunk_size_bytes: 6000           # target size of each chunk in bytes (~1500 tokens)
   max_chunks: 20                   # warn when a document would produce more than this many chunks
   overlap: paragraph               # "paragraph" (repeat last unit), "none"; default "paragraph"
+  stm_warn_pct: 0.20               # nudge model to invoke summary_context when <20% context remains; 0 disables
 
 # When `chunking.enabled` is true and a file would overflow the remaining
 # context window, Harvey prints an alert and prompts for chunk instructions:

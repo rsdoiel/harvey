@@ -115,6 +115,67 @@ func TestRemainingContext_SafetyMargin(t *testing.T) {
 	}
 }
 
+// ─── stmWarnNudge ─────────────────────────────────────────────────────────────
+
+func TestSTMWarnNudge_ContextAmple(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.OllamaContextLength = 10000
+	cfg.Chunking = DefaultChunkConfig() // STMWarnPct = 0.20
+	a := &Agent{Config: cfg}            // empty history → ~9000 tokens remaining
+	got := stmWarnNudge(a)
+	if got != "" {
+		t.Errorf("expected no nudge when context is ample; got: %q", got)
+	}
+}
+
+func TestSTMWarnNudge_ContextNearlyFull(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.OllamaContextLength = 1000
+	cfg.Chunking = DefaultChunkConfig() // STMWarnPct = 0.20 → threshold = 200 tokens
+	// Fill history to ~820 tokens → remainingContext ≈ 1000-820-100 = 80 < 200.
+	a := &Agent{
+		Config: cfg,
+		History: []Message{
+			{Role: "user", Content: strings.Repeat("x", 3280)}, // 3280/4 = 820 tokens
+		},
+	}
+	got := stmWarnNudge(a)
+	if got == "" {
+		t.Error("expected nudge when context is nearly full; got empty string")
+	}
+	if !strings.Contains(got, "summary_context") {
+		t.Errorf("nudge should mention summary_context; got: %q", got)
+	}
+}
+
+func TestSTMWarnNudge_DisabledWhenZero(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.OllamaContextLength = 1000
+	cfg.Chunking = DefaultChunkConfig()
+	cfg.Chunking.STMWarnPct = 0 // disabled
+	a := &Agent{
+		Config: cfg,
+		History: []Message{
+			{Role: "user", Content: strings.Repeat("x", 3280)}, // nearly full
+		},
+	}
+	got := stmWarnNudge(a)
+	if got != "" {
+		t.Errorf("expected no nudge when STMWarnPct=0; got: %q", got)
+	}
+}
+
+func TestSTMWarnNudge_NoLimitConfigured(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.OllamaContextLength = 0 // unknown limit
+	cfg.Chunking = DefaultChunkConfig()
+	a := &Agent{Config: cfg}
+	got := stmWarnNudge(a)
+	if got != "" {
+		t.Errorf("expected no nudge when context limit is unknown; got: %q", got)
+	}
+}
+
 func TestRemainingContext_ExhaustedReturnsZero(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.OllamaContextLength = 1000

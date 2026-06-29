@@ -53,6 +53,7 @@ type chunkingYAML struct {
 	ChunkSizeBytes int     `yaml:"chunk_size_bytes,omitempty"`
 	MaxChunks      int     `yaml:"max_chunks,omitempty"`
 	Overlap        string  `yaml:"overlap,omitempty"`
+	STMWarnPct     float64 `yaml:"stm_warn_pct,omitempty"`
 }
 
 type toolsYAML struct {

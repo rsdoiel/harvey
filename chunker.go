@@ -24,6 +24,9 @@ const (
  *   ChunkSizeBytes (int)     — target chunk size in bytes; default 6000 (~1500 tokens).
  *   MaxChunks      (int)     — chunk count above which Harvey warns before proceeding.
  *   Overlap        (string)  — "paragraph", "sentence", or "none".
+ *   STMWarnPct     (float64) — fraction of total context limit below which a summary_context
+ *                              nudge is appended to the user message (0.20 = warn when <20%
+ *                              remains). Set to 0 to disable.
  *
  * Example:
  *   cfg := DefaultChunkConfig()
@@ -35,6 +38,7 @@ type ChunkConfig struct {
 	ChunkSizeBytes int
 	MaxChunks      int
 	Overlap        string
+	STMWarnPct     float64
 }
 
 /** DefaultChunkConfig returns the ChunkConfig used when no chunking: stanza
@@ -54,6 +58,7 @@ func DefaultChunkConfig() ChunkConfig {
 		ChunkSizeBytes: 6000,
 		MaxChunks:      20,
 		Overlap:        "paragraph",
+		STMWarnPct:     0.20,
 	}
 }
 

@@ -1,6 +1,9 @@
 package harvey
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // estimateTokens returns a fast token count estimate using the 4-bytes-per-token
 // heuristic. Returns at least 1 so callers can safely divide by the result.
@@ -45,6 +48,40 @@ func remainingContext(a *Agent) int {
 		return 0
 	}
 	return remaining
+}
+
+/** stmWarnNudge returns a brief reminder string when the agent's remaining
+ * context falls below the configured STMWarnPct fraction of the total limit.
+ * It returns an empty string when the limit is unknown, STMWarnPct is zero,
+ * or context is still ample. The returned string is intended to be appended
+ * to the current user message so the model sees it as a meta-instruction.
+ *
+ * Parameters:
+ *   a (*Agent) — the agent whose history and config are inspected.
+ *
+ * Returns:
+ *   string — nudge text, or "" when no nudge is needed.
+ *
+ * Example:
+ *   augmented += stmWarnNudge(a)
+ */
+func stmWarnNudge(a *Agent) string {
+	pct := a.Config.Chunking.STMWarnPct
+	if pct <= 0 {
+		return ""
+	}
+	limit := a.effectiveContextLimit()
+	if limit <= 0 {
+		return ""
+	}
+	rem := remainingContext(a)
+	if rem <= 0 || rem >= int(float64(limit)*pct) {
+		return ""
+	}
+	return fmt.Sprintf(
+		"\n\n[Harvey: context is nearly full — approximately %d tokens remaining (<%d%% of limit). "+
+			"If the summary_context tool is available, invoke it now to compress conversation history.]",
+		rem, int(pct*100))
 }
 
 /** fileExceedsBudget reports whether a file's estimated token cost exceeds the

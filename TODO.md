@@ -118,7 +118,7 @@ See `henry` project (`henry-handoff-20260622-llamafile-factory.spmd`).
 See [agentic-memory-design.md](agentic-memory-design.md) and [agentic-memory-plan.md](agentic-memory-plan.md).
 Inspired by AgeMem (Yu et al., 2025; arXiv:2601.01885v2 — `memory-models/2601.01885v2.pdf`).
 
-- [ ] **M0** — Proactive STM warning: inject system nudge when `remainingContext < stm_warn_pct`
+- [x] **M0** — Proactive STM warning: inject system nudge when `remainingContext < stm_warn_pct`
   (default 20%). Add `STMWarnPct float64` to `ChunkConfig`; check in `runChatTurn`.
   **Effort:** ~1h. No tool registration required.
 

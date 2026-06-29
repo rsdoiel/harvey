@@ -1042,6 +1042,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		augmented = a.injectOrChunk(ctx, augmented, out)
 	}
 
+	augmented += stmWarnNudge(a)
 	a.AddMessage("user", augmented)
 
 	// Token-count warning — runs only when the backend is Ollama.
