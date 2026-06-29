@@ -1374,7 +1374,8 @@ func promptChunkInstruction(in io.Reader, out io.Writer, filename string, estima
 		}
 		return "", true
 	}
-	if strings.ToLower(line) == "no" {
+	switch strings.ToLower(line) {
+	case "no", "cancel", "q", "/exit", "/quit":
 		return "", true
 	}
 	return line, false
