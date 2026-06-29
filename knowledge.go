@@ -3,6 +3,7 @@ package harvey
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"time"
@@ -1270,4 +1271,82 @@ func (kb *KnowledgeBase) FindOrCreateSource(title, identifierType, identifierVal
 		IdentifierType:  identifierType,
 		IdentifierValue: identifierValue,
 	})
+}
+
+/** CheckRetractions queries checker for every non-retracted source with
+ * identifier_type = "doi" and marks any hits as retracted. It also updates
+ * last_checked_at for every source it queries. Progress is written to out.
+ *
+ * Parameters:
+ *   checker (func(doi string) (bool, string, error)) — returns (retracted,
+ *             note, err) for a given DOI. Use CheckDOIRetraction for production.
+ *   out     (io.Writer) — destination for per-source status lines.
+ *
+ * Returns:
+ *   checked (int)   — number of DOI sources queried.
+ *   updated (int)   — number of sources newly marked as retracted.
+ *   error           — on database failure (checker errors are logged, not fatal).
+ *
+ * Example:
+ *   checked, updated, err := kb.CheckRetractions(
+ *       func(doi string) (bool, string, error) {
+ *           return CheckDOIRetraction(doi, DefaultRetractionWatchURL)
+ *       }, os.Stdout)
+ */
+func (kb *KnowledgeBase) CheckRetractions(
+	checker func(doi string) (retracted bool, note string, err error),
+	out io.Writer,
+) (checked, updated int, err error) {
+	rows, err := kb.db.Query(
+		`SELECT id, title, identifier_value FROM sources
+		 WHERE identifier_type = 'doi' AND retracted = 0`,
+	)
+	if err != nil {
+		return 0, 0, fmt.Errorf("check retractions: query sources: %w", err)
+	}
+	defer rows.Close()
+
+	type doiSource struct {
+		id    int64
+		title string
+		doi   string
+	}
+	var sources []doiSource
+	for rows.Next() {
+		var s doiSource
+		if err := rows.Scan(&s.id, &s.title, &s.doi); err != nil {
+			return 0, 0, fmt.Errorf("check retractions: scan: %w", err)
+		}
+		sources = append(sources, s)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, fmt.Errorf("check retractions: rows: %w", err)
+	}
+
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	for _, s := range sources {
+		retracted, note, cerr := checker(s.doi)
+		checked++
+
+		// Update last_checked_at regardless of outcome.
+		_, _ = kb.db.Exec(
+			`UPDATE sources SET last_checked_at = ? WHERE id = ?`, now, s.id,
+		)
+
+		if cerr != nil {
+			fmt.Fprintf(out, "  [skip] %s (%s): %v\n", s.doi, s.title, cerr)
+			continue
+		}
+		if retracted {
+			if rerr := kb.RetractSource(s.id, note); rerr != nil {
+				fmt.Fprintf(out, "  [error] could not retract %s: %v\n", s.doi, rerr)
+				continue
+			}
+			updated++
+			fmt.Fprintf(out, "  [RETRACTED] %s — %s: %s\n", s.doi, s.title, note)
+		} else {
+			fmt.Fprintf(out, "  [ok] %s — %s\n", s.doi, s.title)
+		}
+	}
+	return checked, updated, nil
 }

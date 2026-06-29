@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"io"
 	"testing"
 )
 
@@ -514,5 +515,109 @@ func TestObservationSources(t *testing.T) {
 	}
 	if !foundBRetracted {
 		t.Error("expected retracted Paper B in sources")
+	}
+}
+
+func TestCheckRetractions_NoDOISources(t *testing.T) {
+	kb := openTestKB(t)
+	defer kb.Close()
+
+	// Add a non-DOI source — should not be checked.
+	_, err := kb.AddSource(Source{Title: "Web Page", IdentifierType: "url", IdentifierValue: "https://example.com"})
+	if err != nil {
+		t.Fatalf("AddSource: %v", err)
+	}
+
+	checker := func(doi string) (bool, string, error) {
+		t.Errorf("checker called unexpectedly for doi %q", doi)
+		return false, "", nil
+	}
+
+	checked, updated, err := kb.CheckRetractions(checker, io.Discard)
+	if err != nil {
+		t.Fatalf("CheckRetractions: %v", err)
+	}
+	if checked != 0 || updated != 0 {
+		t.Errorf("expected 0/0, got checked=%d updated=%d", checked, updated)
+	}
+}
+
+func TestCheckRetractions_NotRetracted(t *testing.T) {
+	kb := openTestKB(t)
+	defer kb.Close()
+
+	_, err := kb.AddSource(Source{Title: "Clean Paper", IdentifierType: "doi", IdentifierValue: "10.1234/clean"})
+	if err != nil {
+		t.Fatalf("AddSource: %v", err)
+	}
+
+	checker := func(doi string) (bool, string, error) { return false, "", nil }
+
+	checked, updated, err := kb.CheckRetractions(checker, io.Discard)
+	if err != nil {
+		t.Fatalf("CheckRetractions: %v", err)
+	}
+	if checked != 1 {
+		t.Errorf("expected checked=1, got %d", checked)
+	}
+	if updated != 0 {
+		t.Errorf("expected updated=0, got %d", updated)
+	}
+}
+
+func TestCheckRetractions_Retracted(t *testing.T) {
+	kb := openTestKB(t)
+	defer kb.Close()
+
+	id, err := kb.AddSource(Source{Title: "Bad Paper", IdentifierType: "doi", IdentifierValue: "10.1234/bad"})
+	if err != nil {
+		t.Fatalf("AddSource: %v", err)
+	}
+
+	checker := func(doi string) (bool, string, error) {
+		return true, "Data fabrication (2024/03/15)", nil
+	}
+
+	checked, updated, err := kb.CheckRetractions(checker, io.Discard)
+	if err != nil {
+		t.Fatalf("CheckRetractions: %v", err)
+	}
+	if checked != 1 || updated != 1 {
+		t.Errorf("expected 1/1, got checked=%d updated=%d", checked, updated)
+	}
+
+	s, err := kb.ShowSource(id)
+	if err != nil {
+		t.Fatalf("ShowSource: %v", err)
+	}
+	if !s.Retracted {
+		t.Error("source should be marked retracted")
+	}
+	if s.RetractionNote != "Data fabrication (2024/03/15)" {
+		t.Errorf("unexpected note: %q", s.RetractionNote)
+	}
+}
+
+func TestCheckRetractions_SkipsAlreadyRetracted(t *testing.T) {
+	kb := openTestKB(t)
+	defer kb.Close()
+
+	id, err := kb.AddSource(Source{Title: "Already Retracted", IdentifierType: "doi", IdentifierValue: "10.1234/old"})
+	if err != nil {
+		t.Fatalf("AddSource: %v", err)
+	}
+	if err := kb.RetractSource(id, "Prior retraction"); err != nil {
+		t.Fatalf("RetractSource: %v", err)
+	}
+
+	calls := 0
+	checker := func(doi string) (bool, string, error) { calls++; return false, "", nil }
+
+	checked, updated, err := kb.CheckRetractions(checker, io.Discard)
+	if err != nil {
+		t.Fatalf("CheckRetractions: %v", err)
+	}
+	if checked != 0 || updated != 0 || calls != 0 {
+		t.Errorf("already-retracted source should be skipped: checked=%d updated=%d calls=%d", checked, updated, calls)
 	}
 }

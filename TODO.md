@@ -100,7 +100,7 @@ See [audit-trail-plan.md](audit-trail-plan.md) option 3 (`/model mode` command, 
 See [scholarly-provenance-plan.md](scholarly-provenance-plan.md) S2 and
 [scholarly-provenance-design.md](scholarly-provenance-design.md).
 
-- [ ] The `sources` table in `knowledge.db` already has `retracted INTEGER` and `retraction_note TEXT`
+- [x] The `sources` table in `knowledge.db` already has `retracted INTEGER` and `retraction_note TEXT`
   columns for manual marking (via `/kb retract`). Add a periodic background check against the
   Retraction Watch API (`retractionwatch.com`) that flags retracted DOIs automatically. A
   `/kb check-retractions` command (or scheduled task) should query registered sources with

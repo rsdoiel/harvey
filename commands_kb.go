@@ -64,9 +64,11 @@ func cmdKB(a *Agent, args []string, out io.Writer) error {
 		return kbCite(a, args[1:], out)
 	case "show":
 		return kbShow(a, args[1:], out)
+	case "check-retractions":
+		return kbCheckRetractions(a, out)
 	default:
 		fmt.Fprintf(out, "Unknown kb subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /kb <status|search|inject|project|observe|concept|source|retract|cite|show> [args...]")
+		fmt.Fprintln(out, "Usage: /kb <status|search|inject|project|observe|concept|source|retract|cite|show|check-retractions> [args...]")
 	}
 	return nil
 }
@@ -553,6 +555,26 @@ func kbShow(a *Agent, args []string, out io.Writer) error {
 		} else {
 			fmt.Fprintf(out, "    [%d] %s%s\n", s.ID, s.Title, ident)
 		}
+	}
+	return nil
+}
+
+// kbCheckRetractions handles /kb check-retractions: queries the Retraction
+// Watch API for every non-retracted DOI source and marks hits as retracted.
+func kbCheckRetractions(a *Agent, out io.Writer) error {
+	fmt.Fprintln(out, "Checking registered DOIs against the Retraction Watch database...")
+	checked, updated, err := a.KB.CheckRetractions(
+		func(doi string) (bool, string, error) {
+			return CheckDOIRetraction(doi, DefaultRetractionWatchURL)
+		},
+		out,
+	)
+	if err != nil {
+		return fmt.Errorf("check-retractions: %w", err)
+	}
+	fmt.Fprintf(out, "\nChecked %d DOI source(s); %d newly marked as retracted.\n", checked, updated)
+	if updated > 0 {
+		fmt.Fprintln(out, "Run /kb source list to review retracted sources.")
 	}
 	return nil
 }
