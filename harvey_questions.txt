@@ -1,0 +1,35 @@
+
+# Questions about Harvey
+
+## What are the major unique features of Harvey?
+
+**Major Unique Features of Harvey**
+
+Based on the changes logged in **CHANGES.md**, Harvey stands out with several distinctive capabilities:
+
+1. **Assay Evaluation Harness**  
+  - A dedicated `bin/assay` tool that runs a configurable prompt corpus against one or more Ollama models.  
+  - Generates detailed Markdown reports plus JSON results for automated checking and human review.  
+  - Supports RAG‑enhanced prompts (`--rag-db PATH`) and comparative evaluations (base vs. RAG).  
+2. **File Attachment & Remote I/O**  
+  - `/attach FILE` injects native image files or extracts text from PDFs/other sources, routing them appropriately.  
+  - `/read-pdf FILE [PAGES]` extracts up to 20 pages of PDF content for context injection.  
+  - Expanded remote‑protocol readers (`s3://`, `http(s)://`, `sftp://`, `scp://`) enable seamless access to files stored anywhere, with strict security checks.
+3. **Unified Knowledge Discovery & Memory System**  
+  - `/hint` provides actionable suggestions (e.g., unmined sessions, empty RAG stores).  
+  - `/recall QUERY` performs a single‑call semantic search across RAG, memory store, and the knowledge base.  
+  - A consolidated `MemoryConfig` replaces separate `rag:` and top‑level settings, offering budget tracking (`memory.budget_pct`) and automatic session summarization when token limits are exceeded.
+4. **Persistent Command History**  
+  - REPL input history is saved to `agents/harvey_history` on exit (max 1000 entries) and reloaded on startup, preserving per‑workspace command context across sessions.
+5. **Pipeline & Multi‑Step Prompting**  
+  - `/pipeline` orchestrates multi‑step prompt pipelines where each step can consume outputs of the previous one, enabling complex workflows directly from the terminal.
+6. **Enhanced Security & Reliability**  
+  - Remote protocols enforce size limits (e.g., 4 MB packets for SFTP) and timeout policies to prevent resource exhaustion.  
+  - Credential stripping ensures sensitive keys are never passed downstream.  
+7. **Extensible Skill Dispatch**  
+  - Harvey’s skill dispatch system (`/skill load <name>`) lets users activate specialized routines (e.g., `compile-skill`, `fetch-pg-corpus`, `fountain-analysis`).  
+8. **Cross‑Platform & Safe Mode Installation**  
+  - Prebuilt installers for Linux, macOS, and Windows; safe mode restricts execution to an allowlisted command set.
+
+These features collectively make Harvey a powerful, extensible terminal REPL capable of sophisticated prompt evaluation, remote file handling, intelligent memory management, and secure multi‑model orchestration—all while preserving context across sessions.
+

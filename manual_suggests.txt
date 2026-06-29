@@ -1,0 +1,43 @@
+# Improved Harvey User Manual Organization
+
+# Overview
+* **Harvey Overview** – Introduction to Harvey, its purpose, and core philosophy.
+
+# Getting Started
+1. **Installation Guide** – Step‑by‑step installation on all platforms.
+2. **First Session Walkthrough** – Launching Harvey, understanding the REPL, keyboard shortcuts, and basic slash commands.
+3. **Security & Safe Mode** – Overview of safety features, permissions, and audit logging.
+
+# Core Concepts
+- **Workspace & Sandbox** – How Harvey isolates operations within a single directory.
+- **System Prompt Customization** – Modifying `HARVEY.md` for model behavior.
+- **Configuration** – Details on `agents/harvey.yaml`, environment variables, and routing setup.
+
+# Skill System
+- **Skill Markdown (`SKILL.md`)** – Structure, triggers, and compiled output generation.
+- **Skill Wizard** – Interactive tool for creating new skills.
+
+# Knowledge Base Management
+- **SQLite‑Backed DB** – Schema overview and CLI commands (`/kb`).
+- **RAG Integration** – Retrieval‑augmented generation setup.
+
+# Session Recording & Fountain Format
+- **Session Logging** – Automatic recording of interactions.
+- **Fountain Screenplay** – Narrative format for documenting model sessions.
+
+# Advanced Topics
+1. **Model Caching** – Architecture and API for capability probing.
+2. **Multi‑Model Collaboration** – Routing to external endpoints via @mentions.
+3. **Personal AI Exploration** – Tailoring models per individual use‑case (concept stage).
+4. **Extending Harvey** – Adding custom tools, file handling, and command extensions.
+
+# Reference Section
+- **Command Summary Table** – Quick reference for all slash commands (`/run`, `/skill`, `/kb`, etc.).
+- **Man Pages Index** – Links to detailed man pages (`harvey.1.md`, `harvey.7.md`).
+- **FAQ** – Common troubleshooting and edge‑case handling.
+
+# External Resources
+- **GitHub Repository & Issues** – Reporting bugs, feature requests, and community contributions.
+- **Further Reading** – Links to design documents, testing guides, and installation notes.
+
+*This reorganized manual aims to guide users from initial setup through advanced configuration, ensuring a clear path for both beginners and power users.*

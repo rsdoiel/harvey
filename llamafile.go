@@ -168,110 +168,51 @@ func adoptExternalServer(a *Agent, out io.Writer) error {
 	return nil
 }
 
-/** cmdLlamafile dispatches /llamafile subcommands: add, use, list, start, status.
- * With no subcommand, or an unrecognised one, the help text is printed.
- *
- * Parameters:
- *   a    (*Agent)   — the running Harvey agent.
- *   args ([]string) — subcommand and its arguments.
- *   out  (io.Writer) — destination for output.
- *
- * Returns:
- *   error — non-nil on unexpected failures.
- *
- * Example:
- *   cmdLlamafile(agent, []string{"list"}, os.Stdout)
- */
-func cmdLlamafile(a *Agent, args []string, out io.Writer) error {
-	sub := ""
-	if len(args) > 0 {
-		sub = args[0]
+// switchLlamafileModel starts the named registered llamafile model, stopping
+// any Harvey-managed backend first. Saves the updated active model to config.
+func switchLlamafileModel(a *Agent, name string, out io.Writer) error {
+	entry := a.Config.LlamafileEntryByName(name)
+	if entry == nil {
+		return fmt.Errorf("no llamafile registered as %q", name)
 	}
-	switch sub {
-	case "add":
-		return cmdLlamafileAdd(a, args[1:], out)
-	case "use":
-		return cmdLlamafileUse(a, args[1:], out)
-	case "list":
-		return cmdLlamafileList(a, out)
-	case "show":
-		return cmdLlamafileShow(a, args[1:], out)
-	case "start":
-		return cmdLlamafileStart(a, args[1:], out)
-	case "status":
-		return cmdLlamafileStatus(a, out)
-	case "drop", "remove":
-		return cmdLlamafileDrop(a, args[1:], out)
-	case "download":
-		return cmdLlamafileDownload(out)
-	default:
-		fmt.Fprint(out, LlamafileHelpText)
-		return nil
+	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
+	if a.Backend != nil && a.Backend.StartedByHarvey() {
+		fmt.Fprintf(out, "  Stopping %s...\n", a.Config.Llamafile.Active)
+		_ = a.Backend.Stop()
 	}
+	fmt.Fprintf(out, "  Starting %s...\n", name)
+	proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
+	if err != nil {
+		return fmt.Errorf("failed to start llamafile: %w", err)
+	}
+	a.wireLlamafileBackend(proc, name)
+	if err := a.useLlamafileEntry(name, out); err != nil {
+		return err
+	}
+	a.Config.Llamafile.Active = name
+	if entry.ContextLength == 0 {
+		if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
+			entry.ContextLength = ctx
+			a.Config.AddOrUpdateLlamafileEntry(*entry)
+		}
+	}
+	if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
+		fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
+	}
+	return nil
 }
 
-// cmdLlamafileAdd registers a llamafile model and connects to it. When no
-// path argument is given, it scans LlamafileModelsDir and shows a picker.
-func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
-	var path, name string
-
-	if len(args) > 0 {
-		path = args[0]
-		if len(args) > 1 {
-			name = args[1]
-		}
-	} else {
-		// No path given — try the models directory picker.
-		selected, err := llamafilePickFromDir(a, out)
-		if err != nil || selected == "" {
-			return err
-		}
-		path = selected
-	}
-
-	// Derive name from filename if not supplied or prompted.
-	if name == "" {
-		defaultName := llamafileModelName(path)
-		fmt.Fprintf(out, "  Name [%s]: ", defaultName)
-		line, _ := bufio.NewReader(a.In).ReadString('\n')
-		line = strings.TrimSpace(line)
-		if line == "" {
-			name = defaultName
-		} else {
-			name = line
-		}
-	}
-
-	// Resolve workspace-relative paths.
+// addAndStartLlamafile registers a llamafile binary by path and starts it.
+// Used by the first-run wizard. Derives a model name from the filename.
+func addAndStartLlamafile(a *Agent, path string, out io.Writer) error {
+	name := llamafileModelName(path)
 	absPath := resolveLlamafilePath(path, a.Workspace.Root)
-
-	// Validate the file exists.
 	if _, err := os.Stat(absPath); err != nil {
 		return fmt.Errorf("llamafile not found: %s", absPath)
 	}
-
-	// Stop whatever is currently running so the new model can bind the port.
 	if a.Backend != nil && a.Backend.StartedByHarvey() {
 		fmt.Fprintln(out, "  Stopping current llamafile...")
 		_ = a.Backend.Stop()
-	} else if ProbeLlamafile(a.Config.Llamafile.URL) {
-		// An externally started server is running. Register the entry for future
-		// use, but we cannot stop a server Harvey didn't start.
-		running := probeRunningLlamafileName(a.Config.Llamafile.URL)
-		if running == "" {
-			running = "unknown"
-		}
-		fmt.Fprintf(out, "  A llamafile server is already running at %s (model: %s).\n", a.Config.Llamafile.URL, running)
-		fmt.Fprintf(out, "  Harvey cannot stop externally started servers.\n")
-		fmt.Fprintf(out, "  Registering %s for later use.\n", name)
-		entry := LlamafileEntry{Name: name, Path: path}
-		a.Config.AddOrUpdateLlamafileEntry(entry)
-		if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
-		} else {
-			fmt.Fprintf(out, dim("  Saved. Use /llamafile use %s after stopping the running server.\n"), name)
-		}
-		return nil
 	}
 	fmt.Fprintln(out, "  Starting llamafile...")
 	proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
@@ -280,11 +221,9 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 	}
 	a.wireLlamafileBackend(proc, name)
 	fmt.Fprintln(out, green("  ✓")+" Llamafile started")
-
 	if err := a.useLlamafileEntry(name, out); err != nil {
 		return err
 	}
-
 	entry := LlamafileEntry{Name: name, Path: path}
 	if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
 		entry.ContextLength = ctx
@@ -311,7 +250,7 @@ func llamafilePickFromDir(a *Agent, out io.Writer) (string, error) {
 		result, err := SelectFromStrings(nil, "Enter a path to a llamafile (or Enter to cancel): ", a.In, out)
 		if err != nil || result == "" {
 			if err == nil {
-				fmt.Fprintln(out, "  No path given — use /llamafile add PATH to register a model.")
+				fmt.Fprintln(out, "  No path given — use /model use to select a model.")
 			}
 			return "", err
 		}
@@ -340,273 +279,11 @@ func llamafilePickFromDir(a *Agent, out io.Writer) (string, error) {
 		return "", err
 	}
 	if result == "" {
-		fmt.Fprintln(out, "  No selection — use /llamafile add PATH to register a model.")
+		fmt.Fprintln(out, "  No selection — use /model use to select a model.")
 	}
 	return result, nil
 }
 
-// llamafilePickFromRegistered shows a numbered picker of registered models
-// and returns the selected name. Returns ("", nil) if the user cancels.
-func llamafilePickFromRegistered(a *Agent, out io.Writer) (string, error) {
-	models := a.Config.Llamafile.Models
-	if len(models) == 0 {
-		fmt.Fprintln(out, "  No llamafile models registered. Use /llamafile add first.")
-		return "", nil
-	}
-	items := make([]SelectItem, len(models))
-	for i, e := range models {
-		items[i] = SelectItem{
-			Value:  e.Name,
-			Label:  e.Name,
-			Active: e.Name == a.Config.Llamafile.Active,
-		}
-	}
-	return SelectFrom(items, fmt.Sprintf("Select model [1-%d] or enter a name: ", len(items)), a.In, out)
-}
-
-// cmdLlamafileUse switches to a named registered model.
-// When no NAME is given, shows a numbered picker of registered models.
-func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	} else {
-		selected, err := llamafilePickFromRegistered(a, out)
-		if err != nil || selected == "" {
-			return err
-		}
-		name = selected
-	}
-	entry := a.Config.LlamafileEntryByName(name)
-	if entry == nil {
-		return fmt.Errorf("no llamafile registered as %q — use /llamafile list to see registered models", name)
-	}
-
-	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-
-	// Stop the current server if Harvey started it.
-	if a.Backend != nil && a.Backend.StartedByHarvey() {
-		fmt.Fprintf(out, "  Stopping %s...\n", a.Config.Llamafile.Active)
-		_ = a.Backend.Stop()
-	} else if ProbeLlamafile(a.Config.Llamafile.URL) {
-		running := probeRunningLlamafileName(a.Config.Llamafile.URL)
-		if running == "" {
-			running = "unknown"
-		}
-		// If the running model already matches the requested one, adopt it.
-		if strings.EqualFold(running, name) {
-			if err := a.useLlamafileEntry(name, out); err != nil {
-				return err
-			}
-			a.Config.Llamafile.Active = name
-			return nil
-		}
-		fmt.Fprintf(out, "  A llamafile server is already running at %s (model: %s).\n", a.Config.Llamafile.URL, running)
-		fmt.Fprintf(out, "  Harvey cannot stop externally started servers.\n")
-		fmt.Fprintf(out, "  Stop it manually, then run /llamafile use %s\n", name)
-		return nil
-	}
-
-	fmt.Fprintf(out, "  Starting %s...\n", name)
-	proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
-	if err != nil {
-		return fmt.Errorf("failed to start llamafile: %w", err)
-	}
-	a.wireLlamafileBackend(proc, name)
-
-	if err := a.useLlamafileEntry(name, out); err != nil {
-		return err
-	}
-	a.Config.Llamafile.Active = name
-	// Probe context length and store in-memory if not already set by user config.
-	if entry.ContextLength == 0 {
-		if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
-			entry.ContextLength = ctx
-			a.Config.AddOrUpdateLlamafileEntry(*entry)
-		}
-	}
-	if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
-		fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
-	}
-	return nil
-}
-
-// cmdLlamafileList prints the registered llamafile models.
-func cmdLlamafileList(a *Agent, out io.Writer) error {
-	if len(a.Config.Llamafile.Models) == 0 {
-		fmt.Fprintln(out, "  No llamafile models registered.")
-		fmt.Fprintln(out, "  Use /llamafile add to register one.")
-	} else {
-		fmt.Fprintln(out, "  Registered llamafile models:")
-		for _, e := range a.Config.Llamafile.Models {
-			arrow := "  "
-			if e.Name == a.Config.Llamafile.Active {
-				arrow = "→ "
-			}
-			size := ""
-			if info, err := os.Stat(resolveLlamafilePath(e.Path, a.Workspace.Root)); err == nil {
-				size = fmt.Sprintf(" (%s)", llamafileFormatBytes(info.Size()))
-			}
-			fmt.Fprintf(out, "  %s%-20s %s%s\n", arrow, e.Name, e.Path, size)
-		}
-	}
-	fmt.Fprintf(out, "  Discovery directory: %s\n", a.Config.Llamafile.ModelsDir)
-	return nil
-}
-
-/** cmdLlamafileShow prints details for a registered llamafile model.
- *
- * Parameters:
- *   a    (*Agent)    — Harvey agent.
- *   args ([]string)  — optional model NAME; defaults to the active model.
- *   out  (io.Writer) — output writer.
- *
- * Returns:
- *   error — always nil; errors are printed to out.
- *
- * Example:
- *   /llamafile show
- *   /llamafile show qwen-coding
- */
-func cmdLlamafileShow(a *Agent, args []string, out io.Writer) error {
-	name := a.Config.Llamafile.Active
-	if len(args) > 0 {
-		name = args[0]
-	}
-	if name == "" {
-		fmt.Fprintln(out, "  No active llamafile model. Use /llamafile add or /llamafile use NAME first.")
-		return nil
-	}
-	entry := a.Config.LlamafileEntryByName(name)
-	if entry == nil {
-		fmt.Fprintf(out, "  llamafile %q not found — use /llamafile list to see registered models.\n", name)
-		return nil
-	}
-	active := ""
-	if entry.Name == a.Config.Llamafile.Active {
-		active = " (active)"
-	}
-	fmt.Fprintf(out, "  Name:    %s%s\n", entry.Name, active)
-	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-	fmt.Fprintf(out, "  Path:    %s\n", absPath)
-	if info, err := os.Stat(absPath); err == nil {
-		fmt.Fprintf(out, "  Size:    %s\n", llamafileFormatBytes(info.Size()))
-	} else {
-		fmt.Fprintln(out, "  Size:    (file not found)")
-	}
-	if entry.ContextLength > 0 {
-		fmt.Fprintf(out, "  Context: %d tokens\n", entry.ContextLength)
-	} else {
-		fmt.Fprintln(out, "  Context: unknown")
-	}
-	return nil
-}
-
-// cmdLlamafileDrop removes a registered llamafile model from the config.
-// When no NAME is given, shows a numbered picker of registered models.
-func cmdLlamafileDrop(a *Agent, args []string, out io.Writer) error {
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	} else {
-		names := llamafileNameCandidates(a)
-		if len(names) == 0 {
-			fmt.Fprintln(out, "  No llamafile models registered.")
-			return nil
-		}
-		chosen, err := SelectFromStrings(names, fmt.Sprintf("Drop which model [1-%d] or Enter to cancel: ", len(names)), a.In, out)
-		if err != nil || chosen == "" {
-			return err
-		}
-		name = chosen
-	}
-	models := a.Config.Llamafile.Models
-	newModels := models[:0]
-	found := false
-	for _, e := range models {
-		if e.Name == name {
-			found = true
-			continue
-		}
-		newModels = append(newModels, e)
-	}
-	if !found {
-		fmt.Fprintf(out, "  No llamafile registered as %q — use /llamafile list.\n", name)
-		return nil
-	}
-	a.Config.Llamafile.Models = newModels
-	if a.Config.Llamafile.Active == name {
-		a.Config.Llamafile.Active = ""
-	}
-	if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
-		fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
-	}
-	fmt.Fprintf(out, "  Removed %q from registered models.\n", name)
-	return nil
-}
-
-// cmdLlamafileStart starts the active (or named) llamafile server.
-func cmdLlamafileStart(a *Agent, args []string, out io.Writer) error {
-	name := a.Config.Llamafile.Active
-	if len(args) > 0 {
-		name = args[0]
-	}
-	if name == "" {
-		fmt.Fprintln(out, "  No active llamafile. Use /llamafile add or /llamafile use NAME first.")
-		return nil
-	}
-	entry := a.Config.LlamafileEntryByName(name)
-	if entry == nil {
-		return fmt.Errorf("no llamafile registered as %q", name)
-	}
-
-	if ProbeLlamafile(a.Config.Llamafile.URL) {
-		fmt.Fprintf(out, "  Llamafile (%s) is already running at %s\n", name, a.Config.Llamafile.URL)
-		return nil
-	}
-
-	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-	fmt.Fprintf(out, "  Starting %s...\n", name)
-	proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
-	if err != nil {
-		return fmt.Errorf("failed to start llamafile: %w", err)
-	}
-	if a.Backend != nil {
-		_ = a.Backend.Stop()
-	}
-	a.wireLlamafileBackend(proc, name)
-	return a.useLlamafileEntry(name, out)
-}
-
-// cmdLlamafileDownload prints a curated table of recommended llamafile models
-// with download guidance. No network access is performed.
-func cmdLlamafileDownload(out io.Writer) error {
-	fmt.Fprint(out, LlamafileDownloadText)
-	return nil
-}
-
-// cmdLlamafileStatus prints the current llamafile connection status.
-func cmdLlamafileStatus(a *Agent, out io.Writer) error {
-	active := a.Config.Llamafile.Active
-	if active == "" {
-		active = "(none)"
-	}
-	reachable := "no"
-	if ProbeLlamafile(a.Config.Llamafile.URL) {
-		reachable = "yes"
-	}
-	managed := "no"
-	if a.Backend != nil && a.Backend.StartedByHarvey() {
-		managed = "yes (started by Harvey)"
-	}
-	fmt.Fprintf(out, "  Active model:    %s\n", active)
-	fmt.Fprintf(out, "  API URL:         %s\n", a.Config.Llamafile.URL)
-	fmt.Fprintf(out, "  Reachable:       %s\n", reachable)
-	fmt.Fprintf(out, "  Process managed: %s\n", managed)
-	fmt.Fprintf(out, "  Models dir:      %s\n", a.Config.Llamafile.ModelsDir)
-	fmt.Fprintf(out, "  Registered:      %d model(s)\n", len(a.Config.Llamafile.Models))
-	return nil
-}
 
 // llamafileFormatBytes returns a human-readable file size string for llamafile listings.
 func llamafileFormatBytes(b int64) string {

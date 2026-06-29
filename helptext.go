@@ -53,11 +53,26 @@ Type /help inside the session for available slash commands.
 -l, --license
 : display license information
 
+init <source>
+: seed model aliases from another workspace directory or a .yaml file, then exit.
+  SOURCE may be a workspace directory (reads agents/harvey.yaml inside it) or a
+  standalone .yaml file with a model_aliases: map at the top level.
+
 -m, --model
 : MODEL   Ollama model to use on startup
 
 --ollama URL
 : Ollama base URL (default: http://localhost:11434)
+
+--llamafile PATH
+: connect to PATH for this session (not persisted to harvey.yaml)
+
+--llamafile-url URL
+: override the llamafile API base URL (default: http://localhost:8080)
+
+--llamafile-dir PATH
+: override the llamafile discovery directory (default: ~/Models)
+
 -w, --workdir DIR
 : workspace directory (default: current directory)
 
@@ -138,17 +153,24 @@ are also available from the shell: harvey --help TOPIC.
 
 **Model and backend**
 
-/ollama <start [debug]|stop|status|list|ps|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL]|logs|use MODEL|env|alias NAME FULLNAME>
-: manage the local Ollama server and installed models
+/model [list|use [NAME]|show [NAME]|status|mode [MODEL] MODE|alias ...]
+: unified model management across llamafile, Ollama, and llama.cpp backends;
+  use with no argument shows a combined picker of all locally available models
+
+/workspace <status|init [PATH]>
+: show workspace root, alias count and profile; seed aliases from another workspace
+
+/ollama <start|stop|status|logs|env|pull MODEL|push MODEL|rm MODEL|probe [MODEL]|clean|...>
+: Ollama daemon control and model registry (pull, push, rm, probe)
+
+/llamafile <add [PATH] [NAME]|show [NAME]|list|start [NAME]|status|remove NAME|download>
+: register and manage local llamafile executables
 
 /inspect [MODEL]
 : show detailed model information (Ollama only)
 
 /route <add NAME URL [MODEL]|remove NAME|use [NAME]|list|on|off|status>
 : manage named remote LLM endpoints (@mention routing)
-
-/llamafile <add [PATH] [NAME]|use NAME|show [NAME]|list|start [NAME]|status|remove NAME|download>
-: manage local llamafile model backends
 
 **Context and history**
 
@@ -326,133 +348,16 @@ Or pass the path directly:
 
 	// ─── Model backends ─────────────────────────────────────────────────────────
 
-	// LlamafileHelpText is shown by /help llamafile and harvey --help llamafile.
-	// Generates harvey-llamafile.7.md.
-	LlamafileHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
-% R. S. Doiel
-% {release_date}
+	// LlamafileHelpText is a redirect stub — the /llamafile command has been removed.
+	// Its operations (drop, stop, status, download) are now part of /model.
+	LlamafileHelpText = `The /llamafile command has been removed.
+Use /model for all model management — see /help model.
 
-# NAME
-
-LLAMAFILE COMMANDS
-
-# SYNOPSIS
-
-/llamafile SUBCOMMAND [ARGS...]
-
-# DESCRIPTION
-
-The /llamafile command manages llamafile model backends. A llamafile is a
-self-contained executable that bundles a GGUF model and an HTTP inference
-server into a single file — no separate server installation required.
-
-Llamafile is a project by Mozilla that makes it easy to distribute and run
-local language models on any platform. Learn more at:
-  <https://github.com/mozilla-ai/llamafile>
-
-Harvey assumes models are stored in $HOME/Models by default. Place
-.llamafile executables there and use /llamafile add to register and
-connect to them.
-
-Pre-built models are available at:
-  <https://huggingface.co/Mozilla/llamafile-models>
-
-# SUBCOMMANDS
-
-  /llamafile add [PATH] [NAME]
-    Register a model and connect to it immediately. If PATH is omitted,
-    Harvey scans the discovery directory ($HOME/Models by default) and
-    shows a numbered picker. NAME is derived from the filename if not
-    given. The choice is saved to agents/harvey.yaml so Harvey connects
-    automatically on next start.
-
-  /llamafile use [NAME]
-    Switch to a named registered model. If NAME is omitted, Harvey shows
-    a numbered picker of registered models. The current server is stopped
-    (if Harvey started it) and the new one is launched.
-
-  /llamafile list
-    List all registered models. The active model is marked with an arrow.
-    The discovery directory is shown at the bottom.
-
-  /llamafile start [NAME]
-    Start the active (or named) model's server without changing the
-    active setting. Useful after Harvey restarts.
-
-  /llamafile show [NAME]
-    Show details for a registered model: path, file size, and context
-    length. If NAME is omitted, shows the active model.
-
-  /llamafile status
-    Show the active model, API URL, reachability, process ownership,
-    discovery directory, and number of registered models.
-
-  /llamafile remove NAME
-    Unregister a model from agents/harvey.yaml. The llamafile binary itself
-    is not deleted. Alias: drop.
-
-  /llamafile drop NAME
-    Alias for remove.
-
-  /llamafile download
-    Print a curated table of recommended llamafile models with sizes and
-    download URLs for copy-pasting into wget/curl.
-
-# CONFIGURATION
-
-In agents/harvey.yaml:
-
-  llamafile:
-    models_dir: ~/Models           # optional; $HOME/Models is the default
-    active: qwen-coding
-    url: http://localhost:8080     # optional; this is the default
-    gpu_layers: 99                 # optional; layers to offload to GPU via -ngl
-                                   # default 99 maximises Metal/CUDA offload
-                                   # set to -1 to force CPU-only inference
-    startup_timeout: 120s          # optional; time to wait for server ready
-                                   # default is 120 seconds
-    models:
-      - name: qwen-coding
-        path: /home/user/Models/Qwen3.5-4B-Q5_K_S.llamafile
-      - name: apertus
-        path: /home/user/Models/Apertus-8B-Instruct-2509.llamafile
-
-# ENVIRONMENT
-
-  HARVEY_LLAMAFILE_DIR
-    Override the discovery directory. Takes precedence over the YAML
-    value but is itself overridden by the --llamafile-dir flag.
-
-# COMMAND LINE FLAGS
-
-  --llamafile PATH        Connect to PATH for this session (not persisted).
-  --llamafile-url URL     Override the API base URL (default: http://localhost:8080).
-  --llamafile-dir PATH    Override the discovery directory.
-
-# NOTES
-
-macOS: llamafile binaries use the APE (Actually Portable Executable) format,
-which macOS cannot exec directly via execve. Harvey launches them via
-/bin/sh, which mirrors what the terminal does when you double-click or
-run the file directly. No extra setup is required.
-
-GPU offload: on macOS (Apple Silicon) llamafile uses Metal; on Linux it
-uses CUDA or ROCm when available. The gpu_layers config option controls
-how many transformer layers are offloaded to the GPU. The default of 99
-offloads everything that fits; lower it if you run out of VRAM, or set
-it to -1 for CPU-only inference.
-
-Startup: Harvey waits up to startup_timeout for the llamafile HTTP server
-to become ready. If the process exits before the server responds, Harvey
-reports the error and prints any stderr output to help diagnose the
-failure.
-
-# SEE ALSO
-
-  /model list|use|show   — backend-agnostic model management across llamafile and Ollama
-  /ollama              — Ollama model backend management
-  /help routing        — add a llamafile:// server as a named route
-  /help getting-started — Getting started with Harvey
+  /model use [NAME]     — select and start a model (llamafile, llama.cpp, or Ollama)
+  /model drop [NAME]    — unregister a llamafile model
+  /model stop           — stop the active llamafile or llama.cpp server
+  /model download       — print recommended llamafile download URLs
+  /model status         — show active backend status
 
 `
 
@@ -467,18 +372,20 @@ MODEL — backend-agnostic model management and inline switching
 
 # SYNOPSIS
 
-/model [list|use NAME|show [NAME]|status|mode [MODEL] MODE]
+/model [list|use [NAME]|show [NAME]|status|mode [MODEL] MODE|alias ...]
 
-@NAME [prompt...]
+@NAME  [prompt...]
+@TAG   [prompt...]
 
 # DESCRIPTION
 
-The /model command manages models across all backends (llamafile and Ollama)
-using a single consistent interface. Use it when you don't want to remember
-which backend is active.
+The /model command manages models across all backends — llamafile, Ollama,
+and llama.cpp — using a single consistent interface.
 
 The @NAME prefix switches the active model inline, within the current prompt.
-History is preserved — the switch is like a new character entering the scene.
+@TAG resolves via purpose tags: if an alias is tagged "code", @code switches
+to it. History is preserved — the switch is like a new character entering
+the scene.
 
 # SUBCOMMANDS
 
@@ -488,13 +395,17 @@ History is preserved — the switch is like a new character entering the scene.
     details for that model.
 
   /model list
-    List all registered models across llamafile and Ollama, marking the
-    active entry with an arrow.
+    List all registered models across llamafile, Ollama, and llama.cpp,
+    marking the active entry with an arrow. Purpose tags are shown where
+    defined.
 
-  /model use NAME
-    Switch to the named model. Harvey checks llamafile models first, then
-    Ollama models. Equivalent to /llamafile use or /ollama use depending on
-    where NAME is registered.
+  /model use [NAME]
+    Switch to the named model. If NAME is omitted, Harvey shows a combined
+    numbered picker of all locally available models across all backends. On
+    first selection of a model without an alias, you are prompted for an alias
+    name and optional purpose tags; the choice is saved to agents/harvey.yaml.
+    If NAME is provided, Harvey resolves it as an alias, model name, or purpose
+    tag (in that order) and starts the required backend if needed.
 
   /model status
     Show whether the active backend is reachable.
@@ -532,16 +443,35 @@ History is preserved — the switch is like a new character entering the scene.
   across sessions. It overrides the auto-detected capability from /ollama probe.
   Requires /ollama probe to have run at least once for the model.
 
+  /model stop
+    Stop the active llamafile or llama.cpp server if Harvey started it.
+    Backends not started by Harvey are left running.
+
+  /model drop [NAME]
+    Unregister a llamafile model (removes from harvey.yaml; file not deleted).
+    For llama.cpp, clears the active session without deleting the .gguf file.
+    With no NAME and llamafile active, shows a picker of registered models.
+    For Ollama models use /ollama rm instead.
+
+  /model download
+    Print a curated table of recommended llamafile models with download URLs.
+
 # AT-MENTION SWITCHING
 
 Prefix any prompt with @NAME to switch to that model for this turn and all
 subsequent turns:
 
   @phi-mini summarise this in under 100 words
+  @code     rewrite this function to avoid the allocation
 
-If NAME is not recognised, the @ prefix is treated as part of the prompt and
-no switch occurs. History is never cleared on a switch — the new model sees
-the full conversation so far.
+Resolution order:
+  1. Named route (/route list)
+  2. Model alias or exact model name
+  3. Purpose tag — if an alias carries the tag "code", @code resolves to
+     the first alphabetically matching alias with that tag.
+
+If NAME matches none of the above, the @ prefix is treated as part of the
+prompt and no switch occurs. History is never cleared on a switch.
 
 Switch notes are written to the session file:
   [[model switch: phi-mini (llamafile) at 2026-06-20 14:32:11]]
@@ -549,19 +479,25 @@ Switch notes are written to the session file:
 # MODEL ALIASES
 
   /model alias list
-    List all defined short-name aliases.
+    List all defined aliases with full model names and purpose tags.
 
-  /model alias add ALIAS FULL_NAME
-    Define an alias (also accepts: set).
+  /model alias add ALIAS FULL_NAME [--tags TAG,TAG,...]
+    Define an alias. Optional --tags lists purpose labels (e.g. code, chat,
+    embed) that enable @TAG routing. Also accepts: set.
+
+  /model alias tags ALIAS TAG [TAG...]
+    Replace the purpose tags on an existing alias.
 
   /model alias remove ALIAS
     Remove an alias (also accepts: rm, delete).
 
-Aliases are resolved in @NAME switching and /model use.
+Aliases are persisted to agents/harvey.yaml under model_aliases:. Purpose
+tags also resolve at @mention time: @code dispatches to any alias tagged
+"code".
 
 # SEE ALSO
 
-  harvey-llamafile(7), harvey-ollama(7), harvey-routing(7)
+  harvey-routing(7), /help model-alias, /help workspace
 
 `
 
@@ -573,20 +509,22 @@ Aliases are resolved in @NAME switching and /model use.
 
 # NAME
 
-MODEL ALIAS — inline model switching and short-name aliases
+MODEL ALIAS — inline model switching, purpose tags, and short-name aliases
 
 # SYNOPSIS
 
 @NAME [prompt...]
+@TAG  [prompt...]
 
-/model alias [list|add ALIAS FULLNAME|set ALIAS FULLNAME|remove ALIAS]
+/model alias [list|add ALIAS FULLNAME [--tags T,T]|tags ALIAS TAG...|set ALIAS FULLNAME|remove ALIAS]
 
 # DESCRIPTION
 
 Harvey supports two ways to work with multiple models in a session:
 
-  @NAME syntax — switch the active model inline, as part of a prompt.
-  /model alias — define short names for long model identifiers.
+  @NAME / @TAG syntax — switch the active model inline, as part of a prompt.
+  /model alias        — define short names for long model identifiers,
+                        optionally annotated with purpose tags.
 
 Both are preserved in the session recording as Fountain notes so the
 memory miner can attribute turns to the correct model.
@@ -597,22 +535,22 @@ Prefix any prompt with @NAME to switch to that model for this turn and
 all subsequent turns:
 
   @phi-mini summarise this function in one sentence
+  @code     rewrite the loop to avoid the allocation
+  @qwen-coding refactor using the repository pattern
 
-  @qwen-coding rewrite the loop to avoid the allocation
+Resolution order for @NAME:
+  1. Named route (/route list)
+  2. Model alias or exact model name
+  3. Purpose tag — if any alias carries the tag NAME, Harvey resolves to
+     the first (alphabetically) such alias.
 
-If NAME matches a registered llamafile model, Harvey stops the current
-server and starts the new one. If NAME matches an Ollama model, Harvey
-switches the Ollama client. If NAME is not recognised, the @ prefix is
-treated as part of the normal prompt — no error, no switch.
+If NAME matches none of the above, the @ prefix is treated as part of the
+normal prompt — no error, no switch.
 
 Conversation history is preserved unchanged across a switch. The model
 switch is recorded in the session file as:
 
   [[model switch: NAME (BACKEND) at TIMESTAMP]]
-
-The session title page also records the starting backend:
-
-  Backend: llamafile
 
 Use @NAME with no trailing text to switch model without sending a prompt:
 
@@ -621,24 +559,41 @@ Use @NAME with no trailing text to switch model without sending a prompt:
 # MODEL ALIASES
 
 Aliases let you use short, memorable names for long model identifiers.
+Purpose tags let @TAG routing find the right model by role rather than name.
+
 They are stored in agents/harvey.yaml under model_aliases: and persist
-across sessions. Aliases resolve at the @NAME lookup step, so:
+across sessions:
 
-  /model alias add coder qwen2.5-coder:7b
+~~~yaml
+model_aliases:
+  coder:
+    model: qwen2.5-coder:7b
+    tags: [code, review]
+  fast:
+    model: phi3:mini
+    tags: [chat, fast]
+  embed-default:
+    model: nomic-embed-text:latest
+    tags: [embed]
+~~~
 
-  @coder tell me about this function
-
-is equivalent to switching to qwen2.5-coder:7b.
+  @coder tell me about this function    # resolves by alias name
+  @code  rewrite this loop              # resolves by purpose tag
 
 ## Subcommands
 
   /model alias list
-    List all defined aliases and their full model names.
+    List all defined aliases with their full model names and purpose tags.
 
-  /model alias add ALIAS FULLNAME
-    Define a new alias. FULLNAME is an Ollama model identifier or a
-    registered llamafile name. "add" is the preferred form; "set" is
-    also accepted for compatibility.
+  /model alias add ALIAS FULLNAME [--tags TAG,TAG,...]
+    Define a new alias. FULLNAME is an Ollama model identifier, a registered
+    llamafile name, or a llama.cpp model path. Optional --tags lists purpose
+    labels that enable @TAG routing (comma-separated, no spaces).
+    "add" is the preferred form; "set" is also accepted for compatibility.
+
+  /model alias tags ALIAS TAG [TAG...]
+    Replace the purpose tags on an existing alias. Overwrites any previous
+    tags; pass no tags to clear them.
 
   /model alias set ALIAS FULLNAME
     Alias for "add".
@@ -648,8 +603,9 @@ is equivalent to switching to qwen2.5-coder:7b.
 
 # SEE ALSO
 
-  harvey-llamafile(7), harvey-ollama(7), harvey-routing(7),
-  harvey-getting-started(7)
+  /help model        — unified /model command reference
+  /help routing      — named remote endpoints and @mention dispatch
+  /help workspace    — seed aliases from another workspace (harvey init)
 
 `
 
@@ -699,13 +655,14 @@ Service control:
     Show the Ollama environment variables (OLLAMA_HOST, etc.) as seen
     by the Harvey process.
 
-Model management:
+Registry and model management:
 
   /ollama list
-    List all installed models. The model currently in use is marked with *.
+    List installed Ollama models. For unified listing across all backends
+    use /model list instead.
 
   /ollama ps
-    Show which models are loaded in memory (delegates to ollama ps).
+    Show which models are currently loaded in memory (delegates to ollama ps).
 
   /ollama pull MODEL
     Download a model from the Ollama registry (e.g. /ollama pull mistral).
@@ -717,27 +674,19 @@ Model management:
     Display a model's Modelfile, parameters, and template.
 
   /ollama create NAME [-f MODELFILE]
-    Create a new model from a Modelfile. Passes all arguments directly
-    to ollama create.
+    Create a new model from a Modelfile.
 
   /ollama cp SOURCE DEST
     Copy an installed model to a new name.
 
   /ollama rm MODEL [MODEL...]
-    Remove one or more installed models. Also prunes any model_aliases entries
-    and model_map keys in harvey.yaml that referenced the removed model, so the
-    config stays in sync automatically.
+    Remove one or more installed models. Also prunes model_aliases entries
+    and model_map keys in harvey.yaml that referenced the removed model.
 
   /ollama clean
-    Remove stale Ollama references from harvey.yaml. Queries the live Ollama
-    model list and deletes any model_aliases entries whose target model is no
-    longer installed, and any model_map keys in RAG stores that reference
-    removed models. Run this after pulling or deleting models outside Harvey
-    (e.g. directly via the ollama CLI).
-
-  /ollama use MODEL
-    Switch the active model to MODEL for the current session without
-    restarting Harvey.
+    Remove stale Ollama references from harvey.yaml. Queries the live model
+    list and deletes model_aliases whose target is no longer installed.
+    Run this after pulling or deleting models outside Harvey.
 
   /ollama run MODEL [PROMPT]
     Launch an interactive ollama run session inside the terminal.
@@ -746,34 +695,25 @@ Model management:
 Capability probing:
 
   /ollama probe [MODEL]
-    Run a thorough probe on MODEL (or on all not-yet-probed models when
-    MODEL is omitted). Detects tool-calling support, embedding capability,
-    and whether the model reliably emits path-tagged code blocks (the
-    format Harvey's auto-execute relies on). Results are cached in
-    harvey/model_cache.db so /ollama list can display them immediately.
+    Probe MODEL (or all unprobed models) for tool-calling support, embedding
+    capability, and code-block format. Results are cached in model_cache.db
+    and used by /model to display capability columns.
 
   /ollama probe-all
-    Re-probe every model currently installed on the local Ollama server,
-    refreshing cached capability data. Useful after pulling several new
-    models or when moving between machines with different model sets.
+    Re-probe every installed model, refreshing cached capability data.
     Equivalent to /ollama probe --all.
 
-Model aliases:
+Model aliases (deprecated — use /model alias instead):
 
   /ollama alias NAME FULLNAME
-    Create a short alias for a long model name.
-
   /ollama alias list
-    List all defined model aliases.
-
   /ollama alias remove NAME
-    Remove an alias.
+    These are now forwarded to /model alias. Use /model alias directly.
 
 # SEE ALSO
 
-  /model list|use|show   — backend-agnostic model management across llamafile and Ollama
-  /llamafile             — llamafile model backend management
-  /help routing          — add a remote Ollama server as a named route
+  /help model        — unified model selection, alias management, @mention routing
+  /help routing      — add a remote Ollama server as a named endpoint
 
 `
 
@@ -1277,6 +1217,72 @@ Attach a local source file:
 
 `
 
+	// WorkspaceHelpText is shown by /help workspace and harvey --help workspace.
+	// Generates harvey-workspace.7.md.
+	WorkspaceHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+WORKSPACE — workspace settings and cross-workspace alias seeding
+
+# SYNOPSIS
+
+/workspace <status|init [PATH]>
+
+harvey init <source>
+
+# DESCRIPTION
+
+The /workspace command shows workspace state and seeds model aliases from
+another workspace or YAML file. It complements /model alias by handling
+bulk import of an alias registry from an existing project.
+
+# SUBCOMMANDS
+
+  /workspace status
+    Show the workspace root path, number of defined model aliases, the name
+    of the active workspace profile (if any), and whether
+    memory.inject_on_start is on or off.
+
+  /workspace init [PATH]
+    Copy model aliases from the workspace directory or YAML file at PATH into
+    this workspace. Only aliases that do not already exist here are imported —
+    gap-fill only; existing aliases are never overwritten. Changes are saved
+    immediately to agents/harvey.yaml.
+
+    PATH may be:
+      A workspace directory — reads agents/harvey.yaml inside it.
+      A .yaml or .yml file  — reads model_aliases: from that file directly.
+
+    With no PATH, /workspace init prints a status summary and a tip.
+
+# CLI EQUIVALENT
+
+  harvey init <source>
+
+  Runs the same import logic and exits without starting the REPL. Use this
+  to bootstrap a new project from an existing one.
+
+# EXAMPLES
+
+~~~
+  harvey > /workspace status
+  harvey > /workspace init /other/project
+  harvey > /workspace init ~/shared-aliases.yaml
+~~~
+
+  $ harvey init /other/project    # CLI form, exits after import
+
+# SEE ALSO
+
+  /help model-alias   — define and tag model aliases
+  /help model         — unified model management
+  /help memory        — workspace profile injection
+
+`
+
 	// WriteHelpText is shown by /help write and harvey --help write.
 	// Generates harvey-write.7.md.
 	WriteHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
@@ -1610,8 +1616,13 @@ of the Harvey environment.
 
 TIMEOUT
 
-The default run timeout is 5 minutes. Override with run_timeout in
-agents/harvey.yaml (e.g. run_timeout: "2m").
+The default run timeout is 5 minutes. Override via the security section in
+agents/harvey.yaml:
+
+~~~yaml
+security:
+  run_timeout: 2m
+~~~
 
 # EXAMPLES
 
@@ -2757,7 +2768,8 @@ memory's confidence score. RAG chunks and KB observations follow if token
 budget permits.
 
 The budget is controlled by memory.budget_pct in harvey.yaml (default 0.25 of
-the context window). Setting memory.inject_on_start: false disables injection.
+the context window). Memory injection is OFF by default; enable it with
+memory.inject_on_start: true in harvey.yaml.
 
 # DIGEST
 
@@ -3261,7 +3273,20 @@ Subcommands:
 
 Workspace permissions give fine-grained read/write/exec/delete control per
 path prefix within the workspace. Permissions are persisted in
-agents/harvey.yaml under the permissions: key.
+agents/harvey.yaml under the security.permissions: key.
+
+~~~yaml
+security:
+  safe_mode: true
+  allowed_commands: [ls, cat, grep, find, stat, jq]
+  run_timeout: 5m
+  permissions:
+    ./:
+      - read
+      - write
+      - exec
+      - delete
+~~~
 
 Permission values: read, write, exec, delete (comma-separated).
 

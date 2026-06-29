@@ -31,12 +31,12 @@ func HelpTopicsText() string {
   inspect         Inspect RAG stores, memory records, and model details
   kb              Knowledge base — experiments, observations, and concepts
   learn           Overview of Harvey's three-silo memory architecture
-  llamafile       Single-file runnable model backends (llamafile)
+  llamafile       (moved to /model — see /help model for drop, stop, download, status)
   model           Unified model management across all backends (list, use, show, status)
-  model-alias     @mention inline switching and /model alias short-name management
+  model-alias     @mention switching, purpose tags, and /model alias management
   loop            Repeat a prompt or command on a timed interval
   memory          Experience memory — mine, list, show, flag, forget
-  ollama          Local Ollama service control and model management
+  ollama          Ollama daemon control: start, stop, pull, push, probe, rm
   pdf-tools       PDF extraction tools (requires poppler)
   pipeline        Multi-step pipelines chaining prompts and commands
   plan            Create and track multi-step work plans
@@ -55,6 +55,7 @@ func HelpTopicsText() string {
   skills          Custom skills — extend Harvey with SKILL.md files
   status          Show backend, workspace, model, and session status
   summarize       Compact long conversation history (alias: compact)
+  workspace       Workspace settings and cross-workspace alias seeding
   write           Write the last reply or a code block to a file
 
   Aliases: audit, permissions, safe, safemode → security
@@ -125,7 +126,8 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 	case "learn", "memory-overview":
 		f(LearnHelpText)
 	case "llamafile":
-		f(LlamafileHelpText)
+		fmt.Fprintln(w, "The /llamafile command has been removed. Use /model for all model management.\nSee: /help model")
+
 	case "loop":
 		f(LoopHelpText)
 	case "memory", "profile", "recall":
@@ -170,6 +172,8 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(SkillsHelpText)
 	case "status":
 		f(StatusHelpText)
+	case "workspace":
+		f(WorkspaceHelpText)
 	case "write":
 		f(WriteHelpText)
 	default:

@@ -1012,7 +1012,7 @@ func TestArgCompletion_llamafileNames(t *testing.T) {
 	a.registerCommands()
 	completer := a.buildCompleter()
 
-	got := completer("/llamafile use ")
+	got := completer("/model drop ")
 	if len(got) != 2 {
 		t.Fatalf("expected 2 llamafile candidates, got %d: %v", len(got), got)
 	}

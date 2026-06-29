@@ -209,22 +209,6 @@ func (a *Agent) registerCommands() {
 			Handler:      cmdOllama,
 			Subcommands:  []string{"start", "stop", "status", "list", "ps", "run", "pull", "push", "show", "create", "cp", "rm", "logs", "use", "env", "alias"},
 		},
-		"llamafile": {
-			Usage:       "/llamafile <add [PATH] [NAME]|use NAME|list|start [NAME]|status|drop NAME>",
-			Description: "Manage llamafile model backends",
-			Handler:     cmdLlamafile,
-			Subcommands: []string{"add", "use", "show", "list", "start", "status", "remove", "drop", "download"},
-			ArgCompletion: map[string]func(*Agent) []string{
-				"use":  llamafileNameCandidates,
-				"drop": llamafileNameCandidates,
-			},
-		},
-		"llamacpp": {
-			Usage:       "/llamacpp <status|list|start PATH|stop|drop NAME>",
-			Description: "Manage llama.cpp (llama-server) backend",
-			Handler:     cmdLlamaCpp,
-			Subcommands: []string{"status", "list", "start", "stop", "drop"},
-		},
 		"kb": {
 			Usage:       "/kb <status|search|inject|project|observe|concept> [args...]",
 			Description: "Manage and query the workspace knowledge base",
@@ -415,12 +399,13 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdPipeline,
 		},
 		"model": {
-			Usage:       "/model [list|use [NAME]|alias [set|tags|list|remove]|show [NAME]|status]",
-			Description: "Backend-agnostic model management — works across llamafile, llamacpp, and ollama",
+			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|drop [NAME]|download|mode [MODEL] MODE|alias ...]",
+			Description: "Unified model management across llamafile, llama.cpp, and Ollama backends",
 			Handler:     cmdModel,
-			Subcommands: []string{"list", "use", "alias", "show", "status"},
+			Subcommands: []string{"list", "use", "show", "status", "stop", "drop", "download", "mode", "alias"},
 			ArgCompletion: map[string]func(*Agent) []string{
-				"use": func(a *Agent) []string { return allModelNames(a) },
+				"use":  func(a *Agent) []string { return allModelNames(a) },
+				"drop": llamafileNameCandidates,
 			},
 		},
 		"plan": {
@@ -823,18 +808,66 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 		return cmdModelMode(a, args[1:], out)
 	case "status":
 		return cmdModelStatus(a, out)
+	case "stop":
+		return cmdModelStop(a, out)
+	case "show":
+		name := ""
+		if len(args) > 1 {
+			name = args[1]
+		}
+		return cmdModelShowEntry(a, name, out)
+	case "drop":
+		return cmdModelDrop(a, args[1:], out)
 	default:
-		return cmdModelShow(a, out)
+		return cmdModelShowEntry(a, "", out)
 	}
 }
 
 // cmdModelShow prints the currently active model and backend.
 func cmdModelShow(a *Agent, out io.Writer) error {
-	label := activeModelLabel(a)
-	if a.Client != nil {
-		fmt.Fprintf(out, "  Active model: %s\n", green(label))
+	return cmdModelShowEntry(a, "", out)
+}
+
+// cmdModelShowEntry prints details for the named model, or the active model when name is "".
+// For llamafile models it shows path, size, and context length.
+func cmdModelShowEntry(a *Agent, name string, out io.Writer) error {
+	if name == "" {
+		label := activeModelLabel(a)
+		if a.Client != nil {
+			fmt.Fprintf(out, "  Active model: %s\n", green(label))
+		} else {
+			fmt.Fprintf(out, "  Active model: %s\n", yellow(label))
+		}
+		// If the active model is a llamafile entry, show details too.
+		if a.Config.Llamafile.Active != "" {
+			name = a.Config.Llamafile.Active
+		}
+	}
+	if name == "" {
+		fmt.Fprintln(out, "  No active llamafile model.")
+		return nil
+	}
+	entry := a.Config.LlamafileEntryByName(name)
+	if entry == nil {
+		fmt.Fprintf(out, "  llamafile %q not found.\n", name)
+		return nil
+	}
+	active := ""
+	if entry.Name == a.Config.Llamafile.Active {
+		active = " (active)"
+	}
+	fmt.Fprintf(out, "  Name:    %s%s\n", entry.Name, active)
+	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
+	fmt.Fprintf(out, "  Path:    %s\n", absPath)
+	if info, err := os.Stat(absPath); err == nil {
+		fmt.Fprintf(out, "  Size:    %s\n", llamafileFormatBytes(info.Size()))
 	} else {
-		fmt.Fprintf(out, "  Active model: %s\n", yellow(label))
+		fmt.Fprintln(out, "  Size:    (file not found)")
+	}
+	if entry.ContextLength > 0 {
+		fmt.Fprintf(out, "  Context: %d tokens\n", entry.ContextLength)
+	} else {
+		fmt.Fprintln(out, "  Context: unknown")
 	}
 	return nil
 }
@@ -858,21 +891,169 @@ func cmdModelList(a *Agent, out io.Writer) error {
 		fmt.Fprintf(out, "  Ollama active: %s\n", a.Config.Ollama.Model)
 	}
 	if !hasAny {
-		fmt.Fprintln(out, "  No models registered. Use /llamafile add or connect to Ollama.")
+		fmt.Fprintln(out, "  No models registered. Use /model use to select a model.")
 	}
 	return nil
 }
 
-// cmdModelStatus prints connection status for the active backend.
+// cmdModelStatus prints backend-specific connection status for the active backend.
 func cmdModelStatus(a *Agent, out io.Writer) error {
-	label := activeModelLabel(a)
-	reachable := probeActiveBackend(a)
-	status := red("✗ not reachable")
-	if reachable {
-		status = green("✓ reachable")
+	if a.Backend == nil {
+		fmt.Fprintln(out, "  No active backend.")
+		return nil
 	}
-	fmt.Fprintf(out, "  Model:  %s\n", label)
-	fmt.Fprintf(out, "  Status: %s\n", status)
+	switch a.Backend.Name() {
+	case "llamafile":
+		active := a.Config.Llamafile.Active
+		if active == "" {
+			active = "(none)"
+		}
+		reachable := "no"
+		if ProbeLlamafile(a.Config.Llamafile.URL) {
+			reachable = "yes"
+		}
+		managed := "no"
+		if a.Backend.StartedByHarvey() {
+			managed = "yes (started by Harvey)"
+		}
+		fmt.Fprintf(out, "  Active model:    %s\n", active)
+		fmt.Fprintf(out, "  API URL:         %s\n", a.Config.Llamafile.URL)
+		fmt.Fprintf(out, "  Reachable:       %s\n", reachable)
+		fmt.Fprintf(out, "  Process managed: %s\n", managed)
+		fmt.Fprintf(out, "  Models dir:      %s\n", a.Config.Llamafile.ModelsDir)
+		fmt.Fprintf(out, "  Registered:      %d model(s)\n", len(a.Config.Llamafile.Models))
+	case "llamacpp":
+		cfg := &a.Config.LlamaCpp
+		url := cfg.URL
+		if url == "" {
+			url = "http://127.0.0.1:8081"
+		}
+		reachable := "no"
+		if probeLlamaCpp(url) {
+			reachable = "yes"
+		}
+		managed := "no"
+		if a.Backend.StartedByHarvey() {
+			managed = "yes (started by Harvey)"
+		}
+		active := a.Backend.ActiveModel()
+		if active == "" {
+			active = "(none)"
+		}
+		fmt.Fprintf(out, "  Active model:    %s\n", active)
+		fmt.Fprintf(out, "  API URL:         %s\n", url)
+		fmt.Fprintf(out, "  Reachable:       %s\n", reachable)
+		fmt.Fprintf(out, "  Managed:         %s\n", managed)
+		if cfg.GPULayers > 0 {
+			fmt.Fprintf(out, "  GPU layers:      %d\n", cfg.GPULayers)
+		}
+	default:
+		label := activeModelLabel(a)
+		reachable := probeActiveBackend(a)
+		status := red("✗ not reachable")
+		if reachable {
+			status = green("✓ reachable")
+		}
+		fmt.Fprintf(out, "  Model:  %s\n", label)
+		fmt.Fprintf(out, "  Status: %s\n", status)
+	}
+	return nil
+}
+
+// cmdModelStop stops the active managed backend (llamafile or llama.cpp).
+// Backends not started by Harvey are not stopped.
+func cmdModelStop(a *Agent, out io.Writer) error {
+	if a.Backend == nil {
+		fmt.Fprintln(out, "  No managed backend is active.")
+		return nil
+	}
+	if !a.Backend.StartedByHarvey() {
+		fmt.Fprintf(out, "  The %s backend was not started by Harvey — not stopping.\n", a.Backend.Name())
+		return nil
+	}
+	backendName := a.Backend.Name()
+	modelName := a.Backend.ActiveModel()
+	if err := a.Backend.Stop(); err != nil {
+		return err
+	}
+	a.Backend = nil
+	a.Client = nil
+	fmt.Fprintf(out, "  Stopped %s backend (model: %s).\n", backendName, modelName)
+	return nil
+}
+
+// cmdModelDrop removes a model registration from the active backend.
+// For llamafile: removes from config and stops if active.
+// For llama.cpp: clears the active session (file not deleted).
+// For Ollama: prints a redirect to /ollama rm.
+func cmdModelDrop(a *Agent, args []string, out io.Writer) error {
+	// Determine target backend: prefer active backend, fall back to config.
+	backendName := ""
+	if a.Backend != nil {
+		backendName = a.Backend.Name()
+	} else if len(a.Config.Llamafile.Models) > 0 {
+		backendName = "llamafile"
+	}
+	switch backendName {
+	case "llamafile":
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		} else {
+			names := llamafileNameCandidates(a)
+			if len(names) == 0 {
+				fmt.Fprintln(out, "  No llamafile models registered.")
+				return nil
+			}
+			chosen, err := SelectFromStrings(names, fmt.Sprintf("Drop which model [1-%d] or Enter to cancel: ", len(names)), a.In, out)
+			if err != nil || chosen == "" {
+				return err
+			}
+			name = chosen
+		}
+		models := a.Config.Llamafile.Models
+		newModels := models[:0]
+		found := false
+		for _, e := range models {
+			if e.Name == name {
+				found = true
+				if a.Backend.StartedByHarvey() && strings.EqualFold(a.Backend.ActiveModel(), name) {
+					_ = a.Backend.Stop()
+					a.Backend = nil
+					a.Client = nil
+				}
+				continue
+			}
+			newModels = append(newModels, e)
+		}
+		if !found {
+			fmt.Fprintf(out, "  No llamafile registered as %q.\n", name)
+			return nil
+		}
+		a.Config.Llamafile.Models = newModels
+		if a.Config.Llamafile.Active == name {
+			a.Config.Llamafile.Active = ""
+		}
+		if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
+		}
+		fmt.Fprintf(out, "  Removed %q from registered models.\n", name)
+	case "llamacpp":
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		} else if a.Backend != nil {
+			name = a.Backend.ActiveModel()
+		}
+		if a.Backend != nil && a.Backend.StartedByHarvey() {
+			_ = a.Backend.Stop()
+		}
+		a.Backend = nil
+		a.Client = nil
+		fmt.Fprintf(out, "  Dropped llama.cpp model %q from active session (file not deleted).\n", name)
+	default:
+		fmt.Fprintln(out, "  /model drop is for llamafile and llama.cpp models. Use /ollama rm MODEL to remove Ollama models.")
+	}
 	return nil
 }
 

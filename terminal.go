@@ -129,7 +129,7 @@ func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
 		if err != nil || selected == "" {
 			return fmt.Errorf("no backend available")
 		}
-		return cmdLlamafileAdd(a, []string{selected}, out)
+		return addAndStartLlamafile(a, selected, out)
 	}
 	fmt.Fprint(out, FirstRunWizardText)
 	fmt.Fprint(out, "Enter a llamafile path (or press Enter to exit): ")
@@ -138,7 +138,7 @@ func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
 	if path == "" {
 		return fmt.Errorf("no backend available")
 	}
-	return cmdLlamafileAdd(a, []string{path}, out)
+	return addAndStartLlamafile(a, path, out)
 }
 
 /** attemptModelSwitch tries to switch the active model to the named backend
@@ -163,14 +163,14 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 	// Check llamafile registry first (case-insensitive).
 	for _, e := range a.Config.Llamafile.Models {
 		if strings.EqualFold(e.Name, name) {
-			err := cmdLlamafileUse(a, []string{e.Name}, out)
+			err := switchLlamafileModel(a, e.Name, out)
 			return true, err
 		}
 	}
 	// Check model aliases (stored with lowercase keys).
 	if entry, ok := a.Config.ModelAliases[strings.ToLower(name)]; ok {
 		full := entry.Model
-		err := cmdLlamafileUse(a, []string{full}, out)
+		err := switchLlamafileModel(a, full, out)
 		if err != nil {
 			// Not a llamafile alias — fall through to Ollama.
 			a.Config.Ollama.Model = full

@@ -337,6 +337,34 @@ func ggufModelName(path string) string {
 	return strings.TrimSuffix(base, ".gguf")
 }
 
+// startLlamaCppModelPath starts llama-server for the model at modelPath,
+// stops any Harvey-managed backend first, then wires a.Client and a.Backend.
+func startLlamaCppModelPath(a *Agent, modelPath string, out io.Writer) error {
+	if strings.HasPrefix(modelPath, "~") {
+		if home, err := os.UserHomeDir(); err == nil {
+			modelPath = filepath.Join(home, modelPath[1:])
+		}
+	} else if !filepath.IsAbs(modelPath) {
+		modelPath = filepath.Join(a.Workspace.Root, modelPath)
+	}
+	if a.Backend != nil && a.Backend.StartedByHarvey() {
+		fmt.Fprintln(out, "  Stopping current backend...")
+		_ = a.Backend.Stop()
+	}
+	agentsDir := filepath.Join(a.Workspace.Root, "agents")
+	b := NewLlamaCppBackend(a.Config, agentsDir)
+	if err := b.Start(context.Background(), modelPath, out); err != nil {
+		return err
+	}
+	client, err := b.NewClient()
+	if err != nil {
+		return err
+	}
+	a.Client = client
+	a.Backend = b
+	return nil
+}
+
 // scanGGUFModels returns the absolute paths of all *.gguf files in dir.
 func scanGGUFModels(dir string) []string {
 	entries, err := os.ReadDir(dir)

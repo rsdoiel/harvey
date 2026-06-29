@@ -143,37 +143,6 @@ func TestConfigAddOrUpdateEntry_update(t *testing.T) {
 	}
 }
 
-func TestCmdLlamafileList_empty(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	if err := cmdLlamafileList(a, &buf); err != nil {
-		t.Fatal(err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "No llamafile models registered") {
-		t.Errorf("expected empty-list message, got: %s", out)
-	}
-}
-
-// ─── /llamafile download ─────────────────────────────────────────────────────
-
-func TestCmdLlamafileDownload_printsText(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	if err := cmdLlamafile(a, []string{"download"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "llamafile") {
-		t.Errorf("expected download text to mention llamafile, got: %s", out)
-	}
-	if !strings.Contains(out, "huggingface") || !strings.Contains(out, "huggingface") {
-		// at least some download guidance
-	}
-}
-
 // ─── LlamafileEntry.ContextLength ────────────────────────────────────────────
 
 func TestLlamafileEntryContextLength_default(t *testing.T) {
@@ -203,31 +172,6 @@ func TestEffectiveContextLimit_llamafileEntryZeroFallsThrough(t *testing.T) {
 	// ContextLength=0 means unknown; should return 0 (no other source available).
 	if got := a.effectiveContextLimit(); got != 0 {
 		t.Errorf("effectiveContextLimit with ContextLength=0: got %d want 0", got)
-	}
-}
-
-func TestCmdLlamafileRemove_alias(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
-	cfg.Llamafile.Active = "qwen-coding"
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	if err := cmdLlamafile(a, []string{"remove", "qwen-coding"}, &buf); err != nil {
-		t.Fatalf("remove alias error: %v", err)
-	}
-	if len(a.Config.Llamafile.Models) != 0 {
-		t.Error("expected model to be removed")
-	}
-}
-
-func TestCmdLlamafileUse_notRegistered(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	err := cmdLlamafileUse(a, []string{"nonexistent"}, &buf)
-	if err == nil {
-		t.Fatal("expected error for unregistered model name")
 	}
 }
 
@@ -475,77 +419,6 @@ func TestRestartActiveLlamafile_emptyPath(t *testing.T) {
 	err := restartActiveLlamafile(a, &buf)
 	if err == nil {
 		t.Fatal("expected error for adopted server with empty path")
-	}
-}
-
-// ─── /llamafile show ──────────────────────────────────────────────────────────
-
-func TestCmdLlamafileShow_activeModel(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/qwen.llamafile", ContextLength: 8192},
-	}
-	cfg.Llamafile.Active = "qwen-coding"
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	if err := cmdLlamafile(a, []string{"show"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "qwen-coding") {
-		t.Errorf("expected model name in output, got: %s", out)
-	}
-	if !strings.Contains(out, "/tmp/qwen.llamafile") {
-		t.Errorf("expected path in output, got: %s", out)
-	}
-	if !strings.Contains(out, "8192") {
-		t.Errorf("expected context length in output, got: %s", out)
-	}
-}
-
-func TestCmdLlamafileShow_namedModel(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "alpha", Path: "/tmp/alpha.llamafile"},
-		{Name: "beta", Path: "/tmp/beta.llamafile"},
-	}
-	cfg.Llamafile.Active = "alpha"
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	if err := cmdLlamafile(a, []string{"show", "beta"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "beta") {
-		t.Errorf("expected 'beta' in output, got: %s", out)
-	}
-}
-
-func TestCmdLlamafileShow_notFound(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	if err := cmdLlamafile(a, []string{"show", "nosuchmodel"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "not found") && !strings.Contains(buf.String(), "No llamafile") {
-		t.Errorf("expected not-found message, got: %s", buf.String())
-	}
-}
-
-func TestCmdLlamafileShow_noActive(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	if err := cmdLlamafile(a, []string{"show"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	// Should indicate nothing is active rather than panicking.
-	if !strings.Contains(out, "No active") && !strings.Contains(out, "no active") && !strings.Contains(out, "none") {
-		t.Errorf("expected no-active message, got: %s", out)
 	}
 }
 
