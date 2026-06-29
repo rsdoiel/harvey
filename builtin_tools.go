@@ -1361,7 +1361,7 @@ func applyAutoFormat(a *Agent, relPath string, original string) string {
 func promptChunkInstruction(in io.Reader, out io.Writer, filename string, estimatedTokens, budget int, suggestion string) (instruction string, cancelled bool) {
 	fmt.Fprintf(out, "\nContext overflow: %s is approximately %d tokens; %d tokens remain in current context.\n",
 		filename, estimatedTokens, budget)
-	fmt.Fprintln(out, "Enter instructions to process each chunk in turn, or \"no\" to return.")
+	fmt.Fprintln(out, "Enter instructions to process each chunk in turn, or \"no\"/\"/exit\" to cancel.")
 	if suggestion != "" {
 		fmt.Fprintf(out, "[%s]\n", suggestion)
 	}
