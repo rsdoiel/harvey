@@ -500,6 +500,7 @@ func TestSelectBackend_connectionFeedbackFormat(t *testing.T) {
 	cfg.Llamafile.URL = srv.URL
 	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
 	cfg.Llamafile.Active = "qwen-coding"
+	cfg.LlamaCpp.URL = "http://127.0.0.1:1" // unreachable — prevent Case 0 adoption
 	a := NewAgent(cfg, ws)
 
 	var buf strings.Builder

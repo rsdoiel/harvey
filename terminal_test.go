@@ -525,6 +525,7 @@ func TestSelectBackend_callsPickBackendWhenLlamafileModelsExistButNoActive(t *te
 		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
 	}
 	// LlamafileActive is empty — should take the pickBackend path.
+	cfg.LlamaCpp.URL = "http://127.0.0.1:1" // unreachable — prevent Case 0 adoption
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 

@@ -295,7 +295,7 @@ func (b *LlamaCppBackend) NewClient() (LLMClient, error) {
 	if b.activeModel == "" {
 		return nil, fmt.Errorf("llamacpp: no active model — call Start first")
 	}
-	return newLlamafileLLMClient(b.url+"/v1", b.activeModel, 0), nil
+	return newLlamaCppLLMClient(b.url+"/v1", b.activeModel, 0), nil
 }
 
 // probeLlamaCpp returns true when the llama-server at baseURL is healthy.
