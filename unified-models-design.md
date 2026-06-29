@@ -92,22 +92,28 @@ local HTTP server) but with a different binary and flag interface.
 
 ## Architecture
 
-### U1 — `/ollama use` alias prompt
+### U1 — Unified picker with lazy registration
 
-After switching to a model via `/ollama use`, Harvey checks whether any
-entry in `Config.ModelAliases` already maps to that model name. If none
-is found, it prompts:
+**Supersedes the original `/ollama use` alias prompt.**
+
+`/model use` with no argument presents a single picker built from all
+available sources:
+
+1. `.llamafile` files in `~/Models` — engine: llamafile
+2. `.gguf` files in `~/Models` — engine: llama-server
+3. Ollama models from `/api/tags` — engine: ollama (omitted if unreachable)
+
+If the selected model has no alias, Harvey prompts inline:
 
 ```
 Short alias for 'granite3.3:8b' (Enter to skip): 
+Optional tags (e.g. code,instruct — Enter to skip): 
 ```
 
-If the user provides a non-empty alias, Harvey calls the existing
-`/ollama alias set` logic and saves to `harvey.yaml`. This brings
-`/ollama use` into alignment with the registration UX of `/llamafile add`.
-
-No structural change to the alias storage format is required for this
-step; purpose tags come in U2.
+This replaces `/llamafile add`, `/llamacpp add`, and the post-`/ollama use`
+alias prompt with a single registration gesture that works identically for
+all three engines. Lazy registration applies to Ollama models and file-based
+models alike.
 
 ### U2 — Purpose tags in model aliases
 
@@ -159,12 +165,12 @@ unchanged from callers' perspective; it reads `ModelAlias.Model`.
 Tags are advisory — there is no validation against this list. Users may
 add their own.
 
-**Management commands** — extend `/ollama alias`:
+**Management commands** — `/model alias` (replaces `/ollama alias`):
 
 ```
-/ollama alias set CODE granite3.3:8b --tags code,instruct
-/ollama alias tags CODE code instruct
-/ollama alias list              # existing; shows tags column
+/model alias set CODE granite3.3:8b --tags code,instruct
+/model alias tags CODE code instruct
+/model alias list              # shows engine + tags columns
 ```
 
 ### U3 — `@mention` routing by purpose tag

@@ -149,50 +149,74 @@ the backend state (e.g., after `/llamafile use` if the wiring code has a bug).
 
 ## Command Surface
 
-Three options for the user-facing command structure:
+**Decision (2026-06-29):** Option D — extend `/model` directly; no "backend"
+namespace; engine-specific operations stay in their own namespaces.
 
-### Option A — Unified `/model backend` namespace
+`/model` is already the cross-backend entry point (`list`, `use`, `status`,
+`mode` all exist). The unified design extends it with `stop` and promotes
+`alias` from `/ollama alias` to `/model alias`. The word "backend" never
+appears in the user-facing command surface.
 
-```
-/model backend list              — show all backends and their status
-/model backend use ollama        — switch active backend (must already be running)
-/model backend start ollama MODEL
-/model backend start llamafile MODEL
-/model backend start llamacpp MODEL
-/model backend stop
-/model backend status
-```
-
-Pros: single entry point, consistent vocabulary.  
-Cons: breaks existing `/ollama` and `/llamafile` muscle memory.
-
-### Option B — Per-backend commands sharing one implementation
-
-Keep `/ollama`, `/llamafile`, and `/llamacpp` as separate command groups, but
-implement each as a thin wrapper over the shared `ManagedBackend` dispatch:
-
-```go
-func cmdBackend(backend ManagedBackend, sub string, args []string, out io.Writer) error
-```
-
-`cmdOllama`, `cmdLlamafile`, and `cmdLlamaCpp` each construct the appropriate
-`ManagedBackend` and delegate to `cmdBackend`. Backend-specific subcommands
-(e.g., `/ollama pull`, `/llamafile add`) remain independent.
-
-Pros: backward compatible; users keep familiar commands.  
-Cons: three command trees to document; divergence remains visible.
-
-### Option C — Alias both
-
-Implement Option B, then add `/model backend` as an alias that auto-detects
-the active backend:
+### `/model` — unified command surface
 
 ```
-/model backend start MODEL   — starts whatever backend is configured as default
-/model backend status        — shows status of all detected backends
+/model                              — show active model and engine (existing)
+/model use [NAME|ALIAS]             — primary command: see picker design below
+/model stop                         — stop server Harvey started; delete PID file
+/model status                       — probe all three engines; show active + status
+/model list                         — list all models across all sources with engine
+/model alias set NAME ID [--tags T] — register alias with optional purpose tags
+/model alias tags NAME TAG [TAG...] — add tags to existing alias
+/model alias list                   — list all aliases with engine + tags columns
+/model alias remove NAME            — unregister alias
+/model mode [MODEL] [MODE]          — set tool mode (existing, unchanged)
 ```
 
-**Recommended: Option B for the initial release, with Option C's `/model backend status` added immediately because cross-backend visibility is the most acute current pain.**
+`use` and `start` are combined into `/model use`. Starting the server is a
+side effect of using a file-based model, not a separate gesture.
+
+### Unified picker — `/model use` with no argument
+
+When called without a name, `/model use` builds a combined list from all
+available sources and presents a single picker:
+
+1. Scan `~/Models` for `.llamafile` files → engine: llamafile
+2. Scan `~/Models` for `.gguf` files → engine: llama-server
+3. Query Ollama `/api/tags` if Ollama is reachable → engine: ollama
+   (silently omitted if Ollama is not installed or not running)
+4. Present combined picker with a source/engine column
+5. If the selection has no alias → prompt for short name + optional tags
+   → save to `harvey.yaml` (lazy registration)
+6. Start server if needed (file-based models); for Ollama, ensure the
+   daemon is reachable
+7. Wire `a.Client`; print confirmation
+
+Lazy registration applies to all sources — a raw `.gguf` file, a
+`.llamafile` binary, and an Ollama model all go through the same
+name + tags prompt if they have no alias yet. This replaces the separate
+`/llamafile add` and `/llamacpp add` commands; registration happens
+at first use.
+
+### Engine-specific commands
+
+Operations with no cross-engine equivalent remain in their own namespaces:
+
+```
+/ollama pull MODEL      — pull a new model from the Ollama registry
+/ollama rm MODEL        — remove an Ollama model from the daemon
+/ollama probe           — health-check the Ollama server
+/ollama clean           — prune stale aliases/config references
+
+/llamafile drop NAME    — unregister a llamafile (does not delete the file)
+/llamafile status       — engine-specific diagnostics
+
+/llamacpp drop NAME     — unregister a GGUF model
+/llamacpp status        — engine-specific diagnostics
+```
+
+`/llamafile add` and `/llamacpp add` are removed as primary commands;
+the unified picker in `/model use` replaces them. `/ollama alias` is
+removed; `/model alias` is the canonical alias management command.
 
 ---
 
@@ -278,35 +302,32 @@ with a persistent, session-crossing record.
 
 ---
 
-## Open Questions
+## Decisions (2026-06-29)
 
-1. **Option A vs. B vs. C for commands?** Recommend Option B + status alias
-   from Option C, but needs confirmation before implementation.
+All open questions from the original draft were resolved in a design session.
 
-2. **When should Harvey auto-stop a backend it started?** On clean session
-   exit? Only with a config flag? Only if the user asked for it? The
-   `llamafile.go` current behavior (`stopLlamafileProc` in `terminal.go`)
-   auto-stops on exit. This is likely correct but should be consistent across
-   all three backends.
-
-3. **What happens when the user runs `/llamafile start X` while Ollama is
-   active?** Should Harvey stop Ollama first, or run both? Current behavior
-   (keep Ollama running, start llamafile, switch `a.Client`) should be
-   preserved, but made explicit in the `ManagedBackend` contract.
-
-4. **Can the unified command path expose backend-specific subcommands cleanly?**
-   `/ollama probe` and `/ollama alias` have no llamafile or llama.cpp
-   equivalents. The shared `cmdBackend` dispatcher must have an escape hatch
-   for backend-specific operations.
+| # | Question | Decision |
+|---|---|---|
+| 1 | Command surface | Option D: extend `/model` directly; no "backend" namespace; `use` and `start` combined into `/model use`; engine-specific ops stay in `/ollama`, `/llamafile`, `/llamacpp` |
+| 2 | Auto-stop on exit | Stop on clean exit for all three backends (consistent with current llamafile behavior). PID file written when Harvey starts a server; re-adoption offered on next startup if process still alive |
+| 3 | Concurrent backends | Warn and auto-switch: Harvey prints what it is leaving and what it is switching to, then switches `a.Client` immediately. Servers Harvey owns (per PID file) are stopped on switch; servers Harvey did not start are left running |
+| 4 | Backend-specific subcommands | Structural separation — per-engine namespaces (`/ollama`, `/llamafile`, `/llamacpp`) are the escape hatch; no dispatcher escape hatch needed in `ManagedBackend` |
+| 5 | `/llamafile add` / `/llamacpp add` | Removed as primary commands; replaced by the unified picker in `/model use` with lazy registration |
+| 6 | `/ollama alias` | Moved to `/model alias`; aliases are engine-agnostic and belong at the `/model` level |
+| 7 | Lazy registration scope | Applies to all sources — `.llamafile` files, `.gguf` files, and Ollama models all receive the same name + tags prompt on first use |
 
 ---
 
 ## Next Steps
 
-1. Confirm command surface option (B recommended).
-2. Draft `backend.go` interface with stakeholder review before writing
-   implementations.
-3. Implement `OllamaBackend` and `LlamafileBackend` first (existing backends,
-   lower risk of regression) and run full test suite.
-4. Add `LlamaCppBackend` as the third implementation once the interface is stable.
-5. Update `harvey.go` and `config.go` last, after all three backends pass tests.
+1. Draft `backend.go`: `ManagedBackend` interface, `ModelSummary`,
+   `BackendStatus` types. Review before writing implementations.
+2. Implement `OllamaBackend` and `LlamafileBackend` (existing backends,
+   lower regression risk). Run full test suite.
+3. Add `LlamaCppBackend` once the interface is stable.
+4. Update `harvey.go` and `config.go` last: replace `OllamaStartedByHarvey`
+   and `llamafileProc` with `Backend ManagedBackend`; move `ModelAliases`
+   to `map[string]ModelAlias` (U2); add PID file read/write.
+5. Implement `/model use` unified picker with lazy registration.
+6. Implement `/model alias` (absorbing `/ollama alias`).
+7. Extend `/model status` and `/model list` to cover all three engines.
