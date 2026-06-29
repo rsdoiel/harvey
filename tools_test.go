@@ -627,3 +627,14 @@ func TestPromptChunkInstruction_EmptyNoSuggestion(t *testing.T) {
 		t.Error("expected cancelled=true when user presses Enter with no suggestion")
 	}
 }
+
+// Regression: /exit typed at the chunk prompt was treated as the instruction
+// instead of cancelling — it should behave identically to "no".
+func TestPromptChunkInstruction_ExitCancels(t *testing.T) {
+	for _, input := range []string{"/exit\n", "/quit\n", "cancel\n", "q\n"} {
+		_, cancelled := promptChunkInstruction(strings.NewReader(input), io.Discard, "doc.md", 100, 50, "")
+		if !cancelled {
+			t.Errorf("expected cancelled=true for input %q", input)
+		}
+	}
+}

@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -234,6 +235,71 @@ func TestPortFromURL(t *testing.T) {
 		if got != c.want {
 			t.Errorf("portFromURL(%q) = %q, want %q", c.url, got, c.want)
 		}
+	}
+}
+
+// Regression: LlamaCppBackend.NewClient was calling newLlamafileLLMClient,
+// so a.Client.Name() returned "llamafile (model)" in /status output.
+func TestLlamaCppBackend_NewClient_ProviderIsLlamacpp(t *testing.T) {
+	cfg := DefaultConfig()
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+	b.activeModel = "SmolLM3-3B-Instruct-Q4_K_M"
+	client, err := b.NewClient()
+	if err != nil {
+		t.Fatalf("NewClient(): %v", err)
+	}
+	ac, ok := client.(*AnyLLMClient)
+	if !ok {
+		t.Fatal("client is not *AnyLLMClient")
+	}
+	if ac.ProviderName() != "llamacpp" {
+		t.Errorf("ProviderName() = %q, want %q — /status will show wrong backend", ac.ProviderName(), "llamacpp")
+	}
+}
+
+// Regression: ModelPath must reconstruct the full .gguf path from modelsDir
+// so restartActiveLlamaCpp can restart llama-server without re-asking the user.
+func TestLlamaCppBackend_ModelPath(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LlamaCpp.ModelsDir = "/Users/user/Models"
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+
+	if got := b.ModelPath(); got != "" {
+		t.Errorf("ModelPath() before Start = %q, want empty", got)
+	}
+
+	b.activeModel = "SmolLM3-3B-Instruct-Q4_K_M"
+	want := "/Users/user/Models/SmolLM3-3B-Instruct-Q4_K_M.gguf"
+	if got := b.ModelPath(); got != want {
+		t.Errorf("ModelPath() = %q, want %q", got, want)
+	}
+}
+
+// Regression: restartActiveLlamaCpp must return an error rather than panic
+// when the backend is nil or a different type.
+func TestRestartActiveLlamaCpp_WrongBackend(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	a := NewAgent(cfg, ws)
+	a.Backend = NewLlamafileBackend(cfg, t.TempDir(), ws.Root) // not a llamacpp backend
+
+	err := restartActiveLlamaCpp(a, io.Discard)
+	if err == nil {
+		t.Error("expected error when backend is not *LlamaCppBackend")
+	}
+}
+
+func TestRestartActiveLlamaCpp_NoActiveModel(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	a := NewAgent(cfg, ws)
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+	// activeModel is empty — ModelPath() returns ""
+	a.Backend = b
+
+	err := restartActiveLlamaCpp(a, io.Discard)
+	if err == nil {
+		t.Error("expected error when no active model path is known")
 	}
 }
 
