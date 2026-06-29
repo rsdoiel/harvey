@@ -244,3 +244,122 @@ documented common set is a better fit for a single-user tool.
 llamafile-style self-contained binary. In practice, users who have
 llama.cpp installed already have `llama-server` and `.gguf` files.
 Harvey should work with that setup rather than require repackaging.
+
+---
+
+## Appendix — ONNX in-process embedding (future path)
+
+### What ONNX would add
+
+Harvey currently has two embedder backends, both HTTP-based: `OllamaEmbedder`
+(calls Ollama's `/api/embeddings`) and `EncoderfileEmbedder` (calls a
+local Encoderfile HTTP server). Both require an external process to be
+running before embedding can happen.
+
+An `ONNXEmbedder` would run an embedding model **in-process** — no
+server, no HTTP round-trip, no external dependency at query time. The
+model file (`.onnx`) is loaded once at startup; `Embed(text)` calls
+directly into the ONNX Runtime C library via CGo. This is the lowest
+possible latency path and works fully offline.
+
+The `Embedder` interface Harvey already defines is the right abstraction;
+`ONNXEmbedder` would implement it alongside the existing two backends.
+`NewEmbedderForEntry` would dispatch on `embedder_kind: "onnx"`, reading
+`embedder_url` as a local file path to the `.onnx` model file.
+
+### Obstacles
+
+**CGo dependency.** Every production-grade Go ONNX binding
+(`onnxruntime_go` by yalue-gio is the main one) wraps the ONNX Runtime
+C shared library via CGo. Harvey currently cross-compiles to six targets
+(Linux x86/ARM, macOS x86/ARM64, Windows) as pure Go. Adding CGo
+requires pre-built ONNX Runtime shared libraries for each target and a
+more complex build pipeline. The ONNX embedder would need to be behind
+a build tag so non-CGo builds remain possible.
+
+**Tokenization.** ONNX Runtime runs the model computation graph, but
+the caller must tokenize raw text into token ID sequences first — in
+exactly the vocabulary and format the embedding model expects. HuggingFace
+models use a `tokenizer.json` file. There is no mature pure-Go
+implementation of the full HuggingFace tokenizers spec; the available Go
+options (`sugarme/tokenizer`) are also CGo-based. The tokenizer is not
+optional — without it, the ONNX model cannot be called at all.
+
+These two obstacles mean the ONNX path adds significant build complexity
+with no functional gain over the existing `EncoderfileEmbedder` when an
+Encoderfile server is available. The right trigger for revisiting this is
+a stable pure-Go tokenizer or an acceptable CGo build strategy.
+
+### Role of Henry (the llamafile factory)
+
+Henry currently packages GGUF chat models into self-contained llamafile
+executables. The same packaging concept applies to ONNX embedding models:
+bundle the `.onnx` model file + ONNX Runtime + a small HTTP server
+shim into a single executable, producing an Encoderfile-compatible
+binary that Harvey's existing `EncoderfileEmbedder` can consume without
+any code changes to Harvey.
+
+This is actually a cleaner path than native ONNX embedding in Harvey:
+
+```
+HuggingFace ONNX embedding model
+  → Henry packages it as an Encoderfile-style binary
+  → Harvey uses it via the existing EncoderfileEmbedder (embedder_kind: encoderfile)
+  → No CGo in Harvey; no tokenizer problem in Harvey
+```
+
+Henry would need a new `package-encoderfile.sh` script (or a new YAML
+model type, e.g. `kind: encoderfile`) alongside its existing
+`package.sh` for llamafile/GGUF models. The ONNX Runtime library would
+be bundled into the binary using the same APE polyglot technique that
+llamafile uses for llama.cpp.
+
+### Role of Mable (the model builder)
+
+Mable trains a transformer model from scratch on a curated corpus and
+targets deployment via Ollama (i.e. conversion to GGUF). ONNX connects
+to Mable in two ways:
+
+**1. Export path for the trained model.** PyTorch models can be exported
+to ONNX via `torch.onnx.export` or the HuggingFace `optimum` library.
+This is not useful for the generative (decoder) model Mable is building
+— Ollama/GGUF is the right target for that. But if Mable ever trains an
+**encoder** model on the same corpus (for semantic similarity or
+embedding-based retrieval within the classical corpus), ONNX is the
+natural export format, and that model could be packaged by Henry and
+consumed by Harvey's RAG pipeline.
+
+**2. Tokenizer export.** Mable trains a custom BPE tokenizer (vocab
+50,000) using HuggingFace tokenizers. That tokenizer is already stored
+as `tokenizer.json` — the exact format an ONNX embedding model would
+need. If Mable later exports an ONNX embedding model, the tokenizer is
+already in the right format; no conversion step is needed.
+
+**The full pipeline, when mature:**
+
+```
+Mable trains classical corpus embedding model (PyTorch)
+  → exports encoder to ONNX via optimum
+  → Henry packages ONNX model + tokenizer.json + ONNX Runtime
+      as a self-contained Encoderfile binary
+  → Harvey /rag new classical --embedder encoderfile --embedder-url http://localhost:8080
+  → RAG queries use Mable's classical-corpus embedding space
+```
+
+This means Harvey's RAG retrieval for classical texts would use
+embeddings from a model that "understands" that corpus rather than a
+general-purpose embedding model like nomic-embed-text. That is a
+meaningful quality improvement for Mable's intended use.
+
+### Summary
+
+| Project | ONNX role | When relevant |
+|---------|-----------|---------------|
+| **Harvey** | `ONNXEmbedder` implementing `Embedder` | After pure-Go tokenizer matures or CGo accepted |
+| **Henry** | Package ONNX models as Encoderfile binaries | As soon as an ONNX embedding model worth packaging exists |
+| **Mable** | Export trained encoder to ONNX; tokenizer.json already compatible | When/if Mable trains an encoder model alongside its decoder |
+
+The near-term path that requires no new CGo work: Mable exports an
+encoder model → Henry packages it as an Encoderfile binary → Harvey
+consumes it via the existing `EncoderfileEmbedder`. Native ONNX support
+in Harvey (`ONNXEmbedder`) is a later optimization, not a prerequisite.
