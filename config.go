@@ -280,7 +280,7 @@ func DefaultConfig() *Config {
 		Memory: MemoryConfig{
 			Enabled:       true,
 			TopK:          5,
-			InjectOnStart: true,
+			InjectOnStart: false,
 			BudgetPct:     0.25,
 			RollingSummary: RollingSummaryConfig{
 				Enabled:   true,

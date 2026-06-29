@@ -22,7 +22,6 @@ func main() {
 
 
 	cfg := harvey.DefaultConfig()
-	var initFrom string
 
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
@@ -35,6 +34,28 @@ func main() {
 			return os.Args[i]
 		}
 		switch arg {
+		case "init":
+			// harvey init <source> — seed model aliases from another workspace or YAML file
+			if i+1 >= len(os.Args) {
+				fmt.Fprintln(os.Stderr, "Usage: harvey init <workspace-path|aliases.yaml>")
+				os.Exit(1)
+			}
+			i++
+			source := os.Args[i]
+			ws, wsErr := harvey.NewWorkspace(cfg.WorkDir)
+			if wsErr != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", wsErr)
+				os.Exit(1)
+			}
+			if err := harvey.LoadHarveyYAML(ws, cfg); err != nil {
+				fmt.Fprintf(os.Stderr, "Error loading workspace config: %v\n", err)
+				os.Exit(1)
+			}
+			if _, _, err := harvey.ImportAliasesFrom(source, ws, cfg, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
 		case "help":
 			// harvey help [TOPIC]
 			var topic string
@@ -105,8 +126,6 @@ func main() {
 			cfg.Session.ReplayOutputPath = next()
 		case "--replay-continue":
 			cfg.Session.ReplayContinue = true
-		case "--init-from":
-			initFrom = next()
 		case "--debug":
 			cfg.Debug = true
 			setDebugEnv()
@@ -127,17 +146,6 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
-	}
-	if initFrom != "" {
-		if err := harvey.LoadHarveyYAML(ws, cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading workspace config: %v\n", err)
-			os.Exit(1)
-		}
-		if _, _, err := harvey.ImportAliasesFrom(initFrom, ws, cfg, os.Stdout); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
 	}
 	if cfg.Session.ResumeLatest && cfg.Session.ContinuePath == "" {
 		sessDir := filepath.Join(ws.HarveyDir(), "sessions")
