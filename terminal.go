@@ -172,6 +172,11 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
  *   fmt.Fprintf(out, "Connecting to %s…\n", activeModelLabel(a))
  */
 func activeModelLabel(a *Agent) string {
+	// Prefer the live backend — it knows the actual engine and model name.
+	if a.Backend != nil && a.Backend.ActiveModel() != "" {
+		return a.Backend.ActiveModel() + " (" + a.Backend.Name() + ")"
+	}
+	// Fallback to config fields (Ollama has no ManagedBackend wrapper).
 	if a.Config.Llamafile.Active != "" {
 		return a.Config.Llamafile.Active + " (llamafile)"
 	}

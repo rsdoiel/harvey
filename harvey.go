@@ -202,7 +202,9 @@ type Agent struct {
  */
 func (a *Agent) effectiveContextLimit() int {
 	// Llamafile: check the active entry's ContextLength first (user config or probed).
-	if a.Config.Llamafile.Active != "" {
+	// Skip when a non-llamafile backend is active — it would read a stale entry.
+	isLlamafile := a.Backend == nil || a.Backend.Name() == "llamafile"
+	if isLlamafile && a.Config.Llamafile.Active != "" {
 		if entry := a.Config.ActiveLlamafileEntry(); entry != nil && entry.ContextLength > 0 {
 			return entry.ContextLength
 		}

@@ -1551,10 +1551,11 @@ func TestCmdOllama_Clean_RemovesStaleRefs(t *testing.T) {
 
 func TestCmdModelUse_noArg_noModels(t *testing.T) {
 	a := newTestAgent(t)
-	// Point both backend scanners at an empty dir so no models are found.
+	// Point all backends at empty/unreachable sources so no models are found.
 	emptyDir := t.TempDir()
 	a.Config.Llamafile.ModelsDir = emptyDir
 	a.Config.LlamaCpp.ModelsDir = emptyDir
+	a.Config.Ollama.URL = "http://127.0.0.1:1" // unreachable — ProbeOllama returns false
 	a.In = strings.NewReader("\n")
 	var buf strings.Builder
 	if err := cmdModel(a, []string{"use"}, &buf); err != nil {

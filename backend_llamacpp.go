@@ -352,6 +352,9 @@ func startLlamaCppModelPath(a *Agent, modelPath string, out io.Writer) error {
 	}
 	a.Client = client
 	a.Backend = b
+	// Clear stale llamafile Active so activeModelLabel and effectiveContextLimit
+	// use a.Backend instead of a stale config entry from the previous model.
+	a.Config.Llamafile.Active = ""
 	return nil
 }
 
