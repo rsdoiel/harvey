@@ -730,6 +730,64 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 		},
 	)
 
+	// ── retrieve_memory ───────────────────────────────────────────────────────
+	r.RegisterTool(
+		"retrieve_memory",
+		"Search all memory silos (memory store, RAG store, knowledge base) for entries "+
+			"relevant to a query and return the top-k most relevant results. "+
+			"Use this mid-session to look up information that was not injected at startup, "+
+			"such as past decisions, tool-use patterns, or workspace facts.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]any{
+					"type":        "string",
+					"description": "Natural-language retrieval query describing what to look for",
+				},
+				"top_k": map[string]any{
+					"type":        "integer",
+					"description": "Maximum number of results to return (default 3)",
+				},
+			},
+			"required": []string{"query"},
+		},
+		func(_ context.Context, args map[string]any) (string, error) {
+			if a.Memory == nil || a.Memory.Unified == nil {
+				return "retrieve_memory: memory system is not available in this session.", nil
+			}
+			query, ok := args["query"].(string)
+			if !ok || strings.TrimSpace(query) == "" {
+				return "", fmt.Errorf("retrieve_memory: query must be a non-empty string")
+			}
+			topK := 3
+			if v, ok := args["top_k"].(float64); ok && int(v) > 0 {
+				topK = int(v)
+			}
+
+			var embedder Embedder
+			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
+				embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+			}
+
+			budget := topK * 300
+			if a.Config.OllamaContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
+				budget = int(float64(a.Config.OllamaContextLength) * a.Config.Memory.BudgetPct)
+			}
+
+			results, err := a.Memory.Unified.Recall(query, embedder, budget)
+			if err != nil {
+				return fmt.Sprintf("retrieve_memory: recall error: %v", err), nil
+			}
+			if len(results) > topK {
+				results = results[:topK]
+			}
+			if len(results) == 0 {
+				return "retrieve_memory: no matching memories found.", nil
+			}
+			return FormatContext(results), nil
+		},
+	)
+
 	// ── whoami ────────────────────────────────────────────────────────────────
 	r.RegisterTool(
 		"whoami",

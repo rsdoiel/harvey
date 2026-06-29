@@ -122,8 +122,8 @@ Inspired by AgeMem (Yu et al., 2025; arXiv:2601.01885v2 — `memory-models/2601.
   (default 20%). Add `STMWarnPct float64` to `ChunkConfig`; check in `runChatTurn`.
   **Effort:** ~1h. No tool registration required.
 
-- [ ] **M3** — `retrieve_memory(query, top_k)` builtin tool. Wraps `UnifiedMemory.Recall()`;
-  prepends results as a system message. On-demand mid-session LTM retrieval.
+- [x] **M3** — `retrieve_memory(query, top_k)` builtin tool. Wraps `UnifiedMemory.Recall()`;
+  returns formatted context as tool result. On-demand mid-session LTM retrieval.
   **Effort:** ~1h.
 
 - [ ] **M1** — `summary_context(span)` builtin tool. Compresses N turns (or "all") into a

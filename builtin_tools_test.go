@@ -317,6 +317,123 @@ func TestReadFile_PathTraversal(t *testing.T) {
 
 // TestWriteFile_PathTraversal verifies that write_file rejects paths that
 // escape the workspace via "../" traversal.
+// ─── retrieve_memory ──────────────────────────────────────────────────────────
+
+// newToolAgentWithMemory creates a newToolAgent and opens a real MemorySystem
+// backed by a temp workspace. Callers must call ms.Close() when done.
+func newToolAgentWithMemory(t *testing.T) (*Agent, *ToolRegistry, *MemorySystem) {
+	t.Helper()
+	a, _ := newToolAgent(t, nil)
+	ms, err := OpenMemory(a.Workspace, &a.Config.Memory)
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	a.Memory = ms
+	// Re-register so the tool handler closes over the updated a.Memory.
+	reg := NewToolRegistry()
+	RegisterBuiltinTools(reg, a)
+	return a, reg, ms
+}
+
+func TestRetrieveMemory_NoMemorySystem(t *testing.T) {
+	// Agent with no memory configured — tool must return a friendly message, not an error.
+	_, reg := newToolAgent(t, nil) // a.Memory is nil
+	result, err := dispatch(t, reg, "retrieve_memory", map[string]any{"query": "git"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "not available") {
+		t.Errorf("expected 'not available' message; got: %q", result)
+	}
+}
+
+func TestRetrieveMemory_EmptyStore(t *testing.T) {
+	// Real empty memory store — Recall returns no results.
+	_, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+
+	result, err := dispatch(t, reg, "retrieve_memory", map[string]any{"query": "git rebase"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "no matching memories found") {
+		t.Errorf("expected 'no matching memories found'; got: %q", result)
+	}
+}
+
+func TestRetrieveMemory_FactualMemoriesReturned(t *testing.T) {
+	// Save a workspace_profile memory (score 1.0, always first) and verify it appears.
+	_, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+
+	doc := &MemoryDoc{
+		Meta: MemoryMeta{
+			ID:          "test_ws_profile_001",
+			Type:        MemoryTypeWorkspaceProfile,
+			Confidence:  0.9,
+			Description: "Harvey is the terminal coding agent under test",
+		},
+		FountainBody: "FADE IN:\n\nINT. MEMORY - TEST\n\nThis is a test workspace profile entry.\n\nTHE END.\n",
+	}
+	if err := ms.Store.Save(doc, nil); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	result, err := dispatch(t, reg, "retrieve_memory", map[string]any{"query": "workspace"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "[memory context]") {
+		t.Errorf("expected '[memory context]' header; got: %q", result)
+	}
+	if !strings.Contains(result, "workspace profile") {
+		t.Errorf("expected 'workspace profile' source header; got: %q", result)
+	}
+}
+
+func TestRetrieveMemory_TopKCaps(t *testing.T) {
+	// Save 3 workspace_profile entries; request top_k=1 — only one should appear.
+	_, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+
+	for i := 1; i <= 3; i++ {
+		doc := &MemoryDoc{
+			Meta: MemoryMeta{
+				ID:          fmt.Sprintf("ws_entry_%d", i),
+				Type:        MemoryTypeWorkspaceProfile,
+				Confidence:  0.9,
+				Description: fmt.Sprintf("Profile entry %d", i),
+			},
+			FountainBody: fmt.Sprintf("FADE IN:\n\nINT. MEMORY - ENTRY %d\n\nContent %d.\n\nTHE END.\n", i, i),
+		}
+		if err := ms.Store.Save(doc, nil); err != nil {
+			t.Fatalf("Save %d: %v", i, err)
+		}
+	}
+
+	// Use Dispatch directly so top_k is a JSON number, not a quoted string.
+	result, err := reg.Dispatch(context.Background(), "retrieve_memory",
+		`{"query":"profile","top_k":1}`, 1024*1024)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// With top_k=1 exactly one "Profile entry N" line should appear.
+	count := strings.Count(result, "Profile entry ")
+	if count != 1 {
+		t.Errorf("expected 1 profile entry with top_k=1, got %d; result: %q", count, result)
+	}
+}
+
+func TestRetrieveMemory_EmptyQuery(t *testing.T) {
+	_, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+
+	_, err := dispatch(t, reg, "retrieve_memory", map[string]any{"query": "  "})
+	if err == nil {
+		t.Fatal("expected error for empty query, got nil")
+	}
+}
+
 func TestWriteFile_PathTraversal(t *testing.T) {
 	_, reg := newToolAgent(t, func(cfg *Config) { cfg.AutoFormat = false })
 
