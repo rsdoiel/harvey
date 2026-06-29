@@ -3,12 +3,16 @@
 
 ## Feature ideas
 
+- [ ] Once `/memory profile` is enabled there is no way to turn it off
 - [x] Add support for using Llama.cpp to run models
 - [ ] Assay needs to work across model systems, example I should be able to use with Llamafiles or Llama.cpp
 - [x] Chunked document analysis for small models — designed and planned.
   See [chunked-analysis-design.md](chunked-analysis-design.md) and
   [chunked-analysis-plan.md](chunked-analysis-plan.md). Work items W0–W5
   are in the v0.0.16 cycle below.
+- [ ] Model picker is showing Ollama files, when I picked Bonsai 8B (available as both Llamafile and under Ollama), it skipped setting up the alias.
+- [ ] Need tests to confirm we can switch between Llamafile and Llama.cpp for models that have both a .llamafile version and a .gguf version
+
 
 ## Refactoring
 
@@ -44,6 +48,45 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 ---
 
 ## Bugs
+
+- [ ] **SmolLM3 via llama.cpp "unexpected end of JSON input".**
+  llama-server occasionally returns a truncated or malformed JSON body on
+  inference requests. Root cause not yet diagnosed — suspect a streaming
+  boundary issue or server OOM under load. Need a repeatable test case.
+  Observed during live testing 2026-06-29 with Mac Ports llama-server v9767.
+
+- [x] **/status showed "llamafile" for llamacpp backend.**
+  LlamaCppBackend.NewClient() called newLlamafileLLMClient instead of
+  newLlamaCppLLMClient. Fixed 2026-06-29 (commit ec79ad8).
+  Regression test: TestLlamaCppBackend_NewClient_ProviderIsLlamacpp.
+
+- [x] **Auto-reconnect restart used wrong engine/function for llamacpp.**
+  Crash message said "llamafile server"; restart always called
+  restartActiveLlamafile even for llamacpp. Fixed 2026-06-29 (commit f17608c).
+  Added LlamaCppBackend.ModelPath() and restartActiveLlamaCpp().
+
+- [x] **/exit at chunk prompt processed as chunk instruction.**
+  promptChunkInstruction treated "/exit" as the analysis instruction.
+  Fixed 2026-06-29 (commit 76d46bd) — now cancels on "no", "cancel",
+  "q", "/exit", "/quit". Regression test: TestPromptChunkInstruction_ExitCancels.
+
+- [x] **Chunk LLM calls invisible in debug log.**
+  RunChunkedAnalysis called client.Chat() with no DebugLog instrumentation.
+  Fixed 2026-06-29 (commit faf5eb1) — added *DebugLog nil-safe parameter.
+
+- [ ] **Llamafile capability probe missing — tool support assumed, not detected.**
+  Harvey probes `GET /v1/models` for `n_ctx` only. The llama.cpp `/props`
+  endpoint returns `chat_template`, which indicates native tool-call support via
+  markers like `<tool_call>` (Qwen/Hermes), `[TOOL_CALLS]` (Mistral),
+  `<|python_tag|>` (Llama 3.1+), or `<|tool_call|>` (Phi-3/4). Without this,
+  `toolsReliable()` has no cache entry for llamafile models and falls back to
+  `CapNo` — but the tool definitions are still sent to the model, which ignores
+  them and hallucinates instead of calling `read_file`. Fix: add
+  `ProbeLlamafileProps(baseURL) LlamafileProps` that reads `/props`, checks
+  the chat template for tool-call markers, and writes `SupportsTools`
+  (and `ToolMode`) into `model_cache.db` when a model is first started.
+  Also extend the `/v1/models` probe to capture `n_ctx_train` (training
+  context ceiling) alongside the runtime `n_ctx`.
 
 - [x] **Chunked analysis not triggered for large files (W5 wiring incomplete).**
   Root cause: the chunking guard only existed in the `read_file` tool handler
