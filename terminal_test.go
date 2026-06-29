@@ -351,6 +351,97 @@ func TestAtMention_localModelSwitch_withFakeServer(t *testing.T) {
 	}
 }
 
+// TestAtMention_tagRouting_resolvesTaggedAlias verifies that @code switches to
+// the model whose alias is tagged "code", even though no alias is literally
+// named "code". This exercises the Step 3 tag-lookup path in the REPL.
+func TestAtMention_tagRouting_resolvesTaggedAlias(t *testing.T) {
+	srv := fakeLlamafileServer(t, "granite3.3:8b")
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileURL = srv.URL
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "granite3.3:8b", Path: "/tmp/granite.llamafile"},
+	}
+	cfg.ModelAliases = map[string]ModelAlias{
+		"granite": {Model: "granite3.3:8b", Tags: []string{"code", "instruct"}},
+	}
+	a := NewAgent(cfg, ws)
+	a.Client = newLlamafileLLMClient(srv.URL+"/v1", "granite3.3:8b", 0)
+
+	// @code should not match any alias by name, but should resolve via tag "code"
+	// → granite alias → granite3.3:8b → attemptModelSwitch succeeds.
+	tagModel, ok := resolveTagAlias(a.Config, "code")
+	if !ok {
+		t.Fatal("resolveTagAlias(code): expected ok=true")
+	}
+	if tagModel != "granite3.3:8b" {
+		t.Errorf("resolveTagAlias(code) = %q, want granite3.3:8b", tagModel)
+	}
+
+	var buf strings.Builder
+	switched, err := attemptModelSwitch(a, tagModel, &buf)
+	if !switched {
+		t.Errorf("attemptModelSwitch(%q): expected switched=true", tagModel)
+	}
+	if err != nil {
+		t.Errorf("attemptModelSwitch: %v", err)
+	}
+}
+
+// TestAtMention_tagRouting_noTagMatch verifies that resolveTagAlias returns
+// ("", false) when no alias carries the requested tag — preserving the
+// existing "not found" behaviour.
+func TestAtMention_tagRouting_noTagMatch(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.ModelAliases = map[string]ModelAlias{
+		"qwen": {Model: "qwen3:8b", Tags: []string{"reasoning"}},
+	}
+	a := NewAgent(cfg, ws)
+
+	_, ok := resolveTagAlias(a.Config, "code")
+	if ok {
+		t.Error("expected resolveTagAlias(code) = false when no alias carries 'code' tag")
+	}
+}
+
+// TestAtMention_tagRouting_exactAliasPrecedence verifies that @granite uses
+// the exact alias (Step 2) before tag lookup (Step 3). The fake server
+// advertises the model so attemptModelSwitch can complete.
+func TestAtMention_tagRouting_exactAliasPrecedence(t *testing.T) {
+	srv := fakeLlamafileServer(t, "granite3.3:8b")
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamafileURL = srv.URL
+	cfg.LlamafileModels = []LlamafileEntry{
+		{Name: "granite3.3:8b", Path: "/tmp/granite.llamafile"},
+	}
+	cfg.ModelAliases = map[string]ModelAlias{
+		"granite": {Model: "granite3.3:8b", Tags: []string{"code", "instruct"}},
+	}
+	a := NewAgent(cfg, ws)
+	a.Client = newLlamafileLLMClient(srv.URL+"/v1", "granite3.3:8b", 0)
+
+	// @granite → exact alias hit via ResolveModelAlias before tag lookup runs.
+	resolved := a.Config.ResolveModelAlias("granite")
+	if resolved != "granite3.3:8b" {
+		t.Errorf("exact alias resolution: got %q, want granite3.3:8b", resolved)
+	}
+
+	var buf strings.Builder
+	switched, err := attemptModelSwitch(a, "granite", &buf)
+	if !switched {
+		t.Errorf("attemptModelSwitch(granite): expected switched=true via alias")
+	}
+	if err != nil {
+		t.Errorf("attemptModelSwitch: %v", err)
+	}
+}
+
 // ─── pickBackend tests ────────────────────────────────────────────────────────
 
 func TestPickBackend_listsLlamafilesBeforeOllama(t *testing.T) {

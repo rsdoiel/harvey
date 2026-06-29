@@ -846,9 +846,29 @@ func (a *Agent) Run(out io.Writer) error {
 				charName = strings.ToUpper(name)
 				// Fall through to the normal chat path below.
 			} else {
-				// Name not found as a route or local model.
-				fmt.Fprintf(out, yellow("  @%s not found.")+" Use /route list or /model list to see available models.\n", name)
-				continue
+				// Step 3: Tag-based lookup — @code resolves to any alias tagged "code".
+				if tagModel, ok := resolveTagAlias(a.Config, name); ok {
+					tagSwitched, tagErr := attemptModelSwitch(a, tagModel, out)
+					if tagErr != nil {
+						fmt.Fprintf(out, red("  @%s switch failed: ")+"%v\n", name, tagErr)
+						continue
+					}
+					if tagSwitched {
+						if prompt == "" {
+							continue
+						}
+						input = prompt
+						charName = strings.ToUpper(name)
+						// Fall through to the normal chat path below.
+					} else {
+						fmt.Fprintf(out, yellow("  @%s not found.")+" Use /route list or /model list to see available models.\n", name)
+						continue
+					}
+				} else {
+					// Name not found as a route, local model, or tag.
+					fmt.Fprintf(out, yellow("  @%s not found.")+" Use /route list or /model list to see available models.\n", name)
+					continue
+				}
 			}
 		}
 

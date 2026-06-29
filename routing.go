@@ -334,3 +334,29 @@ func kindSupportsTools(kind RouteKind) bool {
 	}
 	return false
 }
+
+/** resolveTagAlias looks up tag in cfg.ModelAliases and returns the model name
+ * of the best alias carrying that tag. When multiple aliases share the tag,
+ * the first (alphabetically lowest alias name) is returned as a stable
+ * tie-break. Returns ("", false) when no alias carries the tag.
+ *
+ * Parameters:
+ *   cfg (Config) — agent configuration holding ModelAliases.
+ *   tag (string) — tag to search for (case-insensitive).
+ *
+ * Returns:
+ *   model (string) — resolved model name; "" when no match.
+ *   found (bool)   — true when at least one alias carries the tag.
+ *
+ * Example:
+ *   model, ok := resolveTagAlias(cfg, "code")
+ *   // model = "granite3.3:8b", ok = true
+ */
+func resolveTagAlias(cfg *Config, tag string) (model string, found bool) {
+	names := cfg.AliasesByTag(tag)
+	if len(names) == 0 {
+		return "", false
+	}
+	// First entry from AliasesByTag (stable alphabetical order) is the winner.
+	return cfg.ModelAliases[names[0]].Model, true
+}

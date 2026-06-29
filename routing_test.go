@@ -447,3 +447,72 @@ func TestDispatchToEndpoint_toolsNilRegistryFallsBackToChat(t *testing.T) {
 		t.Errorf("reply = %q, want it to contain 'plain reply'", reply)
 	}
 }
+
+// ─── resolveTagAlias ─────────────────────────────────────────────────────────
+
+// TestResolveTagAlias_noMatch verifies that ("", false) is returned when no
+// alias carries the requested tag.
+func TestResolveTagAlias_noMatch(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases = map[string]ModelAlias{
+		"granite": {Model: "granite3.3:8b", Tags: []string{"instruct"}},
+	}
+	model, ok := resolveTagAlias(cfg, "code")
+	if ok {
+		t.Errorf("expected ok=false, got model=%q", model)
+	}
+}
+
+// TestResolveTagAlias_singleMatch verifies correct resolution when exactly one
+// alias carries the requested tag — the acceptance criterion "@code resolves
+// to granite3.3:8b".
+func TestResolveTagAlias_singleMatch(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases = map[string]ModelAlias{
+		"granite": {Model: "granite3.3:8b", Tags: []string{"code", "instruct"}},
+		"qwen":    {Model: "qwen3:8b", Tags: []string{"reasoning"}},
+	}
+	model, ok := resolveTagAlias(cfg, "code")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if model != "granite3.3:8b" {
+		t.Errorf("expected model=granite3.3:8b, got %q", model)
+	}
+}
+
+// TestResolveTagAlias_exactAliasPriority verifies that an exact alias match
+// via Config.ResolveModelAlias takes priority — this mirrors the REPL order
+// where Step 2 (attemptModelSwitch) runs before Step 3 (tag lookup). When
+// @granite is sent, attemptModelSwitch resolves it via alias before ever
+// reaching resolveTagAlias.
+func TestResolveTagAlias_exactAliasPriority(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases = map[string]ModelAlias{
+		"granite": {Model: "granite3.3:8b", Tags: []string{"code", "instruct"}},
+	}
+	// Exact alias "granite" returns granite3.3:8b via ResolveModelAlias — the
+	// REPL never reaches resolveTagAlias for an exact alias hit.
+	got := cfg.ResolveModelAlias("granite")
+	if got != "granite3.3:8b" {
+		t.Errorf("ResolveModelAlias(granite) = %q, want granite3.3:8b", got)
+	}
+}
+
+// TestResolveTagAlias_multipleMatches verifies first-alphabetical tie-break
+// when several aliases share the same tag.
+func TestResolveTagAlias_multipleMatches(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ModelAliases = map[string]ModelAlias{
+		"alpha": {Model: "alpha-model", Tags: []string{"code"}},
+		"beta":  {Model: "beta-model", Tags: []string{"code"}},
+	}
+	model, ok := resolveTagAlias(cfg, "code")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	// "alpha" sorts before "beta" so alpha-model should win.
+	if model != "alpha-model" {
+		t.Errorf("expected alpha-model (first alphabetically), got %q", model)
+	}
+}
