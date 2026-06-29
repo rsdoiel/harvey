@@ -554,7 +554,9 @@ func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 	args := parts[1:]
 
 	if name == "exit" || name == "quit" || name == "bye" {
-		a.stopLlamafileProc()
+		if a.Backend != nil {
+			_ = a.Backend.Stop()
+		}
 		return true, nil
 	}
 	cmd, ok := a.commands[name]
@@ -621,14 +623,8 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		tag := ""
 		if ac, ok := a.Client.(*AnyLLMClient); ok {
 			switch ac.ProviderName() {
-			case "ollama":
-				if a.OllamaStartedByHarvey {
-					tag = " [Harvey]"
-				} else {
-					tag = " [external]"
-				}
-			case "llamafile", "llamacpp":
-				if a.llamafileProc != nil {
+			case "ollama", "llamafile", "llamacpp":
+				if a.Backend != nil && a.Backend.StartedByHarvey() {
 					tag = " [Harvey]"
 				} else {
 					tag = " [external]"
@@ -1353,8 +1349,12 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		if err := StartOllamaService(ollamaLogPath); err != nil {
 			return err
 		}
-		a.OllamaStartedByHarvey = true
 		a.DebugLog.LogOllamaStart(debug, ollamaLogPath)
+		agentsDir := filepath.Join(a.Workspace.Root, "agents")
+		ollamaBackend := NewOllamaBackend(a.Config.OllamaURL, a.Config.OllamaTimeout, agentsDir)
+		ollamaBackend.startedByHarvey = true
+		ollamaBackend.activeModel = a.Config.OllamaModel
+		a.Backend = ollamaBackend
 		fmt.Fprintln(out, "Ollama is running.")
 	case "stop":
 		fmt.Fprintln(out, "Use your system's service manager to stop Ollama (e.g. systemctl stop ollama).")
@@ -1660,7 +1660,7 @@ func pruneStaleOllamaRefs(a *Agent, liveModels []string, out io.Writer) (int, er
 // ollamaModelTable prints the model capability table.
 // When numbered is true each row is prefixed with [N] for interactive selection;
 // when false the active model is marked with * instead.
-func ollamaModelTable(a *Agent, summaries []ModelSummary, out io.Writer, numbered bool) {
+func ollamaModelTable(a *Agent, summaries []OllamaModelSummary, out io.Writer, numbered bool) {
 	const nameW = 36
 	fmt.Fprintf(out, "%-*s  %7s  %-8s  %6s  %5s  %5s  %6s\n",
 		nameW, "NAME", "SIZE", "FAMILY", "CTX", "TOOLS", "EMBED", "TAGGED")
@@ -1737,10 +1737,10 @@ func ollamaModelTable(a *Agent, summaries []ModelSummary, out io.Writer, numbere
 //	Tier 2 — tools only
 //	Tier 3 — embed only
 //	Tier 4 — base / unprobed
-func ollamaListTable(a *Agent, summaries []ModelSummary, out io.Writer) {
+func ollamaListTable(a *Agent, summaries []OllamaModelSummary, out io.Writer) {
 	type tier struct {
 		label  string
-		models []ModelSummary
+		models []OllamaModelSummary
 	}
 	tiers := []tier{
 		{"Full capability (tools + tagged blocks)", nil},
@@ -3627,8 +3627,7 @@ func modelSwitch(a *Agent, name string, out io.Writer) error {
 	}
 	for _, m := range models {
 		if m == name {
-			a.Config.OllamaModel = name
-			a.Client = newOllamaLLMClient(a.Config.OllamaURL, name, a.Config.OllamaTimeout)
+			a.setOllamaModel(name)
 			fmt.Fprintf(out, "  Switched to model: %s\n", name)
 			return nil
 		}

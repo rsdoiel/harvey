@@ -139,7 +139,7 @@ func probeRunningLlamafileName(url string) string {
  *   error — non-nil only on unexpected failures; user declining is not an error.
  *
  * Example:
- *   if ProbeLlamafile(a.Config.LlamafileURL) && a.llamafileProc == nil {
+ *   if ProbeLlamafile(a.Config.LlamafileURL) && !a.Backend.StartedByHarvey() {
  *       adoptExternalServer(a, os.Stdout)
  *   }
  */
@@ -251,9 +251,9 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 	}
 
 	// Stop whatever is currently running so the new model can bind the port.
-	if a.llamafileProc != nil {
+	if a.Backend != nil && a.Backend.StartedByHarvey() {
 		fmt.Fprintln(out, "  Stopping current llamafile...")
-		a.stopLlamafileProc()
+		_ = a.Backend.Stop()
 	} else if ProbeLlamafile(a.Config.LlamafileURL) {
 		// An externally started server is running. Register the entry for future
 		// use, but we cannot stop a server Harvey didn't start.
@@ -278,7 +278,7 @@ func cmdLlamafileAdd(a *Agent, args []string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to start llamafile: %w", err)
 	}
-	a.llamafileProc = proc
+	a.wireLlamafileBackend(proc, name)
 	fmt.Fprintln(out, green("  ✓")+" Llamafile started")
 
 	if err := a.useLlamafileEntry(name, out); err != nil {
@@ -385,9 +385,9 @@ func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 
 	// Stop the current server if Harvey started it.
-	if a.llamafileProc != nil {
+	if a.Backend != nil && a.Backend.StartedByHarvey() {
 		fmt.Fprintf(out, "  Stopping %s...\n", a.Config.LlamafileActive)
-		a.stopLlamafileProc()
+		_ = a.Backend.Stop()
 	} else if ProbeLlamafile(a.Config.LlamafileURL) {
 		running := probeRunningLlamafileName(a.Config.LlamafileURL)
 		if running == "" {
@@ -412,7 +412,7 @@ func cmdLlamafileUse(a *Agent, args []string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to start llamafile: %w", err)
 	}
-	a.llamafileProc = proc
+	a.wireLlamafileBackend(proc, name)
 
 	if err := a.useLlamafileEntry(name, out); err != nil {
 		return err
@@ -571,8 +571,10 @@ func cmdLlamafileStart(a *Agent, args []string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("failed to start llamafile: %w", err)
 	}
-	a.stopLlamafileProc()
-	a.llamafileProc = proc
+	if a.Backend != nil {
+		_ = a.Backend.Stop()
+	}
+	a.wireLlamafileBackend(proc, name)
 	return a.useLlamafileEntry(name, out)
 }
 
@@ -594,7 +596,7 @@ func cmdLlamafileStatus(a *Agent, out io.Writer) error {
 		reachable = "yes"
 	}
 	managed := "no"
-	if a.llamafileProc != nil {
+	if a.Backend != nil && a.Backend.StartedByHarvey() {
 		managed = "yes (started by Harvey)"
 	}
 	fmt.Fprintf(out, "  Active model:    %s\n", active)

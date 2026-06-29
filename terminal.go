@@ -87,14 +87,16 @@ func restartActiveLlamafile(a *Agent, out io.Writer) error {
 	if entry.Path == "" {
 		return fmt.Errorf("cannot restart %q: server was adopted (path unknown)", entry.Name)
 	}
-	a.stopLlamafileProc()
+	if a.Backend != nil {
+		_ = a.Backend.Stop()
+	}
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 	fmt.Fprintf(out, "  Starting %s...\n", entry.Name)
 	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
 	if err != nil {
 		return fmt.Errorf("restart failed: %w", err)
 	}
-	a.llamafileProc = proc
+	a.wireLlamafileBackend(proc, entry.Name)
 	fmt.Fprintln(out, green("  ✓")+" Restarted "+entry.Name)
 	return a.useLlamafileEntry(entry.Name, out)
 }
@@ -913,7 +915,7 @@ func (a *Agent) Run(out io.Writer) error {
 		// Auto-reconnect: when the llamafile server drops mid-session, offer
 		// to restart it and retry the turn rather than surfacing a raw HTTP error.
 		if turnErr != nil && isConnectionError(turnErr) &&
-			a.llamafileProc != nil && !probeActiveBackend(a) {
+			a.Backend != nil && a.Backend.StartedByHarvey() && !probeActiveBackend(a) {
 			fmt.Fprintln(out, yellow("  ⚠ The llamafile server stopped unexpectedly."))
 			if askYesNo(reader, out, fmt.Sprintf("  Restart %s? [Y/n] ", a.Config.LlamafileActive), true) {
 				if restartErr := restartActiveLlamafile(a, out); restartErr == nil {

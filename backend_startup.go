@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -97,7 +98,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 			if err != nil {
 				fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
 			} else {
-				a.llamafileProc = proc
+				a.wireLlamafileBackend(proc, entry.Name)
 				fmt.Fprintf(out, "  %s Ready\n", green("✓"))
 				return a.useLlamafileEntry(entry.Name, out)
 			}
@@ -241,8 +242,7 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 		return a.startAndUseLlamafile(entry, out)
 	}
 	// Ollama model.
-	a.Config.OllamaModel = chosen.name
-	a.Client = newOllamaLLMClient(a.Config.OllamaURL, chosen.name, a.Config.OllamaTimeout)
+	a.setOllamaModel(chosen.name)
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen.name))
 	return nil
 }
@@ -274,8 +274,10 @@ func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error
 		fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
 		return err
 	}
-	a.stopLlamafileProc()
-	a.llamafileProc = proc
+	if a.Backend != nil {
+		_ = a.Backend.Stop()
+	}
+	a.wireLlamafileBackend(proc, entry.Name)
 	fmt.Fprintf(out, "  %s Ready\n", green("✓"))
 	return a.useLlamafileEntry(entry.Name, out)
 }
@@ -300,7 +302,7 @@ func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error
 func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredModel string) error {
 	// Command-line --model flag always wins.
 	if a.Config.OllamaModel != "" {
-		a.Client = newOllamaLLMClient(a.Config.OllamaURL, a.Config.OllamaModel, a.Config.OllamaTimeout)
+		a.setOllamaModel(a.Config.OllamaModel)
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.OllamaModel))
 		return nil
 	}
@@ -318,8 +320,7 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 
 	// If only one model is available, use it regardless of preference.
 	if len(models) == 1 {
-		a.Config.OllamaModel = models[0]
-		a.Client = newOllamaLLMClient(a.Config.OllamaURL, models[0], a.Config.OllamaTimeout)
+		a.setOllamaModel(models[0])
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(models[0]))
 		return nil
 	}
@@ -329,8 +330,7 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 		for _, m := range models {
 			if strings.EqualFold(extractModelName(m), preferredModel) ||
 				strings.EqualFold(m, preferredModel) {
-				a.Config.OllamaModel = m
-				a.Client = newOllamaLLMClient(a.Config.OllamaURL, m, a.Config.OllamaTimeout)
+				a.setOllamaModel(m)
 				fmt.Fprintf(out, "  Using model: %s %s\n", cyan(m), dim("(from session)"))
 				return nil
 			}
@@ -350,8 +350,18 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 		chosen = models[idx-1]
 	}
 
-	a.Config.OllamaModel = chosen
-	a.Client = newOllamaLLMClient(a.Config.OllamaURL, chosen, a.Config.OllamaTimeout)
+	a.setOllamaModel(chosen)
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen))
 	return nil
+}
+
+// setOllamaModel wires Config.OllamaModel, Client, and Backend for the given Ollama model name.
+func (a *Agent) setOllamaModel(model string) {
+	agentsDir := filepath.Join(a.Workspace.Root, "agents")
+	a.Config.OllamaModel = model
+	a.Client = newOllamaLLMClient(a.Config.OllamaURL, model, a.Config.OllamaTimeout)
+	b := NewOllamaBackend(a.Config.OllamaURL, a.Config.OllamaTimeout, agentsDir)
+	b.SetActiveModel(model)
+	b.running = true // we know Ollama is reachable at this point
+	a.Backend = b
 }

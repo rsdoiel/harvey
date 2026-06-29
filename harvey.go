@@ -184,18 +184,8 @@ type Agent struct {
 	statHistory            []ChatStats  // rolling window of recent turn stats
 	AuditBuffer            *AuditBuffer // in-memory audit log ring buffer; nil until initialized
 	DebugLog               *DebugLog    // JSONL diagnostic log; nil when --debug not set
-	OllamaStartedByHarvey  bool         // true when Harvey launched the Ollama subprocess this session
-	llamafileProc          *os.Process  // non-nil when Harvey started the current llamafile server
+	Backend                ManagedBackend // active inference backend; nil when no backend is wired
 	ActiveRoute            string       // session-sticky route name; when set, prompts are auto-dispatched via @NAME
-}
-
-// stopLlamafileProc signals the llamafile server process to stop, if Harvey
-// started it. Safe to call when llamafileProc is nil.
-func (a *Agent) stopLlamafileProc() {
-	if a.llamafileProc != nil {
-		_ = a.llamafileProc.Signal(os.Interrupt)
-		a.llamafileProc = nil
-	}
 }
 
 /** effectiveContextLimit returns the context-window size in tokens for the

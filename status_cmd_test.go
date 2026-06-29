@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -141,8 +142,11 @@ func TestCmdStatus_llamafileShowsHarveyTag(t *testing.T) {
 	}
 	a.registerCommands()
 	a.Client = newLlamafileLLMClient("http://localhost:8080/v1", "qwen-coding", 0)
-	// Simulate Harvey having started the llamafile.
-	a.llamafileProc = &os.Process{Pid: 99999}
+	// Simulate Harvey having started the llamafile via a LlamafileBackend.
+	lb := NewLlamafileBackend(cfg, filepath.Join(ws.Root, "agents"), ws.Root)
+	lb.proc = &os.Process{Pid: 99999}
+	lb.activeModel = "qwen-coding"
+	a.Backend = lb
 
 	var out strings.Builder
 	if err := cmdStatus(a, nil, &out); err != nil {

@@ -66,7 +66,7 @@ type ollamaTagsResp struct {
 	Models []ollamaTagsEntry `json:"models"`
 }
 
-/** ModelSummary holds the key properties of an installed Ollama model.
+/** OllamaModelSummary holds the key properties of an installed Ollama model.
  *
  * Fields:
  *   Name          (string) — model identifier, e.g. "llama3.1:8b".
@@ -80,7 +80,7 @@ type ollamaTagsResp struct {
  *   summaries, _ := client.ModelSummaries(ctx)
  *   for _, s := range summaries { fmt.Println(s.Name) }
  */
-type ModelSummary struct {
+type OllamaModelSummary struct {
 	Name          string
 	Family        string
 	ParameterSize string
@@ -89,11 +89,11 @@ type ModelSummary struct {
 	Running       bool
 }
 
-/** ModelDetail holds the full inspection output for a single Ollama model,
- * extending ModelSummary with context-window size and Modelfile parameters.
+/** OllamaModelDetail holds the full inspection output for a single Ollama model,
+ * extending OllamaModelSummary with context-window size and Modelfile parameters.
  *
  * Fields:
- *   ModelSummary   — embedded summary fields.
+ *   OllamaModelSummary — embedded summary fields.
  *   ContextLength  (int)    — context window in tokens (0 if not reported).
  *   RawParameters  (string) — raw parameter block from the Modelfile.
  *   Template       (string) — chat template string.
@@ -102,8 +102,8 @@ type ModelSummary struct {
  *   detail, _ := client.ShowModel(ctx, "llama3.1:8b")
  *   fmt.Printf("context: %d tokens\n", detail.ContextLength)
  */
-type ModelDetail struct {
-	ModelSummary
+type OllamaModelDetail struct {
+	OllamaModelSummary
 	ContextLength int
 	RawParameters string
 	Template      string
@@ -111,7 +111,7 @@ type ModelDetail struct {
 }
 
 
-/** ModelSummaries returns a ModelSummary for every model installed on the
+/** ModelSummaries returns an OllamaModelSummary for every model installed on the
  * Ollama server. It also marks which models are currently loaded (running)
  * by querying /api/ps.
  *
@@ -119,13 +119,13 @@ type ModelDetail struct {
  *   ctx (context.Context) — controls the HTTP request lifetime.
  *
  * Returns:
- *   []ModelSummary — one entry per installed model, sorted as Ollama returns them.
- *   error          — non-nil if the /api/tags request fails.
+ *   []OllamaModelSummary — one entry per installed model, sorted as Ollama returns them.
+ *   error                — non-nil if the /api/tags request fails.
  *
  * Example:
  *   summaries, err := client.ModelSummaries(ctx)
  */
-func (o *OllamaClient) ModelSummaries(ctx context.Context) ([]ModelSummary, error) {
+func (o *OllamaClient) ModelSummaries(ctx context.Context) ([]OllamaModelSummary, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.baseURL+"/api/tags", nil)
 	if err != nil {
 		return nil, err
@@ -154,9 +154,9 @@ func (o *OllamaClient) ModelSummaries(ctx context.Context) ([]ModelSummary, erro
 		}
 	}
 
-	summaries := make([]ModelSummary, len(tags.Models))
+	summaries := make([]OllamaModelSummary, len(tags.Models))
 	for i, m := range tags.Models {
-		summaries[i] = ModelSummary{
+		summaries[i] = OllamaModelSummary{
 			Name:          m.Name,
 			Family:        m.Details.Family,
 			ParameterSize: m.Details.ParameterSize,
@@ -177,14 +177,14 @@ func (o *OllamaClient) ModelSummaries(ctx context.Context) ([]ModelSummary, erro
  *   model (string)          — model name, e.g. "llama3.1:8b".
  *
  * Returns:
- *   ModelDetail — full model detail; zero value on error.
+ *   OllamaModelDetail — full model detail; zero value on error.
  *   error       — non-nil if the request fails or the model is not found.
  *
  * Example:
  *   detail, err := client.ShowModel(ctx, "llama3.1:8b")
  *   fmt.Printf("context: %d tokens\n", detail.ContextLength)
  */
-func (o *OllamaClient) ShowModel(ctx context.Context, model string) (ModelDetail, error) {
+func (o *OllamaClient) ShowModel(ctx context.Context, model string) (OllamaModelDetail, error) {
 	type showReq struct {
 		Model   string `json:"model"`
 		Verbose bool   `json:"verbose"`
@@ -200,21 +200,21 @@ func (o *OllamaClient) ShowModel(ctx context.Context, model string) (ModelDetail
 	body, _ := json.Marshal(showReq{Model: model, Verbose: true})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/show", bytes.NewReader(body))
 	if err != nil {
-		return ModelDetail{}, err
+		return OllamaModelDetail{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := o.http.Do(req)
 	if err != nil {
-		return ModelDetail{}, err
+		return OllamaModelDetail{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return ModelDetail{}, fmt.Errorf("ollama show: HTTP %d: %s", resp.StatusCode, b)
+		return OllamaModelDetail{}, fmt.Errorf("ollama show: HTTP %d: %s", resp.StatusCode, b)
 	}
 	var sr showResp
 	if err := json.NewDecoder(resp.Body).Decode(&sr); err != nil {
-		return ModelDetail{}, err
+		return OllamaModelDetail{}, err
 	}
 
 	// Extract context length — key is "<architecture>.context_length".
@@ -229,8 +229,8 @@ func (o *OllamaClient) ShowModel(ctx context.Context, model string) (ModelDetail
 		}
 	}
 
-	return ModelDetail{
-		ModelSummary: ModelSummary{
+	return OllamaModelDetail{
+		OllamaModelSummary: OllamaModelSummary{
 			Name:          model,
 			Family:        sr.Details.Family,
 			ParameterSize: sr.Details.ParameterSize,
