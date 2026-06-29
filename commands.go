@@ -823,11 +823,6 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 	}
 }
 
-// cmdModelShow prints the currently active model and backend.
-func cmdModelShow(a *Agent, out io.Writer) error {
-	return cmdModelShowEntry(a, "", out)
-}
-
 // cmdModelShowEntry prints details for the named model, or the active model when name is "".
 // For llamafile models it shows path, size, and context length.
 func cmdModelShowEntry(a *Agent, name string, out io.Writer) error {
