@@ -1050,7 +1050,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	augmented += stmWarnNudge(a)
 	a.AddMessage("user", augmented)
 
-	// Token-count warning — runs only when the backend is Ollama.
+	// Token-count warning — exact count for Ollama, estimated for other backends.
 	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
 		histText := HistoryText(a.History)
 		n, exact := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), histText)
@@ -1067,6 +1067,19 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 			case pct >= 80:
 				fmt.Fprintf(out, yellow("  ⚠ Context %d%% full: %s%d / %d tokens\n"), pct, qualifier, n, limit)
 			}
+		}
+	} else if limit := a.effectiveContextLimit(); limit > 0 {
+		// Llamafile / llama.cpp: estimated token count using the 4-bytes heuristic.
+		used := 0
+		for _, m := range a.History {
+			used += estimateTokens(m.Content)
+		}
+		pct := used * 100 / limit
+		switch {
+		case pct >= 100:
+			fmt.Fprintf(out, red("  ✗ Context full: ~%d / %d tokens (%d%%) — try /clear or switch to a model with larger context\n"), used, limit, pct)
+		case pct >= 80:
+			fmt.Fprintf(out, yellow("  ⚠ Context %d%% full: ~%d / %d tokens\n"), pct, used, limit)
 		}
 	}
 	var modelsUsed []string

@@ -201,7 +201,15 @@ func switchLlamafileModel(a *Agent, name, diskPath string, out io.Writer) error 
 		return err
 	}
 	a.Config.Llamafile.Active = name
-	if entry != nil && entry.ContextLength == 0 {
+	if entry == nil {
+		// Disk-scan model: probe context length and register an entry so
+		// effectiveContextLimit() can return a real value for token-count warnings.
+		ctxLen := 0
+		if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
+			ctxLen = ctx
+		}
+		a.Config.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: name, Path: diskPath, ContextLength: ctxLen})
+	} else if entry.ContextLength == 0 {
 		if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
 			entry.ContextLength = ctx
 			a.Config.AddOrUpdateLlamafileEntry(*entry)
