@@ -1158,14 +1158,14 @@ func TestSkillSetShow_aliasForInfo(t *testing.T) {
 func TestModelAliasAdd_aliasForSet(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.ModelAliases = make(map[string]string)
+	cfg.ModelAliases = make(map[string]ModelAlias)
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	// Use "add" verb to define an alias.
 	if err := cmdModelAlias(a, []string{"add", "coder", "qwen2.5-coder:7b"}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if a.Config.ModelAliases["coder"] != "qwen2.5-coder:7b" {
+	if a.Config.ModelAliases["coder"].Model != "qwen2.5-coder:7b" {
 		t.Errorf("alias not set: %v", a.Config.ModelAliases)
 	}
 }
@@ -1379,7 +1379,7 @@ func TestOllamaUse_noArg_validSelection(t *testing.T) {
 
 func TestRemoveModelFromConfig_AliasRemoved(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.ModelAliases = map[string]string{"g": "granite4.1:3b", "q": "qwen2.5:7b"}
+	cfg.ModelAliases = map[string]ModelAlias{"g": {Model: "granite4.1:3b"}, "q": {Model: "qwen2.5:7b"}}
 	changed := removeModelFromConfig(cfg, "granite4.1:3b")
 	if !changed {
 		t.Fatal("expected changed=true when alias value matches")
@@ -1414,7 +1414,7 @@ func TestRemoveModelFromConfig_ModelMapKeyRemoved(t *testing.T) {
 
 func TestRemoveModelFromConfig_NoChange(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.ModelAliases = map[string]string{"g": "granite4.1:3b"}
+	cfg.ModelAliases = map[string]ModelAlias{"g": {Model: "granite4.1:3b"}}
 	changed := removeModelFromConfig(cfg, "llama3.2:3b") // not present anywhere
 	if changed {
 		t.Error("expected changed=false when model name is not referenced")
@@ -1423,7 +1423,7 @@ func TestRemoveModelFromConfig_NoChange(t *testing.T) {
 
 func TestRemoveModelFromConfig_CaseInsensitive(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.ModelAliases = map[string]string{"g": "Granite4.1:3B"}
+	cfg.ModelAliases = map[string]ModelAlias{"g": {Model: "Granite4.1:3B"}}
 	changed := removeModelFromConfig(cfg, "granite4.1:3b")
 	if !changed {
 		t.Error("expected changed=true for case-insensitive match")
@@ -1434,9 +1434,9 @@ func TestRemoveModelFromConfig_CaseInsensitive(t *testing.T) {
 
 func TestPruneStaleOllamaRefs_RemovesStaleAlias(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.ModelAliases = map[string]string{
-		"g": "granite4.1:3b",   // stale — not in live list
-		"n": "nomic-embed-text:latest", // live — keep
+	a.Config.ModelAliases = map[string]ModelAlias{
+		"g": {Model: "granite4.1:3b"},          // stale — not in live list
+		"n": {Model: "nomic-embed-text:latest"}, // live — keep
 	}
 
 	var out strings.Builder
@@ -1482,7 +1482,7 @@ func TestPruneStaleOllamaRefs_RemovesStaleModelMapKey(t *testing.T) {
 
 func TestPruneStaleOllamaRefs_NoStaleRefs(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.ModelAliases = map[string]string{"n": "nomic-embed-text:latest"}
+	a.Config.ModelAliases = map[string]ModelAlias{"n": {Model: "nomic-embed-text:latest"}}
 
 	var out strings.Builder
 	n, err := pruneStaleOllamaRefs(a, []string{"nomic-embed-text:latest", "llama3.2:3b"}, &out)
@@ -1503,7 +1503,7 @@ func TestCmdOllama_Clean_NoStaleRefs(t *testing.T) {
 	a := newTestAgent(t)
 	a.Config.OllamaURL = srv.URL
 	// Model alias points to a live model.
-	a.Config.ModelAliases = map[string]string{"n": "nomic-embed-text:latest"}
+	a.Config.ModelAliases = map[string]ModelAlias{"n": {Model: "nomic-embed-text:latest"}}
 
 	var buf strings.Builder
 	if err := cmdOllama(a, []string{"clean"}, &buf); err != nil {
@@ -1524,9 +1524,9 @@ func TestCmdOllama_Clean_RemovesStaleRefs(t *testing.T) {
 	a := newTestAgent(t)
 	a.Config.OllamaURL = srv.URL
 	// granite4.1:3b is NOT in the mock server's model list — should be pruned.
-	a.Config.ModelAliases = map[string]string{
-		"g": "granite4.1:3b",
-		"l": "llama3.2:3b",
+	a.Config.ModelAliases = map[string]ModelAlias{
+		"g": {Model: "granite4.1:3b"},
+		"l": {Model: "llama3.2:3b"},
 	}
 
 	var buf strings.Builder

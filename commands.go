@@ -415,10 +415,10 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdPipeline,
 		},
 		"model": {
-			Usage:       "/model [list|use NAME|show [NAME]|status]",
-			Description: "Backend-agnostic model management — works across llamafile and ollama",
+			Usage:       "/model [list|use [NAME]|alias [set|tags|list|remove]|show [NAME]|status]",
+			Description: "Backend-agnostic model management — works across llamafile, llamacpp, and ollama",
 			Handler:     cmdModel,
-			Subcommands: []string{"list", "use", "show", "status"},
+			Subcommands: []string{"list", "use", "alias", "show", "status"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"use": func(a *Agent) []string { return allModelNames(a) },
 			},
@@ -801,30 +801,18 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 		return cmdModelList(a, out)
 	case "use":
 		if len(args) < 2 {
-			names := allModelNames(a)
-			if len(names) == 0 {
-				fmt.Fprintln(out, "  No models registered. Use /llamafile add, or /ollama use for Ollama models.")
-				return nil
-			}
-			active := a.Config.LlamafileActive
-			items := make([]SelectItem, len(names))
-			for i, n := range names {
-				items[i] = SelectItem{Value: n, Label: n, Active: n == active}
-			}
-			chosen, err := SelectFrom(items, fmt.Sprintf("Select model [1-%d] or enter a name: ", len(items)), a.In, out)
-			if err != nil || chosen == "" {
-				return err
-			}
-			args = append(args, chosen)
+			return pickAndUseModel(a, out)
 		}
 		switched, err := attemptModelSwitch(a, args[1], out)
 		if err != nil {
 			return err
 		}
 		if !switched {
-			fmt.Fprintf(out, "  Model %q not found — use /llamafile list or /ollama list.\n", args[1])
+			fmt.Fprintf(out, "  Model %q not found — use /model use (no arg) for a picker.\n", args[1])
 		}
 		return nil
+	case "alias":
+		return cmdModelAlias(a, args[1:], out)
 	case "mode":
 		return cmdModelMode(a, args[1:], out)
 	case "status":
@@ -1583,8 +1571,8 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 func removeModelFromConfig(cfg *Config, name string) bool {
 	changed := false
 	lower := strings.ToLower(name)
-	for alias, full := range cfg.ModelAliases {
-		if strings.ToLower(full) == lower {
+	for alias, entry := range cfg.ModelAliases {
+		if strings.ToLower(entry.Model) == lower {
 			delete(cfg.ModelAliases, alias)
 			changed = true
 		}
@@ -1628,9 +1616,9 @@ func pruneStaleOllamaRefs(a *Agent, liveModels []string, out io.Writer) (int, er
 	ragChanged := false
 
 	// Prune model_aliases whose target model is no longer installed.
-	for alias, full := range a.Config.ModelAliases {
-		if !live[strings.ToLower(full)] {
-			fmt.Fprintf(out, "  removing alias %q → %s (model not installed)\n", alias, full)
+	for alias, entry := range a.Config.ModelAliases {
+		if !live[strings.ToLower(entry.Model)] {
+			fmt.Fprintf(out, "  removing alias %q → %s (model not installed)\n", alias, entry.Model)
 			delete(a.Config.ModelAliases, alias)
 			aliasChanged = true
 			removed++
@@ -3500,23 +3488,26 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 
 
 // cmdModelAlias manages the model_aliases map in harvey.yaml.
-// Subcommands: list, set ALIAS FULLNAME, remove ALIAS
+// Subcommands: list, set ALIAS FULLNAME [--tags T,T], tags ALIAS TAG..., remove ALIAS
 func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 || args[0] == "list" {
 		if len(a.Config.ModelAliases) == 0 {
 			fmt.Fprintln(out, "  No model aliases defined.")
-			fmt.Fprintln(out, "  Use: /ollama alias set ALIAS FULL_MODEL_NAME")
+			fmt.Fprintln(out, "  Use: /model alias set ALIAS FULL_MODEL_NAME [--tags T,T]")
 			return nil
 		}
 		// Collect and sort for deterministic output.
-		aliases := make([]string, 0, len(a.Config.ModelAliases))
+		keys := make([]string, 0, len(a.Config.ModelAliases))
 		for k := range a.Config.ModelAliases {
-			aliases = append(aliases, k)
+			keys = append(keys, k)
 		}
-		sortStrings(aliases)
-		fmt.Fprintln(out, "  Model aliases:")
-		for _, k := range aliases {
-			fmt.Fprintf(out, "    %-20s → %s\n", k, a.Config.ModelAliases[k])
+		sortStrings(keys)
+		fmt.Fprintf(out, "  %-20s  %-36s  %s\n", "Alias", "Model", "Tags")
+		fmt.Fprintln(out, "  "+strings.Repeat("-", 70))
+		for _, k := range keys {
+			entry := a.Config.ModelAliases[k]
+			tags := strings.Join(entry.Tags, ", ")
+			fmt.Fprintf(out, "  %-20s  %-36s  %s\n", k, entry.Model, tags)
 		}
 		return nil
 	}
@@ -3524,13 +3515,23 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 	switch args[0] {
 	case "set", "add":
 		if len(args) < 3 {
-			fmt.Fprintln(out, "Usage: /model alias add ALIAS FULL_MODEL_NAME")
+			fmt.Fprintln(out, "Usage: /model alias set ALIAS FULL_MODEL_NAME [--tags tag1,tag2]")
 			return nil
 		}
 		alias := strings.ToLower(args[1])
 		full := args[2]
+		var tags []string
+		for i := 3; i < len(args)-1; i++ {
+			if args[i] == "--tags" {
+				for _, t := range strings.Split(args[i+1], ",") {
+					if t = strings.TrimSpace(t); t != "" {
+						tags = append(tags, strings.ToLower(t))
+					}
+				}
+			}
+		}
 		if a.Config.ModelAliases == nil {
-			a.Config.ModelAliases = make(map[string]string)
+			a.Config.ModelAliases = make(map[string]ModelAlias)
 		}
 		// Reject if the alias name clashes with an installed model name.
 		if aliasClashesWithModel(a, alias) {
@@ -3538,19 +3539,58 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 			return nil
 		}
 		// Warn if updating an existing alias.
-		if existing, ok := a.Config.ModelAliases[alias]; ok && existing != full {
-			fmt.Fprintf(out, "  ⚠ Updating alias %q: %s → %s\n", alias, existing, full)
+		if existing, ok := a.Config.ModelAliases[alias]; ok && existing.Model != full {
+			fmt.Fprintf(out, "  ⚠ Updating alias %q: %s → %s\n", alias, existing.Model, full)
 		}
-		a.Config.ModelAliases[alias] = full
+		a.Config.ModelAliases[alias] = ModelAlias{Model: full, Tags: tags}
 		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  ✗ Failed to save: %v\n", err)
 			return nil
 		}
-		fmt.Fprintf(out, "  Alias set: %s → %s\n", alias, full)
+		tagStr := ""
+		if len(tags) > 0 {
+			tagStr = " [" + strings.Join(tags, ", ") + "]"
+		}
+		fmt.Fprintf(out, "  Alias set: %s → %s%s\n", alias, full, tagStr)
+
+	case "tags":
+		// /model alias tags ALIAS TAG [TAG...]
+		if len(args) < 3 {
+			fmt.Fprintln(out, "Usage: /model alias tags ALIAS TAG [TAG...]")
+			return nil
+		}
+		alias := strings.ToLower(args[1])
+		entry, ok := a.Config.ModelAliases[alias]
+		if !ok {
+			fmt.Fprintf(out, "  Alias %q not found.\n", alias)
+			return nil
+		}
+		for _, t := range args[2:] {
+			t = strings.ToLower(strings.TrimSpace(t))
+			if t == "" {
+				continue
+			}
+			found := false
+			for _, existing := range entry.Tags {
+				if existing == t {
+					found = true
+					break
+				}
+			}
+			if !found {
+				entry.Tags = append(entry.Tags, t)
+			}
+		}
+		a.Config.ModelAliases[alias] = entry
+		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "  ✗ Failed to save: %v\n", err)
+			return nil
+		}
+		fmt.Fprintf(out, "  Tags for %q: [%s]\n", alias, strings.Join(entry.Tags, ", "))
 
 	case "remove", "rm", "delete":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /ollama alias remove ALIAS")
+			fmt.Fprintln(out, "Usage: /model alias remove ALIAS")
 			return nil
 		}
 		alias := strings.ToLower(args[1])
@@ -3566,7 +3606,7 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "  Alias %q removed.\n", alias)
 
 	default:
-		fmt.Fprintf(out, "  Unknown subcommand %q. Use: list, set, remove\n", args[0])
+		fmt.Fprintf(out, "  Unknown subcommand %q. Use: list, set, tags, remove\n", args[0])
 	}
 	return nil
 }

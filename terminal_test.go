@@ -306,7 +306,7 @@ func TestAttemptModelSwitch_aliasLookupCaseInsensitive(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
 	// Register an alias. Aliases are stored with lowercase keys.
-	cfg.ModelAliases = map[string]string{"coder": "qwen2.5-coder:7b"}
+	cfg.ModelAliases = map[string]ModelAlias{"coder": {Model: "qwen2.5-coder:7b"}}
 	cfg.OllamaURL = "http://localhost:11434" // won't connect, just wiring
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder

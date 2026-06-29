@@ -221,7 +221,7 @@ func TestLoadHarveyYAML_RollingSummaryNotSet_KeepsDefaults(t *testing.T) {
 
 func TestResolveModelAlias_hit(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.ModelAliases["qwen-coder"] = "qwen2.5-coder:7b"
+	cfg.ModelAliases["qwen-coder"] = ModelAlias{Model: "qwen2.5-coder:7b"}
 
 	got := cfg.ResolveModelAlias("qwen-coder")
 	if got != "qwen2.5-coder:7b" {
@@ -231,7 +231,7 @@ func TestResolveModelAlias_hit(t *testing.T) {
 
 func TestResolveModelAlias_caseInsensitive(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.ModelAliases["qwen-coder"] = "qwen2.5-coder:7b"
+	cfg.ModelAliases["qwen-coder"] = ModelAlias{Model: "qwen2.5-coder:7b"}
 
 	got := cfg.ResolveModelAlias("QWEN-CODER")
 	if got != "qwen2.5-coder:7b" {

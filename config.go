@@ -139,8 +139,8 @@ type Config struct {
 	LlamafileMaxTokens      int           // max tokens per completion; 0 = no limit (use model default)
 	// LlamaCpp backend settings
 	LlamaCpp LlamaCppConfig
-	// Model aliases: short name → full Ollama model identifier
-	ModelAliases map[string]string
+	// Model aliases: short name → ModelAlias (model ID + optional purpose tags)
+	ModelAliases map[string]ModelAlias
 	// Tool settings
 	ToolsEnabled         bool // when true, send tool schemas to models that support it
 	MaxToolCallsPerTurn  int  // hard limit on tool call rounds per user turn; 0 = defaultMaxToolCallsPerTurn
@@ -190,7 +190,7 @@ func DefaultConfig() *Config {
 		SafeMode:        true,
 		AllowedCommands: allowed,
 		Permissions:     defaultPerms,
-		ModelAliases:          make(map[string]string),
+		ModelAliases:          make(map[string]ModelAlias),
 		RunTimeout:            5 * time.Minute,
 		OllamaTimeout:         0, // no timeout — local inference can take minutes on slow hardware
 		LlamafileURL:            "http://localhost:8080",
@@ -239,10 +239,40 @@ func (c *Config) ResolveModelAlias(alias string) string {
 	if c.ModelAliases == nil {
 		return alias
 	}
-	if full, ok := c.ModelAliases[strings.ToLower(alias)]; ok {
-		return full
+	if entry, ok := c.ModelAliases[strings.ToLower(alias)]; ok {
+		return entry.Model
 	}
 	return alias
+}
+
+/** AliasesByTag returns the alias names whose Tags slice contains tag
+ * (case-insensitive). Returns nil when no aliases carry that tag.
+ *
+ * Parameters:
+ *   tag (string) — purpose label to search for, e.g. "code".
+ *
+ * Returns:
+ *   []string — sorted list of matching alias names.
+ *
+ * Example:
+ *   names := cfg.AliasesByTag("code") // → ["granite", "qwen-coder"]
+ */
+func (c *Config) AliasesByTag(tag string) []string {
+	if c.ModelAliases == nil {
+		return nil
+	}
+	tag = strings.ToLower(tag)
+	var out []string
+	for name, entry := range c.ModelAliases {
+		for _, t := range entry.Tags {
+			if strings.ToLower(t) == tag {
+				out = append(out, name)
+				break
+			}
+		}
+	}
+	sortStrings(out)
+	return out
 }
 
 /** IsCommandAllowed returns true if cmd is in the AllowedCommands list.
@@ -737,13 +767,13 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 			cfg.OllamaTimeout = d
 		}
 	}
-	// Load model aliases
+	// Load model aliases (backward-compatible: accepts string or struct form in YAML)
 	if len(y.ModelAliases) > 0 {
 		if cfg.ModelAliases == nil {
-			cfg.ModelAliases = make(map[string]string)
+			cfg.ModelAliases = make(map[string]ModelAlias)
 		}
 		for k, v := range y.ModelAliases {
-			cfg.ModelAliases[strings.ToLower(k)] = v
+			cfg.ModelAliases[strings.ToLower(k)] = ModelAlias{Model: v.Model, Tags: v.Tags}
 		}
 	}
 	// Load llamafile settings
@@ -976,13 +1006,37 @@ func SaveModelAliases(ws *Workspace, cfg *Config) error {
 		_ = yaml.Unmarshal(data, &y)
 	}
 
-	y.ModelAliases = cfg.ModelAliases
+	if len(cfg.ModelAliases) > 0 {
+		yamlAliases := make(map[string]modelAliasYAML, len(cfg.ModelAliases))
+		for k, v := range cfg.ModelAliases {
+			yamlAliases[k] = modelAliasYAML{Model: v.Model, Tags: v.Tags}
+		}
+		y.ModelAliases = yamlAliases
+	}
 
 	out, err := yaml.Marshal(&y)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(yamlPath, out, 0644)
+}
+
+// ─── ModelAlias ───────────────────────────────────────────────────────────────
+
+/** ModelAlias maps a short alias name to a full model identifier and optional
+ * purpose tags. Tags allow @mention routing to resolve by capability rather
+ * than exact name (e.g. @code → the alias tagged "code").
+ *
+ * Fields:
+ *   Model (string)   — full model name or path passed to the backend.
+ *   Tags  ([]string) — purpose labels, e.g. ["code", "instruct"].
+ *
+ * Example:
+ *   cfg.ModelAliases["granite"] = ModelAlias{Model: "granite3.3:8b", Tags: []string{"code", "instruct"}}
+ */
+type ModelAlias struct {
+	Model string   // full model name / path passed to the backend
+	Tags  []string // purpose labels, e.g. ["code", "instruct"]
 }
 
 // ─── LlamaCppConfig ───────────────────────────────────────────────────────────

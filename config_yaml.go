@@ -4,6 +4,45 @@
 // config.go; they are never exposed to callers outside this package.
 package harvey
 
+import "gopkg.in/yaml.v3"
+
+// modelAliasYAML accepts both string form ("granite3.3:8b") and struct form
+// ({model: granite3.3:8b, tags: [code, instruct]}) in harvey.yaml.
+// When marshalled, it emits a plain string when Tags is empty, otherwise a struct.
+type modelAliasYAML struct {
+	Model string
+	Tags  []string
+}
+
+func (m *modelAliasYAML) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		// Old string form: granite: granite3.3:8b
+		m.Model = value.Value
+		return nil
+	}
+	type plain struct {
+		Model string   `yaml:"model"`
+		Tags  []string `yaml:"tags,omitempty"`
+	}
+	var p plain
+	if err := value.Decode(&p); err != nil {
+		return err
+	}
+	m.Model = p.Model
+	m.Tags = p.Tags
+	return nil
+}
+
+func (m modelAliasYAML) MarshalYAML() (interface{}, error) {
+	if len(m.Tags) == 0 {
+		return m.Model, nil // emit as plain string for readability
+	}
+	return struct {
+		Model string   `yaml:"model"`
+		Tags  []string `yaml:"tags"`
+	}{m.Model, m.Tags}, nil
+}
+
 // ragStoreYAML is the on-disk representation of one entry under rag.stores.
 type ragStoreYAML struct {
 	Name           string            `yaml:"name"`
@@ -42,7 +81,7 @@ type harveyYAML struct {
 	RunTimeout      string              `yaml:"run_timeout,omitempty"`    // e.g. "5m", "300s", "1m 30s", "300"
 	OllamaTimeout   string              `yaml:"ollama_timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
 	Tools           toolsYAML           `yaml:"tools,omitempty"`
-	ModelAliases    map[string]string   `yaml:"model_aliases,omitempty"`  // short name → full Ollama model ID
+	ModelAliases    map[string]modelAliasYAML `yaml:"model_aliases,omitempty"` // short name → alias (string or struct)
 	Memory          memoryYAML          `yaml:"memory,omitempty"`
 	Llamafile       llamafileYAML       `yaml:"llamafile,omitempty"`
 	LlamaCpp        llamacppYAML        `yaml:"llamacpp,omitempty"`

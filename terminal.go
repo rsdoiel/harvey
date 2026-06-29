@@ -168,7 +168,8 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 		}
 	}
 	// Check model aliases (stored with lowercase keys).
-	if full, ok := a.Config.ModelAliases[strings.ToLower(name)]; ok {
+	if entry, ok := a.Config.ModelAliases[strings.ToLower(name)]; ok {
+		full := entry.Model
 		err := cmdLlamafileUse(a, []string{full}, out)
 		if err != nil {
 			// Not a llamafile alias — fall through to Ollama.
