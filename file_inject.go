@@ -220,7 +220,7 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer)
 			DocType:     docType,
 			Config:      a.Config.Chunking,
 		}
-		synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, params, out)
+		synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, a.DebugLog, params, out)
 		if synthErr != nil {
 			fmt.Fprintf(out, yellow("  ✗")+" Chunked analysis: %v\n", synthErr)
 			continue

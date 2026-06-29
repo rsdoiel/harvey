@@ -57,7 +57,7 @@ func TestRunChunkedAnalysis_TwoChunks(t *testing.T) {
 		replies: []string{"result1", "result2", "final"},
 	}
 	params := defaultParams([]string{"chunk one content", "chunk two content"})
-	result, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	result, err := RunChunkedAnalysis(context.Background(), client, nil, nil, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestRunChunkedAnalysis_ChunkError(t *testing.T) {
 	}
 	params := defaultParams([]string{"chunk one", "chunk two", "chunk three"})
 	var progress strings.Builder
-	result, err := RunChunkedAnalysis(context.Background(), client, nil, params, &progress)
+	result, err := RunChunkedAnalysis(context.Background(), client, nil, nil, params, &progress)
 	if err != nil {
 		t.Fatalf("chunk error should not abort RunChunkedAnalysis, got: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestRunChunkedAnalysis_SynthesisError(t *testing.T) {
 		errors:  []error{nil, nil, errSynth}, // synthesis call (index 2) fails
 	}
 	params := defaultParams([]string{"chunk one", "chunk two"})
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	_, err := RunChunkedAnalysis(context.Background(), client, nil, nil, params, io.Discard)
 	if err == nil {
 		t.Fatal("expected error from synthesis failure, got nil")
 	}
@@ -111,7 +111,7 @@ func TestRunChunkedAnalysis_NilRecorder(t *testing.T) {
 	// mockLLMClient always returns the same reply — fine for a single chunk + synthesis.
 	client := &mockLLMClient{reply: "ok"}
 	params := defaultParams([]string{"only chunk"})
-	result, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	result, err := RunChunkedAnalysis(context.Background(), client, nil, nil, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error with nil recorder: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestRunChunkedAnalysis_Progress(t *testing.T) {
 	}
 	params := defaultParams([]string{"chunk one", "chunk two"})
 	var progress strings.Builder
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, &progress)
+	_, err := RunChunkedAnalysis(context.Background(), client, nil, nil, params, &progress)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestRunChunkedAnalysis_WithRecorder(t *testing.T) {
 		replies: []string{"chunk 1 summary", "chunk 2 summary", "synthesized"},
 	}
 	params := defaultParams([]string{"first chunk", "second chunk"})
-	result, err := RunChunkedAnalysis(context.Background(), client, rec, params, io.Discard)
+	result, err := RunChunkedAnalysis(context.Background(), client, rec, nil, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestRunChunkedAnalysis_PromptIncludesInstruction(t *testing.T) {
 	}
 	params := defaultParams([]string{"the chunk"})
 	params.Instruction = "Extract all headings."
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	_, err := RunChunkedAnalysis(context.Background(), client, nil, nil, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
