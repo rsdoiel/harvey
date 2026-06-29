@@ -269,26 +269,34 @@ The `Embedder` interface Harvey already defines is the right abstraction;
 
 ### Obstacles
 
-**CGo dependency.** Every production-grade Go ONNX binding
+**CGo dependency — resolved by `onnxruntime-purego`.**
+The traditional blocker was that every production-grade Go ONNX binding
 (`onnxruntime_go` by yalue-gio is the main one) wraps the ONNX Runtime
-C shared library via CGo. Harvey currently cross-compiles to six targets
-(Linux x86/ARM, macOS x86/ARM64, Windows) as pure Go. Adding CGo
-requires pre-built ONNX Runtime shared libraries for each target and a
-more complex build pipeline. The ONNX embedder would need to be behind
-a build tag so non-CGo builds remain possible.
+C shared library via CGo, requiring pre-built shared libraries for each
+cross-compilation target and a more complex build pipeline.
 
-**Tokenization.** ONNX Runtime runs the model computation graph, but
-the caller must tokenize raw text into token ID sequences first — in
-exactly the vocabulary and format the embedding model expects. HuggingFace
-models use a `tokenizer.json` file. There is no mature pure-Go
-implementation of the full HuggingFace tokenizers spec; the available Go
-options (`sugarme/tokenizer`) are also CGo-based. The tokenizer is not
+[`github.com/shota3506/onnxruntime-purego`](https://github.com/shota3506/onnxruntime-purego)
+eliminates this: it uses the `purego` library to load the ONNX Runtime
+shared library via `dlopen`/`LoadLibraryW` at runtime rather than
+linking at compile time. The Go binary remains CGo-free, so Harvey's
+six-target cross-compilation pipeline stays clean with no build-tag split.
+
+The trade-off: users still need the ONNX Runtime shared library present
+at runtime (`libonnxruntime.so` on Linux, `.dylib` on macOS, `.dll` on
+Windows). This is a lighter end-user dependency than a CGo build setup,
+but it is still a dependency.
+
+**Tokenization — still unresolved (dominant blocker).**
+ONNX Runtime runs the model computation graph, but the caller must
+tokenize raw text into token ID sequences first — in exactly the
+vocabulary and format the embedding model expects. HuggingFace models
+use a `tokenizer.json` file. There is no mature pure-Go implementation
+of the full HuggingFace tokenizers spec; the available Go options
+(`sugarme/tokenizer`) are also CGo-based. The tokenizer is not
 optional — without it, the ONNX model cannot be called at all.
 
-These two obstacles mean the ONNX path adds significant build complexity
-with no functional gain over the existing `EncoderfileEmbedder` when an
-Encoderfile server is available. The right trigger for revisiting this is
-a stable pure-Go tokenizer or an acceptable CGo build strategy.
+The right trigger for adding `ONNXEmbedder` to Harvey is a stable
+pure-Go tokenizer. The CGo build obstacle is now gone.
 
 ### Role of Henry (the llamafile factory)
 

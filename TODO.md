@@ -3,6 +3,9 @@
 
 ## Feature ideas
 
+- [ ] Add support for using Llama.cpp to run models
+- [ ] Plan for adding support to run ONNX models
+- [ ] Assay needs to work across model systems, example I should be able to use with Llamafiles or Llama.cpp
 - [x] Chunked document analysis for small models — designed and planned.
   See [chunked-analysis-design.md](chunked-analysis-design.md) and
   [chunked-analysis-plan.md](chunked-analysis-plan.md). Work items W0–W5
