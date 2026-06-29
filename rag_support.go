@@ -610,6 +610,9 @@ func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
 	if entry == nil || entry.EmbeddingModel == "" {
 		return prompt, nil
 	}
+	if entry.SkipPerPrompt {
+		return prompt, nil
+	}
 
 	// Resolve embedding model for the current generation model.
 	embedModel := entry.EmbeddingModel

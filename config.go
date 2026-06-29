@@ -69,6 +69,8 @@ The operator can run it manually with /run.
  *   ModelMap       (map[string]string) — generation model → embedding model overrides.
  *   EmbedderKind   (string)            — "ollama" (default) or "encoderfile".
  *   EmbedderURL    (string)            — base URL for the embedder; used when EmbedderKind is "encoderfile".
+ *   SkipPerPrompt  (bool)              — when true, ragAugment skips this store; the model uses
+ *                                        retrieve_memory instead. Set via per_prompt: false in YAML.
  *
  * Example:
  *   e := RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"}
@@ -82,6 +84,7 @@ type RagStoreEntry struct {
 	ModelMap       map[string]string
 	EmbedderKind   string // "ollama" (default) or "encoderfile"
 	EmbedderURL    string // base URL for the embedder when EmbedderKind == "encoderfile"
+	SkipPerPrompt  bool   // when true, ragAugment skips this store (per_prompt: false in YAML)
 }
 
 /** Config holds Harvey's runtime configuration.
@@ -667,6 +670,8 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if len(y.Memory.RAG.Stores) > 0 {
 		cfg.Memory.RagStores = make([]RagStoreEntry, len(y.Memory.RAG.Stores))
 		for i, s := range y.Memory.RAG.Stores {
+			// PerPrompt defaults to true (augment every prompt); false disables it.
+			skipPerPrompt := s.PerPrompt != nil && !*s.PerPrompt
 			cfg.Memory.RagStores[i] = RagStoreEntry{
 				Name:           s.Name,
 				DBPath:         s.DBPath,
@@ -674,6 +679,7 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 				ModelMap:       s.ModelMap,
 				EmbedderKind:   s.EmbedderKind,
 				EmbedderURL:    s.EmbedderURL,
+				SkipPerPrompt:  skipPerPrompt,
 			}
 		}
 		cfg.Memory.RagActive = y.Memory.RAG.Active

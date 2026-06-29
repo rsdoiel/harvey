@@ -112,11 +112,13 @@ rag:
 | `model_map` | object | No | Mapping of generation model → embedding model |
 | `embedder_kind` | string | No | `"ollama"` | Either `"ollama"` or `"encoderfile"` |
 | `embedder_url` | string | No | Base URL for encoderfile embedder |
+| `per_prompt` | boolean | No | `true` | When `false`, skips automatic RAG injection each turn; the model uses `retrieve_memory` instead |
 
 **Important Notes:**
 - Paths are relative to the workspace root
 - The `model_map` ensures each generation model uses the correct embedding model
 - Embedding model binding is enforced: you cannot mix embeddings from different models in the same store
+- Set `per_prompt: false` on the active store when using the `retrieve_memory` tool — this avoids redundant per-turn retrieval and lets the model decide when to fetch context
 
 **Llamafile Backend (`llamafile:`):**
 

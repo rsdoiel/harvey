@@ -667,3 +667,43 @@ func TestRAGAugment_ReturnsInfo(t *testing.T) {
 		t.Errorf("Sources[0].Source = %q, want %q", info.Sources[0].Source, "src.go")
 	}
 }
+
+func TestRAGAugment_SkipPerPrompt(t *testing.T) {
+	// SkipPerPrompt=true must cause ragAugment to return the prompt unchanged
+	// without querying the store or calling the embedder.
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	store, err := NewRagStore(dbPath, "stub")
+	if err != nil {
+		t.Fatalf("NewRagStore: %v", err)
+	}
+	defer store.db.Close()
+	// Ingest a chunk so the store is non-empty; if SkipPerPrompt is ignored,
+	// ragAugment would embed the query and find this chunk.
+	if err := store.Ingest("src.go", []string{"package main"}, stubEmbedder{"stub"}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	srv := fakeOllamaEmbedServer(t, []float64{1.0, 0.0})
+	defer srv.Close()
+
+	cfg := DefaultConfig()
+	cfg.OllamaURL = srv.URL
+	cfg.Memory.RagStores = []RagStoreEntry{
+		{Name: "test", DBPath: dbPath, EmbeddingModel: "stub", SkipPerPrompt: true},
+	}
+	cfg.Memory.RagActive = "test"
+
+	ws, _ := NewWorkspace(dir)
+	a := NewAgent(cfg, ws)
+	a.RagOn = true
+	a.Rag = store
+
+	out, info := a.ragAugment("package main")
+	if out != "package main" {
+		t.Errorf("SkipPerPrompt: expected prompt unchanged; got %q", out)
+	}
+	if info != nil {
+		t.Errorf("SkipPerPrompt: expected nil info; got %v", info)
+	}
+}

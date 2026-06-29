@@ -12,6 +12,7 @@ type ragStoreYAML struct {
 	ModelMap       map[string]string `yaml:"model_map,omitempty"`
 	EmbedderKind   string            `yaml:"embedder_kind,omitempty"`
 	EmbedderURL    string            `yaml:"embedder_url,omitempty"`
+	PerPrompt      *bool             `yaml:"per_prompt,omitempty"` // nil or true = augment; false = skip
 }
 
 // ragYAML is the on-disk representation of the rag: section in harvey.yaml.

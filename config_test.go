@@ -592,3 +592,98 @@ func TestLoadHarveyYAML_ChunkingNotSet_KeepsDefaults(t *testing.T) {
 		t.Errorf("Chunking.ChunkSizeBytes should keep default 6000, got %d", cfg.Chunking.ChunkSizeBytes)
 	}
 }
+
+// ─── per_prompt flag (M6) ────────────────────────────────────────────────────
+
+func TestLoadHarveyYAML_PerPromptFalse_SetsSkipPerPrompt(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := `memory:
+  rag:
+    enabled: true
+    active: docs
+    stores:
+      - name: docs
+        db_path: agents/rag/docs.db
+        embedding_model: nomic
+        per_prompt: false
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if len(cfg.Memory.RagStores) != 1 {
+		t.Fatalf("expected 1 store; got %d", len(cfg.Memory.RagStores))
+	}
+	if !cfg.Memory.RagStores[0].SkipPerPrompt {
+		t.Error("per_prompt: false in YAML should set SkipPerPrompt=true on the entry")
+	}
+}
+
+func TestLoadHarveyYAML_PerPromptTrue_NoSkip(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := `memory:
+  rag:
+    enabled: true
+    active: docs
+    stores:
+      - name: docs
+        db_path: agents/rag/docs.db
+        embedding_model: nomic
+        per_prompt: true
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if len(cfg.Memory.RagStores) != 1 {
+		t.Fatalf("expected 1 store; got %d", len(cfg.Memory.RagStores))
+	}
+	if cfg.Memory.RagStores[0].SkipPerPrompt {
+		t.Error("per_prompt: true in YAML should leave SkipPerPrompt=false")
+	}
+}
+
+func TestLoadHarveyYAML_PerPromptNotSet_NoSkip(t *testing.T) {
+	// When per_prompt is absent, SkipPerPrompt must default to false (augment normally).
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := `memory:
+  rag:
+    enabled: true
+    active: docs
+    stores:
+      - name: docs
+        db_path: agents/rag/docs.db
+        embedding_model: nomic
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Memory.RagStores[0].SkipPerPrompt {
+		t.Error("per_prompt absent in YAML should leave SkipPerPrompt=false (default)")
+	}
+}
