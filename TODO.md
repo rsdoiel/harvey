@@ -58,7 +58,7 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 
 ## v0.0.16 development cycle
 
-- [ ] Make sure LLamafile support is at parity with Ollama support, example creation and use of RAG with Llamafiles
+- [x] Make sure LLamafile support is at parity with Ollama support, example creation and use of RAG with Llamafiles
 
 ### Chunked document analysis
 See [chunked-analysis-design.md](chunked-analysis-design.md) and
