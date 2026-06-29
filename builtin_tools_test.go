@@ -446,6 +446,190 @@ func TestWriteFile_PathTraversal(t *testing.T) {
 	}
 }
 
+// ─── update_memory ───────────────────────────────────────────────────────────
+
+func TestUpdateMemory_NoMemorySystem(t *testing.T) {
+	_, reg := newToolAgent(t, nil)
+	result, err := dispatch(t, reg, "update_memory", map[string]any{
+		"id":      "tool_use_abc123",
+		"content": "new content",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "not available") {
+		t.Errorf("expected 'not available'; got: %q", result)
+	}
+}
+
+func TestUpdateMemory_UnknownID(t *testing.T) {
+	a, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+	a.Config.SafeMode = false
+
+	result, err := dispatch(t, reg, "update_memory", map[string]any{
+		"id":      "tool_use_doesnotexist",
+		"content": "new content",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "not found") {
+		t.Errorf("expected 'not found'; got: %q", result)
+	}
+}
+
+func TestUpdateMemory_Success(t *testing.T) {
+	a, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+	a.Config.SafeMode = false
+
+	// Save a memory directly so we have a known ID to update.
+	original := NewMemoryDoc("tool_use_upd001", MemoryTypeToolUse,
+		"original description", "original summary", nil)
+	original.FountainBody = BuildFountainBody("2026-01-01 00:00:00", [][2]string{{"HARVEY", "original description"}})
+	if err := ms.Store.Save(original, nil); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	result, err := dispatch(t, reg, "update_memory", map[string]any{
+		"id":      "tool_use_upd001",
+		"content": "updated description after fix",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Memory updated: tool_use_upd001") {
+		t.Errorf("expected 'Memory updated: tool_use_upd001'; got: %q", result)
+	}
+
+	// Verify the change persisted in the store.
+	metas, err := ms.Store.List("tool_use")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	found := false
+	for _, m := range metas {
+		if m.ID == "tool_use_upd001" && strings.Contains(m.Description, "updated description after fix") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("updated description should be persisted in the store")
+	}
+}
+
+func TestUpdateMemory_SafeMode(t *testing.T) {
+	// DefaultConfig has SafeMode=true.
+	_, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+
+	doc := NewMemoryDoc("tool_use_safe001", MemoryTypeToolUse, "original", "original", nil)
+	doc.FountainBody = BuildFountainBody("2026-01-01 00:00:00", [][2]string{{"HARVEY", "original"}})
+	if err := ms.Store.Save(doc, nil); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	result, err := dispatch(t, reg, "update_memory", map[string]any{
+		"id":      "tool_use_safe001",
+		"content": "changed content",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "safe mode") {
+		t.Errorf("expected 'safe mode'; got: %q", result)
+	}
+	// Original description must be unchanged.
+	metas, _ := ms.Store.List("tool_use")
+	for _, m := range metas {
+		if m.ID == "tool_use_safe001" && strings.Contains(m.Description, "changed content") {
+			t.Error("safe mode must not modify the stored memory")
+		}
+	}
+}
+
+// ─── delete_memory ───────────────────────────────────────────────────────────
+
+func TestDeleteMemory_NoMemorySystem(t *testing.T) {
+	_, reg := newToolAgent(t, nil)
+	result, err := dispatch(t, reg, "delete_memory", map[string]any{"id": "tool_use_abc123"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "not available") {
+		t.Errorf("expected 'not available'; got: %q", result)
+	}
+}
+
+func TestDeleteMemory_UnknownID(t *testing.T) {
+	a, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+	a.Config.SafeMode = false
+
+	result, err := dispatch(t, reg, "delete_memory", map[string]any{"id": "tool_use_doesnotexist"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "not found") {
+		t.Errorf("expected 'not found'; got: %q", result)
+	}
+}
+
+func TestDeleteMemory_Success(t *testing.T) {
+	a, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+	a.Config.SafeMode = false
+
+	doc := NewMemoryDoc("tool_use_del001", MemoryTypeToolUse, "to be deleted", "to be deleted", nil)
+	doc.FountainBody = BuildFountainBody("2026-01-01 00:00:00", [][2]string{{"HARVEY", "to be deleted"}})
+	if err := ms.Store.Save(doc, nil); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	before, _ := ms.Store.Count()
+	if before != 1 {
+		t.Fatalf("expected 1 active memory before delete; got %d", before)
+	}
+
+	result, err := dispatch(t, reg, "delete_memory", map[string]any{"id": "tool_use_del001"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "Memory archived: tool_use_del001") {
+		t.Errorf("expected 'Memory archived: tool_use_del001'; got: %q", result)
+	}
+
+	after, _ := ms.Store.Count()
+	if after != 0 {
+		t.Errorf("expected 0 active memories after delete; got %d", after)
+	}
+}
+
+func TestDeleteMemory_SafeMode(t *testing.T) {
+	// DefaultConfig has SafeMode=true.
+	_, reg, ms := newToolAgentWithMemory(t)
+	defer ms.Close()
+
+	doc := NewMemoryDoc("tool_use_delsafe01", MemoryTypeToolUse, "keep me", "keep me", nil)
+	doc.FountainBody = BuildFountainBody("2026-01-01 00:00:00", [][2]string{{"HARVEY", "keep me"}})
+	if err := ms.Store.Save(doc, nil); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	result, err := dispatch(t, reg, "delete_memory", map[string]any{"id": "tool_use_delsafe01"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "safe mode") {
+		t.Errorf("expected 'safe mode'; got: %q", result)
+	}
+	count, _ := ms.Store.Count()
+	if count != 1 {
+		t.Errorf("safe mode must not archive the memory; count = %d", count)
+	}
+}
+
 // ─── filter_context ──────────────────────────────────────────────────────────
 
 func TestFilterContext_EmptyHistory(t *testing.T) {

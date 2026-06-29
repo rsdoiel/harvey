@@ -789,6 +789,125 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 		},
 	)
 
+	// ── update_memory ────────────────────────────────────────────────────────
+	r.RegisterTool(
+		"update_memory",
+		"Update the content of an existing memory by ID. "+
+			"Replaces the description, summary, and Fountain body with new content and refreshes the timestamp.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id": map[string]any{
+					"type":        "string",
+					"description": "ID of the memory to update (e.g. tool_use_a3f891)",
+				},
+				"content": map[string]any{
+					"type":        "string",
+					"description": "New content to replace the existing description and summary",
+				},
+			},
+			"required": []string{"id", "content"},
+		},
+		func(_ context.Context, args map[string]any) (string, error) {
+			if a.Memory == nil || a.Memory.Store == nil {
+				return "update_memory: memory store is not available in this session.", nil
+			}
+			id, ok := args["id"].(string)
+			if !ok || strings.TrimSpace(id) == "" {
+				return "", fmt.Errorf("update_memory: id must be a non-empty string")
+			}
+			content, ok := args["content"].(string)
+			if !ok || strings.TrimSpace(content) == "" {
+				return "", fmt.Errorf("update_memory: content must be a non-empty string")
+			}
+
+			doc, err := a.Memory.Store.ByID(id)
+			if err != nil {
+				return "", fmt.Errorf("update_memory: %w", err)
+			}
+			if doc == nil {
+				return fmt.Sprintf("update_memory: memory %q not found.", id), nil
+			}
+
+			// Safe-mode guard: describe without modifying.
+			if a.Config.SafeMode {
+				return fmt.Sprintf(
+					"update_memory [safe mode]: would update %q with new content — disable safe mode to apply.",
+					id,
+				), nil
+			}
+
+			now := time.Now().UTC()
+			doc.Meta.Description = content
+			doc.Meta.Summary = content
+			doc.Meta.UpdatedAt = now.Format(time.RFC3339)
+			doc.FountainBody = BuildFountainBody(now.UTC().Format("2006-01-02 15:04:05"), [][2]string{{"HARVEY", content}})
+
+			if err := a.Memory.Store.Save(doc, nil); err != nil {
+				return "", fmt.Errorf("update_memory: %w", err)
+			}
+
+			if a.Recorder != nil {
+				_ = a.Recorder.RecordAgentAction("update_memory", id, "auto", "ok")
+			}
+
+			return "Memory updated: " + id, nil
+		},
+	)
+
+	// ── delete_memory ─────────────────────────────────────────────────────────
+	r.RegisterTool(
+		"delete_memory",
+		"Archive a memory by ID, removing it from active retrieval. "+
+			"Matches /memory forget semantics: the file is moved to the archive directory.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id": map[string]any{
+					"type":        "string",
+					"description": "ID of the memory to archive (e.g. tool_use_a3f891)",
+				},
+			},
+			"required": []string{"id"},
+		},
+		func(_ context.Context, args map[string]any) (string, error) {
+			if a.Memory == nil || a.Memory.Store == nil {
+				return "delete_memory: memory store is not available in this session.", nil
+			}
+			id, ok := args["id"].(string)
+			if !ok || strings.TrimSpace(id) == "" {
+				return "", fmt.Errorf("delete_memory: id must be a non-empty string")
+			}
+
+			// Check existence before safe-mode so we can report "not found" early.
+			doc, err := a.Memory.Store.ByID(id)
+			if err != nil {
+				return "", fmt.Errorf("delete_memory: %w", err)
+			}
+			if doc == nil {
+				return fmt.Sprintf("delete_memory: memory %q not found.", id), nil
+			}
+
+			// Safe-mode guard: describe without archiving.
+			if a.Config.SafeMode {
+				return fmt.Sprintf(
+					"delete_memory [safe mode]: would archive %q — disable safe mode to apply.",
+					id,
+				), nil
+			}
+
+			if err := a.Memory.Store.Archive(id); err != nil {
+				return "", fmt.Errorf("delete_memory: %w", err)
+			}
+
+			if a.Recorder != nil {
+				_ = a.Recorder.RecordAgentAction("delete_memory", id, "auto", "archived")
+			}
+
+			return "Memory archived: " + id, nil
+		},
+	)
+
 	// ── filter_context ───────────────────────────────────────────────────────
 	// filterThreshold is the cosine similarity above which a message is
 	// considered to match the filter criteria and is removed from history.
