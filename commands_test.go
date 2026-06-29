@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -1549,14 +1551,16 @@ func TestCmdOllama_Clean_RemovesStaleRefs(t *testing.T) {
 
 func TestCmdModelUse_noArg_noModels(t *testing.T) {
 	a := newTestAgent(t)
-	// No llamafile models, no aliases — picker should say nothing to choose.
+	// Point both backend scanners at an empty dir so no models are found.
+	emptyDir := t.TempDir()
+	a.Config.Llamafile.ModelsDir = emptyDir
+	a.Config.LlamaCpp.ModelsDir = emptyDir
 	a.In = strings.NewReader("\n")
 	var buf strings.Builder
 	if err := cmdModel(a, []string{"use"}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := buf.String()
-	// When there are no models, should print a helpful message rather than silently printing usage.
 	if !strings.Contains(out, "no") && !strings.Contains(out, "No") && !strings.Contains(out, "register") && !strings.Contains(out, "Usage") {
 		t.Errorf("expected no-models message, got: %s", out)
 	}
@@ -1564,11 +1568,16 @@ func TestCmdModelUse_noArg_noModels(t *testing.T) {
 
 func TestCmdModelUse_noArg_showsPicker(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coder", Path: "/tmp/qwen.llamafile"},
-		{Name: "gemma4", Path: "/tmp/gemma4.llamafile"},
+	dir := t.TempDir()
+	// Create actual .llamafile files so the disk scanner finds them.
+	for _, name := range []string{"qwen-coder.llamafile", "gemma4.llamafile"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("placeholder"), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	// Simulate user entering "0" (invalid) → cancellation without model switch.
+	a.Config.Llamafile.ModelsDir = dir
+	a.Config.LlamaCpp.ModelsDir = dir // no .gguf files here
+	// Simulate user entering "0" → cancellation without model switch.
 	a.In = strings.NewReader("0\n")
 	var buf strings.Builder
 	if err := cmdModel(a, []string{"use"}, &buf); err != nil {
@@ -1585,15 +1594,15 @@ func TestCmdModelUse_noArg_showsPicker(t *testing.T) {
 
 func TestCmdModelUse_noArg_selectsModel(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coder", Path: "/tmp/qwen.llamafile"},
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "qwen-coder.llamafile"), []byte("placeholder"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	// Select item 1.
-	a.In = strings.NewReader("1\n")
+	a.Config.Llamafile.ModelsDir = dir
+	a.Config.LlamaCpp.ModelsDir = dir
+	// Select item 1; picker will show qwen-coder, switch will fail (not a real binary).
+	a.In = strings.NewReader("1\n\n\n") // model select + skip alias prompt + skip tags
 	var buf strings.Builder
-	// cmdModel will call cmdLlamafileUse which tries to start the process — that
-	// will fail since the path doesn't exist. We just verify the picker was shown
-	// and the correct name was handed to the switch logic.
 	cmdModel(a, []string{"use"}, &buf)
 	out := buf.String()
 	if !strings.Contains(out, "qwen-coder") {

@@ -30,30 +30,26 @@ import (
 func aggregateModels(a *Agent) ([]ModelSummary, error) {
 	var all []ModelSummary
 
-	// Llamafile models come from the registry (Config.Llamafile.Models), not a
-	// disk scan, so that the list matches what the user has explicitly registered.
-	for _, e := range a.Config.Llamafile.Models {
-		path := ""
-		if a.Workspace != nil {
-			path = resolveLlamafilePath(e.Path, a.Workspace.Root)
-		}
-		all = append(all, ModelSummary{
-			Name:   e.Name,
-			Path:   path,
-			Engine: "llamafile",
-		})
+	agentsDir := ""
+	if a.Workspace != nil {
+		agentsDir = a.Workspace.Root + "/agents"
 	}
 
-	// llama.cpp *.gguf models — disk scan (no explicit registry needed).
-	if a.Config.LlamaCpp.ModelsDir != "" {
-		agentsDir := ""
-		if a.Workspace != nil {
-			agentsDir = a.Workspace.Root + "/agents"
-		}
-		cb := NewLlamaCppBackend(a.Config, agentsDir)
-		if models, err := cb.ListModels(); err == nil {
-			all = append(all, models...)
-		}
+	workspaceRoot := ""
+	if a.Workspace != nil {
+		workspaceRoot = a.Workspace.Root
+	}
+
+	// Llamafile models — disk scan of ModelsDir (default ~/Models) for *.llamafile files.
+	lb := NewLlamafileBackend(a.Config, agentsDir, workspaceRoot)
+	if models, err := lb.ListModels(); err == nil {
+		all = append(all, models...)
+	}
+
+	// llama.cpp *.gguf models — disk scan of ModelsDir (default ~/Models).
+	cb := NewLlamaCppBackend(a.Config, agentsDir)
+	if models, err := cb.ListModels(); err == nil {
+		all = append(all, models...)
 	}
 
 	// Ollama — live query, silent if unreachable.
