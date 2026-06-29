@@ -51,7 +51,7 @@ type OllamaBackend struct {
  *   *OllamaBackend — ready to call Detect() or Start().
  *
  * Example:
- *   b := NewOllamaBackend(cfg.OllamaURL, cfg.OllamaTimeout, filepath.Join(ws.Root, "agents"))
+ *   b := NewOllamaBackend(cfg.Ollama.URL, cfg.Ollama.Timeout, filepath.Join(ws.Root, "agents"))
  */
 func NewOllamaBackend(url string, timeout time.Duration, agentsDir string) *OllamaBackend {
 	return &OllamaBackend{

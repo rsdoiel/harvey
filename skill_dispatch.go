@@ -308,9 +308,9 @@ func runCompiledScript(ctx context.Context, a *Agent, skill *SkillMeta, scriptPa
 	}
 	sessionID := ""
 	// Derive API base URL from the active backend.
-	apiBase := a.Config.OllamaURL
-	if a.Config.LlamafileActive != "" {
-		apiBase = a.Config.LlamafileURL
+	apiBase := a.Config.Ollama.URL
+	if a.Config.Llamafile.Active != "" {
+		apiBase = a.Config.Llamafile.URL
 	}
 
 	var cmd *exec.Cmd

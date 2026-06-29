@@ -92,7 +92,7 @@ func restartActiveLlamafile(a *Agent, out io.Writer) error {
 	}
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 	fmt.Fprintf(out, "  Starting %s...\n", entry.Name)
-	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
+	proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
 	if err != nil {
 		return fmt.Errorf("restart failed: %w", err)
 	}
@@ -124,7 +124,7 @@ func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
 	// If ~/Models already has .llamafile files, show a picker instead of
 	// asking for a raw path — this is the common case for users who
 	// downloaded a llamafile but haven't registered it yet.
-	if paths := scanLlamafileModels(a.Config.LlamafileModelsDir); len(paths) > 0 {
+	if paths := scanLlamafileModels(a.Config.Llamafile.ModelsDir); len(paths) > 0 {
 		selected, err := llamafilePickFromDir(a, out)
 		if err != nil || selected == "" {
 			return fmt.Errorf("no backend available")
@@ -161,7 +161,7 @@ func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
  */
 func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 	// Check llamafile registry first (case-insensitive).
-	for _, e := range a.Config.LlamafileModels {
+	for _, e := range a.Config.Llamafile.Models {
 		if strings.EqualFold(e.Name, name) {
 			err := cmdLlamafileUse(a, []string{e.Name}, out)
 			return true, err
@@ -173,8 +173,8 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 		err := cmdLlamafileUse(a, []string{full}, out)
 		if err != nil {
 			// Not a llamafile alias — fall through to Ollama.
-			a.Config.OllamaModel = full
-			a.Client = newOllamaLLMClient(a.Config.OllamaURL, full, a.Config.OllamaTimeout)
+			a.Config.Ollama.Model = full
+			a.Client = newOllamaLLMClient(a.Config.Ollama.URL, full, a.Config.Ollama.Timeout)
 			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
 			if a.Recorder != nil {
 				_ = a.Recorder.RecordModelSwitch(full, "ollama")
@@ -201,11 +201,11 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
  *   fmt.Fprintf(out, "Connecting to %s…\n", activeModelLabel(a))
  */
 func activeModelLabel(a *Agent) string {
-	if a.Config.LlamafileActive != "" {
-		return a.Config.LlamafileActive + " (llamafile)"
+	if a.Config.Llamafile.Active != "" {
+		return a.Config.Llamafile.Active + " (llamafile)"
 	}
-	if a.Config.OllamaModel != "" {
-		return a.Config.OllamaModel + " (ollama)"
+	if a.Config.Ollama.Model != "" {
+		return a.Config.Ollama.Model + " (ollama)"
 	}
 	return "none"
 }
@@ -316,7 +316,7 @@ func (a *Agent) prompt() string {
 	if a.Client == nil {
 		prefix = "harvey (no backend)"
 	}
-	if !a.Config.SafeMode {
+	if !a.Config.Security.SafeMode {
 		return prefix + " " + red("[unsafe]") + " > "
 	}
 	return prefix + " > "
@@ -342,7 +342,7 @@ func (a *Agent) Run(out io.Writer) error {
 	a.registerCommands()
 	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			a.Config.OllamaContextLength = n
+			a.Config.Ollama.ContextLength = n
 		}
 	}
 	defer func() {
@@ -377,7 +377,7 @@ func (a *Agent) Run(out io.Writer) error {
 	if err := LoadHarveyYAML(a.Workspace, a.Config); err != nil {
 		fmt.Fprintf(out, yellow("  ✗")+" harvey.yaml: %v\n", err)
 	}
-	if a.Config.SafeMode {
+	if a.Config.Security.SafeMode {
 		fmt.Fprintln(out, green("✓")+" Safe mode on")
 	} else {
 		fmt.Fprintln(out, yellow("!")+" Safe mode OFF — all commands permitted")
@@ -409,14 +409,14 @@ func (a *Agent) Run(out io.Writer) error {
 	// model can pre-select the backend below.
 	var resumePath string
 	var sessionModel string
-	if a.Config.ContinuePath == "" && a.Config.ReplayPath == "" { // --continue and --replay bypass the picker
+	if a.Config.Session.ContinuePath == "" && a.Config.Session.ReplayPath == "" { // --continue and --replay bypass the picker
 		resumePath, sessionModel = a.pickSession(reader, out, sessDir)
 	}
 
 	// For --continue / --resume: extract the session's model as a backend hint
 	// so selectBackend can auto-select it without an interactive picker.
-	if a.Config.ContinuePath != "" && sessionModel == "" {
-		if m, err := ExtractModelFromSession(a.Config.ContinuePath); err == nil {
+	if a.Config.Session.ContinuePath != "" && sessionModel == "" {
+		if m, err := ExtractModelFromSession(a.Config.Session.ContinuePath); err == nil {
 			sessionModel = m
 		}
 	}
@@ -479,15 +479,15 @@ func (a *Agent) Run(out io.Writer) error {
 	// Auto-start recording — skipped during replay to prevent both recorders
 	// from writing to the same auto-generated path (same-second collision).
 	// When --replay-continue is set, the recorder is started after replay finishes.
-	if a.Config.AutoRecord && a.Config.ReplayPath == "" {
-		recPath := a.Config.RecordPath
+	if a.Config.Session.AutoRecord && a.Config.Session.ReplayPath == "" {
+		recPath := a.Config.Session.RecordPath
 		if recPath == "" {
 			recPath = DefaultSessionPath(a.SessionsDir)
 		}
 		// Guard: never truncate the session being resumed or continued.
 		// filepath.Clean normalises both sides so relative vs absolute doesn't matter.
 		if (resumePath != "" && filepath.Clean(recPath) == filepath.Clean(resumePath)) ||
-			(a.Config.ContinuePath != "" && filepath.Clean(recPath) == filepath.Clean(a.Config.ContinuePath)) {
+			(a.Config.Session.ContinuePath != "" && filepath.Clean(recPath) == filepath.Clean(a.Config.Session.ContinuePath)) {
 			recPath = DefaultSessionPath(a.SessionsDir)
 			fmt.Fprintf(out, yellow("  ⚠")+" Record path conflicts with resumed session; redirecting to %s\n", recPath)
 		}
@@ -506,25 +506,25 @@ func (a *Agent) Run(out io.Writer) error {
 	// Replay mode — re-send turns to the current backend.
 	// Without --replay-continue, returns after replay (no REPL).
 	// With --replay-continue, falls through to the REPL with replay history loaded.
-	if a.Config.ReplayPath != "" {
-		outPath := a.Config.ReplayOutputPath
+	if a.Config.Session.ReplayPath != "" {
+		outPath := a.Config.Session.ReplayOutputPath
 		if outPath == "" {
 			outPath = DefaultSessionPath(a.SessionsDir)
 		}
 		replayCtx, replayCancel := context.WithCancel(context.Background())
 		defer replayCancel()
 		fmt.Fprintln(out, cyan(bold(sep)))
-		fmt.Fprintf(out, "  Replay mode: %s\n", a.Config.ReplayPath)
+		fmt.Fprintf(out, "  Replay mode: %s\n", a.Config.Session.ReplayPath)
 		fmt.Fprintln(out, cyan(bold(sep)))
 		fmt.Fprintln(out)
-		if err := a.ReplayFromFountain(replayCtx, a.Config.ReplayPath, outPath, out); err != nil {
+		if err := a.ReplayFromFountain(replayCtx, a.Config.Session.ReplayPath, outPath, out); err != nil {
 			return err
 		}
-		if !a.Config.ReplayContinue {
+		if !a.Config.Session.ReplayContinue {
 			return nil
 		}
 		// --replay-continue: start a fresh recorder for the REPL session that follows.
-		if a.Config.AutoRecord {
+		if a.Config.Session.AutoRecord {
 			contRecPath := DefaultSessionPath(a.SessionsDir)
 			model := "none"
 			if a.Client != nil {
@@ -544,9 +544,9 @@ func (a *Agent) Run(out io.Writer) error {
 	}
 
 	// --continue flag: pre-load history from a named session file.
-	if a.Config.ContinuePath != "" {
+	if a.Config.Session.ContinuePath != "" {
 		if a.Client == nil {
-			fmt.Fprintf(out, yellow("  ⚠")+" No backend connected — %s will load read-only.\n", a.Config.ContinuePath)
+			fmt.Fprintf(out, yellow("  ⚠")+" No backend connected — %s will load read-only.\n", a.Config.Session.ContinuePath)
 			fmt.Fprintln(out, dim("  Use /llamafile start or /ollama start to connect a model."))
 		} else if sessionModel != "" {
 			// Health check: warn when the connected backend differs from the
@@ -558,11 +558,11 @@ func (a *Agent) Run(out io.Writer) error {
 				fmt.Fprintln(out, dim("  Use /model use NAME or /llamafile use NAME to switch."))
 			}
 		}
-		n, contErr := a.ContinueFromFountain(a.Config.ContinuePath)
+		n, contErr := a.ContinueFromFountain(a.Config.Session.ContinuePath)
 		if contErr != nil {
 			fmt.Fprintf(out, yellow("  ✗")+" Continue failed: %v\n", contErr)
 		} else {
-			fmt.Fprintf(out, green("✓")+" Loaded %d turns from %s\n", n, a.Config.ContinuePath)
+			fmt.Fprintf(out, green("✓")+" Loaded %d turns from %s\n", n, a.Config.Session.ContinuePath)
 		}
 	}
 
@@ -581,12 +581,12 @@ func (a *Agent) Run(out io.Writer) error {
 	sessionMemoryDigest(a, out)
 
 	// Workspace profile onboarding — runs once when workspace_profile/ is empty.
-	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.ReplayPath == "" &&
+	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Session.ReplayPath == "" &&
 		a.Memory != nil && a.Memory.Store != nil {
 		if NeedsOnboarding(a.Memory.Store) {
 			var onboardEmbedder Embedder
 			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				onboardEmbedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+				onboardEmbedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
 			}
 			if onboardErr := RunOnboarding(a, a.Memory.Store, onboardEmbedder, out, reader); onboardErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Onboarding: %v\n", onboardErr)
@@ -679,12 +679,12 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 
 			// Safe mode check: verify command is in allowlist
-			if a.Config.SafeMode && !a.Config.IsCommandAllowed(program) {
+			if a.Config.Security.SafeMode && !a.Config.IsCommandAllowed(program) {
 				if a.AuditBuffer != nil {
 					a.AuditBuffer.Log(ActionCommand, program+" "+strings.Join(args, " "), StatusDenied)
 				}
 				fmt.Fprintf(out, yellow("  Command %q is not allowed in safe mode.\n"), program)
-				fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
+				fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.Security.AllowedCommands, ", "))
 				fmt.Fprintln(out, "  Use /safemode off to disable, or /safemode allow CMD to add it.")
 				continue
 			}
@@ -699,8 +699,8 @@ func (a *Agent) Run(out io.Writer) error {
 
 			var bashCtx context.Context
 			var cancelBash context.CancelFunc
-			if a.Config.RunTimeout > 0 {
-				bashCtx, cancelBash = context.WithTimeout(context.Background(), a.Config.RunTimeout)
+			if a.Config.Security.RunTimeout > 0 {
+				bashCtx, cancelBash = context.WithTimeout(context.Background(), a.Config.Security.RunTimeout)
 			} else {
 				bashCtx, cancelBash = context.WithCancel(context.Background())
 			}
@@ -942,7 +942,7 @@ func (a *Agent) Run(out io.Writer) error {
 		if turnErr != nil && isConnectionError(turnErr) &&
 			a.Backend != nil && a.Backend.StartedByHarvey() && !probeActiveBackend(a) {
 			fmt.Fprintln(out, yellow("  ⚠ The llamafile server stopped unexpectedly."))
-			if askYesNo(reader, out, fmt.Sprintf("  Restart %s? [Y/n] ", a.Config.LlamafileActive), true) {
+			if askYesNo(reader, out, fmt.Sprintf("  Restart %s? [Y/n] ", a.Config.Llamafile.Active), true) {
 				if restartErr := restartActiveLlamafile(a, out); restartErr == nil {
 					retryCtx, retryCancel := context.WithCancel(context.Background())
 					reply, _, turnErr = a.runChatTurn(retryCtx, input, out, reader, true, charName)
@@ -1003,7 +1003,7 @@ func (a *Agent) Run(out io.Writer) error {
 			if mErr == nil && !manifest.IsMined(sessionPath) {
 				var embedder Embedder
 				if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-					embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+					embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
 				}
 				miner := NewMiner(a.Memory.Store, manifest, a.Workspace)
 				if mineErr := miner.MineAuto(context.Background(), sessionPath, a, embedder, out); mineErr != nil {
@@ -1020,8 +1020,8 @@ func (a *Agent) Run(out io.Writer) error {
 			sessionID = filepath.Base(a.Recorder.Path())
 		}
 		budget := 512
-		if a.Config.OllamaContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
-			budget = int(float64(a.Config.OllamaContextLength) * a.Config.Memory.BudgetPct)
+		if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
+			budget = int(float64(a.Config.Ollama.ContextLength) * a.Config.Memory.BudgetPct)
 		}
 		_ = a.Memory.Store.RecordSessionStats(sessionID, budget, a.sessionInjectedTokens,
 			a.sessionCompressed, a.avgToksPerSec())
@@ -1083,7 +1083,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
 		histText := HistoryText(a.History)
 		n, exact := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), histText)
-		limit := a.Config.OllamaContextLength
+		limit := a.Config.Ollama.ContextLength
 		qualifier := "~"
 		if exact {
 			qualifier = ""

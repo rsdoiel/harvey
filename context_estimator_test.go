@@ -73,7 +73,7 @@ func TestFileExceedsBudget_DoesNotReadFile(t *testing.T) {
 func TestRemainingContext_UnknownLimit(t *testing.T) {
 	// Agent with no context limit configured returns 0.
 	cfg := DefaultConfig()
-	cfg.OllamaContextLength = 0
+	cfg.Ollama.ContextLength = 0
 	a := &Agent{Config: cfg}
 	if got := remainingContext(a); got != 0 {
 		t.Errorf("remainingContext with no limit = %d, want 0", got)
@@ -82,7 +82,7 @@ func TestRemainingContext_UnknownLimit(t *testing.T) {
 
 func TestRemainingContext_SubtractsHistory(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.OllamaContextLength = 4000
+	cfg.Ollama.ContextLength = 4000
 
 	// Agent with empty history should have more remaining than one with content.
 	empty := &Agent{Config: cfg}
@@ -105,7 +105,7 @@ func TestRemainingContext_SubtractsHistory(t *testing.T) {
 
 func TestRemainingContext_SafetyMargin(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.OllamaContextLength = 1000
+	cfg.Ollama.ContextLength = 1000
 
 	// Empty history: remaining = 1000 - 0 - 100 (10% margin) = 900.
 	a := &Agent{Config: cfg}
@@ -119,7 +119,7 @@ func TestRemainingContext_SafetyMargin(t *testing.T) {
 
 func TestSTMWarnNudge_ContextAmple(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.OllamaContextLength = 10000
+	cfg.Ollama.ContextLength = 10000
 	cfg.Chunking = DefaultChunkConfig() // STMWarnPct = 0.20
 	a := &Agent{Config: cfg}            // empty history → ~9000 tokens remaining
 	got := stmWarnNudge(a)
@@ -130,7 +130,7 @@ func TestSTMWarnNudge_ContextAmple(t *testing.T) {
 
 func TestSTMWarnNudge_ContextNearlyFull(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.OllamaContextLength = 1000
+	cfg.Ollama.ContextLength = 1000
 	cfg.Chunking = DefaultChunkConfig() // STMWarnPct = 0.20 → threshold = 200 tokens
 	// Fill history to ~820 tokens → remainingContext ≈ 1000-820-100 = 80 < 200.
 	a := &Agent{
@@ -150,7 +150,7 @@ func TestSTMWarnNudge_ContextNearlyFull(t *testing.T) {
 
 func TestSTMWarnNudge_DisabledWhenZero(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.OllamaContextLength = 1000
+	cfg.Ollama.ContextLength = 1000
 	cfg.Chunking = DefaultChunkConfig()
 	cfg.Chunking.STMWarnPct = 0 // disabled
 	a := &Agent{
@@ -167,7 +167,7 @@ func TestSTMWarnNudge_DisabledWhenZero(t *testing.T) {
 
 func TestSTMWarnNudge_NoLimitConfigured(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.OllamaContextLength = 0 // unknown limit
+	cfg.Ollama.ContextLength = 0 // unknown limit
 	cfg.Chunking = DefaultChunkConfig()
 	a := &Agent{Config: cfg}
 	got := stmWarnNudge(a)
@@ -178,7 +178,7 @@ func TestSTMWarnNudge_NoLimitConfigured(t *testing.T) {
 
 func TestRemainingContext_ExhaustedReturnsZero(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.OllamaContextLength = 1000
+	cfg.Ollama.ContextLength = 1000
 
 	// History that uses all tokens should return 0, not negative.
 	a := &Agent{

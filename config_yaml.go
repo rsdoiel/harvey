@@ -67,25 +67,49 @@ type ragYAML struct {
 	ModelMap       map[string]string `yaml:"model_map,omitempty"`
 }
 
+// ollamaYAML is the on-disk representation of the ollama: section in harvey.yaml.
+type ollamaYAML struct {
+	URL           string `yaml:"url,omitempty"`
+	Model         string `yaml:"model,omitempty"`
+	ContextLength int    `yaml:"context_length,omitempty"`
+	Timeout       string `yaml:"timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
+}
+
+// securityYAML is the on-disk representation of the security: section in harvey.yaml.
+type securityYAML struct {
+	SafeMode        *bool               `yaml:"safe_mode,omitempty"`
+	AllowedCommands []string            `yaml:"allowed_commands,omitempty"`
+	Permissions     map[string][]string `yaml:"permissions,omitempty"`
+	RunTimeout      string              `yaml:"run_timeout,omitempty"` // e.g. "5m", "300s"
+}
+
+// sessionYAML is the on-disk representation of the session: section in harvey.yaml.
+type sessionYAML struct {
+	AutoRecord       *bool  `yaml:"auto_record,omitempty"`
+	RecordPath       string `yaml:"record_path,omitempty"`
+	ContinuePath     string `yaml:"continue_path,omitempty"`
+	ResumeLatest     *bool  `yaml:"resume_latest,omitempty"`
+	ReplayPath       string `yaml:"replay_path,omitempty"`
+	ReplayOutputPath string `yaml:"replay_output_path,omitempty"`
+	ReplayContinue   *bool  `yaml:"replay_continue,omitempty"`
+}
+
 // harveyYAML is the on-disk representation of harvey/harvey.yaml.
 type harveyYAML struct {
-	SessionsDir     string              `yaml:"sessions_dir"`
-	AgentsDir       string              `yaml:"agents_dir"`
-	AutoRecord      *bool               `yaml:"auto_record"` // nil = not set (keep default)
-	ModelCacheDB    string              `yaml:"model_cache_db"`
-	Permissions     map[string][]string `yaml:"permissions,omitempty"`
-	SafeMode        *bool               `yaml:"safe_mode,omitempty"`        // nil = not set (keep default)
-	SyntaxHighlight *bool               `yaml:"syntax_highlight,omitempty"` // nil = not set (keep default)
-	AutoFormat      *bool               `yaml:"auto_format,omitempty"`      // nil = not set (keep default)
-	AllowedCommands []string            `yaml:"allowed_commands,omitempty"`
-	RunTimeout      string              `yaml:"run_timeout,omitempty"`    // e.g. "5m", "300s", "1m 30s", "300"
-	OllamaTimeout   string              `yaml:"ollama_timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
-	Tools           toolsYAML           `yaml:"tools,omitempty"`
-	ModelAliases    map[string]modelAliasYAML `yaml:"model_aliases,omitempty"` // short name → alias (string or struct)
-	Memory          memoryYAML          `yaml:"memory,omitempty"`
-	Llamafile       llamafileYAML       `yaml:"llamafile,omitempty"`
-	LlamaCpp        llamacppYAML        `yaml:"llamacpp,omitempty"`
-	Chunking        chunkingYAML        `yaml:"chunking,omitempty"`
+	SessionsDir     string                    `yaml:"sessions_dir"`
+	AgentsDir       string                    `yaml:"agents_dir"`
+	ModelCacheDB    string                    `yaml:"model_cache_db"`
+	SyntaxHighlight *bool                     `yaml:"syntax_highlight,omitempty"`
+	AutoFormat      *bool                     `yaml:"auto_format,omitempty"`
+	Tools           toolsYAML                 `yaml:"tools,omitempty"`
+	ModelAliases    map[string]modelAliasYAML `yaml:"model_aliases,omitempty"`
+	Ollama          ollamaYAML                `yaml:"ollama,omitempty"`
+	Security        securityYAML              `yaml:"security,omitempty"`
+	Session         sessionYAML               `yaml:"session,omitempty"`
+	Memory          memoryYAML                `yaml:"memory,omitempty"`
+	Llamafile       llamafileYAML             `yaml:"llamafile,omitempty"`
+	LlamaCpp        llamacppYAML              `yaml:"llamacpp,omitempty"`
+	Chunking        chunkingYAML              `yaml:"chunking,omitempty"`
 }
 
 type chunkingYAML struct {

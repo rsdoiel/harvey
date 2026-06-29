@@ -19,7 +19,7 @@ func TestLlamafileBackend_Name(t *testing.T) {
 
 func TestLlamafileBackend_BaseURL(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.LlamafileURL = "http://127.0.0.1:8080"
+	cfg.Llamafile.URL = "http://127.0.0.1:8080"
 	b := NewLlamafileBackend(cfg, t.TempDir(), t.TempDir())
 	if b.BaseURL() != "http://127.0.0.1:8080" {
 		t.Errorf("BaseURL() = %q, want %q", b.BaseURL(), "http://127.0.0.1:8080")
@@ -61,7 +61,7 @@ func TestLlamafileBackend_Detect_ReachableServer(t *testing.T) {
 	defer srv.Close()
 
 	cfg := DefaultConfig()
-	cfg.LlamafileURL = srv.URL
+	cfg.Llamafile.URL = srv.URL
 	b := NewLlamafileBackend(cfg, t.TempDir(), t.TempDir())
 	if !b.Detect() {
 		t.Error("Detect() should return true when /v1/models returns 200")
@@ -73,7 +73,7 @@ func TestLlamafileBackend_Detect_ReachableServer(t *testing.T) {
 
 func TestLlamafileBackend_Detect_UnreachableServer(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.LlamafileURL = "http://127.0.0.1:19998"
+	cfg.Llamafile.URL = "http://127.0.0.1:19998"
 	b := NewLlamafileBackend(cfg, t.TempDir(), t.TempDir())
 	if b.Detect() {
 		t.Error("Detect() should return false when server is unreachable")
@@ -82,7 +82,7 @@ func TestLlamafileBackend_Detect_UnreachableServer(t *testing.T) {
 
 func TestLlamafileBackend_ListModels_EmptyDir(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.LlamafileModelsDir = t.TempDir() // empty dir
+	cfg.Llamafile.ModelsDir = t.TempDir() // empty dir
 	b := NewLlamafileBackend(cfg, t.TempDir(), t.TempDir())
 	models, err := b.ListModels()
 	if err != nil {
@@ -113,7 +113,7 @@ func TestLlamafileBackend_ListModels_WithFiles(t *testing.T) {
 	}
 
 	cfg := DefaultConfig()
-	cfg.LlamafileModelsDir = dir
+	cfg.Llamafile.ModelsDir = dir
 	b := NewLlamafileBackend(cfg, t.TempDir(), t.TempDir())
 	models, err := b.ListModels()
 	if err != nil {
@@ -178,7 +178,7 @@ func TestLlamafileBackend_StartupTimeout_Default(t *testing.T) {
 
 func TestLlamafileBackend_GPULayers_FromConfig(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.LlamafileGPULayers = 35
+	cfg.Llamafile.GPULayers = 35
 	b := NewLlamafileBackend(cfg, t.TempDir(), t.TempDir())
 	if b.gpuLayers != 35 {
 		t.Errorf("gpuLayers = %d, want 35", b.gpuLayers)

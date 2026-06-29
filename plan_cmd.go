@@ -187,7 +187,7 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 
 	// Restore the default model if the step used a different one.
 	if step.Model != "" && activeModelLabel(a) != defaultModel {
-		if _, err := attemptModelSwitch(a, a.Config.LlamafileActive, out); err != nil {
+		if _, err := attemptModelSwitch(a, a.Config.Llamafile.Active, out); err != nil {
 			fmt.Fprintf(out, yellow("  ⚠ Could not restore model: ")+"%v\n", err)
 		}
 	}

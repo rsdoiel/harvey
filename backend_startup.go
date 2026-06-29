@@ -28,11 +28,11 @@ import (
  *   }
  */
 func probeActiveBackend(a *Agent) bool {
-	if a.Config.LlamafileActive != "" {
-		return ProbeLlamafile(a.Config.LlamafileURL)
+	if a.Config.Llamafile.Active != "" {
+		return ProbeLlamafile(a.Config.Llamafile.URL)
 	}
-	if a.Config.OllamaModel != "" {
-		return ProbeOllama(a.Config.OllamaURL)
+	if a.Config.Ollama.Model != "" {
+		return ProbeOllama(a.Config.Ollama.URL)
 	}
 	return false
 }
@@ -51,9 +51,9 @@ func probeActiveBackend(a *Agent) bool {
  *   return a.useLlamafileEntry("qwen-coding", out)
  */
 func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
-	client := newLlamafileLLMClient(a.Config.LlamafileURL+"/v1", name, a.Config.OllamaTimeout)
-	if a.Config.LlamafileMaxTokens > 0 {
-		client.SetMaxTokens(a.Config.LlamafileMaxTokens)
+	client := newLlamafileLLMClient(a.Config.Llamafile.URL+"/v1", name, a.Config.Ollama.Timeout)
+	if a.Config.Llamafile.MaxTokens > 0 {
+		client.SetMaxTokens(a.Config.Llamafile.MaxTokens)
 	}
 	a.Client = client
 	if ac, ok := a.Client.(*AnyLLMClient); ok && a.DebugLog != nil {
@@ -108,14 +108,14 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 	if entry := a.Config.ActiveLlamafileEntry(); entry != nil {
 		absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 		fmt.Fprintf(out, "\n  Connecting to %s (llamafile)…", entry.Name)
-		if ProbeLlamafile(a.Config.LlamafileURL) {
+		if ProbeLlamafile(a.Config.Llamafile.URL) {
 			fmt.Fprintln(out, " "+green("✓"))
 			return a.useLlamafileEntry(entry.Name, out)
 		}
 		fmt.Fprintln(out, " "+yellow("✗")+" not running")
 		if askYesNo(reader, out, fmt.Sprintf("    Start %s now? [Y/n] ", entry.Name), true) {
 			fmt.Fprintf(out, "  Connecting to %s (llamafile)…\n", entry.Name)
-			proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
+			proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
 			if err != nil {
 				fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
 			} else {
@@ -132,14 +132,14 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 
 	// Case 2: Registered llamafiles exist but none is active — show combined picker
 	// with llamafiles first, Ollama models second.
-	if len(a.Config.LlamafileModels) > 0 {
+	if len(a.Config.Llamafile.Models) > 0 {
 		return a.pickBackend(reader, out, preferredModel)
 	}
 
 	// Case 3: No llamafiles registered — try Ollama.
-	fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.OllamaURL)
+	fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.Ollama.URL)
 
-	if ProbeOllama(a.Config.OllamaURL) {
+	if ProbeOllama(a.Config.Ollama.URL) {
 		fmt.Fprintln(out, green("  ✓")+" Ollama is running")
 		if m := os.Getenv("OLLAMA_MODELS"); m != "" {
 			fmt.Fprintf(out, dim("  ⚠ Ollama was already running — OLLAMA_MODELS=%s may not be in effect.\n"), m)
@@ -188,8 +188,8 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel string) error {
 	// Auto-select when preferredModel matches a registered llamafile.
 	if preferredModel != "" {
-		for i := range a.Config.LlamafileModels {
-			e := &a.Config.LlamafileModels[i]
+		for i := range a.Config.Llamafile.Models {
+			e := &a.Config.Llamafile.Models[i]
 			if strings.EqualFold(e.Name, preferredModel) {
 				return a.startAndUseLlamafile(e, out)
 			}
@@ -203,7 +203,7 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 	}
 	var opts []option
 
-	for _, e := range a.Config.LlamafileModels {
+	for _, e := range a.Config.Llamafile.Models {
 		size := ""
 		if absPath := resolveLlamafilePath(e.Path, a.Workspace.Root); absPath != "" {
 			if info, err := os.Stat(absPath); err == nil {
@@ -217,8 +217,8 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 		})
 	}
 
-	if ProbeOllama(a.Config.OllamaURL) {
-		if summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background()); err == nil {
+	if ProbeOllama(a.Config.Ollama.URL) {
+		if summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background()); err == nil {
 			for _, s := range summaries {
 				opts = append(opts, option{
 					label: s.Name + dim(" (ollama)"),
@@ -275,13 +275,13 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 // than entry.Name when they differ. On start failure the error is printed and
 // returned.
 func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error {
-	if ProbeLlamafile(a.Config.LlamafileURL) {
+	if ProbeLlamafile(a.Config.Llamafile.URL) {
 		// A server is already running — probe which model it is actually serving.
-		detectedName := probeRunningLlamafileName(a.Config.LlamafileURL)
+		detectedName := probeRunningLlamafileName(a.Config.Llamafile.URL)
 		useName := entry.Name
 		if detectedName != "" && !strings.EqualFold(detectedName, entry.Name) {
 			fmt.Fprintf(out, "  Server at %s is serving %q (configured: %q) — adopting detected model.\n",
-				a.Config.LlamafileURL, detectedName, entry.Name)
+				a.Config.Llamafile.URL, detectedName, entry.Name)
 			useName = detectedName
 		} else {
 			fmt.Fprintf(out, "  Connecting to %s (llamafile)… %s\n", useName, green("✓"))
@@ -290,7 +290,7 @@ func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error
 	}
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 	fmt.Fprintf(out, "  Connecting to %s (llamafile)…\n", entry.Name)
-	proc, err := StartLlamafileService(absPath, a.Config.LlamafileURL, "", a.Config.LlamafileStartupTimeout, a.Config.LlamafileGPULayers, a.Config.ActiveLlamafileContextLength(), out)
+	proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
 	if err != nil {
 		fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
 		return err
@@ -322,13 +322,13 @@ func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error
  */
 func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredModel string) error {
 	// Command-line --model flag always wins.
-	if a.Config.OllamaModel != "" {
-		a.setOllamaModel(a.Config.OllamaModel)
-		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.OllamaModel))
+	if a.Config.Ollama.Model != "" {
+		a.setOllamaModel(a.Config.Ollama.Model)
+		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.Ollama.Model))
 		return nil
 	}
 
-	summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background())
+	summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background())
 	if err != nil || len(summaries) == 0 {
 		fmt.Fprintln(out, yellow("  ✗")+" No models installed. Run: ollama pull <model>")
 		return nil
@@ -431,7 +431,7 @@ func (a *Agent) tryAdoptPriorBackend(agentsDir string, out io.Writer) bool {
 		lb.activeModel = pid.Model
 		lb.running = true
 		a.Backend = lb
-		client := newLlamafileLLMClient(pid.URL+"/v1", pid.Model, a.Config.OllamaTimeout)
+		client := newLlamafileLLMClient(pid.URL+"/v1", pid.Model, a.Config.Ollama.Timeout)
 		a.Client = client
 	case "llamacpp":
 		lb := NewLlamaCppBackend(a.Config, agentsDir)
@@ -452,12 +452,12 @@ func (a *Agent) tryAdoptPriorBackend(agentsDir string, out io.Writer) bool {
 	return true
 }
 
-// setOllamaModel wires Config.OllamaModel, Client, and Backend for the given Ollama model name.
+// setOllamaModel wires Config.Ollama.Model, Client, and Backend for the given Ollama model name.
 func (a *Agent) setOllamaModel(model string) {
 	agentsDir := filepath.Join(a.Workspace.Root, "agents")
-	a.Config.OllamaModel = model
-	a.Client = newOllamaLLMClient(a.Config.OllamaURL, model, a.Config.OllamaTimeout)
-	b := NewOllamaBackend(a.Config.OllamaURL, a.Config.OllamaTimeout, agentsDir)
+	a.Config.Ollama.Model = model
+	a.Client = newOllamaLLMClient(a.Config.Ollama.URL, model, a.Config.Ollama.Timeout)
+	b := NewOllamaBackend(a.Config.Ollama.URL, a.Config.Ollama.Timeout, agentsDir)
 	b.SetActiveModel(model)
 	b.running = true // we know Ollama is reachable at this point
 	a.Backend = b

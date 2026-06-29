@@ -511,7 +511,7 @@ func deserialize(data []byte) ([]float64, error) {
  *   Embedder — the appropriate embedder for this entry.
  *
  * Example:
- *   emb := NewEmbedderForEntry(cfg.Memory.ActiveRagStore(), cfg.OllamaURL)
+ *   emb := NewEmbedderForEntry(cfg.Memory.ActiveRagStore(), cfg.Ollama.URL)
  *   vec, err := emb.Embed("hello world")
  */
 func NewEmbedderForEntry(entry *RagStoreEntry, ollamaURL string) Embedder {
@@ -617,12 +617,12 @@ func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
 	// Resolve embedding model for the current generation model.
 	embedModel := entry.EmbeddingModel
 	if entry.ModelMap != nil {
-		if mapped, ok := entry.ModelMap[a.Config.OllamaModel]; ok && mapped != "" {
+		if mapped, ok := entry.ModelMap[a.Config.Ollama.Model]; ok && mapped != "" {
 			embedModel = mapped
 		}
 	}
 
-	embedder := NewOllamaEmbedder(a.Config.OllamaURL, embedModel)
+	embedder := NewOllamaEmbedder(a.Config.Ollama.URL, embedModel)
 	chunks, err := a.Rag.Query(prompt, embedder, 5)
 	if err != nil || len(chunks) == 0 {
 		return prompt, nil

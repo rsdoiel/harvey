@@ -518,7 +518,7 @@ func TestRunChatTurn_CannotReadRetry_SkipsWhenNoFiles(t *testing.T) {
 // injected directly, identical to injectFileContext behaviour.
 func TestInjectOrChunk_SmallFile(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.OllamaContextLength = 8192
+	a.Config.Ollama.ContextLength = 8192
 	a.Config.Chunking = DefaultChunkConfig()
 	a.Client = &mockLLMClient{reply: "ok"}
 
@@ -542,7 +542,7 @@ func TestInjectOrChunk_SmallFile(t *testing.T) {
 // skipped with a hint message when chunking is disabled.
 func TestInjectOrChunk_LargeFileChunkingDisabled(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.OllamaContextLength = 100
+	a.Config.Ollama.ContextLength = 100
 	a.Config.Chunking = DefaultChunkConfig()
 	a.Config.Chunking.Enabled = false
 	a.Client = &mockLLMClient{reply: "ok"}
@@ -571,7 +571,7 @@ func TestInjectOrChunk_LargeFileChunkingDisabled(t *testing.T) {
 // chunk prompt leaves the file uninjected.
 func TestInjectOrChunk_LargeFileUserCancels(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.OllamaContextLength = 100 // tiny context so any large file exceeds budget
+	a.Config.Ollama.ContextLength = 100 // tiny context so any large file exceeds budget
 	a.Config.Chunking = DefaultChunkConfig()
 	a.Config.Chunking.Enabled = true
 	a.Client = &mockLLMClient{reply: "chunk summary"}
@@ -597,7 +597,7 @@ func TestInjectOrChunk_LargeFileUserCancels(t *testing.T) {
 // an instruction, RunChunkedAnalysis runs and its synthesis is prepended.
 func TestInjectOrChunk_LargeFileRunsChunking(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.OllamaContextLength = 100
+	a.Config.Ollama.ContextLength = 100
 	a.Config.Chunking = DefaultChunkConfig()
 	a.Config.Chunking.Enabled = true
 	a.Client = &mockLLMClient{reply: "chunk summary of this section"}
@@ -625,7 +625,7 @@ func TestInjectOrChunk_LargeFileRunsChunking(t *testing.T) {
 func TestInjectOrChunk_LargeFileFitsInBudget(t *testing.T) {
 	a := newTestAgent(t)
 	// Very large context limit so the file easily fits in budget.
-	a.Config.OllamaContextLength = 1_000_000
+	a.Config.Ollama.ContextLength = 1_000_000
 	a.Config.Chunking = DefaultChunkConfig()
 	a.Config.Chunking.Enabled = true
 	a.Client = &mockLLMClient{reply: "ok"}

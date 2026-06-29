@@ -292,10 +292,10 @@ func TestRunPipelineStep_llamafileContextHint(t *testing.T) {
 	a, dir := newPipelineTestAgent(t)
 	// Use a llamafile client (not Ollama) with a known context window.
 	a.Client = newLlamafileLLMClient("http://localhost:8080/v1", "qwen-coding", 0)
-	a.Config.LlamafileModels = []LlamafileEntry{
+	a.Config.Llamafile.Models = []LlamafileEntry{
 		{Name: "qwen-coding", Path: "/tmp/q.llamafile", ContextLength: 1024},
 	}
-	a.Config.LlamafileActive = "qwen-coding"
+	a.Config.Llamafile.Active = "qwen-coding"
 
 	// Write a step file.
 	step := filepath.Join(dir, "step.md")

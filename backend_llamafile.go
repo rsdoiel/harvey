@@ -63,24 +63,24 @@ type LlamafileBackend struct {
  *   b := NewLlamafileBackend(cfg, filepath.Join(ws.Root, "agents"), ws.Root)
  */
 func NewLlamafileBackend(cfg *Config, agentsDir, workspaceRoot string) *LlamafileBackend {
-	modelsDir := cfg.LlamafileModelsDir
+	modelsDir := cfg.Llamafile.ModelsDir
 	if modelsDir == "" {
 		modelsDir = llamafileDefaultModelsDir()
 	}
-	timeout := cfg.LlamafileStartupTimeout
+	timeout := cfg.Llamafile.StartupTimeout
 	if timeout <= 0 {
 		timeout = 120 * time.Second
 	}
 	return &LlamafileBackend{
-		url:            cfg.LlamafileURL,
-		timeout:        cfg.OllamaTimeout,
+		url:            cfg.Llamafile.URL,
+		timeout:        cfg.Ollama.Timeout,
 		agentsDir:      agentsDir,
 		modelsDir:      modelsDir,
 		workspaceRoot:  workspaceRoot,
-		gpuLayers:      cfg.LlamafileGPULayers,
+		gpuLayers:      cfg.Llamafile.GPULayers,
 		ctxSize:        cfg.ActiveLlamafileContextLength(),
 		startupTimeout: timeout,
-		maxTokens:      cfg.LlamafileMaxTokens,
+		maxTokens:      cfg.Llamafile.MaxTokens,
 	}
 }
 

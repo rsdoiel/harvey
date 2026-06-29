@@ -390,7 +390,7 @@ func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) 
 	}
 
 	// ── Ollama path ────────────────────────────────────────────────────────────
-	if !ProbeOllama(a.Config.OllamaURL) {
+	if !ProbeOllama(a.Config.Ollama.URL) {
 		fmt.Fprintln(out, "Ollama is not running. Use /ollama start first.")
 		return nil
 	}
@@ -410,7 +410,7 @@ func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) 
 
 	// If cache is empty or no embedding models found, fall back to live detection.
 	if len(embedModels) == 0 {
-		summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(ctx)
+		summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(ctx)
 		if err == nil {
 			for _, s := range summaries {
 				if hasEmbedKeyword(s.Name) {
@@ -449,7 +449,7 @@ func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) 
 foundPref:
 
 	// Build proposed model map: all non-embedding generation models → preferred embedder.
-	genModels, _ := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).Models(ctx)
+	genModels, _ := newOllamaLLMClient(a.Config.Ollama.URL, "", a.Config.Ollama.Timeout).Models(ctx)
 	proposed := make(map[string]string)
 	for _, m := range genModels {
 		if !hasEmbedKeyword(m) {
@@ -607,7 +607,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 		fmt.Fprintln(out, "No active RAG store. Run /rag use NAME to select one.")
 		return nil
 	}
-	embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)
+	embedder := NewEmbedderForEntry(entry, a.Config.Ollama.URL)
 
 	// Parse provenance flags and separate them from file paths.
 	var meta ProvenanceMeta
@@ -1038,7 +1038,7 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 		fmt.Fprintln(out, "No active RAG store. Run /rag use NAME to select one.")
 		return nil
 	}
-	embedder := NewEmbedderForEntry(entry, a.Config.OllamaURL)
+	embedder := NewEmbedderForEntry(entry, a.Config.Ollama.URL)
 	chunks, err := a.Rag.Query(query, embedder, 5)
 	if err != nil {
 		return fmt.Errorf("rag query: %w", err)

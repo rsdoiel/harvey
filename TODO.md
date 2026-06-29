@@ -3,7 +3,7 @@
 
 ## Feature ideas
 
-- [ ] Add support for using Llama.cpp to run models
+- [x] Add support for using Llama.cpp to run models
 - [ ] Assay needs to work across model systems, example I should be able to use with Llamafiles or Llama.cpp
 - [x] Chunked document analysis for small models — designed and planned.
   See [chunked-analysis-design.md](chunked-analysis-design.md) and
@@ -39,7 +39,7 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 
 - [x] **R6** — Introduce `MemorySystem` aggregate (`memory_system.go`); `OpenMemory`/`Close`; replace 11 separate `NewMemoryStore` opens; add `Memory *MemorySystem` to `Agent`
 - [x] **R8** — Create `builtin_tools_test.go` with coverage for chunking guard, write_file auto-format, and permission paths
-- [ ] **R7-B** — Group `Config` fields into `OllamaConfig`, `LlamafileConfig`, `SecurityConfig`, `SessionConfig` sub-structs (defer until unified backend design finalised; YAML migration required)
+- [x] **R7-B** — Group `Config` fields into `OllamaConfig`, `LlamafileConfig`, `SecurityConfig`, `SessionConfig` sub-structs (defer until unified backend design finalised; YAML migration required)
 
 ---
 

@@ -71,7 +71,7 @@ func TestReadFile_Normal(t *testing.T) {
 func TestReadFile_ChunkingDisabled(t *testing.T) {
 	a, reg := newToolAgent(t, func(cfg *Config) {
 		// Very small context so any file would be "over-budget" if chunking were enabled.
-		cfg.OllamaContextLength = 100
+		cfg.Ollama.ContextLength = 100
 		cfg.Chunking = DefaultChunkConfig()
 		cfg.Chunking.Enabled = false
 	})
@@ -98,7 +98,7 @@ func TestReadFile_ChunkingDisabled(t *testing.T) {
 // cancellation sentinel without reading the file body.
 func TestReadFile_ChunkingEnabledUserCancels(t *testing.T) {
 	a, reg := newToolAgent(t, func(cfg *Config) {
-		cfg.OllamaContextLength = 100
+		cfg.Ollama.ContextLength = 100
 		cfg.Chunking = DefaultChunkConfig()
 		cfg.Chunking.Enabled = true
 	})
@@ -125,7 +125,7 @@ func TestReadFile_ChunkingEnabledUserCancels(t *testing.T) {
 func TestReadFile_PermissionDenied(t *testing.T) {
 	a, reg := newToolAgent(t, func(cfg *Config) {
 		// Restrict to read-only at root, no read on secrets/
-		cfg.Permissions = map[string][]string{
+		cfg.Security.Permissions = map[string][]string{
 			".":        {PermRead, PermWrite, PermExec, PermDelete},
 			"secrets/": {PermExec}, // no read
 		}
@@ -202,7 +202,7 @@ func TestWriteFile_Basic(t *testing.T) {
 func TestWriteFile_AutoFormatGo(t *testing.T) {
 	_, reg := newToolAgent(t, func(cfg *Config) {
 		cfg.AutoFormat = true
-		cfg.SafeMode = false // FileFormatter requires safe_mode=false
+		cfg.Security.SafeMode = false // FileFormatter requires safe_mode=false
 	})
 
 	// Deliberately un-formatted Go source (extra blank lines, bad indent).
@@ -227,7 +227,7 @@ func TestWriteFile_AutoFormatGo(t *testing.T) {
 func TestWriteFile_PermissionDenied(t *testing.T) {
 	agent, _ := newToolAgent(t, func(cfg *Config) {
 		// Root has read-only; no write permission.
-		cfg.Permissions = map[string][]string{
+		cfg.Security.Permissions = map[string][]string{
 			".": {PermRead},
 		}
 	})
@@ -465,7 +465,7 @@ func TestUpdateMemory_NoMemorySystem(t *testing.T) {
 func TestUpdateMemory_UnknownID(t *testing.T) {
 	a, reg, ms := newToolAgentWithMemory(t)
 	defer ms.Close()
-	a.Config.SafeMode = false
+	a.Config.Security.SafeMode = false
 
 	result, err := dispatch(t, reg, "update_memory", map[string]any{
 		"id":      "tool_use_doesnotexist",
@@ -482,7 +482,7 @@ func TestUpdateMemory_UnknownID(t *testing.T) {
 func TestUpdateMemory_Success(t *testing.T) {
 	a, reg, ms := newToolAgentWithMemory(t)
 	defer ms.Close()
-	a.Config.SafeMode = false
+	a.Config.Security.SafeMode = false
 
 	// Save a memory directly so we have a known ID to update.
 	original := NewMemoryDoc("tool_use_upd001", MemoryTypeToolUse,
@@ -565,7 +565,7 @@ func TestDeleteMemory_NoMemorySystem(t *testing.T) {
 func TestDeleteMemory_UnknownID(t *testing.T) {
 	a, reg, ms := newToolAgentWithMemory(t)
 	defer ms.Close()
-	a.Config.SafeMode = false
+	a.Config.Security.SafeMode = false
 
 	result, err := dispatch(t, reg, "delete_memory", map[string]any{"id": "tool_use_doesnotexist"})
 	if err != nil {
@@ -579,7 +579,7 @@ func TestDeleteMemory_UnknownID(t *testing.T) {
 func TestDeleteMemory_Success(t *testing.T) {
 	a, reg, ms := newToolAgentWithMemory(t)
 	defer ms.Close()
-	a.Config.SafeMode = false
+	a.Config.Security.SafeMode = false
 
 	doc := NewMemoryDoc("tool_use_del001", MemoryTypeToolUse, "to be deleted", "to be deleted", nil)
 	doc.FountainBody = BuildFountainBody("2026-01-01 00:00:00", [][2]string{{"HARVEY", "to be deleted"}})
@@ -633,7 +633,7 @@ func TestDeleteMemory_SafeMode(t *testing.T) {
 // ─── filter_context ──────────────────────────────────────────────────────────
 
 func TestFilterContext_EmptyHistory(t *testing.T) {
-	_, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	_, reg := newToolAgent(t, func(cfg *Config) { cfg.Security.SafeMode = false })
 
 	result, err := dispatch(t, reg, "filter_context", map[string]any{"criteria": "go test"})
 	if err != nil {
@@ -646,7 +646,7 @@ func TestFilterContext_EmptyHistory(t *testing.T) {
 
 func TestFilterContext_KeywordRemovesMatch(t *testing.T) {
 	// No RAG store configured → keyword fallback.
-	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.Security.SafeMode = false })
 	a.AddMessage("system", "You are Harvey.")
 	a.AddMessage("user", "question about go test failures")
 	a.AddMessage("assistant", "here is the answer")
@@ -672,7 +672,7 @@ func TestFilterContext_KeywordRemovesMatch(t *testing.T) {
 
 func TestFilterContext_SystemMessagesNeverFiltered(t *testing.T) {
 	// Even if the system message matches the criteria, it must be preserved.
-	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.Security.SafeMode = false })
 	a.AddMessage("system", "go test is part of the system prompt")
 	a.AddMessage("user", "go test failures are annoying") // matches → removed
 	a.AddMessage("user", "something unrelated")          // no match → kept
@@ -694,7 +694,7 @@ func TestFilterContext_SystemMessagesNeverFiltered(t *testing.T) {
 }
 
 func TestFilterContext_NoMatches(t *testing.T) {
-	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.Security.SafeMode = false })
 	a.AddMessage("user", "unrelated content")
 	a.AddMessage("assistant", "also unrelated")
 
@@ -729,7 +729,7 @@ func TestFilterContext_SafeMode(t *testing.T) {
 }
 
 func TestFilterContext_EmptyCriteria(t *testing.T) {
-	_, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	_, reg := newToolAgent(t, func(cfg *Config) { cfg.Security.SafeMode = false })
 
 	_, err := dispatch(t, reg, "filter_context", map[string]any{"criteria": ""})
 	if err == nil {
@@ -757,7 +757,7 @@ func TestSummaryContext_NoClient(t *testing.T) {
 }
 
 func TestSummaryContext_SpanAll(t *testing.T) {
-	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.Security.SafeMode = false })
 	a.Client = &mockLLMClient{reply: "We discussed Go patterns."}
 	a.AddMessage("system", "You are Harvey.")
 	a.AddMessage("user", "question one")
@@ -789,7 +789,7 @@ func TestSummaryContext_SpanAll(t *testing.T) {
 }
 
 func TestSummaryContext_SpanN(t *testing.T) {
-	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.Security.SafeMode = false })
 	a.Client = &mockLLMClient{reply: "Summary of first three."}
 	for i := 1; i <= 6; i++ {
 		if i%2 == 1 {
@@ -816,7 +816,7 @@ func TestSummaryContext_SpanN(t *testing.T) {
 }
 
 func TestSummaryContext_SpanExceedsHistory(t *testing.T) {
-	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = false })
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.Security.SafeMode = false })
 	a.Client = &mockLLMClient{reply: "Brief summary."}
 	a.AddMessage("user", "msg 1")
 	a.AddMessage("assistant", "resp 1")
@@ -883,7 +883,7 @@ func TestAddMemory_InvalidType(t *testing.T) {
 func TestAddMemory_SaveAndList(t *testing.T) {
 	a, reg, ms := newToolAgentWithMemory(t)
 	defer ms.Close()
-	a.Config.SafeMode = false
+	a.Config.Security.SafeMode = false
 
 	// Use reg.Dispatch directly to pass a proper JSON array for tags.
 	result, err := reg.Dispatch(context.Background(), "add_memory",
@@ -937,7 +937,7 @@ func TestAddMemory_SafeMode(t *testing.T) {
 }
 
 func TestSummaryContext_SafeMode(t *testing.T) {
-	a, reg := newToolAgent(t, func(cfg *Config) { cfg.SafeMode = true })
+	a, reg := newToolAgent(t, func(cfg *Config) { cfg.Security.SafeMode = true })
 	a.Client = &mockLLMClient{reply: "irrelevant"}
 	a.AddMessage("user", "hello")
 	a.AddMessage("assistant", "world")

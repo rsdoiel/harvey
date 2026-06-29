@@ -71,7 +71,7 @@ func cmdPermissions(a *Agent, args []string, out io.Writer) error {
 }
 
 func permissionsList(a *Agent, args []string, out io.Writer) error {
-	if a.Config == nil || a.Config.Permissions == nil {
+	if a.Config == nil || a.Config.Security.Permissions == nil {
 		fmt.Fprintln(out, "  No permissions configured.")
 		return nil
 	}
@@ -85,15 +85,15 @@ func permissionsList(a *Agent, args []string, out io.Writer) error {
 	}
 
 	// Show all configured permissions
-	if len(a.Config.Permissions) == 0 {
+	if len(a.Config.Security.Permissions) == 0 {
 		fmt.Fprintln(out, "  No custom permissions configured (default: full access to root).")
 		return nil
 	}
 
 	fmt.Fprintln(out, "  Configured permissions:")
 	// Sort the prefixes for consistent output
-	prefixes := make([]string, 0, len(a.Config.Permissions))
-	for p := range a.Config.Permissions {
+	prefixes := make([]string, 0, len(a.Config.Security.Permissions))
+	for p := range a.Config.Security.Permissions {
 		prefixes = append(prefixes, p)
 	}
 	sort.Strings(prefixes)
@@ -210,9 +210,9 @@ func cmdSecurity(a *Agent, args []string, out io.Writer) error {
 
 	// Safe Mode
 	fmt.Fprintln(out, bold("Safe Mode:"))
-	if a.Config.SafeMode {
+	if a.Config.Security.SafeMode {
 		fmt.Fprintln(out, "  Status: enabled")
-		fmt.Fprintf(out, "  Allowed commands (%d): %s\n", len(a.Config.AllowedCommands), strings.Join(a.Config.AllowedCommands, ", "))
+		fmt.Fprintf(out, "  Allowed commands (%d): %s\n", len(a.Config.Security.AllowedCommands), strings.Join(a.Config.Security.AllowedCommands, ", "))
 	} else {
 		fmt.Fprintln(out, "  Status: disabled")
 		fmt.Fprintln(out, "  All commands are allowed.")
@@ -221,14 +221,14 @@ func cmdSecurity(a *Agent, args []string, out io.Writer) error {
 
 	// Permissions
 	fmt.Fprintln(out, bold("Workspace Permissions:"))
-	if a.Config.Permissions == nil || len(a.Config.Permissions) == 0 {
+	if a.Config.Security.Permissions == nil || len(a.Config.Security.Permissions) == 0 {
 		fmt.Fprintln(out, "  No custom permissions configured.")
 		fmt.Fprintln(out, "  Default: full access (read, write, exec, delete) to workspace root.")
 	} else {
 		fmt.Fprintln(out, "  Configured path permissions:")
 		// Sort prefixes for consistent output
-		prefixes := make([]string, 0, len(a.Config.Permissions))
-		for p := range a.Config.Permissions {
+		prefixes := make([]string, 0, len(a.Config.Security.Permissions))
+		for p := range a.Config.Security.Permissions {
 			prefixes = append(prefixes, p)
 		}
 		sort.Strings(prefixes)

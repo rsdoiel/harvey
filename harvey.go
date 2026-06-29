@@ -202,13 +202,13 @@ type Agent struct {
  */
 func (a *Agent) effectiveContextLimit() int {
 	// Llamafile: check the active entry's ContextLength first (user config or probed).
-	if a.Config.LlamafileActive != "" {
+	if a.Config.Llamafile.Active != "" {
 		if entry := a.Config.ActiveLlamafileEntry(); entry != nil && entry.ContextLength > 0 {
 			return entry.ContextLength
 		}
 	}
-	if a.Config.OllamaContextLength > 0 {
-		return a.Config.OllamaContextLength
+	if a.Config.Ollama.ContextLength > 0 {
+		return a.Config.Ollama.ContextLength
 	}
 	if a.ModelCache != nil {
 		if ac, ok := a.Client.(*AnyLLMClient); ok {
@@ -330,12 +330,12 @@ func (a *Agent) injectMemoryContext(query string) {
 
 	var embedder Embedder
 	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+		embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
 	}
 
 	budget := 512
-	if a.Config.OllamaContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
-		budget = int(float64(a.Config.OllamaContextLength) * a.Config.Memory.BudgetPct)
+	if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
+		budget = int(float64(a.Config.Ollama.ContextLength) * a.Config.Memory.BudgetPct)
 	}
 
 	results, err := a.Memory.Unified.Recall(query, embedder, budget)

@@ -22,6 +22,7 @@ func main() {
 
 
 	cfg := harvey.DefaultConfig()
+	var initFrom string
 
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
@@ -72,38 +73,40 @@ func main() {
 			fmt.Print(licenseText)
 			os.Exit(0)
 		case "-m", "--model":
-			cfg.OllamaModel = next()
+			cfg.Ollama.Model = next()
 		case "--ollama":
-			cfg.OllamaURL = next()
+			cfg.Ollama.URL = next()
 		case "--llamafile":
 			// Session-only: create a synthetic registry entry without persisting.
 			p := next()
-			cfg.LlamafileModels = append(cfg.LlamafileModels, harvey.LlamafileEntry{
+			cfg.Llamafile.Models = append(cfg.Llamafile.Models, harvey.LlamafileEntry{
 				Name: harvey.LlamafileModelNameFromPath(p),
 				Path: p,
 			})
-			cfg.LlamafileActive = harvey.LlamafileModelNameFromPath(p)
+			cfg.Llamafile.Active = harvey.LlamafileModelNameFromPath(p)
 		case "--llamafile-url":
-			cfg.LlamafileURL = next()
+			cfg.Llamafile.URL = next()
 		case "--llamafile-dir":
-			cfg.LlamafileModelsDir = next()
+			cfg.Llamafile.ModelsDir = next()
 		case "-w", "--workdir":
 			cfg.WorkDir = next()
 		case "-r", "--record":
-			cfg.AutoRecord = true
+			cfg.Session.AutoRecord = true
 		case "--record-file":
-			cfg.AutoRecord = true
-			cfg.RecordPath = next()
+			cfg.Session.AutoRecord = true
+			cfg.Session.RecordPath = next()
 		case "--resume":
-			cfg.ResumeLatest = true
+			cfg.Session.ResumeLatest = true
 		case "--continue":
-			cfg.ContinuePath = next()
+			cfg.Session.ContinuePath = next()
 		case "--replay":
-			cfg.ReplayPath = next()
+			cfg.Session.ReplayPath = next()
 		case "--replay-output":
-			cfg.ReplayOutputPath = next()
+			cfg.Session.ReplayOutputPath = next()
 		case "--replay-continue":
-			cfg.ReplayContinue = true
+			cfg.Session.ReplayContinue = true
+		case "--init-from":
+			initFrom = next()
 		case "--debug":
 			cfg.Debug = true
 			setDebugEnv()
@@ -115,8 +118,8 @@ func main() {
 
 	// HARVEY_LLAMAFILE_DIR env var overrides the YAML default but is itself
 	// overridden by the --llamafile-dir flag (already applied above).
-	if v := os.Getenv("HARVEY_LLAMAFILE_DIR"); v != "" && cfg.LlamafileModelsDir == harvey.DefaultLlamafileModelsDir() {
-		cfg.LlamafileModelsDir = v
+	if v := os.Getenv("HARVEY_LLAMAFILE_DIR"); v != "" && cfg.Llamafile.ModelsDir == harvey.DefaultLlamafileModelsDir() {
+		cfg.Llamafile.ModelsDir = v
 	}
 
 	cfg.SystemPrompt = harvey.LoadHarveyMD()
@@ -125,10 +128,21 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if cfg.ResumeLatest && cfg.ContinuePath == "" {
+	if initFrom != "" {
+		if err := harvey.LoadHarveyYAML(ws, cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading workspace config: %v\n", err)
+			os.Exit(1)
+		}
+		if _, _, err := harvey.ImportAliasesFrom(initFrom, ws, cfg, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	if cfg.Session.ResumeLatest && cfg.Session.ContinuePath == "" {
 		sessDir := filepath.Join(ws.HarveyDir(), "sessions")
 		if p := harvey.MostRecentSession(sessDir); p != "" {
-			cfg.ContinuePath = p
+			cfg.Session.ContinuePath = p
 		} else {
 			fmt.Fprintln(os.Stderr, "  No sessions found in agents/sessions/ — starting fresh.")
 		}

@@ -23,7 +23,7 @@ func newTestAgent(t *testing.T) *Agent {
 		t.Fatalf("NewWorkspace: %v", err)
 	}
 	cfg := DefaultConfig()
-	cfg.SafeMode = false // tests exercise command mechanics, not safe mode policy
+	cfg.Security.SafeMode = false // tests exercise command mechanics, not safe mode policy
 	return &Agent{
 		Config:    cfg,
 		Workspace: ws,
@@ -1005,7 +1005,7 @@ func TestArgCompletion_noRegistration(t *testing.T) {
 
 func TestArgCompletion_llamafileNames(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.LlamafileModels = []LlamafileEntry{
+	a.Config.Llamafile.Models = []LlamafileEntry{
 		{Name: "granite3.3-2b"},
 		{Name: "llama3.2-1b"},
 	}
@@ -1046,7 +1046,7 @@ func TestCmdModelShow_noBackend(t *testing.T) {
 func TestCmdModelShow_withLlamafile(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileActive = "qwen-coding"
+	cfg.Llamafile.Active = "qwen-coding"
 	a := NewAgent(cfg, ws)
 	a.Client = &mockLLMClient{}
 	var buf strings.Builder
@@ -1074,11 +1074,11 @@ func TestCmdModelList_empty(t *testing.T) {
 func TestCmdModelList_withLlamafiles(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{
+	cfg.Llamafile.Models = []LlamafileEntry{
 		{Name: "qwen-coding", Path: "/tmp/qwen.llamafile"},
 		{Name: "phi-mini", Path: "/tmp/phi.llamafile"},
 	}
-	cfg.LlamafileActive = "qwen-coding"
+	cfg.Llamafile.Active = "qwen-coding"
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	if err := cmdModel(a, []string{"list"}, &buf); err != nil {
@@ -1337,7 +1337,7 @@ func TestOllamaUse_noArg_showsNumberedList(t *testing.T) {
 	defer srv.Close()
 
 	a := newTestAgent(t)
-	a.Config.OllamaURL = srv.URL
+	a.Config.Ollama.URL = srv.URL
 	a.In = strings.NewReader("0\n") // invalid selection → Cancelled
 
 	var buf strings.Builder
@@ -1362,7 +1362,7 @@ func TestOllamaUse_noArg_validSelection(t *testing.T) {
 	defer srv.Close()
 
 	a := newTestAgent(t)
-	a.Config.OllamaURL = srv.URL
+	a.Config.Ollama.URL = srv.URL
 	a.In = strings.NewReader("1\n") // select first model
 
 	var buf strings.Builder
@@ -1501,7 +1501,7 @@ func TestCmdOllama_Clean_NoStaleRefs(t *testing.T) {
 	defer srv.Close()
 
 	a := newTestAgent(t)
-	a.Config.OllamaURL = srv.URL
+	a.Config.Ollama.URL = srv.URL
 	// Model alias points to a live model.
 	a.Config.ModelAliases = map[string]ModelAlias{"n": {Model: "nomic-embed-text:latest"}}
 
@@ -1522,7 +1522,7 @@ func TestCmdOllama_Clean_RemovesStaleRefs(t *testing.T) {
 	defer srv.Close()
 
 	a := newTestAgent(t)
-	a.Config.OllamaURL = srv.URL
+	a.Config.Ollama.URL = srv.URL
 	// granite4.1:3b is NOT in the mock server's model list — should be pruned.
 	a.Config.ModelAliases = map[string]ModelAlias{
 		"g": {Model: "granite4.1:3b"},
@@ -1564,7 +1564,7 @@ func TestCmdModelUse_noArg_noModels(t *testing.T) {
 
 func TestCmdModelUse_noArg_showsPicker(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.LlamafileModels = []LlamafileEntry{
+	a.Config.Llamafile.Models = []LlamafileEntry{
 		{Name: "qwen-coder", Path: "/tmp/qwen.llamafile"},
 		{Name: "gemma4", Path: "/tmp/gemma4.llamafile"},
 	}
@@ -1585,7 +1585,7 @@ func TestCmdModelUse_noArg_showsPicker(t *testing.T) {
 
 func TestCmdModelUse_noArg_selectsModel(t *testing.T) {
 	a := newTestAgent(t)
-	a.Config.LlamafileModels = []LlamafileEntry{
+	a.Config.Llamafile.Models = []LlamafileEntry{
 		{Name: "qwen-coder", Path: "/tmp/qwen.llamafile"},
 	}
 	// Select item 1.

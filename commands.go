@@ -457,6 +457,12 @@ func (a *Agent) registerCommands() {
 			Description: "Format source file(s) in-place using the registered formatter for each file's language",
 			Handler:     cmdFormat,
 		},
+		"workspace": {
+			Usage:       "/workspace <init [FROM_PATH]|status>",
+			Description: "Manage workspace settings — init copies aliases from another workspace or YAML file",
+			Handler:     cmdWorkspace,
+			Subcommands: []string{"init", "status"},
+		},
 		"exit": {
 			Usage:       "/exit",
 			Description: "Exit Harvey",
@@ -736,7 +742,7 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 	} else {
 		fmt.Fprintln(out, "RAG:       not configured")
 	}
-	if a.Config.SafeMode {
+	if a.Config.Security.SafeMode {
 		fmt.Fprintln(out, "Safe mode: on")
 	} else {
 		fmt.Fprintln(out, "Safe mode: OFF (all commands permitted)")
@@ -768,7 +774,7 @@ func cmdClear(a *Agent, _ []string, out io.Writer) error {
 // for use in tab completion.
 func allModelNames(a *Agent) []string {
 	var names []string
-	for _, e := range a.Config.LlamafileModels {
+	for _, e := range a.Config.Llamafile.Models {
 		names = append(names, e.Name)
 	}
 	for alias := range a.Config.ModelAliases {
@@ -836,20 +842,20 @@ func cmdModelShow(a *Agent, out io.Writer) error {
 // cmdModelList prints all registered models across llamafile and ollama.
 func cmdModelList(a *Agent, out io.Writer) error {
 	hasAny := false
-	if len(a.Config.LlamafileModels) > 0 {
+	if len(a.Config.Llamafile.Models) > 0 {
 		hasAny = true
 		fmt.Fprintln(out, "  Llamafile models:")
-		for _, e := range a.Config.LlamafileModels {
+		for _, e := range a.Config.Llamafile.Models {
 			marker := "  "
-			if e.Name == a.Config.LlamafileActive {
+			if e.Name == a.Config.Llamafile.Active {
 				marker = "→ "
 			}
 			fmt.Fprintf(out, "    %s%-20s (llamafile)\n", marker, e.Name)
 		}
 	}
-	if a.Config.OllamaModel != "" {
+	if a.Config.Ollama.Model != "" {
 		hasAny = true
-		fmt.Fprintf(out, "  Ollama active: %s\n", a.Config.OllamaModel)
+		fmt.Fprintf(out, "  Ollama active: %s\n", a.Config.Ollama.Model)
 	}
 	if !hasAny {
 		fmt.Fprintln(out, "  No models registered. Use /llamafile add or connect to Ollama.")
@@ -1102,19 +1108,19 @@ func cmdSafeMode(a *Agent, args []string, out io.Writer) error {
 }
 
 func safeModeOn(a *Agent, out io.Writer) error {
-	a.Config.SafeMode = true
+	a.Config.Security.SafeMode = true
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist safe mode: %v\n", err)
 		}
 	}
 	fmt.Fprintln(out, "  Safe mode enabled. Only allowed commands can be executed.")
-	fmt.Fprintf(out, "  Allowed: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
+	fmt.Fprintf(out, "  Allowed: %s\n", strings.Join(a.Config.Security.AllowedCommands, ", "))
 	return nil
 }
 
 func safeModeOff(a *Agent, out io.Writer) error {
-	a.Config.SafeMode = false
+	a.Config.Security.SafeMode = false
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist safe mode: %v\n", err)
@@ -1125,9 +1131,9 @@ func safeModeOff(a *Agent, out io.Writer) error {
 }
 
 func safeModeStatus(a *Agent, out io.Writer) error {
-	if a.Config.SafeMode {
+	if a.Config.Security.SafeMode {
 		fmt.Fprintln(out, "  Safe mode: on")
-		fmt.Fprintf(out, "  Allowed commands (%d): %s\n", len(a.Config.AllowedCommands), strings.Join(a.Config.AllowedCommands, ", "))
+		fmt.Fprintf(out, "  Allowed commands (%d): %s\n", len(a.Config.Security.AllowedCommands), strings.Join(a.Config.Security.AllowedCommands, ", "))
 	} else {
 		fmt.Fprintln(out, "  Safe mode: off")
 		fmt.Fprintln(out, "  All commands are allowed.")
@@ -1136,9 +1142,9 @@ func safeModeStatus(a *Agent, out io.Writer) error {
 }
 
 func safeModeAllow(a *Agent, cmd string, out io.Writer) error {
-	oldLen := len(a.Config.AllowedCommands)
+	oldLen := len(a.Config.Security.AllowedCommands)
 	a.Config.AddAllowedCommand(cmd)
-	if len(a.Config.AllowedCommands) > oldLen {
+	if len(a.Config.Security.AllowedCommands) > oldLen {
 		fmt.Fprintf(out, "  Added %q to allowlist.\n", cmd)
 	} else {
 		fmt.Fprintf(out, "  %q is already in the allowlist.\n", cmd)
@@ -1152,9 +1158,9 @@ func safeModeAllow(a *Agent, cmd string, out io.Writer) error {
 }
 
 func safeModeDeny(a *Agent, cmd string, out io.Writer) error {
-	oldLen := len(a.Config.AllowedCommands)
+	oldLen := len(a.Config.Security.AllowedCommands)
 	a.Config.RemoveAllowedCommand(cmd)
-	if len(a.Config.AllowedCommands) < oldLen {
+	if len(a.Config.Security.AllowedCommands) < oldLen {
 		fmt.Fprintf(out, "  Removed %q from allowlist.\n", cmd)
 	} else {
 		fmt.Fprintf(out, "  %q is not in the allowlist.\n", cmd)
@@ -1175,7 +1181,7 @@ func safeModeReset(a *Agent, out io.Writer) error {
 		}
 	}
 	fmt.Fprintln(out, "  Allowlist reset to defaults.")
-	fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
+	fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.Security.AllowedCommands, ", "))
 	return nil
 }
 
@@ -1314,7 +1320,7 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 	switch strings.ToLower(args[0]) {
 	case "start":
 		debug := len(args) > 1 && strings.ToLower(args[1]) == "debug"
-		if ProbeOllama(a.Config.OllamaURL) {
+		if ProbeOllama(a.Config.Ollama.URL) {
 			if debug || os.Getenv("OLLAMA_DEBUG") != "" {
 				fmt.Fprintln(out, "Ollama is already running externally — it will not have debug logging.")
 				fmt.Fprintln(out, "  To start in debug mode, quit Ollama first:")
@@ -1345,25 +1351,25 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		}
 		a.DebugLog.LogOllamaStart(debug, ollamaLogPath)
 		agentsDir := filepath.Join(a.Workspace.Root, "agents")
-		ollamaBackend := NewOllamaBackend(a.Config.OllamaURL, a.Config.OllamaTimeout, agentsDir)
+		ollamaBackend := NewOllamaBackend(a.Config.Ollama.URL, a.Config.Ollama.Timeout, agentsDir)
 		ollamaBackend.startedByHarvey = true
-		ollamaBackend.activeModel = a.Config.OllamaModel
+		ollamaBackend.activeModel = a.Config.Ollama.Model
 		a.Backend = ollamaBackend
 		fmt.Fprintln(out, "Ollama is running.")
 	case "stop":
 		fmt.Fprintln(out, "Use your system's service manager to stop Ollama (e.g. systemctl stop ollama).")
 	case "status":
-		if ProbeOllama(a.Config.OllamaURL) {
+		if ProbeOllama(a.Config.Ollama.URL) {
 			fmt.Fprintln(out, "Ollama is running.")
 		} else {
 			fmt.Fprintln(out, "Ollama is not running.")
 		}
 	case "list":
-		if !ProbeOllama(a.Config.OllamaURL) {
+		if !ProbeOllama(a.Config.Ollama.URL) {
 			fmt.Fprintln(out, "Ollama is not running.")
 			return nil
 		}
-		summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background())
+		summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background())
 		if err != nil {
 			return err
 		}
@@ -1392,7 +1398,7 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		// Fast-probe the newly pulled model and cache the result.
 		if a.ModelCache != nil {
 			ctx := context.Background()
-			cap, err := FastProbeModel(ctx, a.Config.OllamaURL, model)
+			cap, err := FastProbeModel(ctx, a.Config.Ollama.URL, model)
 			if err == nil {
 				_ = a.ModelCache.Set(cap)
 				fmt.Fprintf(out, "  tools: %s   embed: %s   tagged: %s   ctx: %s   [fast probe]\n",
@@ -1474,11 +1480,11 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 			_ = SaveMemoryConfig(a.Workspace, a.Config)
 		}
 	case "clean":
-		if !ProbeOllama(a.Config.OllamaURL) {
+		if !ProbeOllama(a.Config.Ollama.URL) {
 			fmt.Fprintln(out, "  Ollama is not running — cannot check installed models.")
 			return nil
 		}
-		summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background())
+		summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background())
 		if err != nil {
 			return fmt.Errorf("/ollama clean: %w", err)
 		}
@@ -1516,11 +1522,11 @@ func cmdOllama(a *Agent, args []string, out io.Writer) error {
 		PrintOllamaEnv(out)
 	case "use":
 		if len(args) < 2 {
-			if !ProbeOllama(a.Config.OllamaURL) {
+			if !ProbeOllama(a.Config.Ollama.URL) {
 				fmt.Fprintln(out, "  Ollama is not running.")
 				return nil
 			}
-			summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background())
+			summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background())
 			if err != nil {
 				return err
 			}
@@ -1780,7 +1786,7 @@ func ollamaListTable(a *Agent, summaries []OllamaModelSummary, out io.Writer) {
 
 // ollamaProbe handles /ollama probe [MODEL|--all].
 func ollamaProbe(a *Agent, args []string, out io.Writer) error {
-	if !ProbeOllama(a.Config.OllamaURL) {
+	if !ProbeOllama(a.Config.Ollama.URL) {
 		fmt.Fprintln(out, "Ollama is not running.")
 		return nil
 	}
@@ -1790,13 +1796,13 @@ func ollamaProbe(a *Agent, args []string, out io.Writer) error {
 	}
 
 	ctx := context.Background()
-	client := NewOllamaClient(a.Config.OllamaURL, "")
+	client := NewOllamaClient(a.Config.Ollama.URL, "")
 
 	// /ollama probe MODEL — probe a specific model, always refresh.
 	if len(args) == 1 && args[0] != "--all" {
 		model := a.Config.ResolveModelAlias(args[0])
 		fmt.Fprintf(out, "Probing %s...\n", model)
-		cap, err := ThoroughProbeModel(ctx, a.Config.OllamaURL, model)
+		cap, err := ThoroughProbeModel(ctx, a.Config.Ollama.URL, model)
 		if err != nil {
 			return fmt.Errorf("probe %s: %w", model, err)
 		}
@@ -1836,7 +1842,7 @@ func ollamaProbe(a *Agent, args []string, out io.Writer) error {
 
 	fmt.Fprintf(out, "Probing %d model(s)...\n", len(targets))
 	for _, name := range targets {
-		cap, err := ThoroughProbeModel(ctx, a.Config.OllamaURL, name)
+		cap, err := ThoroughProbeModel(ctx, a.Config.Ollama.URL, name)
 		if err != nil {
 			fmt.Fprintf(out, "  %-36s  error: %v\n", ollamaTruncateName(name, 36), err)
 			continue
@@ -2895,12 +2901,12 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 	}
 
 	// Safe mode check: verify command is in allowlist
-	if a.Config.SafeMode && !a.Config.IsCommandAllowed(args[0]) {
+	if a.Config.Security.SafeMode && !a.Config.IsCommandAllowed(args[0]) {
 		if a.AuditBuffer != nil {
 			a.AuditBuffer.Log(ActionCommand, strings.Join(args, " "), StatusDenied)
 		}
 		fmt.Fprintf(out, yellow("  Command %q is not allowed in safe mode.\n"), args[0])
-		fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.AllowedCommands, ", "))
+		fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.Security.AllowedCommands, ", "))
 		fmt.Fprintln(out, "  Use /safemode off to disable, or /safemode allow CMD to add it.")
 		return nil
 	}
@@ -2926,8 +2932,8 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 	// Use a context with an optional timeout to prevent hanging commands.
 	var ctx context.Context
 	var cancel context.CancelFunc
-	if a.Config.RunTimeout > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), a.Config.RunTimeout)
+	if a.Config.Security.RunTimeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), a.Config.Security.RunTimeout)
 	} else {
 		ctx, cancel = context.WithCancel(context.Background())
 	}
@@ -3628,10 +3634,10 @@ func aliasClashesWithModel(a *Agent, name string) bool {
 		}
 	}
 	// Fall back to live Ollama list.
-	if !ProbeOllama(a.Config.OllamaURL) {
+	if !ProbeOllama(a.Config.Ollama.URL) {
 		return false
 	}
-	models, err := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).
+	models, err := newOllamaLLMClient(a.Config.Ollama.URL, "", a.Config.Ollama.Timeout).
 		Models(context.Background())
 	if err != nil {
 		return false
@@ -3662,12 +3668,12 @@ func modelSwitch(a *Agent, name string, out io.Writer) error {
 		name = resolved
 	}
 
-	if !ProbeOllama(a.Config.OllamaURL) {
+	if !ProbeOllama(a.Config.Ollama.URL) {
 		fmt.Fprintln(out, "  Ollama is not running. Use /ollama start first.")
 		return nil
 	}
 
-	models, err := newOllamaLLMClient(a.Config.OllamaURL, "", a.Config.OllamaTimeout).Models(ctx)
+	models, err := newOllamaLLMClient(a.Config.Ollama.URL, "", a.Config.Ollama.Timeout).Models(ctx)
 	if err != nil {
 		return fmt.Errorf("listing models: %w", err)
 	}
@@ -3902,7 +3908,7 @@ func cmdFormat(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintf(out, "  %s: no formatter registered for %q\n", relPath, langID)
 			continue
 		}
-		if f.Mode() == FileFormatter && a.Config.SafeMode {
+		if f.Mode() == FileFormatter && a.Config.Security.SafeMode {
 			fmt.Fprintf(out, "  %s: file-mode formatter requires safe mode off (/safemode off)\n", relPath)
 			continue
 		}
@@ -3928,4 +3934,70 @@ func cmdFormat(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "  %s: formatted (%d → %d bytes)\n", relPath, len(original), len(formatted))
 	}
 	return nil
+}
+
+// ─── /workspace ──────────────────────────────────────────────────────────────
+
+/** cmdWorkspace handles the /workspace command.
+ *
+ * Subcommands:
+ *   init [FROM_PATH] — initialise this workspace, optionally copying model
+ *                      aliases from a source workspace directory or YAML file.
+ *   status           — show workspace root and alias count.
+ *
+ * Parameters:
+ *   a    (*Agent)    — running Harvey agent.
+ *   args ([]string) — subcommand and optional arguments.
+ *   out  (io.Writer) — output sink.
+ *
+ * Returns:
+ *   error — on I/O failure.
+ *
+ * Example:
+ *   /workspace init /other/project
+ *   /workspace init ~/shared-aliases.yaml
+ *   /workspace status
+ */
+func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
+	sub := ""
+	if len(args) > 1 {
+		sub = args[1]
+	}
+	switch sub {
+	case "init":
+		if a.Workspace == nil {
+			return fmt.Errorf("no workspace is open")
+		}
+		fromPath := ""
+		if len(args) > 2 {
+			fromPath = args[2]
+		}
+		if fromPath == "" {
+			fmt.Fprintf(out, "  Workspace: %s\n", a.Workspace.Root)
+			fmt.Fprintf(out, "  Aliases:   %d defined\n", len(a.Config.ModelAliases))
+			fmt.Fprintln(out, "  Tip: run /workspace init <path> to import aliases from another workspace.")
+			return nil
+		}
+		copied, skipped, err := ImportAliasesFrom(fromPath, a.Workspace, a.Config, out)
+		if err != nil {
+			return err
+		}
+		if copied == 0 && skipped == 0 {
+			// message already printed by ImportAliasesFrom
+			return nil
+		}
+		_ = skipped // already reported in ImportAliasesFrom output
+		return nil
+	case "", "status":
+		if a.Workspace == nil {
+			fmt.Fprintln(out, "  No workspace open.")
+			return nil
+		}
+		fmt.Fprintf(out, "  Root:    %s\n", a.Workspace.Root)
+		fmt.Fprintf(out, "  Aliases: %d defined\n", len(a.Config.ModelAliases))
+		return nil
+	default:
+		fmt.Fprintf(out, "  Unknown subcommand %q. Usage: /workspace <init [FROM_PATH]|status>\n", sub)
+		return nil
+	}
 }

@@ -322,7 +322,7 @@ func TestApplyAutoFormat_FileFormatterSafeModeBlocked(t *testing.T) {
 	dir := t.TempDir()
 	ws, _ := NewWorkspace(dir)
 	cfg := DefaultConfig()
-	cfg.SafeMode = true
+	cfg.Security.SafeMode = true
 	a := NewAgent(cfg, ws)
 
 	// Manually register a file-mode formatter for a test language.

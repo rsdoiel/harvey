@@ -133,8 +133,8 @@ func TestSpinnerLabel_includesCtxHintWhenAboveThreshold(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
 	// Small context window — 512 tokens.
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "tiny", Path: "/tmp/t.llamafile", ContextLength: 512}}
-	cfg.LlamafileActive = "tiny"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "tiny", Path: "/tmp/t.llamafile", ContextLength: 512}}
+	cfg.Llamafile.Active = "tiny"
 	a := NewAgent(cfg, ws)
 
 	// Add enough history to exceed 50% of 512 tokens (>256 tokens ≈ >1024 chars).
@@ -149,8 +149,8 @@ func TestSpinnerLabel_includesCtxHintWhenAboveThreshold(t *testing.T) {
 func TestSpinnerLabel_omitsCtxHintWhenUsageLow(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "big", Path: "/tmp/b.llamafile", ContextLength: 131072}}
-	cfg.LlamafileActive = "big"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "big", Path: "/tmp/b.llamafile", ContextLength: 131072}}
+	cfg.Llamafile.Active = "big"
 	a := NewAgent(cfg, ws)
 
 	// Very short history — well below threshold.
@@ -166,8 +166,8 @@ func TestSpinnerLabel_omitsCtxHintWhenLimitUnknown(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
 	// No context length configured (0 = unknown).
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "unknown", Path: "/tmp/u.llamafile"}}
-	cfg.LlamafileActive = "unknown"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "unknown", Path: "/tmp/u.llamafile"}}
+	cfg.Llamafile.Active = "unknown"
 	a := NewAgent(cfg, ws)
 	a.AddMessage("user", strings.Repeat("x", 2000))
 

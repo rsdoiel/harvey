@@ -212,7 +212,7 @@ func TestCmdPlanNext_modelAnnotationSwitches(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
 	// Register a llamafile model so attemptModelSwitch can find it.
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "phi-mini", Path: "/tmp/phi.llamafile"}}
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "phi-mini", Path: "/tmp/phi.llamafile"}}
 	a := NewAgent(cfg, ws)
 	a.Client = &mockLLMClient{reply: "done"}
 

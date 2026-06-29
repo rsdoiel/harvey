@@ -112,8 +112,8 @@ func TestConfigActiveEntry_none(t *testing.T) {
 
 func TestConfigActiveEntry_found(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen", Path: "/tmp/qwen.llamafile"}}
-	cfg.LlamafileActive = "qwen"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen", Path: "/tmp/qwen.llamafile"}}
+	cfg.Llamafile.Active = "qwen"
 	e := cfg.ActiveLlamafileEntry()
 	if e == nil {
 		t.Fatal("expected non-nil entry")
@@ -126,8 +126,8 @@ func TestConfigActiveEntry_found(t *testing.T) {
 func TestConfigAddOrUpdateEntry_insert(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: "alpha", Path: "/tmp/alpha.llamafile"})
-	if len(cfg.LlamafileModels) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(cfg.LlamafileModels))
+	if len(cfg.Llamafile.Models) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(cfg.Llamafile.Models))
 	}
 }
 
@@ -135,11 +135,11 @@ func TestConfigAddOrUpdateEntry_update(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: "alpha", Path: "/tmp/alpha.llamafile"})
 	cfg.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: "alpha", Path: "/tmp/alpha-v2.llamafile"})
-	if len(cfg.LlamafileModels) != 1 {
-		t.Fatalf("expected 1 entry after update, got %d", len(cfg.LlamafileModels))
+	if len(cfg.Llamafile.Models) != 1 {
+		t.Fatalf("expected 1 entry after update, got %d", len(cfg.Llamafile.Models))
 	}
-	if cfg.LlamafileModels[0].Path != "/tmp/alpha-v2.llamafile" {
-		t.Errorf("path not updated: %s", cfg.LlamafileModels[0].Path)
+	if cfg.Llamafile.Models[0].Path != "/tmp/alpha-v2.llamafile" {
+		t.Errorf("path not updated: %s", cfg.Llamafile.Models[0].Path)
 	}
 }
 
@@ -186,8 +186,8 @@ func TestLlamafileEntryContextLength_default(t *testing.T) {
 func TestEffectiveContextLimit_llamafileEntry(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen", Path: "/tmp/q.llamafile", ContextLength: 8192}}
-	cfg.LlamafileActive = "qwen"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen", Path: "/tmp/q.llamafile", ContextLength: 8192}}
+	cfg.Llamafile.Active = "qwen"
 	a := NewAgent(cfg, ws)
 	if got := a.effectiveContextLimit(); got != 8192 {
 		t.Errorf("effectiveContextLimit: got %d want 8192", got)
@@ -197,8 +197,8 @@ func TestEffectiveContextLimit_llamafileEntry(t *testing.T) {
 func TestEffectiveContextLimit_llamafileEntryZeroFallsThrough(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen", Path: "/tmp/q.llamafile", ContextLength: 0}}
-	cfg.LlamafileActive = "qwen"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen", Path: "/tmp/q.llamafile", ContextLength: 0}}
+	cfg.Llamafile.Active = "qwen"
 	a := NewAgent(cfg, ws)
 	// ContextLength=0 means unknown; should return 0 (no other source available).
 	if got := a.effectiveContextLimit(); got != 0 {
@@ -209,14 +209,14 @@ func TestEffectiveContextLimit_llamafileEntryZeroFallsThrough(t *testing.T) {
 func TestCmdLlamafileRemove_alias(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
-	cfg.LlamafileActive = "qwen-coding"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	cfg.Llamafile.Active = "qwen-coding"
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	if err := cmdLlamafile(a, []string{"remove", "qwen-coding"}, &buf); err != nil {
 		t.Fatalf("remove alias error: %v", err)
 	}
-	if len(a.Config.LlamafileModels) != 0 {
+	if len(a.Config.Llamafile.Models) != 0 {
 		t.Error("expected model to be removed")
 	}
 }
@@ -292,7 +292,7 @@ func TestAdoptExternalServer_userSaysYes(t *testing.T) {
 
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileURL = srv.URL
+	cfg.Llamafile.URL = srv.URL
 	a := NewAgent(cfg, ws)
 	a.In = strings.NewReader("y\n")
 
@@ -300,7 +300,7 @@ func TestAdoptExternalServer_userSaysYes(t *testing.T) {
 	if err := adoptExternalServer(a, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if a.Config.LlamafileActive == "" {
+	if a.Config.Llamafile.Active == "" {
 		t.Error("expected LlamafileActive to be set after adoption")
 	}
 	out := buf.String()
@@ -318,7 +318,7 @@ func TestAdoptExternalServer_userSaysNo(t *testing.T) {
 
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileURL = srv.URL
+	cfg.Llamafile.URL = srv.URL
 	a := NewAgent(cfg, ws)
 	a.In = strings.NewReader("n\n")
 
@@ -326,7 +326,7 @@ func TestAdoptExternalServer_userSaysNo(t *testing.T) {
 	if err := adoptExternalServer(a, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if a.Config.LlamafileActive != "" {
+	if a.Config.Llamafile.Active != "" {
 		t.Error("expected LlamafileActive to remain empty when user declines adoption")
 	}
 }
@@ -336,7 +336,7 @@ func TestAdoptExternalServer_userSaysNo(t *testing.T) {
 func TestRunFirstRunWizard_emptyInput(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModelsDir = t.TempDir() // empty dir — no .llamafile files
+	cfg.Llamafile.ModelsDir = t.TempDir() // empty dir — no .llamafile files
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	err := runFirstRunWizard(a, strings.NewReader("\n"), &buf)
@@ -352,7 +352,7 @@ func TestRunFirstRunWizard_emptyInput(t *testing.T) {
 func TestRunFirstRunWizard_pathNotFound(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModelsDir = t.TempDir() // empty dir — no .llamafile files
+	cfg.Llamafile.ModelsDir = t.TempDir() // empty dir — no .llamafile files
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	// Provide a non-existent path — the add flow should fail with a not-found error.
@@ -432,7 +432,7 @@ func TestRunFirstRunWizard_pickerWhenModelsExist(t *testing.T) {
 
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModelsDir = modelsDir
+	cfg.Llamafile.ModelsDir = modelsDir
 	a := NewAgent(cfg, ws)
 	// a.In provides the model name for cmdLlamafileAdd's name prompt.
 	// SelectFrom auto-selects the single file, so only the name line is consumed.
@@ -468,8 +468,8 @@ func TestRestartActiveLlamafile_emptyPath(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
 	// Adopted server: entry registered but path is empty.
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "external", Path: ""}}
-	cfg.LlamafileActive = "external"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "external", Path: ""}}
+	cfg.Llamafile.Active = "external"
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	err := restartActiveLlamafile(a, &buf)
@@ -483,10 +483,10 @@ func TestRestartActiveLlamafile_emptyPath(t *testing.T) {
 func TestCmdLlamafileShow_activeModel(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{
+	cfg.Llamafile.Models = []LlamafileEntry{
 		{Name: "qwen-coding", Path: "/tmp/qwen.llamafile", ContextLength: 8192},
 	}
-	cfg.LlamafileActive = "qwen-coding"
+	cfg.Llamafile.Active = "qwen-coding"
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	if err := cmdLlamafile(a, []string{"show"}, &buf); err != nil {
@@ -507,11 +507,11 @@ func TestCmdLlamafileShow_activeModel(t *testing.T) {
 func TestCmdLlamafileShow_namedModel(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{
+	cfg.Llamafile.Models = []LlamafileEntry{
 		{Name: "alpha", Path: "/tmp/alpha.llamafile"},
 		{Name: "beta", Path: "/tmp/beta.llamafile"},
 	}
-	cfg.LlamafileActive = "alpha"
+	cfg.Llamafile.Active = "alpha"
 	a := NewAgent(cfg, ws)
 	var buf strings.Builder
 	if err := cmdLlamafile(a, []string{"show", "beta"}, &buf); err != nil {
@@ -571,12 +571,12 @@ func TestStartAndUseLlamafile_staleServerSameModel(t *testing.T) {
 
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileURL = srv.URL
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	cfg.Llamafile.URL = srv.URL
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
 	a := NewAgent(cfg, ws)
 
 	var buf strings.Builder
-	entry := &a.Config.LlamafileModels[0]
+	entry := &a.Config.Llamafile.Models[0]
 	_ = a.startAndUseLlamafile(entry, &buf)
 
 	out := buf.String()
@@ -596,12 +596,12 @@ func TestStartAndUseLlamafile_staleServerDifferentModel(t *testing.T) {
 
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileURL = srv.URL
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	cfg.Llamafile.URL = srv.URL
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
 	a := NewAgent(cfg, ws)
 
 	var buf strings.Builder
-	entry := &a.Config.LlamafileModels[0]
+	entry := &a.Config.Llamafile.Models[0]
 	_ = a.startAndUseLlamafile(entry, &buf)
 
 	out := buf.String()
@@ -624,9 +624,9 @@ func TestSelectBackend_connectionFeedbackFormat(t *testing.T) {
 
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileURL = srv.URL
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
-	cfg.LlamafileActive = "qwen-coding"
+	cfg.Llamafile.URL = srv.URL
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	cfg.Llamafile.Active = "qwen-coding"
 	a := NewAgent(cfg, ws)
 
 	var buf strings.Builder

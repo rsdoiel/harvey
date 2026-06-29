@@ -105,8 +105,8 @@ func TestCmdStatus_MemoryDisabled(t *testing.T) {
 func TestCmdStatus_llamafileShowsTokenEstimate(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile", ContextLength: 32768}}
-	cfg.LlamafileActive = "qwen-coding"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile", ContextLength: 32768}}
+	cfg.Llamafile.Active = "qwen-coding"
 	a := &Agent{
 		Config:   cfg,
 		Workspace: ws,
@@ -133,8 +133,8 @@ func TestCmdStatus_llamafileShowsTokenEstimate(t *testing.T) {
 func TestCmdStatus_llamafileShowsHarveyTag(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.LlamafileModels = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
-	cfg.LlamafileActive = "qwen-coding"
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
+	cfg.Llamafile.Active = "qwen-coding"
 	a := &Agent{
 		Config:   cfg,
 		Workspace: ws,

@@ -30,9 +30,9 @@ import (
 func aggregateModels(a *Agent) ([]ModelSummary, error) {
 	var all []ModelSummary
 
-	// Llamafile models come from the registry (Config.LlamafileModels), not a
+	// Llamafile models come from the registry (Config.Llamafile.Models), not a
 	// disk scan, so that the list matches what the user has explicitly registered.
-	for _, e := range a.Config.LlamafileModels {
+	for _, e := range a.Config.Llamafile.Models {
 		path := ""
 		if a.Workspace != nil {
 			path = resolveLlamafilePath(e.Path, a.Workspace.Root)
@@ -57,8 +57,8 @@ func aggregateModels(a *Agent) ([]ModelSummary, error) {
 	}
 
 	// Ollama — live query, silent if unreachable.
-	if ProbeOllama(a.Config.OllamaURL) {
-		if summaries, err := NewOllamaClient(a.Config.OllamaURL, "").ModelSummaries(context.Background()); err == nil {
+	if ProbeOllama(a.Config.Ollama.URL) {
+		if summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background()); err == nil {
 			for _, s := range summaries {
 				all = append(all, ModelSummary{
 					Name:   s.Name,

@@ -87,56 +87,120 @@ type RagStoreEntry struct {
 	SkipPerPrompt  bool   // when true, ragAugment skips this store (per_prompt: false in YAML)
 }
 
+/** OllamaConfig holds all Ollama-specific connection and model settings.
+ *
+ * Fields:
+ *   URL           (string)        — Ollama base URL; default "http://localhost:11434".
+ *   Model         (string)        — currently selected Ollama model.
+ *   ContextLength (int)           — context window size in tokens; 0 = unknown.
+ *   Timeout       (time.Duration) — HTTP timeout for Ollama requests; 0 = no timeout.
+ *
+ * Example:
+ *   cfg.Ollama = OllamaConfig{URL: "http://localhost:11434", Model: "llama3.1:8b"}
+ */
+type OllamaConfig struct {
+	URL           string
+	Model         string
+	ContextLength int
+	Timeout       time.Duration
+}
+
+/** LlamafileConfig holds settings for the llamafile inference backend.
+ *
+ * Fields:
+ *   URL            (string)           — API base URL; default "http://localhost:8080".
+ *   ModelsDir      (string)           — discovery directory; default "$HOME/Models".
+ *   StartupTimeout (time.Duration)    — how long to wait for server response; default 120s.
+ *   GPULayers      (int)              — -ngl value; 99 = maximise GPU.
+ *   MaxTokens      (int)              — max tokens per completion; 0 = no limit.
+ *   Models         ([]LlamafileEntry) — registered llamafile models.
+ *   Active         (string)           — name of the active model; "" = none.
+ *
+ * Example:
+ *   cfg.Llamafile = LlamafileConfig{URL: "http://localhost:8080", GPULayers: 99}
+ */
+type LlamafileConfig struct {
+	URL            string
+	ModelsDir      string
+	StartupTimeout time.Duration
+	GPULayers      int
+	MaxTokens      int
+	Models         []LlamafileEntry
+	Active         string
+}
+
+/** SecurityConfig holds safe-mode and command permission settings.
+ *
+ * Fields:
+ *   SafeMode        (bool)                — when true, only AllowedCommands can be executed via ! or /run.
+ *   AllowedCommands ([]string)            — command names permitted when SafeMode is enabled.
+ *   Permissions     (map[string][]string) — path prefix → allowed actions (read, write, exec, delete).
+ *   RunTimeout      (time.Duration)       — timeout for shell commands; 0 = no timeout.
+ *
+ * Example:
+ *   cfg.Security = SecurityConfig{SafeMode: true, AllowedCommands: []string{"ls", "cat"}}
+ */
+type SecurityConfig struct {
+	SafeMode        bool
+	AllowedCommands []string
+	Permissions     map[string][]string
+	RunTimeout      time.Duration
+}
+
+/** SessionConfig holds session recording and replay settings.
+ *
+ * Fields:
+ *   AutoRecord       (bool)   — record every session to a .spmd file automatically.
+ *   RecordPath       (string) — file path for auto-recording; empty = auto-generated timestamped name.
+ *   ContinuePath     (string) — session file to load as pre-history when starting the REPL.
+ *   ResumeLatest     (bool)   — auto-select most recent session file.
+ *   ReplayPath       (string) — session file to replay instead of entering the REPL.
+ *   ReplayOutputPath (string) — output path for replay recording; empty = auto-generated.
+ *   ReplayContinue   (bool)   — drop into the REPL after replay finishes.
+ *
+ * Example:
+ *   cfg.Session = SessionConfig{AutoRecord: true}
+ */
+type SessionConfig struct {
+	AutoRecord       bool
+	RecordPath       string
+	ContinuePath     string
+	ResumeLatest     bool
+	ReplayPath       string
+	ReplayOutputPath string
+	ReplayContinue   bool
+}
+
 /** Config holds Harvey's runtime configuration.
  *
  * Fields:
- *   WorkDir      (string) — root directory Harvey is allowed to read/write; defaults to ".".
- *   SessionsDir  (string) — directory for session .spmd files; empty = agents/sessions/.
- *   AgentsDir    (string) — base directory for the agents/skills tree; empty = agents/.
- *   SystemPrompt (string) — contents of HARVEY.md, injected as the system prompt.
- *   OllamaURL    (string) — Ollama base URL (default: http://localhost:11434).
- *   OllamaModel  (string) — currently selected Ollama model.
- *   AutoRecord   (bool)   — record every session to a .spmd file (default true).
- *   Memory       (MemoryConfig) — unified memory system settings, including RAG and knowledge base.
+ *   WorkDir      (string)         — root directory Harvey is allowed to read/write; defaults to ".".
+ *   SessionsDir  (string)         — directory for session .spmd files; empty = agents/sessions/.
+ *   AgentsDir    (string)         — base directory for the agents/skills tree; empty = agents/.
+ *   SystemPrompt (string)         — contents of HARVEY.md, injected as the system prompt.
+ *   Ollama       (OllamaConfig)   — Ollama connection and model settings.
+ *   Llamafile    (LlamafileConfig) — llamafile backend settings.
+ *   Security     (SecurityConfig) — safe-mode and permission settings.
+ *   Session      (SessionConfig)  — recording and replay settings.
+ *   Memory       (MemoryConfig)   — unified memory system settings, including RAG and knowledge base.
  *
  * Example:
  *   cfg := DefaultConfig()
  *   cfg.WorkDir = "/home/user/myproject"
  */
 type Config struct {
-	WorkDir             string          // workspace root; all file I/O is constrained to this tree
-	SessionsDir         string          // directory for .spmd session files; empty = agents/sessions/
-	AgentsDir           string          // agents/skills tree root; empty = agents/
-	SystemPrompt        string          // contents of HARVEY.md, injected as the system prompt
-	OllamaURL           string          // Ollama base URL (default: http://localhost:11434)
-	OllamaModel         string          // currently selected Ollama model
-	OllamaContextLength int             // context window size in tokens; 0 = unknown
-	Routes              []RouteEndpoint // registered remote endpoints; persisted across sessions
-	RoutingEnabled      bool            // when false, @mentions are rejected with a warning
-	AutoRecord          bool            // record every session to a .spmd file automatically
-	RecordPath          string          // file path for auto-recording; empty = auto-generated timestamped name
-	ContinuePath        string          // session file to load as pre-history when starting the REPL
-	ResumeLatest        bool            // --resume: auto-select most recent session file
-	ReplayPath          string          // session file to replay instead of entering the REPL
-	ReplayOutputPath    string          // output path for replay recording; empty = auto-generated
-	ReplayContinue      bool            // when true, drop into the REPL after replay finishes
-	ModelCacheDB        string          // path to model_cache.db; empty = harvey/model_cache.db
-	// Security settings
-	SafeMode        bool     // when true, only commands in AllowedCommands can be executed via ! or /run
-	AllowedCommands []string // list of command names permitted when SafeMode is enabled
-	// Permissions: map from path prefix to list of allowed actions (read, write, exec, delete)
-	Permissions map[string][]string
-	// Timeout settings
-	RunTimeout    time.Duration // timeout for shell commands run via ! or /run; 0 means no timeout
-	OllamaTimeout time.Duration // HTTP client timeout for local LLM providers; 0 means no timeout
-	// Llamafile backend settings
-	LlamafileModels    []LlamafileEntry // registered llamafile models
-	LlamafileActive    string           // name of the active model; "" = none
-	LlamafileURL            string        // API base URL; default "http://localhost:8080"
-	LlamafileModelsDir      string        // discovery directory; default "$HOME/Models"
-	LlamafileStartupTimeout time.Duration // how long to wait for the server to respond; default 120s
-	LlamafileGPULayers      int           // layers to offload to GPU via -ngl; -1 = let llamafile decide (CPU), 99 = maximise GPU
-	LlamafileMaxTokens      int           // max tokens per completion; 0 = no limit (use model default)
+	WorkDir      string          // workspace root; all file I/O is constrained to this tree
+	SessionsDir  string          // directory for .spmd session files; empty = agents/sessions/
+	AgentsDir    string          // agents/skills tree root; empty = agents/
+	SystemPrompt string          // contents of HARVEY.md, injected as the system prompt
+	Routes       []RouteEndpoint // registered remote endpoints; persisted across sessions
+	RoutingEnabled bool          // when false, @mentions are rejected with a warning
+	ModelCacheDB string          // path to model_cache.db; empty = harvey/model_cache.db
+	// Grouped settings
+	Ollama   OllamaConfig
+	Llamafile LlamafileConfig
+	Security  SecurityConfig
+	Session   SessionConfig
 	// LlamaCpp backend settings
 	LlamaCpp LlamaCppConfig
 	// Model aliases: short name → ModelAlias (model ID + optional purpose tags)
@@ -159,7 +223,7 @@ type Config struct {
 }
 
 /** DefaultConfig returns a Config populated with sensible defaults. WorkDir
- * defaults to "." (the process working directory at startup). AutoRecord
+ * defaults to "." (the process working directory at startup). Session.AutoRecord
  * defaults to true so every session is saved to agents/sessions/.
  *
  * Returns:
@@ -167,7 +231,7 @@ type Config struct {
  *
  * Example:
  *   cfg := DefaultConfig()
- *   fmt.Println(cfg.OllamaURL) // "http://localhost:11434"
+ *   fmt.Println(cfg.Ollama.URL) // "http://localhost:11434"
  */
 // DefaultAllowedCommands is the default list of commands allowed when SafeMode is enabled.
 // These are considered safe read-only or low-risk utilities.
@@ -179,34 +243,40 @@ var DefaultAllowedCommands = []string{
 func DefaultConfig() *Config {
 	allowed := make([]string, len(DefaultAllowedCommands))
 	copy(allowed, DefaultAllowedCommands)
-	// Default permissions: full access to workspace root, read-only for subdirectories
 	defaultPerms := map[string][]string{
 		".": {"read", "write", "exec", "delete"},
 	}
 	return &Config{
-		WorkDir:         ".",
-		OllamaURL:       "http://localhost:11434",
-		AutoRecord:      true,
-		SafeMode:        true,
-		AllowedCommands: allowed,
-		Permissions:     defaultPerms,
-		ModelAliases:          make(map[string]ModelAlias),
-		RunTimeout:            5 * time.Minute,
-		OllamaTimeout:         0, // no timeout — local inference can take minutes on slow hardware
-		LlamafileURL:            "http://localhost:8080",
-		LlamafileModelsDir:      llamafileDefaultModelsDir(),
-		LlamafileStartupTimeout: 120 * time.Second,
-		LlamafileGPULayers:      99,
+		WorkDir:      ".",
+		ModelAliases: make(map[string]ModelAlias),
+		Ollama: OllamaConfig{
+			URL: "http://localhost:11434",
+		},
+		Llamafile: LlamafileConfig{
+			URL:            "http://localhost:8080",
+			ModelsDir:      llamafileDefaultModelsDir(),
+			StartupTimeout: 120 * time.Second,
+			GPULayers:      99,
+		},
+		Security: SecurityConfig{
+			SafeMode:        true,
+			AllowedCommands: allowed,
+			Permissions:     defaultPerms,
+			RunTimeout:      5 * time.Minute,
+		},
+		Session: SessionConfig{
+			AutoRecord: true,
+		},
 		LlamaCpp: LlamaCppConfig{
 			URL:          "http://127.0.0.1:8081",
 			StartTimeout: 120 * time.Second,
 		},
-		SyntaxHighlight:       true,
-		AutoFormat:            true,
-		ToolsEnabled:          true,
-		MaxToolCallsPerTurn:   defaultMaxToolCallsPerTurn,
-		MaxOutputBytes:        defaultMaxOutputBytes,
-		ToolResultCompaction:  true,
+		SyntaxHighlight:      true,
+		AutoFormat:           true,
+		ToolsEnabled:         true,
+		MaxToolCallsPerTurn:  defaultMaxToolCallsPerTurn,
+		MaxOutputBytes:       defaultMaxOutputBytes,
+		ToolResultCompaction: true,
 		Memory: MemoryConfig{
 			Enabled:       true,
 			TopK:          5,
@@ -291,10 +361,10 @@ func (c *Config) AliasesByTag(tag string) []string {
  *   }
  */
 func (c *Config) IsCommandAllowed(cmd string) bool {
-	if !c.SafeMode {
+	if !c.Security.SafeMode {
 		return true
 	}
-	for _, allowed := range c.AllowedCommands {
+	for _, allowed := range c.Security.AllowedCommands {
 		if cmd == allowed {
 			return true
 		}
@@ -311,12 +381,12 @@ func (c *Config) IsCommandAllowed(cmd string) bool {
  *   cfg.AddAllowedCommand("git")
  */
 func (c *Config) AddAllowedCommand(cmd string) {
-	for _, existing := range c.AllowedCommands {
+	for _, existing := range c.Security.AllowedCommands {
 		if existing == cmd {
 			return
 		}
 	}
-	c.AllowedCommands = append(c.AllowedCommands, cmd)
+	c.Security.AllowedCommands = append(c.Security.AllowedCommands, cmd)
 }
 
 /** RemoveAllowedCommand removes a command from the AllowedCommands list.
@@ -329,13 +399,13 @@ func (c *Config) AddAllowedCommand(cmd string) {
  *   cfg.RemoveAllowedCommand("git")
  */
 func (c *Config) RemoveAllowedCommand(cmd string) {
-	out := c.AllowedCommands[:0]
-	for _, e := range c.AllowedCommands {
+	out := c.Security.AllowedCommands[:0]
+	for _, e := range c.Security.AllowedCommands {
 		if e != cmd {
 			out = append(out, e)
 		}
 	}
-	c.AllowedCommands = out
+	c.Security.AllowedCommands = out
 }
 
 /** ResetAllowedCommands replaces AllowedCommands with the default list.
@@ -344,8 +414,8 @@ func (c *Config) RemoveAllowedCommand(cmd string) {
  *   cfg.ResetAllowedCommands()
  */
 func (c *Config) ResetAllowedCommands() {
-	c.AllowedCommands = make([]string, len(DefaultAllowedCommands))
-	copy(c.AllowedCommands, DefaultAllowedCommands)
+	c.Security.AllowedCommands = make([]string, len(DefaultAllowedCommands))
+	copy(c.Security.AllowedCommands, DefaultAllowedCommands)
 }
 
 // Permission types
@@ -375,7 +445,7 @@ var AllPermissions = []string{PermRead, PermWrite, PermExec, PermDelete}
  *   }
  */
 func (c *Config) HasPermission(path string, perm string) bool {
-	if c.Permissions == nil {
+	if c.Security.Permissions == nil {
 		return true // No permissions configured means all allowed
 	}
 
@@ -383,7 +453,7 @@ func (c *Config) HasPermission(path string, perm string) bool {
 	bestMatch := "."
 	bestMatchLen := 0
 
-	for prefix := range c.Permissions {
+	for prefix := range c.Security.Permissions {
 		if strings.HasPrefix(path, prefix) || path == prefix {
 			// Check if this is a better (more specific) match
 			if len(prefix) > bestMatchLen {
@@ -394,7 +464,7 @@ func (c *Config) HasPermission(path string, perm string) bool {
 	}
 
 	// Check if the permission is in the list for the best matching prefix
-	for _, p := range c.Permissions[bestMatch] {
+	for _, p := range c.Security.Permissions[bestMatch] {
 		if p == perm {
 			return true
 		}
@@ -413,10 +483,10 @@ func (c *Config) HasPermission(path string, perm string) bool {
  *   cfg.SetPermission("src/", []string{"read"})
  */
 func (c *Config) SetPermission(prefix string, perms []string) {
-	if c.Permissions == nil {
-		c.Permissions = make(map[string][]string)
+	if c.Security.Permissions == nil {
+		c.Security.Permissions = make(map[string][]string)
 	}
-	c.Permissions[prefix] = perms
+	c.Security.Permissions[prefix] = perms
 }
 
 /** AddPermission adds a permission to a path prefix.
@@ -430,17 +500,17 @@ func (c *Config) SetPermission(prefix string, perms []string) {
  *   cfg.AddPermission("src/", "read")
  */
 func (c *Config) AddPermission(prefix string, perm string) {
-	if c.Permissions == nil {
-		c.Permissions = make(map[string][]string)
+	if c.Security.Permissions == nil {
+		c.Security.Permissions = make(map[string][]string)
 	}
-	perms := c.Permissions[prefix]
+	perms := c.Security.Permissions[prefix]
 	// Check if permission already exists
 	for _, p := range perms {
 		if p == perm {
 			return
 		}
 	}
-	c.Permissions[prefix] = append(perms, perm)
+	c.Security.Permissions[prefix] = append(perms, perm)
 }
 
 /** RemovePermission removes a permission from a path prefix.
@@ -454,10 +524,10 @@ func (c *Config) AddPermission(prefix string, perm string) {
  *   cfg.RemovePermission("src/", "write")
  */
 func (c *Config) RemovePermission(prefix string, perm string) {
-	if c.Permissions == nil {
+	if c.Security.Permissions == nil {
 		return
 	}
-	perms, ok := c.Permissions[prefix]
+	perms, ok := c.Security.Permissions[prefix]
 	if !ok {
 		return
 	}
@@ -469,9 +539,9 @@ func (c *Config) RemovePermission(prefix string, perm string) {
 		}
 	}
 	if len(out) == 0 {
-		delete(c.Permissions, prefix)
+		delete(c.Security.Permissions, prefix)
 	} else {
-		c.Permissions[prefix] = out
+		c.Security.Permissions[prefix] = out
 	}
 }
 
@@ -481,7 +551,7 @@ func (c *Config) RemovePermission(prefix string, perm string) {
  *   cfg.ResetPermissions()
  */
 func (c *Config) ResetPermissions() {
-	c.Permissions = map[string][]string{
+	c.Security.Permissions = map[string][]string{
 		".": {PermRead, PermWrite, PermExec, PermDelete},
 	}
 }
@@ -495,10 +565,10 @@ func (c *Config) ResetPermissions() {
  *   string — comma-separated permissions, or "none" if no permissions.
  */
 func (c *Config) PermissionString(prefix string) string {
-	if c.Permissions == nil {
+	if c.Security.Permissions == nil {
 		return "none"
 	}
-	perms, ok := c.Permissions[prefix]
+	perms, ok := c.Security.Permissions[prefix]
 	if !ok || len(perms) == 0 {
 		return "none"
 	}
@@ -696,8 +766,26 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.AgentsDir != "" {
 		cfg.AgentsDir = y.AgentsDir
 	}
-	if y.AutoRecord != nil {
-		cfg.AutoRecord = *y.AutoRecord
+	if y.Session.AutoRecord != nil {
+		cfg.Session.AutoRecord = *y.Session.AutoRecord
+	}
+	if y.Session.RecordPath != "" {
+		cfg.Session.RecordPath = y.Session.RecordPath
+	}
+	if y.Session.ContinuePath != "" {
+		cfg.Session.ContinuePath = y.Session.ContinuePath
+	}
+	if y.Session.ResumeLatest != nil {
+		cfg.Session.ResumeLatest = *y.Session.ResumeLatest
+	}
+	if y.Session.ReplayPath != "" {
+		cfg.Session.ReplayPath = y.Session.ReplayPath
+	}
+	if y.Session.ReplayOutputPath != "" {
+		cfg.Session.ReplayOutputPath = y.Session.ReplayOutputPath
+	}
+	if y.Session.ReplayContinue != nil {
+		cfg.Session.ReplayContinue = *y.Session.ReplayContinue
 	}
 	if y.ModelCacheDB != "" {
 		cfg.ModelCacheDB = y.ModelCacheDB
@@ -730,22 +818,19 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 		cfg.Memory.RagActive = "default"
 		cfg.Memory.RagEnabled = y.Memory.RAG.Enabled
 	}
-	// Load permissions if present, normalising directory prefixes to always
-	// end with "/" so HasPermission's HasPrefix check cannot match sibling
-	// directories (e.g. a prefix "src" must not match "srcOther/").
-	if y.Permissions != nil {
-		normalised := make(map[string][]string, len(y.Permissions))
-		for k, v := range y.Permissions {
+	// Load security settings — only override defaults when explicitly set in YAML.
+	if y.Security.Permissions != nil {
+		normalised := make(map[string][]string, len(y.Security.Permissions))
+		for k, v := range y.Security.Permissions {
 			if k != "." && !strings.HasSuffix(k, "/") {
 				k = k + "/"
 			}
 			normalised[k] = v
 		}
-		cfg.Permissions = normalised
+		cfg.Security.Permissions = normalised
 	}
-	// Load security settings — only override the default when explicitly set in YAML.
-	if y.SafeMode != nil {
-		cfg.SafeMode = *y.SafeMode
+	if y.Security.SafeMode != nil {
+		cfg.Security.SafeMode = *y.Security.SafeMode
 	}
 	if y.SyntaxHighlight != nil {
 		cfg.SyntaxHighlight = *y.SyntaxHighlight
@@ -753,18 +838,26 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.AutoFormat != nil {
 		cfg.AutoFormat = *y.AutoFormat
 	}
-	if len(y.AllowedCommands) > 0 {
-		cfg.AllowedCommands = y.AllowedCommands
+	if len(y.Security.AllowedCommands) > 0 {
+		cfg.Security.AllowedCommands = y.Security.AllowedCommands
 	}
-	// Load timeout settings
-	if y.RunTimeout != "" {
-		if d, err := parseDurationString(y.RunTimeout); err == nil {
-			cfg.RunTimeout = d
+	if y.Security.RunTimeout != "" {
+		if d, err := parseDurationString(y.Security.RunTimeout); err == nil {
+			cfg.Security.RunTimeout = d
 		}
 	}
-	if y.OllamaTimeout != "" {
-		if d, err := parseDurationString(y.OllamaTimeout); err == nil {
-			cfg.OllamaTimeout = d
+	if y.Ollama.URL != "" {
+		cfg.Ollama.URL = y.Ollama.URL
+	}
+	if y.Ollama.Model != "" {
+		cfg.Ollama.Model = y.Ollama.Model
+	}
+	if y.Ollama.ContextLength > 0 {
+		cfg.Ollama.ContextLength = y.Ollama.ContextLength
+	}
+	if y.Ollama.Timeout != "" {
+		if d, err := parseDurationString(y.Ollama.Timeout); err == nil {
+			cfg.Ollama.Timeout = d
 		}
 	}
 	// Load model aliases (backward-compatible: accepts string or struct form in YAML)
@@ -778,27 +871,27 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	// Load llamafile settings
 	if y.Llamafile.ModelsDir != "" {
-		cfg.LlamafileModelsDir = expandTilde(y.Llamafile.ModelsDir)
+		cfg.Llamafile.ModelsDir = expandTilde(y.Llamafile.ModelsDir)
 	}
 	if y.Llamafile.Active != "" {
-		cfg.LlamafileActive = y.Llamafile.Active
+		cfg.Llamafile.Active = y.Llamafile.Active
 	}
 	if y.Llamafile.URL != "" {
-		cfg.LlamafileURL = y.Llamafile.URL
+		cfg.Llamafile.URL = y.Llamafile.URL
 	}
 	if y.Llamafile.StartupTimeout != "" {
 		if d, err := parseDurationString(y.Llamafile.StartupTimeout); err == nil {
-			cfg.LlamafileStartupTimeout = d
+			cfg.Llamafile.StartupTimeout = d
 		}
 	}
 	if y.Llamafile.GPULayers != nil {
-		cfg.LlamafileGPULayers = *y.Llamafile.GPULayers
+		cfg.Llamafile.GPULayers = *y.Llamafile.GPULayers
 	}
 	if y.Llamafile.MaxTokens > 0 {
-		cfg.LlamafileMaxTokens = y.Llamafile.MaxTokens
+		cfg.Llamafile.MaxTokens = y.Llamafile.MaxTokens
 	}
 	for _, m := range y.Llamafile.Models {
-		cfg.LlamafileModels = append(cfg.LlamafileModels, LlamafileEntry{
+		cfg.Llamafile.Models = append(cfg.Llamafile.Models, LlamafileEntry{
 			Name: m.Name, Path: m.Path, ContextLength: m.ContextLength,
 		})
 	}
@@ -933,24 +1026,24 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	if cfg.Memory.KnowledgeDB != "" {
 		y.Memory.KnowledgeBase.Path = cfg.Memory.KnowledgeDB
 	}
-	if cfg.Permissions != nil {
-		y.Permissions = cfg.Permissions
+	if cfg.Security.Permissions != nil {
+		y.Security.Permissions = cfg.Security.Permissions
 	}
-	y.SafeMode = &cfg.SafeMode
+	y.Security.SafeMode = &cfg.Security.SafeMode
 	y.SyntaxHighlight = &cfg.SyntaxHighlight
 	y.AutoFormat = &cfg.AutoFormat
 	if !cfg.ToolResultCompaction {
 		f := false
 		y.Tools.ToolResultCompaction = &f
 	}
-	if len(cfg.AllowedCommands) > 0 {
-		y.AllowedCommands = cfg.AllowedCommands
+	if len(cfg.Security.AllowedCommands) > 0 {
+		y.Security.AllowedCommands = cfg.Security.AllowedCommands
 	}
-	if cfg.RunTimeout > 0 {
-		y.RunTimeout = cfg.RunTimeout.String()
+	if cfg.Security.RunTimeout > 0 {
+		y.Security.RunTimeout = cfg.Security.RunTimeout.String()
 	}
-	if cfg.OllamaTimeout > 0 {
-		y.OllamaTimeout = cfg.OllamaTimeout.String()
+	if cfg.Ollama.Timeout > 0 {
+		y.Ollama.Timeout = cfg.Ollama.Timeout.String()
 	}
 
 	out, err := yaml.Marshal(&y)
@@ -1121,7 +1214,7 @@ func expandTilde(s string) string {
  *   }
  */
 func (c *Config) ActiveLlamafileEntry() *LlamafileEntry {
-	return c.LlamafileEntryByName(c.LlamafileActive)
+	return c.LlamafileEntryByName(c.Llamafile.Active)
 }
 
 /** ActiveLlamafileContextLength returns the configured context window size for
@@ -1159,9 +1252,9 @@ func (c *Config) LlamafileEntryByName(name string) *LlamafileEntry {
 	if name == "" {
 		return nil
 	}
-	for i := range c.LlamafileModels {
-		if c.LlamafileModels[i].Name == name {
-			return &c.LlamafileModels[i]
+	for i := range c.Llamafile.Models {
+		if c.Llamafile.Models[i].Name == name {
+			return &c.Llamafile.Models[i]
 		}
 	}
 	return nil
@@ -1177,13 +1270,13 @@ func (c *Config) LlamafileEntryByName(name string) *LlamafileEntry {
  *   cfg.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: "qwen", Path: "/home/user/Models/qwen.llamafile"})
  */
 func (c *Config) AddOrUpdateLlamafileEntry(e LlamafileEntry) {
-	for i := range c.LlamafileModels {
-		if c.LlamafileModels[i].Name == e.Name {
-			c.LlamafileModels[i] = e
+	for i := range c.Llamafile.Models {
+		if c.Llamafile.Models[i].Name == e.Name {
+			c.Llamafile.Models[i] = e
 			return
 		}
 	}
-	c.LlamafileModels = append(c.LlamafileModels, e)
+	c.Llamafile.Models = append(c.Llamafile.Models, e)
 }
 
 /** SaveLlamafileConfig writes the llamafile registry back to agents/harvey.yaml,
@@ -1211,25 +1304,25 @@ func SaveLlamafileConfig(ws *Workspace, cfg *Config) error {
 	if data, err := os.ReadFile(yamlPath); err == nil {
 		_ = yaml.Unmarshal(data, &y)
 	}
-	entries := make([]llamafileEntryYAML, len(cfg.LlamafileModels))
-	for i, e := range cfg.LlamafileModels {
+	entries := make([]llamafileEntryYAML, len(cfg.Llamafile.Models))
+	for i, e := range cfg.Llamafile.Models {
 		entries[i] = llamafileEntryYAML{Name: e.Name, Path: e.Path, ContextLength: e.ContextLength}
 	}
 	startupTO := ""
-	if cfg.LlamafileStartupTimeout > 0 && cfg.LlamafileStartupTimeout != 120*time.Second {
-		startupTO = cfg.LlamafileStartupTimeout.String()
+	if cfg.Llamafile.StartupTimeout > 0 && cfg.Llamafile.StartupTimeout != 120*time.Second {
+		startupTO = cfg.Llamafile.StartupTimeout.String()
 	}
 	var gpuLayers *int
-	if cfg.LlamafileGPULayers != 99 { // only persist when overriding the default
-		gpuLayers = &cfg.LlamafileGPULayers
+	if cfg.Llamafile.GPULayers != 99 { // only persist when overriding the default
+		gpuLayers = &cfg.Llamafile.GPULayers
 	}
 	y.Llamafile = llamafileYAML{
-		ModelsDir:      cfg.LlamafileModelsDir,
-		Active:         cfg.LlamafileActive,
-		URL:            cfg.LlamafileURL,
+		ModelsDir:      cfg.Llamafile.ModelsDir,
+		Active:         cfg.Llamafile.Active,
+		URL:            cfg.Llamafile.URL,
 		StartupTimeout: startupTO,
 		GPULayers:      gpuLayers,
-		MaxTokens:      cfg.LlamafileMaxTokens,
+		MaxTokens:      cfg.Llamafile.MaxTokens,
 		Models:         entries,
 	}
 	out, err := yaml.Marshal(&y)

@@ -512,7 +512,7 @@ func TestFormatDuration_singular(t *testing.T) {
 func makeChunkTestAgent(t *testing.T, contextTokens int, input string) (*Agent, string) {
 	t.Helper()
 	a, root := makeTestAgent(t)
-	a.Config.OllamaContextLength = contextTokens
+	a.Config.Ollama.ContextLength = contextTokens
 	a.Config.Chunking = DefaultChunkConfig()
 	a.Client = &mockLLMClient{reply: "chunk synthesis result"}
 	a.In = strings.NewReader(input)

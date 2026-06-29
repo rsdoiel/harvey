@@ -152,7 +152,7 @@ func memoryIDCandidates(a *Agent) []string {
  *   names := llamafileNameCandidates(a) // ["granite3.3-2b", ...]
  */
 func llamafileNameCandidates(a *Agent) []string {
-	models := a.Config.LlamafileModels
+	models := a.Config.Llamafile.Models
 	if len(models) == 0 {
 		return nil
 	}

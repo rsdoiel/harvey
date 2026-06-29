@@ -498,7 +498,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				return "", fmt.Errorf("run_command: %w", err)
 			}
 
-			if a.Config.SafeMode && !a.Config.IsCommandAllowed(program) {
+			if a.Config.Security.SafeMode && !a.Config.IsCommandAllowed(program) {
 				if a.AuditBuffer != nil {
 					a.AuditBuffer.Log(ActionCommand, cmdStr, StatusDenied)
 				}
@@ -510,8 +510,8 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 
 			var runCtx context.Context
 			var cancel context.CancelFunc
-			if a.Config.RunTimeout > 0 {
-				runCtx, cancel = context.WithTimeout(ctx, a.Config.RunTimeout)
+			if a.Config.Security.RunTimeout > 0 {
+				runCtx, cancel = context.WithTimeout(ctx, a.Config.Security.RunTimeout)
 			} else {
 				runCtx, cancel = context.WithCancel(ctx)
 			}
@@ -767,12 +767,12 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 
 			var embedder Embedder
 			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+				embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
 			}
 
 			budget := topK * 300
-			if a.Config.OllamaContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
-				budget = int(float64(a.Config.OllamaContextLength) * a.Config.Memory.BudgetPct)
+			if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
+				budget = int(float64(a.Config.Ollama.ContextLength) * a.Config.Memory.BudgetPct)
 			}
 
 			results, err := a.Memory.Unified.Recall(query, embedder, budget)
@@ -830,7 +830,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			}
 
 			// Safe-mode guard: describe without modifying.
-			if a.Config.SafeMode {
+			if a.Config.Security.SafeMode {
 				return fmt.Sprintf(
 					"update_memory [safe mode]: would update %q with new content — disable safe mode to apply.",
 					id,
@@ -889,7 +889,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			}
 
 			// Safe-mode guard: describe without archiving.
-			if a.Config.SafeMode {
+			if a.Config.Security.SafeMode {
 				return fmt.Sprintf(
 					"delete_memory [safe mode]: would archive %q — disable safe mode to apply.",
 					id,
@@ -942,7 +942,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			// Try to get a vector embedder from the active RAG store.
 			var embedder Embedder
 			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				embedder = NewEmbedderForEntry(entry, a.Config.OllamaURL)
+				embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
 			}
 
 			// Embed the criteria once (fails silently → keyword fallback).
@@ -984,7 +984,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			}
 
 			// Safe-mode guard: describe without modifying.
-			if a.Config.SafeMode {
+			if a.Config.Security.SafeMode {
 				return fmt.Sprintf(
 					"filter_context [safe mode]: would remove %d messages matching %q — disable safe mode to apply.",
 					removed, criteria,
@@ -1062,7 +1062,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			}
 
 			// Safe-mode guard: describe without writing.
-			if a.Config.SafeMode {
+			if a.Config.Security.SafeMode {
 				return fmt.Sprintf(
 					"add_memory [safe mode]: would save %q as %s — disable safe mode to apply.",
 					content, memTypeStr,
@@ -1137,7 +1137,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			keep := turns[n:]
 
 			// Safe-mode guard: describe without modifying history.
-			if a.Config.SafeMode {
+			if a.Config.Security.SafeMode {
 				return fmt.Sprintf(
 					"summary_context [safe mode]: would summarise %d messages into 1 entry (%d messages remain); disable safe mode to apply.",
 					n, len(keep),
@@ -1310,7 +1310,7 @@ func applyAutoFormat(a *Agent, relPath string, original string) string {
 		return ""
 	}
 	// File-mode formatters require safe_mode=false.
-	if f.Mode() == FileFormatter && a.Config.SafeMode {
+	if f.Mode() == FileFormatter && a.Config.Security.SafeMode {
 		return ""
 	}
 	var absPath string
