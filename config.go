@@ -1319,7 +1319,7 @@ func SaveLlamafileConfig(ws *Workspace, cfg *Config) error {
 	}
 	y.Llamafile = llamafileYAML{
 		ModelsDir:      cfg.Llamafile.ModelsDir,
-		Active:         cfg.Llamafile.Active,
+		Active:         "", // blank-slate: never persist the last-used model
 		URL:            cfg.Llamafile.URL,
 		StartupTimeout: startupTO,
 		GPULayers:      gpuLayers,

@@ -124,33 +124,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 		}
 	}
 
-	// Case 1: Active llamafile configured — probe it, offer to start if down.
-	if entry := a.Config.ActiveLlamafileEntry(); entry != nil {
-		absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-		fmt.Fprintf(out, "\n  Connecting to %s (llamafile)…", entry.Name)
-		if ProbeLlamafile(a.Config.Llamafile.URL) {
-			fmt.Fprintln(out, " "+green("✓"))
-			return a.useLlamafileEntry(entry.Name, out)
-		}
-		fmt.Fprintln(out, " "+yellow("✗")+" not running")
-		if askYesNo(reader, out, fmt.Sprintf("    Start %s now? [Y/n] ", entry.Name), true) {
-			fmt.Fprintf(out, "  Connecting to %s (llamafile)…\n", entry.Name)
-			proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
-			if err != nil {
-				fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
-			} else {
-				a.wireLlamafileBackend(proc, entry.Name)
-				fmt.Fprintf(out, "  %s Ready\n", green("✓"))
-				return a.useLlamafileEntry(entry.Name, out)
-			}
-		}
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, dim("  No backend selected."))
-		fmt.Fprintln(out, dim("  → If Ollama is installed, use /ollama start once inside."))
-		return nil
-	}
-
-	// Case 2: Registered llamafiles exist but none is active — show combined picker
+	// Case 2: Registered llamafiles exist — show combined picker
 	// with llamafiles first, Ollama models second.
 	if len(a.Config.Llamafile.Models) > 0 {
 		return a.pickBackend(reader, out, preferredModel)

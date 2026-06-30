@@ -429,7 +429,13 @@ func (a *Agent) Run(out io.Writer) error {
 	agentsDir := filepath.Join(a.Workspace.Root, "agents")
 	if adopted := a.tryAdoptPriorBackend(agentsDir, out); !adopted {
 		// Backend selection — use sessionModel as the preferred model hint.
-		if err := a.selectBackend(reader, out, sessionModel); err != nil {
+		// If no session hint is set but the --llamafile flag set Config.Llamafile.Active,
+		// use it so pickBackend can auto-select without an extra interactive prompt.
+		hint := sessionModel
+		if hint == "" && a.Config.Llamafile.Active != "" {
+			hint = a.Config.Llamafile.Active
+		}
+		if err := a.selectBackend(reader, out, hint); err != nil {
 			return err
 		}
 	}
