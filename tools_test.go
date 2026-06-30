@@ -516,6 +516,7 @@ func makeChunkTestAgent(t *testing.T, contextTokens int, input string) (*Agent, 
 	a.Config.Chunking = DefaultChunkConfig()
 	a.Client = &mockLLMClient{reply: "chunk synthesis result"}
 	a.In = strings.NewReader(input)
+	a.Out = io.Discard
 	return a, root
 }
 

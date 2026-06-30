@@ -120,7 +120,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 					budget := int(float64(rem) * a.Config.Chunking.Threshold)
 					if exceeded, size, statErr := fileExceedsBudget(resolved, budget); statErr == nil && exceeded {
 						lastMsg := lastUserMessage(a)
-						instruction, cancelled := promptChunkInstruction(a.In, os.Stdout, p, int(size/4), budget, lastMsg)
+						instruction, cancelled := promptChunkInstruction(a.In, a.Out, p, int(size/4), budget, lastMsg)
 						if cancelled {
 							return "File read cancelled by user.", nil
 						}
@@ -144,7 +144,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 						docType := DetectDocType(resolved)
 						chunks := ChunkDocument(string(chunkData), a.Config.Chunking, docType)
 						if len(chunks) > a.Config.Chunking.MaxChunks {
-							fmt.Fprintf(os.Stdout, "Warning: document split into %d chunks (max %d); proceeding.\n",
+							fmt.Fprintf(a.Out, "Warning: document split into %d chunks (max %d); proceeding.\n",
 								len(chunks), a.Config.Chunking.MaxChunks)
 						}
 						params := ChunkAnalysisParams{
@@ -155,7 +155,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 							DocType:     docType,
 							Config:      a.Config.Chunking,
 						}
-						synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, a.DebugLog, params, os.Stdout)
+						synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, a.DebugLog, params, a.Out)
 						if synthErr != nil {
 							return "", fmt.Errorf("read_file: chunked analysis: %w", synthErr)
 						}

@@ -3,6 +3,7 @@ package harvey
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,7 @@ func newToolAgent(t *testing.T, override func(*Config)) (*Agent, *ToolRegistry) 
 		Workspace: ws,
 		Tools:     reg,
 		In:        strings.NewReader(""),
+		Out:       io.Discard,
 	}
 	RegisterBuiltinTools(reg, a)
 	return a, reg

@@ -377,10 +377,31 @@ func cmdMemoryProfile(a *Agent, args []string, out io.Writer, store *MemoryStore
 		return cmdMemoryProfileUse(a, args[1:], out, store)
 	case "rename":
 		return cmdMemoryProfileRename(a, args[1:], out, store)
+	case "on":
+		return cmdMemoryProfileSetInject(a, true, out)
+	case "off":
+		return cmdMemoryProfileSetInject(a, false, out)
 	default:
-		fmt.Fprintf(out, "Usage: /memory profile <list|show|edit|use|rename> [args...]\n")
+		fmt.Fprintf(out, "Usage: /memory profile <list|show|edit|use|rename|on|off> [args...]\n")
 		return nil
 	}
+}
+
+// cmdMemoryProfileSetInject enables or disables workspace_profile injection at
+// session start (Config.Memory.InjectOnStart) and persists the change to harvey.yaml.
+func cmdMemoryProfileSetInject(a *Agent, enable bool, out io.Writer) error {
+	a.Config.Memory.InjectOnStart = enable
+	if a.Workspace != nil {
+		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, "  Warning: could not persist setting: %v\n", err)
+		}
+	}
+	if enable {
+		fmt.Fprintln(out, "  Profile injection on — workspace profile will be injected at session start.")
+	} else {
+		fmt.Fprintln(out, "  Profile injection off — workspace profile will not be injected at session start.")
+	}
+	return nil
 }
 
 // cmdMemoryProfileList lists active and archived workspace profiles (old "show" behavior).

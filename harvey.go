@@ -164,6 +164,7 @@ type Agent struct {
 	Skills        SkillCatalog   // skills discovered at startup; nil until loadSkills runs
 	Recorder      *Recorder
 	In            io.Reader      // source for interactive prompts; defaults to os.Stdin
+	Out           io.Writer      // destination for interactive output; defaults to os.Stdout
 	PinnedContext string         // persists across /clear; re-injected after system prompt
 	Routes        *RouteRegistry // registered remote endpoints; nil when routing not configured
 	ActiveSkill   string         // name of the most recently loaded skill; "" when none
@@ -255,6 +256,7 @@ func NewAgent(cfg *Config, ws *Workspace) *Agent {
 		Workspace:   ws,
 		Routes:      rr,
 		In:          os.Stdin,
+		Out:         os.Stdout,
 		commands:    make(map[string]*Command),
 		AuditBuffer: buf,
 	}
