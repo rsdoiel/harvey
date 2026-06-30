@@ -2954,15 +2954,36 @@ that follows the Agent Skills specification (https://agentskills.io/home).
 # SLASH COMMANDS
 
 ~~~
-  /skill                   list all discovered skills
-  /skill list              same as above
-  /skill load NAME         inject the full skill body into context
-  /skill show NAME         show path, compatibility, and license (alias: info)
-  /skill info NAME         alias for show
-  /skill status            count skills by scope
-  /skill new               interactive wizard to create a new skill
-  /skill run NAME          run a skill (dispatches compiled scripts if available)
+  /skill                        list all discovered skills
+  /skill list                   same as above
+  /skill load NAME              inject the full skill body into context
+  /skill show NAME              show path, compatibility, and license (alias: info)
+  /skill info NAME              alias for show
+  /skill status                 count skills by scope
+  /skill new                    interactive wizard to create a new skill
+  /skill run NAME               run a skill (dispatches compiled scripts if available)
+  /skill suggest [SESSION]      mine a session recording for reusable workflow
+                                candidates; for each accepted candidate, writes a
+                                SKILL.md stub to agents/skills/<name>/. SESSION is
+                                a path to a .spmd session file; omit to use the
+                                most recent session in agents/sessions/.
 ~~~
+
+# CREATING SKILLS FROM SESSIONS
+
+/skill suggest analyses a session transcript with the active LLM and proposes
+multi-step workflows that appear in the session as skill candidates. Only
+workflows with at least three distinct repeatable steps are proposed.
+
+For each proposed skill you can:
+  y — accept and write agents/skills/<name>/SKILL.md immediately
+  n — skip this candidate
+  q — stop the review loop
+
+Accepted skills are written to the live agents/skills/ directory and are
+immediately available via /skill load. Review the generated SKILL.md and
+refine the instructions before committing it. Compile the skill with
+/skill run compile-skill to generate executable scripts.
 
 # SEE ALSO
 

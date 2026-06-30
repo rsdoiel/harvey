@@ -1235,3 +1235,17 @@ A user with both `memory.enabled` and `rag.enabled` may receive RAG content twic
 | Knowledge base | `/kb observe` (explicit) | On-demand via `UnifiedMemory` |
 
 **Consequences.** Each silo has its own command namespace (`/rag`, `/memory`, `/kb`). The unified retrieval via `/memory recall` is the recommended entry point. All three silos share a token budget enforced at injection time.
+
+---
+
+## 2026-06-30 — Skill suggestions from session transcripts
+
+**Context.** Sessions accumulate reusable multi-step workflows that would benefit from being captured as skills. A mechanism is needed to propose skill candidates automatically rather than requiring users to author SKILL.md files by hand.
+
+**Decision 1 — Output goes directly to the live `agents/skills/` directory**, not a staging area. Each accepted candidate immediately becomes loadable via `/skill load`. The generated SKILL.md is clearly marked as auto-generated and the user is expected to review and refine it before committing. This avoids a two-step accept-then-move workflow that adds friction without safety benefit.
+
+**Decision 2 — Command lives on `/skill`, not `/memory`**, as `suggest`. `/skill suggest [SESSION]` fits the skill management namespace naturally; using `/memory suggest` would imply the output is a memory record. The subcommand reads from a session file (defaulting to the most recent `.spmd`) and is otherwise independent of the memory mining pipeline.
+
+**Decision 3 — Separate LLM prompt from `memory mine`**. `skillSuggestorPrompt` in `skill_suggestor.go` is a distinct constant from the memory miner's extraction prompt. The output schemas differ (skills need `steps[]` and `variables[]`; memories need `kind` and `confidence`), and mixing them into one prompt would degrade extraction quality for both.
+
+**Consequences.** `Suggestor` in `skill_suggestor.go` owns the full pipeline. `cmdSkill` wires the `suggest` subcommand. `SkillCandidate` reuses `SkillVariable` (updated to add `Type` field and JSON tags). No staging directory is needed.
