@@ -254,6 +254,23 @@ func TestIsConnectionError_nil(t *testing.T) {
 	}
 }
 
+func TestIsConnectionError_unexpectedEndOfJSONInput(t *testing.T) {
+	// json.Decoder returns this exact string when the server closes the stream
+	// mid-JSON (e.g. llama-server OOM or streaming boundary bug with SmolLM3).
+	err := fmt.Errorf("unexpected end of JSON input")
+	if !isConnectionError(err) {
+		t.Error("expected true for 'unexpected end of JSON input'")
+	}
+}
+
+func TestIsConnectionError_wrappedUnexpectedEndOfJSON(t *testing.T) {
+	// same message but wrapped — as anyllm provider may do.
+	err := fmt.Errorf("llamacpp stream: %w", fmt.Errorf("unexpected end of JSON input"))
+	if !isConnectionError(err) {
+		t.Error("expected true for wrapped 'unexpected end of JSON input'")
+	}
+}
+
 // ─── attemptModelSwitch ──────────────────────────────────────────────────────
 
 func TestAttemptModelSwitch_notFound(t *testing.T) {

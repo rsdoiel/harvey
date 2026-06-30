@@ -43,7 +43,8 @@ func isConnectionError(err error) bool {
 	return strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "EOF") ||
 		strings.Contains(msg, "connection reset") ||
-		strings.Contains(msg, "no route to host")
+		strings.Contains(msg, "no route to host") ||
+		strings.Contains(msg, "unexpected end of JSON input")
 }
 
 // restartActiveLlamafile stops any Harvey-managed llamafile process and
