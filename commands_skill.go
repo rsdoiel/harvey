@@ -115,9 +115,16 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 			args = append(args, chosen)
 		}
 		return skillRun(a, args[1], out)
+	case "suggest":
+		sessionPath := ""
+		if len(args) > 1 {
+			sessionPath = args[1]
+		}
+		sg := NewSuggestor(a.Workspace)
+		return sg.Suggest(context.Background(), sessionPath, a, out, a.In)
 	default:
 		fmt.Fprintf(out, "Unknown skill subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /skill <list|load NAME|info NAME|status|new|run NAME>")
+		fmt.Fprintln(out, "Usage: /skill <list|load NAME|info NAME|status|new|run NAME|suggest [SESSION]>")
 	}
 	return nil
 }

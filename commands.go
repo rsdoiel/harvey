@@ -340,10 +340,10 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdFileTree,
 		},
 		"skill": {
-			Usage:       "/skill <list|load NAME|show NAME|info NAME|status|new|run NAME>",
+			Usage:       "/skill <list|load NAME|show NAME|info NAME|status|new|run NAME|suggest [SESSION]>",
 			Description: "List or load Agent Skills from the skill catalog",
 			Handler:     cmdSkill,
-			Subcommands: []string{"list", "load", "show", "info", "status", "new", "run"},
+			Subcommands: []string{"list", "load", "show", "info", "status", "new", "run", "suggest"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"load": skillNameCandidates,
 				"show": skillNameCandidates,
