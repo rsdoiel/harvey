@@ -180,10 +180,15 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
  *   alias, err := promptLazyRegister(a, selected, os.Stdout)
  */
 func promptLazyRegister(a *Agent, item ModelSummary, out io.Writer) (string, error) {
-	// Check if already aliased.
+	// Check if already aliased. A legacy alias (Engine=="") matches any engine
+	// for backward compatibility. An alias with an explicit engine only matches
+	// when both the model name and engine agree — preventing same-named models
+	// on different backends from sharing an alias.
 	for name, entry := range a.Config.ModelAliases {
 		if strings.EqualFold(entry.Model, item.Name) {
-			return name, nil
+			if entry.Engine == "" || strings.EqualFold(entry.Engine, item.Engine) {
+				return name, nil
+			}
 		}
 	}
 
@@ -208,7 +213,7 @@ func promptLazyRegister(a *Agent, item ModelSummary, out io.Writer) (string, err
 	if a.Config.ModelAliases == nil {
 		a.Config.ModelAliases = make(map[string]ModelAlias)
 	}
-	a.Config.ModelAliases[alias] = ModelAlias{Model: item.Name, Tags: tags}
+	a.Config.ModelAliases[alias] = ModelAlias{Model: item.Name, Engine: item.Engine, Tags: tags}
 	if a.Workspace != nil {
 		_ = SaveModelAliases(a.Workspace, a.Config)
 	}

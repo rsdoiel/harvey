@@ -10,8 +10,9 @@ import "gopkg.in/yaml.v3"
 // ({model: granite3.3:8b, tags: [code, instruct]}) in harvey.yaml.
 // When marshalled, it emits a plain string when Tags is empty, otherwise a struct.
 type modelAliasYAML struct {
-	Model string
-	Tags  []string
+	Model  string
+	Engine string
+	Tags   []string
 }
 
 func (m *modelAliasYAML) UnmarshalYAML(value *yaml.Node) error {
@@ -21,26 +22,29 @@ func (m *modelAliasYAML) UnmarshalYAML(value *yaml.Node) error {
 		return nil
 	}
 	type plain struct {
-		Model string   `yaml:"model"`
-		Tags  []string `yaml:"tags,omitempty"`
+		Model  string   `yaml:"model"`
+		Engine string   `yaml:"engine,omitempty"`
+		Tags   []string `yaml:"tags,omitempty"`
 	}
 	var p plain
 	if err := value.Decode(&p); err != nil {
 		return err
 	}
 	m.Model = p.Model
+	m.Engine = p.Engine
 	m.Tags = p.Tags
 	return nil
 }
 
 func (m modelAliasYAML) MarshalYAML() (interface{}, error) {
-	if len(m.Tags) == 0 {
-		return m.Model, nil // emit as plain string for readability
+	if m.Engine == "" && len(m.Tags) == 0 {
+		return m.Model, nil // emit as plain string for readability (backward compat)
 	}
 	return struct {
-		Model string   `yaml:"model"`
-		Tags  []string `yaml:"tags"`
-	}{m.Model, m.Tags}, nil
+		Model  string   `yaml:"model"`
+		Engine string   `yaml:"engine,omitempty"`
+		Tags   []string `yaml:"tags,omitempty"`
+	}{m.Model, m.Engine, m.Tags}, nil
 }
 
 // ragStoreYAML is the on-disk representation of one entry under rag.stores.

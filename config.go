@@ -866,7 +866,7 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 			cfg.ModelAliases = make(map[string]ModelAlias)
 		}
 		for k, v := range y.ModelAliases {
-			cfg.ModelAliases[strings.ToLower(k)] = ModelAlias{Model: v.Model, Tags: v.Tags}
+			cfg.ModelAliases[strings.ToLower(k)] = ModelAlias{Model: v.Model, Engine: v.Engine, Tags: v.Tags}
 		}
 	}
 	// Load llamafile settings
@@ -1102,7 +1102,7 @@ func SaveModelAliases(ws *Workspace, cfg *Config) error {
 	if len(cfg.ModelAliases) > 0 {
 		yamlAliases := make(map[string]modelAliasYAML, len(cfg.ModelAliases))
 		for k, v := range cfg.ModelAliases {
-			yamlAliases[k] = modelAliasYAML{Model: v.Model, Tags: v.Tags}
+			yamlAliases[k] = modelAliasYAML{Model: v.Model, Engine: v.Engine, Tags: v.Tags}
 		}
 		y.ModelAliases = yamlAliases
 	}
@@ -1128,8 +1128,9 @@ func SaveModelAliases(ws *Workspace, cfg *Config) error {
  *   cfg.ModelAliases["granite"] = ModelAlias{Model: "granite3.3:8b", Tags: []string{"code", "instruct"}}
  */
 type ModelAlias struct {
-	Model string   // full model name / path passed to the backend
-	Tags  []string // purpose labels, e.g. ["code", "instruct"]
+	Model  string   // full model name / path passed to the backend
+	Engine string   // "ollama", "llamafile", or "llamacpp"; "" means any (legacy aliases)
+	Tags   []string // purpose labels, e.g. ["code", "instruct"]
 }
 
 // ─── LlamaCppConfig ───────────────────────────────────────────────────────────
