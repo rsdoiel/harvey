@@ -13,9 +13,9 @@ import (
  * model) without changing the call site.
  *
  * Fields:
- *   Filename    (string)      — display name of the document being analysed.
- *   Chunks      ([]string)    — document segments from ChunkDocument (W2).
- *   Instruction (string)      — the user's chunk prompt (any @mention already resolved out).
+ *   Filename    (string)          — display name of the document being analysed.
+ *   Chunks      ([]DocumentChunk) — document segments from ChunkDocument.
+ *   Instruction (string)          — the user's chunk prompt (any @mention already resolved out).
  *   Model       (string)      — model name for LLM calls; used in recording only.
  *   DocType     (DocType)     — DocTypeProse or DocTypeSource; determines boundary label.
  *   Config      (ChunkConfig) — chunking configuration from harvey.yaml or defaults.
@@ -32,7 +32,7 @@ import (
  */
 type ChunkAnalysisParams struct {
 	Filename    string
-	Chunks      []string
+	Chunks      []DocumentChunk
 	Instruction string
 	Model       string
 	DocType     DocType
@@ -82,8 +82,8 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, db
 		chunkNum := i + 1
 		fmt.Fprintf(w, "Processing chunk %d/%d…\n", chunkNum, n)
 
-		prompt := fmt.Sprintf("%s\n\n---\nChunk %d of %d:\n%s",
-			params.Instruction, chunkNum, n, chunk)
+		prompt := fmt.Sprintf("%s\n\n---\nChunk %d of %d (lines %d–%d):\n%s",
+			params.Instruction, chunkNum, n, chunk.StartLine, chunk.EndLine, chunk.Content)
 		messages := []Message{{Role: "user", Content: prompt}}
 
 		if dbg != nil {

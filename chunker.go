@@ -110,6 +110,34 @@ func DetectDocType(path string) DocType {
 	return DocTypeProse
 }
 
+/** DocumentChunk is a segment of a document produced by ChunkDocument. It
+ * carries the chunk text together with its 1-indexed line span in the original
+ * document so that LLM prompts and tool responses can cite precise locations.
+ *
+ * Fields:
+ *   Content   (string) — the chunk text (trimmed units joined by "\n\n").
+ *   StartLine (int)    — 1-indexed first line of this chunk in the source document.
+ *   EndLine   (int)    — 1-indexed last line of this chunk in the source document.
+ *                        With overlap enabled, adjacent chunks share boundary lines.
+ *
+ * Example:
+ *   for i, ch := range chunks {
+ *       fmt.Printf("chunk %d: lines %d–%d\n", i+1, ch.StartLine, ch.EndLine)
+ *   }
+ */
+type DocumentChunk struct {
+	Content   string
+	StartLine int
+	EndLine   int
+}
+
+// textUnit is an internal paragraph/block unit with its source line span.
+type textUnit struct {
+	content   string
+	startLine int
+	endLine   int
+}
+
 // firstNonSpace returns the first non-whitespace byte of s, or 0 if s is
 // all whitespace. Used to detect whether a split unit begins with a closing
 // delimiter (}, )) that signals end-of-block rather than a new declaration.
@@ -123,33 +151,70 @@ func firstNonSpace(s string) byte {
 	return 0
 }
 
-// splitUnits divides content into logical units for chunk accumulation.
-// Prose: splits on double newlines; empty sections discarded.
-// Source: same split, but units beginning with } or ) are merged into the
-// preceding unit — they are end-of-block fragments, not new declarations.
-func splitUnits(content string, docType DocType) []string {
+// startLineOffset counts '\n' characters before the first non-whitespace byte
+// in s. Used to find where trimmed content starts relative to a paragraph's
+// first line.
+func startLineOffset(s string) int {
+	count := 0
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b == '\n' {
+			count++
+		} else if b != ' ' && b != '\t' && b != '\r' {
+			break
+		}
+	}
+	return count
+}
+
+// splitUnitsWithLines divides content into textUnits, tracking each unit's
+// start and end line in the original content. Prose: splits on double newlines.
+// Source: closing-brace/paren units are merged into the preceding unit.
+func splitUnitsWithLines(content string, docType DocType) []textUnit {
 	parts := strings.Split(content, "\n\n")
-	var units []string
+	var units []textUnit
+	line := 1
+
 	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if docType == DocTypeSource && len(units) > 0 {
-			first := firstNonSpace(p)
-			if first == '}' || first == ')' {
-				units[len(units)-1] = units[len(units)-1] + "\n\n" + p
-				continue
+		trimmed := strings.TrimSpace(p)
+		rawNewlines := strings.Count(p, "\n")
+
+		if trimmed != "" {
+			startLine := line + startLineOffset(p)
+			endLine := startLine + strings.Count(trimmed, "\n")
+
+			if docType == DocTypeSource && len(units) > 0 {
+				first := firstNonSpace(trimmed)
+				if first == '}' || first == ')' {
+					units[len(units)-1].content += "\n\n" + trimmed
+					units[len(units)-1].endLine = endLine
+					line += rawNewlines + 2
+					continue
+				}
 			}
+			units = append(units, textUnit{content: trimmed, startLine: startLine, endLine: endLine})
 		}
-		units = append(units, p)
+		line += rawNewlines + 2
 	}
 	return units
 }
 
-/** ChunkDocument splits content into chunks according to cfg and docType.
+// joinTextUnits joins unit content strings with "\n\n".
+func joinTextUnits(units []textUnit) string {
+	parts := make([]string, len(units))
+	for i, u := range units {
+		parts[i] = u.content
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+/** ChunkDocument splits content into DocumentChunks according to cfg and docType.
  * Returns at least one chunk. When content fits within cfg.ChunkSizeBytes,
- * the returned slice has exactly one element equal to the content.
+ * the returned slice has exactly one element covering the full document.
+ *
+ * Each chunk records its 1-indexed StartLine and EndLine in the original content.
+ * With overlap enabled, the last paragraph of chunk N is repeated at the start
+ * of chunk N+1, so adjacent chunks share boundary line numbers.
  *
  * Overlap behaviour (cfg.Overlap):
  *   "paragraph" — the last unit of chunk N is prepended to chunk N+1.
@@ -160,60 +225,65 @@ func splitUnits(content string, docType DocType) []string {
  * responsibility so it can prompt the user before proceeding.
  *
  * Parameters:
- *   content (string)     — document text to split.
+ *   content (string)      — document text to split.
  *   cfg     (ChunkConfig) — chunking parameters.
- *   docType (DocType)    — DocTypeProse or DocTypeSource.
+ *   docType (DocType)     — DocTypeProse or DocTypeSource.
  *
  * Returns:
- *   []string — non-empty slice of chunk strings.
+ *   []DocumentChunk — non-empty slice; each element carries Content, StartLine, EndLine.
  *
  * Example:
  *   chunks := ChunkDocument(longMarkdown, DefaultChunkConfig(), DocTypeProse)
- *   fmt.Printf("%d chunks\n", len(chunks))
+ *   fmt.Printf("%d chunks, first spans lines %d–%d\n", len(chunks), chunks[0].StartLine, chunks[0].EndLine)
  */
-func ChunkDocument(content string, cfg ChunkConfig, docType DocType) []string {
+func ChunkDocument(content string, cfg ChunkConfig, docType DocType) []DocumentChunk {
+	totalLines := strings.Count(content, "\n") + 1
 	if strings.TrimSpace(content) == "" {
-		return []string{content}
+		return []DocumentChunk{{Content: content, StartLine: 1, EndLine: totalLines}}
 	}
 
-	units := splitUnits(content, docType)
+	units := splitUnitsWithLines(content, docType)
 	if len(units) == 0 {
-		return []string{content}
+		return []DocumentChunk{{Content: content, StartLine: 1, EndLine: totalLines}}
 	}
 
 	threshold := int(float64(cfg.ChunkSizeBytes) * 0.75)
 	noOverlap := cfg.Overlap == "none"
 
-	var chunks []string
-	currentUnits := []string{units[0]}
+	var chunks []DocumentChunk
+	currentUnits := []textUnit{units[0]}
 
 	for i := 1; i < len(units); i++ {
 		unit := units[i]
-		currentContent := strings.Join(currentUnits, "\n\n")
+		currentContent := joinTextUnits(currentUnits)
 
 		if len(currentContent) >= threshold {
-			// Save the current chunk.
-			chunks = append(chunks, currentContent)
-			// Begin the next chunk: with or without overlap.
+			chunks = append(chunks, DocumentChunk{
+				Content:   currentContent,
+				StartLine: currentUnits[0].startLine,
+				EndLine:   currentUnits[len(currentUnits)-1].endLine,
+			})
 			if noOverlap {
-				currentUnits = []string{unit}
+				currentUnits = []textUnit{unit}
 			} else {
-				// Overlap: start with the last unit of the chunk just saved.
 				overlap := currentUnits[len(currentUnits)-1]
-				currentUnits = []string{overlap, unit}
+				currentUnits = []textUnit{overlap, unit}
 			}
 		} else {
 			currentUnits = append(currentUnits, unit)
 		}
 	}
 
-	// Flush whatever remains.
 	if len(currentUnits) > 0 {
-		chunks = append(chunks, strings.Join(currentUnits, "\n\n"))
+		chunks = append(chunks, DocumentChunk{
+			Content:   joinTextUnits(currentUnits),
+			StartLine: currentUnits[0].startLine,
+			EndLine:   currentUnits[len(currentUnits)-1].endLine,
+		})
 	}
 
 	if len(chunks) == 0 {
-		return []string{content}
+		return []DocumentChunk{{Content: content, StartLine: 1, EndLine: totalLines}}
 	}
 	return chunks
 }
