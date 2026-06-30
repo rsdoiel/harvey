@@ -1,4 +1,4 @@
-%harvey(1) user manual | version 0.0.15a faf5eb1
+%harvey(1) user manual | version 0.0.15a ac00aec
 % R. S. Doiel
 % 2026-06-28
 
@@ -146,18 +146,13 @@ are also available from the shell: harvey --help TOPIC.
 
 **Model and backend**
 
-/model [list|use [NAME]|show [NAME]|status|mode [MODEL] MODE|alias ...]
+/model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...]
 : unified model management across llamafile, Ollama, and llama.cpp backends;
-  use with no argument shows a combined picker of all locally available models
+  place .llamafile or .gguf files in ~/Models/ — Harvey discovers them automatically;
+  Ollama models are listed live when Ollama is running; use ollama CLI for pull/rm
 
 /workspace <status|init [PATH]>
 : show workspace root, alias count and profile; seed aliases from another workspace
-
-/ollama <start|stop|status|logs|env|pull MODEL|push MODEL|rm MODEL|probe [MODEL]|clean|...>
-: Ollama daemon control and model registry (pull, push, rm, probe)
-
-/llamafile <add [PATH] [NAME]|show [NAME]|list|start [NAME]|status|remove NAME|download>
-: register and manage local llamafile executables
 
 /inspect [MODEL]
 : show detailed model information (Ollama only)

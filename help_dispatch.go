@@ -31,12 +31,10 @@ func HelpTopicsText() string {
   inspect         Inspect RAG stores, memory records, and model details
   kb              Knowledge base — experiments, observations, and concepts
   learn           Overview of Harvey's three-silo memory architecture
-  llamafile       (removed — use /model; see /help model)
   model           Unified model management across all backends (list, use, show, status, stop, clean)
   model-alias     @mention switching, purpose tags, and /model alias management
   loop            Repeat a prompt or command on a timed interval
   memory          Experience memory — mine, list, show, flag, forget
-  ollama          (removed — use the ollama CLI for model management; Harvey queries Ollama automatically)
   pdf-tools       PDF extraction tools (requires poppler)
   pipeline        Multi-step pipelines chaining prompts and commands
   plan            Create and track multi-step work plans
@@ -125,9 +123,6 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(KBHelpText)
 	case "learn", "memory-overview":
 		f(LearnHelpText)
-	case "llamafile":
-		fmt.Fprintln(w, "The /llamafile command has been removed. Use /model for all model management.\nSee: /help model")
-
 	case "loop":
 		f(LoopHelpText)
 	case "memory", "profile", "recall":
@@ -136,8 +131,6 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(ModelHelpText)
 	case "model-alias", "alias":
 		f(ModelAliasHelpText)
-	case "ollama":
-		fmt.Fprintln(w, "The /ollama command has been removed. Use the ollama CLI for model management.\nHarvey queries Ollama automatically when it is running.\nSee: /help model")
 	case "pdf-tools", "pdftools", "pdf":
 		fmt.Fprint(w, PDFToolsHelpText)
 	case "pipeline":

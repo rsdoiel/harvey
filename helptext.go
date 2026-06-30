@@ -320,25 +320,6 @@ Alternatively, install Ollama (https://ollama.com) and pull a model:
 
 	// ─── Model backends ─────────────────────────────────────────────────────────
 
-	// LlamafileHelpText is a redirect stub — the /llamafile command has been removed.
-	// Model management is now unified under /model.
-	LlamafileHelpText = `The /llamafile command has been removed.
-Use /model for all model management — see /help model.
-
-  /model list           — list all available models (llamafile, llama.cpp, Ollama)
-  /model use [NAME]     — select and start a model
-  /model stop           — stop the active llamafile or llama.cpp server
-  /model status         — show active backend status
-  /model clean          — remove aliases pointing to models no longer on disk
-
-To add a llamafile model: place the .llamafile file in ~/Models/ — Harvey
-discovers it automatically on the next /model list or /model use.
-
-For recommended llamafile models visit:
-  https://huggingface.co/Mozilla/llamafile-models
-
-`
-
 	// ModelHelpText is shown by /help model and harvey --help model.
 	ModelHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
 % R. S. Doiel
@@ -395,8 +376,8 @@ the scene.
     Set the tool-execution mode for the active model. MODE must be one of:
 
       auto         Clear any previously set override and return to the
-                   capability-detected default (SupportsTools flag from
-                   /ollama probe). Use this to undo a manual mode setting.
+                   capability-detected default. Use this to undo a manual
+                   mode setting.
 
       structured   Force OpenAI-style tool_calls (RunToolLoop). Use when the
                    model supports structured tool calls but the auto-probe
@@ -574,114 +555,6 @@ model_aliases:
   /help model        — unified /model command reference
   /help routing      — named remote endpoints and @mention dispatch
   /help workspace    — seed aliases from another workspace (harvey init)
-
-`
-
-	// OllamaHelpText is shown by /help ollama and harvey --help ollama.
-	// Generates harvey-ollama.7.md.
-	OllamaHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
-% R. S. Doiel
-% {release_date}
-
-# NAME
-
-OLLAMA COMMANDS
-
-# SYNOPSIS
-
-/ollama SUBCOMMAND [ARGS...]
-
-# DESCRIPTION
-
-The /ollama command controls the local Ollama service and manages models
-from inside the Harvey REPL. Every subcommand maps directly to an ollama
-CLI operation.
-
-# SUBCOMMANDS
-
-Service control:
-
-  /ollama start [debug]
-    Launch ollama serve in the background. If Ollama is already running,
-    prints a warning and exits. Pass debug to also set OLLAMA_DEBUG=1
-    in the Ollama process; output is captured to agents/logs/ollama-TIMESTAMP.log.
-    Note: OLLAMA_DEBUG is inherited from Harvey's process — start Harvey with
-    --debug for full diagnostic coverage.
-
-  /ollama stop
-    Print a reminder to stop Ollama via your system's service manager
-    (e.g. systemctl stop ollama). Harvey does not stop the daemon itself.
-
-  /ollama status
-    Check whether the Ollama daemon is reachable at the configured URL.
-
-  /ollama logs
-    Tail the Ollama service log. Tries ollama logs first, falls back
-    to journalctl -u ollama.
-
-  /ollama env
-    Show the Ollama environment variables (OLLAMA_HOST, etc.) as seen
-    by the Harvey process.
-
-Registry and model management:
-
-  /ollama list
-    List installed Ollama models. For unified listing across all backends
-    use /model list instead.
-
-  /ollama ps
-    Show which models are currently loaded in memory (delegates to ollama ps).
-
-  /ollama pull MODEL
-    Download a model from the Ollama registry (e.g. /ollama pull mistral).
-
-  /ollama push MODEL
-    Upload a model to the Ollama registry.
-
-  /ollama show MODEL
-    Display a model's Modelfile, parameters, and template.
-
-  /ollama create NAME [-f MODELFILE]
-    Create a new model from a Modelfile.
-
-  /ollama cp SOURCE DEST
-    Copy an installed model to a new name.
-
-  /ollama rm MODEL [MODEL...]
-    Remove one or more installed models. Also prunes model_aliases entries
-    and model_map keys in harvey.yaml that referenced the removed model.
-
-  /ollama clean
-    Remove stale Ollama references from harvey.yaml. Queries the live model
-    list and deletes model_aliases whose target is no longer installed.
-    Run this after pulling or deleting models outside Harvey.
-
-  /ollama run MODEL [PROMPT]
-    Launch an interactive ollama run session inside the terminal.
-    stdin, stdout, and stderr are passed through directly.
-
-Capability probing:
-
-  /ollama probe [MODEL]
-    Probe MODEL (or all unprobed models) for tool-calling support, embedding
-    capability, and code-block format. Results are cached in model_cache.db
-    and used by /model to display capability columns.
-
-  /ollama probe-all
-    Re-probe every installed model, refreshing cached capability data.
-    Equivalent to /ollama probe --all.
-
-Model aliases (deprecated — use /model alias instead):
-
-  /ollama alias NAME FULLNAME
-  /ollama alias list
-  /ollama alias remove NAME
-    These are now forwarded to /model alias. Use /model alias directly.
-
-# SEE ALSO
-
-  /help model        — unified model selection, alias management, @mention routing
-  /help routing      — add a remote Ollama server as a named endpoint
 
 `
 
