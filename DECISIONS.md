@@ -4,6 +4,22 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-30 — Shared `probeLlamaCppAndCache` helper for capability detection
+
+**Context.** `ProbeLlamafileProps` was already implemented and wired for llamafile (via `useLlamafileEntry` in `backend_startup.go`), but the llama.cpp startup path (`startLlamaCppModelPath` in `backend_llamacpp.go`) never called it. As a result, `toolsReliable()` always found no `ModelCache` entry for llama.cpp models and returned false — but tool definitions were still sent, causing the model to hallucinate rather than call them.
+
+**Decision.** Extract the probe-then-cache-write logic into a `probeLlamaCppAndCache(a *Agent, modelName, baseURL string)` helper in `backend_llamacpp.go`. Wire it into both paths:
+- `useLlamafileEntry` in `backend_startup.go` (replaced inline block with one call)
+- `startLlamaCppModelPath` in `backend_llamacpp.go` (new, called after backend is fully wired)
+
+The function is a no-op when `a.ModelCache == nil` or when an existing entry has `ProbeLevel != "none"`, preserving the skip-on-re-probe behaviour.
+
+**Rejected.** Duplicating the inline block in `startLlamaCppModelPath` would have caused the two paths to drift. A method on `Agent` was also considered but adds no real benefit over a package-level helper that takes `*Agent`.
+
+**Consequences.** Both llamafile and llama.cpp models now populate `model_cache.db` immediately after startup. `toolsReliable()` sees the capability entry on the first turn rather than defaulting to `CapNo`.
+
+---
+
 ## 2026-06-30 — `/ollama` command removed; Ollama management delegated to the Ollama CLI
 
 **Context.** Harvey had a large `/ollama` command with subcommands covering start/stop/status, server lifecycle, model listing, pull/push/rm, probe, logs, env, ps, and alias management. Most of these duplicate functionality already covered by the `ollama` CLI itself. The surface was redundant, brittle (Harvey had to maintain parity with the Ollama API), and added cognitive load for users who switch between Harvey and the shell. The unified `/model` command (introduced 2026-06-20) already provided a backend-agnostic entry point for model switching. The alias subcommand was already shared.

@@ -83,19 +83,12 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
   RunChunkedAnalysis called client.Chat() with no DebugLog instrumentation.
   Fixed 2026-06-29 (commit faf5eb1) — added *DebugLog nil-safe parameter.
 
-- [ ] **Llamafile capability probe missing — tool support assumed, not detected.**
-  Harvey probes `GET /v1/models` for `n_ctx` only. The llama.cpp `/props`
-  endpoint returns `chat_template`, which indicates native tool-call support via
-  markers like `<tool_call>` (Qwen/Hermes), `[TOOL_CALLS]` (Mistral),
-  `<|python_tag|>` (Llama 3.1+), or `<|tool_call|>` (Phi-3/4). Without this,
-  `toolsReliable()` has no cache entry for llamafile models and falls back to
-  `CapNo` — but the tool definitions are still sent to the model, which ignores
-  them and hallucinates instead of calling `read_file`. Fix: add
-  `ProbeLlamafileProps(baseURL) LlamafileProps` that reads `/props`, checks
-  the chat template for tool-call markers, and writes `SupportsTools`
-  (and `ToolMode`) into `model_cache.db` when a model is first started.
-  Also extend the `/v1/models` probe to capture `n_ctx_train` (training
-  context ceiling) alongside the runtime `n_ctx`.
+- [x] **Llamafile capability probe missing — tool support assumed, not detected.**
+  `ProbeLlamafileProps` reads `/props`, checks `chat_template` for tool markers
+  (`<tool_call>`, `[TOOL_CALLS]`, `<|python_tag|>`, `<|tool_call|>`), and writes
+  `SupportsTools` + `ToolMode` into `model_cache.db`. Wired for llamafile via
+  `useLlamafileEntry` and for llama.cpp via `startLlamaCppModelPath`; both share
+  the `probeLlamaCppAndCache` helper in `backend_llamacpp.go`.
 
 - [x] **Chunked analysis not triggered for large files (W5 wiring incomplete).**
   Root cause: the chunking guard only existed in the `read_file` tool handler

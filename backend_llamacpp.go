@@ -343,6 +343,27 @@ func ggufModelName(path string) string {
 	return strings.TrimSuffix(base, ".gguf")
 }
 
+// probeLlamaCppAndCache probes the /props endpoint of a running llama.cpp or
+// llamafile server and writes a capability entry to a.ModelCache. It is a
+// no-op when a.ModelCache is nil or the model already has a non-"none" entry.
+func probeLlamaCppAndCache(a *Agent, modelName, baseURL string) {
+	if a.ModelCache == nil {
+		return
+	}
+	existing, _ := a.ModelCache.Get(modelName)
+	if existing != nil && existing.ProbeLevel != "none" {
+		return
+	}
+	props := ProbeLlamafileProps(baseURL)
+	_ = a.ModelCache.Set(&ModelCapability{
+		Name:          modelName,
+		SupportsTools: props.SupportsTools,
+		ToolMode:      props.ToolMode,
+		ProbeLevel:    "fast",
+		ProbedAt:      time.Now(),
+	})
+}
+
 // startLlamaCppModelPath starts llama-server for the model at modelPath,
 // stops any Harvey-managed backend first, then wires a.Client and a.Backend.
 func startLlamaCppModelPath(a *Agent, modelPath string, out io.Writer) error {
@@ -371,6 +392,7 @@ func startLlamaCppModelPath(a *Agent, modelPath string, out io.Writer) error {
 	// Clear stale llamafile Active so activeModelLabel and effectiveContextLimit
 	// use a.Backend instead of a stale config entry from the previous model.
 	a.Config.Llamafile.Active = ""
+	probeLlamaCppAndCache(a, b.ActiveModel(), b.BaseURL())
 	return nil
 }
 

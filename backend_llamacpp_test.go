@@ -315,3 +315,101 @@ func TestScanGGUFModels(t *testing.T) {
 		t.Errorf("scanGGUFModels: got %d, want 2", len(paths))
 	}
 }
+
+// ─── capability probe wiring ──────────────────────────────────────────────────
+
+// TestLlamaCppProbeAndCache_WritesCapabilityOnToolModel verifies that after a
+// llama.cpp model is started, the ModelCache contains a capability entry derived
+// from the server's /props response. Uses a mock server so no real llama-server
+// binary is required.
+func TestLlamaCppProbeAndCache_WritesCapabilityOnToolModel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/props":
+			// Qwen-style template — tool calls supported.
+			w.Write([]byte(`{"chat_template":"...{% for tool in tools %}<tool_call>{% endfor %}..."}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cache, err := OpenModelCache(ws, "")
+	if err != nil {
+		t.Fatalf("OpenModelCache: %v", err)
+	}
+	defer cache.Close()
+
+	a := newTestAgent(t)
+	a.Workspace = ws
+	a.ModelCache = cache
+
+	probeLlamaCppAndCache(a, "phi4-Q4_K_M", srv.URL)
+
+	cap, err := cache.Get("phi4-Q4_K_M")
+	if err != nil || cap == nil {
+		t.Fatal("expected capability entry in ModelCache after probe, got nil")
+	}
+	if cap.SupportsTools != CapYes {
+		t.Errorf("expected SupportsTools=CapYes, got %v", cap.SupportsTools)
+	}
+	if cap.ToolMode != ToolModeStructured {
+		t.Errorf("expected ToolMode=ToolModeStructured, got %q", cap.ToolMode)
+	}
+	if cap.ProbeLevel != "fast" {
+		t.Errorf("expected ProbeLevel=fast, got %q", cap.ProbeLevel)
+	}
+}
+
+// TestLlamaCppProbeAndCache_SkipsIfAlreadyProbed verifies that an existing
+// cache entry with ProbeLevel != "none" is not overwritten.
+func TestLlamaCppProbeAndCache_SkipsIfAlreadyProbed(t *testing.T) {
+	probeCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/props" {
+			probeCalled = true
+			w.Write([]byte(`{"chat_template":"<tool_call>"}`))
+		}
+	}))
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cache, err := OpenModelCache(ws, "")
+	if err != nil {
+		t.Fatalf("OpenModelCache: %v", err)
+	}
+	defer cache.Close()
+
+	// Pre-seed the cache with a thorough probe so the fast probe should be skipped.
+	_ = cache.Set(&ModelCapability{
+		Name:          "phi4-Q4_K_M",
+		SupportsTools: CapNo,
+		ProbeLevel:    "thorough",
+		ProbedAt:      time.Now(),
+	})
+
+	a := newTestAgent(t)
+	a.Workspace = ws
+	a.ModelCache = cache
+
+	probeLlamaCppAndCache(a, "phi4-Q4_K_M", srv.URL)
+
+	if probeCalled {
+		t.Error("expected probe to be skipped for already-probed model, but /props was called")
+	}
+	cap, _ := cache.Get("phi4-Q4_K_M")
+	if cap.SupportsTools != CapNo {
+		t.Error("existing cache entry should not have been overwritten")
+	}
+}
+
+// TestLlamaCppProbeAndCache_NoCache_IsNoop verifies that calling
+// probeLlamaCppAndCache with a nil ModelCache does not panic.
+func TestLlamaCppProbeAndCache_NoCache_IsNoop(t *testing.T) {
+	a := newTestAgent(t)
+	a.ModelCache = nil
+	// Must not panic.
+	probeLlamaCppAndCache(a, "some-model", "http://127.0.0.1:1")
+}
