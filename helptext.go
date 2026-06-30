@@ -2580,6 +2580,10 @@ Fountain files in agents/memories/ inside the workspace.
                    new profile, and resets history so the new context injects
                    on the next turn. Alias: /profile use [name].
         "rename" — rename the workspace in the active profile document.
+        "on"     — enable workspace profile injection at session start
+                   (sets memory.inject_on_start: true in harvey.yaml).
+        "off"    — disable workspace profile injection at session start
+                   (sets memory.inject_on_start: false in harvey.yaml).
         "update" — deprecated alias for "edit".
 
 # MEMORY TYPES

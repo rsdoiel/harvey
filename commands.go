@@ -420,12 +420,12 @@ func (a *Agent) registerCommands() {
 			},
 		},
 		"profile": {
-			Usage:       "/profile <list|show|edit|use|rename> [args...]",
+			Usage:       "/profile <list|show|edit|use|rename|on|off> [args...]",
 			Description: "Alias for /memory profile — manage workspace profile",
 			Handler: func(a *Agent, args []string, out io.Writer) error {
 				return cmdMemory(a, append([]string{"profile"}, args...), out)
 			},
-			Subcommands: []string{"list", "show", "edit", "use", "rename"},
+			Subcommands: []string{"list", "show", "edit", "use", "rename", "on", "off"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"use": profileTemplateNameCandidates,
 			},

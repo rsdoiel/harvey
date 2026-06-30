@@ -11,7 +11,8 @@
 - [x] `/model drop` removed — model files are managed on disk (rm ~/Models/foo.llamafile) or via the ollama CLI; `cmdModelDrop`, `llamafileNameCandidates`, `ollamaListTable`, `modelSwitch` deleted; all help text updated
 - [x] While Harvey should support using Ollama models (including starting/stopping Ollama service if necessary), managing the Ollama models available to fall to the Ollama cli this will give us better alignment with all the models and minimize further the Ollama specific behavior — `/ollama` command removed; `ollama` CLI handles model management; Harvey aggregates Ollama models via `/api/tags` for `/model list`
   - [x] When an alias is setup for an Ollama model via `/model use`, it should do a probe to get the model's features this will let us drop the `/ollama probe` and `/ollama probe-all` commands — auto-probe fires in `promptLazyRegister` immediately after alias creation
-- [ ] Once `/memory profile` is enabled there is no way to turn it off
+- [x] Once `/memory profile` is enabled there is no way to turn it off
+  Already implemented: `/memory profile off` sets `Config.Memory.InjectOnStart=false` and persists to harvey.yaml. `/memory profile on` re-enables. Both are tested in `commands_memory_test.go`. Help text updated 2026-06-30 to document `on`/`off` subcommands.
 - [x] Add support for using Llama.cpp to run models
 - [ ] Assay needs to work across model systems, example I should be able to use with Llamafiles or Llama.cpp
 - [x] Chunked document analysis for small models — designed and planned.

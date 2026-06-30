@@ -238,6 +238,58 @@ func TestProfileAlias(t *testing.T) {
 	}
 }
 
+// TestProfileAlias_OffDisablesInjection verifies that /profile off (alias)
+// delegates correctly and sets InjectOnStart=false.
+func TestProfileAlias_OffDisablesInjection(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	a.Config.Memory.InjectOnStart = true
+
+	cmd := a.commands["profile"]
+	var out strings.Builder
+	if err := cmd.Handler(a, []string{"off"}, &out); err != nil {
+		t.Fatalf("/profile off: %v", err)
+	}
+	if a.Config.Memory.InjectOnStart {
+		t.Error("expected InjectOnStart=false after /profile off")
+	}
+}
+
+// TestProfileAlias_OnEnablesInjection verifies that /profile on (alias)
+// delegates correctly and sets InjectOnStart=true.
+func TestProfileAlias_OnEnablesInjection(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	a.Config.Memory.InjectOnStart = false
+
+	cmd := a.commands["profile"]
+	var out strings.Builder
+	if err := cmd.Handler(a, []string{"on"}, &out); err != nil {
+		t.Fatalf("/profile on: %v", err)
+	}
+	if !a.Config.Memory.InjectOnStart {
+		t.Error("expected InjectOnStart=true after /profile on")
+	}
+}
+
+// TestProfileAlias_SubcommandsIncludeOnOff verifies that the /profile command
+// table entry lists "on" and "off" in its Subcommands slice.
+func TestProfileAlias_SubcommandsIncludeOnOff(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+
+	cmd := a.commands["profile"]
+	subs := map[string]bool{}
+	for _, s := range cmd.Subcommands {
+		subs[s] = true
+	}
+	for _, want := range []string{"on", "off"} {
+		if !subs[want] {
+			t.Errorf("/profile Subcommands missing %q; got %v", want, cmd.Subcommands)
+		}
+	}
+}
+
 func TestRewriteProfileTitle_TitleField(t *testing.T) {
 	body := "INT. WORKSPACE PROFILE - OLD NAME\n\nTITLE: Old Name\n\nROLE:\n  Developer.\n"
 	got := rewriteProfileTitle(body, "New Name")

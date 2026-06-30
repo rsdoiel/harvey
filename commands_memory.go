@@ -42,6 +42,10 @@ func cmdMemory(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintln(out, "Usage: /memory <mine|list|show|flag|forget|status|recall|profile> [args...]")
 		return nil
 	}
+	// profile on/off only touch a.Config — they don't need the memory store.
+	if args[0] == "profile" && len(args) >= 2 && (args[1] == "on" || args[1] == "off") {
+		return cmdMemoryProfile(a, args[1:], out, nil)
+	}
 	if a.Memory == nil || a.Memory.Store == nil {
 		return fmt.Errorf("/memory: memory store not available")
 	}
