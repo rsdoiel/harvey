@@ -3,10 +3,13 @@
 package harvey
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -123,7 +126,117 @@ func NewSuggestor(ws *Workspace) *Suggestor {
  *   err := sg.Suggest(ctx, "agents/sessions/foo.spmd", a, os.Stdout, os.Stdin)
  */
 func (s *Suggestor) Suggest(ctx context.Context, sessionPath string, agent *Agent, out io.Writer, in io.Reader) error {
-	return fmt.Errorf("not implemented") // stub — filled in W2
+	if agent.Client == nil {
+		return fmt.Errorf("no LLM backend connected; start a model first")
+	}
+	if s.ws == nil {
+		return fmt.Errorf("no workspace open")
+	}
+
+	// Resolve session path.
+	if sessionPath == "" {
+		sessDir := filepath.Join(s.ws.HarveyDir(), "sessions")
+		var err error
+		sessionPath, err = latestSessionFile(sessDir)
+		if err != nil {
+			return fmt.Errorf("skill suggest: %w", err)
+		}
+	}
+
+	sessionText, err := os.ReadFile(sessionPath)
+	if err != nil {
+		return fmt.Errorf("read session %s: %w", sessionPath, err)
+	}
+
+	fmt.Fprintf(out, "Analysing session: %s\n", filepath.Base(sessionPath))
+
+	// Ask LLM to extract skill candidates.
+	var buf strings.Builder
+	if _, err := agent.Client.Chat(ctx, []Message{
+		{Role: "system", Content: skillSuggestorPrompt},
+		{Role: "user", Content: string(sessionText)},
+	}, &buf); err != nil {
+		return fmt.Errorf("skill suggest: LLM call failed: %w", err)
+	}
+
+	// Parse candidates.
+	jsonStr, ok := extractJSON(buf.String())
+	if !ok {
+		fmt.Fprintln(out, "No skill candidates found in this session.")
+		return nil
+	}
+	var candidates []SkillCandidate
+	if err := json.Unmarshal([]byte(jsonStr), &candidates); err != nil || len(candidates) == 0 {
+		fmt.Fprintln(out, "No skill candidates found in this session.")
+		return nil
+	}
+
+	// Interactive review.
+	br := bufio.NewReader(in)
+	for _, c := range candidates {
+		fmt.Fprintf(out, "\nProposed skill: %s\n", c.Name)
+		fmt.Fprintf(out, "  %s\n", c.Description)
+		if len(c.Variables) > 0 {
+			names := make([]string, len(c.Variables))
+			for i, v := range c.Variables {
+				names[i] = v.Name
+			}
+			fmt.Fprintf(out, "  Variables: %s\n", strings.Join(names, ", "))
+		}
+		fmt.Fprintf(out, "  Steps: %d\n", len(c.Steps))
+		fmt.Fprint(out, "Accept? [y/n/q] ")
+
+		line, _ := br.ReadString('\n')
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "y", "yes":
+			if err := writeSkillMD(s.ws, c); err != nil {
+				fmt.Fprintf(out, "  Error writing skill: %v\n", err)
+			} else {
+				fmt.Fprintf(out, "  Written: agents/skills/%s/SKILL.md\n", c.Name)
+			}
+		case "n", "no":
+			fmt.Fprintln(out, "  Skipped.")
+		default: // "q", "quit", "" — stop
+			fmt.Fprintln(out, "  Quit.")
+			return nil
+		}
+	}
+	return nil
+}
+
+/** writeSkillMD creates agents/skills/<name>/SKILL.md (and the scripts/
+ * subdirectory) inside ws, rendering the candidate with renderSkillMD.
+ *
+ * Parameters:
+ *   ws (Workspace)       — workspace that owns the skills directory.
+ *   c  (SkillCandidate) — candidate to write.
+ *
+ * Returns:
+ *   error — non-nil on I/O failure.
+ *
+ * Example:
+ *   err := writeSkillMD(a.Workspace, candidate)
+ */
+func writeSkillMD(ws *Workspace, c SkillCandidate) error {
+	skillDir := filepath.Join("agents", "skills", c.Name)
+	if err := ws.MkdirAll(filepath.Join(skillDir, "scripts")); err != nil {
+		return fmt.Errorf("create skill dir: %w", err)
+	}
+	content := renderSkillMD(c, gitAuthor())
+	return ws.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644)
+}
+
+// gitAuthor returns the git user.name for the current repository, or
+// "unknown" when git is unavailable or unconfigured.
+func gitAuthor() string {
+	out, err := exec.Command("git", "config", "user.name").Output()
+	if err != nil {
+		return "unknown"
+	}
+	if name := strings.TrimSpace(string(out)); name != "" {
+		return name
+	}
+	return "unknown"
 }
 
 /** renderSkillMD renders a SkillCandidate as a complete SKILL.md file body.

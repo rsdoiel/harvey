@@ -1,12 +1,24 @@
 package harvey
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// createTempSession writes content to a temporary .spmd file and returns its path.
+func createTempSession(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test-session.spmd")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
 
 // ─── latestSessionFile ────────────────────────────────────────────────────────
 
@@ -131,5 +143,168 @@ func TestRenderSkillMD_NoVariables(t *testing.T) {
 	// Output must still include the skill name and step.
 	if !strings.Contains(got, "simple-skill") {
 		t.Errorf("expected skill name in output, got: %q", got)
+	}
+}
+
+// ─── writeSkillMD ─────────────────────────────────────────────────────────────
+
+// TestWriteSkillMD_CreatesFile verifies that writeSkillMD creates SKILL.md at
+// the expected path inside the workspace.
+func TestWriteSkillMD_CreatesFile(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	c := SkillCandidate{
+		Name:        "test-skill",
+		Description: "A test skill.",
+		Steps:       []string{"Step one", "Step two", "Step three"},
+	}
+	if err := writeSkillMD(ws, c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	skillPath := filepath.Join(ws.Root, "agents", "skills", "test-skill", "SKILL.md")
+	if _, err := os.Stat(skillPath); err != nil {
+		t.Errorf("expected SKILL.md at %s, got: %v", skillPath, err)
+	}
+}
+
+// TestWriteSkillMD_ContainsName verifies that the written SKILL.md contains
+// the candidate's name.
+func TestWriteSkillMD_ContainsName(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	c := SkillCandidate{
+		Name:        "my-cool-skill",
+		Description: "Does something cool.",
+		Steps:       []string{"Do it", "Do more", "Finish"},
+	}
+	if err := writeSkillMD(ws, c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	content, err := ws.ReadFile(filepath.Join("agents", "skills", "my-cool-skill", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read SKILL.md: %v", err)
+	}
+	if !strings.Contains(string(content), "my-cool-skill") {
+		t.Errorf("expected skill name in SKILL.md, got: %q", string(content))
+	}
+}
+
+// TestWriteSkillMD_CreatesScriptsDir verifies that writeSkillMD also creates
+// the scripts/ subdirectory alongside SKILL.md.
+func TestWriteSkillMD_CreatesScriptsDir(t *testing.T) {
+	ws, _ := NewWorkspace(t.TempDir())
+	c := SkillCandidate{
+		Name:        "test-skill",
+		Description: "A test skill.",
+		Steps:       []string{"Step one", "Step two", "Step three"},
+	}
+	if err := writeSkillMD(ws, c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	scriptsDir := filepath.Join(ws.Root, "agents", "skills", "test-skill", "scripts")
+	info, err := os.Stat(scriptsDir)
+	if err != nil {
+		t.Fatalf("expected scripts/ dir at %s, got: %v", scriptsDir, err)
+	}
+	if !info.IsDir() {
+		t.Errorf("expected scripts/ to be a directory")
+	}
+}
+
+// ─── Suggest ─────────────────────────────────────────────────────────────────
+
+// TestSuggest_NilClient verifies that Suggest returns an error when the agent
+// has no LLM client connected.
+func TestSuggest_NilClient(t *testing.T) {
+	a := newTestAgent(t)
+	a.Client = nil
+	sg := NewSuggestor(a.Workspace)
+
+	var out strings.Builder
+	err := sg.Suggest(context.Background(), "", a, &out, strings.NewReader(""))
+	if err == nil {
+		t.Fatal("expected error with nil client, got nil")
+	}
+}
+
+// TestSuggest_NoCandidates verifies that Suggest prints a "no candidates"
+// message when the LLM returns an empty JSON array.
+func TestSuggest_NoCandidates(t *testing.T) {
+	a := newTestAgent(t)
+	a.Client = &mockLLMClient{reply: "[]"}
+	sg := NewSuggestor(a.Workspace)
+	sessionFile := createTempSession(t, "a session transcript")
+
+	var out strings.Builder
+	if err := sg.Suggest(context.Background(), sessionFile, a, &out, strings.NewReader("")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "No skill candidates") {
+		t.Errorf("expected 'No skill candidates' in output, got: %q", out.String())
+	}
+}
+
+// TestSuggest_AcceptsCandidate verifies that answering "y" at the prompt causes
+// writeSkillMD to create the SKILL.md file in the workspace.
+func TestSuggest_AcceptsCandidate(t *testing.T) {
+	a := newTestAgent(t)
+	candidateJSON := `[{"name":"test-skill","description":"A test skill.","long_description":"Does something useful.","variables":[],"steps":["Step one","Step two","Step three"]}]`
+	a.Client = &mockLLMClient{reply: candidateJSON}
+	sg := NewSuggestor(a.Workspace)
+	sessionFile := createTempSession(t, "a session transcript")
+
+	var out strings.Builder
+	if err := sg.Suggest(context.Background(), sessionFile, a, &out, strings.NewReader("y\n")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	skillPath := filepath.Join(a.Workspace.Root, "agents", "skills", "test-skill", "SKILL.md")
+	if _, err := os.Stat(skillPath); err != nil {
+		t.Errorf("expected SKILL.md at %s after accepting: %v", skillPath, err)
+	}
+}
+
+// TestSuggest_SkipsCandidate verifies that answering "n" does not create
+// any SKILL.md file.
+func TestSuggest_SkipsCandidate(t *testing.T) {
+	a := newTestAgent(t)
+	candidateJSON := `[{"name":"test-skill","description":"A test skill.","long_description":"Does something useful.","variables":[],"steps":["Step one","Step two","Step three"]}]`
+	a.Client = &mockLLMClient{reply: candidateJSON}
+	sg := NewSuggestor(a.Workspace)
+	sessionFile := createTempSession(t, "a session transcript")
+
+	var out strings.Builder
+	if err := sg.Suggest(context.Background(), sessionFile, a, &out, strings.NewReader("n\n")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	skillPath := filepath.Join(a.Workspace.Root, "agents", "skills", "test-skill", "SKILL.md")
+	if _, err := os.Stat(skillPath); err == nil {
+		t.Errorf("expected no SKILL.md after skipping, but file exists at %s", skillPath)
+	}
+	if !strings.Contains(out.String(), "Skipped") {
+		t.Errorf("expected 'Skipped' in output, got: %q", out.String())
+	}
+}
+
+// TestSuggest_QuitEarly verifies that answering "q" stops the review loop and
+// does not process subsequent candidates.
+func TestSuggest_QuitEarly(t *testing.T) {
+	a := newTestAgent(t)
+	// Two candidates; user quits on the first.
+	candidateJSON := `[
+		{"name":"skill-one","description":"First.","long_description":"First skill.","variables":[],"steps":["A","B","C"]},
+		{"name":"skill-two","description":"Second.","long_description":"Second skill.","variables":[],"steps":["X","Y","Z"]}
+	]`
+	a.Client = &mockLLMClient{reply: candidateJSON}
+	sg := NewSuggestor(a.Workspace)
+	sessionFile := createTempSession(t, "a session transcript")
+
+	var out strings.Builder
+	if err := sg.Suggest(context.Background(), sessionFile, a, &out, strings.NewReader("q\n")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Neither skill should be written.
+	for _, name := range []string{"skill-one", "skill-two"} {
+		p := filepath.Join(a.Workspace.Root, "agents", "skills", name, "SKILL.md")
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("expected no SKILL.md for %s after quit, but file exists", name)
+		}
 	}
 }
