@@ -3,6 +3,7 @@
 
 ## Feature ideas
 
+- [ ] The chunked reading with prompt seems to work but when I've tried the models seem prone to hullicinations, but that could be that balance of model size and main model context isn't being fully addressed. How do we ensure that each chunk cycle only see the prompt and the chunk rather than the full context and the chunk prompt?
 - [ ] The `/model download` command just doesn't make sense to me
 - [ ] The sticky last model used isn't useful since the behavior seems idiocractic between Llamafile, Ollama and Llama.cpp models. Let's drop the "active" model concept if not restarting a previous session
 - [ ] While Harvey should support using Ollama models (including starting/stopping Ollama service if necessary), managing the Ollama models available to fall to the Ollama cli this will give us better alignment with all the models and minimize further the Ollama specific behavior

@@ -101,6 +101,85 @@ func ProbeLlamafileContextLength(baseURL string) int {
 	return payload.Data[0].Meta.NCtx
 }
 
+/** LlamafileProps holds the capability information extracted from the /props
+ * endpoint of a running llamafile or llama.cpp server.
+ *
+ * Fields:
+ *   SupportsTools (CapabilityStatus) — CapYes when a recognised tool-call marker
+ *                                      was found in chat_template; CapNo otherwise.
+ *   ToolMode      (string)           — ToolModeStructured when tools are supported;
+ *                                      ToolModeNone otherwise.
+ *
+ * Example:
+ *   props := ProbeLlamafileProps("http://localhost:8080")
+ *   fmt.Println(props.SupportsTools) // "✓" or "—"
+ */
+type LlamafileProps struct {
+	SupportsTools CapabilityStatus
+	ToolMode      string
+}
+
+/** ProbeLlamafileProps reads the /props endpoint of a running llamafile or
+ * llama.cpp server and returns the detected tool-calling capability derived
+ * from the chat_template field. It recognises the following markers:
+ *
+ *   <tool_call>      — Qwen / Hermes style
+ *   [TOOL_CALLS]     — Mistral style
+ *   <|python_tag|>   — Llama 3.1+ style
+ *   <|tool_call|>    — Phi-3/4 style
+ *
+ * When any marker is found, SupportsTools is CapYes and ToolMode is
+ * ToolModeStructured. When /props is unreachable or returns no template,
+ * SupportsTools is CapNo and ToolMode is ToolModeNone.
+ *
+ * Parameters:
+ *   baseURL (string) — llamafile server base URL, e.g. "http://localhost:8080".
+ *
+ * Returns:
+ *   LlamafileProps — detected capability; CapNo/ToolModeNone on any error.
+ *
+ * Example:
+ *   props := ProbeLlamafileProps("http://localhost:8080")
+ *   if props.SupportsTools == CapYes {
+ *       fmt.Println("model supports structured tool calls")
+ *   }
+ */
+func ProbeLlamafileProps(baseURL string) LlamafileProps {
+	none := LlamafileProps{SupportsTools: CapNo, ToolMode: ToolModeNone}
+
+	c := &http.Client{Timeout: 5 * time.Second}
+	resp, err := c.Get(baseURL + "/props")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return none
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return none
+	}
+
+	var payload struct {
+		ChatTemplate string `json:"chat_template"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil || payload.ChatTemplate == "" {
+		return none
+	}
+
+	markers := []string{
+		"<tool_call>",    // Qwen / Hermes
+		"[TOOL_CALLS]",   // Mistral
+		"<|python_tag|>", // Llama 3.1+
+		"<|tool_call|>",  // Phi-3/4
+	}
+	for _, m := range markers {
+		if strings.Contains(payload.ChatTemplate, m) {
+			return LlamafileProps{SupportsTools: CapYes, ToolMode: ToolModeStructured}
+		}
+	}
+	return none
+}
+
 /** StartLlamafileService launches the llamafile binary at path as a background
  * HTTP server and waits up to timeout for it to become reachable. The
  * listening port is derived from baseURL; port 8080 is used when none is

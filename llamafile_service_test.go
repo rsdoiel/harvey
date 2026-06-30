@@ -127,6 +127,109 @@ func TestBuildLlamafileArgs_zeroCtxSizeOmitted(t *testing.T) {
 	}
 }
 
+func TestProbeLlamafileProps_QwenTemplate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/props" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"chat_template":"...{% for tool in tools %}<tool_call>{% endfor %}..."}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	props := ProbeLlamafileProps(srv.URL)
+	if props.SupportsTools != CapYes {
+		t.Errorf("expected CapYes for Qwen template, got %v", props.SupportsTools)
+	}
+	if props.ToolMode != ToolModeStructured {
+		t.Errorf("expected ToolModeStructured, got %q", props.ToolMode)
+	}
+}
+
+func TestProbeLlamafileProps_MistralTemplate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/props" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"chat_template":"...[TOOL_CALLS]..."}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	props := ProbeLlamafileProps(srv.URL)
+	if props.SupportsTools != CapYes {
+		t.Errorf("expected CapYes for Mistral template, got %v", props.SupportsTools)
+	}
+}
+
+func TestProbeLlamafileProps_NoToolMarkers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/props" {
+			w.Header().Set("Content-Type", "application/json")
+			// SmolLM-style template with no tool-call markers.
+			w.Write([]byte(`{"chat_template":"{% for message in messages %}{{ message.content }}{% endfor %}"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	props := ProbeLlamafileProps(srv.URL)
+	if props.SupportsTools != CapNo {
+		t.Errorf("expected CapNo when no tool markers present, got %v", props.SupportsTools)
+	}
+	if props.ToolMode != ToolModeNone {
+		t.Errorf("expected ToolModeNone, got %q", props.ToolMode)
+	}
+}
+
+func TestProbeLlamafileProps_NilOnError(t *testing.T) {
+	// Unreachable server.
+	props := ProbeLlamafileProps("http://127.0.0.1:19993")
+	if props.SupportsTools != CapNo {
+		t.Errorf("expected CapNo for unreachable server, got %v", props.SupportsTools)
+	}
+	if props.ToolMode != ToolModeNone {
+		t.Errorf("expected ToolModeNone for unreachable server, got %q", props.ToolMode)
+	}
+}
+
+func TestProbeLlamafileProps_Llama31Template(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/props" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"chat_template":"...<|python_tag|>..."}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	props := ProbeLlamafileProps(srv.URL)
+	if props.SupportsTools != CapYes {
+		t.Errorf("expected CapYes for Llama 3.1+ template, got %v", props.SupportsTools)
+	}
+}
+
+func TestProbeLlamafileProps_EmptyChatTemplate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/props" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"chat_template":""}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	props := ProbeLlamafileProps(srv.URL)
+	if props.SupportsTools != CapNo {
+		t.Errorf("expected CapNo for empty chat_template, got %v", props.SupportsTools)
+	}
+}
+
 func TestStartLlamafileService_badPath(t *testing.T) {
 	// Use a port unlikely to be occupied so ProbeLlamafile never returns true.
 	proc, err := StartLlamafileService("/nonexistent/model.llamafile", "http://localhost:19876", "", 0, -1, 0, nil)

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 /** probeActiveBackend returns true if the currently configured backend server
@@ -64,6 +65,23 @@ func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(name))
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordModelSwitch(name, "llamafile")
+	}
+	// Probe /props to detect tool-call capability from chat_template. Only run
+	// when the cache has no prior entry for this model so we don't re-probe on
+	// every reconnect.
+	if a.ModelCache != nil {
+		existing, _ := a.ModelCache.Get(name)
+		if existing == nil || existing.ProbeLevel == "none" {
+			props := ProbeLlamafileProps(a.Config.Llamafile.URL)
+			cap := &ModelCapability{
+				Name:          name,
+				SupportsTools: props.SupportsTools,
+				ToolMode:      props.ToolMode,
+				ProbeLevel:    "fast",
+				ProbedAt:      time.Now(),
+			}
+			_ = a.ModelCache.Set(cap)
+		}
 	}
 	return nil
 }
