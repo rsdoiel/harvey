@@ -3675,10 +3675,17 @@ and a per-check delta table is appended to the report.
 : Path to a llamafile binary to evaluate. {app_name} starts the llamafile
   server automatically before the run and stops it when finished.
   The model name is derived from the binary filename.
-  Cannot be combined with -models.
+  Mutually exclusive with -llamacpp.
+
+-llamacpp URL
+: Base URL of a running llama-server instance, e.g. http://localhost:8081.
+  The user is responsible for starting and stopping llama-server.
+  If -models is not set, {app_name} queries GET /v1/models to discover
+  the loaded model. Mutually exclusive with -llamafile.
 
 -ollama URL
-: Base URL of the Ollama server.
+: Base URL of the Ollama server (also used for RAG embeddings when
+  -rag-db is set with --llamafile or --llamacpp).
   Default: http://localhost:11434
 
 -output PATH

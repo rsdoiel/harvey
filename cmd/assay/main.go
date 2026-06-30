@@ -1,14 +1,13 @@
 // assay runs evaluation prompts from a corpus YAML against one or more
-// Ollama models and writes a Markdown report plus JSON results for human
-// review and machine processing.
+// LLM backends and writes a Markdown report plus JSON results for human
+// review and machine processing. Supports Ollama, Llamafile, and llama.cpp.
 package main
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -48,27 +47,7 @@ type Checks struct {
 	SQLParses   bool     `yaml:"sql_parses,omitempty"`
 }
 
-// ─── Ollama API types ─────────────────────────────────────────────────────────
-
-type ollamaRequest struct {
-	Model    string          `json:"model"`
-	Messages []ollamaMessage `json:"messages"`
-	Stream   bool            `json:"stream"`
-}
-
-type ollamaMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type ollamaResponse struct {
-	Model           string        `json:"model"`
-	Message         ollamaMessage `json:"message"`
-	Done            bool          `json:"done"`
-	PromptEvalCount int           `json:"prompt_eval_count"`
-	EvalCount       int           `json:"eval_count"`
-	EvalDuration    int64         `json:"eval_duration"` // nanoseconds
-}
+// ─── Ollama model-list type ───────────────────────────────────────────────────
 
 type ollamaTagsResponse struct {
 	Models []struct {
@@ -103,14 +82,15 @@ type PromptResult struct {
 }
 
 type AssayResults struct {
-	RunAt          time.Time      `json:"run_at"`
-	Backend        string         `json:"backend"`                    // "Ollama" or "Llamafile"
-	LlamafilePath  string         `json:"llamafile_path,omitempty"`   // binary path when Backend=="Llamafile"
-	OllamaURL      string         `json:"ollama_url,omitempty"`
-	RagDB          string         `json:"rag_db,omitempty"`
-	RagEmbedModel  string         `json:"rag_embed_model,omitempty"`
-	RagCompare     bool           `json:"rag_compare,omitempty"`
-	Results        []PromptResult `json:"results"`
+	RunAt         time.Time      `json:"run_at"`
+	Backend       string         `json:"backend"`                  // "Ollama", "Llamafile", or "LlamaCpp"
+	LlamafilePath string         `json:"llamafile_path,omitempty"` // binary path when Backend=="Llamafile"
+	OllamaURL     string         `json:"ollama_url,omitempty"`
+	BackendURL    string         `json:"backend_url,omitempty"`    // inference URL for Llamafile and LlamaCpp
+	RagDB         string         `json:"rag_db,omitempty"`
+	RagEmbedModel string         `json:"rag_embed_model,omitempty"`
+	RagCompare    bool           `json:"rag_compare,omitempty"`
+	Results       []PromptResult `json:"results"`
 }
 
 // ─── Corpus loading ───────────────────────────────────────────────────────────
@@ -127,7 +107,27 @@ func loadCorpus(path string) (*Corpus, error) {
 	return &c, nil
 }
 
-// ─── Ollama helpers ───────────────────────────────────────────────────────────
+// ─── LLM client helpers ───────────────────────────────────────────────────────
+
+/** newAssayClient creates an LLMClient backed by any OpenAI-compatible server.
+ * It appends "/v1" to baseURL so callers pass the bare host:port.
+ *
+ * Parameters:
+ *   baseURL (string) — bare base URL, e.g. "http://localhost:11434"
+ *   model (string)   — model name for each chat request
+ *
+ * Returns:
+ *   harvey.LLMClient — ready-to-use client; caller should Close() when done
+ *
+ * Example:
+ *   client := newAssayClient("http://localhost:11434", "llama3.2:3b")
+ *   defer client.Close()
+ */
+func newAssayClient(baseURL, model string) harvey.LLMClient {
+	return harvey.NewLlamafileLLMClient(baseURL+"/v1", model, 120*time.Second)
+}
+
+// ─── Ollama model-list helper ─────────────────────────────────────────────────
 
 func listOllamaModels(baseURL string) ([]string, error) {
 	resp, err := http.Get(baseURL + "/api/tags")
@@ -150,30 +150,40 @@ func listOllamaModels(baseURL string) ([]string, error) {
 	return names, nil
 }
 
-func callOllama(baseURL, model, prompt string) (string, ollamaResponse, error) {
-	req := ollamaRequest{
-		Model:    model,
-		Messages: []ollamaMessage{{Role: "user", Content: prompt}},
-		Stream:   false,
-	}
-	body, err := json.Marshal(req)
+/** listOpenAIModels queries GET /v1/models on an OpenAI-compatible server and
+ * returns the model IDs reported. llama-server returns only the loaded model.
+ *
+ * Parameters:
+ *   baseURL (string) — bare base URL, e.g. "http://localhost:8081"
+ *
+ * Returns:
+ *   []string — model IDs (empty IDs are skipped)
+ *   error    — non-nil on HTTP or JSON error
+ *
+ * Example:
+ *   models, err := listOpenAIModels("http://localhost:8081")
+ */
+func listOpenAIModels(baseURL string) ([]string, error) {
+	resp, err := http.Get(baseURL + "/v1/models")
 	if err != nil {
-		return "", ollamaResponse{}, err
-	}
-	resp, err := http.Post(baseURL+"/api/chat", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return "", ollamaResponse{}, fmt.Errorf("ollama chat: %w", err)
+		return nil, fmt.Errorf("openai models list: %w", err)
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", ollamaResponse{}, fmt.Errorf("ollama read body: %w", err)
+	var out struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
 	}
-	var or ollamaResponse
-	if err := json.Unmarshal(raw, &or); err != nil {
-		return "", ollamaResponse{}, fmt.Errorf("ollama decode: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("openai models decode: %w", err)
 	}
-	return or.Message.Content, or, nil
+	ids := make([]string, 0, len(out.Data))
+	for _, d := range out.Data {
+		if d.ID != "" {
+			ids = append(ids, d.ID)
+		}
+	}
+	return ids, nil
 }
 
 // ─── RAG helpers ─────────────────────────────────────────────────────────────
@@ -434,9 +444,12 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 	if ar.LlamafilePath != "" {
 		fmt.Fprintf(&sb, "Binary: `%s`  \n", ar.LlamafilePath)
 	}
-	if ar.OllamaURL != "" {
-		fmt.Fprintf(&sb, "URL: %s\n\n", ar.OllamaURL)
+	if ar.BackendURL != "" {
+		fmt.Fprintf(&sb, "URL: %s  \n", ar.BackendURL)
+	} else if ar.OllamaURL != "" {
+		fmt.Fprintf(&sb, "URL: %s  \n", ar.OllamaURL)
 	}
+	fmt.Fprintln(&sb)
 	if ar.RagDB != "" {
 		fmt.Fprintf(&sb, "RAG store: `%s` (embed: %s)\n\n", ar.RagDB, ar.RagEmbedModel)
 	}
@@ -716,6 +729,7 @@ func main() {
 	category      := flag.String("category", "", "only run prompts from this category")
 	ollamaURL     := flag.String("ollama", "http://localhost:11434", "Ollama base URL")
 	llamafilePath := flag.String("llamafile", "", "path to a llamafile binary to evaluate; starts and stops the process automatically")
+	llamacppURL   := flag.String("llamacpp", "", "base URL of a running llama-server (e.g. http://localhost:8081); user manages the process")
 	outputDir     := flag.String("output", defaultOutputDir(),
 		"write report and results to PATH\n\t\t\t(default: $WORKSPACE/assay-results/assay-TIMESTAMP/\n\t\t\t or assay-results/assay-TIMESTAMP/ if not in a workspace)")
 	ragDB         := flag.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
@@ -728,11 +742,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, "assay: --rag-compare requires --rag-db")
 		os.Exit(1)
 	}
+	if *llamafilePath != "" && *llamacppURL != "" {
+		fmt.Fprintln(os.Stderr, "assay: --llamafile and --llamacpp are mutually exclusive")
+		os.Exit(1)
+	}
 
-	// Llamafile lifecycle: start process and derive LLM URL.
-	llmURL := *ollamaURL
-	backend := "Ollama"
-	if *llamafilePath != "" {
+	// Backend selection: determine llmURL, backend name, and start any managed process.
+	llmURL    := *ollamaURL
+	backend   := "Ollama"
+	backendURL := ""
+
+	switch {
+	case *llamafilePath != "":
 		// RAG + llamafile requires Ollama for embeddings.
 		if *ragDB != "" && !harvey.ProbeLlamafile(*ollamaURL+"/api/tags") {
 			fmt.Fprintf(os.Stderr, "assay: RAG evaluation with --llamafile requires Ollama for embeddings.\n"+
@@ -753,7 +774,21 @@ func main() {
 		}
 		defer proc.Kill()
 		fmt.Printf("  Llamafile ready at %s\n", llmURL)
-		backend = "Llamafile"
+		backend    = "Llamafile"
+		backendURL = llmURL
+
+	case *llamacppURL != "":
+		// RAG + llamacpp requires Ollama for embeddings.
+		if *ragDB != "" && !harvey.ProbeLlamafile(*ollamaURL+"/api/tags") {
+			fmt.Fprintf(os.Stderr,
+				"assay: RAG evaluation with --llamacpp requires Ollama for embeddings.\n"+
+					"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s\n",
+				*ollamaURL)
+			os.Exit(1)
+		}
+		llmURL    = *llamacppURL
+		backend   = "LlamaCpp"
+		backendURL = llmURL
 	}
 
 	corpus, err := loadCorpus(*corpusPath)
@@ -764,16 +799,35 @@ func main() {
 
 	// Resolve model list.
 	var models []string
-	if *llamafilePath != "" {
+	switch {
+	case *llamafilePath != "":
 		// Llamafile exposes a single model; derive its name from the binary.
 		models = []string{harvey.LlamafileModelNameFromPath(*llamafilePath)}
-	} else if *modelsFlag != "" {
+
+	case *llamacppURL != "":
+		if *modelsFlag != "" {
+			for _, m := range strings.Split(*modelsFlag, ",") {
+				if m = strings.TrimSpace(m); m != "" {
+					models = append(models, m)
+				}
+			}
+		} else {
+			models, err = listOpenAIModels(*llamacppURL)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "assay: could not list llama.cpp models: %v\n"+
+					"Use --models NAME to specify the model explicitly.\n", err)
+				os.Exit(1)
+			}
+		}
+
+	case *modelsFlag != "":
 		for _, m := range strings.Split(*modelsFlag, ",") {
 			if m = strings.TrimSpace(m); m != "" {
 				models = append(models, m)
 			}
 		}
-	} else {
+
+	default:
 		models, err = listOllamaModels(llmURL)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "assay: could not list Ollama models: %v\n", err)
@@ -824,7 +878,8 @@ func main() {
 		RunAt:         time.Now(),
 		Backend:       backend,
 		LlamafilePath: *llamafilePath,
-		OllamaURL:     llmURL,
+		OllamaURL:     *ollamaURL,
+		BackendURL:    backendURL,
 		RagDB:         *ragDB,
 		RagEmbedModel: *ragEmbedModel,
 		RagCompare:    *ragCompare,
@@ -850,6 +905,9 @@ func main() {
 	done := 0
 
 	for _, model := range models {
+		// Create one LLMClient per model; the client is stateless so this is cheap.
+		client := newAssayClient(llmURL, model)
+
 		// Per-model extracted code directory.
 		extractedDir := filepath.Join(outDir, "extracted", sanitizeModelName(model))
 		if err := os.MkdirAll(extractedDir, 0755); err != nil {
@@ -877,7 +935,9 @@ func main() {
 				}
 
 				start := time.Now()
-				response, or, callErr := callOllama(llmURL, model, promptText)
+				var buf strings.Builder
+				stats, callErr := client.Chat(context.Background(), []harvey.Message{{Role: "user", Content: promptText}}, &buf)
+				response := buf.String()
 				elapsed := time.Since(start)
 
 				if callErr != nil {
@@ -896,11 +956,6 @@ func main() {
 
 				checks, _ := runChecks(p, response, extractedDir)
 
-				tps := 0.0
-				if or.EvalDuration > 0 && or.EvalCount > 0 {
-					tps = float64(or.EvalCount) / (float64(or.EvalDuration) / 1e9)
-				}
-
 				pr := PromptResult{
 					PromptID:     p.ID,
 					Category:     p.Category,
@@ -908,9 +963,9 @@ func main() {
 					Variant:      v.name,
 					Response:     response,
 					Elapsed:      elapsed,
-					PromptTokens: or.PromptEvalCount,
-					ReplyTokens:  or.EvalCount,
-					TokensPerSec: tps,
+					PromptTokens: stats.PromptTokens,
+					ReplyTokens:  stats.ReplyTokens,
+					TokensPerSec: stats.TokensPerSec,
 					Checks:       checks,
 					AutoPass:     allPassed(checks),
 					RagChunks:    ragChunks,
@@ -926,9 +981,11 @@ func main() {
 					chunkNote = fmt.Sprintf(" · %d RAG chunks", ragChunks)
 				}
 				fmt.Printf("%s · %s · %.1f tok/s%s\n",
-					passLabel, elapsed.Round(time.Millisecond), tps, chunkNote)
+					passLabel, elapsed.Round(time.Millisecond), stats.TokensPerSec, chunkNote)
 			}
 		}
+
+		_ = client.Close()
 	}
 
 	if err := writeReport(outDir, ar, corpus); err != nil {

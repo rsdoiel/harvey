@@ -438,6 +438,27 @@ func newOllamaLLMClient(baseURL, model string, timeout time.Duration) *AnyLLMCli
 	return NewAnyLLMClient(p, model, "ollama", baseURL)
 }
 
+/** NewLlamafileLLMClient creates an AnyLLMClient for any OpenAI-compatible
+ * server (llamafile, llama.cpp, or Ollama's /v1 shim). This is the exported
+ * variant of newLlamafileLLMClient, intended for use by cmd/assay and other
+ * programs outside the harvey package.
+ *
+ * Parameters:
+ *   apiURL (string)         — full base URL including /v1, e.g. "http://localhost:8080/v1"
+ *   model (string)          — model name to pass in each chat request
+ *   timeout (time.Duration) — HTTP timeout; pass 0 for no timeout
+ *
+ * Returns:
+ *   *AnyLLMClient — ready-to-use client implementing LLMClient
+ *
+ * Example:
+ *   client := harvey.NewLlamafileLLMClient("http://localhost:8080/v1", "phi4", 120*time.Second)
+ *   defer client.Close()
+ */
+func NewLlamafileLLMClient(apiURL, model string, timeout time.Duration) *AnyLLMClient {
+	return newLlamafileLLMClient(apiURL, model, timeout)
+}
+
 // newLlamafileLLMClient creates an AnyLLMClient backed by a Llamafile server.
 // apiURL must be the full /v1 base URL, e.g. "http://localhost:8080/v1".
 // Pass timeout=0 for no HTTP timeout.
