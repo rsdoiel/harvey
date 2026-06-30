@@ -3,6 +3,8 @@
 
 ## Feature ideas
 
+- [ ] The `/model download` command just doesn't make sense to me
+- [ ] The sticky last model used isn't useful since the behavior seems idiocractic between Llamafile, Ollama and Llama.cpp models. Let's drop the "active" model concept if not restarting a previous session
 - [ ] While Harvey should support using Ollama models (including starting/stopping Ollama service if necessary), managing the Ollama models available to fall to the Ollama cli this will give us better alignment with all the models and minimize further the Ollama specific behavior
   - [ ] When an alias is setup for an Ollama model via `/model use`, it should do a probe to get the model's features this will let us drop the `/ollama probe` and `/ollama probe-all` commands
 - [ ] Once `/memory profile` is enabled there is no way to turn it off
