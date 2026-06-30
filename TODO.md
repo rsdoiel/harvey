@@ -4,7 +4,133 @@
 ## Bugs
 
 - [ ] When I started `harvey 0.0.15a (released 2026-06-28, 27d2ba3)`, it jumped straight into a previous model instead of started as blank slate. I think this is because there is a stale active session in the Harvey YAML. This is a bug.
-- [ ] Still getting chunk hulicinations (tested with Gemma4 EB4 model in Harvey debug mode), review logs and session for problem. Is this a problem with our approach (map reduce) or something else? Is this approach reasonable to pursue?
+- [ ] Still getting chunk hulicinations (tested with Gemma4 EB4 model in Harvey debug mode), review logs and session for problem. Is this a problem with our approach (map reduce) or something else? Is this approach reasonable to pursue? Never got the chunk prompt entry option. Here is the console output:
+
+```harvey
+harvey > Please review natural_language_programming.md for topic drift. I want to identify the sentences and paragraphs that drive off topic (I need paragraph and line numbers). The arti
+
+This file has been placed in an unsafe place (a new description of what the data it represents):
+.   (and)
+.   (and)
+.   (and)
+.   (And)
+.  (And)
+.. (And)
+   ... (And)
+  .... (Or)
+ .  (And)
+  .. (Or)
+   .. (Or)
+    .. (Or)
+     .. (Or)
+     .. (And)
+      ... (And)
+  ... (And)
+  .. (Or)
+   .  (And)
+  ... (And)
+  ...  (And)
+   ..  (Or)
+  ...  (Or)
+  ...  (And)
+  ....  (And)
+  .....  (And)
+  ..... (And)
+  ... (Var[Char](20))
+  ... (Var[Char](16))
+  .. (Or)
+   .. (And)
+   .. (Or)
+    .. (And)
+     .. (Or)
+     .. (And)
+      ... (Or)
+     .. (And)
+      ... (And)
+   ....  (And)
+  ... (Or)
+   ..  (And)
+   .. (Or)
+  .. (And)
+  ... (And)
+   .. (And)
+  ...  (And)
+   .. (Or)
+   .. (And)
+  ... (And)
+  .. (Var[Char](32))
+ .  (And)
+  .. (And)
+   ... (And)
+  ...  (And)
+  .. (Or)
+   ... (Or)
+  .. (And)
+  .. (Var[Var(Text) or Text] (
+  ..  (Or)
+  ... (And)
+  .. (Or)
+  .. (And)
+  .. (Or)
+   .. (And)
+   ... (And)
+  ..  (Or)
+  .. (Var [Str(ring) or Date or  Date (and Date).
+  ... (And)
+  ... (Var[Var[Str](Str(DateTime, Format(Date, Time and DateTime) and I18u + 67678909796e4i921)//, i.e. In my first Year of Employment, I can't remember where I first encountered it.
+  ... (And)
+  ...  (And)
+    ...  (And)
+  ...  (And)
+  ..  (And)
+  ..  (And)
+  .  (Or)
+  ..  (And)
+  ..  (And)
+   ... (And)
+  ... (And)
+  ..  (And)
+  .. (Or)
+  .. (And)
+   .. (And)
+  .. (And)  --  (And)
+  .. (Or)  --  (And)
+  .. (Or)
+  .. (And)  --  (And)
+  .  (Or)  --  (And)
+  .. (And)  --  (And)
+  .. (And)  --  (And)
+  .  (And)  --  (Or)  --  (And)
+  .. (And)  --  (And)  --  (Or)  --  (And)
+  .. (And)  --  (And)  --  (And)  --  (And)  --  (Or)  .. (And)  --  (Or)  --  (And)  ...  (And)  --  (And)  --  (Or)  --  (And)  --  (Var[I16 and U16).
+  ...  (Or)  --  (And)  ..  (And)  .. (Or)  .. (And)  .. (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (Var  (S [\[SEIT
+
+# I'm the only one, but I'm not sure if it's the Other.
+
+[User_1683318382341566992341332i46i9hK
+
+##  (And
+[...User.File of the Cloud and Sea (i.e. the Sea of Island):
+
+  # This file is a file (or other Code (i.e. the entire World (or the Network of Networks) (I am using 0-1-1 (2+1) the World) (I'm in the first 16-34 (i.e. The Fourth Quarter of the Year, I'm a Little Sickness. (I have a problem with a Computer).  The only Way to stop the Chain of Events.  - The Cloud and Seas.
+
+  ## (Or The Other.
+
+  ... (And)
+  ... (And)  
+  .. (And)
+  .. (Or)  
+  ... (And)
+  .  (And)  .. (Or)  --  (And)
+  ..  (And)  .. (And)  .. (And)
+  ... (And)  -- (Code:
+  .  (And)  ..  (Or)  ..  (And)  ..  (Or)  ..  (And)
+  .. (And)  ... (Or)  .. (And)  .. (Or)  .. (And)  .. (Or)  .. (And)  .. (And)  .. (Or)  .. (And)  ..  (Or)  .. (And)  .. (Or)  .. (And)  ..  (And)  ... (And)  ..  (Or)  --  (Or)  .. (And)  ..  (And)  ..  (And)  ..  (Or)  ..  (And)  --  (Or  (And  .. (And  .. (and  .. (And  .. (And  .. (And  .. (And  .. (And  .. (And  .. (And  .. (And  --  (And  ... (And  ..  (And  ..  (And  --  (And  .. (Or) --  (Or  ...  (And  .. (Or  .. (Or)  ...  (And  .. (Or  .. (And  ..  (And  --  (And  ...  (And)  .. (And  ..  (And)  --  (And  .. (And  .. (Or)  --  (And  ..  (And  ..  (And  .. (Or  .. (And)  ..  (And)  ..  (And)  ..  (And)  .. (Or  -- (and  ..  (And  ...  (And)  .. (And  ..  (And)  .. (Or)  ..  (And  ..  (And  ...  (And  .. (And  .. (And  -- (Or  -- (And  ..  (And)  .. (And  --  (And  .. (And  .. (And  ..  (And  .. (And  ..  (And  ..  (And  ..  (And  ..  (And  ...  (And)  ..  (And)  ...  (And  ...  (And)  --  (And  ..  (Or)  ..  (And)  ..  (And)  --  (And  ..  (Or)  ..  (Or)  ..  (And  ...  (And  ...  (And  ..  (And  ...  (And  ..  (And  ..  (And  ...  (And  ..  (And  --  (And  ..  (And)  --  (And  ..  (And  ..  (And  ..  (And  ..  (And)  ... (Or  --  (And  .. (And  ..  (And  ...  (And  ...  (And)  ..  (And  ...  (And)  ..  (And)  ... (And  ..  (And)  ..  (And  ..  (And  ..  (And  ..  (And  ...  (And  ..  (And)  ..  (And  ...  (And)  ..  (And  ..  (And  ...  (And)  ..  (And)  ..  (And  ..  (And)  --  (And  ..  (And)  ...  (And  ..  (And)  ..  (And  ..  (And  ..  (And  ..  (And)  ...  (And  ..  (And)  ..  (And  ..  (And  ..  (And)  ..  (And  ...  (And)  ..  (And)  ...  (And)  ..  (And  --  (And  ..  (And  --  (And  ...  (And  ..  (And  ..  (And  ...  (And)  ..  (And  ..  (And)  ..  (And  ..  (And  ..  (And)  ...  (And  ..  (And)  ..  (And)  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ...  (And  ..  (And  ..  (And  ..  (And  ..  (And)  ...  (And  ..  (And  --  (And  ...  (And  --  (And)  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ...  (And)  .. (  ... (Or  ..  (And  ..  (And  ...  (And  ..  (And  ..  (And  ..  (And  ..  (And  ...  (And  ..  (And)  ..  (And  ...  (And)  ..  (And  --  (And  ...  (And)  --  (And  ..  (And  ...  (And)  ..  (And  ..  (And  ...  (And  ..  (And  ..  (And  ...  (And  ..  (And  ..  (And  ...  (And  ..  (And)  ..  (And  ...  (And  ..  (And)  ..  (And)  --  (And)  ..  (And)  --  (And  ..  (And  ..  (And)  --  (And  ..  (And)  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And)  ..  (And  ..  (And)  ..  (And)  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  --  (And  ...  (And  ..  (And)  ..  (And)  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ... (  -- ( and  ...  (And  ..  (And  --  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ..  (And  ...  (And  ..  (And  --  (And  ..  (And  ..  (And  --  (And  ..  (And
+  llamafile (Gemma4-E4B-Q4_K_M) · 4m50.538s
+harvey > /exit
+Goodbye.
+  Session saved to /Users/rsdoiel/Laboratory/agents/sessions/harvey-session-20260630-163946.spmd
+```
 
 ## Feature ideas
 
