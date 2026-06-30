@@ -56,6 +56,14 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 
 ## Bugs
 
+- [x] **`@alias` switching broken for llama.cpp models.**
+  Fixed 2026-06-30: `attemptModelSwitch` now checks `ModelAlias.Engine` before
+  dispatching. `Engine="llamacpp"` calls `resolveLlamaCppModelPath` (scans ModelsDir
+  for the matching `.gguf`) then `startLlamaCppModelPath`. `Engine="ollama"` goes
+  direct to an Ollama client. `Engine=""` or `"llamafile"` retains the previous
+  `switchLlamafileModel`-then-Ollama-fallback behaviour for legacy aliases.
+  Note: `/route add` registered endpoints already worked for all three backends.
+
 - [x] **SmolLM3 via llama.cpp "unexpected end of JSON input".**
   llama-server occasionally returns a truncated or malformed JSON body on
   inference requests. Root cause: llama-server closes the connection mid-stream

@@ -129,10 +129,12 @@ func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
 }
 
 /** attemptModelSwitch tries to switch the active model to the named backend
- * entry. It checks LlamafileModels first, then Ollama models. Returns
- * (true, err) when the name is found regardless of whether the switch
- * succeeded; returns (false, nil) when the name is not registered anywhere
- * so the caller can fall through to treating the input as a normal prompt.
+ * entry. It checks the llamafile registry first, then ModelAliases. Aliases
+ * are dispatched by Engine: "llamacpp" → startLlamaCppModelPath, "ollama" →
+ * Ollama client, "" or "llamafile" → switchLlamafileModel with Ollama fallback
+ * (legacy behaviour). Returns (true, err) when the name is found regardless of
+ * whether the switch succeeded; returns (false, nil) when the name is not
+ * registered anywhere so the caller can fall through to a normal prompt.
  *
  * Parameters:
  *   a    (*Agent)    — the running Harvey agent.
@@ -157,17 +159,38 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 	// Check model aliases (stored with lowercase keys).
 	if entry, ok := a.Config.ModelAliases[strings.ToLower(name)]; ok {
 		full := entry.Model
-		err := switchLlamafileModel(a, full, "", out)
-		if err != nil {
-			// Not a llamafile alias — fall through to Ollama.
+		switch entry.Engine {
+		case "llamacpp":
+			modelsDir := a.Config.LlamaCpp.ModelsDir
+			if modelsDir == "" {
+				modelsDir = llamafileDefaultModelsDir()
+			}
+			path, err := resolveLlamaCppModelPath(full, modelsDir)
+			if err != nil {
+				return true, err
+			}
+			return true, startLlamaCppModelPath(a, path, out)
+		case "ollama":
 			a.Config.Ollama.Model = full
 			a.Client = newOllamaLLMClient(a.Config.Ollama.URL, full, a.Config.Ollama.Timeout)
 			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
 			if a.Recorder != nil {
 				_ = a.Recorder.RecordModelSwitch(full, "ollama")
 			}
+			return true, nil
+		default:
+			// "llamafile" or "" (legacy): try switchLlamafileModel, then fall back to Ollama.
+			err := switchLlamafileModel(a, full, "", out)
+			if err != nil {
+				a.Config.Ollama.Model = full
+				a.Client = newOllamaLLMClient(a.Config.Ollama.URL, full, a.Config.Ollama.Timeout)
+				fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
+				if a.Recorder != nil {
+					_ = a.Recorder.RecordModelSwitch(full, "ollama")
+				}
+			}
+			return true, nil
 		}
-		return true, nil
 	}
 	// Name not found in any registry.
 	return false, nil

@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -124,6 +125,83 @@ func TestAggregateModels_BothEnginesHaveCorrectPaths(t *testing.T) {
 				t.Errorf("llamacpp model %q: expected .gguf extension, got %q", m.Name, ext)
 			}
 		}
+	}
+}
+
+// ─── attemptModelSwitch llama.cpp alias routing ──────────────────────────────
+
+// TestAttemptModelSwitch_LlamaCppAlias_DoesNotFallBackToOllama verifies that
+// when an alias carries Engine="llamacpp", attemptModelSwitch does NOT silently
+// fall back to creating an Ollama client. The switch must attempt llama.cpp (and
+// may return an error since no real server runs in tests), but must never write
+// to Config.Ollama.Model or create an Ollama client for the model name.
+func TestAttemptModelSwitch_LlamaCppAlias_DoesNotFallBackToOllama(t *testing.T) {
+	dir := t.TempDir()
+	modelFile := "phi4-Q4_K_M.gguf"
+	if err := os.WriteFile(filepath.Join(dir, modelFile), []byte("stub"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := newTestAgent(t)
+	a.Config.LlamaCpp.ModelsDir = dir
+	a.Config.LlamaCpp.StartTimeout = 1 // 1 ns — fail fast; we only care about routing
+	a.Config.ModelAliases = map[string]ModelAlias{
+		"phi4": {Model: "phi4-Q4_K_M", Engine: "llamacpp"},
+	}
+
+	out := &bytes.Buffer{}
+	switched, _ := attemptModelSwitch(a, "phi4", out)
+
+	if !switched {
+		t.Fatal("expected switched=true for a registered llamacpp alias")
+	}
+	if a.Config.Ollama.Model == "phi4-Q4_K_M" {
+		t.Error("attemptModelSwitch silently fell back to Ollama for a llamacpp alias")
+	}
+}
+
+// TestAttemptModelSwitch_LlamaCppAlias_ReturnsFoundTrue verifies that a
+// llamacpp alias is recognised (switched=true) even when the model cannot be
+// started (no running llama-server in unit tests).
+func TestAttemptModelSwitch_LlamaCppAlias_ReturnsFoundTrue(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "smollm.gguf"), []byte("stub"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := newTestAgent(t)
+	a.Config.LlamaCpp.ModelsDir = dir
+	a.Config.LlamaCpp.StartTimeout = 1 // 1 ns — fail fast; we only care about routing
+	a.Config.ModelAliases = map[string]ModelAlias{
+		"smol": {Model: "smollm", Engine: "llamacpp"},
+	}
+
+	out := &bytes.Buffer{}
+	switched, _ := attemptModelSwitch(a, "smol", out)
+
+	if !switched {
+		t.Error("expected switched=true; llamacpp alias should be recognised even if start fails")
+	}
+}
+
+// TestAttemptModelSwitch_UnknownLlamaCppAlias_ReturnsError verifies that when
+// a llamacpp alias names a model whose .gguf file cannot be found in ModelsDir,
+// attemptModelSwitch returns switched=true (alias was found) with a non-nil error.
+func TestAttemptModelSwitch_UnknownLlamaCppAlias_ReturnsError(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.LlamaCpp.ModelsDir = t.TempDir() // empty — no .gguf files
+	a.Config.ModelAliases = map[string]ModelAlias{
+		"ghost": {Model: "ghost-7b", Engine: "llamacpp"},
+	}
+
+	out := &bytes.Buffer{}
+	switched, err := attemptModelSwitch(a, "ghost", out)
+
+	if !switched {
+		t.Error("expected switched=true; alias was registered even if model file is missing")
+	}
+	if err == nil {
+		t.Error("expected error when .gguf file cannot be resolved")
 	}
 }
 

@@ -343,6 +343,18 @@ func ggufModelName(path string) string {
 	return strings.TrimSuffix(base, ".gguf")
 }
 
+// resolveLlamaCppModelPath finds the absolute path to a .gguf file whose stem
+// matches name (case-insensitive) within modelsDir. Returns an error when no
+// matching file is found.
+func resolveLlamaCppModelPath(name, modelsDir string) (string, error) {
+	for _, path := range scanGGUFModels(modelsDir) {
+		if strings.EqualFold(ggufModelName(path), name) {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("no .gguf model named %q found in %s", name, modelsDir)
+}
+
 // probeLlamaCppAndCache probes the /props endpoint of a running llama.cpp or
 // llamafile server and writes a capability entry to a.ModelCache. It is a
 // no-op when a.ModelCache is nil or the model already has a non-"none" entry.
