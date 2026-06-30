@@ -21,10 +21,11 @@ const (
 )
 
 /** SkillVariable holds metadata for one input variable declared in a skill's
- * SKILL.md frontmatter variables: block.
+ * SKILL.md frontmatter variables: block, or proposed by the skill suggestor.
  *
  * Fields:
  *   Name        (string) — variable name as declared (e.g. "EDIR").
+ *   Type        (string) — variable type hint; typically "string" (used by suggestor).
  *   Description (string) — human-readable description of what the variable controls.
  *   Example     (string) — example value shown in help text.
  *
@@ -32,9 +33,10 @@ const (
  *   v := SkillVariable{Name: "EDIR", Description: "experiment directory", Example: "my_exp"}
  */
 type SkillVariable struct {
-	Name        string
-	Description string
-	Example     string
+	Name        string `json:"name"`
+	Type        string `json:"type,omitempty"`
+	Description string `json:"description"`
+	Example     string `json:"example"`
 }
 
 /** SkillMeta holds the parsed contents of a single SKILL.md file.

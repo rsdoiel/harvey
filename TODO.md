@@ -122,6 +122,25 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 
 - [x] Make sure LLamafile support is at parity with Ollama support, example creation and use of RAG with Llamafiles
 
+### Workspace init and profile separation
+See [workspace-init-design.md](workspace-init-design.md).
+
+- [x] U5-revised — `harvey init <path>` CLI subcommand (seeds model aliases, exits)
+- [x] U5-revised — `/workspace init [path]` REPL command (imports aliases mid-session)
+- [x] U5-revised — `/workspace status` shows root, alias count, profile, injection state
+- [x] P1 — `Memory.InjectOnStart` defaults to `false`
+- [x] Tests for `ImportAliasesFrom`, `resolveSourceYAML` (`workspace_init_test.go`)
+- [x] Tests for `cmdWorkspace` status/init subcommands (`commands_workspace_test.go`)
+
+### Memory mining for skill suggestions
+See [skill-suggest-design.md](skill-suggest-design.md) and [skill-suggest-plan.md](skill-suggest-plan.md).
+
+- [ ] W0 — `skill_suggestor.go` scaffold + `SkillCandidate` types + failing tests
+- [ ] W1 — `renderSkillMD` + `latestSessionFile` (pure functions, no LLM)
+- [ ] W2 — `Suggest` pipeline (LLM extraction + interactive review + `writeSkillMD`)
+- [ ] W3 — `/skill suggest` wiring in `cmdSkill` + `commands.go` registration
+- [ ] W4 — Help text update (`SkillHelpText`) + `DECISIONS.md` entry
+
 ### Chunked document analysis
 See [chunked-analysis-design.md](chunked-analysis-design.md) and
 [chunked-analysis-plan.md](chunked-analysis-plan.md).
