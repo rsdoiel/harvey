@@ -135,11 +135,11 @@ See [workspace-init-design.md](workspace-init-design.md).
 ### Memory mining for skill suggestions
 See [skill-suggest-design.md](skill-suggest-design.md) and [skill-suggest-plan.md](skill-suggest-plan.md).
 
-- [ ] W0 — `skill_suggestor.go` scaffold + `SkillCandidate` types + failing tests
-- [ ] W1 — `renderSkillMD` + `latestSessionFile` (pure functions, no LLM)
-- [ ] W2 — `Suggest` pipeline (LLM extraction + interactive review + `writeSkillMD`)
-- [ ] W3 — `/skill suggest` wiring in `cmdSkill` + `commands.go` registration
-- [ ] W4 — Help text update (`SkillHelpText`) + `DECISIONS.md` entry
+- [x] W0 — `skill_suggestor.go` scaffold + `SkillCandidate` types + failing tests
+- [x] W1 — `renderSkillMD` + `latestSessionFile` (pure functions, no LLM)
+- [x] W2 — `Suggest` pipeline (LLM extraction + interactive review + `writeSkillMD`)
+- [x] W3 — `/skill suggest` wiring in `cmdSkill` + `commands.go` registration
+- [x] W4 — Help text update (`SkillHelpText`) + `DECISIONS.md` entry
 
 ### Chunked document analysis
 See [chunked-analysis-design.md](chunked-analysis-design.md) and
