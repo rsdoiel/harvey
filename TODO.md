@@ -1,6 +1,10 @@
 
 # Action Items
 
+## Bugs
+
+- [ ] When I started `harvey 0.0.15a (released 2026-06-28, 27d2ba3)`, it jumped straight into a previous model instead of started as blank slate. I think this is because there is a stale active session in the Harvey YAML. This is a bug.
+
 ## Feature ideas
 
 - [x] The chunked reading with prompt seems to work but when I've tried the models seem prone to hullicinations, but that could be that balance of model size and main model context isn't being fully addressed. How do we ensure that each chunk cycle only see the prompt and the chunk rather than the full context and the chunk prompt?
