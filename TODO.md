@@ -15,6 +15,7 @@
   Already implemented: `/memory profile off` sets `Config.Memory.InjectOnStart=false` and persists to harvey.yaml. `/memory profile on` re-enables. Both are tested in `commands_memory_test.go`. Help text updated 2026-06-30 to document `on`/`off` subcommands.
 - [x] Add support for using Llama.cpp to run models
 - [ ] Assay needs to work across model systems, example I should be able to use with Llamafiles or Llama.cpp
+  Design settled 2026-06-30 — see [assay-llamacpp-design.md](assay-llamacpp-design.md) and [assay-llamacpp-plan.md](assay-llamacpp-plan.md). Implementation pending (W0–W3).
 - [x] Chunked document analysis for small models — designed and planned.
   See [chunked-analysis-design.md](chunked-analysis-design.md) and
   [chunked-analysis-plan.md](chunked-analysis-plan.md). Work items W0–W5

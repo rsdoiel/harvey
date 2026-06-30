@@ -4,6 +4,30 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-30 — Assay switches from `callOllama` to `harvey.LLMClient` for all backends
+
+**Context.** `bin/assay` had a private `callOllama` function that spoke Ollama's proprietary `/api/chat` endpoint directly. Llamafile happened to also expose this Ollama-compatible API, so the single function covered two backends. Adding llama.cpp support requires the OpenAI-compatible `/v1/chat/completions` path, which Ollama does not expose at `/api/chat`. Writing a parallel `callOpenAI` function would create two diverging code paths that must be kept in sync.
+
+**Decision.** Replace `callOllama` (and the private `ollamaRequest` / `ollamaResponse` structs) with `harvey.LLMClient` — the same interface used throughout the harvey interactive agent. The concrete implementation (`AnyLLMClient` backed by `mozilla-ai/any-llm-go`) already supports Ollama, llamafile, and llama.cpp via the OpenAI-compatible API. All three backends follow the same `client.Chat(ctx, messages, &buf)` call path. Token stats come from `harvey.ChatStats` instead of the proprietary Ollama response shape.
+
+**Rejected.** Adding a parallel `callLlamaCpp` function that speaks `/v1/chat/completions` directly. This avoids touching the existing Ollama path but creates maintenance burden: two implementations of the same call, diverging error handling, different stat fields. Token stat normalisation would have to be done twice.
+
+**Consequences.** The `ollamaRequest`, `ollamaMessage`, and `ollamaResponse` types are removed from `cmd/assay/main.go`. The `callOllama` function is removed. Token stats now come from `ChatStats.PromptTokens`, `ChatStats.ReplyTokens`, and `ChatStats.TokensPerSec`. The Ollama model-listing path (`listOllamaModels`) is retained as-is since it calls `/api/tags` directly and is Ollama-specific by nature. A parallel `listOpenAIModels` helper is added for llama.cpp's `/v1/models` endpoint.
+
+---
+
+## 2026-06-30 — Assay does not manage the llama-server process lifecycle
+
+**Context.** For llamafile, assay starts the binary itself (`StartLlamafileService`), finds a free port, and defers cleanup. This was necessary because llamafile is a single self-contained executable with no prior setup. llama.cpp (`llama-server`) requires separate configuration: model path, context size, GPU layers, quantisation, threading. These are server-administrator decisions that assay should not make on behalf of the user.
+
+**Decision.** `--llamacpp URL` connects to a running `llama-server` at the given URL. Assay does not start or stop it. The user starts the server before running assay and stops it afterward. This matches the `--ollama` pattern exactly.
+
+**Rejected.** A `--llamacpp-path PATH` flag that mirrors `--llamafile PATH`. The reason it was rejected: llama.cpp needs too many server-tuning flags (ctx, threads, GPU layers) to make a one-flag launch practical without exposing all of them in assay's flag set — which would duplicate harvey's own LlamaCpp configuration. Requiring the user to start the server explicitly keeps assay's surface area small.
+
+**Consequences.** Users must start `llama-server` before running assay. Error messages guide them: if the URL is unreachable, assay exits immediately with a clear message rather than timing out.
+
+---
+
 ## 2026-06-30 — Shared `probeLlamaCppAndCache` helper for capability detection
 
 **Context.** `ProbeLlamafileProps` was already implemented and wired for llamafile (via `useLlamafileEntry` in `backend_startup.go`), but the llama.cpp startup path (`startLlamaCppModelPath` in `backend_llamacpp.go`) never called it. As a result, `toolsReliable()` always found no `ModelCache` entry for llama.cpp models and returned false — but tool definitions were still sent, causing the model to hallucinate rather than call them.
