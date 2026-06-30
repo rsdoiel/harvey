@@ -1002,20 +1002,6 @@ func TestArgCompletion_noRegistration(t *testing.T) {
 	}
 }
 
-func TestArgCompletion_llamafileNames(t *testing.T) {
-	a := newTestAgent(t)
-	a.Config.Llamafile.Models = []LlamafileEntry{
-		{Name: "granite3.3-2b"},
-		{Name: "llama3.2-1b"},
-	}
-	a.registerCommands()
-	completer := a.buildCompleter()
-
-	got := completer("/model drop ")
-	if len(got) != 2 {
-		t.Fatalf("expected 2 llamafile candidates, got %d: %v", len(got), got)
-	}
-}
 
 func TestArgCompletion_memoryIDCandidates_emptyStore(t *testing.T) {
 	a := newTestAgent(t)

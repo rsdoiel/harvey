@@ -4,8 +4,10 @@
 ## Feature ideas
 
 - [ ] The chunked reading with prompt seems to work but when I've tried the models seem prone to hullicinations, but that could be that balance of model size and main model context isn't being fully addressed. How do we ensure that each chunk cycle only see the prompt and the chunk rather than the full context and the chunk prompt?
-- [ ] The `/model download` command just doesn't make sense to me
+- [x] The `/model download` command just doesn't make sense to me — removed; `LlamafileDownloadText` constant deleted; help text updated to point users directly to HuggingFace
 - [x] The sticky last model used isn't useful since the behavior seems idiocractic between Llamafile, Ollama and Llama.cpp models. Let's drop the "active" model concept if not restarting a previous session
+- [x] `/llamafile` command fully removed — confirmed absent from command table; `LlamafileHelpText` updated to redirect to `/model`; `/help llamafile` and `/help ollama` now print concise redirect messages
+- [x] `/model drop` removed — model files are managed on disk (rm ~/Models/foo.llamafile) or via the ollama CLI; `cmdModelDrop`, `llamafileNameCandidates`, `ollamaListTable`, `modelSwitch` deleted; all help text updated
 - [x] While Harvey should support using Ollama models (including starting/stopping Ollama service if necessary), managing the Ollama models available to fall to the Ollama cli this will give us better alignment with all the models and minimize further the Ollama specific behavior — `/ollama` command removed; `ollama` CLI handles model management; Harvey aggregates Ollama models via `/api/tags` for `/model list`
   - [x] When an alias is setup for an Ollama model via `/model use`, it should do a probe to get the model's features this will let us drop the `/ollama probe` and `/ollama probe-all` commands — auto-probe fires in `promptLazyRegister` immediately after alias creation
 - [ ] Once `/memory profile` is enabled there is no way to turn it off

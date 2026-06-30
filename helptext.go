@@ -153,18 +153,13 @@ are also available from the shell: harvey --help TOPIC.
 
 **Model and backend**
 
-/model [list|use [NAME]|show [NAME]|status|mode [MODEL] MODE|alias ...]
+/model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...]
 : unified model management across llamafile, Ollama, and llama.cpp backends;
-  use with no argument shows a combined picker of all locally available models
+  place .llamafile or .gguf files in ~/Models/ — Harvey discovers them automatically;
+  Ollama models are listed live when Ollama is running; use ollama CLI for pull/rm
 
 /workspace <status|init [PATH]>
 : show workspace root, alias count and profile; seed aliases from another workspace
-
-/ollama <start|stop|status|logs|env|pull MODEL|push MODEL|rm MODEL|probe [MODEL]|clean|...>
-: Ollama daemon control and model registry (pull, push, rm, probe)
-
-/llamafile <add [PATH] [NAME]|show [NAME]|list|start [NAME]|status|remove NAME|download>
-: register and manage local llamafile executables
 
 /inspect [MODEL]
 : show detailed model information (Ollama only)
@@ -323,41 +318,24 @@ Alternatively, install Ollama (https://ollama.com) and pull a model:
 
 `
 
-	// LlamafileDownloadText is printed by /llamafile download. It lists
-	// recommended models with sizes and download guidance. Update each release
-	// when the recommended set changes.
-	LlamafileDownloadText = `
-Recommended Llamafile models (Mozilla / HuggingFace):
-  https://huggingface.co/Mozilla/llamafile-models
-
-  Name                                   Size    Best for
-  ──────────────────────────────────────────────────────────────────
-  Qwen2.5-Coder-7B-Q5_K_S.llamafile     5.1 GB  Code generation, refactoring
-  Qwen2.5-Coder-1.5B-Q4_K_M.llamafile   1.4 GB  Code generation (low VRAM / CPU)
-  Phi-3.5-mini-instruct-Q4_K_M.llamafile 2.3 GB  Compact reasoning, general tasks
-  Mistral-7B-Instruct-v0.3-Q4_K_M.llamafile 4.1 GB  Instruction following, writing
-  Llama-3.2-3B-Instruct-Q8_0.llamafile  3.5 GB  General chat
-
-Download the file, place it in ~/Models/, then:
-  /llamafile add
-
-Or pass the path directly:
-  /llamafile add ~/Downloads/Qwen2.5-Coder-7B-Q5_K_S.llamafile
-
-`
-
 	// ─── Model backends ─────────────────────────────────────────────────────────
 
 	// LlamafileHelpText is a redirect stub — the /llamafile command has been removed.
-	// Its operations (drop, stop, status, download) are now part of /model.
+	// Model management is now unified under /model.
 	LlamafileHelpText = `The /llamafile command has been removed.
 Use /model for all model management — see /help model.
 
-  /model use [NAME]     — select and start a model (llamafile, llama.cpp, or Ollama)
-  /model drop [NAME]    — unregister a llamafile model
+  /model list           — list all available models (llamafile, llama.cpp, Ollama)
+  /model use [NAME]     — select and start a model
   /model stop           — stop the active llamafile or llama.cpp server
-  /model download       — print recommended llamafile download URLs
   /model status         — show active backend status
+  /model clean          — remove aliases pointing to models no longer on disk
+
+To add a llamafile model: place the .llamafile file in ~/Models/ — Harvey
+discovers it automatically on the next /model list or /model use.
+
+For recommended llamafile models visit:
+  https://huggingface.co/Mozilla/llamafile-models
 
 `
 
@@ -440,21 +418,11 @@ the scene.
     Useful for pre-configuring a model before switching to it.
 
   The mode is persisted in the model cache (agents/model_cache.db) and survives
-  across sessions. It overrides the auto-detected capability from /ollama probe.
-  Requires /ollama probe to have run at least once for the model.
+  across sessions. It overrides the auto-detected capability from capability probing.
 
   /model stop
     Stop the active llamafile or llama.cpp server if Harvey started it.
     Backends not started by Harvey are left running.
-
-  /model drop [NAME]
-    Unregister a llamafile model (removes from harvey.yaml; file not deleted).
-    For llama.cpp, clears the active session without deleting the .gguf file.
-    With no NAME and llamafile active, shows a picker of registered models.
-    For Ollama models use /ollama rm instead.
-
-  /model download
-    Print a curated table of recommended llamafile models with download URLs.
 
 # AT-MENTION SWITCHING
 

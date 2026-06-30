@@ -139,30 +139,6 @@ func memoryIDCandidates(a *Agent) []string {
 	return ids
 }
 
-/** llamafileNameCandidates returns names of all registered llamafile models.
- * Called by buildCompleter for /llamafile use and /llamafile drop.
- *
- * Parameters:
- *   a (*Agent) — current agent.
- *
- * Returns:
- *   []string — model name strings; nil when none are registered.
- *
- * Example:
- *   names := llamafileNameCandidates(a) // ["granite3.3-2b", ...]
- */
-func llamafileNameCandidates(a *Agent) []string {
-	models := a.Config.Llamafile.Models
-	if len(models) == 0 {
-		return nil
-	}
-	names := make([]string, len(models))
-	for i, m := range models {
-		names[i] = m.Name
-	}
-	return names
-}
-
 /** routeNameCandidates returns the names of all registered remote routes.
  * Called by buildCompleter for /route rm and /route probe.
  *

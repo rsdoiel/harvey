@@ -393,13 +393,12 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdPipeline,
 		},
 		"model": {
-			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|drop [NAME]|clean|mode [MODEL] MODE|alias ...]",
+			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...]",
 			Description: "Unified model management across llamafile, llama.cpp, and Ollama backends",
 			Handler:     cmdModel,
-			Subcommands: []string{"list", "use", "show", "status", "stop", "drop", "clean", "mode", "alias"},
+			Subcommands: []string{"list", "use", "show", "status", "stop", "clean", "mode", "alias"},
 			ArgCompletion: map[string]func(*Agent) []string{
-				"use":  func(a *Agent) []string { return allModelNames(a) },
-				"drop": llamafileNameCandidates,
+				"use": func(a *Agent) []string { return allModelNames(a) },
 			},
 		},
 		"plan": {
@@ -810,8 +809,6 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 			name = args[1]
 		}
 		return cmdModelShowEntry(a, name, out)
-	case "drop":
-		return cmdModelDrop(a, args[1:], out)
 	case "clean":
 		return cmdModelClean(a, out)
 	default:
@@ -1033,81 +1030,6 @@ func cmdModelStop(a *Agent, out io.Writer) error {
 	a.Backend = nil
 	a.Client = nil
 	fmt.Fprintf(out, "  Stopped %s backend (model: %s).\n", backendName, modelName)
-	return nil
-}
-
-// cmdModelDrop removes a model registration from the active backend.
-// For llamafile: removes from config and stops if active.
-// For llama.cpp: clears the active session (file not deleted).
-// For Ollama: prints a redirect to /ollama rm.
-func cmdModelDrop(a *Agent, args []string, out io.Writer) error {
-	// Determine target backend: prefer active backend, fall back to config.
-	backendName := ""
-	if a.Backend != nil {
-		backendName = a.Backend.Name()
-	} else if len(a.Config.Llamafile.Models) > 0 {
-		backendName = "llamafile"
-	}
-	switch backendName {
-	case "llamafile":
-		name := ""
-		if len(args) > 0 {
-			name = args[0]
-		} else {
-			names := llamafileNameCandidates(a)
-			if len(names) == 0 {
-				fmt.Fprintln(out, "  No llamafile models registered.")
-				return nil
-			}
-			chosen, err := SelectFromStrings(names, fmt.Sprintf("Drop which model [1-%d] or Enter to cancel: ", len(names)), a.In, out)
-			if err != nil || chosen == "" {
-				return err
-			}
-			name = chosen
-		}
-		models := a.Config.Llamafile.Models
-		newModels := models[:0]
-		found := false
-		for _, e := range models {
-			if e.Name == name {
-				found = true
-				if a.Backend.StartedByHarvey() && strings.EqualFold(a.Backend.ActiveModel(), name) {
-					_ = a.Backend.Stop()
-					a.Backend = nil
-					a.Client = nil
-				}
-				continue
-			}
-			newModels = append(newModels, e)
-		}
-		if !found {
-			fmt.Fprintf(out, "  No llamafile registered as %q.\n", name)
-			return nil
-		}
-		a.Config.Llamafile.Models = newModels
-		if a.Config.Llamafile.Active == name {
-			a.Config.Llamafile.Active = ""
-		}
-		if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
-		}
-		fmt.Fprintf(out, "  Removed %q from registered models.\n", name)
-	case "llamacpp":
-		name := ""
-		if len(args) > 0 {
-			name = args[0]
-		} else if a.Backend != nil {
-			name = a.Backend.ActiveModel()
-		}
-		if a.Backend != nil && a.Backend.StartedByHarvey() {
-			_ = a.Backend.Stop()
-		}
-		a.Backend = nil
-		a.Client = nil
-		fmt.Fprintf(out, "  Dropped llama.cpp model %q from active session (file not deleted).\n", name)
-	default:
-		fmt.Fprintln(out, "  /model drop is for llamafile and llama.cpp models. Use /ollama rm MODEL to remove Ollama models.")
-	}
 	return nil
 }
 
@@ -1638,59 +1560,6 @@ func ollamaModelTable(a *Agent, summaries []OllamaModelSummary, out io.Writer, n
 
 	if unknownCount > 0 {
 		fmt.Fprintf(out, "\n  %d model(s) not yet probed — run /ollama probe to fill in capabilities.\n", unknownCount)
-	}
-}
-
-// ollamaListTable prints the capability table for /ollama list, grouped by tier:
-//
-//	Tier 1 — full (tools + tagged blocks)
-//	Tier 2 — tools only
-//	Tier 3 — embed only
-//	Tier 4 — base / unprobed
-func ollamaListTable(a *Agent, summaries []OllamaModelSummary, out io.Writer) {
-	type tier struct {
-		label  string
-		models []OllamaModelSummary
-	}
-	tiers := []tier{
-		{"Full capability (tools + tagged blocks)", nil},
-		{"Tools support", nil},
-		{"Embed only", nil},
-		{"Base / unprobed", nil},
-	}
-
-	for _, s := range summaries {
-		var cap *ModelCapability
-		if a.ModelCache != nil {
-			cap, _ = a.ModelCache.Get(s.Name)
-		}
-		if cap == nil {
-			tiers[3].models = append(tiers[3].models, s)
-			continue
-		}
-		switch {
-		case cap.SupportsTools == CapYes && cap.SupportsTaggedBlocks == CapYes:
-			tiers[0].models = append(tiers[0].models, s)
-		case cap.SupportsTools == CapYes:
-			tiers[1].models = append(tiers[1].models, s)
-		case cap.SupportsEmbed == CapYes:
-			tiers[2].models = append(tiers[2].models, s)
-		default:
-			tiers[3].models = append(tiers[3].models, s)
-		}
-	}
-
-	first := true
-	for _, t := range tiers {
-		if len(t.models) == 0 {
-			continue
-		}
-		if !first {
-			fmt.Fprintln(out)
-		}
-		fmt.Fprintf(out, "  -- %s --\n", t.label)
-		ollamaModelTable(a, t.models, out, false)
-		first = false
 	}
 }
 
@@ -3484,45 +3353,6 @@ func aliasClashesWithModel(a *Agent, name string) bool {
 		}
 	}
 	return false
-}
-
-// modelSwitch changes the active model. An "ollama://" prefix forces the Ollama
-// backend. Without a prefix the model is looked up in Ollama; if found it is
-// activated, otherwise the user is told it was not found.
-func modelSwitch(a *Agent, name string, out io.Writer) error {
-	ctx := context.Background()
-
-	const ollamaPrefix = "ollama://"
-
-	if strings.HasPrefix(name, ollamaPrefix) {
-		name = strings.TrimPrefix(name, ollamaPrefix)
-	}
-
-	// Resolve alias → full model name before the Ollama lookup.
-	if resolved := a.Config.ResolveModelAlias(name); resolved != name {
-		fmt.Fprintf(out, "  Resolving alias %q → %s\n", name, resolved)
-		name = resolved
-	}
-
-	if !ProbeOllama(a.Config.Ollama.URL) {
-		fmt.Fprintln(out, "  Ollama is not running. Use /ollama start first.")
-		return nil
-	}
-
-	models, err := newOllamaLLMClient(a.Config.Ollama.URL, "", a.Config.Ollama.Timeout).Models(ctx)
-	if err != nil {
-		return fmt.Errorf("listing models: %w", err)
-	}
-	for _, m := range models {
-		if m == name {
-			a.setOllamaModel(name)
-			fmt.Fprintf(out, "  Switched to model: %s\n", name)
-			return nil
-		}
-	}
-	fmt.Fprintf(out, "  Model %q not found in Ollama.\n", name)
-	fmt.Fprintln(out, "  Use /ollama list to see available models.")
-	return nil
 }
 
 // ─── auto-execute ─────────────────────────────────────────────────────────────
