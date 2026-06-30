@@ -3,7 +3,8 @@
 
 ## Feature ideas
 
-- [ ] The chunked reading with prompt seems to work but when I've tried the models seem prone to hullicinations, but that could be that balance of model size and main model context isn't being fully addressed. How do we ensure that each chunk cycle only see the prompt and the chunk rather than the full context and the chunk prompt?
+- [x] The chunked reading with prompt seems to work but when I've tried the models seem prone to hullicinations, but that could be that balance of model size and main model context isn't being fully addressed. How do we ensure that each chunk cycle only see the prompt and the chunk rather than the full context and the chunk prompt?
+  Confirmed isolated: each chunk LLM call receives exactly 2 messages (system + user) — no conversation history. `TestRunChunkedAnalysis_ChunkMessagesAreIsolated` verifies this. To reduce hallucination from models drawing on training data, added `chunkSystemPrompt` ("Analyse ONLY the text provided in this message…") prepended to every map and synthesis call.
 - [x] The `/model download` command just doesn't make sense to me — removed; `LlamafileDownloadText` constant deleted; help text updated to point users directly to HuggingFace
 - [x] The sticky last model used isn't useful since the behavior seems idiocractic between Llamafile, Ollama and Llama.cpp models. Let's drop the "active" model concept if not restarting a previous session
 - [x] `/llamafile` command fully removed — confirmed absent from command table; `LlamafileHelpText` updated to redirect to `/model`; `/help llamafile` and `/help ollama` now print concise redirect messages

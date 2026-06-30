@@ -198,10 +198,10 @@ func TestRunChunkedAnalysis_WithRecorder(t *testing.T) {
 }
 
 func TestRunChunkedAnalysis_PromptIncludesInstruction(t *testing.T) {
-	// Verify that the instruction appears in the prompt sent to the LLM.
-	var capturedMsg []Message
-	client := &capturingMockClient{
-		captures: &capturedMsg,
+	// Verify that the instruction appears in the user message sent for each chunk.
+	var allCaptured [][]Message
+	client := &allCapturingMockClient{
+		captures: &allCaptured,
 		replies:  []string{"r1", "synthesis"},
 	}
 	params := defaultParams(strChunks("the chunk"))
@@ -210,19 +210,20 @@ func TestRunChunkedAnalysis_PromptIncludesInstruction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(capturedMsg) == 0 {
-		t.Fatal("no messages captured")
+	if len(allCaptured) == 0 || len(allCaptured[0]) < 2 {
+		t.Fatal("expected at least 2 messages in first chunk call (system + user)")
 	}
-	if !strings.Contains(capturedMsg[0].Content, "Extract all headings.") {
-		t.Errorf("instruction not found in first chunk prompt: %q", capturedMsg[0].Content)
+	userMsg := allCaptured[0][1] // msgs[1] is the user message; msgs[0] is system
+	if !strings.Contains(userMsg.Content, "Extract all headings.") {
+		t.Errorf("instruction not found in chunk user message: %q", userMsg.Content)
 	}
 }
 
 func TestRunChunkedAnalysis_PromptIncludesLineRange(t *testing.T) {
-	// Each chunk prompt must include the source line range so the model can cite locations.
-	var capturedMsg []Message
-	client := &capturingMockClient{
-		captures: &capturedMsg,
+	// Each chunk user message must include the source line range so the model can cite locations.
+	var allCaptured [][]Message
+	client := &allCapturingMockClient{
+		captures: &allCaptured,
 		replies:  []string{"r1", "synthesis"},
 	}
 	chunks := []DocumentChunk{{Content: "some content", StartLine: 42, EndLine: 55}}
@@ -231,20 +232,22 @@ func TestRunChunkedAnalysis_PromptIncludesLineRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(capturedMsg) == 0 {
-		t.Fatal("no messages captured")
+	if len(allCaptured) == 0 || len(allCaptured[0]) < 2 {
+		t.Fatal("expected at least 2 messages in first chunk call (system + user)")
 	}
-	if !strings.Contains(capturedMsg[0].Content, "42") {
-		t.Errorf("start line 42 not found in chunk prompt: %q", capturedMsg[0].Content)
+	userMsg := allCaptured[0][1]
+	if !strings.Contains(userMsg.Content, "42") {
+		t.Errorf("start line 42 not found in chunk user message: %q", userMsg.Content)
 	}
-	if !strings.Contains(capturedMsg[0].Content, "55") {
-		t.Errorf("end line 55 not found in chunk prompt: %q", capturedMsg[0].Content)
+	if !strings.Contains(userMsg.Content, "55") {
+		t.Errorf("end line 55 not found in chunk user message: %q", userMsg.Content)
 	}
 }
 
 func TestRunChunkedAnalysis_ChunkMessagesAreIsolated(t *testing.T) {
-	// Each chunk call must receive exactly one user message containing only the
-	// instruction and chunk content — no conversation history must leak in.
+	// Each chunk call must receive exactly 2 messages: one focused system message
+	// and one user message containing the instruction and chunk content. No
+	// conversation history must appear beyond these two.
 	var allCaptured [][]Message
 	client := &allCapturingMockClient{
 		captures: &allCaptured,
@@ -259,15 +262,69 @@ func TestRunChunkedAnalysis_ChunkMessagesAreIsolated(t *testing.T) {
 	if len(allCaptured) != 3 {
 		t.Fatalf("expected 3 call captures, got %d", len(allCaptured))
 	}
-	// Each chunk call must have exactly 1 message with role "user".
+	// Each chunk call: system message first, then exactly 1 user message.
 	for i := 0; i < 2; i++ {
 		msgs := allCaptured[i]
-		if len(msgs) != 1 {
-			t.Errorf("chunk call %d: expected exactly 1 message (no history), got %d", i+1, len(msgs))
+		if len(msgs) != 2 {
+			t.Errorf("chunk call %d: expected exactly 2 messages (system+user, no history), got %d", i+1, len(msgs))
+			continue
 		}
-		if len(msgs) > 0 && msgs[0].Role != "user" {
-			t.Errorf("chunk call %d: expected role 'user', got %q", i+1, msgs[0].Role)
+		if msgs[0].Role != "system" {
+			t.Errorf("chunk call %d: expected msgs[0].Role='system', got %q", i+1, msgs[0].Role)
 		}
+		if msgs[1].Role != "user" {
+			t.Errorf("chunk call %d: expected msgs[1].Role='user', got %q", i+1, msgs[1].Role)
+		}
+	}
+}
+
+func TestRunChunkedAnalysis_ChunkSystemMessageConstrainsToChunk(t *testing.T) {
+	// The system message injected into each chunk call must instruct the model
+	// to analyse only the provided content, preventing cross-chunk hallucination.
+	var allCaptured [][]Message
+	client := &allCapturingMockClient{
+		captures: &allCaptured,
+		replies:  []string{"r1", "synthesis"},
+	}
+	params := defaultParams(strChunks("only this content"))
+	_, err := RunChunkedAnalysis(context.Background(), client, nil, nil, params, io.Discard)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(allCaptured) < 1 || len(allCaptured[0]) < 1 {
+		t.Fatal("no messages captured for chunk call")
+	}
+	sys := allCaptured[0][0]
+	if sys.Role != "system" {
+		t.Fatalf("expected first message to be system, got %q", sys.Role)
+	}
+	// System message must instruct the model to restrict analysis to the provided text.
+	keywords := []string{"only", "provided"}
+	for _, kw := range keywords {
+		if !strings.Contains(strings.ToLower(sys.Content), kw) {
+			t.Errorf("system message missing keyword %q: %q", kw, sys.Content)
+		}
+	}
+}
+
+func TestRunChunkedAnalysis_SynthesisAlsoHasSystemMessage(t *testing.T) {
+	// The synthesis call must also include a system message constraining the model.
+	var allCaptured [][]Message
+	client := &allCapturingMockClient{
+		captures: &allCaptured,
+		replies:  []string{"r1", "synthesis"},
+	}
+	params := defaultParams(strChunks("chunk content"))
+	_, err := RunChunkedAnalysis(context.Background(), client, nil, nil, params, io.Discard)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// allCaptured[1] is the synthesis call.
+	if len(allCaptured) < 2 || len(allCaptured[1]) == 0 {
+		t.Fatal("synthesis call not captured")
+	}
+	if allCaptured[1][0].Role != "system" {
+		t.Errorf("synthesis call: expected first message role='system', got %q", allCaptured[1][0].Role)
 	}
 }
 

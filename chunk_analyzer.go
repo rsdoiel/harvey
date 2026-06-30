@@ -68,6 +68,13 @@ type ChunkAnalysisParams struct {
  *   if err != nil { log.Fatal(err) }
  *   fmt.Println(result)
  */
+// chunkSystemPrompt is prepended to every chunk and synthesis LLM call. It
+// constrains the model to the text provided in each call, preventing it from
+// drawing on training data to fill gaps between chunks.
+const chunkSystemPrompt = "You are a focused document analysis assistant. " +
+	"Analyse ONLY the text provided in this message. " +
+	"Do not reference any information from outside the provided content."
+
 func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, dbg *DebugLog, params ChunkAnalysisParams, w io.Writer) (string, error) {
 	n := len(params.Chunks)
 
@@ -84,7 +91,10 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, db
 
 		prompt := fmt.Sprintf("%s\n\n---\nChunk %d of %d (lines %d–%d):\n%s",
 			params.Instruction, chunkNum, n, chunk.StartLine, chunk.EndLine, chunk.Content)
-		messages := []Message{{Role: "user", Content: prompt}}
+		messages := []Message{
+			{Role: "system", Content: chunkSystemPrompt},
+			{Role: "user", Content: prompt},
+		}
 
 		if dbg != nil {
 			dbg.LogLLMRequest(params.Model, len(messages), 0)
@@ -123,7 +133,10 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, db
 		params.Instruction, n,
 		strings.Join(partialResults, "\n\n---\n"),
 	)
-	messages := []Message{{Role: "user", Content: synthesisPrompt}}
+	messages := []Message{
+		{Role: "system", Content: chunkSystemPrompt},
+		{Role: "user", Content: synthesisPrompt},
+	}
 
 	if dbg != nil {
 		dbg.LogLLMRequest(params.Model, len(messages), 0)
