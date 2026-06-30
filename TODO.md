@@ -4,6 +4,7 @@
 ## Bugs
 
 - [ ] When I started `harvey 0.0.15a (released 2026-06-28, 27d2ba3)`, it jumped straight into a previous model instead of started as blank slate. I think this is because there is a stale active session in the Harvey YAML. This is a bug.
+- [ ] Still getting chunk hulicinations (tested with Gemma4 EB4 model in Harvey debug mode), review logs and session for problem. Is this a problem with our approach (map reduce) or something else? Is this approach reasonable to pursue?
 
 ## Feature ideas
 
