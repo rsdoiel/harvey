@@ -4,6 +4,65 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-06-30 — `/ollama` command removed; Ollama management delegated to the Ollama CLI
+
+**Context.** Harvey had a large `/ollama` command with subcommands covering start/stop/status, server lifecycle, model listing, pull/push/rm, probe, logs, env, ps, and alias management. Most of these duplicate functionality already covered by the `ollama` CLI itself. The surface was redundant, brittle (Harvey had to maintain parity with the Ollama API), and added cognitive load for users who switch between Harvey and the shell. The unified `/model` command (introduced 2026-06-20) already provided a backend-agnostic entry point for model switching. The alias subcommand was already shared.
+
+**Decision.** Remove `/ollama` entirely. Ollama model management (pull, push, rm, list, show, run) is delegated entirely to the `ollama` CLI. Harvey's responsibilities for Ollama reduce to:
+
+1. **Model discovery** — `aggregateModels` queries the live Ollama `/api/tags` endpoint when Ollama is reachable; result appears in `/model list`.
+2. **Model switching** — `/model use` resolves across all backends including Ollama.
+3. **Alias management** — `/model alias` unchanged; aliases now carry an `Engine` field ("ollama", "llamafile", "llamacpp", or "" for legacy).
+4. **Auto-probe on alias creation** — when `/model use` creates a new Ollama alias, `FastProbeModel` is called immediately so capability data (tool support, embed support, context length) is cached without a separate `/ollama probe` command.
+5. **Stale alias cleanup** — `/model clean` replaces `/ollama clean`, pruning aliases for all engines (not just Ollama) using `pruneStaleModelRefs`. Legacy aliases with no engine field are preserved.
+6. **Service lifecycle** — Harvey starts Ollama only when a model needs it and Harvey was configured to manage it. `/model stop` and `/model status` remain backend-agnostic. Detailed service management (logs, env, ps) is the `ollama` CLI's job.
+
+The `cmdOllama`, `ollamaProbe`, `pruneStaleOllamaRefs`, `ollamaModelTable`, and `removeModelFromConfig` functions are deleted.
+
+**Rejected alternatives.**
+
+- *Keep `/ollama` as a thin wrapper around the `ollama` CLI* — adds indirection without value; users who want `ollama` output should just type `!ollama`.
+- *Keep only the useful subcommands (`start`, `stop`, `status`, `list`)* — `/model` already provides all of these in a backend-agnostic way. Keeping a subset of `/ollama` would confuse the command vocabulary.
+- *Preserve `/ollama probe` as an explicit command* — auto-probe on alias creation covers the same need at the moment the alias is most useful (right after setup). An explicit probe command is redundant.
+
+**Consequences.**
+
+- `commands.go` loses ~600 lines: `cmdOllama`, `ollamaProbe`, `pruneStaleOllamaRefs`, `ollamaModelTable`, `removeModelFromConfig`.
+- `ModelAlias` struct gains `Engine string` (persisted as `engine:` in YAML; legacy aliases without this field match any backend).
+- `pruneStaleModelRefs(a, liveOllama, liveLlamafile, liveLlamaCpp, out)` replaces `pruneStaleOllamaRefs`.
+- `aggregateModels` provides the unified model list for `/model list` across all backends.
+- Users who relied on `/ollama pull`, `/ollama rm`, etc. must use the `ollama` CLI or `! ollama <subcommand>`.
+- Tests for all deleted functions removed; `TestOllamaCommandRemoved` verifies the command table entry is gone.
+
+---
+
+## 2026-06-30 — Blank-slate active model: no persistence, no auto-start from config
+
+**Context.** Harvey previously persisted the last-used Llamafile model to `harvey.yaml` as `llamafile.active` and auto-started it at next session. This caused surprising behavior: starting Harvey would silently launch the last Llamafile process without prompting, the "active" model name was meaningless across session restarts (the user may have added or removed models), and the pattern did not generalise to Ollama or llama.cpp. The concept of "sticky active model" proved idiosyncratic across all three backends.
+
+**Decision.** Drop the active-model persistence concept for sessions not being resumed. Specifically:
+
+- `SaveLlamafileConfig` never writes the `active:` YAML field (always saved as `""`).
+- `selectBackend` Case 1 (auto-start the persisted active Llamafile) is removed.
+- When Harvey is started with `--llamafile PATH`, the path is threaded as a `hint` into `selectBackend` for that session only; it is not persisted.
+- When resuming a session (`--continue` / `--resume`), the session's model is restored via existing session-resume logic, not via the config's `active:` field.
+
+The intent is that at startup Harvey always shows the full model picker, giving the user explicit control every time, rather than guessing which model they want.
+
+**Rejected alternatives.**
+
+- *Persist active model and let the user opt out* — adds a config knob; the cost of always picking is low and the benefit of a clean slate is high for users who cycle through many models.
+- *Persist active model only for Ollama* — inconsistent across backends; users would need to learn different startup behavior per engine.
+
+**Consequences.**
+
+- `Config.Llamafile.Active` is still loaded from YAML for backward compat but is never written back, so it decays naturally as the user's config is saved.
+- `backend_startup.go` Case 1 deleted; Case 2 (picker from registered models) is now the first case.
+- `TestSaveLlamafileConfig_DoesNotPersistActive` verifies the new behavior.
+- Users who depended on the auto-start behavior must use `--llamafile PATH` at the CLI or pick from the model picker at startup.
+
+---
+
 ## 2026-06-28 — `/plan` IVR support deferred — design incomplete
 
 **Context.** Harvey's `/plan` feature provides bounded-context task execution but lacks output validation and automatic repair. The Instruct-Validate-Repair (IVR) pattern (from the [Mellea project](https://mellea.ai/blogs/why-mellea/)) was evaluated as a candidate extension. Two integration options were considered: (A) extend `/plan` with opt-in inline validation annotations; or (B) add a new `/ivr` command.

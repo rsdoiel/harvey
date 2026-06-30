@@ -5,9 +5,9 @@
 
 - [ ] The chunked reading with prompt seems to work but when I've tried the models seem prone to hullicinations, but that could be that balance of model size and main model context isn't being fully addressed. How do we ensure that each chunk cycle only see the prompt and the chunk rather than the full context and the chunk prompt?
 - [ ] The `/model download` command just doesn't make sense to me
-- [ ] The sticky last model used isn't useful since the behavior seems idiocractic between Llamafile, Ollama and Llama.cpp models. Let's drop the "active" model concept if not restarting a previous session
-- [ ] While Harvey should support using Ollama models (including starting/stopping Ollama service if necessary), managing the Ollama models available to fall to the Ollama cli this will give us better alignment with all the models and minimize further the Ollama specific behavior
-  - [ ] When an alias is setup for an Ollama model via `/model use`, it should do a probe to get the model's features this will let us drop the `/ollama probe` and `/ollama probe-all` commands
+- [x] The sticky last model used isn't useful since the behavior seems idiocractic between Llamafile, Ollama and Llama.cpp models. Let's drop the "active" model concept if not restarting a previous session
+- [x] While Harvey should support using Ollama models (including starting/stopping Ollama service if necessary), managing the Ollama models available to fall to the Ollama cli this will give us better alignment with all the models and minimize further the Ollama specific behavior — `/ollama` command removed; `ollama` CLI handles model management; Harvey aggregates Ollama models via `/api/tags` for `/model list`
+  - [x] When an alias is setup for an Ollama model via `/model use`, it should do a probe to get the model's features this will let us drop the `/ollama probe` and `/ollama probe-all` commands — auto-probe fires in `promptLazyRegister` immediately after alias creation
 - [ ] Once `/memory profile` is enabled there is no way to turn it off
 - [x] Add support for using Llama.cpp to run models
 - [ ] Assay needs to work across model systems, example I should be able to use with Llamafiles or Llama.cpp
@@ -15,8 +15,8 @@
   See [chunked-analysis-design.md](chunked-analysis-design.md) and
   [chunked-analysis-plan.md](chunked-analysis-plan.md). Work items W0–W5
   are in the v0.0.16 cycle below.
-- [ ] Model picker is showing Ollama files, when I picked Bonsai 8B (available as both Llamafile and under Ollama), it skipped setting up the alias.
-- [ ] Need tests to confirm we can switch between Llamafile and Llama.cpp for models that have both a .llamafile version and a .gguf version
+- [x] Model picker is showing Ollama files, when I picked Bonsai 8B (available as both Llamafile and under Ollama), it skipped setting up the alias. — Fixed: `ModelAlias` now carries `Engine`; `promptLazyRegister` matches on both model name and engine so same-named cross-backend models get separate aliases.
+- [x] Need tests to confirm we can switch between Llamafile and Llama.cpp for models that have both a .llamafile version and a .gguf version — `model_switch_test.go` covers stem consistency and engine-labelled aggregation.
 
 
 ## Refactoring
@@ -54,11 +54,13 @@ See [refactoring-plan.md](refactoring-plan.md) for rationale and full work item 
 
 ## Bugs
 
-- [ ] **SmolLM3 via llama.cpp "unexpected end of JSON input".**
+- [x] **SmolLM3 via llama.cpp "unexpected end of JSON input".**
   llama-server occasionally returns a truncated or malformed JSON body on
-  inference requests. Root cause not yet diagnosed — suspect a streaming
-  boundary issue or server OOM under load. Need a repeatable test case.
-  Observed during live testing 2026-06-29 with Mac Ports llama-server v9767.
+  inference requests. Root cause: llama-server closes the connection mid-stream
+  under load; Go's JSON decoder surfaces this as "unexpected end of JSON input".
+  Mitigated 2026-06-30: `isConnectionError` now catches this string so the
+  auto-reconnect path fires instead of surfacing the raw error. Full fix
+  (preventing the server close) requires upstream llama-server work.
 
 - [x] **/status showed "llamafile" for llamacpp backend.**
   LlamaCppBackend.NewClient() called newLlamafileLLMClient instead of

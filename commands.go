@@ -203,12 +203,6 @@ func (a *Agent) registerCommands() {
 			Description: "Clear conversation history",
 			Handler:     cmdClear,
 		},
-		"ollama": {
-			Usage:        "/ollama <start|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|logs|use MODEL|env|clean>",
-			Description:  "Control the local Ollama service and manage models",
-			Handler:      cmdOllama,
-			Subcommands:  []string{"start", "stop", "status", "list", "ps", "run", "pull", "push", "show", "create", "cp", "rm", "logs", "use", "env", "alias"},
-		},
 		"kb": {
 			Usage:       "/kb <status|search|inject|project|observe|concept> [args...]",
 			Description: "Manage and query the workspace knowledge base",
@@ -399,10 +393,10 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdPipeline,
 		},
 		"model": {
-			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|drop [NAME]|download|mode [MODEL] MODE|alias ...]",
+			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|drop [NAME]|clean|mode [MODEL] MODE|alias ...]",
 			Description: "Unified model management across llamafile, llama.cpp, and Ollama backends",
 			Handler:     cmdModel,
-			Subcommands: []string{"list", "use", "show", "status", "stop", "drop", "mode", "alias"},
+			Subcommands: []string{"list", "use", "show", "status", "stop", "drop", "clean", "mode", "alias"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"use":  func(a *Agent) []string { return allModelNames(a) },
 				"drop": llamafileNameCandidates,
@@ -818,9 +812,61 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 		return cmdModelShowEntry(a, name, out)
 	case "drop":
 		return cmdModelDrop(a, args[1:], out)
+	case "clean":
+		return cmdModelClean(a, out)
 	default:
 		return cmdModelShowEntry(a, "", out)
 	}
+}
+
+// cmdModelClean removes stale model aliases whose model is no longer available
+// on any known backend. Aliases with Engine=="" (legacy, no engine recorded)
+// are preserved because their backend cannot be determined safely.
+func cmdModelClean(a *Agent, out io.Writer) error {
+	// Collect live model names per engine.
+	var liveOllama, liveLlamafile, liveLlamaCpp []string
+
+	agentsDir := ""
+	if a.Workspace != nil {
+		agentsDir = a.Workspace.Root + "/agents"
+	}
+	workspaceRoot := ""
+	if a.Workspace != nil {
+		workspaceRoot = a.Workspace.Root
+	}
+
+	lb := NewLlamafileBackend(a.Config, agentsDir, workspaceRoot)
+	if models, err := lb.ListModels(); err == nil {
+		for _, m := range models {
+			liveLlamafile = append(liveLlamafile, m.Name)
+		}
+	}
+
+	cb := NewLlamaCppBackend(a.Config, agentsDir)
+	if models, err := cb.ListModels(); err == nil {
+		for _, m := range models {
+			liveLlamaCpp = append(liveLlamaCpp, m.Name)
+		}
+	}
+
+	if ProbeOllama(a.Config.Ollama.URL) {
+		if summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background()); err == nil {
+			for _, s := range summaries {
+				liveOllama = append(liveOllama, s.Name)
+			}
+		}
+	}
+
+	n, err := pruneStaleModelRefs(a, liveOllama, liveLlamafile, liveLlamaCpp, out)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		fmt.Fprintln(out, "  No stale aliases found.")
+	} else {
+		fmt.Fprintf(out, "  Removed %d stale alias(es).\n", n)
+	}
+	return nil
 }
 
 // cmdModelShowEntry prints details for the named model, or the active model when name is "".
@@ -867,26 +913,39 @@ func cmdModelShowEntry(a *Agent, name string, out io.Writer) error {
 	return nil
 }
 
-// cmdModelList prints all registered models across llamafile and ollama.
+// cmdModelList prints all locally available models across every backend.
+// It uses aggregateModels so llamafile, llama.cpp, and Ollama entries
+// appear together without separate per-engine commands.
 func cmdModelList(a *Agent, out io.Writer) error {
-	hasAny := false
-	if len(a.Config.Llamafile.Models) > 0 {
-		hasAny = true
-		fmt.Fprintln(out, "  Llamafile models:")
-		for _, e := range a.Config.Llamafile.Models {
-			marker := "  "
-			if e.Name == a.Config.Llamafile.Active {
-				marker = "→ "
-			}
-			fmt.Fprintf(out, "    %s%-20s (llamafile)\n", marker, e.Name)
+	models, err := aggregateModels(a)
+	if err != nil {
+		return fmt.Errorf("/model list: %w", err)
+	}
+	if len(models) == 0 {
+		fmt.Fprintln(out, "  No models found. Use /model use to start one.")
+		return nil
+	}
+
+	activeEngine := ""
+	activeModel := ""
+	if a.Backend != nil {
+		activeEngine = a.Backend.Name()
+		activeModel = a.Backend.ActiveModel()
+	} else if a.Config.Llamafile.Active != "" {
+		activeEngine = "llamafile"
+		activeModel = a.Config.Llamafile.Active
+	} else if a.Config.Ollama.Model != "" {
+		activeEngine = "ollama"
+		activeModel = a.Config.Ollama.Model
+	}
+
+	for _, m := range models {
+		active := m.Engine == activeEngine && strings.EqualFold(m.Name, activeModel)
+		marker := "  "
+		if active {
+			marker = "→ "
 		}
-	}
-	if a.Config.Ollama.Model != "" {
-		hasAny = true
-		fmt.Fprintf(out, "  Ollama active: %s\n", a.Config.Ollama.Model)
-	}
-	if !hasAny {
-		fmt.Fprintln(out, "  No models registered. Use /model use to select a model.")
+		fmt.Fprintf(out, "  %s%-30s (%s)\n", marker, m.Name, m.Engine)
 	}
 	return nil
 }
@@ -1459,378 +1518,53 @@ func truncate(s string, n int) string {
 	return string(runes[:n-1]) + "…"
 }
 
-/** cmdOllama handles Ollama server and model management commands.
- *
- * Subcommands:
- *   start [debug]  — Launch ollama serve; optional debug sets OLLAMA_DEBUG=1
- *   stop           — Print instructions to stop Ollama via system service manager
- *   status         — Check if Ollama server is running
- *   list           — List all installed models with metadata
- *   ps             — Show running models (via ollama ps)
- *   run            — Start a model in interactive mode (detached from Harvey)
- *   pull           — Download a model from Ollama registry
- *   push           — Upload a model to Ollama registry
- *   show           — Display detailed model information
- *   create         — Create a model from a Modelfile
- *   cp             — Copy a model to a new name
- *   rm             — Remove a model from the local store
- *   probe          — Test model capabilities (tools, embeddings)
- *   logs           — Show Ollama server logs
- *   use            — Switch to a different model
- *   env            — Display active Ollama environment variables
- *   alias          — Manage short model aliases (/ollama alias NAME FULLNAME)
- *
- * Parameters:
- *   a    (*Agent)    — Harvey agent with configuration.
- *   args ([]string)  — Command arguments from user input.
- *   out  (io.Writer) — Destination for command output.
- *
- * Returns:
- *   error — On command execution failure.
- */
-func cmdOllama(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /ollama <start [debug]|stop|status|list|ps|run MODEL|pull MODEL|push MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL|--all]|logs|use MODEL|env|alias [NAME FULLNAME]|clean>")
-		return nil
-	}
-	switch strings.ToLower(args[0]) {
-	case "start":
-		debug := len(args) > 1 && strings.ToLower(args[1]) == "debug"
-		if ProbeOllama(a.Config.Ollama.URL) {
-			if debug || os.Getenv("OLLAMA_DEBUG") != "" {
-				fmt.Fprintln(out, "Ollama is already running externally — it will not have debug logging.")
-				fmt.Fprintln(out, "  To start in debug mode, quit Ollama first:")
-				fmt.Fprintln(out, "    macOS:  right-click the Ollama menu bar icon → Quit Ollama")
-				fmt.Fprintln(out, "    Linux:  systemctl stop ollama")
-				fmt.Fprintln(out, "  Then re-run: /ollama start debug")
-			} else {
-				fmt.Fprintln(out, "Ollama is already running.")
-			}
-			return nil
-		}
-		if debug {
-			os.Setenv("OLLAMA_DEBUG", "1")
-		}
-		PrintOllamaEnv(out)
-		ollamaLogPath := a.DebugLog.OllamaLogPath()
-		if debug {
-			fmt.Fprintf(out, "Starting Ollama (debug mode)...")
-			if ollamaLogPath != "" {
-				fmt.Fprintf(out, " log: %s", ollamaLogPath)
-			}
-			fmt.Fprintln(out)
-		} else {
-			fmt.Fprintln(out, "Starting Ollama...")
-		}
-		if err := StartOllamaService(ollamaLogPath); err != nil {
-			return err
-		}
-		a.DebugLog.LogOllamaStart(debug, ollamaLogPath)
-		agentsDir := filepath.Join(a.Workspace.Root, "agents")
-		ollamaBackend := NewOllamaBackend(a.Config.Ollama.URL, a.Config.Ollama.Timeout, agentsDir)
-		ollamaBackend.startedByHarvey = true
-		ollamaBackend.activeModel = a.Config.Ollama.Model
-		a.Backend = ollamaBackend
-		fmt.Fprintln(out, "Ollama is running.")
-	case "stop":
-		fmt.Fprintln(out, "Use your system's service manager to stop Ollama (e.g. systemctl stop ollama).")
-	case "status":
-		if ProbeOllama(a.Config.Ollama.URL) {
-			fmt.Fprintln(out, "Ollama is running.")
-		} else {
-			fmt.Fprintln(out, "Ollama is not running.")
-		}
-	case "list":
-		if !ProbeOllama(a.Config.Ollama.URL) {
-			fmt.Fprintln(out, "Ollama is not running.")
-			return nil
-		}
-		summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background())
-		if err != nil {
-			return err
-		}
-		if len(summaries) == 0 {
-			fmt.Fprintln(out, "No models installed. Run: /ollama pull <model>")
-			return nil
-		}
-		ollamaListTable(a, summaries, out)
-	case "ps":
-		cmd := exec.Command("ollama", "ps")
-		cmd.Stdout = out
-		cmd.Stderr = out
-		return cmd.Run()
-	case "pull":
-		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /ollama pull MODEL")
-			return nil
-		}
-		model := args[1]
-		cmd := exec.Command("ollama", "pull", model)
-		cmd.Stdout = out
-		cmd.Stderr = out
-		if err := cmd.Run(); err != nil {
-			return err
-		}
-		// Fast-probe the newly pulled model and cache the result.
-		if a.ModelCache != nil {
-			ctx := context.Background()
-			cap, err := FastProbeModel(ctx, a.Config.Ollama.URL, model)
-			if err == nil {
-				_ = a.ModelCache.Set(cap)
-				fmt.Fprintf(out, "  tools: %s   embed: %s   tagged: %s   ctx: %s   [fast probe]\n",
-					cap.SupportsTools, cap.SupportsEmbed, cap.SupportsTaggedBlocks, ollamaFormatCtx(cap.ContextLength))
-			}
-		}
-	case "show":
-		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /ollama show MODEL")
-			return nil
-		}
-		cmd := exec.Command("ollama", "show", args[1])
-		cmd.Stdout = out
-		cmd.Stderr = out
-		return cmd.Run()
-	case "create":
-		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /ollama create NAME [-f MODELFILE]")
-			return nil
-		}
-		cmd := exec.Command("ollama", append([]string{"create"}, args[1:]...)...)
-		cmd.Stdout = out
-		cmd.Stderr = out
-		return cmd.Run()
-	case "run":
-		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /ollama run MODEL [PROMPT]")
-			return nil
-		}
-		cmd := exec.Command("ollama", append([]string{"run"}, args[1:]...)...)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		return cmd.Run()
-	case "push":
-		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /ollama push MODEL")
-			return nil
-		}
-		cmd := exec.Command("ollama", "push", args[1])
-		cmd.Stdout = out
-		cmd.Stderr = out
-		return cmd.Run()
-	case "cp":
-		if len(args) < 3 {
-			fmt.Fprintln(out, "Usage: /ollama cp SOURCE DEST")
-			return nil
-		}
-		cmd := exec.Command("ollama", "cp", args[1], args[2])
-		cmd.Stdout = out
-		cmd.Stderr = out
-		return cmd.Run()
-	case "rm":
-		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /ollama rm MODEL [MODEL...]")
-			return nil
-		}
-		models := args[1:]
-		cmd := exec.Command("ollama", append([]string{"rm"}, models...)...)
-		cmd.Stdout = out
-		cmd.Stderr = out
-		if err := cmd.Run(); err != nil {
-			return err
-		}
-		// Remove each successfully deleted model from the cache and config.
-		if a.ModelCache != nil {
-			for _, m := range models {
-				_ = a.ModelCache.Delete(m)
-			}
-		}
-		aliasOrRagChanged := false
-		for _, m := range models {
-			if removeModelFromConfig(a.Config, m) {
-				aliasOrRagChanged = true
-			}
-		}
-		if aliasOrRagChanged && a.Workspace != nil {
-			_ = SaveModelAliases(a.Workspace, a.Config)
-			_ = SaveMemoryConfig(a.Workspace, a.Config)
-		}
-	case "clean":
-		if !ProbeOllama(a.Config.Ollama.URL) {
-			fmt.Fprintln(out, "  Ollama is not running — cannot check installed models.")
-			return nil
-		}
-		summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background())
-		if err != nil {
-			return fmt.Errorf("/ollama clean: %w", err)
-		}
-		names := make([]string, len(summaries))
-		for i, s := range summaries {
-			names[i] = s.Name
-		}
-		n, err := pruneStaleOllamaRefs(a, names, out)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			fmt.Fprintln(out, "  No stale entries found.")
-		} else {
-			fmt.Fprintf(out, "  Removed %d stale reference(s) from harvey.yaml.\n", n)
-		}
-	case "probe":
-		return ollamaProbe(a, args[1:], out)
-	case "probe-all":
-		return ollamaProbe(a, []string{"--all"}, out)
-	case "logs":
-		// Try the native ollama logs subcommand first; fall back to journalctl.
-		cmd := exec.Command("ollama", "logs")
-		cmd.Stdout = out
-		cmd.Stderr = out
-		if err := cmd.Run(); err != nil {
-			jcmd := exec.Command("journalctl", "-u", "ollama", "--no-pager", "-n", "100")
-			jcmd.Stdout = out
-			jcmd.Stderr = out
-			return jcmd.Run()
-		}
-		return nil
-	case "env":
-		fmt.Fprintln(out, "Ollama environment (Harvey process):")
-		PrintOllamaEnv(out)
-	case "use":
-		if len(args) < 2 {
-			if !ProbeOllama(a.Config.Ollama.URL) {
-				fmt.Fprintln(out, "  Ollama is not running.")
-				return nil
-			}
-			summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background())
-			if err != nil {
-				return err
-			}
-			if len(summaries) == 0 {
-				fmt.Fprintln(out, "  No models installed. Run: /ollama pull <model>")
-				return nil
-			}
-			ollamaModelTable(a, summaries, out, true)
-			fmt.Fprintf(out, "\nSelect [1-%d]: ", len(summaries))
-			reader := bufio.NewReaderSize(a.In, 1)
-			line, _ := reader.ReadString('\n')
-			n, err := strconv.Atoi(strings.TrimSpace(line))
-			if err != nil || n < 1 || n > len(summaries) {
-				fmt.Fprintln(out, "  Cancelled.")
-				return nil
-			}
-			return modelSwitch(a, summaries[n-1].Name, out)
-		}
-		return modelSwitch(a, args[1], out)
-	case "alias":
-		subargs := args[1:]
-		// If the next token is not a known subcommand keyword, treat as implicit "set".
-		if len(subargs) > 0 && subargs[0] != "list" && subargs[0] != "set" &&
-			subargs[0] != "remove" && subargs[0] != "rm" && subargs[0] != "delete" {
-			subargs = append([]string{"set"}, subargs...)
-		}
-		return cmdModelAlias(a, subargs, out)
-	default:
-		fmt.Fprintf(out, "Unknown ollama subcommand: %s\n", args[0])
-	}
-	return nil
-}
-
-/** removeModelFromConfig removes a single Ollama model name from any
- * ModelAliases values and from the ModelMap keys of every RAG store in cfg.
- * It returns true if any entry was removed.
- *
- * Parameters:
- *   cfg  (*Config) — config to mutate in place.
- *   name (string)  — exact model name to remove (compared case-insensitively).
- *
- * Returns:
- *   bool — true when at least one entry was removed.
- *
- * Example:
- *   changed := removeModelFromConfig(a.Config, "granite4.1:3b")
- */
-func removeModelFromConfig(cfg *Config, name string) bool {
-	changed := false
-	lower := strings.ToLower(name)
-	for alias, entry := range cfg.ModelAliases {
-		if strings.ToLower(entry.Model) == lower {
-			delete(cfg.ModelAliases, alias)
-			changed = true
-		}
-	}
-	for i := range cfg.Memory.RagStores {
-		for key := range cfg.Memory.RagStores[i].ModelMap {
-			if strings.ToLower(key) == lower {
-				delete(cfg.Memory.RagStores[i].ModelMap, key)
-				changed = true
-			}
-		}
-	}
-	return changed
-}
-
-/** pruneStaleOllamaRefs removes model_aliases entries and model_map keys that
- * reference Ollama models not present in liveModels. Changed config sections
- * are persisted to harvey.yaml. The number of removed entries is returned.
- *
- * Parameters:
- *   a          (*Agent)   — current agent; provides workspace and config.
- *   liveModels ([]string) — model names currently installed in Ollama.
- *   out        (io.Writer) — destination for removal notices.
- *
- * Returns:
- *   int   — total number of stale entries removed.
- *   error — on save failure; partial cleanup may already have been applied.
- *
- * Example:
- *   n, err := pruneStaleOllamaRefs(a, liveModels, os.Stdout)
- *   fmt.Printf("removed %d stale entries\n", n)
- */
-func pruneStaleOllamaRefs(a *Agent, liveModels []string, out io.Writer) (int, error) {
-	live := make(map[string]bool, len(liveModels))
-	for _, m := range liveModels {
-		live[strings.ToLower(m)] = true
+// pruneStaleModelRefs removes model_aliases that point to models no longer
+// available on their respective backend. Each live-model slice covers one
+// engine (ollama, llamafile, llamacpp); pass nil to skip that engine.
+// Aliases with Engine=="" are preserved — their backend is unknown.
+// Returns the count of removed aliases; saves config when changed.
+func pruneStaleModelRefs(a *Agent, liveOllama, liveLlamafile, liveLlamaCpp []string, out io.Writer) (int, error) {
+	byEngine := map[string]map[string]bool{
+		"ollama":    setOf(liveOllama),
+		"llamafile": setOf(liveLlamafile),
+		"llamacpp":  setOf(liveLlamaCpp),
 	}
 
 	removed := 0
-	aliasChanged := false
-	ragChanged := false
-
-	// Prune model_aliases whose target model is no longer installed.
+	changed := false
 	for alias, entry := range a.Config.ModelAliases {
+		if entry.Engine == "" {
+			continue // legacy alias — cannot determine backend safely
+		}
+		live, known := byEngine[strings.ToLower(entry.Engine)]
+		if !known {
+			continue
+		}
 		if !live[strings.ToLower(entry.Model)] {
-			fmt.Fprintf(out, "  removing alias %q → %s (model not installed)\n", alias, entry.Model)
+			if out != nil {
+				fmt.Fprintf(out, "  removing alias %q → %s (%s) — model not found\n", alias, entry.Model, entry.Engine)
+			}
 			delete(a.Config.ModelAliases, alias)
-			aliasChanged = true
+			changed = true
 			removed++
 		}
 	}
 
-	// Prune model_map keys that reference removed generation models.
-	for i := range a.Config.Memory.RagStores {
-		for key := range a.Config.Memory.RagStores[i].ModelMap {
-			if !live[strings.ToLower(key)] {
-				fmt.Fprintf(out, "  removing model_map key %q from store %q (model not installed)\n",
-					key, a.Config.Memory.RagStores[i].Name)
-				delete(a.Config.Memory.RagStores[i].ModelMap, key)
-				ragChanged = true
-				removed++
-			}
-		}
-	}
-
-	if aliasChanged {
+	if changed && a.Workspace != nil {
 		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
-			return removed, fmt.Errorf("pruneStaleOllamaRefs: save aliases: %w", err)
-		}
-	}
-	if ragChanged {
-		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
-			return removed, fmt.Errorf("pruneStaleOllamaRefs: save rag config: %w", err)
+			return removed, fmt.Errorf("pruneStaleModelRefs: %w", err)
 		}
 	}
 	return removed, nil
+}
+
+// setOf returns a case-insensitive presence set from a string slice.
+func setOf(ss []string) map[string]bool {
+	m := make(map[string]bool, len(ss))
+	for _, s := range ss {
+		m[strings.ToLower(s)] = true
+	}
+	return m
 }
 
 // ollamaModelTable prints the model capability table.
@@ -1958,80 +1692,6 @@ func ollamaListTable(a *Agent, summaries []OllamaModelSummary, out io.Writer) {
 		ollamaModelTable(a, t.models, out, false)
 		first = false
 	}
-}
-
-// ollamaProbe handles /ollama probe [MODEL|--all].
-func ollamaProbe(a *Agent, args []string, out io.Writer) error {
-	if !ProbeOllama(a.Config.Ollama.URL) {
-		fmt.Fprintln(out, "Ollama is not running.")
-		return nil
-	}
-	if a.ModelCache == nil {
-		fmt.Fprintln(out, "Model cache is not open.")
-		return nil
-	}
-
-	ctx := context.Background()
-	client := NewOllamaClient(a.Config.Ollama.URL, "")
-
-	// /ollama probe MODEL — probe a specific model, always refresh.
-	if len(args) == 1 && args[0] != "--all" {
-		model := a.Config.ResolveModelAlias(args[0])
-		fmt.Fprintf(out, "Probing %s...\n", model)
-		cap, err := ThoroughProbeModel(ctx, a.Config.Ollama.URL, model)
-		if err != nil {
-			return fmt.Errorf("probe %s: %w", model, err)
-		}
-		if err := a.ModelCache.Set(cap); err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "  tools: %s   embed: %s   tagged: %s   ctx: %s   [thorough]\n",
-			cap.SupportsTools, cap.SupportsEmbed, cap.SupportsTaggedBlocks, ollamaFormatCtx(cap.ContextLength))
-		return nil
-	}
-
-	// /ollama probe or /ollama probe --all — probe all installed models.
-	// Without --all, skip models already in the cache.
-	forceAll := len(args) == 1 && args[0] == "--all"
-
-	summaries, err := client.ModelSummaries(ctx)
-	if err != nil {
-		return err
-	}
-
-	var targets []string
-	for _, s := range summaries {
-		if forceAll {
-			targets = append(targets, s.Name)
-			continue
-		}
-		cap, _ := a.ModelCache.Get(s.Name)
-		if cap == nil || cap.ProbeLevel == "none" {
-			targets = append(targets, s.Name)
-		}
-	}
-
-	if len(targets) == 0 {
-		fmt.Fprintln(out, "All models are already probed. Use /ollama probe --all to refresh.")
-		return nil
-	}
-
-	fmt.Fprintf(out, "Probing %d model(s)...\n", len(targets))
-	for _, name := range targets {
-		cap, err := ThoroughProbeModel(ctx, a.Config.Ollama.URL, name)
-		if err != nil {
-			fmt.Fprintf(out, "  %-36s  error: %v\n", ollamaTruncateName(name, 36), err)
-			continue
-		}
-		if err := a.ModelCache.Set(cap); err != nil {
-			fmt.Fprintf(out, "  %-36s  cache write error: %v\n", ollamaTruncateName(name, 36), err)
-			continue
-		}
-		fmt.Fprintf(out, "  %-36s  tools: %s   embed: %s   tagged: %s   [thorough]\n",
-			ollamaTruncateName(name, 36), cap.SupportsTools, cap.SupportsEmbed, cap.SupportsTaggedBlocks)
-	}
-	fmt.Fprintln(out, "Done.")
-	return nil
 }
 
 // ollamaTruncateName truncates s to at most max runes, appending "…" when cut.

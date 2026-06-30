@@ -222,6 +222,18 @@ func promptLazyRegister(a *Agent, item ModelSummary, out io.Writer) (string, err
 		tagStr = " [" + strings.Join(tags, ", ") + "]"
 	}
 	fmt.Fprintf(out, "  Alias saved: %s → %s%s\n", alias, item.Name, tagStr)
+
+	// Auto-probe Ollama models on alias creation so capability data is cached
+	// immediately. This replaces the separate /ollama probe command.
+	if item.Engine == "ollama" && a.ModelCache != nil {
+		ctx := context.Background()
+		if cap, err := FastProbeModel(ctx, a.Config.Ollama.URL, item.Name); err == nil {
+			_ = a.ModelCache.Set(cap)
+			fmt.Fprintf(out, "  Probed: tools=%s  embed=%s  ctx=%d\n",
+				cap.SupportsTools, cap.SupportsEmbed, cap.ContextLength)
+		}
+	}
+
 	return alias, nil
 }
 
