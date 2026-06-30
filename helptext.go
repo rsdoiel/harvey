@@ -613,7 +613,13 @@ Cloud providers (API key read from environment):
 # EXAMPLE SESSION
 
 ~~~
-  # Register a Pi cluster node
+  # Register a local llamafile server (running on default port 8080)
+  /route add lf llamafile://localhost:8080 bonsai-8b
+
+  # Register a local llama.cpp server (llama-server on port 8081)
+  /route add cpp llamacpp://localhost:8081 phi4-Q4_K_M
+
+  # Register a Pi cluster node running Ollama
   /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
 
   # Register the Anthropic cloud endpoint
@@ -622,20 +628,28 @@ Cloud providers (API key read from environment):
   # Enable routing
   /route on
 
+  # Send a task to the llamafile server
+  @lf summarise this function in one sentence
+
+  # Send a task to the llama.cpp server
+  @cpp write a unit test for the Parse function
+
+  # Run a quick task on a Pi node
+  @pi2 what does this error mean?
+
   # Dispatch a complex task to the cloud
   @claude refactor this module to use the repository pattern
 
-  # Run a quick task on a Pi node
-  @pi2 write a unit test for the Parse function
-
   # Local model handles everything else (no @mention)
-  what does this error mean?
+  what is the overall structure of this package?
 ~~~
 
 # SLASH COMMANDS
 
 ~~~
   /route add NAME URL [MODEL]        register a remote endpoint
+                                       @lf     llamafile://localhost:8080 bonsai-8b
+                                       @cpp    llamacpp://localhost:8081 phi4-Q4_K_M
                                        @pi2    ollama://192.168.1.12:11434 llama3.1:8b
                                        @claude anthropic:// claude-sonnet-4-20250514
   /route remove NAME                 unregister an endpoint (alias: rm)
@@ -661,7 +675,7 @@ Registered endpoints and the on/off state persist across sessions in
 # SEE ALSO
 
   /model use NAME        — backend-agnostic model switching
-  /llamafile             — local llamafile backend management
+  /help model            — list, start, and switch local models
   /help security         — API key filtering for cloud endpoints
 
 `
