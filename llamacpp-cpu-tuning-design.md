@@ -2,7 +2,8 @@
 
 **Status (2026-07-03):** Implemented. See `backend_llamacpp.go`
 (`buildLaunchPlan`) and `config.go` / `config_yaml.go`
-(`LlamaCppConfig.PinCPU`).
+(`LlamaCppConfig.PinCPU`). See also the Bonsai-8B Q1_0 addendum at the end of
+this document, which **revises** the thread-count guidance below.
 
 ---
 
@@ -150,3 +151,54 @@ reproduced on different hardware (Raspberry Pi 500 vs. the post's Pi 5) and a
 different, smaller model (OpenELM-3B-Instruct Q4_K_M vs. the post's Cerebras
 Qwen3-Coder-25B); the BLAS-backend-choice finding did **not** reproduce at
 this smaller model scale — see Findings above.
+
+---
+
+## Addendum (2026-07-03, same session): Bonsai-8B Q1_0 — thread guidance revised
+
+Prompted by a question about whether PrismML's 1-bit "Bonsai" quantization
+(GGML type `Q1_0` — one sign bit per weight plus a shared FP16 scale per
+128-weight block, ~1.125 bits/weight) combined with a BLAS backend could fit
+models larger than 8B on this hardware. Built and benchmarked
+`prism-ml/Bonsai-8B-gguf` (Bonsai-8B, built from Qwen3-8B) via Henry's
+existing `models/bonsai-8b.yaml` — no fork or patch needed; `GGML_TYPE_Q1_0`
+already has full CPU (including ARM SIMD), CUDA, Metal, and Vulkan kernels
+merged into the exact llama.cpp commit `llamafile` 0.10.3 vendors.
+
+**Q1_0 is architecturally orthogonal to BLAS, not complementary.** BLAS
+accelerates dense floating-point GEMM; Q1_0's entire value proposition is to
+avoid needing that; its kernel does the matmul-equivalent as bit-packed
+sign flips (add/subtract), so BLAS backend choice simply does not apply to
+this quant type. Benchmarked with the same stock `ggml-cpu` (`build-noblas`)
+binary used for the no-BLAS row earlier in this document.
+
+Results (`llama-bench`, taskset-pinned, same methodology as above):
+
+| Model | threads | pp64 (tok/s) | tg64 (tok/s) |
+|---|---|---|---|
+| Bonsai-8B Q1_0 | 3 | 2.48 ± 0.00 | 2.02 ± 0.01 |
+| Bonsai-8B Q1_0 | 4 | 3.30 ± 0.00 | 2.72 ± 0.00 |
+
+Two findings:
+
+1. **Memory footprint claim holds:** 1.07 GiB on disk for an 8.19B-parameter
+   model (vs. 1.76 GiB for the 3B Q4_K_M model above) — the ~14x compression
+   PrismML claims checks out. This is the real lever for fitting larger
+   models in this Pi's 16GB RAM, not any BLAS backend choice.
+2. **The "threads = cores − 1" guidance in this document does NOT
+   generalize across model/quantization types.** Bonsai-8B prefers all 4
+   cores for both pp and tg — the opposite of the 3B Q4_K_M model's
+   preference for 3 threads. And despite the far smaller file size,
+   Bonsai-8B's generation speed (2.72 tok/s at best) is markedly *slower*
+   than the 3B model's (4.03–4.77 tok/s across backends) — total parameter
+   count still dominates per-token compute cost even at ~1 bit/weight.
+   **Revised guidance:** `Threads` and `PinCPU` should stay per-model, user-
+   tunable settings in `LlamaCppConfig` — which they already are — rather
+   than ever assuming a fixed default core count is optimal across model
+   classes.
+
+**Practical verdict:** Q1_0 solves the *memory* constraint on this hardware,
+not the *speed* constraint. A hypothetical >8B 1-bit model would likely
+still fit in RAM, but based on this measurement, expect generation speed to
+keep dropping as parameter count rises, not improve. PrismML has not
+publicly shipped anything larger than Bonsai-8B as of this writing.
