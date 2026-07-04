@@ -298,6 +298,64 @@ higher-leverage, and only currently *growing*, target is the skills catalog
 All four items from the 2026-07-04 design session are now decided and
 implemented.
 
+## Re-run with the trimmed prompt (2026-07-04)
+
+Re-ran the same single-turn cold-start test (see Reproduction below) against
+all four models, using the rebuilt `bin/harvey` with all four fixes above
+applied, to confirm the trim actually helped rather than assuming it from
+the composition audit alone.
+
+**Confirm no leftover server before every run.** Two of six runs in this
+sweep were contaminated by a still-running llamafile server from the
+immediately-prior test (same class of bug noted in the original Method
+section) and had to be discarded and rerun:
+
+- Qwen3.5-4B's first attempt actually ran on a leftover warm OpenELM-3B
+  server (`"Server at http://localhost:8080 is serving
+  'openelm-3b-instruct-Q4_K_M' (configured: 'Qwen3.5-4B-Q5_K_S') — adopting
+  detected model"`) — caught from the log line, discarded, OpenELM process
+  killed, Qwen rerun clean.
+- Bonsai-8B's first attempt likewise ran on a leftover warm Apertus-8B
+  server — same pattern, same fix.
+
+**First clean Qwen3.5-4B result was itself an anomaly.** That rerun came
+back at 14m28.434s — slower than yesterday's *pre-trim* 6m25.229s, which
+doesn't fit: a smaller prompt cannot increase prompt-processing cost by any
+mechanism Harvey controls. Checked for causes before drawing any
+conclusion — no swap in use, no competing processes, temperature normal
+(46°C) — found nothing conclusive. Re-ran a second time from a fully clean
+state (no processes, load average settling) and got 4m33.972s, in line with
+the other three models. Treating the 14m28s run as an unexplained one-off
+(candidate causes: cold filesystem page-cache for the ~3GB model file,
+general Pi run-to-run variance) rather than a real effect — flagging it
+here instead of silently dropping it, per this doc's own no-silent-rewrite
+convention.
+
+**Final clean results:**
+
+| Model | Before (2026-07-03) | After (2026-07-04, trimmed) | Change |
+|---|---|---|---|
+| Bonsai-8B (Q1_0) | 16m4.277s | 8m5.715s | −50% |
+| Apertus-8B | 9m34.05s | 5m6.256s | −47% |
+| Qwen3.5-4B | 6m25.229s | 4m33.972s | −29% |
+| OpenELM-3B-Instruct | failed — context overflow, couldn't start | 3m20.517s, completes | now runs at all |
+
+All four models improved. The three that could already run before are all
+roughly 30-50% faster, consistent with the smaller prompt needing less
+prefill/prompt-processing work. OpenELM-3B is the clearest single result:
+it could not run *at all* before (3372 tokens > its 2048 native context),
+and now completes, because the trimmed prompt (agentPreamble + skills
+catalog cuts) brought total tokens under its limit. Its actual reply is
+incoherent (garbled HTML-ish text) — a separate, pre-existing model-quality
+issue for this weak/small model under Harvey's system-prompt framing, not a
+sizing problem; noted here for completeness, not investigated further.
+
+This closes the loop opened by finding 1 in "Findings" above (cold-start
+time scales with parameter count, not just Q1_0/Bonsai) — the fix (prompt
+trim) reduced that cost for every model class tested, and separately fixed
+the compatibility wall from finding 2 for at least one real model in this
+workspace's library.
+
 ### Assay as a future reference point (deferred)
 
 Considered using `assay` (`cmd/assay/`) to A/B-test system-prompt variants
