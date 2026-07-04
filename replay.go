@@ -112,6 +112,13 @@ func parseFountainSession(path string) (userName, modelName string, turns []Play
 			text := strings.TrimSpace(elem.Content)
 			switch {
 			case lastChar == userName:
+				// A new user line after a completed exchange, even within
+				// the same scene, starts a new turn — otherwise the second
+				// exchange would silently overwrite the first in cur.
+				if cur.UserInput != "" && cur.ModelReply != "" {
+					turns = append(turns, cur)
+					cur = PlaybackTurn{}
+				}
 				cur.UserInput = text
 			case lastChar == "HARVEY" && strings.HasPrefix(text, "Forwarding to "):
 				m := strings.TrimPrefix(text, "Forwarding to ")

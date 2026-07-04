@@ -202,3 +202,54 @@ not the *speed* constraint. A hypothetical >8B 1-bit model would likely
 still fit in RAM, but based on this measurement, expect generation speed to
 keep dropping as parameter count rises, not improve. PrismML has not
 publicly shipped anything larger than Bonsai-8B as of this writing.
+
+---
+
+## Addendum 2 (2026-07-03, same session): live Harvey test — cold start vs. warm-server reuse
+
+Switched `agents/harvey.yaml`'s `llamafile.active` to `bonsai-8b` (registered
+at `context_length: 65536`, matching its YaRN-extended window) and drove it
+through Harvey's actual `--replay` path (not just raw `curl` to the llamafile
+API), to confirm the model works end to end through Harvey rather than only
+in isolation.
+
+**First turn, cold server:** a single-turn replay (a short question plus a
+brief arithmetic check) took **16m4.277s**. HARVEY.md + the agent preamble
+(`config.go`'s `agentPreamble` constant) come to roughly 1,500–2,000 tokens,
+and at Bonsai-8B's measured ~3.3 tok/s prompt-processing rate, processing
+that system prompt alone plausibly accounts for most of that — this is a
+cold-start cost, not a per-turn one (see next result). The response itself
+was correct on arithmetic (12×7=84, shown with steps) but self-described as
+"built from the Ollama model," which is wrong on two counts: it's served via
+llamafile, not Ollama, and Bonsai-8B is built from Qwen3-8B per PrismML. One
+data point, not conclusive — could be ordinary small-model confusion about
+system-prompt framing rather than a Bonsai-specific defect.
+
+**Second invocation, warm server:** a brand-new `harvey` process (fresh
+session, not a continuation) adopted the still-running llamafile server
+(`Server at http://localhost:8080 is serving "Bonsai-8B-Q1_0"... adopting
+detected model`) and completed a turn in **9.989s** — a ~96x speedup. This
+confirms the system-prompt cost is a **one-time tax paid once per server
+lifetime** (llama-server's slot-based prompt cache — logged at startup as
+`prompt cache is enabled, size limit: 8192 MiB` — persists the cached prefix
+across separate Harvey invocations as long as the server stays warm and the
+prefix matches exactly), not a recurring per-turn or per-invocation cost.
+
+Caveat: the test file for this second run had a formatting bug — two
+consecutive `RSDOIEL` blocks with no intervening `HARVEY` reply collapsed to
+a single replayed turn, so the model answered "double that number" with no
+actual prior context of what number that was. It confidently answered "2"
+rather than expressing uncertainty — a second, independent data point of
+Bonsai-8B producing confident-but-ungrounded output, though again not
+conclusive of a quantization-specific defect versus generic small-model
+behavior. True within-session incremental caching (turn 2 following a real
+turn 1) was not cleanly tested and remains an open question; the cross-
+invocation warm-server result above is the practically confirmed one.
+
+**Implication for Harvey's system prompt:** the earlier "should the preamble
+be shortened?" question is better scoped as a cold-start concern, not a
+sustained-conversation one — trimming `agentPreamble` mainly helps the first
+turn after a fresh model load/server restart, not ongoing interactive use,
+given the prompt cache appears to persist across invocations. Not acted on
+this session; worth revisiting if cold-start latency on slow local models
+becomes a recurring complaint.
