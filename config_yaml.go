@@ -63,11 +63,11 @@ type ragStoreYAML struct {
 // and ModelMap are legacy flat fields from before multi-store support; they
 // are read for backward-compat migration and never written.
 type ragYAML struct {
-	Active         string          `yaml:"active,omitempty"`
-	Stores         []ragStoreYAML  `yaml:"stores,omitempty"`
-	Enabled        bool            `yaml:"enabled"`
-	DBPath         string          `yaml:"db_path,omitempty"`
-	EmbeddingModel string          `yaml:"embedding_model,omitempty"`
+	Active         string            `yaml:"active,omitempty"`
+	Stores         []ragStoreYAML    `yaml:"stores,omitempty"`
+	Enabled        bool              `yaml:"enabled"`
+	DBPath         string            `yaml:"db_path,omitempty"`
+	EmbeddingModel string            `yaml:"embedding_model,omitempty"`
 	ModelMap       map[string]string `yaml:"model_map,omitempty"`
 }
 
@@ -156,6 +156,7 @@ type llamacppYAML struct {
 	Threads      int    `yaml:"threads,omitempty"`       // --threads; 0 = server default
 	GPULayers    *int   `yaml:"gpu_layers,omitempty"`    // --n-gpu-layers; nil = not set (0 = CPU-only)
 	StartTimeout string `yaml:"start_timeout,omitempty"` // e.g. "120s", "2m"
+	PinCPU       bool   `yaml:"pin_cpu,omitempty"`       // taskset -c 0-(threads-1); default false
 }
 
 type rollingSummaryYAML struct {
@@ -169,11 +170,11 @@ type knowledgeBaseYAML struct {
 }
 
 type memoryYAML struct {
-	Enabled        *bool               `yaml:"enabled,omitempty"`
-	TopK           int                 `yaml:"top_k,omitempty"`
-	InjectOnStart  *bool               `yaml:"inject_on_start,omitempty"`
-	BudgetPct      float64             `yaml:"budget_pct,omitempty"`
-	RollingSummary rollingSummaryYAML  `yaml:"rolling_summary,omitempty"`
-	RAG            ragYAML             `yaml:"rag,omitempty"`
-	KnowledgeBase  knowledgeBaseYAML   `yaml:"knowledge_base,omitempty"`
+	Enabled        *bool              `yaml:"enabled,omitempty"`
+	TopK           int                `yaml:"top_k,omitempty"`
+	InjectOnStart  *bool              `yaml:"inject_on_start,omitempty"`
+	BudgetPct      float64            `yaml:"budget_pct,omitempty"`
+	RollingSummary rollingSummaryYAML `yaml:"rolling_summary,omitempty"`
+	RAG            ragYAML            `yaml:"rag,omitempty"`
+	KnowledgeBase  knowledgeBaseYAML  `yaml:"knowledge_base,omitempty"`
 }

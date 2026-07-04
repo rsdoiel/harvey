@@ -103,7 +103,7 @@ func TestLlamaCppBackend_ListModels_WithFiles(t *testing.T) {
 	}{
 		{"phi4-Q4_K_M.gguf", 1024},
 		{"qwen2.5-7b-Q5_K_S.gguf", 2048},
-		{"notamodel.txt", 512}, // should be ignored
+		{"notamodel.txt", 512},       // should be ignored
 		{"notamodel.llamafile", 512}, // should be ignored
 	}
 	for _, f := range files {
@@ -202,6 +202,129 @@ func TestLlamaCppBackend_Threads_FromConfig(t *testing.T) {
 	if b.threads != 8 {
 		t.Errorf("threads = %d, want 8", b.threads)
 	}
+}
+
+func TestLlamaCppBackend_PinCPU_Default(t *testing.T) {
+	cfg := DefaultConfig()
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+	if b.pinCPU {
+		t.Error("pinCPU should default to false")
+	}
+}
+
+func TestLlamaCppBackend_PinCPU_FromConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LlamaCpp.PinCPU = true
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+	if !b.pinCPU {
+		t.Error("pinCPU = false, want true")
+	}
+}
+
+// ─── launch plan: BLAS/OpenMP thread isolation + CPU pinning ─────────────────
+
+func TestBuildLaunchPlan_EnvIsolation(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LlamaCpp.Threads = 3
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+
+	plan := b.buildLaunchPlan("/models/m.gguf", "8081", "/usr/local/bin/llama-server",
+		[]string{"FOO=bar"}, tasksetNotFound)
+
+	wantEnv := map[string]bool{
+		"FOO=bar":                false,
+		"BLIS_NUM_THREADS=1":     false,
+		"OPENBLAS_NUM_THREADS=1": false,
+		"OMP_NUM_THREADS=1":      false,
+	}
+	for _, e := range plan.env {
+		if _, ok := wantEnv[e]; ok {
+			wantEnv[e] = true
+		}
+	}
+	for k, seen := range wantEnv {
+		if !seen {
+			t.Errorf("env missing %q; got %v", k, plan.env)
+		}
+	}
+}
+
+func TestBuildLaunchPlan_NoPinning_WhenDisabled(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LlamaCpp.Threads = 3
+	cfg.LlamaCpp.PinCPU = false
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+
+	plan := b.buildLaunchPlan("/models/m.gguf", "8081", "/usr/local/bin/llama-server",
+		nil, tasksetFound)
+
+	if plan.bin != "/usr/local/bin/llama-server" {
+		t.Errorf("bin = %q, want unpinned llama-server path", plan.bin)
+	}
+	wantArgs := []string{"--model", "/models/m.gguf", "--port", "8081", "--threads", "3"}
+	if !equalStrings(plan.args, wantArgs) {
+		t.Errorf("args = %v, want %v", plan.args, wantArgs)
+	}
+}
+
+func TestBuildLaunchPlan_Pinning_TasksetFound(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LlamaCpp.Threads = 3
+	cfg.LlamaCpp.PinCPU = true
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+
+	plan := b.buildLaunchPlan("/models/m.gguf", "8081", "/usr/local/bin/llama-server",
+		nil, tasksetFound)
+
+	if plan.bin != "/usr/bin/taskset" {
+		t.Errorf("bin = %q, want /usr/bin/taskset", plan.bin)
+	}
+	wantArgs := []string{"-c", "0-2", "/usr/local/bin/llama-server", "--model", "/models/m.gguf", "--port", "8081", "--threads", "3"}
+	if !equalStrings(plan.args, wantArgs) {
+		t.Errorf("args = %v, want %v", plan.args, wantArgs)
+	}
+}
+
+func TestBuildLaunchPlan_Pinning_TasksetNotFound_FallsBackUnpinned(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LlamaCpp.Threads = 3
+	cfg.LlamaCpp.PinCPU = true
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+
+	plan := b.buildLaunchPlan("/models/m.gguf", "8081", "/usr/local/bin/llama-server",
+		nil, tasksetNotFound)
+
+	if plan.bin != "/usr/local/bin/llama-server" {
+		t.Errorf("bin = %q, want unpinned llama-server path when taskset is unavailable", plan.bin)
+	}
+}
+
+func TestBuildLaunchPlan_Pinning_NoThreads_IsNoop(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LlamaCpp.PinCPU = true // Threads left at 0 — no basis for a core range
+	b := NewLlamaCppBackend(cfg, t.TempDir())
+
+	plan := b.buildLaunchPlan("/models/m.gguf", "8081", "/usr/local/bin/llama-server",
+		nil, tasksetFound)
+
+	if plan.bin != "/usr/local/bin/llama-server" {
+		t.Errorf("bin = %q, want unpinned llama-server path when Threads is 0", plan.bin)
+	}
+}
+
+func tasksetFound() (string, error)    { return "/usr/bin/taskset", nil }
+func tasksetNotFound() (string, error) { return "", os.ErrNotExist }
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestGGUFModelName(t *testing.T) {

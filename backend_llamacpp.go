@@ -28,6 +28,7 @@ import (
  *   ctxSize       (int)           — --ctx-size; 0 = server default.
  *   threads       (int)           — --threads; 0 = server default.
  *   gpuLayers     (int)           — --n-gpu-layers; 0 = CPU-only.
+ *   pinCPU        (bool)          — wrap launch with `taskset -c 0-(threads-1)`; requires threads > 0.
  *   startTimeout  (time.Duration) — how long to wait for the server after launch.
  *   activeModel   (string)        — model name set on Start.
  *   running       (bool)          — reflects the last Detect probe.
@@ -45,6 +46,7 @@ type LlamaCppBackend struct {
 	ctxSize      int
 	threads      int
 	gpuLayers    int
+	pinCPU       bool
 	startTimeout time.Duration
 	activeModel  string
 	running      bool
@@ -85,6 +87,7 @@ func NewLlamaCppBackend(cfg *Config, agentsDir string) *LlamaCppBackend {
 		ctxSize:      cfg.LlamaCpp.CtxSize,
 		threads:      cfg.LlamaCpp.Threads,
 		gpuLayers:    cfg.LlamaCpp.GPULayers,
+		pinCPU:       cfg.LlamaCpp.PinCPU,
 		startTimeout: startTimeout,
 	}
 }
@@ -171,6 +174,87 @@ func (b *LlamaCppBackend) Detect() bool {
  */
 func (b *LlamaCppBackend) StartedByHarvey() bool { return b.proc != nil }
 
+/** llamaCppLaunchPlan is the resolved (bin, args, env) triple for exec.Command,
+ * after thread-isolation env vars and optional CPU pinning have been applied.
+ * Kept separate from Start so the composition logic is unit-testable without
+ * spawning a real process.
+ *
+ * Fields:
+ *   bin  (string)   — executable to run: llama-server itself, or taskset when pinning.
+ *   args (string)   — arguments for bin.
+ *   env  (string)   — full environment for the child process.
+ */
+type llamaCppLaunchPlan struct {
+	bin  string
+	args []string
+	env  []string
+}
+
+/** lookupTaskset resolves the taskset binary via PATH. A package-level var so
+ * tests can substitute a stub instead of depending on the host having taskset
+ * installed (it's Linux-only, part of util-linux).
+ */
+var lookupTaskset = func() (string, error) { return exec.LookPath("taskset") }
+
+/** buildLaunchPlan composes the llama-server invocation: --model/--port/--ctx-size/
+ * --threads/--n-gpu-layers flags, plus two fixes for CPU-constrained hosts
+ * (confirmed by benchmarking on a Raspberry Pi 500, 4-core Cortex-A76):
+ *
+ *   1. Thread isolation — BLIS_NUM_THREADS, OPENBLAS_NUM_THREADS, and
+ *      OMP_NUM_THREADS are forced to 1 so a BLAS library llama-server happens
+ *      to be linked against can't spawn its own nested thread pool underneath
+ *      llama.cpp's worker threads and contend for the same cores.
+ *   2. CPU pinning — when pinCPU is set and threads > 0, the launch is wrapped
+ *      with `taskset -c 0-(threads-1)`. GOMP_CPU_AFFINITY does not work here:
+ *      it only binds GNU OpenMP threads, and llama.cpp's workers are raw
+ *      pthreads. taskset pins the whole process (and its threads) instead.
+ *      Silently falls back to unpinned when taskset is not on PATH or threads
+ *      is 0 (no basis for a core range).
+ *
+ * Parameters:
+ *   model         (string)   — absolute path to the .gguf model file.
+ *   port          (string)   — --port value, extracted from the backend's URL.
+ *   resolvedBin   (string)   — absolute path to llama-server (already resolved via exec.LookPath).
+ *   environ       ([]string) — base environment to extend (typically os.Environ()).
+ *   findTaskset   (func() (string, error)) — resolves the taskset binary; substitutable in tests.
+ *
+ * Returns:
+ *   llamaCppLaunchPlan — ready to pass to exec.Command(plan.bin, plan.args...) with cmd.Env = plan.env.
+ *
+ * Example:
+ *   plan := b.buildLaunchPlan(model, port, bin, os.Environ(), lookupTaskset)
+ *   cmd := exec.Command(plan.bin, plan.args...)
+ *   cmd.Env = plan.env
+ */
+func (b *LlamaCppBackend) buildLaunchPlan(model, port, resolvedBin string, environ []string, findTaskset func() (string, error)) llamaCppLaunchPlan {
+	args := []string{"--model", model, "--port", port}
+	if b.ctxSize > 0 {
+		args = append(args, "--ctx-size", fmt.Sprintf("%d", b.ctxSize))
+	}
+	if b.threads > 0 {
+		args = append(args, "--threads", fmt.Sprintf("%d", b.threads))
+	}
+	if b.gpuLayers > 0 {
+		args = append(args, "--n-gpu-layers", fmt.Sprintf("%d", b.gpuLayers))
+	}
+
+	env := append(append([]string{}, environ...),
+		"BLIS_NUM_THREADS=1",
+		"OPENBLAS_NUM_THREADS=1",
+		"OMP_NUM_THREADS=1",
+	)
+
+	bin := resolvedBin
+	if b.pinCPU && b.threads > 0 {
+		if tsPath, err := findTaskset(); err == nil {
+			args = append([]string{"-c", fmt.Sprintf("0-%d", b.threads-1), bin}, args...)
+			bin = tsPath
+		}
+	}
+
+	return llamaCppLaunchPlan{bin: bin, args: args, env: env}
+}
+
 /** Start launches llama-server for the given model path, waits for the health
  * endpoint to respond, and writes a PID file. If a server is already running
  * at BaseURL, Start adopts it without launching a new process.
@@ -198,24 +282,21 @@ func (b *LlamaCppBackend) Start(ctx context.Context, model string, out io.Writer
 		return fmt.Errorf("cannot extract port from llamacpp URL %q", b.url)
 	}
 
-	args := []string{"--model", model, "--port", port}
-	if b.ctxSize > 0 {
-		args = append(args, "--ctx-size", fmt.Sprintf("%d", b.ctxSize))
-	}
-	if b.threads > 0 {
-		args = append(args, "--threads", fmt.Sprintf("%d", b.threads))
-	}
-	if b.gpuLayers > 0 {
-		args = append(args, "--n-gpu-layers", fmt.Sprintf("%d", b.gpuLayers))
-	}
-
 	bin, err := exec.LookPath(b.serverBin)
 	if err != nil {
 		return fmt.Errorf("llama-server not found (%s): %w", b.serverBin, err)
 	}
 
+	plan := b.buildLaunchPlan(model, port, bin, os.Environ(), lookupTaskset)
+	if b.pinCPU && b.threads > 0 && plan.bin == bin {
+		fmt.Fprintln(out, "  taskset not found; starting llama-server without CPU pinning")
+	} else if plan.bin != bin {
+		fmt.Fprintf(out, "  Pinning llama-server to cores 0-%d (taskset)\n", b.threads-1)
+	}
+
 	fmt.Fprintf(out, "  Starting llama-server for %s...\n", ggufModelName(model))
-	cmd := exec.Command(bin, args...)
+	cmd := exec.Command(plan.bin, plan.args...)
+	cmd.Env = plan.env
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start llama-server: %w", err)
 	}

@@ -189,15 +189,15 @@ type SessionConfig struct {
  *   cfg.WorkDir = "/home/user/myproject"
  */
 type Config struct {
-	WorkDir      string          // workspace root; all file I/O is constrained to this tree
-	SessionsDir  string          // directory for .spmd session files; empty = agents/sessions/
-	AgentsDir    string          // agents/skills tree root; empty = agents/
-	SystemPrompt string          // contents of HARVEY.md, injected as the system prompt
-	Routes       []RouteEndpoint // registered remote endpoints; persisted across sessions
-	RoutingEnabled bool          // when false, @mentions are rejected with a warning
-	ModelCacheDB string          // path to model_cache.db; empty = harvey/model_cache.db
+	WorkDir        string          // workspace root; all file I/O is constrained to this tree
+	SessionsDir    string          // directory for .spmd session files; empty = agents/sessions/
+	AgentsDir      string          // agents/skills tree root; empty = agents/
+	SystemPrompt   string          // contents of HARVEY.md, injected as the system prompt
+	Routes         []RouteEndpoint // registered remote endpoints; persisted across sessions
+	RoutingEnabled bool            // when false, @mentions are rejected with a warning
+	ModelCacheDB   string          // path to model_cache.db; empty = harvey/model_cache.db
 	// Grouped settings
-	Ollama   OllamaConfig
+	Ollama    OllamaConfig
 	Llamafile LlamafileConfig
 	Security  SecurityConfig
 	Session   SessionConfig
@@ -706,7 +706,6 @@ func (m *MemoryConfig) RemoveRagStore(name string) {
 	m.RagStores = out
 }
 
-
 // parseDurationString parses a duration from a YAML string value. It accepts:
 //   - Plain integer: treated as seconds (e.g. "300" → 5 minutes)
 //   - Go duration string: "5m", "30s", "1m30s", "1h"
@@ -913,6 +912,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	if y.LlamaCpp.GPULayers != nil {
 		cfg.LlamaCpp.GPULayers = *y.LlamaCpp.GPULayers
+	}
+	if y.LlamaCpp.PinCPU {
+		cfg.LlamaCpp.PinCPU = true
 	}
 	if y.LlamaCpp.StartTimeout != "" {
 		if d, err := parseDurationString(y.LlamaCpp.StartTimeout); err == nil {
@@ -1144,6 +1146,7 @@ type ModelAlias struct {
  *   CtxSize      (int)           — --ctx-size passed to llama-server; 0 = server default.
  *   Threads      (int)           — --threads; 0 = server default.
  *   GPULayers    (int)           — --n-gpu-layers; 0 = CPU-only.
+ *   PinCPU       (bool)          — wrap the launch with `taskset -c 0-(Threads-1)`; no-op if Threads is 0 or taskset is unavailable.
  *   StartTimeout (time.Duration) — how long to wait for the server to respond on startup; default 120s.
  *
  * Example:
@@ -1156,6 +1159,7 @@ type LlamaCppConfig struct {
 	CtxSize      int           // --ctx-size; 0 = server default
 	Threads      int           // --threads; 0 = server default
 	GPULayers    int           // --n-gpu-layers; 0 = CPU-only
+	PinCPU       bool          // wrap launch with `taskset -c 0-(Threads-1)`; requires Threads > 0
 	StartTimeout time.Duration // startup probe timeout; default 120s
 }
 
@@ -1371,6 +1375,7 @@ func SaveLlamaCppConfig(ws *Workspace, cfg *Config) error {
 		URL:          cfg.LlamaCpp.URL,
 		CtxSize:      cfg.LlamaCpp.CtxSize,
 		Threads:      cfg.LlamaCpp.Threads,
+		PinCPU:       cfg.LlamaCpp.PinCPU,
 		GPULayers:    gpuLayers,
 		StartTimeout: startTO,
 	}
