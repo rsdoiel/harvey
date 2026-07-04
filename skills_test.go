@@ -394,6 +394,86 @@ func TestCatalogSystemPromptBlock_xmlEscape(t *testing.T) {
 	}
 }
 
+func TestCatalogSystemPromptBlock_noLocation(t *testing.T) {
+	cat := SkillCatalog{
+		"pdf-processing": {
+			Name:        "pdf-processing",
+			Description: "Extract PDF text.",
+			Path:        "/home/user/harvey/agents/skills/pdf-processing/SKILL.md",
+		},
+	}
+	block := CatalogSystemPromptBlock(cat)
+	if strings.Contains(block, "<location>") {
+		t.Error("catalog block should not include a <location> tag — the LLM only needs /skill load <name>")
+	}
+	if strings.Contains(block, "/home/user/harvey") {
+		t.Error("catalog block should not leak the absolute skill path")
+	}
+}
+
+func TestCatalogSystemPromptBlock_truncatesLongDescription(t *testing.T) {
+	cat := SkillCatalog{
+		"fountain-analysis": {
+			Name: "fountain-analysis",
+			Description: "Read and actively monitor a Harvey Fountain screenplay file, parsing its\n" +
+				"structure and delivering incremental analysis as new content arrives.\n" +
+				"Uses a screenplay metaphor where Harvey, humans, and LLMs are distinct\n" +
+				"characters whose names reflect their identity.",
+			Path: "/agents/skills/fountain-analysis/SKILL.md",
+		},
+	}
+	block := CatalogSystemPromptBlock(cat)
+	if strings.Contains(block, "screenplay metaphor") {
+		t.Error("catalog block should only keep the first sentence / ~80 chars, not the full multi-sentence description")
+	}
+	if !strings.Contains(block, "<description>") {
+		t.Error("expected a <description> tag to still be present")
+	}
+}
+
+// ─── summarizeSkillDescription ────────────────────────────────────────────────
+
+func TestSummarizeSkillDescription_shortUnchanged(t *testing.T) {
+	got := summarizeSkillDescription("Extract PDF text.")
+	if got != "Extract PDF text." {
+		t.Errorf("got %q, want unchanged short description", got)
+	}
+}
+
+func TestSummarizeSkillDescription_firstSentenceOnly(t *testing.T) {
+	got := summarizeSkillDescription("Fetch a value. Do something else entirely unrelated.")
+	if got != "Fetch a value." {
+		t.Errorf("got %q, want just the first sentence", got)
+	}
+}
+
+func TestSummarizeSkillDescription_normalizesWhitespace(t *testing.T) {
+	got := summarizeSkillDescription("Read and\n  monitor   a file.\nDo more.")
+	if got != "Read and monitor a file." {
+		t.Errorf("got %q, want normalized whitespace with only the first sentence", got)
+	}
+}
+
+func TestSummarizeSkillDescription_capsLongSentence(t *testing.T) {
+	long := "Read and actively monitor a Harvey Fountain screenplay file, parsing its structure and delivering incremental analysis as new content arrives."
+	got := summarizeSkillDescription(long)
+	if len(got) > maxSkillDescLen+3 { // +3 for the "..." suffix
+		t.Errorf("summary too long (%d chars): %q", len(got), got)
+	}
+	if !strings.HasSuffix(got, "...") {
+		t.Errorf("expected a truncated long sentence to end with ..., got %q", got)
+	}
+	if strings.Contains(got, "arrives") {
+		t.Error("expected truncation well before the end of the long sentence")
+	}
+}
+
+func TestSummarizeSkillDescription_empty(t *testing.T) {
+	if got := summarizeSkillDescription(""); got != "" {
+		t.Errorf("got %q, want empty string for empty description", got)
+	}
+}
+
 // ─── /skill command ───────────────────────────────────────────────────────────
 
 // newSkillAgent builds a minimal Agent with a populated Skills catalog and a

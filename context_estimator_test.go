@@ -176,6 +176,59 @@ func TestSTMWarnNudge_NoLimitConfigured(t *testing.T) {
 	}
 }
 
+// ─── systemPromptTokenEstimate ────────────────────────────────────────────────
+
+func TestSystemPromptTokenEstimate_NoSystemMessage(t *testing.T) {
+	a := &Agent{History: []Message{{Role: "user", Content: "hi"}}}
+	if got := a.systemPromptTokenEstimate(); got != 0 {
+		t.Errorf("got %d, want 0 when no system message is set", got)
+	}
+}
+
+func TestSystemPromptTokenEstimate_PadsHeuristicBy20Percent(t *testing.T) {
+	// 400 chars -> chars/4 = 100 tokens -> padded 20% = 120.
+	a := &Agent{History: []Message{
+		{Role: "system", Content: strings.Repeat("x", 400)},
+	}}
+	want := 120
+	if got := a.systemPromptTokenEstimate(); got != want {
+		t.Errorf("got %d, want %d", got, want)
+	}
+}
+
+// ─── systemPromptExceedsContext ───────────────────────────────────────────────
+
+func TestSystemPromptExceedsContext_UnknownLimit(t *testing.T) {
+	if err := systemPromptExceedsContext("some-model", 5000, 0); err != nil {
+		t.Errorf("expected nil error when limit is unknown, got %v", err)
+	}
+}
+
+func TestSystemPromptExceedsContext_Fits(t *testing.T) {
+	if err := systemPromptExceedsContext("some-model", 1000, 2048); err != nil {
+		t.Errorf("expected nil error when prompt fits, got %v", err)
+	}
+}
+
+func TestSystemPromptExceedsContext_ExceedsLimit(t *testing.T) {
+	err := systemPromptExceedsContext("OpenELM-3B-Instruct", 3372, 2048)
+	if err == nil {
+		t.Fatal("expected an error when prompt tokens meet or exceed the limit")
+	}
+	for _, want := range []string{"OpenELM-3B-Instruct", "3372", "2048"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err.Error(), want)
+		}
+	}
+}
+
+func TestSystemPromptExceedsContext_EqualsLimit(t *testing.T) {
+	// n == limit leaves zero room for any reply; treat as exceeding.
+	if err := systemPromptExceedsContext("m", 2048, 2048); err == nil {
+		t.Error("expected an error when prompt tokens equal the limit exactly")
+	}
+}
+
 func TestRemainingContext_ExhaustedReturnsZero(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Ollama.ContextLength = 1000

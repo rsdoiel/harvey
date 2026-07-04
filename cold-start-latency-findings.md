@@ -1,8 +1,8 @@
 # Harvey — Cold-Start Latency Findings (input to design session)
 
-**Status (2026-07-03):** Investigation complete for this round. Findings
-only — design, decision, and implementation plan deferred to a follow-up
-session. This document is the input to that session, not the output of it.
+**Status (2026-07-04):** Design/decision session held. Two items decided and
+implemented; two more decided but not yet implemented (see "Decisions and
+implementation" below).
 
 ---
 
@@ -221,6 +221,82 @@ block substantially while still surfacing all 11 skills every session.
 alone (candidate direction #1) only touches ~10% of the total. The
 higher-leverage, and only currently *growing*, target is the skills catalog
 — fix its representation (shorter entries, drop the path), not its breadth.
+
+## Decisions and implementation (2026-07-04 design session)
+
+1. **Workspace-boundary fix — decided and implemented.** Confirmed with the
+   user that cwd-as-default-workspace is intentional; the actual gap was
+   `-w`/`--workdir` having no containment check and `HARVEY.md` loading
+   bypassing the `Workspace` boundary entirely (see Addendum above).
+   Implemented: `Workspace.LoadHarveyMD()` (replaces the old package-level
+   `LoadHarveyMD()`, now anchored to `ws.Root` via `ws.ReadFile`) and
+   `RequireCWDInRoot(cwd, root)`, wired into `cmd/harvey/main.go` via
+   `checkWorkDir()` — exits with a clear error when `-w` is passed explicitly
+   and cwd isn't inside the declared root. `main()` reordered so the
+   workspace is constructed before the system prompt loads. TDD-first;
+   `TestWorkspaceLoadHarveyMD_*` and `TestRequireCWDInRoot_*` in
+   `workspace_test.go`.
+
+2. **Preflight context-size check — decided and implemented.** Detects when
+   the system prompt alone leaves no room in the active model's context
+   (the OpenELM-3B failure mode) and fails with an actionable message instead
+   of the raw `400 exceed_context_size_error`. Implemented as
+   `systemPromptTokenEstimate()` (pads the chars/4 heuristic 20%, per the
+   composition-audit finding above that it undercounts this kind of text) and
+   `systemPromptExceedsContext()` (pure decision function) in
+   `context_estimator.go`, wired into `terminal.go`'s `Run()` right after
+   backend selection. Tests: `TestSystemPromptTokenEstimate_*`,
+   `TestSystemPromptExceedsContext_*`.
+
+3. **Skills catalog format — decided and implemented.** Auto-truncate each
+   entry's frontmatter `description:` to its first sentence (or ~80 chars)
+   for the injected catalog block, and drop the absolute path entirely — the
+   LLM only needs `` `/skill load <name>` ``. No `SKILL.md` edits required;
+   breadth (all skills, every session) is preserved deliberately for
+   cross-model/tooling discoverability via the filesystem. Implemented as
+   `summarizeSkillDescription()` in `skills.go`, used by
+   `CatalogSystemPromptBlock` in place of the raw description, with the
+   `<location>` line removed. TDD-first; `TestSummarizeSkillDescription_*`
+   and `TestCatalogSystemPromptBlock_noLocation` /
+   `_truncatesLongDescription` in `skills_test.go`. Measured effect on the
+   real 11-skill catalog: 6212 → 2024 chars (~1882 → ~613 estimated tokens at
+   ~3.3 chars/token) — a ~1270-token cut while still listing all 11 skills
+   every session.
+
+4. **agentPreamble / HARVEY.md trim — decided and implemented.** Full
+   rewrite for density (not just deduping the repeated auto-write rule).
+   `agentPreamble` (`config.go`) folded its ~4 repeated mentions of the
+   tag-to-write rule down to one mechanism sentence + one rules-list
+   reminder; all five pre-existing `TestAgentPreamble_*` invariant tests
+   (non-empty, no-fake-output phrasing, slash-command mentions, auto/tagged
+   mentions, fence example) still pass unmodified against the new text —
+   confirming the rewrite preserved every compliance-critical rule the
+   tests guard. Both `HARVEY.md` files were rewritten the same way,
+   dropping content that only duplicated `agentPreamble` (the tagged-block
+   mechanism was fully re-explained in both, with two extra example fence
+   blocks in the `harvey/` one) while keeping everything workspace-specific
+   (PDF/image reading, `/kb` workflow, Fountain conventions, build/test
+   commands).
+
+   **Correction (2026-07-04):** the Addendum above states
+   `harvey/HARVEY.md` was 1899 chars — that number was never actually
+   measured, just estimated by eye, and was wrong. The real pre-rewrite
+   size (`git show HEAD:HARVEY.md | wc -c`) was **4927 chars**, not 1899.
+   Measured before/after for all three pieces:
+
+   | File | Before | After | Change |
+   |---|---|---|---|
+   | `agentPreamble` (`config.go`) | 1087 | 1050 | −37 chars (−3%) |
+   | `HARVEY.md` (Laboratory root) | 4033 | 2816 | −1217 chars (−30%) |
+   | `HARVEY.md` (`harvey/`) | 4927 | 2069 | −2858 chars (−58%) |
+
+   `agentPreamble`'s small delta confirms it was already fairly tight —
+   most of its content is compliance-critical rules, not filler; the real
+   density win was in the two `HARVEY.md` files, which had accumulated a
+   full duplicate explanation of `agentPreamble`'s own mechanism.
+
+All four items from the 2026-07-04 design session are now decided and
+implemented.
 
 ### Assay as a future reference point (deferred)
 

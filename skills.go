@@ -266,8 +266,7 @@ func CatalogSystemPromptBlock(cat SkillCatalog) string {
 		s := cat[n]
 		sb.WriteString("  <skill>\n")
 		fmt.Fprintf(&sb, "    <name>%s</name>\n", xmlEscape(s.Name))
-		fmt.Fprintf(&sb, "    <description>%s</description>\n", xmlEscape(s.Description))
-		fmt.Fprintf(&sb, "    <location>%s</location>\n", xmlEscape(s.Path))
+		fmt.Fprintf(&sb, "    <description>%s</description>\n", xmlEscape(summarizeSkillDescription(s.Description)))
 		sb.WriteString("  </skill>\n")
 	}
 	sb.WriteString("</available_skills>\n\n")
@@ -276,6 +275,47 @@ func CatalogSystemPromptBlock(cat SkillCatalog) string {
 		"Once loaded, follow the skill's instructions for that task.\n")
 
 	return sb.String()
+}
+
+// maxSkillDescLen caps a summarized skill description's length in the
+// injected catalog block (see summarizeSkillDescription).
+const maxSkillDescLen = 80
+
+/** summarizeSkillDescription collapses a SKILL.md description's whitespace
+ * (multi-line YAML block scalars are common) and returns just its first
+ * sentence, further capped at maxSkillDescLen chars — breaking on a word
+ * boundary with a trailing ellipsis — when that sentence is still long.
+ * The full description remains available in the SKILL.md file itself
+ * (and to any other tooling reading agents/skills/ directly); this
+ * shortened form only affects what's injected into a live model's system
+ * prompt.
+ *
+ * Parameters:
+ *   desc (string) — the skill's raw frontmatter description.
+ *
+ * Returns:
+ *   string — a single-line, length-capped summary; "" if desc is empty.
+ *
+ * Example:
+ *   short := summarizeSkillDescription(meta.Description)
+ */
+func summarizeSkillDescription(desc string) string {
+	normalized := strings.Join(strings.Fields(desc), " ")
+	if normalized == "" {
+		return ""
+	}
+	sentence := normalized
+	if idx := strings.Index(normalized, ". "); idx >= 0 {
+		sentence = normalized[:idx+1]
+	}
+	if len(sentence) <= maxSkillDescLen {
+		return sentence
+	}
+	cut := sentence[:maxSkillDescLen]
+	if sp := strings.LastIndex(cut, " "); sp > 0 {
+		cut = cut[:sp]
+	}
+	return strings.TrimRight(cut, ".,;:") + "..."
 }
 
 /** LooksLikeSkillQuery reports whether the user's input looks like a natural-

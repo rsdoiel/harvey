@@ -2,144 +2,55 @@
 
 Project-specific guidance for the **harvey** coding agent (Go).
 
-## Agent execution model
+## Session recording & safe mode
 
-Harvey automatically executes certain structured outputs from your replies:
-
-**Tagged code blocks trigger a write proposal** — if you include a fenced code
-block whose opening fence names a target file, Harvey proposes writing that file
-and asks the user to confirm (Y/n) before touching the filesystem. Parent
-directories are created as needed.
-
-Two fence formats are recognized — pick whichever reads more naturally:
-
-```bash:testout/helloworld.bash
-#!/bin/bash
-echo "Hello World"
-```
-
-```typescript libguides/auth.ts
-export async function authenticate(clientId: string): Promise<string> {
-  // ...
-}
-```
-
-The **file path must be on the opening fence line** (after the language tag).
-A path in a comment inside the block (`// libguides/auth.ts`) is **not** picked
-up — Harvey only reads the fence tag.
-
-Use this format whenever you want to create or update a file.
-
-**Session recording** produces a `.spmd` screenplay script when active
-(`-r` flag at startup or `/record start`). Turns appear as USER / HARVEY
-dialogue blocks; actions and stats appear as Fountain notes ([[...]]).
-
-**Safe mode applies to all auto-executed commands.** When safe mode is on
-(the default, shown as `harvey >` in the prompt), only commands in the
-configured allowlist will execute — others are blocked. When safe mode is
-off (shown as `harvey [unsafe] >` in red), all commands are permitted. Do
-not instruct the user to disable safe mode.
+`.spmd` Fountain screenplays record each turn in `agents/sessions/` when
+active (`-r` flag or `/record start`). Safe mode (default on, `harvey >`
+prompt) restricts auto-executed commands to the configured allowlist —
+don't suggest disabling it.
 
 ## File reading capabilities
 
-When asked to read a file, Harvey handles these formats automatically:
+Harvey reads these formats automatically — never ask the user to convert
+first:
 
-- **Plain text, Markdown, source code** — returned as-is.
-- **PDF (.pdf)** — text is extracted using the poppler utilities
-  (pdfinfo, pdftotext). No user conversion is needed. Use the optional
-  `pages` parameter to read a subset (e.g. `"1-10"` or `"5"`).
-- **Images (.png, .jpg, .jpeg, .gif, .webp)** — injected directly when
-  the active model supports vision input.
-
-Never ask the user to convert a PDF to text before reading it. Call
-`read_file` with the `.pdf` path directly.
+- Plain text, Markdown, source code — returned as-is.
+- PDF (`.pdf`) — extracted via poppler (`pdfinfo`, `pdftotext`); pass a
+  `pages` value (e.g. `"1-10"`) to read a subset.
+- Images (`.png/.jpg/.jpeg/.gif/.webp`) — injected directly when the
+  active model supports vision input.
 
 ## Documentation conventions
 
-All exported functions, structs/types, interfaces, and constants must be documented with a `/** ... */` block comment. Each comment must include:
-
-- A description of what the symbol is or does
-- Parameters — name, type, and purpose for each
-- Return values — type and meaning
-- An embedded usage example
-
-```go
-/** Greet returns a greeting string for the given name.
- *
- * Parameters:
- *   name (string) — the person to greet
- *
- * Returns:
- *   string — a greeting message
- *
- * Example:
- *   msg := Greet("Alice")
- *   fmt.Println(msg) // "Hello, Alice!"
- */
-func Greet(name string) string {
-    return "Hello, " + name + "!"
-}
-```
-
-Apply to every exported symbol — functions, structs, interfaces, type aliases, and constants. Do not omit the example section even for simple symbols.
+Every exported Go/TypeScript symbol needs a `/** ... */` block: a
+description, `Parameters:`, `Returns:`, and a usage `Example:`. Apply to
+every exported function, struct/type, interface, and constant — never
+omit the example, even for simple symbols.
 
 ## Build & test
 
-All commands should be run from inside `harvey/`.
+Run from `harvey/`:
 
 ```bash
-# Build all programs
-make build
-
-# Run tests
-go test
-
-# Build a single program
+make build                     # build all programs
+go test                        # run tests
 go build -o bin/<name> cmd/<name>/*.go
-
-# Generate version.go from codemeta.json
-cmt codemeta.json version.go
-
-# Build website (HTML from Markdown via pandoc)
-make website
-
-# Clean build artifacts
+cmt codemeta.json version.go   # regenerate version.go from codemeta.json
+make website                   # Markdown -> HTML via pandoc
 make clean
 ```
 
 ## Provenance
 
-When you use content that came from a RAG retrieval, attribute the source **at
-the point you use it** — not in a trailing bibliography or footnote block. The
-reader needs to know which claim comes from which source as they read, not after
-the fact.
-
-**Inline attribution pattern:**
-
-> The WAL-mode pragma improves concurrent read throughput (source: `docs/sqlite-wal.md`).
-
-> SHA-256 content hashing on ingest prevents duplicate chunks (from: *Harvey S1 design notes*, `rag_support.go`).
-
-If the chunk has a DOI or URL, prefer the identifier over the file path:
-
-> Cosine similarity is the standard measure for dense vector retrieval (source: doi:10.1234/ir-survey).
-
-**Workflow when recording observations:**
-
-1. Ask your question — RAG fires automatically when relevant chunks exist.
-2. After answering, run `/kb observe finding Your insight here`.
-3. Harvey will list the RAG sources it used. Link them immediately:
-   `/kb cite SOURCE_ID [SOURCE_ID …]`
-4. Use `/kb show OBS_ID` to review the linked sources and check for retraction
-   warnings before acting on the observation.
-
-Do not skip `/kb cite` with the intention of linking "later" — the association
-between an observation and its evidence degrades quickly once the context moves
-on.
+Attribute RAG-sourced content at the point you use it, not in a trailing
+footnote — e.g. "The WAL-mode pragma improves concurrent read throughput
+(source: `docs/sqlite-wal.md`)." After answering: run
+`/kb observe finding ...`, then `/kb cite SOURCE_ID [...]` right away —
+don't defer citation, the observation-to-evidence link degrades fast.
 
 ## Key conventions
 
-- **`version.go`** is generated by `cmt` — do not edit by hand.
-- **`bin/`, `dist/`, `man/`, `testout/`** are gitignored build artifacts.
+- `version.go` is generated by `cmt` — never edit by hand.
+- `bin/`, `dist/`, `man/`, `testout/` are gitignored build artifacts.
 - Source lives at the package level (`harvey/*.go`); CLI entry points go under `cmd/<program>/`.
 - See the root `CLAUDE.md` for full toolchain dependencies and release targets.

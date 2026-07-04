@@ -110,3 +110,56 @@ func fileExceedsBudget(path string, budget int) (bool, int64, error) {
 	estimated := int(size / 4)
 	return estimated > budget, size, nil
 }
+
+/** systemPromptTokenEstimate returns an estimated token count for the
+ * current system-prompt message in history, padded 20% over the raw
+ * chars/4 heuristic. The pad reflects a measured undercount: an audit of
+ * Harvey's actual system prompt (agentPreamble + HARVEY.md + skills
+ * catalog) found chars/4 gave ~2826 tokens against a real, server-measured
+ * 3372 for the same text (see cold-start-latency-findings.md Addendum,
+ * 2026-07-04) — dense, hyphenated/XML-tagged technical text tokenizes worse
+ * than the heuristic assumes. Padding trades a slightly pessimistic
+ * estimate for fewer missed overflows.
+ *
+ * Returns:
+ *   int — padded estimated token count; 0 when no system message is set.
+ *
+ * Example:
+ *   n := agent.systemPromptTokenEstimate()
+ */
+func (a *Agent) systemPromptTokenEstimate() int {
+	for _, m := range a.History {
+		if m.Role == "system" {
+			return estimateTokens(m.Content) * 6 / 5
+		}
+	}
+	return 0
+}
+
+/** systemPromptExceedsContext reports whether an estimated system-prompt
+ * token count leaves no room in a model's context window, returning an
+ * actionable error describing the mismatch and how to resolve it. A prompt
+ * that exactly equals the limit is treated as exceeding it, since that
+ * leaves zero tokens for any reply.
+ *
+ * Parameters:
+ *   modelName (string) — name shown in the error message.
+ *   n         (int)    — estimated system-prompt token count.
+ *   limit     (int)    — model's context window size in tokens; <= 0 means unknown.
+ *
+ * Returns:
+ *   error — describes the mismatch and remedies; nil when it fits or limit is unknown.
+ *
+ * Example:
+ *   if err := systemPromptExceedsContext("OpenELM-3B", 3372, 2048); err != nil {
+ *       fmt.Println(err)
+ *   }
+ */
+func systemPromptExceedsContext(modelName string, n, limit int) error {
+	if limit <= 0 || n < limit {
+		return nil
+	}
+	return fmt.Errorf("system prompt (~%d tokens) exceeds %s's context window (%d tokens) — "+
+		"switch to a model with a larger context, or shorten HARVEY.md / reduce the number "+
+		"of registered skills in agents/skills/", n, modelName, limit)
+}

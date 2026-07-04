@@ -463,6 +463,21 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 	}
 
+	// Preflight: verify the active model's context can hold the system
+	// prompt alone, before any turn is attempted — otherwise the first
+	// message fails with a raw 400 from the backend instead of a clear,
+	// actionable error (see cold-start-latency-findings.md, OpenELM-3B).
+	if limit := a.effectiveContextLimit(); limit > 0 {
+		modelName := ""
+		if a.Client != nil {
+			modelName = a.Client.Name()
+		}
+		if err := systemPromptExceedsContext(modelName, a.systemPromptTokenEstimate(), limit); err != nil {
+			fmt.Fprintf(out, red("  ✗ %v\n"), err)
+			return err
+		}
+	}
+
 	// Debug log — open after backend is known so session_start can record the model.
 	if a.Config.Debug && a.SessionsDir != "" {
 		logsDir := filepath.Join(filepath.Dir(a.SessionsDir), "logs")

@@ -15,6 +15,26 @@ func setDebugEnv() {
 	os.Setenv("HARVEY_DEBUG", "1")
 }
 
+// checkWorkDir enforces the workspace-boundary security invariant when
+// -w/--workdir was explicitly passed: the process's cwd must lie inside the
+// requested root. Exits the process with a clear error otherwise. A no-op
+// when explicit is false, since the default (cwd-as-workspace) case always
+// trivially satisfies containment.
+func checkWorkDir(workDir string, explicit bool) {
+	if !explicit {
+		return
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := harvey.RequireCWDInRoot(cwd, workDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 func main() {
 	appName := filepath.Base(os.Args[0])
 	version, releaseDate, releaseHash := harvey.Version, harvey.ReleaseDate, harvey.ReleaseHash
@@ -22,6 +42,7 @@ func main() {
 
 
 	cfg := harvey.DefaultConfig()
+	workDirExplicit := false
 
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
@@ -42,6 +63,7 @@ func main() {
 			}
 			i++
 			source := os.Args[i]
+			checkWorkDir(cfg.WorkDir, workDirExplicit)
 			ws, wsErr := harvey.NewWorkspace(cfg.WorkDir)
 			if wsErr != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", wsErr)
@@ -111,6 +133,7 @@ func main() {
 			cfg.Llamafile.ModelsDir = next()
 		case "-w", "--workdir":
 			cfg.WorkDir = next()
+			workDirExplicit = true
 		case "-r", "--record":
 			cfg.Session.AutoRecord = true
 		case "--record-file":
@@ -141,12 +164,13 @@ func main() {
 		cfg.Llamafile.ModelsDir = v
 	}
 
-	cfg.SystemPrompt = harvey.LoadHarveyMD()
+	checkWorkDir(cfg.WorkDir, workDirExplicit)
 	ws, err := harvey.NewWorkspace(cfg.WorkDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	cfg.SystemPrompt = ws.LoadHarveyMD()
 	if cfg.Session.ResumeLatest && cfg.Session.ContinuePath == "" {
 		sessDir := filepath.Join(ws.HarveyDir(), "sessions")
 		if p := harvey.MostRecentSession(sessDir); p != "" {

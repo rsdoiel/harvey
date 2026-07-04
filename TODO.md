@@ -116,13 +116,16 @@ Goodbye.
 
 ## Research Question
 
-- [ ] How to improve cold starts with models. Substantially investigated
-  2026-07-03 — see `cold-start-latency-findings.md`. Not Q1_0/Bonsai-
-  specific: cold-start time scales with parameter count across every model
-  tested (16m/9.5m/6.5m across three model sizes), and a related, separate
-  finding — Harvey's system prompt is 3372 tokens — means models with small
-  native context (e.g. 2048) can't run Harvey at all. Design/decision/plan
-  session pending; candidate directions and open questions are in that doc.
+- [x] How to improve cold starts with models. Investigated 2026-07-03,
+  designed/decided/implemented 2026-07-04 — see `cold-start-latency-findings.md`.
+  Not Q1_0/Bonsai-specific: cold-start time scales with parameter count
+  across every model tested. Shipped: workspace-boundary fix + preflight
+  context-size check (fails clearly instead of a raw 400 when the system
+  prompt alone can't fit), skills catalog reformatted (-1270 tokens on the
+  real 11-skill catalog), and agentPreamble/both HARVEY.md files rewritten
+  for density (-30% to -58%). Not pursued: raw prompt-processing speed
+  tuning (`--batch-size`/`--ubatch-size`) — re-measure cold-start with the
+  trimmed prompt first; revisit only if still too slow.
 
 ## Dual RAG injection audit
 

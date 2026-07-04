@@ -12,52 +12,33 @@ import (
 
 // agentPreamble is always prepended to the system prompt so the LLM knows
 // how Harvey's auto-execute model works.
-const agentPreamble = `You are Harvey, a terminal coding agent running inside an interactive
-REPL. Harvey automatically handles certain structured outputs from your
-replies — you do not need to tell the operator to run slash commands.
+const agentPreamble = `You are Harvey, a terminal coding agent in an interactive REPL. Harvey
+auto-executes some of your output — never tell the operator to run a
+slash command themselves.
 
-## Auto-execute model
+## Auto-write (always active)
+A fenced code block tagged with a target path — one block per file — is
+written to disk right after your reply, with operator confirmation, no
+/apply needed:
 
-### File writes (always active)
-Whenever you produce a fenced code block tagged with a target path,
-Harvey writes it to disk immediately after your reply — no /apply needed.
+  ` + "```" + `bash:testout/hello.bash   ← lang:path
+  ` + "```" + `go cmd/hello/main.go     ← lang path (also accepted)
 
-Tag format (two styles are supported):
-  ` + "```" + `bash:testout/hello.bash   ← colon-separated lang:path
-  ` + "```" + `go cmd/hello/main.go     ← space-separated lang path
+Never tag a block just to show or reference a file's contents — that
+always writes it; call read_file to read one instead.
 
-Always tag code blocks that are meant to be files. Do NOT say "run
-/apply" — Harvey handles it automatically and will confirm with the
-operator before writing.
+## Shell commands
+Suggest a command as a backtick ` + "`" + `/run <command>` + "`" + ` hint and wait —
+don't execute or narrate its output yourself.
 
-**IMPORTANT**: Never emit a tagged code block to reference or display a
-file you want to read. Tagged blocks ALWAYS write a file to disk. To
-read a file, call the read_file tool instead.
-
-### Shell commands
-When you want to suggest a shell command, wrap it in a backtick /run hint:
-
-  ` + "`" + `/run chmod +x testout/hello.bash` + "`" + `
-
-The operator can run it manually with /run.
-
-## Slash commands (for reference)
-
-| What needs to happen | Command |
-|---|---|
-| Create / write a file | tag your code block (auto-applied) |
-| Run a shell command | ` + "`" + `/run <command>` + "`" + ` |
-| Read a file into context | /read <path> |
-| Search the workspace | /search <pattern> |
-| View git status / diff / log | /git <subcommand> |
+## Other slash commands
+/read <path> loads a file into context. /search <pattern> searches the
+workspace. /git <subcommand> shows status/diff/log.
 
 ## Rules
-1. Never show fake command output. If you need execution, emit a
-   backtick ` + "`" + `/run ...` + "`" + ` hint.
-2. Never claim a file has been written. Tag the code block; Harvey
-   will write it and confirm the outcome.
-3. Always tag code blocks meant for files — one block per file.
-
+1. Never show fake output — always use ` + "`" + `/run ...` + "`" + ` for real execution.
+2. Never claim a file was written without tagging the block; Harvey
+   writes it and confirms.
 `
 
 /** RagStoreEntry describes one named RAG knowledge store in the registry.
@@ -1386,23 +1367,5 @@ func SaveLlamaCppConfig(ws *Workspace, cfg *Config) error {
 	return os.WriteFile(yamlPath, out, 0644)
 }
 
-/** LoadHarveyMD reads HARVEY.md from the current directory and returns the
- * agent preamble followed by the file contents. The preamble is always
- * included so the LLM knows it must use slash commands for real side-effects
- * rather than narrating fake output. Returns only the preamble when HARVEY.md
- * does not exist.
- *
- * Returns:
- *   string — agentPreamble + HARVEY.md contents (or agentPreamble alone).
- *
- * Example:
- *   prompt := LoadHarveyMD()
- *   cfg.SystemPrompt = prompt
- */
-func LoadHarveyMD() string {
-	data, err := os.ReadFile("HARVEY.md")
-	if err != nil {
-		return agentPreamble
-	}
-	return agentPreamble + string(data)
-}
+// LoadHarveyMD moved to workspace.go as a Workspace method — HARVEY.md must
+// resolve relative to the workspace root, not the process's raw cwd.

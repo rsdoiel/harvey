@@ -215,3 +215,74 @@ func (ws *Workspace) ListDir(path string) ([]fs.DirEntry, error) {
 	}
 	return os.ReadDir(abs)
 }
+
+/** LoadHarveyMD reads HARVEY.md from the workspace root and returns the
+ * agent preamble followed by the file contents. The preamble is always
+ * included so the LLM knows it must use slash commands for real side-effects
+ * rather than narrating fake output. Returns only the preamble when
+ * HARVEY.md does not exist.
+ *
+ * Returns:
+ *   string — agentPreamble + HARVEY.md contents (or agentPreamble alone).
+ *
+ * Example:
+ *   cfg.SystemPrompt = ws.LoadHarveyMD()
+ */
+func (ws *Workspace) LoadHarveyMD() string {
+	data, err := ws.ReadFile("HARVEY.md")
+	if err != nil {
+		return agentPreamble
+	}
+	return agentPreamble + string(data)
+}
+
+/** RequireCWDInRoot verifies that cwd lies inside root (or equals it), after
+ * resolving both to absolute, symlink-free paths. This is the enforcement
+ * half of Harvey's workspace security model: launching with no -w/--workdir
+ * flag always trusts cwd as the workspace, but an explicitly-passed root
+ * must not be allowed to point somewhere the process isn't actually standing
+ * inside — otherwise agents/, sessions, and HARVEY.md would all be anchored
+ * to a tree unrelated to where the user is actually working.
+ *
+ * Parameters:
+ *   cwd  (string) — the process's current working directory.
+ *   root (string) — the workspace root requested via -w/--workdir.
+ *
+ * Returns:
+ *   error — non-nil, naming both directories, when cwd does not lie inside
+ *           root; nil when cwd equals root or is a descendant of it.
+ *
+ * Example:
+ *   cwd, _ := os.Getwd()
+ *   if err := RequireCWDInRoot(cwd, cfg.WorkDir); err != nil {
+ *       log.Fatal(err)
+ *   }
+ */
+func RequireCWDInRoot(cwd, root string) error {
+	absCWD, err := filepath.Abs(cwd)
+	if err != nil {
+		return fmt.Errorf("workspace: resolve cwd %q: %w", cwd, err)
+	}
+	realCWD, err := filepath.EvalSymlinks(absCWD)
+	if err != nil {
+		realCWD = absCWD
+	}
+
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("workspace: resolve workdir %q: %w", root, err)
+	}
+	realRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		realRoot = absRoot
+	}
+
+	if realCWD == realRoot {
+		return nil
+	}
+	rel, err := filepath.Rel(realRoot, realCWD)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("workspace: current directory %q is not inside workspace root %q (run harvey from within the workspace tree, or drop -w/--workdir)", realCWD, realRoot)
+	}
+	return nil
+}
