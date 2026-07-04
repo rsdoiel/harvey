@@ -687,3 +687,39 @@ func TestLoadHarveyYAML_PerPromptNotSet_NoSkip(t *testing.T) {
 		t.Error("per_prompt absent in YAML should leave SkipPerPrompt=false (default)")
 	}
 }
+
+// TestLoadHarveyYAML_IgnoresPersistedLlamafileActive is a regression test for
+// the "blank slate" bug: a harvey.yaml with llamafile.active: set (a legacy
+// leftover from an older Harvey, or a hand edit) must NOT auto-select that
+// model at startup by populating cfg.Llamafile.Active. Only an explicit
+// --llamafile CLI flag (set directly in cmd/harvey/main.go, independent of
+// this load path) or a --continue/--resume session hint should be able to
+// skip the interactive model picker.
+func TestLoadHarveyYAML_IgnoresPersistedLlamafileActive(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := `llamafile:
+  active: bonsai-8b
+  models:
+    - name: bonsai-8b
+      path: /models/bonsai-8b.llamafile
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Llamafile.Active != "" {
+		t.Errorf("Llamafile.Active = %q, want empty — a persisted active: must not auto-select a model at startup", cfg.Llamafile.Active)
+	}
+	// The model registry itself must still load correctly.
+	if len(cfg.Llamafile.Models) != 1 || cfg.Llamafile.Models[0].Name != "bonsai-8b" {
+		t.Errorf("Llamafile.Models = %+v, want one entry named bonsai-8b", cfg.Llamafile.Models)
+	}
+}

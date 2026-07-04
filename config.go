@@ -872,9 +872,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.Llamafile.ModelsDir != "" {
 		cfg.Llamafile.ModelsDir = expandTilde(y.Llamafile.ModelsDir)
 	}
-	if y.Llamafile.Active != "" {
-		cfg.Llamafile.Active = y.Llamafile.Active
-	}
+	// Blank slate: a persisted llamafile.active (legacy leftover or hand edit)
+	// must never auto-select a model at startup. Only an explicit --llamafile
+	// CLI flag (cmd/harvey/main.go) or a --continue/--resume session hint may.
 	if y.Llamafile.URL != "" {
 		cfg.Llamafile.URL = y.Llamafile.URL
 	}
