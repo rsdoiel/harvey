@@ -130,6 +130,111 @@ this write-up.
   weak/small models it was seemingly written for? Needs a compliance check,
   not just a token-count check, before cutting content.
 
+## Addendum (2026-07-04): system-prompt composition audit
+
+Follow-up analysis, done before the design session, to find out exactly what
+the ~3372 measured tokens are made of — not just estimate it. Read the actual
+code paths rather than assuming.
+
+### Composition
+
+The system prompt is built from three pieces, concatenated in this order:
+
+1. **`agentPreamble`** (const in `config.go`) — 1087 chars.
+2. **`HARVEY.md`** — loaded by `LoadHarveyMD()` in `config.go`, which does a
+   bare `os.ReadFile("HARVEY.md")`. Size depends on which file is found (see
+   below): the workspace-root `HARVEY.md` is 4005 chars; `harvey/HARVEY.md`
+   is 1899 chars.
+3. **Skills catalog** (`CatalogSystemPromptBlock` in `skills.go`, appended in
+   `terminal.go` after `LoadHarveyMD()`) — scans `agents/skills/*/SKILL.md`
+   and inlines every skill's full frontmatter `description:` plus its
+   absolute filesystem path as XML. Currently 11 skills, 6212 chars — **the
+   single largest of the three**, bigger than `agentPreamble` + `HARVEY.md`
+   combined.
+
+Chars/4 across all three (11304 chars) gives ~2826 tokens, undercounting the
+measured 3372 — Harvey's own chars/4 heuristic (used elsewhere for the
+`[ctx: %]` hint) is optimistic for this kind of dense, hyphenated/XML-tagged
+technical text. At a more realistic ~3.3 chars/token, 11304/3.3 ≈ 3425,
+consistent with the measured value. No unaccounted remainder.
+
+**Ruled out:** the memory silo's always-injected `workspace_profile`/
+`project_fact` records do not contribute — `memory.enabled` is not set in
+`agents/harvey.yaml`, so `injectMemoryContext` (`harvey.go`) returns early
+before ever calling `UnifiedMemory.Recall`.
+
+### Bug: `HARVEY.md` loading bypasses the workspace boundary entirely
+
+`cmd/harvey/main.go` calls `cfg.SystemPrompt = harvey.LoadHarveyMD()` at line
+144, **before** `harvey.NewWorkspace(cfg.WorkDir)` runs at line 145.
+`LoadHarveyMD()` never consults `cfg.WorkDir`/`-w` — it reads `"HARVEY.md"`
+relative to the process's raw cwd, with no containment check, before the
+`Workspace` struct (which is where Harvey's actual "operations stay inside
+the root" security invariant lives, per its own doc comment) has even been
+constructed.
+
+Confirmed with the user this is *not* simply "should default to cwd" — that
+part is correct and intentional (launching in `~/Laboratory` should load its
+`HARVEY.md`; launching inside `~/Laboratory/henry` without `-w` should not).
+The actual gap is narrower and more concrete:
+
+- When `-w` is passed explicitly, there is currently **no check** that the
+  process's cwd is contained within the given root. Passing `-w
+  ~/Laboratory` while standing in an unrelated tree (e.g. `~/WorkLab/henry`)
+  should fail fast with a clear error — it currently doesn't; `NewWorkspace`
+  will happily set `Root` to whatever path it's given.
+- Independent of that check, `LoadHarveyMD()` doesn't use `ws` at all, so
+  even when `-w` *is* valid and honored for everything else (`agents/`,
+  sessions, config), it has zero effect on which `HARVEY.md` loads. That's
+  inconsistent with the rest of the workspace model.
+
+**Consequence for this document's own numbers:** the "Method" section above
+assumed the workspace-root `HARVEY.md` (4005 chars) was the one loaded during
+the four cold-start test runs (`harvey -w /home/rsdoiel/Laboratory
+--llamafile ...`). That was an assumption, not a verified fact — the actual
+file loaded depends on the shell's cwd at invocation time, which was not
+recorded. If cwd was `harvey/` (plausible; that's where the binary lives),
+`harvey/HARVEY.md` (1899 chars) loaded instead. This is itself evidence of
+the bug: the same command line can silently load different guidance
+depending on invocation directory.
+
+### Skills catalog: breadth is deliberate, per-entry cost is not
+
+Raised the question directly with the user: given small-model context
+constraints, should Harvey load fewer skills into the prompt? Answer: no —
+`agents/` (skills, `knowledge.db`, memories) is deliberately designed to be a
+shared, filesystem-legible substrate so *other* model/tooling systems can
+also discover project skills and knowledge, not just whichever model Harvey
+is currently running. Reducing which skills appear would work against that
+goal, and the filesystem itself (any tool can read `agents/skills/*/SKILL.md`
+directly) already satisfies cross-system discoverability without needing
+full injection into any one session's live prompt.
+
+The waste is representational, not coverage: each catalog entry inlines a
+multi-sentence description **and** a full absolute path
+(`/home/rsdoiel/Laboratory/agents/skills/<name>/SKILL.md`) that the LLM has
+no use for — it only ever needs to type `` `/skill load <name>` ``. A
+shorter per-entry form (name + one-line purpose, no path) would cut this
+block substantially while still surfacing all 11 skills every session.
+
+**Revised implication for the design session:** trimming `agentPreamble`
+alone (candidate direction #1) only touches ~10% of the total. The
+higher-leverage, and only currently *growing*, target is the skills catalog
+— fix its representation (shorter entries, drop the path), not its breadth.
+
+### Assay as a future reference point (deferred)
+
+Considered using `assay` (`cmd/assay/`) to A/B-test system-prompt variants
+(full vs. trimmed) for tool-call/convention compliance before making changes.
+Found it currently has no system-prompt injection at all — it sends raw
+corpus prompts with no system message, so it can't yet answer that question.
+Decided to **defer** building this out: trim the prompt first, let real
+usage surface which compliance failures actually happen, and let those
+concrete failure modes drive what `assay` needs (a `--system-prompt` flag,
+a `harvey-conventions.yaml` corpus, a `--system-compare` delta report) rather
+than guessing at checks upfront. Revisit once the trimming work has produced
+real failure examples to design against.
+
 ## Reproduction
 
 Test turn used for all four runs:
