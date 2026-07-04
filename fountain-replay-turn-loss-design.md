@@ -138,3 +138,36 @@ previously silently dropped.
    (one scene heading, one exchange) to guard against the fix breaking the
    common case, and a multi-scene test (today's already-working case) to
    guard the existing scene-heading-transition push path.
+
+## Verified live (2026-07-03, same session)
+
+Beyond the unit tests, ran the fix through Harvey's actual `--replay` path
+against the still-running `bonsai-8b` llamafile server. First re-ran the
+*original* broken test file (two bare `RSDOIEL` lines, no reply between
+them) — still showed "Replaying 1 turns". This is expected and correct: that
+file has no `ModelReply` between the two user lines at all, which is a
+different, degenerate shape than the bug that was fixed (a second
+*complete* exchange overwriting the first). Harvey's own recorder never
+produces bare consecutive user lines with nothing between them — every real
+turn gets a reply — so this shape doesn't occur in genuine recordings, only
+in that one hand-typed test file.
+
+Built a properly-shaped two-*exchange* file instead (matching the real bug
+pattern: `RSDOIEL` / reply / `RSDOIEL` / reply, one scene heading) and reran:
+
+```
+Replaying 2 turns from bonsai-two-exchange-test.spmd
+[1/2] What is 2 plus 2? Answer with just the number.
+4                                                        11.102s
+[2/2] Now double that number. Answer with just the number.
+8                                                        11.69s
+```
+
+Both turns correctly parsed and resent, and the model reasoned correctly
+across them (4, doubled, is 8) — confirming it now receives real
+conversation history it was previously being silently denied. This also
+corrects a misattribution in `llamacpp-cpu-tuning-design.md`'s Bonsai-8B
+addendum: an earlier "confident-but-ungrounded output" quality caveat about
+Bonsai-8B was actually this parser bug, not a model defect — the model was
+never at fault; the harness was silently withholding its own history from
+it. See that document's correction note.

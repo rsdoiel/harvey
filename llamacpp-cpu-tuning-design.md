@@ -235,16 +235,23 @@ lifetime** (llama-server's slot-based prompt cache — logged at startup as
 across separate Harvey invocations as long as the server stays warm and the
 prefix matches exactly), not a recurring per-turn or per-invocation cost.
 
-Caveat: the test file for this second run had a formatting bug — two
-consecutive `RSDOIEL` blocks with no intervening `HARVEY` reply collapsed to
-a single replayed turn, so the model answered "double that number" with no
-actual prior context of what number that was. It confidently answered "2"
-rather than expressing uncertainty — a second, independent data point of
-Bonsai-8B producing confident-but-ungrounded output, though again not
-conclusive of a quantization-specific defect versus generic small-model
-behavior. True within-session incremental caching (turn 2 following a real
-turn 1) was not cleanly tested and remains an open question; the cross-
-invocation warm-server result above is the practically confirmed one.
+**Correction (2026-07-03, later same session):** the "confident-but-
+ungrounded output" caveat originally recorded here was a misattribution. The
+test file for this second run had two consecutive `RSDOIEL` blocks with no
+intervening reply, which silently collapsed to a single replayed turn with
+no prior context — but that collapse turned out to be a real bug in
+Harvey's own Fountain replay parser (`parseFountainSession` in `replay.go`),
+not a Bonsai-8B quality issue. Full diagnosis, real-world evidence, fix, and
+regression tests are in `fountain-replay-turn-loss-design.md`. Once fixed
+and re-tested with a properly-shaped two-exchange file, Bonsai-8B answered
+correctly on both turns ("2+2" → "4", then "double that" → "8") — i.e. it
+reasoned correctly across turns once it actually *had* the context. The
+model was never at fault; the harness was silently withholding its own
+conversation history from it. True within-session incremental caching (turn
+2 following a real turn 1) is now cleanly confirmed by this corrected test:
+turn 1 took 11.102s, turn 2 took 11.69s (both against an already-warm
+server) — consistent with, and reinforcing, the cross-invocation
+warm-server result above.
 
 **Implication for Harvey's system prompt:** the earlier "should the preamble
 be shortened?" question is better scoped as a cold-start concern, not a
