@@ -1,4 +1,4 @@
-%assay(1) user manual | version 0.0.15a fc74855
+%assay(1) user manual | version 0.0.15a 6742bf6
 % R. S. Doiel
 % 2026-06-28
 
