@@ -116,54 +116,62 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			}
 			// ── Chunking pre-read guard ─────────────────────────────────────────
 			if a.Config.Chunking.Enabled && a.Client != nil {
-				if rem := remainingContext(a); rem > 0 {
-					budget := int(float64(rem) * a.Config.Chunking.Threshold)
-					if exceeded, size, statErr := fileExceedsBudget(resolved, budget); statErr == nil && exceeded {
-						lastMsg := lastUserMessage(a)
-						instruction, cancelled := promptChunkInstruction(a.In, a.Out, p, int(size/4), budget, lastMsg)
-						if cancelled {
-							return "File read cancelled by user.", nil
-						}
-						// Parse @mention: extract model label, strip from instruction.
-						model := a.Client.Name()
-						if ac, ok := a.Client.(*AnyLLMClient); ok {
-							model = ac.ModelName()
-						}
-						if mentionName, rest, mentionOK := ParseAtMention(instruction); mentionOK {
-							model = mentionName
-							instruction = rest
-						}
-						// Read the full file for chunking.
-						chunkData, readErr := os.ReadFile(resolved)
-						if readErr != nil {
-							if a.AuditBuffer != nil {
-								a.AuditBuffer.Log(ActionFileRead, p, StatusError)
-							}
-							return "", fmt.Errorf("read_file: %w", readErr)
-						}
-						docType := DetectDocType(resolved)
-						chunks := ChunkDocument(string(chunkData), a.Config.Chunking, docType)
-						if len(chunks) > a.Config.Chunking.MaxChunks {
-							fmt.Fprintf(a.Out, "Warning: document split into %d chunks (max %d); proceeding.\n",
-								len(chunks), a.Config.Chunking.MaxChunks)
-						}
-						params := ChunkAnalysisParams{
-							Filename:    filepath.Base(p),
-							Chunks:      chunks,
-							Instruction: instruction,
-							Model:       model,
-							DocType:     docType,
-							Config:      a.Config.Chunking,
-						}
-						synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, a.DebugLog, params, a.Out)
-						if synthErr != nil {
-							return "", fmt.Errorf("read_file: chunked analysis: %w", synthErr)
-						}
-						if a.AuditBuffer != nil {
-							a.AuditBuffer.Log(ActionFileRead, p, StatusSuccess)
-						}
-						return synthesis, nil
+				rem := remainingContext(a)
+				if rem <= 0 {
+					// remainingContext returns 0 both when the context limit is
+					// unknown (e.g. an adopted external llamafile server that was
+					// never probed) and when it is known but exhausted. Either way,
+					// the guard must still run rather than silently falling through
+					// to a full raw read — use the same conservative fallback as
+					// injectOrChunk in file_inject.go.
+					rem = 4096
+				}
+				budget := int(float64(rem) * a.Config.Chunking.Threshold)
+				if exceeded, size, statErr := fileExceedsBudget(resolved, budget); statErr == nil && exceeded {
+					lastMsg := lastUserMessage(a)
+					instruction, cancelled := promptChunkInstruction(a.In, a.Out, p, int(size/4), budget, lastMsg)
+					if cancelled {
+						return "File read cancelled by user.", nil
 					}
+					// Parse @mention: extract model label, strip from instruction.
+					model := a.Client.Name()
+					if ac, ok := a.Client.(*AnyLLMClient); ok {
+						model = ac.ModelName()
+					}
+					if mentionName, rest, mentionOK := ParseAtMention(instruction); mentionOK {
+						model = mentionName
+						instruction = rest
+					}
+					// Read the full file for chunking.
+					chunkData, readErr := os.ReadFile(resolved)
+					if readErr != nil {
+						if a.AuditBuffer != nil {
+							a.AuditBuffer.Log(ActionFileRead, p, StatusError)
+						}
+						return "", fmt.Errorf("read_file: %w", readErr)
+					}
+					docType := DetectDocType(resolved)
+					chunks := ChunkDocument(string(chunkData), a.Config.Chunking, docType)
+					if len(chunks) > a.Config.Chunking.MaxChunks {
+						fmt.Fprintf(a.Out, "Warning: document split into %d chunks (max %d); proceeding.\n",
+							len(chunks), a.Config.Chunking.MaxChunks)
+					}
+					params := ChunkAnalysisParams{
+						Filename:    filepath.Base(p),
+						Chunks:      chunks,
+						Instruction: instruction,
+						Model:       model,
+						DocType:     docType,
+						Config:      a.Config.Chunking,
+					}
+					synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, a.DebugLog, params, a.Out)
+					if synthErr != nil {
+						return "", fmt.Errorf("read_file: chunked analysis: %w", synthErr)
+					}
+					if a.AuditBuffer != nil {
+						a.AuditBuffer.Log(ActionFileRead, p, StatusSuccess)
+					}
+					return synthesis, nil
 				}
 			}
 			// ── Normal read ─────────────────────────────────────────────────────

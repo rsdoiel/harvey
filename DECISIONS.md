@@ -4,6 +4,54 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-07-05 — `/read-chunks` command: explicit chunked analysis, independent of the overflow trigger
+
+**Context.** The only way to exercise `RunChunkedAnalysis` (map-reduce chunking) was to hit the automatic context-overflow guard — either by feeding a genuinely huge file, or by artificially shrinking `effectiveContextLimit()` (as the 2026-07-05 live retests did). This made comparing chunking strategies, or comparing chunk-quality across models with different context windows, needlessly fragile: results were confounded by whatever the current model's context budget happened to be.
+
+**Decision.** Add `/read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]` (`cmdReadChunks`, `read_chunks_cmd_test.go`). It calls `ChunkDocument` + `RunChunkedAnalysis` directly — the identical functions the automatic path uses — with no threshold check at all; invoking the command is the confirmation. `--chunk-size`/`--max-chunks`/`--overlap` override `a.Config.Chunking` for that invocation only (not persisted), so the same file/model can be swept across chunking strategies in one session. `INSTRUCTION` falls back to the last user message when omitted, matching the implicit path's pre-fill convenience; `@model` mentions are parsed the same way. Unlike the tool-call path (where the synthesis is returned as a tool result and re-composed by another model turn) or the pre-inject path (where it's prepended as context for the next model turn), `/read-chunks` prints the full synthesis directly to the terminal — the point is to see the chunking pipeline's raw output for evaluation, not have it filtered through an additional model pass — and also appends it to history as a normal user/assistant exchange so follow-up questions can reference it.
+
+**Rejected.** Gating the command behind the same overflow check it's meant to bypass (defeats the purpose). Silently ignoring `a.Config.Chunking.Enabled: false` — that flag only gates the *automatic* trigger; an explicit command isn't automatic, so it's not checked here at all (only the per-invocation `--chunk-size`/`--max-chunks`/`--overlap` flags override the loaded config, leaving other fields like `Enabled` irrelevant to this path).
+
+**Consequences.** Naming follows the existing hyphenated convention (`/read-pdf`, `/read-dir`), not the `/read_chunks` placeholder. Command registered alongside `/read` in `commands.go`. Tests: `TestCmdReadChunks_NoArgs`, `TestCmdReadChunks_NoClient`, `TestCmdReadChunks_BypassesThreshold`, `TestCmdReadChunks_InstructionFallsBackToLastUserMessage`, `TestCmdReadChunks_NoInstructionNoHistory`, `TestCmdReadChunks_PermissionDenied`, `TestCmdReadChunks_InvalidChunkSizeFlag`, `TestCmdReadChunks_AddsResultToHistory`.
+
+---
+
+## 2026-07-05 — `/resume` slash command as a thin alias for `/session use`
+
+**Context.** Live-testing the chunking fix (see below) via piped/tmux-driven input was fragile in part because the interactive startup flow's prompt sequence is hard to predict from outside (resume-session prompt, model picker, possible external-server-adopt prompt). Investigating a general "invoke CLI flags from inside the REPL" mechanism, most of it turned out to already exist: `/model use`, `/session continue`, `/session replay`, and `/record start` already delegate to the same underlying functions the equivalent CLI flags call (established by the 2026-06-20 unified-`/model`-command decision). `/session use` with no arguments already shows the identical interactive picker the startup "Resume a prior session?" prompt uses, and loads the chosen file via `ContinueFromFountain` — functionally identical to what a `/resume` command would do.
+
+**Decision.** Add `/resume [FILE]` as a thin alias: `cmdResume` simply calls `cmdSession(a, append([]string{"use"}, args...), out)`. No new generic flag-to-command mechanism was built — the existing per-command delegation pattern already covers this need, and `/resume` is the discoverable name matching the `--resume` CLI flag.
+
+**Rejected.** Building a generic mechanism to invoke arbitrary startup flags mid-session. Most flags either already have a natural slash-command equivalent (model selection, session load/replay, recording) or don't make sense mid-session (`--workdir`, `--llamafile-dir`). A generic passthrough would duplicate the existing per-command pattern without covering meaningfully more ground.
+
+**Consequences.** `TestCmdResume_aliasForSessionUse`, `TestCmdResume_noArgsShowsPicker` added. The startup-time interactive "Resume a prior session? [y/N]" prompt itself is unchanged — dropping it in favor of `--resume`/`/resume` was considered but deferred, see TODO.md.
+
+---
+
+## 2026-07-05 — Llamafile GPULayers defaults to 0 (CPU-only), not 99
+
+**Context.** A live chunking retest against `bonsai-8b` (Q1_0 quantization) on Raspberry Pi hardware appeared to hang for 20+ minutes. Investigation found the underlying `llama-server` process had been running for **over 2 hours of CPU time** with no output, launched with `-ngl 99` (maximise GPU offload) — Harvey's default for every llamafile model (`config.go`, `LlamafileConfig.GPULayers: 99`). Raspberry Pi hardware has no usable GPU-compute backend; forcing maximum GPU-layer offload on such hardware is a plausible cause of severe degradation or an effective hang, independent of the quantization type. `LlamaCppConfig.GPULayers` (the sibling backend's config) already defaulted to `0` for this exact reason — the llamafile default was an inconsistency, not a deliberate choice.
+
+**Decision.** Change `LlamafileConfig.GPULayers`'s default from `99` to `0`. `buildLlamafileArgs` (`llamafile_service.go`) already treats `0` as "explicitly pass `-ngl 0`" (forces CPU-only), distinct from a negative value (omits the flag, defers to the binary's own default) — so `0` is the correct, unambiguous safe default, not just an arbitrary placeholder. Users with real GPU-compute hardware opt in via `gpu_layers:` in `harvey.yaml`. The "only persist when overriding the default" check in `SaveLlamafileConfig` was updated from `!= 99` to `!= 0` to match.
+
+**Consequences.** `TestDefaultConfig_LlamafileGPULayersDefaultsToZero`, `TestSaveLlamafileConfig_DoesNotPersistDefaultGPULayers`, `TestSaveLlamafileConfig_PersistsCustomGPULayers` added. Existing `harvey.yaml` files that don't already set `gpu_layers` explicitly silently pick up the new safer default on next load — no migration needed. Users on capable GPU hardware who were relying on the implicit 99-default will need to add `gpu_layers: 99` explicitly.
+
+---
+
+## 2026-07-05 — Chunking guard fix: unknown context limit must not bypass overflow detection
+
+**Context.** TODO.md reported garbled output from Gemma4-E4B when asked to review a document for topic drift, with the note "Never got the chunk prompt entry option." Root-cause investigation traced this to `remainingContext()` (`context_estimator.go`) returning `0` both when the model's context limit is genuinely unknown and when it is known but exhausted. `read_file`'s chunking pre-read guard in `builtin_tools.go` used `if rem := remainingContext(a); rem > 0` as its sole gate — so an unknown limit silently skipped the entire overflow check and fell through to a full raw read, rather than triggering the chunk-prompt UX. `file_inject.go`'s `injectOrChunk` already handled this correctly (falling back to a conservative 4096-token budget when `rem <= 0` and the limit truly is unknown), but `builtin_tools.go`'s tool-call path did not share that logic.
+
+A second, deeper cause was found for the llamafile backend specifically: `effectiveContextLimit()` (`harvey.go`) only resolves a context window for llamafile models from the `LlamafileEntry.ContextLength` field in `harvey.yaml` — the `ModelCache` fallback never carries a value for llamafile models, because `probeLlamaCppAndCache` (used by `useLlamafileEntry` on every llamafile connect, including adoption) only writes `SupportsTools`/`ToolMode` into the cache, never `ContextLength`. `switchLlamafileModel` and `addAndStartLlamafile` both call `ProbeLlamafileContextLength` to populate `LlamafileEntry.ContextLength`, but `adoptExternalServer` (`llamafile.go`) — used when Harvey detects an already-running llamafile server at startup and offers to adopt it — did not. Any model adopted this way has `ContextLength` permanently stuck at `0` for the session.
+
+**Decision.** Two fixes: (1) `builtin_tools.go`'s `read_file` chunking guard now uses the same fallback pattern as `injectOrChunk`: `rem <= 0` sets `rem = 4096` rather than skipping the guard outright. (2) `adoptExternalServer` now calls `ProbeLlamafileContextLength` and stores the result on the registered `LlamafileEntry`, matching the other two llamafile-registration call sites.
+
+**Known remaining gap.** `startAndUseLlamafile` (`backend_startup.go`) has a similar hole: when it detects a server already running under a *different* model name than the configured active entry, it adopts the detected name via `useLlamafileEntry` without registering (or probing) a matching `LlamafileEntry`. Deferred — this is a narrower edge case (requires an already-running server serving an unexpected model) than the primary adopt-on-first-connect path just fixed.
+
+**Consequences.** `TestReadFile_ChunkingEnabledContextLimitUnknown` (`builtin_tools_test.go`) and `TestAdoptExternalServer_probesContextLength` (`llamafile_test.go`) cover the two fixes. Live retest against `bonsai-8b` (Q1_0 quantization) was inconclusive on chunk-quality: the test document (~12.7KB) fell just under the 4096-token fallback budget so chunking did not trigger, and the single-shot response did not complete within ~20 minutes, suggesting Q1_0 quantization has poor CPU dequantization throughput on this hardware independent of the chunking fix. Re-testing chunk-quality on a document large enough to force chunking, and/or against a non-Q1_0 4B–8B model, is still open — see TODO.md.
+
+---
+
 ## 2026-06-30 — Assay switches from `callOllama` to `harvey.LLMClient` for all backends
 
 **Context.** `bin/assay` had a private `callOllama` function that spoke Ollama's proprietary `/api/chat` endpoint directly. Llamafile happened to also expose this Ollama-compatible API, so the single function covered two backends. Adding llama.cpp support requires the OpenAI-compatible `/v1/chat/completions` path, which Ollama does not expose at `/api/chat`. Writing a parallel `callOpenAI` function would create two diverging code paths that must be kept in sync.

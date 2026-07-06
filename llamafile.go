@@ -156,7 +156,11 @@ func adoptExternalServer(a *Agent, out io.Writer) error {
 		fmt.Fprintln(out, "  Not adopted — stop the server manually to start a different model.")
 		return nil
 	}
-	a.Config.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: name, Path: ""})
+	entry := LlamafileEntry{Name: name, Path: ""}
+	if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
+		entry.ContextLength = ctx
+	}
+	a.Config.AddOrUpdateLlamafileEntry(entry)
 	a.Config.Llamafile.Active = name
 	if err := a.useLlamafileEntry(name, out); err != nil {
 		return err

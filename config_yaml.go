@@ -143,7 +143,7 @@ type llamafileYAML struct {
 	Active         string               `yaml:"active,omitempty"`
 	URL            string               `yaml:"url,omitempty"`
 	StartupTimeout string               `yaml:"startup_timeout,omitempty"` // e.g. "120s", "2m"
-	GPULayers      *int                 `yaml:"gpu_layers,omitempty"`      // -ngl value; nil = use default (99)
+	GPULayers      *int                 `yaml:"gpu_layers,omitempty"`      // -ngl value; nil = use default (0, CPU-only)
 	MaxTokens      int                  `yaml:"max_tokens,omitempty"`      // cap on tokens per completion; 0 = no limit
 	Models         []llamafileEntryYAML `yaml:"models,omitempty"`
 }

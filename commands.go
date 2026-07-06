@@ -242,6 +242,11 @@ func (a *Agent) registerCommands() {
 			Description: "Inject workspace file(s) into conversation context",
 			Handler:     cmdRead,
 		},
+		"read-chunks": {
+			Usage:       "/read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]",
+			Description: "Run chunked map-reduce analysis on a file explicitly, bypassing the context-overflow trigger",
+			Handler:     cmdReadChunks,
+		},
 		"attach": {
 			Usage:       "/attach FILE",
 			Description: "Attach a file to the next turn: image (native or text fallback), PDF (text extraction), or plain text",
@@ -323,6 +328,11 @@ func (a *Agent) registerCommands() {
 			Description: "List, inspect, load, or replay .spmd/.fountain session recordings",
 			Handler:     cmdSession,
 			Subcommands: []string{"list", "show", "use", "continue", "replay"},
+		},
+		"resume": {
+			Usage:       "/resume [FILE]",
+			Description: "Resume a prior session recording (alias for /session use)",
+			Handler:     cmdResume,
 		},
 		"rename": {
 			Usage:       "/rename NAME",
@@ -1932,6 +1942,170 @@ const defaultMaxReadDirBytes = 256 * 1024
  * Example:
  *   /read-dir harvey/ --depth 1
  */
+/** cmdReadChunks runs the map-reduce chunked-analysis pipeline
+ * (ChunkDocument + RunChunkedAnalysis) on a file explicitly, regardless of
+ * whether it would trigger the automatic context-overflow guard. This lets
+ * chunking strategy and per-chunk output quality be evaluated independent of
+ * the active model's context window — a small file forced into several tiny
+ * chunks via --chunk-size exercises the identical code path a genuinely huge
+ * file would take automatically.
+ *
+ * Parameters:
+ *   a    (*Agent)   — the running agent; requires a.Client and a.Workspace.
+ *   args ([]string) — PATH, optional --chunk-size/--max-chunks/--overlap
+ *                     flags, and an optional trailing INSTRUCTION. When
+ *                     INSTRUCTION is omitted, falls back to the last user
+ *                     message in history.
+ *   out  (io.Writer) — destination for progress output and the final
+ *                      synthesis text.
+ *
+ * Returns:
+ *   error — path resolution, read, or chunked-analysis errors; usage and
+ *           permission problems are reported to out, not returned.
+ *
+ * Example:
+ *   /read-chunks report.md --chunk-size 800 --overlap sentence Summarize each section.
+ */
+func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
+	if a.Workspace == nil {
+		fmt.Fprintln(out, "No workspace initialised.")
+		return nil
+	}
+	if a.Client == nil {
+		fmt.Fprintln(out, "No backend connected. Use /ollama start or /llamafile start.")
+		return nil
+	}
+	if len(args) == 0 {
+		fmt.Fprintln(out, "Usage: /read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]")
+		return nil
+	}
+
+	cfg := a.Config.Chunking
+	var relPath string
+	var instrParts []string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--chunk-size":
+			if i+1 >= len(args) {
+				fmt.Fprintln(out, "read-chunks: --chunk-size requires a number (bytes)")
+				return nil
+			}
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n <= 0 {
+				fmt.Fprintf(out, "read-chunks: invalid --chunk-size %q\n", args[i])
+				return nil
+			}
+			cfg.ChunkSizeBytes = n
+		case "--max-chunks":
+			if i+1 >= len(args) {
+				fmt.Fprintln(out, "read-chunks: --max-chunks requires a number")
+				return nil
+			}
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n <= 0 {
+				fmt.Fprintf(out, "read-chunks: invalid --max-chunks %q\n", args[i])
+				return nil
+			}
+			cfg.MaxChunks = n
+		case "--overlap":
+			if i+1 >= len(args) {
+				fmt.Fprintln(out, "read-chunks: --overlap requires paragraph|sentence|none")
+				return nil
+			}
+			i++
+			mode := args[i]
+			if mode != "paragraph" && mode != "sentence" && mode != "none" {
+				fmt.Fprintf(out, "read-chunks: invalid --overlap %q (want paragraph|sentence|none)\n", mode)
+				return nil
+			}
+			cfg.Overlap = mode
+		default:
+			if relPath == "" {
+				relPath = args[i]
+			} else {
+				instrParts = append(instrParts, args[i])
+			}
+		}
+	}
+
+	if relPath == "" {
+		fmt.Fprintln(out, "Usage: /read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]")
+		return nil
+	}
+
+	instruction := strings.Join(instrParts, " ")
+	if instruction == "" {
+		instruction = lastUserMessage(a)
+	}
+	if instruction == "" {
+		fmt.Fprintln(out, "read-chunks: no instruction given and no prior user message to fall back to")
+		return nil
+	}
+
+	if !a.CheckReadPermission(relPath) {
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionFileRead, relPath, StatusDenied)
+		}
+		fmt.Fprintf(out, "  ✗ %s: read permission denied\n", relPath)
+		return nil
+	}
+
+	absPath, err := a.Workspace.AbsPath(relPath)
+	if err != nil {
+		return fmt.Errorf("read-chunks: %w", err)
+	}
+	content, err := os.ReadFile(absPath)
+	if err != nil {
+		if a.AuditBuffer != nil {
+			a.AuditBuffer.Log(ActionFileRead, relPath, StatusError)
+		}
+		return fmt.Errorf("read-chunks: %w", err)
+	}
+	if a.AuditBuffer != nil {
+		a.AuditBuffer.Log(ActionFileRead, relPath, StatusSuccess)
+	}
+
+	model := a.Client.Name()
+	if ac, ok := a.Client.(*AnyLLMClient); ok {
+		model = ac.ModelName()
+	}
+	if mentionName, rest, ok := ParseAtMention(instruction); ok {
+		model = mentionName
+		instruction = rest
+	}
+
+	docType := DetectDocType(absPath)
+	chunks := ChunkDocument(string(content), cfg, docType)
+	if len(chunks) > cfg.MaxChunks {
+		fmt.Fprintf(out, "Warning: document split into %d chunks (max %d); proceeding.\n", len(chunks), cfg.MaxChunks)
+	}
+
+	params := ChunkAnalysisParams{
+		Filename:    filepath.Base(relPath),
+		Chunks:      chunks,
+		Instruction: instruction,
+		Model:       model,
+		DocType:     docType,
+		Config:      cfg,
+	}
+
+	synthesis, err := RunChunkedAnalysis(context.Background(), a.Client, a.Recorder, a.DebugLog, params, out)
+	if err != nil {
+		return fmt.Errorf("read-chunks: %w", err)
+	}
+
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, synthesis)
+
+	a.AddMessage("user", fmt.Sprintf("[/read-chunks %s — %d chunk(s)]\n%s", relPath, len(chunks), instruction))
+	a.AddMessage("assistant", synthesis)
+
+	return nil
+}
+
 func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
 		fmt.Fprintln(out, "No workspace initialised.")
@@ -3085,6 +3259,26 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
  * Returns:
  *   error — On command execution failure (non-fatal errors are printed to out).
  */
+/** cmdResume is a thin discoverability alias for `/session use`, named to
+ * match the --resume startup flag. With no arguments it shows the same
+ * interactive session picker; with a FILE argument it loads that session
+ * directly.
+ *
+ * Parameters:
+ *   a    (*Agent)    — the running agent.
+ *   args ([]string)  — optional [FILE].
+ *   out  (io.Writer) — destination for status output.
+ *
+ * Returns:
+ *   error — any error from the underlying /session use dispatch.
+ *
+ * Example:
+ *   cmdResume(a, []string{"agents/sessions/harvey-session-20260705.spmd"}, os.Stdout)
+ */
+func cmdResume(a *Agent, args []string, out io.Writer) error {
+	return cmdSession(a, append([]string{"use"}, args...), out)
+}
+
 func cmdSession(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		fmt.Fprintln(out, "Usage: /session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>")

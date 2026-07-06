@@ -253,6 +253,39 @@ func TestAdoptExternalServer_userSaysYes(t *testing.T) {
 	}
 }
 
+// TestAdoptExternalServer_probesContextLength is the regression test for the
+// Gemma4-E4B chunking bug: adoptExternalServer registered the adopted model
+// with ContextLength left at its zero value, unlike switchLlamafileModel and
+// addAndStartLlamafile which both call ProbeLlamafileContextLength. A zero
+// ContextLength makes effectiveContextLimit() return 0 for the rest of the
+// session, which in turn disables the read_file chunking guard entirely.
+func TestAdoptExternalServer_probesContextLength(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"Gemma4-E4B-Q4_K_M.gguf","meta":{"n_ctx":8192}}],"object":"list"}`))
+	}))
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.Llamafile.URL = srv.URL
+	a := NewAgent(cfg, ws)
+	a.In = strings.NewReader("y\n")
+
+	var buf strings.Builder
+	if err := adoptExternalServer(a, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entry := a.Config.ActiveLlamafileEntry()
+	if entry == nil {
+		t.Fatal("expected an active llamafile entry after adoption")
+	}
+	if entry.ContextLength != 8192 {
+		t.Errorf("expected adoptExternalServer to probe and store ContextLength=8192, got %d", entry.ContextLength)
+	}
+}
+
 func TestAdoptExternalServer_userSaysNo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

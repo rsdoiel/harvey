@@ -92,13 +92,17 @@ type OllamaConfig struct {
  *   URL            (string)           — API base URL; default "http://localhost:8080".
  *   ModelsDir      (string)           — discovery directory; default "$HOME/Models".
  *   StartupTimeout (time.Duration)    — how long to wait for server response; default 120s.
- *   GPULayers      (int)              — -ngl value; 99 = maximise GPU.
+ *   GPULayers      (int)              — -ngl value; 0 = CPU-only (default; safe on every
+ *                                        platform Harvey targets, including Raspberry Pi,
+ *                                        which has no usable GPU-compute backend). Set to
+ *                                        99 (maximise GPU) or a specific layer count in
+ *                                        harvey.yaml on hardware with real GPU support.
  *   MaxTokens      (int)              — max tokens per completion; 0 = no limit.
  *   Models         ([]LlamafileEntry) — registered llamafile models.
  *   Active         (string)           — name of the active model; "" = none.
  *
  * Example:
- *   cfg.Llamafile = LlamafileConfig{URL: "http://localhost:8080", GPULayers: 99}
+ *   cfg.Llamafile = LlamafileConfig{URL: "http://localhost:8080", GPULayers: 0}
  */
 type LlamafileConfig struct {
 	URL            string
@@ -237,7 +241,7 @@ func DefaultConfig() *Config {
 			URL:            "http://localhost:8080",
 			ModelsDir:      llamafileDefaultModelsDir(),
 			StartupTimeout: 120 * time.Second,
-			GPULayers:      99,
+			GPULayers:      0,
 		},
 		Security: SecurityConfig{
 			SafeMode:        true,
@@ -1299,7 +1303,7 @@ func SaveLlamafileConfig(ws *Workspace, cfg *Config) error {
 		startupTO = cfg.Llamafile.StartupTimeout.String()
 	}
 	var gpuLayers *int
-	if cfg.Llamafile.GPULayers != 99 { // only persist when overriding the default
+	if cfg.Llamafile.GPULayers != 0 { // only persist when overriding the default
 		gpuLayers = &cfg.Llamafile.GPULayers
 	}
 	y.Llamafile = llamafileYAML{

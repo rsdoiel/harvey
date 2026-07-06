@@ -1184,6 +1184,57 @@ func TestSessionUse_aliasForContinue(t *testing.T) {
 	}
 }
 
+// TestCmdResume_aliasForSessionUse verifies that /resume FILE behaves
+// identically to /session use FILE — /resume is a thin discoverability alias
+// (matching the --resume flag's name) over the same ContinueFromFountain path.
+func TestCmdResume_aliasForSessionUse(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/test.spmd"
+	rec, err := NewRecorder(path, "ollama (mock)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.RecordTurn("Hello.", "Hi!"); err != nil {
+		t.Fatal(err)
+	}
+	rec.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	var buf strings.Builder
+	if err := cmdResume(a, []string{path}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(a.History) == 0 {
+		t.Error("expected history to be loaded after /resume")
+	}
+}
+
+// TestCmdResume_noArgsShowsPicker verifies that /resume with no arguments
+// falls through to the same interactive picker as /session use (no crash,
+// no error) when a sessions directory with files is configured.
+func TestCmdResume_noArgsShowsPicker(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/test.spmd"
+	rec, err := NewRecorder(path, "ollama (mock)", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.RecordTurn("Hello.", "Hi!"); err != nil {
+		t.Fatal(err)
+	}
+	rec.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	a := NewAgent(DefaultConfig(), ws)
+	a.SessionsDir = dir
+	a.In = strings.NewReader("\n") // Enter to cancel the picker
+	var buf strings.Builder
+	if err := cmdResume(a, nil, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestSessionList_emptyDir(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)

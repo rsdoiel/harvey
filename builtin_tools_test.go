@@ -122,6 +122,41 @@ func TestReadFile_ChunkingEnabledUserCancels(t *testing.T) {
 	}
 }
 
+// TestReadFile_ChunkingEnabledContextLimitUnknown is the regression test for
+// the llamafile adopt-external-server bug: when effectiveContextLimit() is
+// unknown (no Ollama.ContextLength, no llamafile entry, no model cache
+// entry), remainingContext() returns 0. The chunking guard must still fire
+// with a conservative fallback budget instead of silently skipping straight
+// to a full raw read (which is what produced the Gemma4-E4B garbled output
+// reported in TODO.md — the chunk-prompt option was never reached).
+func TestReadFile_ChunkingEnabledContextLimitUnknown(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) {
+		// Deliberately leave context length unset on every source
+		// effectiveContextLimit() checks — this is the "unknown limit" case.
+		cfg.Chunking = DefaultChunkConfig()
+		cfg.Chunking.Enabled = true
+	})
+	a.Client = &mockLLMClient{}
+	// Pipe "no" so the test only needs to observe that the chunk prompt was
+	// reached, not exercise the full map-reduce path.
+	a.In = strings.NewReader("no\n")
+
+	// 20000 bytes comfortably exceeds the 4096-token (~16384 byte) fallback
+	// budget at the default 0.80 threshold.
+	content := strings.Repeat("the quick brown fox jumps over the lazy dog ", 500)
+	if err := a.Workspace.WriteFile("huge.txt", []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := dispatch(t, reg, "read_file", map[string]any{"path": "huge.txt"})
+	if err != nil {
+		t.Fatalf("read_file: unexpected error: %v", err)
+	}
+	if !strings.Contains(got, "cancelled") {
+		t.Errorf("read_file: expected the chunking guard to fire and reach the cancel path even with an unknown context limit; got %q", got)
+	}
+}
+
 // TestReadFile_PermissionDenied verifies that read_file returns a permission
 // error when the agent's permissions exclude reading the requested path.
 func TestReadFile_PermissionDenied(t *testing.T) {

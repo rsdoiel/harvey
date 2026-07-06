@@ -53,6 +53,70 @@ func TestSaveLlamafileConfig_DoesNotPersistActive(t *testing.T) {
 	}
 }
 
+// ─── Llamafile GPULayers — safe CPU-only default ─────────────────────────────
+
+// TestDefaultConfig_LlamafileGPULayersDefaultsToZero is the regression test
+// for a 2+ hour hang observed on Raspberry Pi hardware: the old default of 99
+// (-ngl 99, "maximise GPU") forces maximum GPU-offload on hardware that has no
+// usable GPU-compute backend, which can cause severe slowdowns or an
+// effective hang rather than a clean CPU fallback. 0 (CPU-only) is safe on
+// every platform Harvey targets; users with a real GPU opt in via
+// harvey.yaml's gpu_layers field. This matches LlamaCppConfig.GPULayers,
+// which already defaults to 0 for the same reason.
+func TestDefaultConfig_LlamafileGPULayersDefaultsToZero(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Llamafile.GPULayers != 0 {
+		t.Errorf("DefaultConfig().Llamafile.GPULayers = %d, want 0 (CPU-only default)", cfg.Llamafile.GPULayers)
+	}
+}
+
+// TestSaveLlamafileConfig_DoesNotPersistDefaultGPULayers asserts that leaving
+// GPULayers at its default (0) does not write gpu_layers: to harvey.yaml,
+// keeping the saved config minimal.
+func TestSaveLlamafileConfig_DoesNotPersistDefaultGPULayers(t *testing.T) {
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+	cfg := DefaultConfig() // GPULayers left at the default (0)
+
+	if err := SaveLlamafileConfig(ws, cfg); err != nil {
+		t.Fatalf("SaveLlamafileConfig: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(ws.Root, "agents", "harvey.yaml"))
+	if err != nil {
+		t.Fatalf("reading harvey.yaml: %v", err)
+	}
+	if strings.Contains(string(data), "gpu_layers") {
+		t.Errorf("harvey.yaml should not contain gpu_layers when left at the default, but got:\n%s", data)
+	}
+}
+
+// TestSaveLlamafileConfig_PersistsCustomGPULayers verifies that a
+// user-customized GPULayers value (e.g. opting into GPU offload on capable
+// hardware) is still persisted.
+func TestSaveLlamafileConfig_PersistsCustomGPULayers(t *testing.T) {
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+	cfg := DefaultConfig()
+	cfg.Llamafile.GPULayers = 35
+
+	if err := SaveLlamafileConfig(ws, cfg); err != nil {
+		t.Fatalf("SaveLlamafileConfig: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(ws.Root, "agents", "harvey.yaml"))
+	if err != nil {
+		t.Fatalf("reading harvey.yaml: %v", err)
+	}
+	if !strings.Contains(string(data), "gpu_layers: 35") {
+		t.Errorf("harvey.yaml should persist the customized gpu_layers: 35, but got:\n%s", data)
+	}
+}
+
 // TestSaveLlamafileConfig_PreservesExistingActive verifies that if a prior
 // harvey.yaml contains llamafile.active (written by an older Harvey), saving
 // again does NOT re-add it. The old value is silently dropped.
