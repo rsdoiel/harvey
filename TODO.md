@@ -91,14 +91,18 @@
 
 ## Research Question
 
-- [ ] The following URLs are from IBM's website about their approaches to improving
+- [x] The following URLs are from IBM's website about their approaches to improving
       language model behavior. Please review this webpages for insights that might
-      prove useful for Harvey
+      prove useful for Harvey — reviewed 2026-07-08, see
+      [DECISIONS.md](DECISIONS.md) (2026-07-08 — IBM generative computing /
+      Granite Switch / Mellea research review). No immediate adoption; follow-ups
+      for Henry tracked in `~/Laboratory/henry/continue_next_time.txt`.
       - https://research.ibm.com/blog/inference-friendly-aloras-lora
       - https://research.ibm.com/blog/generative-computing-mellea
       - https://research.ibm.com/blog/granite-libraries-project-switch
-- [ ] Review this GitHub repo, https://github.com/generative-computing/granite-switch, for
-      implications for Harvey, Henry and Mable
+- [x] Review this GitHub repo, https://github.com/generative-computing/granite-switch, for
+      implications for Harvey, Henry and Mable — reviewed 2026-07-08, see
+      [DECISIONS.md](DECISIONS.md) (2026-07-08 entry, same as above).
 - [x] How to improve cold starts with models. Investigated 2026-07-03,
   designed/decided/implemented 2026-07-04 — see `cold-start-latency-findings.md`.
   Not Q1_0/Bonsai-specific: cold-start time scales with parameter count
