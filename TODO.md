@@ -1,7 +1,13 @@
 
 # Action Items
 
+## Update Next
+
+- [ ] Remove the prompt to remove previous session at startup (we have a `-resume` and `/resume` option if needed)
+
 ## Bugs
+
+- [ ] I have both Llamafile and gguf models in ~/Models on my Mac, bit the gguf models are not listed as an option (llama.cpp is installed)
 
 - [x] Chunk prompt never triggered for Gemma4-E4B — root cause found and fixed
   2026-07-05, see [DECISIONS.md](DECISIONS.md) (2026-07-05 — Chunking guard fix).
@@ -85,6 +91,14 @@
 
 ## Research Question
 
+- [ ] The following URLs are from IBM's website about their approaches to improving
+      language model behavior. Please review this webpages for insights that might
+      prove useful for Harvey
+      - https://research.ibm.com/blog/inference-friendly-aloras-lora
+      - https://research.ibm.com/blog/generative-computing-mellea
+      - https://research.ibm.com/blog/granite-libraries-project-switch
+- [ ] Review this GitHub repo, https://github.com/generative-computing/granite-switch, for
+      implications for Harvey, Henry and Mable
 - [x] How to improve cold starts with models. Investigated 2026-07-03,
   designed/decided/implemented 2026-07-04 — see `cold-start-latency-findings.md`.
   Not Q1_0/Bonsai-specific: cold-start time scales with parameter count
