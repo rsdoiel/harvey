@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
@@ -13,6 +14,92 @@ func estimateTokens(s string) int {
 		n = 1
 	}
 	return n
+}
+
+/** contextUsage returns the agent's current context-window usage: the token
+ * count already in history and the model's effective context limit. It is
+ * the single accessor shared by the turn-time warning (runChatTurn) and
+ * /status (cmdStatus), replacing three previously independent copies of this
+ * calculation.
+ *
+ * limit always comes from effectiveContextLimit(), including its
+ * llamafile-entry and ModelCache fallbacks — not a direct read of
+ * a.Config.Ollama.ContextLength — so every caller agrees on what "the limit"
+ * is regardless of whether harvey.yaml sets ollama.context_length explicitly
+ * (2026-07-12 decision).
+ *
+ * used is an exact, server-reported token count when the active client is
+ * Ollama (via CountTokens' /api/tokenize call); otherwise it is the chars/4
+ * heuristic applied to the whole concatenated history in one call, matching
+ * /status's pre-existing approach rather than summing estimateTokens per
+ * message (2026-07-12 decision — per-message summation over-counts whenever
+ * history has many short/compacted messages, since estimateTokens floors at
+ * a minimum of 1 token per call).
+ *
+ * Returns:
+ *   used  (int)  — tokens already in history.
+ *   limit (int)  — effective context window size; 0 when unknown.
+ *   exact (bool) — true when used came from a real tokenizer call.
+ *
+ * Example:
+ *   used, limit, exact := agent.contextUsage()
+ *   if limit > 0 && used*100/limit >= 80 { fmt.Println("context getting full") }
+ */
+func (a *Agent) contextUsage() (used, limit int, exact bool) {
+	limit = a.effectiveContextLimit()
+	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
+		n, ex := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), HistoryText(a.History))
+		return n, limit, ex
+	}
+	return estimateTokens(HistoryText(a.History)), limit, false
+}
+
+// contextTier classifies token usage relative to the effective context
+// limit, used to decide whether/how loudly to warn.
+type contextTier int
+
+const (
+	contextOK contextTier = iota
+	contextWarn
+	contextFull
+)
+
+/** formatContextUsage computes a usage tier and, for the warn/full tiers,
+ * the warning line to print — the single place the ≥80%/≥100% thresholds
+ * and their wording exist, shared by every caller of contextUsage().
+ *
+ * Parameters:
+ *   used  (int)  — tokens already in history.
+ *   limit (int)  — effective context window size; <= 0 means unknown.
+ *   exact (bool) — true when used is a real tokenizer count, not an estimate.
+ *
+ * Returns:
+ *   contextTier — contextOK, contextWarn, or contextFull.
+ *   string      — warning line for contextWarn/contextFull; "" for contextOK.
+ *
+ * Example:
+ *   tier, msg := formatContextUsage(used, limit, exact)
+ *   if tier != contextOK { fmt.Fprintln(out, msg) }
+ */
+func formatContextUsage(used, limit int, exact bool) (contextTier, string) {
+	if limit <= 0 {
+		return contextOK, ""
+	}
+	qualifier := "~"
+	if exact {
+		qualifier = ""
+	}
+	pct := used * 100 / limit
+	switch {
+	case pct >= 100:
+		return contextFull, fmt.Sprintf(
+			"Context full: %s%d / %d tokens (%d%%) — reply may be truncated; try /clear or switch to a model with larger context",
+			qualifier, used, limit, pct)
+	case pct >= 80:
+		return contextWarn, fmt.Sprintf("Context %d%% full: %s%d / %d tokens", pct, qualifier, used, limit)
+	default:
+		return contextOK, ""
+	}
 }
 
 /** remainingContext returns the estimated number of tokens available for new

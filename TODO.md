@@ -1,52 +1,10 @@
 
 # Action Items
 
+## Update next
+
+
 ## Bugs
-
-- [x] Chunk prompt never triggered for Gemma4-E4B — root cause found and fixed
-  2026-07-05, see [DECISIONS.md](DECISIONS.md) (2026-07-05 — Chunking guard fix).
-  Two bugs: `remainingContext()` returning 0 for "unknown limit" was treated the
-  same as "skip the guard" in `builtin_tools.go`'s `read_file` (now falls back
-  to a 4096-token budget, matching `file_inject.go`); and `adoptExternalServer`
-  never probed context length for llamafile models adopted from an
-  already-running server, so `effectiveContextLimit()` stayed 0 for the whole
-  session. Tests: `TestReadFile_ChunkingEnabledContextLimitUnknown`,
-  `TestAdoptExternalServer_probesContextLength`.
-
-- [x] Llamafile GPULayers defaulted to 99 (maximise GPU) on every platform,
-  including Raspberry Pi hardware with no usable GPU-compute backend. This is
-  the actual explanation for the `bonsai-8b` (Q1_0) retest below appearing to
-  hang for 20+ minutes — the underlying `llama-server` process was still
-  running after 2+ hours of CPU time. Fixed 2026-07-05: default changed to 0
-  (CPU-only), matching `LlamaCppConfig.GPULayers`'s existing default. See
-  DECISIONS.md 2026-07-05 entry. Tests:
-  `TestDefaultConfig_LlamafileGPULayersDefaultsToZero`,
-  `TestSaveLlamafileConfig_DoesNotPersistDefaultGPULayers`,
-  `TestSaveLlamafileConfig_PersistsCustomGPULayers`.
-
-- [x] Added `/resume [FILE]` slash command as a thin alias for `/session use`
-  (same picker/load behavior, more discoverable name matching `--resume`).
-  See DECISIONS.md 2026-07-05 entry. Tests: `TestCmdResume_aliasForSessionUse`,
-  `TestCmdResume_noArgsShowsPicker`.
-
-- [x] Chunk-quality retest against the actual Gemma4-E4B model — RESOLVED
-  2026-07-05. Downloaded `gemma-4-E4B-it-Q5_K_M.llamafile` (7.4GB) from
-  huggingface.co/mozilla-ai/llamafile_0.10 (no longer dependent on the
-  `henry` build pipeline). Ran `/read-chunks natural_language_programming.md
-  --chunk-size 800 --max-chunks 20 [topic-drift instruction]` — 23 chunks,
-  stopped after 4 completed (user time constraints). All 4 chunks were
-  coherent, on-topic, and did genuinely useful paragraph-level drift
-  analysis — a stark contrast to the original garbled-token bug report.
-  **Conclusion: the map-reduce chunking approach itself is sound.** The
-  original hallucination was entirely explained by the chunk-prompt guard
-  never firing (TODO items above), not model coherence collapse under the
-  chunking prompt. Per-chunk pace: ~10 min/chunk at 800-byte chunks,
-  CPU-only (`-ngl 0`, confirmed via `ps`), 377–385% CPU utilization — genuinely
-  computing, not hung. 23 chunks would extrapolate to ~4 hours total,
-  consistent with an overnight/unattended run being the intended use case.
-  Full per-chunk output is preserved in
-  `agents/sessions/harvey-session-20260705-205110.spmd` (chunks 1-4) even
-  though the run was killed before synthesis.
 
 - [ ] Benchmark per-chunk timing across candidate models, now that GPULayers
   defaults to 0. No other model has been timed with the GPU-layers fix in
@@ -75,34 +33,41 @@
   configured active entry — same class of bug as the fixed `adoptExternalServer`
   case, narrower scope. See DECISIONS.md 2026-07-05 entry.
 
-- [x] (Original bug report — superseded by the entry above.) Console log of the
-  garbled Gemma4-E4B-Q4_K_M output that prompted this investigation is preserved
-  in git history (see this file's blame for 2026-06-30). The chunk *isolation*
-  mechanism itself was already confirmed working
-  (`TestRunChunkedAnalysis_ChunkMessagesAreIsolated`); the actual cause was the
-  chunking guard never firing, not model coherence collapse — see the resolved
-  entry above and `chunked-analysis-design.md` for the overall approach.
+- [ ] `/read-chunks` doesn't fail fast when the llamafile backend is
+  unreachable (e.g. the server died after cancelling a prior prompt). Found
+  2026-07-06 via `agents/logs/harvey-20260706-172458.jsonl`: every chunk in
+  the map phase fired its own "connection refused" to `localhost:8080` and
+  was recorded as a per-chunk failure (by design — a chunk failure doesn't
+  abort the map phase), then the run only actually errored out at the
+  synthesis call. On a multi-chunk document this burns through the whole
+  file before surfacing what is really a single root-cause problem. Add a
+  cheap preflight reachability probe (e.g. `ProbeLlamafile`/equivalent for
+  the active backend) at the top of `cmdReadChunks`/`RunChunkedAnalysis` so
+  an unreachable backend fails immediately with one clear message instead of
+  N per-chunk ones.
 
-## Research Question
+- [ ] Debug log records each chunk's LLM call twice during `/read-chunks`.
+  `RunChunkedAnalysis` (`chunk_analyzer.go:100,116-118,141-163`) calls
+  `dbg.LogLLMRequest`/`LogLLMResponse` itself around every `client.Chat`
+  call, but `AnyLLMClient.chatInternal` (`anyllm_client.go:162,202`) logs the
+  same request/response a second time internally — so
+  `agents/logs/*.jsonl` gets two near-identical `llm_request` lines (and two
+  `llm_response`/error lines) per actual HTTP call, not two real requests.
+  Cosmetic, but it'll skew any tooling built on top of the debug log,
+  including the per-chunk timing benchmark tracked above. Fix: only one of
+  the two call sites should log — likely drop the caller-side logging in
+  `chunk_analyzer.go` since `chatInternal` already logs unconditionally for
+  every `Chat`/`ChatWithTools` call.
 
-- [x] How to improve cold starts with models. Investigated 2026-07-03,
-  designed/decided/implemented 2026-07-04 — see `cold-start-latency-findings.md`.
-  Not Q1_0/Bonsai-specific: cold-start time scales with parameter count
-  across every model tested. Shipped: workspace-boundary fix + preflight
-  context-size check (fails clearly instead of a raw 400 when the system
-  prompt alone can't fit), skills catalog reformatted (-1270 tokens on the
-  real 11-skill catalog), and agentPreamble/both HARVEY.md files rewritten
-  for density (-30% to -58%). Not pursued: raw prompt-processing speed
-  tuning (`--batch-size`/`--ubatch-size`) — re-measure cold-start with the
-  trimmed prompt first; revisit only if still too slow.
+- [ ] `Qwen3.5-4B-Q5_K_S`'s `/read-chunks` chunk 1 ran 54+ minutes (interrupted
+  by user 2026-07-06, still pegged at ~389% CPU when stopped — genuinely
+  computing, not hung) versus the ~10 min/chunk baseline already measured for
+  `gemma-4-E4B-it-Q5_K_M`. The likely difference: this entry's
+  `harvey.yaml` `context_length` is 180224, vs. 16384–65536 for the other
+  registered models — a much larger configured context can inflate CPU-only
+  KV-cache setup/compute cost regardless of actual chunk size. Unconfirmed;
+  needs a controlled retest with the Qwen entry's context_length temporarily
+  lowered (e.g. to 16384) to see if chunk time drops accordingly before
+  folding Qwen into the per-model timing table above.
 
-## Dual RAG injection audit
 
-See [DECISIONS.md](DECISIONS.md) (2026-06-02 — Dual RAG injection audit, deferred).
-M6 (`rag.per_prompt: bool`, shipped) is the preferred resolution for models
-with tool support.
-
-- [ ] (Legacy option) Users with both `memory.enabled` and `rag.enabled` receive RAG content
-  twice per turn: once via `UnifiedMemory.Recall()` at session start and once via `ragAugment()`
-  per prompt. M6 above is the preferred resolution; this item tracks the fallback for models
-  without tool support.

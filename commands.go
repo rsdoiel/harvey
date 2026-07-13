@@ -637,24 +637,12 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintf(out, "Debug:     on (%s)\n", a.DebugLog.Path())
 	}
 	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
-	if ac, ok := a.Client.(*AnyLLMClient); ok && len(a.History) > 0 {
-		var n int
-		var qualifier string
-		switch ac.ProviderName() {
-		case "ollama":
-			exact := false
-			n, exact = CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), HistoryText(a.History))
-			if exact {
-				qualifier = ""
-			} else {
-				qualifier = "~"
-			}
-		default:
-			// For llamafile and cloud providers: estimate via character count.
-			n = estimateTokens(HistoryText(a.History))
-			qualifier = "~"
+	if _, ok := a.Client.(*AnyLLMClient); ok && len(a.History) > 0 {
+		n, limit, exact := a.contextUsage()
+		qualifier := "~"
+		if exact {
+			qualifier = ""
 		}
-		limit := a.effectiveContextLimit()
 		if limit > 0 {
 			pct := n * 100 / limit
 			fmt.Fprintf(out, "Tokens:    %s%d / %d (%d%%)\n", qualifier, n, limit, pct)

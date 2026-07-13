@@ -172,24 +172,37 @@ func adoptExternalServer(a *Agent, out io.Writer) error {
 	return nil
 }
 
+// resolveSwitchPath decides which llamafile binary path to launch for name.
+// diskPath — the path the caller just resolved from a live disk scan (e.g.
+// the /model use picker) — always wins over a registry entry for the same
+// name: the registry can go stale (edited by hand, or a name reused across
+// two different files) and must never override the exact file the user just
+// selected. The registry entry is only consulted as a fallback, for typed
+// "/model use NAME" invocations that have no disk-scan path at all.
+func resolveSwitchPath(name string, entry *LlamafileEntry, diskPath, workspaceRoot string) (string, error) {
+	if diskPath != "" {
+		return diskPath, nil
+	}
+	if entry != nil {
+		return resolveLlamafilePath(entry.Path, workspaceRoot), nil
+	}
+	return "", fmt.Errorf("no llamafile registered as %q", name)
+}
+
 // switchLlamafileModel starts a llamafile model by name, stopping any
 // Harvey-managed backend first. When the name is not in the registry but
 // diskPath is provided (e.g. from a disk-scan picker), diskPath is used
-// directly. Saves the updated active model to config.
+// directly — and wins even when a (possibly stale) registry entry for the
+// same name exists. Saves the updated active model to config.
 func switchLlamafileModel(a *Agent, name, diskPath string, out io.Writer) error {
 	entry := a.Config.LlamafileEntryByName(name)
-	var absPath string
-	switch {
-	case entry != nil:
-		workspaceRoot := ""
-		if a.Workspace != nil {
-			workspaceRoot = a.Workspace.Root
-		}
-		absPath = resolveLlamafilePath(entry.Path, workspaceRoot)
-	case diskPath != "":
-		absPath = diskPath
-	default:
-		return fmt.Errorf("no llamafile registered as %q", name)
+	workspaceRoot := ""
+	if a.Workspace != nil {
+		workspaceRoot = a.Workspace.Root
+	}
+	absPath, err := resolveSwitchPath(name, entry, diskPath, workspaceRoot)
+	if err != nil {
+		return err
 	}
 	if a.Backend != nil && a.Backend.StartedByHarvey() {
 		fmt.Fprintf(out, "  Stopping %s...\n", a.Config.Llamafile.Active)
@@ -205,14 +218,18 @@ func switchLlamafileModel(a *Agent, name, diskPath string, out io.Writer) error 
 		return err
 	}
 	a.Config.Llamafile.Active = name
-	if entry == nil {
-		// Disk-scan model: probe context length and register an entry so
-		// effectiveContextLimit() can return a real value for token-count warnings.
+	if entry == nil || resolveLlamafilePath(entry.Path, workspaceRoot) != absPath {
+		// New disk-scan model, or a stale registry entry whose path just got
+		// overridden above: (re)register it so it matches what was actually
+		// launched, and so effectiveContextLimit() has a real value.
 		ctxLen := 0
+		if entry != nil {
+			ctxLen = entry.ContextLength
+		}
 		if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
 			ctxLen = ctx
 		}
-		a.Config.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: name, Path: diskPath, ContextLength: ctxLen})
+		a.Config.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: name, Path: absPath, ContextLength: ctxLen})
 	} else if entry.ContextLength == 0 {
 		if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
 			entry.ContextLength = ctx

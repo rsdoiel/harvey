@@ -420,13 +420,9 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintf(out, green("✓")+" Sessions: %s\n", sessDir)
 	}
 
-	// Session resume — offer before backend selection so the chosen session's
-	// model can pre-select the backend below.
-	var resumePath string
+	// No interactive resume prompt at startup — use --continue/--resume or
+	// the /resume and /session use commands to load a prior session.
 	var sessionModel string
-	if a.Config.Session.ContinuePath == "" && a.Config.Session.ReplayPath == "" { // --continue and --replay bypass the picker
-		resumePath, sessionModel = a.pickSession(reader, out, sessDir)
-	}
 
 	// For --continue / --resume: extract the session's model as a backend hint
 	// so selectBackend can auto-select it without an interactive picker.
@@ -502,16 +498,6 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 	}
 
-	// Resume history from chosen session file.
-	if resumePath != "" {
-		n, contErr := a.ContinueFromFountain(resumePath)
-		if contErr != nil {
-			fmt.Fprintf(out, yellow("  ✗")+" Resume failed: %v\n", contErr)
-		} else {
-			fmt.Fprintf(out, green("✓")+" Resumed %d turns from %s\n", n, resumePath)
-		}
-	}
-
 	// Auto-start recording — skipped during replay to prevent both recorders
 	// from writing to the same auto-generated path (same-second collision).
 	// When --replay-continue is set, the recorder is started after replay finishes.
@@ -520,10 +506,9 @@ func (a *Agent) Run(out io.Writer) error {
 		if recPath == "" {
 			recPath = DefaultSessionPath(a.SessionsDir)
 		}
-		// Guard: never truncate the session being resumed or continued.
+		// Guard: never truncate the session being continued.
 		// filepath.Clean normalises both sides so relative vs absolute doesn't matter.
-		if (resumePath != "" && filepath.Clean(recPath) == filepath.Clean(resumePath)) ||
-			(a.Config.Session.ContinuePath != "" && filepath.Clean(recPath) == filepath.Clean(a.Config.Session.ContinuePath)) {
+		if a.Config.Session.ContinuePath != "" && filepath.Clean(recPath) == filepath.Clean(a.Config.Session.ContinuePath) {
 			recPath = DefaultSessionPath(a.SessionsDir)
 			fmt.Fprintf(out, yellow("  ⚠")+" Record path conflicts with resumed session; redirecting to %s\n", recPath)
 		}
@@ -1125,36 +1110,12 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	a.AddMessage("user", augmented)
 
 	// Token-count warning — exact count for Ollama, estimated for other backends.
-	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
-		histText := HistoryText(a.History)
-		n, exact := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), histText)
-		limit := a.Config.Ollama.ContextLength
-		qualifier := "~"
-		if exact {
-			qualifier = ""
-		}
-		if limit > 0 {
-			pct := n * 100 / limit
-			switch {
-			case pct >= 100:
-				fmt.Fprintf(out, red("  ✗ Context full: %s%d / %d tokens (%d%%) — reply may be truncated\n"), qualifier, n, limit, pct)
-			case pct >= 80:
-				fmt.Fprintf(out, yellow("  ⚠ Context %d%% full: %s%d / %d tokens\n"), pct, qualifier, n, limit)
-			}
-		}
-	} else if limit := a.effectiveContextLimit(); limit > 0 {
-		// Llamafile / llama.cpp: estimated token count using the 4-bytes heuristic.
-		used := 0
-		for _, m := range a.History {
-			used += estimateTokens(m.Content)
-		}
-		pct := used * 100 / limit
-		switch {
-		case pct >= 100:
-			fmt.Fprintf(out, red("  ✗ Context full: ~%d / %d tokens (%d%%) — try /clear or switch to a model with larger context\n"), used, limit, pct)
-		case pct >= 80:
-			fmt.Fprintf(out, yellow("  ⚠ Context %d%% full: ~%d / %d tokens\n"), pct, used, limit)
-		}
+	used, limit, exact := a.contextUsage()
+	switch tier, msg := formatContextUsage(used, limit, exact); tier {
+	case contextFull:
+		fmt.Fprintf(out, red("  ✗ %s\n"), msg)
+	case contextWarn:
+		fmt.Fprintf(out, yellow("  ⚠ %s\n"), msg)
 	}
 	var modelsUsed []string
 	if a.Client != nil {
@@ -1278,7 +1239,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, dim(formatStatLine(modelsUsed, stats, a.effectiveContextLimit())))
 	if warn := groundingCheck(buf.String(), a.History[histLenBeforeChat:]); warn != "" {
-		fmt.Fprintln(out, yellow("  ⚠ ")+warn)
+		reportSensorEvent(out, SensorEvent{Kind: "grounding", Message: warn, Class: Computational})
 	}
 	a.recordStats(stats)
 	a.sessionTurns++
@@ -1310,7 +1271,11 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 				dispatched, unknowns := tryExecuteProseToolCalls(a, blocks, out)
 				proseUnknownTools = unknowns
 				if !dispatched {
-					fmt.Fprintln(out, yellow("  ⚠")+" Model produced only tool-call syntax; it may not have answered the question. Try /tools off or a larger model.")
+					reportSensorEvent(out, SensorEvent{
+						Kind:    "prose_tool_syntax",
+						Message: "Model produced only tool-call syntax; it may not have answered the question. Try /tools off or a larger model.",
+						Class:   Computational,
+					})
 				}
 			}
 		}
@@ -1380,15 +1345,10 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	// on the next turn (now that the assistant message is in place, the history
 	// order is correct: …, assistant: <hallucinated call>, user: <correction>).
 	if len(proseUnknownTools) > 0 && a.Tools != nil {
-		schemas := a.Tools.GetToolSchemas()
-		available := make([]string, len(schemas))
-		for i, s := range schemas {
-			available[i] = s.Function.Name
-		}
 		correction := "Your tool call(s) failed: the tool name(s) " +
 			strings.Join(proseUnknownTools, ", ") +
 			" do not exist. Available tools: " +
-			strings.Join(available, ", ") +
+			strings.Join(availableToolNames(a), ", ") +
 			". Please retry using one of these exact tool names."
 		a.AddMessage("user", correction)
 	}
@@ -1631,38 +1591,6 @@ func (a *Agent) initMemory(out io.Writer) {
 	if err != nil {
 		fmt.Fprintf(out, yellow("  ✗")+" Memory store unavailable: %v\n", err)
 	}
-}
-
-// pickSession scans sessDir for .spmd and .fountain files and, if any exist,
-// asks the user whether to resume one. Returns the chosen file path and the
-// ALL-CAPS model name extracted from it; both are empty if no session is chosen.
-func (a *Agent) pickSession(reader *bufio.Reader, out io.Writer, sessDir string) (path, model string) {
-	files, err := ListSessionFiles(sessDir)
-	if err != nil || len(files) == 0 {
-		return "", ""
-	}
-	if !askYesNo(reader, out, "  Resume a prior session? [y/N] ", false) {
-		return "", ""
-	}
-	fmt.Fprintln(out)
-	limit := len(files)
-	if limit > 20 {
-		limit = 20
-	}
-	for i, f := range files[:limit] {
-		fmt.Fprintf(out, "    [%d] %-44s  %s\n", i+1,
-			f.Name, f.ModTime.Format("2006-01-02 15:04"))
-	}
-	fmt.Fprintf(out, "    Select session [1-%d, 0=none]: ", limit)
-	line, _ := reader.ReadString('\n')
-	idx := 0
-	fmt.Sscanf(strings.TrimSpace(line), "%d", &idx)
-	if idx < 1 || idx > limit {
-		return "", ""
-	}
-	chosen := files[idx-1]
-	m, _ := ExtractModelFromSession(chosen.Path)
-	return chosen.Path, m
 }
 
 // loadSkills scans the standard skill directories, stores the catalog on the

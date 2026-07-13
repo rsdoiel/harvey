@@ -1,6 +1,9 @@
 package harvey
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +12,116 @@ import (
 
 // estimateTokens is defined and tested via routing.go; only
 // remainingContext and fileExceedsBudget are tested here.
+
+// ─── contextUsage ────────────────────────────────────────────────────────────
+
+func TestContextUsage_estimatedPath(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.Ollama.ContextLength = 1000
+	a.AddMessage("user", "hello there")
+
+	used, limit, exact := a.contextUsage()
+
+	if exact {
+		t.Error("expected exact=false without a live Ollama client")
+	}
+	if limit != 1000 {
+		t.Errorf("limit = %d, want 1000", limit)
+	}
+	want := estimateTokens(HistoryText(a.History))
+	if used != want {
+		t.Errorf("used = %d, want %d (whole-history-string estimate)", used, want)
+	}
+}
+
+func TestContextUsage_ollamaExactPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"tokens": []int{1, 2, 3, 4, 5}})
+	}))
+	defer srv.Close()
+
+	a := newTestAgent(t)
+	a.Config.Ollama.ContextLength = 2048
+	a.Client = NewAnyLLMClient(nil, "llama3", "ollama", srv.URL)
+	a.AddMessage("user", "hello")
+
+	used, limit, exact := a.contextUsage()
+
+	if !exact {
+		t.Error("expected exact=true from a live Ollama tokenize response")
+	}
+	if used != 5 {
+		t.Errorf("used = %d, want 5", used)
+	}
+	if limit != 2048 {
+		t.Errorf("limit = %d, want 2048", limit)
+	}
+}
+
+// TestContextUsage_ollamaUsesEffectiveContextLimit locks in the 2026-07-12
+// decision: the Ollama path must derive limit from effectiveContextLimit()
+// (which also checks llamafile-entry/ModelCache fallbacks), not read
+// a.Config.Ollama.ContextLength directly — so it agrees with /status and the
+// llamafile path on what "the limit" is, even when Ollama.ContextLength is
+// left unset in harvey.yaml.
+func TestContextUsage_ollamaUsesEffectiveContextLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"tokens": []int{1, 2, 3}})
+	}))
+	defer srv.Close()
+
+	a := newTestAgent(t)
+	a.Config.Ollama.ContextLength = 0 // deliberately unset
+	a.Config.Llamafile.Active = "probed-entry"
+	a.Config.Llamafile.Models = []LlamafileEntry{{Name: "probed-entry", ContextLength: 9999}}
+	a.Client = NewAnyLLMClient(nil, "llama3", "ollama", srv.URL)
+
+	_, limit, _ := a.contextUsage()
+
+	if limit != 9999 {
+		t.Errorf("limit = %d, want 9999 (from effectiveContextLimit(), not Config.Ollama.ContextLength)", limit)
+	}
+}
+
+// ─── formatContextUsage ──────────────────────────────────────────────────────
+
+func TestFormatContextUsage_belowWarnThreshold(t *testing.T) {
+	tier, msg := formatContextUsage(100, 1000, true)
+	if tier != contextOK || msg != "" {
+		t.Errorf("got tier=%v msg=%q, want contextOK/empty", tier, msg)
+	}
+}
+
+func TestFormatContextUsage_warnTierExact(t *testing.T) {
+	tier, msg := formatContextUsage(800, 1000, true)
+	want := "Context 80% full: 800 / 1000 tokens"
+	if tier != contextWarn || msg != want {
+		t.Errorf("got tier=%v msg=%q, want contextWarn/%q", tier, msg, want)
+	}
+}
+
+func TestFormatContextUsage_warnTierEstimated(t *testing.T) {
+	tier, msg := formatContextUsage(800, 1000, false)
+	want := "Context 80% full: ~800 / 1000 tokens"
+	if tier != contextWarn || msg != want {
+		t.Errorf("got tier=%v msg=%q, want contextWarn/%q", tier, msg, want)
+	}
+}
+
+func TestFormatContextUsage_fullTier(t *testing.T) {
+	tier, msg := formatContextUsage(1000, 1000, true)
+	want := "Context full: 1000 / 1000 tokens (100%) — reply may be truncated; try /clear or switch to a model with larger context"
+	if tier != contextFull || msg != want {
+		t.Errorf("got tier=%v msg=%q, want contextFull/%q", tier, msg, want)
+	}
+}
+
+func TestFormatContextUsage_unknownLimit(t *testing.T) {
+	tier, msg := formatContextUsage(5000, 0, false)
+	if tier != contextOK || msg != "" {
+		t.Errorf("got tier=%v msg=%q, want contextOK/empty when limit unknown", tier, msg)
+	}
+}
 
 func TestFileExceedsBudget_SmallFile(t *testing.T) {
 	dir := t.TempDir()

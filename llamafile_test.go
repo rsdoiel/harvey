@@ -34,6 +34,50 @@ func TestLlamafileModelName(t *testing.T) {
 	}
 }
 
+// TestResolveSwitchPath_DiskPathWinsOverStaleRegistry reproduces the bug
+// where picking "gemma" from a fresh disk-scan list loaded Apertus instead:
+// a stale registry entry sharing the requested name must never override the
+// exact path the caller just resolved from a live disk scan.
+func TestResolveSwitchPath_DiskPathWinsOverStaleRegistry(t *testing.T) {
+	entry := &LlamafileEntry{Name: "gemma", Path: "/home/user/Models/Apertus-8B-Instruct-2509.llamafile"}
+	got, err := resolveSwitchPath("gemma", entry, "/home/user/Models/gemma-4-E4B-it-Q5_K_M.llamafile", "")
+	if err != nil {
+		t.Fatalf("resolveSwitchPath: unexpected error: %v", err)
+	}
+	want := "/home/user/Models/gemma-4-E4B-it-Q5_K_M.llamafile"
+	if got != want {
+		t.Errorf("resolveSwitchPath = %q, want %q (disk path must win over stale registry entry)", got, want)
+	}
+}
+
+// TestResolveSwitchPath_FallsBackToRegistryWhenNoDiskPath verifies typed
+// "/model use NAME" (no picker, so no diskPath) still resolves via the
+// registry, with workspace-relative paths joined against workspaceRoot.
+func TestResolveSwitchPath_FallsBackToRegistryWhenNoDiskPath(t *testing.T) {
+	entry := &LlamafileEntry{Name: "gemma", Path: "models/gemma.llamafile"}
+	got, err := resolveSwitchPath("gemma", entry, "", "/home/user/ws")
+	if err != nil {
+		t.Fatalf("resolveSwitchPath: unexpected error: %v", err)
+	}
+	want := "/home/user/ws/models/gemma.llamafile"
+	if got != want {
+		t.Errorf("resolveSwitchPath = %q, want %q", got, want)
+	}
+}
+
+// TestResolveSwitchPath_ErrorsWhenNeitherAvailable verifies the original
+// "no llamafile registered" error is preserved when there is no registry
+// entry and no disk path to fall back to.
+func TestResolveSwitchPath_ErrorsWhenNeitherAvailable(t *testing.T) {
+	_, err := resolveSwitchPath("missing", nil, "", "")
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	if !strings.Contains(err.Error(), "missing") {
+		t.Errorf("expected error to mention the model name, got: %v", err)
+	}
+}
+
 func TestScanLlamafileModels_empty(t *testing.T) {
 	if paths := scanLlamafileModels("/nonexistent/dir/that/does/not/exist"); len(paths) != 0 {
 		t.Fatalf("expected nil/empty for missing dir, got %v", paths)
@@ -543,5 +587,38 @@ func TestSelectBackend_connectionFeedbackFormat(t *testing.T) {
 	// Should show "Connecting to" feedback rather than the old "Checking llamafile".
 	if !strings.Contains(out, "Connecting to") {
 		t.Errorf("expected 'Connecting to' in startup feedback, got: %s", out)
+	}
+}
+
+// TestPickBackend_ListsUnregisteredDiskModels reproduces the startup-picker
+// bug report: only 4 of 7 llamafiles in ~/Models showed up because
+// pickBackend only listed the registry (a.Config.Llamafile.Models), not a
+// live disk scan. Registering one of three on-disk files must not hide the
+// other two from the startup picker.
+func TestPickBackend_ListsUnregisteredDiskModels(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"alpha.llamafile", "bravo.llamafile", "charlie.llamafile"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("stub"), 0o755); err != nil {
+			t.Fatalf("creating %s: %v", name, err)
+		}
+	}
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.Llamafile.ModelsDir = dir
+	cfg.Llamafile.Models = []LlamafileEntry{{Name: "alpha", Path: filepath.Join(dir, "alpha.llamafile")}}
+	cfg.Llamafile.URL = "http://127.0.0.1:1" // unreachable — no running server to adopt
+	cfg.Ollama.URL = "http://127.0.0.1:1"    // unreachable — keep Ollama out of the list
+	a := NewAgent(cfg, ws)
+
+	var buf strings.Builder
+	// "0" cancels the picker without starting any model.
+	_ = a.pickBackend(newTestBufioReader("0\n"), &buf, "")
+
+	out := buf.String()
+	for _, name := range []string{"alpha", "bravo", "charlie"} {
+		if !strings.Contains(out, name) {
+			t.Errorf("expected %q in startup picker output, got:\n%s", name, out)
+		}
 	}
 }

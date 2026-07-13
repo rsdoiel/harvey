@@ -174,24 +174,58 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 	}
 
 	type option struct {
-		label string
-		kind  string // "llamafile" or "ollama"
-		name  string
+		label         string
+		kind          string // "llamafile" or "ollama"
+		name          string
+		path          string // resolved absolute path; llamafile options only
+		contextLength int
 	}
 	var opts []option
+	seenPaths := make(map[string]bool)
 
 	for _, e := range a.Config.Llamafile.Models {
+		absPath := resolveLlamafilePath(e.Path, a.Workspace.Root)
 		size := ""
-		if absPath := resolveLlamafilePath(e.Path, a.Workspace.Root); absPath != "" {
+		if absPath != "" {
 			if info, err := os.Stat(absPath); err == nil {
 				size = " (" + llamafileFormatBytes(info.Size()) + ")"
 			}
+			seenPaths[absPath] = true
 		}
 		opts = append(opts, option{
-			label: e.Name + size + dim(" (llamafile)"),
-			kind:  "llamafile",
-			name:  e.Name,
+			label:         e.Name + size + dim(" (llamafile)"),
+			kind:          "llamafile",
+			name:          e.Name,
+			path:          absPath,
+			contextLength: e.ContextLength,
 		})
+	}
+
+	// Llamafiles found on disk but not yet registered — the startup picker
+	// must reflect everything in the models directory, not just the subset
+	// a prior session happened to register.
+	agentsDir := ""
+	if a.Workspace != nil {
+		agentsDir = filepath.Join(a.Workspace.Root, "agents")
+	}
+	lb := NewLlamafileBackend(a.Config, agentsDir, a.Workspace.Root)
+	if diskModels, err := lb.ListModels(); err == nil {
+		for _, m := range diskModels {
+			if seenPaths[m.Path] {
+				continue
+			}
+			seenPaths[m.Path] = true
+			size := ""
+			if m.SizeBytes > 0 {
+				size = " (" + llamafileFormatBytes(m.SizeBytes) + ")"
+			}
+			opts = append(opts, option{
+				label: m.Name + size + dim(" (llamafile)"),
+				kind:  "llamafile",
+				name:  m.Name,
+				path:  m.Path,
+			})
+		}
 	}
 
 	if ProbeOllama(a.Config.Ollama.URL) {
@@ -233,10 +267,10 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 
 	chosen := opts[idx-1]
 	if chosen.kind == "llamafile" {
-		entry := a.Config.LlamafileEntryByName(chosen.name)
-		if entry == nil {
-			return fmt.Errorf("pickBackend: entry %q not found", chosen.name)
-		}
+		// Use the exact path tied to the option the user picked — never a
+		// name-based registry relookup, which can resolve to a different
+		// file when two on-disk models share a display name.
+		entry := &LlamafileEntry{Name: chosen.name, Path: chosen.path, ContextLength: chosen.contextLength}
 		return a.startAndUseLlamafile(entry, out)
 	}
 	// Ollama model.
@@ -277,7 +311,23 @@ func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error
 	}
 	a.wireLlamafileBackend(proc, entry.Name)
 	fmt.Fprintf(out, "  %s Ready\n", green("✓"))
-	return a.useLlamafileEntry(entry.Name, out)
+	if err := a.useLlamafileEntry(entry.Name, out); err != nil {
+		return err
+	}
+	// Register a model picked straight from a disk scan (no registry entry
+	// yet) so it persists across sessions and gets a real context-length
+	// once probed, same as switchLlamafileModel does for /model use.
+	if a.Config.LlamafileEntryByName(entry.Name) == nil {
+		ctxLen := entry.ContextLength
+		if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
+			ctxLen = ctx
+		}
+		a.Config.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: entry.Name, Path: absPath, ContextLength: ctxLen})
+		if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
+			fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
+		}
+	}
+	return nil
 }
 
 /** pickOllamaModel selects a model from the running Ollama server.

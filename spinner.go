@@ -83,6 +83,23 @@ func (s *Spinner) UpdateStatus(msg string) {
 	}
 }
 
+/** ReportSensor renders a SensorEvent on the spinner's status line, using
+ * its Message exactly as UpdateStatus would. Class/Kind are not yet
+ * reflected in the rendering — pure routing plumbing per
+ * harness-prerequisite-refactor-plan.md Phase C. See
+ * harness-engineering-exploration.md Direction C for the planned sensor-
+ * sidecar UI this is a prerequisite for, not the redesign itself.
+ *
+ * Parameters:
+ *   ev (SensorEvent) — the sensor signal to display.
+ *
+ * Example:
+ *   spin.ReportSensor(SensorEvent{Kind: "tool_call", Message: "Calling read_file…", Class: Computational})
+ */
+func (s *Spinner) ReportSensor(ev SensorEvent) {
+	s.UpdateStatus(ev.Message)
+}
+
 // timerLabel formats the elapsed/estimate portion of the spinner line.
 func (s *Spinner) timerLabel(elapsed time.Duration) string {
 	e := elapsed.Round(time.Second)

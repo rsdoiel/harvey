@@ -22,6 +22,21 @@ func TestUpdateStatus_appearsInOutput(t *testing.T) {
 	}
 }
 
+// TestSpinner_ReportSensor_delegatesToUpdateStatus locks in the 2026-07-12
+// decision that ReportSensor renders exactly like UpdateStatus today (pure
+// routing plumbing, no UI change yet) — see harness-prerequisite-refactor-plan.md
+// Phase C.
+func TestSpinner_ReportSensor_delegatesToUpdateStatus(t *testing.T) {
+	var buf bytes.Buffer
+	sp := newSpinner(&buf, 0, "")
+	sp.ReportSensor(SensorEvent{Kind: "tool_call", Message: "Calling echo…", Class: Computational})
+	time.Sleep(200 * time.Millisecond) // allow at least one frame tick (100ms)
+	sp.stop()
+	if !strings.Contains(buf.String(), "Calling echo…") {
+		t.Errorf("ReportSensor message not found in spinner output\ngot: %q", buf.String())
+	}
+}
+
 func TestUpdateStatus_stoppedSpinnerNoPanic(t *testing.T) {
 	var buf bytes.Buffer
 	sp := newSpinner(&buf, 0, "")

@@ -17,13 +17,16 @@ var ErrToolLoopExceeded = errors.New("tool loop limit exceeded")
 
 /** StatusReporter is an optional sink for transient status messages during
  * tool execution. The Spinner satisfies this interface; pass nil to suppress
- * status updates.
+ * status updates. ReportSensor is the SensorEvent-shaped entry point
+ * (harness-prerequisite-refactor-plan.md Phase C); UpdateStatus remains for
+ * callers that only have a bare string.
  *
  * Example:
  *   ex.Status = spin // spin is a *Spinner
  */
 type StatusReporter interface {
 	UpdateStatus(msg string)
+	ReportSensor(ev SensorEvent)
 }
 
 /** ToolCapable is satisfied by LLM clients that support schema-based tool
@@ -116,7 +119,7 @@ func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.
 	results := make([]Message, 0, len(toolCalls))
 	for _, tc := range toolCalls {
 		if e.Status != nil {
-			e.Status.UpdateStatus(fmt.Sprintf("Calling %s…", tc.Function.Name))
+			e.Status.ReportSensor(SensorEvent{Kind: "tool_call", Message: fmt.Sprintf("Calling %s…", tc.Function.Name), Class: Computational})
 		}
 		start := time.Now()
 		output, err := e.Registry.Dispatch(ctx, tc.Function.Name, tc.Function.Arguments, e.MaxOutputBytes)
@@ -126,10 +129,10 @@ func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.
 			errStr = err.Error()
 			output = fmt.Sprintf("error: %v", err)
 			if e.Status != nil {
-				e.Status.UpdateStatus(fmt.Sprintf("%s failed", tc.Function.Name))
+				e.Status.ReportSensor(SensorEvent{Kind: "tool_call", Message: fmt.Sprintf("%s failed", tc.Function.Name), Class: Computational})
 			}
 		} else if e.Status != nil {
-			e.Status.UpdateStatus(fmt.Sprintf("%s done", tc.Function.Name))
+			e.Status.ReportSensor(SensorEvent{Kind: "tool_call", Message: fmt.Sprintf("%s done", tc.Function.Name), Class: Computational})
 		}
 		e.DebugLog.LogToolCall(tc.Function.Name, len(output), elapsed, errStr)
 		results = append(results, Message{
@@ -246,17 +249,41 @@ func compactToolRound(history []Message, roundStart int) {
 	}
 }
 
-// tryExecuteApertusToolCalls scans raw response text for Apertus-native
-// <SPECIAL_71>...<SPECIAL_72> tool calls and executes them through the registry.
-// Returns the same (dispatched, unknownNames) contract as tryExecuteProseToolCalls.
-func tryExecuteApertusToolCalls(a *Agent, text string, out io.Writer) (dispatched bool, unknownNames []string) {
-	if a.Tools == nil || !a.Config.ToolsEnabled {
-		return false, nil
+// availableToolNames returns the names of every tool currently registered on
+// a.Tools, in schema order. Shared by executeAndReportToolCalls (the terminal
+// warning) and terminal.go's history-injected self-correction message so the
+// list is computed once, consistently, in both places.
+func availableToolNames(a *Agent) []string {
+	schemas := a.Tools.GetToolSchemas()
+	names := make([]string, len(schemas))
+	for i, s := range schemas {
+		names[i] = s.Function.Name
 	}
-	calls := ParseApertusToolCalls(text)
-	if len(calls) == 0 {
-		return false, nil
-	}
+	return names
+}
+
+/** executeAndReportToolCalls runs already-parsed tool calls through the
+ * registry and reports the outcome to out: one line per call showing the
+ * tool name and result, plus — when any call names an unregistered tool — an
+ * immediate "Unknown tool(s)" warning listing what is actually available.
+ * This is the shared execute-and-report step behind both non-structured
+ * tool-call paths (prose JSON blocks and Apertus-native syntax); the two
+ * callers differ only in how they parse calls out of the raw response.
+ *
+ * Parameters:
+ *   a     (*Agent)            — provides the tool registry, client, and config.
+ *   calls ([]anyllm.ToolCall) — already-parsed tool calls to execute.
+ *   out   (io.Writer)         — destination for the per-call and warning lines.
+ *
+ * Returns:
+ *   dispatched   (bool)     — true if at least one call succeeded (not just attempted).
+ *   unknownNames ([]string) — names that failed with "unknown tool"; the
+ *     caller should feed these back to the LLM so it can self-correct.
+ *
+ * Example:
+ *   dispatched, unknown := executeAndReportToolCalls(a, calls, out)
+ */
+func executeAndReportToolCalls(a *Agent, calls []anyllm.ToolCall, out io.Writer) (dispatched bool, unknownNames []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ex := NewToolExecutor(a.Tools, a.Client, a.Config)
@@ -274,7 +301,25 @@ func tryExecuteApertusToolCalls(a *Agent, text string, out io.Writer) (dispatche
 			dispatched = true
 		}
 	}
+	if len(unknownNames) > 0 {
+		fmt.Fprintf(out, yellow("  ⚠")+" Unknown tool(s): %s. Available tools: %s\n",
+			strings.Join(unknownNames, ", "), strings.Join(availableToolNames(a), ", "))
+	}
 	return dispatched, unknownNames
+}
+
+// tryExecuteApertusToolCalls scans raw response text for Apertus-native
+// <SPECIAL_71>...<SPECIAL_72> tool calls and executes them through the registry.
+// Returns the same (dispatched, unknownNames) contract as tryExecuteProseToolCalls.
+func tryExecuteApertusToolCalls(a *Agent, text string, out io.Writer) (dispatched bool, unknownNames []string) {
+	if a.Tools == nil || !a.Config.ToolsEnabled {
+		return false, nil
+	}
+	calls := ParseApertusToolCalls(text)
+	if len(calls) == 0 {
+		return false, nil
+	}
+	return executeAndReportToolCalls(a, calls, out)
 }
 
 // tryExecuteProseToolCalls parses tool-call-format JSON blocks from blocks and
@@ -296,31 +341,5 @@ func tryExecuteProseToolCalls(a *Agent, blocks []CodeBlock, out io.Writer) (disp
 	if len(calls) == 0 {
 		return false, nil
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ex := NewToolExecutor(a.Tools, a.Client, a.Config)
-	ex.DebugLog = a.DebugLog
-	results, _ := ex.ExecuteToolCalls(ctx, calls)
-	for i, r := range results {
-		name := ""
-		if i < len(calls) {
-			name = calls[i].Function.Name
-		}
-		fmt.Fprintf(out, dim(fmt.Sprintf("  [%s]", name))+" %s\n", r.Content)
-		if strings.Contains(r.Content, "unknown tool") {
-			unknownNames = append(unknownNames, name)
-		} else if !strings.HasPrefix(r.Content, "error:") {
-			dispatched = true
-		}
-	}
-	if len(unknownNames) > 0 {
-		schemas := a.Tools.GetToolSchemas()
-		available := make([]string, len(schemas))
-		for i, s := range schemas {
-			available[i] = s.Function.Name
-		}
-		fmt.Fprintf(out, yellow("  ⚠")+" Unknown tool(s): %s. Available tools: %s\n",
-			strings.Join(unknownNames, ", "), strings.Join(available, ", "))
-	}
-	return dispatched, unknownNames
+	return executeAndReportToolCalls(a, calls, out)
 }
