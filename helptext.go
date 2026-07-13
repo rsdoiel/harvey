@@ -3679,6 +3679,13 @@ injects the top-k retrieved chunks as context before calling the model.
 With -rag-compare, every prompt is run twice (once without RAG, once with)
 and a per-check delta table is appended to the report.
 
+With -guide-compare and -guide-file, every prompt is run twice (once with
+no system message, once with the guide file's content as a system message)
+and a per-check delta table is appended to the report — useful for testing
+whether an always-on guide (a HARVEY.md section, a skill's prose) still
+changes model behavior once a computational sensor exists for the same
+failure mode. Mutually exclusive with -rag-compare.
+
 # OPTIONS
 
 -corpus PATH
@@ -3729,6 +3736,17 @@ and a per-check delta table is appended to the report.
 -rag-compare
 : Run each prompt twice — once without RAG context and once with — and
   append a per-check delta table to the report. Requires -rag-db.
+
+-guide-file PATH
+: Path to a plain text file whose content becomes a system message sent
+  to the model on the "guide" variant of a -guide-compare run. Ignored
+  unless -guide-compare is set.
+
+-guide-compare
+: Run each prompt twice — once with no system message (identical to
+  {app_name}'s default dispatch) and once with -guide-file's content sent
+  as a system message — and append a per-check delta table to the report.
+  Requires -guide-file. Mutually exclusive with -rag-compare.
 
 -h, -help, --help
 : Display this help message.

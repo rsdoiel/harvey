@@ -90,6 +90,8 @@ type AssayResults struct {
 	RagDB         string         `json:"rag_db,omitempty"`
 	RagEmbedModel string         `json:"rag_embed_model,omitempty"`
 	RagCompare    bool           `json:"rag_compare,omitempty"`
+	GuideFile     string         `json:"guide_file,omitempty"`
+	GuideCompare  bool           `json:"guide_compare,omitempty"`
 	Results       []PromptResult `json:"results"`
 }
 
@@ -221,6 +223,24 @@ func buildRAGContext(store *harvey.RagStore, embedder harvey.Embedder, promptTex
 	}
 	sb.WriteString("---\n\n")
 	return sb.String(), len(relevant)
+}
+
+// ─── Guide-compare helpers ────────────────────────────────────────────────────
+
+// buildGuideMessages returns the message list for one prompt dispatch. When
+// useGuide is true and guideText is non-empty, guideText is sent as a system
+// message ahead of the user prompt; otherwise the message list is exactly
+// what assay has always sent (a single user message) — the "base" variant of
+// --guide-compare is identical to today's non-compare dispatch, not a new
+// behavior of its own.
+func buildGuideMessages(guideText, promptText string, useGuide bool) []harvey.Message {
+	if useGuide && guideText != "" {
+		return []harvey.Message{
+			{Role: "system", Content: guideText},
+			{Role: "user", Content: promptText},
+		}
+	}
+	return []harvey.Message{{Role: "user", Content: promptText}}
 }
 
 // ─── Code extraction ──────────────────────────────────────────────────────────
@@ -489,6 +509,39 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 			fmt.Fprintf(&sb, "| %s | %d/%d | %d/%d | %s | %.1f |\n",
 				model, basePass, total, ragPass, total, deltaStr, avgTPS)
 		}
+	} else if ar.GuideCompare {
+		fmt.Fprintf(&sb, "| Model | Base pass | Guide pass | Δ | Avg tok/s |\n")
+		fmt.Fprintf(&sb, "|---|---|---|---|---|\n")
+		for _, model := range modelOrder {
+			basePass, guidePass, total := 0, 0, 0
+			var totalTPS float64
+			count := 0
+			for _, pid := range promptIDOrder {
+				base, hasBase := byVariant[variantKey{model, pid, "base"}]
+				guide, hasGuide := byVariant[variantKey{model, pid, "guide"}]
+				if hasBase {
+					total++
+					if base.AutoPass {
+						basePass++
+					}
+					totalTPS += base.TokensPerSec
+					count++
+				}
+				if hasGuide && hasBase {
+					if guide.AutoPass {
+						guidePass++
+					}
+				}
+			}
+			delta := guidePass - basePass
+			deltaStr := fmt.Sprintf("%+d", delta)
+			avgTPS := 0.0
+			if count > 0 {
+				avgTPS = totalTPS / float64(count)
+			}
+			fmt.Fprintf(&sb, "| %s | %d/%d | %d/%d | %s | %.1f |\n",
+				model, basePass, total, guidePass, total, deltaStr, avgTPS)
+		}
 	} else {
 		fmt.Fprintf(&sb, "| Model | Prompts | Auto-pass | Avg tok/s |\n")
 		fmt.Fprintf(&sb, "|---|---|---|---|\n")
@@ -594,6 +647,73 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 				if hasRag {
 					fmt.Fprintf(&sb, "<details><summary>RAG response (%d chunks)</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
 						rag.RagChunks, lang, strings.TrimSpace(rag.Response))
+				}
+			} else if ar.GuideCompare {
+				base, hasBase := byVariant[variantKey{model, pid, "base"}]
+				guide, hasGuide := byVariant[variantKey{model, pid, "guide"}]
+				if !hasBase && !hasGuide {
+					continue
+				}
+				fmt.Fprintf(&sb, "### %s\n\n", pid)
+				fmt.Fprintf(&sb, "**%s**\n\n", p.Description)
+				fmt.Fprintf(&sb, "| | Base | Guide |\n|---|---|---|\n")
+				baseLabel, guideLabel := "—", "—"
+				if hasBase {
+					if base.AutoPass {
+						baseLabel = "✓ PASS"
+					} else {
+						baseLabel = "✗ FAIL"
+					}
+				}
+				if hasGuide {
+					if guide.AutoPass {
+						guideLabel = "✓ PASS"
+					} else {
+						guideLabel = "✗ FAIL"
+					}
+				}
+				fmt.Fprintf(&sb, "| Auto checks | %s | %s |\n", baseLabel, guideLabel)
+				if hasBase && hasGuide {
+					fmt.Fprintf(&sb, "| Tokens/s | %.1f | %.1f |\n", base.TokensPerSec, guide.TokensPerSec)
+					fmt.Fprintf(&sb, "| Elapsed | %s | %s |\n",
+						base.Elapsed.Round(time.Millisecond),
+						guide.Elapsed.Round(time.Millisecond))
+				}
+				sb.WriteString("\n")
+
+				// Per-check delta table.
+				if hasBase && hasGuide && len(base.Checks) > 0 {
+					fmt.Fprintf(&sb, "| Check | Base | Guide |\n|---|---|---|\n")
+					for i, cr := range base.Checks {
+						baseMark := "✓"
+						if !cr.Passed {
+							baseMark = "✗"
+						}
+						guideMark := "—"
+						if i < len(guide.Checks) {
+							if guide.Checks[i].Passed {
+								guideMark = "✓"
+							} else {
+								guideMark = "✗"
+							}
+						}
+						fmt.Fprintf(&sb, "| %s | %s | %s |\n", cr.Name, baseMark, guideMark)
+					}
+					sb.WriteString("\n")
+				}
+
+				// Collapsed responses.
+				lang := p.Language
+				if lang == "" {
+					lang = "text"
+				}
+				if hasBase {
+					fmt.Fprintf(&sb, "<details><summary>Base response</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
+						lang, strings.TrimSpace(base.Response))
+				}
+				if hasGuide {
+					fmt.Fprintf(&sb, "<details><summary>Guide response</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
+						lang, strings.TrimSpace(guide.Response))
 				}
 			} else {
 				// Normal (non-compare) mode: show single result.
@@ -736,10 +856,20 @@ func main() {
 	ragEmbedModel := flag.String("rag-embed-model", "nomic-embed-text", "embedding model for RAG queries")
 	ragTopK       := flag.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
 	ragCompare    := flag.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
+	guideFile     := flag.String("guide-file", "", "path to a text file whose content becomes the system message for the 'guide' variant")
+	guideCompare  := flag.Bool("guide-compare", false, "run each prompt twice (base + guide) and show delta; requires --guide-file")
 	flag.Parse()
 
 	if *ragCompare && *ragDB == "" {
 		fmt.Fprintln(os.Stderr, "assay: --rag-compare requires --rag-db")
+		os.Exit(1)
+	}
+	if *guideCompare && *guideFile == "" {
+		fmt.Fprintln(os.Stderr, "assay: --guide-compare requires --guide-file")
+		os.Exit(1)
+	}
+	if *guideCompare && *ragCompare {
+		fmt.Fprintln(os.Stderr, "assay: --guide-compare and --rag-compare are mutually exclusive")
 		os.Exit(1)
 	}
 	if *llamafilePath != "" && *llamacppURL != "" {
@@ -883,22 +1013,41 @@ func main() {
 		RagDB:         *ragDB,
 		RagEmbedModel: *ragEmbedModel,
 		RagCompare:    *ragCompare,
+		GuideFile:     *guideFile,
+		GuideCompare:  *guideCompare,
 	}
 
 	// Determine which variants to run per prompt.
-	// In compare mode: ["base", "rag"]. RAG-only: ["rag"]. Base-only: [""].
+	// In compare mode: ["base", "rag"] or ["base", "guide"]. RAG-only:
+	// ["rag"]. Base-only: [""]. --guide-compare and --rag-compare are
+	// mutually exclusive (validated above), so useRAG/useGuide never both
+	// need to be true for the same variant.
 	type variant struct {
-		name   string
-		useRAG bool
+		name     string
+		useRAG   bool
+		useGuide bool
 	}
 	var variants []variant
 	switch {
 	case *ragCompare:
-		variants = []variant{{"base", false}, {"rag", true}}
+		variants = []variant{{"base", false, false}, {"rag", true, false}}
+	case *guideCompare:
+		variants = []variant{{"base", false, false}, {"guide", false, true}}
 	case *ragDB != "":
-		variants = []variant{{"rag", true}}
+		variants = []variant{{"rag", true, false}}
 	default:
-		variants = []variant{{"", false}}
+		variants = []variant{{"", false, false}}
+	}
+
+	// Load the guide file's content once, when configured.
+	var guideText string
+	if *guideFile != "" {
+		data, err := os.ReadFile(*guideFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "assay: read guide file: %v\n", err)
+			os.Exit(1)
+		}
+		guideText = strings.TrimSpace(string(data))
 	}
 
 	total := len(models) * len(prompts) * len(variants)
@@ -934,9 +1083,11 @@ func main() {
 					}
 				}
 
+				messages := buildGuideMessages(guideText, promptText, v.useGuide)
+
 				start := time.Now()
 				var buf strings.Builder
-				stats, callErr := client.Chat(context.Background(), []harvey.Message{{Role: "user", Content: promptText}}, &buf)
+				stats, callErr := client.Chat(context.Background(), messages, &buf)
 				response := buf.String()
 				elapsed := time.Since(start)
 
