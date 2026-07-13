@@ -4,6 +4,18 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-07-13 — `startAndUseLlamafile` registers an adopted-server entry (closing the gap deferred alongside `adoptExternalServer`)
+
+**Context.** `TODO.md`/`DECISIONS.md` (2026-07-05 entry) named this as a known, deferred gap at the time the sibling bug was fixed: `startAndUseLlamafile` (`backend_startup.go`) probes an already-running llamafile server's actual served model; when that detected name differs from the configured entry, it adopts the detected name via `useLlamafileEntry` and returned immediately — never reaching the registration block (used by the non-adopted, fresh-start branch) that calls `ProbeLlamafileContextLength` and stores a `LlamafileEntry`. Same failure mode as the already-fixed `adoptExternalServer`: a model reached this way has `ContextLength` stuck at 0 for the whole session, since `effectiveContextLimit()` has no `LlamafileEntry` to read it from.
+
+**Decision.** After `useLlamafileEntry(useName, out)` succeeds (its error is now checked, where it was previously returned directly), register a `LlamafileEntry{Name: useName}` — probing `ContextLength` via `ProbeLlamafileContextLength` — when `a.Config.LlamafileEntryByName(useName) == nil`. `Path` is left empty, exactly matching `adoptExternalServer`'s own precedent (`llamafile.go:159`, `LlamafileEntry{Name: name, Path: ""}`) — the adopted server's actual model file path is genuinely unknown to Harvey, since it wasn't the one that launched the process. Applied uniformly regardless of whether the detected name differed from the configured one (not gated to only the "differs" sub-case), matching the existing non-adopted branch's own unconditional registration check — simpler than special-casing, and harmless when an entry already exists (the `== nil` guard is a no-op then, same as the pre-existing branch).
+
+**Rejected.** Nothing — direct application of the same fix already reviewed and shipped for `adoptExternalServer`, to the one remaining call site with the identical gap.
+
+**Consequences.** TDD-first: `TestStartAndUseLlamafile_AdoptedDifferentName_RegistersEntry` (`llamafile_test.go`), mirroring `TestAdoptExternalServer_probesContextLength`'s fake-`/v1/models`-server pattern exactly — confirmed red (no entry registered) then green (`ContextLength` probed and stored). Existing `TestStartAndUseLlamafile_staleServerSameModel`/`_staleServerDifferentModel` and all `TestAdoptExternalServer_*`/`TestPickBackend_*` tests pass unmodified. Full suite green except the same pre-existing, unrelated `TestCmdModelList_ShowsLlamafileEntries` failure noted in every entry above. `go vet ./...` and `gofmt -l` both clean.
+
+---
+
 ## 2026-07-13 — `read_file`'s chunking guard also fixed for `@mention` (third occurrence of Direction D's Bug 1)
 
 **Context.** Flagged as a related-but-out-of-scope finding while fixing the chunk-analysis double-logging bug (previous entry, same date): `builtin_tools.go`'s `read_file` tool has its own pre-read chunking guard (fires when a requested file exceeds the context budget), and it carried the exact same cosmetic-only `@mention` defect as Bug 1 in `subagent-dispatch-design.md` (Direction D) — it parsed `@mention` out of the chunk instruction only to relabel `ChunkAnalysisParams.Model` for recording, then always dispatched `RunChunkedAnalysis` via `a.Client`, never the mentioned model. Direction D's original audit found and fixed this same defect in `cmdReadChunks` and `injectOrChunk` but missed this third call site entirely — `read_file`'s chunking guard is a separate, less obvious trigger path (fires from a tool call mid-conversation, not a slash command) that wasn't part of that audit's search.

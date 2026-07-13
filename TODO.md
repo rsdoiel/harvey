@@ -82,11 +82,16 @@
   overlap/max-chunks be swept per-invocation independent of harvey.yaml.
   See DECISIONS.md 2026-07-05 entry. Tests in `read_chunks_cmd_test.go`.
 
-- [ ] Known remaining gap: `startAndUseLlamafile` (`backend_startup.go`) adopts
+- [x] Known remaining gap: `startAndUseLlamafile` (`backend_startup.go`) adopts
   an already-running server under a detected model name without registering/
   probing a matching `LlamafileEntry` when that name differs from the
   configured active entry — same class of bug as the fixed `adoptExternalServer`
-  case, narrower scope. See DECISIONS.md 2026-07-05 entry.
+  case, narrower scope. Fixed 2026-07-13: `useLlamafileEntry`'s result is now
+  checked, and when no `LlamafileEntry` exists yet for the adopted name, one is
+  registered (empty `Path`, matching `adoptExternalServer`'s own precedent —
+  the adopted server's actual model file path is unknown) with a probed
+  `ContextLength`. See DECISIONS.md 2026-07-13 entry. Test:
+  `TestStartAndUseLlamafile_AdoptedDifferentName_RegistersEntry`.
 
 - [ ] `/read-chunks` doesn't fail fast when the llamafile backend is
   unreachable (e.g. the server died after cancelling a prior prompt). Found

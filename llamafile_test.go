@@ -330,6 +330,45 @@ func TestAdoptExternalServer_probesContextLength(t *testing.T) {
 	}
 }
 
+// TestStartAndUseLlamafile_AdoptedDifferentName_RegistersEntry is the
+// regression test for the "known remaining gap" noted alongside the
+// adoptExternalServer fix (DECISIONS.md 2026-07-05): when startAndUseLlamafile
+// finds a server already running under a model name that differs from the
+// configured entry, it adopted the detected name and returned immediately —
+// before ever reaching the registration block that probes and stores
+// ContextLength. Without a registered entry, effectiveContextLimit() has
+// nothing to fall back on for the rest of the session, same failure mode as
+// the already-fixed adoptExternalServer case.
+func TestStartAndUseLlamafile_AdoptedDifferentName_RegistersEntry(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"Detected-Model-Q4_K_M.gguf","meta":{"n_ctx":8192}}],"object":"list"}`))
+	}))
+	defer srv.Close()
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.Llamafile.URL = srv.URL
+	a := NewAgent(cfg, ws)
+
+	// The configured entry names a different model than what the server
+	// actually serves — this is the "detected name differs" branch.
+	entry := &LlamafileEntry{Name: "configured-model", Path: "/models/configured-model.llamafile"}
+
+	var buf strings.Builder
+	if err := a.startAndUseLlamafile(entry, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	registered := a.Config.LlamafileEntryByName("Detected-Model-Q4_K_M")
+	if registered == nil {
+		t.Fatal("expected a LlamafileEntry to be registered for the adopted (detected) model")
+	}
+	if registered.ContextLength != 8192 {
+		t.Errorf("expected registered entry to have probed ContextLength=8192, got %d", registered.ContextLength)
+	}
+}
+
 func TestAdoptExternalServer_userSaysNo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

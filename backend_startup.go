@@ -324,7 +324,26 @@ func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error
 		} else {
 			fmt.Fprintf(out, "  Connecting to %s (llamafile)… %s\n", useName, green("✓"))
 		}
-		return a.useLlamafileEntry(useName, out)
+		if err := a.useLlamafileEntry(useName, out); err != nil {
+			return err
+		}
+		// Register a matching entry for an adopted server when none exists yet
+		// — same gap class as the already-fixed adoptExternalServer
+		// (DECISIONS.md 2026-07-05): without this, effectiveContextLimit()
+		// has no ContextLength to fall back on for the rest of the session.
+		// Path is left empty, matching adoptExternalServer's own precedent —
+		// the adopted server's actual model file path is unknown.
+		if a.Config.LlamafileEntryByName(useName) == nil {
+			newEntry := LlamafileEntry{Name: useName}
+			if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
+				newEntry.ContextLength = ctx
+			}
+			a.Config.AddOrUpdateLlamafileEntry(newEntry)
+			if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
+				fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
+			}
+		}
+		return nil
 	}
 	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
 	fmt.Fprintf(out, "  Connecting to %s (llamafile)…\n", entry.Name)
