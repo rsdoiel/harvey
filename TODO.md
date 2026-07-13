@@ -112,10 +112,12 @@
   all three of its branches; (2) the now-redundant `dbg *DebugLog` parameter was removed entirely from
   `RunChunkedAnalysis`, along with all its internal logging calls. See DECISIONS.md 2026-07-13 entry. Tests:
   `TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog`, `TestResolveDispatchTarget_LocalSwitch_WiresDebugLog`.
-  **Related finding, not fixed (out of scope):** `builtin_tools.go`'s `read_file` pre-read chunking guard has the
-  same cosmetic-only `@mention` bug already fixed elsewhere for `/read-chunks`/`injectOrChunk` during Direction D
-  (Bug 1 in `subagent-dispatch-design.md`) — it parses `@mention` to relabel `ChunkAnalysisParams.Model` but always
-  dispatches via `a.Client`, never the mentioned model. Missed during that work; worth a follow-up fix.
+  **Related finding, fixed separately 2026-07-13:** `builtin_tools.go`'s `read_file` pre-read chunking guard had
+  the same cosmetic-only `@mention` bug already fixed elsewhere for `/read-chunks`/`injectOrChunk` during Direction
+  D (Bug 1 in `subagent-dispatch-design.md`) — it parsed `@mention` to relabel `ChunkAnalysisParams.Model` but
+  always dispatched via `a.Client`, never the mentioned model. Missed during that earlier work (only two of the
+  three chunk-analysis call sites were found at the time); now fixed the same way, via `resolveDispatchTarget`.
+  See DECISIONS.md 2026-07-13 entry. Test: `TestReadFile_MentionDispatchesToNamedModel`.
 
 - [ ] `Qwen3.5-4B-Q5_K_S`'s `/read-chunks` chunk 1 ran 54+ minutes (interrupted
   by user 2026-07-06, still pegged at ~389% CPU when stopped — genuinely

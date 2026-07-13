@@ -4,6 +4,20 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-07-13 — `read_file`'s chunking guard also fixed for `@mention` (third occurrence of Direction D's Bug 1)
+
+**Context.** Flagged as a related-but-out-of-scope finding while fixing the chunk-analysis double-logging bug (previous entry, same date): `builtin_tools.go`'s `read_file` tool has its own pre-read chunking guard (fires when a requested file exceeds the context budget), and it carried the exact same cosmetic-only `@mention` defect as Bug 1 in `subagent-dispatch-design.md` (Direction D) — it parsed `@mention` out of the chunk instruction only to relabel `ChunkAnalysisParams.Model` for recording, then always dispatched `RunChunkedAnalysis` via `a.Client`, never the mentioned model. Direction D's original audit found and fixed this same defect in `cmdReadChunks` and `injectOrChunk` but missed this third call site entirely — `read_file`'s chunking guard is a separate, less obvious trigger path (fires from a tool call mid-conversation, not a slash command) that wasn't part of that audit's search.
+
+**Decision.** Applied the identical fix pattern used for the other two call sites: resolve `@mention` via `resolveDispatchTarget(a, mentionName, a.Out)` instead of just relabeling; use the resolved `target.Client` (introduced as a new local `client` variable, defaulting to `a.Client`) for the `RunChunkedAnalysis` call; `defer target.Restore()` when resolution succeeds. One naming note: the handler already had a local variable named `resolved` (the resolved absolute file path from `resolveWorkspacePath`), so the dispatch-resolution boolean is named `dispatchOK` here instead of `resolved` (the name used in `cmdReadChunks`) to avoid shadowing.
+
+**Rejected.** Nothing — this is a direct, mechanical application of an already-established, already-reviewed fix pattern to a call site that was simply missed the first time.
+
+**Consequences.** TDD-first: `TestReadFile_MentionDispatchesToNamedModel` (`tools_test.go`), mirroring `TestCmdReadChunks_MentionDispatchesToNamedModel`'s pattern (using `attemptModelSwitchOverride` to make the resolved client's reply distinguishable from `a.Client`'s without spawning a real process) — confirmed red against the pre-fix code, then green. All existing `read_file`/chunking tests (`TestReadFile_UnderBudget`, `TestReadFile_OverBudget_*`, `TestReadFile_ChunkingEnabled*`) pass unmodified. Full suite green except the same pre-existing, unrelated `TestCmdModelList_ShowsLlamafileEntries` failure noted in every entry above. `go vet ./...` and `gofmt -l` both clean.
+
+With this fix, all three of Harvey's chunk-analysis trigger points (`cmdReadChunks`, `injectOrChunk`, `read_file`'s pre-read guard) now consistently resolve `@mention` to a real dispatch target via `resolveDispatchTarget`, closing out Bug 1 completely rather than leaving one call site with the original defect.
+
+---
+
 ## 2026-07-13 — Chunk-analysis debug-log double-logging fixed via `resolveDispatchTarget` DebugLog wiring, not a caller-side deletion (TODO.md bug fix)
 
 **Context.** `TODO.md`: `RunChunkedAnalysis` (`chunk_analyzer.go`) called `dbg.LogLLMRequest`/`LogLLMResponse`/`LogError` itself around every chunk and synthesis `client.Chat` call, while `AnyLLMClient.chatInternal` (`anyllm_client.go`) already logs the same request/response internally — `agents/logs/*.jsonl` got two near-identical lines per actual HTTP call. The TODO item's own suggested fix was "drop the caller-side logging in `chunk_analyzer.go`, since `chatInternal` already logs unconditionally."

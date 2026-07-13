@@ -69,8 +69,8 @@ func TestResolveWorkspacePath_sensitiveFile(t *testing.T) {
 
 func TestSensitiveFileDenied(t *testing.T) {
 	cases := []struct {
-		path    string
-		denied  bool
+		path   string
+		denied bool
 	}{
 		{"/proj/.env", true},
 		{"/proj/.env.local", true},
@@ -193,8 +193,8 @@ func makeTestAgent(t *testing.T) (*Agent, string) {
 	cfg := DefaultConfig()
 	cfg.ToolsEnabled = false // don't register tools in NewAgent; we register manually below
 	a := &Agent{
-		Config:    cfg,
-		Workspace: ws,
+		Config:      cfg,
+		Workspace:   ws,
 		AuditBuffer: NewAuditBuffer(16),
 	}
 	return a, root
@@ -540,7 +540,7 @@ func TestReadFile_UnderBudget(t *testing.T) {
 func TestReadFile_OverBudget_Cancelled(t *testing.T) {
 	// Tiny context, large file, user types "no" → cancelled.
 	a, root := makeChunkTestAgent(t, 10, "no\n") // context so tiny any file overflows
-	content := strings.Repeat("x", 400) // 400 bytes ≈ 100 tokens > budget ~7
+	content := strings.Repeat("x", 400)          // 400 bytes ≈ 100 tokens > budget ~7
 	if err := os.WriteFile(filepath.Join(root, "big.txt"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -590,6 +590,37 @@ func TestReadFile_OverBudget_AcceptsInstruction(t *testing.T) {
 	// mockLLMClient always returns "chunk synthesis result".
 	if result != "chunk synthesis result" {
 		t.Errorf("expected synthesis result, got %q", result)
+	}
+}
+
+// TestReadFile_MentionDispatchesToNamedModel is the regression test for the
+// read_file chunking guard's own copy of Bug 1 (subagent-dispatch-design.md):
+// @mention in the chunk instruction previously only relabeled
+// ChunkAnalysisParams.Model for recording — the actual chunk/synthesis calls
+// always ran against a.Client regardless. Missed during Direction D's
+// original fix (only /read-chunks and injectOrChunk were found at the time).
+// Uses attemptModelSwitchOverride to simulate a real local switch (no process
+// spawn needed) so the resolved client's replies are distinguishable from
+// a.Client's.
+func TestReadFile_MentionDispatchesToNamedModel(t *testing.T) {
+	a, root := makeChunkTestAgent(t, 10, "@granite extract all headings.\n")
+	a.Client = &mockLLMClient{reply: "default reply"}
+	a.attemptModelSwitchOverride = func(name string, out io.Writer) (bool, error) {
+		a.Client = &mockLLMClient{reply: "reply from " + name}
+		return true, nil
+	}
+	content := strings.Repeat("a", 400)
+	if err := os.WriteFile(filepath.Join(root, "big4.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := NewToolRegistry()
+	RegisterBuiltinTools(r, a)
+	result, err := r.Dispatch(context.Background(), "read_file", `{"path":"big4.md"}`, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "reply from granite" {
+		t.Errorf("expected chunk analysis to run against the @-mentioned model, got %q", result)
 	}
 }
 

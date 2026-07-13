@@ -133,14 +133,27 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 					if cancelled {
 						return "File read cancelled by user.", nil
 					}
-					// Parse @mention: extract model label, strip from instruction.
+					// Parse @mention: resolve to an actual dispatch target, not
+					// just a display label — a plain relabel here would repeat
+					// the cosmetic-only bug fixed elsewhere for /read-chunks
+					// and injectOrChunk (subagent-dispatch-design.md, Bug 1).
+					client := a.Client
 					model := a.Client.Name()
 					if ac, ok := a.Client.(*AnyLLMClient); ok {
 						model = ac.ModelName()
 					}
 					if mentionName, rest, mentionOK := ParseAtMention(instruction); mentionOK {
-						model = mentionName
 						instruction = rest
+						target, dispatchOK, resolveErr := resolveDispatchTarget(a, mentionName, a.Out)
+						if resolveErr != nil {
+							fmt.Fprintf(a.Out, yellow("  ⚠ @%s failed to resolve: ")+"%v — using current model.\n", mentionName, resolveErr)
+						} else if !dispatchOK {
+							fmt.Fprintf(a.Out, yellow("  ⚠ @%s not found — using current model.\n"), mentionName)
+						} else {
+							client = target.Client
+							model = mentionName
+							defer target.Restore()
+						}
 					}
 					// Read the full file for chunking.
 					chunkData, readErr := os.ReadFile(resolved)
@@ -164,7 +177,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 						DocType:     docType,
 						Config:      a.Config.Chunking,
 					}
-					synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, params, a.Out)
+					synthesis, synthErr := RunChunkedAnalysis(ctx, client, a.Recorder, params, a.Out)
 					if synthErr != nil {
 						return "", fmt.Errorf("read_file: chunked analysis: %w", synthErr)
 					}
