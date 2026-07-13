@@ -201,6 +201,13 @@ type Config struct {
 	SyntaxHighlight bool
 	// AutoFormat enables automatic code formatting after write_file writes a source file.
 	AutoFormat bool
+	// SensorInjectFormatFindings, when true, appends CodeFormatter.Check()
+	// findings to the write_file/edit_file tool-result string (costing
+	// tokens) in addition to the default human-visible SensorEvent. Default
+	// false: Check() findings after a successful auto-format are rare and
+	// low-severity, so token cost isn't spent on them unless requested. See
+	// computational-sensors-design.md.
+	SensorInjectFormatFindings bool
 	// Memory system: RAG stores, knowledge base, and retrieval settings
 	Memory MemoryConfig
 	// Chunking: context-overflow detection and chunked document analysis settings.
@@ -822,6 +829,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.AutoFormat != nil {
 		cfg.AutoFormat = *y.AutoFormat
 	}
+	if y.SensorInjectFormatFindings != nil {
+		cfg.SensorInjectFormatFindings = *y.SensorInjectFormatFindings
+	}
 	if len(y.Security.AllowedCommands) > 0 {
 		cfg.Security.AllowedCommands = y.Security.AllowedCommands
 	}
@@ -1019,6 +1029,7 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	y.Security.SafeMode = &cfg.Security.SafeMode
 	y.SyntaxHighlight = &cfg.SyntaxHighlight
 	y.AutoFormat = &cfg.AutoFormat
+	y.SensorInjectFormatFindings = &cfg.SensorInjectFormatFindings
 	if !cfg.ToolResultCompaction {
 		f := false
 		y.Tools.ToolResultCompaction = &f

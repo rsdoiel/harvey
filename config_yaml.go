@@ -105,6 +105,7 @@ type harveyYAML struct {
 	ModelCacheDB    string                    `yaml:"model_cache_db"`
 	SyntaxHighlight *bool                     `yaml:"syntax_highlight,omitempty"`
 	AutoFormat      *bool                     `yaml:"auto_format,omitempty"`
+	SensorInjectFormatFindings *bool          `yaml:"sensor_inject_format_findings,omitempty"`
 	Tools           toolsYAML                 `yaml:"tools,omitempty"`
 	ModelAliases    map[string]modelAliasYAML `yaml:"model_aliases,omitempty"`
 	Ollama          ollamaYAML                `yaml:"ollama,omitempty"`

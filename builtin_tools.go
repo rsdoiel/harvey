@@ -247,9 +247,13 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			if a.Config.AutoFormat {
 				note = applyAutoFormat(a, p, content)
 			}
+			sensorNote := runPostWriteSensors(a, p)
 			msg := fmt.Sprintf("wrote %d bytes to %s", len(content), p)
 			if note != "" {
 				msg += " (" + note + ")"
+			}
+			if sensorNote != "" {
+				msg += " [" + sensorNote + "]"
 			}
 			return msg, nil
 		},
@@ -1343,6 +1347,148 @@ func applyAutoFormat(a *Agent, relPath string, original string) string {
 		return ""
 	}
 	return "formatted"
+}
+
+/** runPostWriteSensors runs Harvey's computational sensors for a just-written
+ * file, on whatever content currently sits on disk (i.e. after
+ * applyAutoFormat has already run, so a well-formatted file has nothing left
+ * to find). Findings are always reported as a SensorEvent via
+ * a.ActiveStatus when non-nil — free, human-visible, no token cost. They
+ * are additionally appended to the returned string — which the caller
+ * folds into the tool-result message, spending tokens — only when
+ * a.Config.SensorInjectFormatFindings is set. See
+ * computational-sensors-design.md for the rationale behind this split.
+ *
+ * Parameters:
+ *   a       (*Agent) — provides ActiveStatus and Config.
+ *   relPath (string) — workspace-relative path of the file just written.
+ *
+ * Returns:
+ *   string — findings joined for the tool result; "" when there is nothing
+ *     to report or SensorInjectFormatFindings is off.
+ *
+ * Example:
+ *   appendix := runPostWriteSensors(a, "main.go")
+ */
+func runPostWriteSensors(a *Agent, relPath string) string {
+	ext := filepath.Ext(relPath)
+	if ext == "" {
+		return ""
+	}
+	var absPath string
+	if a.Workspace != nil {
+		p, err := a.Workspace.AbsPath(relPath)
+		if err != nil {
+			return ""
+		}
+		absPath = p
+	} else {
+		absPath = relPath
+	}
+
+	var appendix string
+	appendFinding := func(ev SensorEvent, alwaysInject bool) {
+		if a.ActiveStatus != nil {
+			a.ActiveStatus.ReportSensor(ev)
+		}
+		if alwaysInject || a.Config.SensorInjectFormatFindings {
+			if appendix != "" {
+				appendix += "; "
+			}
+			appendix += ev.Message
+		}
+	}
+
+	if langID, ok := globalRegistry.DetectFromExtension(ext); ok {
+		if f := globalRegistry.GetFormatter(langID); f != nil {
+			if current, err := os.ReadFile(absPath); err == nil {
+				if formatted, issues := f.Check(string(current), absPath); !formatted {
+					for _, iss := range issues {
+						appendFinding(SensorEvent{
+							Kind:    "format_check",
+							Message: fmt.Sprintf("%s: %s", langID, iss.Message),
+							Class:   Computational,
+						}, false)
+					}
+				}
+			}
+		}
+	}
+
+	if ext == ".go" {
+		// go vet findings are always appended to the tool result (alwaysInject
+		// true) — go vet only reports near-certain bugs by design, so there is
+		// no low-severity tier to gate behind (computational-sensors-design.md).
+		for _, ev := range runGoVet(a, absPath) {
+			appendFinding(ev, true)
+		}
+	}
+
+	return appendix
+}
+
+// goVetTimeout bounds a single `go vet` invocation from runGoVet. Short
+// deliberately: this runs synchronously in the write_file path on every Go
+// file write, on hardware (Pi-class CPU) already tight on cycles — not the
+// same use case as run_command's user-driven, much longer RunTimeout.
+const goVetTimeout = 15 * time.Second
+
+/** runGoVet runs `go vet` on the package containing absPath and returns a
+ * SensorEvent per finding. Requires a go.mod in the workspace — a Go file
+ * without one is likely an incidental fixture in a non-Go project, not code
+ * to vet.
+ *
+ * A build/compile failure (the package doesn't compile yet, e.g. mid-edit)
+ * is distinguished from a genuine vet finding by go vet's own output shape:
+ * a build failure's output includes a line starting with "# " (the package
+ * import path header), which never appears before a real per-analyzer
+ * finding (plain "file:line:col: message"). On that signal, the whole
+ * result is suppressed — this is Harvey's own sensor failing to run, not a
+ * code-quality finding, matching applyAutoFormat's "errors are silently
+ * suppressed" policy — never surfaced as a false finding, never blocking
+ * the write.
+ *
+ * Parameters:
+ *   a       (*Agent) — provides the workspace root (for the go.mod check).
+ *   absPath (string) — absolute path of the just-written .go file.
+ *
+ * Returns:
+ *   []SensorEvent — one per genuine go vet finding; nil when there is
+ *     nothing to report, go vet isn't applicable, or it failed to run.
+ *
+ * Example:
+ *   events := runGoVet(a, "/abs/path/main.go")
+ */
+func runGoVet(a *Agent, absPath string) []SensorEvent {
+	if a.Workspace == nil {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(a.Workspace.Root, "go.mod")); err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), goVetTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "vet", ".")
+	cmd.Dir = filepath.Dir(absPath)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	for _, l := range lines {
+		if strings.HasPrefix(l, "# ") {
+			return nil // build failure, not a vet finding — suppress entirely
+		}
+	}
+	var events []SensorEvent
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		events = append(events, SensorEvent{Kind: "go_vet", Message: l, Class: Computational})
+	}
+	return events
 }
 
 /** promptChunkInstruction displays the context-overflow alert to out, reads a

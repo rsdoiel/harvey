@@ -187,6 +187,13 @@ type Agent struct {
 	DebugLog               *DebugLog    // JSONL diagnostic log; nil when --debug not set
 	Backend                ManagedBackend // active inference backend; nil when no backend is wired
 	ActiveRoute            string       // session-sticky route name; when set, prompts are auto-dispatched via @NAME
+	// ActiveStatus is the current turn's StatusReporter, set by runChatTurn
+	// alongside the ToolExecutor's own Status field and cleared once the
+	// turn's spinner stops. Lets tool handlers (which capture *Agent via
+	// RegisterBuiltinTools but have no ToolExecutor reference) report a
+	// SensorEvent during their own execution without a ToolHandler signature
+	// change. nil outside an active tool-calling turn.
+	ActiveStatus StatusReporter
 }
 
 /** effectiveContextLimit returns the context-window size in tokens for the

@@ -1,0 +1,89 @@
+CONTINUE NEXT TIME — Harvey harness-engineering work
+Last session: 2026-07-12
+
+WHAT THIS THREAD OF WORK IS
+---------------------------
+Applying Birgitta Boeckeler's harness-engineering framework (Agent = Model +
+Harness; guides=feedforward vs sensors=feedback; computational vs
+inferential) to Harvey's own codebase. Source material and the full
+direction list live in:
+
+    harvey/harness-engineering-exploration.md
+
+That file is the single source of truth for Directions A-F. Don't duplicate
+its content here — read it directly when picking up this thread.
+
+WHAT'S DONE
+-----------
+1. Pre-harness-engineering refactor cycle (3 items, all complete):
+   - harvey/harness-prerequisite-refactor-design.md
+   - harvey/harness-prerequisite-refactor-plan.md
+   - Decisions logged in harvey/DECISIONS.md (three 2026-07-12 entries)
+
+2. Direction A (computational guide/sensor tools) — first increment complete:
+   - harvey/computational-sensors-design.md
+   - harvey/computational-sensors-plan.md
+   - Decisions logged in harvey/DECISIONS.md (two more 2026-07-12 entries)
+   - Shipped: Agent.ActiveStatus + SensorEvent plumbing, CodeFormatter.Check()
+     wired into a real sensor, go vet as the first genuinely new sensor.
+   - Deliberately deferred within Direction A itself: staticcheck/gocyclo,
+     unused-param check, changed-file-without-changed-test heuristic,
+     hunspell/grammar checking. Not built. Candidates only.
+
+Full test suite is green except one pre-existing, unrelated failure
+(TestCmdModelList_ShowsLlamafileEntries — tied to already-uncommitted
+llamafile-discovery work in llamafile.go/backend_startup.go that predates
+this whole thread; not caused by anything above).
+
+WHAT'S OPEN
+-----------
+Directions B, D, E, F from harness-engineering-exploration.md — none started.
+
+  B — Lint the feedforward side (content-aware guide selection +
+      generalizing systemPromptExceedsContext to gate dynamic RAG/file-
+      injection content before it's assembled, not just warn after).
+
+  D — Consolidate /plan + /read-chunks + @mention into one subagent-
+      dispatch primitive (two of the three already work in production).
+
+  E — Use cmd/assay to empirically test whether an always-on guide still
+      earns its tokens once a sensor exists for the same failure mode
+      (a --guide-compare flag, analogous to the existing --rag-compare).
+
+  F — Harness-template skills that scaffold sensor config alongside guide
+      markdown, not just guide markdown alone.
+
+commands.go (3877 lines, 71 functions) remains explicitly out of scope for
+all of this — real debt, doesn't block any harness-engineering direction,
+tracked separately if it's ever addressed.
+
+SUGGESTED STARTING POINT (a suggestion, not a decision already made)
+---------------------------------------------------------------------
+Direction B. Reasoning: it's the most already-scoped of the four — the
+underlying budget-tracking design largely already exists in
+harvey/small-model-budget-design.md (its Directions 1/2, BudgetTracker),
+which harness-prerequisite-refactor-design.md's Item 4 explicitly deferred
+to rather than re-designing. B is mostly "make a decision on an
+already-drafted design and implement it," not fresh architecture — lower
+risk than D (a real multi-feature consolidation) and doesn't require live
+model runs to get useful signal, unlike E (which needs actual Ollama/
+llamafile sessions to produce a comparison result, not just unit tests).
+F is arguably premature until Direction A has more than two sensors to
+template.
+
+If a different priority has come up since this was written, ignore this
+section — it reflects reasoning as of 2026-07-12, not a standing plan.
+
+HOW TO PICK THIS UP
+-------------------
+Whichever direction is chosen needs its own design -> decisions -> planning
+cycle before implementation, same as every item in this session: a
+<topic>-design.md, explicit decisions confirmed before coding (not assumed),
+a <topic>-plan.md, then TDD-first implementation with each decision logged
+in DECISIONS.md. Don't skip the plan artifact even for small-seeming work —
+that was a real mistake caught mid-session this time.
+
+Cross-referenced findings from this whole thread are also recorded in
+agents/knowledge.db (project_id=1, name='harvey') as a chronological set of
+'decision' observations dated 2026-07-12 — useful for a quick narrative
+recap without re-reading every design doc in full.

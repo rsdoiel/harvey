@@ -1148,6 +1148,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 		ex.DebugLog = a.DebugLog
 		ex.Status = sp
+		a.ActiveStatus = sp
 		ex.CharacterName = charName
 		var updatedHistory []Message
 		updatedHistory, stats, chatErr = ex.RunToolLoop(ctx, a.History, &buf)
@@ -1160,6 +1161,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		stats, chatErr = a.Client.Chat(ctx, a.History, &buf)
 	}
 	sp.stop()
+	a.ActiveStatus = nil
 
 	if ctx.Err() != nil || errors.Is(chatErr, context.Canceled) {
 		a.History = a.History[:len(a.History)-1]
@@ -1210,10 +1212,12 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 				ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 				ex.DebugLog = a.DebugLog
 				ex.Status = retrySp
+				a.ActiveStatus = retrySp
 				ex.CharacterName = charName
 				var updatedHistory []Message
 				updatedHistory, retryStats, chatErr = ex.RunToolLoop(ctx, a.History, &buf)
 				retrySp.stop()
+				a.ActiveStatus = nil
 				if chatErr == nil {
 					a.History = updatedHistory
 					toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)

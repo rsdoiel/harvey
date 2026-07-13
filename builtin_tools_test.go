@@ -259,6 +259,198 @@ func TestWriteFile_AutoFormatGo(t *testing.T) {
 	}
 }
 
+// captureStatus is a StatusReporter test double that records every
+// SensorEvent reported to it, for asserting on Direction A sensor wiring.
+type captureStatus struct {
+	events []SensorEvent
+}
+
+func (c *captureStatus) UpdateStatus(msg string) {}
+func (c *captureStatus) ReportSensor(ev SensorEvent) {
+	c.events = append(c.events, ev)
+}
+
+// TestWriteFile_FormatCheckSensor_reportsWhenAutoFormatOff verifies that an
+// unformatted Go file produces a human-visible SensorEvent when AutoFormat
+// is off (so the on-disk content genuinely still differs from gofmt's
+// output), and that no tokens are spent on it in the default config.
+func TestWriteFile_FormatCheckSensor_reportsWhenAutoFormatOff(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) {
+		cfg.AutoFormat = false
+	})
+	status := &captureStatus{}
+	a.ActiveStatus = status
+
+	unformatted := "package main\n\nfunc    main() {\nfmt.Println(\"hi\")\n}\n"
+	got, err := dispatch(t, reg, "write_file", map[string]any{
+		"path":    "main.go",
+		"content": unformatted,
+	})
+	if err != nil {
+		t.Fatalf("write_file: %v", err)
+	}
+
+	if len(status.events) == 0 {
+		t.Fatal("expected a SensorEvent for unformatted Go content when AutoFormat is off")
+	}
+	if status.events[0].Class != Computational {
+		t.Errorf("expected Computational class, got %v", status.events[0].Class)
+	}
+	if strings.Contains(got, "differs from formatted") {
+		t.Errorf("expected no format-check finding in tool result by default, got %q", got)
+	}
+}
+
+// TestWriteFile_FormatCheckSensor_injectsWhenConfigured verifies that
+// SensorInjectFormatFindings appends the finding to the tool-result string
+// (spending tokens), as an explicit opt-in.
+func TestWriteFile_FormatCheckSensor_injectsWhenConfigured(t *testing.T) {
+	_, reg := newToolAgent(t, func(cfg *Config) {
+		cfg.AutoFormat = false
+		cfg.SensorInjectFormatFindings = true
+	})
+
+	unformatted := "package main\n\nfunc    main() {\nfmt.Println(\"hi\")\n}\n"
+	got, err := dispatch(t, reg, "write_file", map[string]any{
+		"path":    "main.go",
+		"content": unformatted,
+	})
+	if err != nil {
+		t.Fatalf("write_file: %v", err)
+	}
+	if !strings.Contains(got, "differs from formatted") {
+		t.Errorf("expected format-check finding appended to tool result, got %q", got)
+	}
+}
+
+// TestWriteFile_FormatCheckSensor_silentWhenAlreadyFormatted verifies that a
+// successful auto-format leaves nothing for Check() to find — no sensor
+// event, no tool-result appendix.
+func TestWriteFile_FormatCheckSensor_silentWhenAlreadyFormatted(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) {
+		cfg.AutoFormat = true
+		cfg.Security.SafeMode = false
+	})
+	status := &captureStatus{}
+	a.ActiveStatus = status
+
+	unformatted := "package main\n\nfunc    main() {\nfmt.Println(\"hi\")\n}\n"
+	_, err := dispatch(t, reg, "write_file", map[string]any{
+		"path":    "main.go",
+		"content": unformatted,
+	})
+	if err != nil {
+		t.Fatalf("write_file: %v", err)
+	}
+	if len(status.events) != 0 {
+		t.Errorf("expected no sensor findings after successful auto-format, got %v", status.events)
+	}
+}
+
+// writeGoMod writes a minimal go.mod into the agent's workspace root, so
+// runGoVet's hasGoModule gate passes.
+func writeGoMod(t *testing.T, a *Agent) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "go.mod"), []byte("module testmod\n\ngo 1.21\n"), 0o644); err != nil {
+		t.Fatalf("writeGoMod: %v", err)
+	}
+}
+
+func hasEventKind(events []SensorEvent, kind string) bool {
+	for _, ev := range events {
+		if ev.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// TestWriteFile_GoVetSensor_reportsRealFinding verifies that a real go vet
+// finding (a Printf format/argument mismatch) is both human-visible
+// (SensorEvent) and model-visible (tool-result appendix, unconditionally —
+// go vet has no low-severity tier to gate behind, per
+// computational-sensors-design.md).
+func TestWriteFile_GoVetSensor_reportsRealFinding(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) {
+		cfg.AutoFormat = true
+		cfg.Security.SafeMode = false
+	})
+	writeGoMod(t, a)
+	status := &captureStatus{}
+	a.ActiveStatus = status
+
+	src := "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Printf(\"%d\\n\", \"not a number\")\n}\n"
+	got, err := dispatch(t, reg, "write_file", map[string]any{
+		"path":    "main.go",
+		"content": src,
+	})
+	if err != nil {
+		t.Fatalf("write_file: %v", err)
+	}
+
+	if !hasEventKind(status.events, "go_vet") {
+		t.Errorf("expected a go_vet SensorEvent, got %v", status.events)
+	}
+	if !strings.Contains(got, "Printf") {
+		t.Errorf("expected the go vet finding appended to the tool result, got %q", got)
+	}
+}
+
+// TestWriteFile_GoVetSensor_suppressesCompileError verifies that a
+// mid-edit compile error (undefined symbol) never surfaces as a false
+// sensor finding and never blocks the write.
+func TestWriteFile_GoVetSensor_suppressesCompileError(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) {
+		cfg.AutoFormat = true
+		cfg.Security.SafeMode = false
+	})
+	writeGoMod(t, a)
+	status := &captureStatus{}
+	a.ActiveStatus = status
+
+	src := "package main\n\nfunc main() {\n\tundefinedFunction()\n}\n"
+	got, err := dispatch(t, reg, "write_file", map[string]any{
+		"path":    "main.go",
+		"content": src,
+	})
+	if err != nil {
+		t.Fatalf("write_file: %v (compile errors must not block the write)", err)
+	}
+
+	if hasEventKind(status.events, "go_vet") {
+		t.Errorf("expected no go_vet SensorEvent for a compile error, got %v", status.events)
+	}
+	if strings.Contains(got, "undefined") {
+		t.Errorf("expected no compile-error text in the tool result, got %q", got)
+	}
+}
+
+// TestWriteFile_GoVetSensor_skipsWithoutGoModule verifies go vet is never
+// invoked in a workspace without a go.mod, even for a file that would
+// otherwise trigger a finding.
+func TestWriteFile_GoVetSensor_skipsWithoutGoModule(t *testing.T) {
+	a, reg := newToolAgent(t, func(cfg *Config) {
+		cfg.AutoFormat = true
+		cfg.Security.SafeMode = false
+	})
+	status := &captureStatus{}
+	a.ActiveStatus = status
+	// Deliberately no go.mod written.
+
+	src := "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Printf(\"%d\\n\", \"not a number\")\n}\n"
+	_, err := dispatch(t, reg, "write_file", map[string]any{
+		"path":    "main.go",
+		"content": src,
+	})
+	if err != nil {
+		t.Fatalf("write_file: %v", err)
+	}
+
+	if hasEventKind(status.events, "go_vet") {
+		t.Errorf("expected go vet to be skipped without a go.mod, got %v", status.events)
+	}
+}
+
 // TestWriteFile_PermissionDenied verifies that write_file returns a permission
 // error when the workspace denies writes on the target path.
 func TestWriteFile_PermissionDenied(t *testing.T) {
