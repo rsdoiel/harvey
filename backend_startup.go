@@ -175,9 +175,9 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 
 	type option struct {
 		label         string
-		kind          string // "llamafile" or "ollama"
+		kind          string // "llamafile", "llamacpp", or "ollama"
 		name          string
-		path          string // resolved absolute path; llamafile options only
+		path          string // resolved absolute path; llamafile/llamacpp options only
 		contextLength int
 	}
 	var opts []option
@@ -228,6 +228,30 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 		}
 	}
 
+	// llama.cpp *.gguf models found on disk. Unlike llamafile, .gguf files are
+	// never pre-registered — this disk scan is the only source for them, so
+	// without it they never appear in the startup picker at all (the bug this
+	// fixes: TODO.md, "gguf models are not listed as an option").
+	cb := NewLlamaCppBackend(a.Config, agentsDir)
+	if ggufModels, err := cb.ListModels(); err == nil {
+		for _, m := range ggufModels {
+			if seenPaths[m.Path] {
+				continue
+			}
+			seenPaths[m.Path] = true
+			size := ""
+			if m.SizeBytes > 0 {
+				size = " (" + llamafileFormatBytes(m.SizeBytes) + ")"
+			}
+			opts = append(opts, option{
+				label: m.Name + size + dim(" (llamacpp)"),
+				kind:  "llamacpp",
+				name:  m.Name,
+				path:  m.Path,
+			})
+		}
+	}
+
 	if ProbeOllama(a.Config.Ollama.URL) {
 		if summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background()); err == nil {
 			for _, s := range summaries {
@@ -266,12 +290,15 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 	}
 
 	chosen := opts[idx-1]
-	if chosen.kind == "llamafile" {
+	switch chosen.kind {
+	case "llamafile":
 		// Use the exact path tied to the option the user picked — never a
 		// name-based registry relookup, which can resolve to a different
 		// file when two on-disk models share a display name.
 		entry := &LlamafileEntry{Name: chosen.name, Path: chosen.path, ContextLength: chosen.contextLength}
 		return a.startAndUseLlamafile(entry, out)
+	case "llamacpp":
+		return startLlamaCppModelPath(a, chosen.path, out)
 	}
 	// Ollama model.
 	a.setOllamaModel(chosen.name)

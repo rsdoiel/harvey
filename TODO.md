@@ -6,9 +6,20 @@
 
 ## Bugs
 
-- [ ] Remove the prompt to remove previous session at startup (we have a `-resume` and `/resume` option if needed)
+- [x] Remove the prompt to remove previous session at startup (we have a `-resume` and `/resume` option if needed) —
+  already fixed in commit `9e3e13b` (2026-07-12, bundled into an earlier "Quick Save" commit, not checked off at
+  the time). `pickSession`'s interactive "Resume a prior session? [y/N]" prompt was removed from `Run()`
+  (`terminal.go`); `--continue`/`--resume` CLI flags (`cmd/harvey/main.go`) and `/resume`, `/session
+  use|continue|replay` (`commands.go`) are the confirmed, working replacement.
 
-- [ ] I have both Llamafile and gguf models in ~/Models on my Mac, bit the gguf models are not listed as an option (llama.cpp is installed)
+- [x] I have both Llamafile and gguf models in ~/Models on my Mac, bit the gguf models are not listed as an option
+  (llama.cpp is installed) — fixed 2026-07-13. Root cause: `pickBackend` (`backend_startup.go`), the combined
+  startup picker used whenever any llamafile is registered, built its options list from registered llamafiles +
+  disk-scanned unregistered llamafiles + live Ollama models — with no code path for `.gguf`/llama.cpp models at
+  all. `/model list`/`/model use` (`aggregateModels`) already handled all three backends correctly; the startup
+  flow had never been brought in line with that later unification. Fixed by adding a disk-scan branch (mirroring
+  the existing llamafile one) plus a `"llamacpp"` option kind that starts the model via the already-existing
+  `startLlamaCppModelPath`. See DECISIONS.md 2026-07-13 entry. Test: `TestPickBackend_ListsGGUFModels`.
 
 - [x] Chunk prompt never triggered for Gemma4-E4B — root cause found and fixed
   2026-07-05, see [DECISIONS.md](DECISIONS.md) (2026-07-05 — Chunking guard fix).

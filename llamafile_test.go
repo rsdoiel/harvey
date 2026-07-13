@@ -622,3 +622,41 @@ func TestPickBackend_ListsUnregisteredDiskModels(t *testing.T) {
 		}
 	}
 }
+
+// TestPickBackend_ListsGGUFModels is the regression test for the reported bug
+// (TODO.md: "I have both Llamafile and gguf models in ~/Models... but the
+// gguf models are not listed as an option"): pickBackend's combined startup
+// picker previously only ever considered llamafile and Ollama models, with no
+// code path for .gguf/llama.cpp models at all — confirmed by reading the code
+// before writing this test, not assumed.
+func TestPickBackend_ListsGGUFModels(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"delta.gguf", "echo.gguf"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("stub"), 0o644); err != nil {
+			t.Fatalf("creating %s: %v", name, err)
+		}
+	}
+
+	ws, _ := NewWorkspace(t.TempDir())
+	cfg := DefaultConfig()
+	cfg.LlamaCpp.ModelsDir = dir
+	cfg.LlamaCpp.URL = "http://127.0.0.1:1"  // unreachable — no running server to adopt
+	cfg.Llamafile.ModelsDir = t.TempDir()    // isolate from any real ~/Models on the test machine
+	cfg.Llamafile.URL = "http://127.0.0.1:1" // unreachable — no running server to adopt
+	cfg.Ollama.URL = "http://127.0.0.1:1"    // unreachable — keep Ollama out of the list
+	a := NewAgent(cfg, ws)
+
+	var buf strings.Builder
+	// "0" cancels the picker without starting any model.
+	_ = a.pickBackend(newTestBufioReader("0\n"), &buf, "")
+
+	out := buf.String()
+	for _, name := range []string{"delta", "echo"} {
+		if !strings.Contains(out, name) {
+			t.Errorf("expected %q (a .gguf model) in startup picker output, got:\n%s", name, out)
+		}
+	}
+	if !strings.Contains(out, "llamacpp") {
+		t.Errorf("expected the .gguf entries to be labelled (llamacpp), got:\n%s", out)
+	}
+}
