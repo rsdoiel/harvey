@@ -6,6 +6,50 @@
 
 ## Bugs
 
+- [ ] Remove the prompt to remove previous session at startup (we have a `-resume` and `/resume` option if needed)
+
+- [ ] I have both Llamafile and gguf models in ~/Models on my Mac, bit the gguf models are not listed as an option (llama.cpp is installed)
+
+- [x] Chunk prompt never triggered for Gemma4-E4B — root cause found and fixed
+  2026-07-05, see [DECISIONS.md](DECISIONS.md) (2026-07-05 — Chunking guard fix).
+  Two bugs: `remainingContext()` returning 0 for "unknown limit" was treated the
+  same as "skip the guard" in `builtin_tools.go`'s `read_file` (now falls back
+  to a 4096-token budget, matching `file_inject.go`); and `adoptExternalServer`
+  never probed context length for llamafile models adopted from an
+  already-running server, so `effectiveContextLimit()` stayed 0 for the whole
+  session. Tests: `TestReadFile_ChunkingEnabledContextLimitUnknown`,
+  `TestAdoptExternalServer_probesContextLength`.
+
+- [x] Llamafile GPULayers defaulted to 99 (maximise GPU) on every platform,
+  including Raspberry Pi hardware with no usable GPU-compute backend. This is
+  the actual explanation for the `bonsai-8b` (Q1_0) retest below appearing to
+  hang for 20+ minutes — the underlying `llama-server` process was still
+  running after 2+ hours of CPU time. Fixed 2026-07-05: default changed to 0
+  (CPU-only), matching `LlamaCppConfig.GPULayers`'s existing default. See
+  DECISIONS.md 2026-07-05 entry. Tests:
+  `TestDefaultConfig_LlamafileGPULayersDefaultsToZero`,
+  `TestSaveLlamafileConfig_DoesNotPersistDefaultGPULayers`,
+  `TestSaveLlamafileConfig_PersistsCustomGPULayers`.
+
+- [x] Chunk-quality retest against the actual Gemma4-E4B model — RESOLVED
+  2026-07-05. Downloaded `gemma-4-E4B-it-Q5_K_M.llamafile` (7.4GB) from
+  huggingface.co/mozilla-ai/llamafile_0.10 (no longer dependent on the
+  `henry` build pipeline). Ran `/read-chunks natural_language_programming.md
+  --chunk-size 800 --max-chunks 20 [topic-drift instruction]` — 23 chunks,
+  stopped after 4 completed (user time constraints). All 4 chunks were
+  coherent, on-topic, and did genuinely useful paragraph-level drift
+  analysis — a stark contrast to the original garbled-token bug report.
+  **Conclusion: the map-reduce chunking approach itself is sound.** The
+  original hallucination was entirely explained by the chunk-prompt guard
+  never firing (TODO items above), not model coherence collapse under the
+  chunking prompt. Per-chunk pace: ~10 min/chunk at 800-byte chunks,
+  CPU-only (`-ngl 0`, confirmed via `ps`), 377–385% CPU utilization — genuinely
+  computing, not hung. 23 chunks would extrapolate to ~4 hours total,
+  consistent with an overnight/unattended run being the intended use case.
+  Full per-chunk output is preserved in
+  `agents/sessions/harvey-session-20260705-205110.spmd` (chunks 1-4) even
+  though the run was killed before synthesis.
+
 - [ ] Benchmark per-chunk timing across candidate models, now that GPULayers
   defaults to 0. No other model has been timed with the GPU-layers fix in
   place — the earlier `bonsai-8b` 20+ min "hang" was confounded by the
@@ -69,5 +113,4 @@
   needs a controlled retest with the Qwen entry's context_length temporarily
   lowered (e.g. to 16384) to see if chunk time drops accordingly before
   folding Qwen into the per-model timing table above.
-
 
