@@ -44,6 +44,21 @@ func currentActiveName(a *Agent) string {
 	return a.Config.Ollama.Model
 }
 
+// wireDebugLog sets dbg on client when it is an *AnyLLMClient, so its own
+// chatInternal logs correctly. clientForEndpoint and attemptModelSwitch's
+// Ollama branch both construct fresh *AnyLLMClient instances that otherwise
+// carry a nil DebugLog forever — found while fixing the chunk-analysis
+// double-logging bug (TODO.md): removing the caller-side logging in
+// RunChunkedAnalysis is only safe once every client resolveDispatchTarget can
+// return is guaranteed to log its own calls. Returns client unchanged
+// (including when it isn't an *AnyLLMClient at all, e.g. a test double).
+func wireDebugLog(client LLMClient, dbg *DebugLog) LLMClient {
+	if ac, ok := client.(*AnyLLMClient); ok {
+		ac.DebugLog = dbg
+	}
+	return client
+}
+
 /** resolveDispatchTarget resolves name (an @mention-style identifier, or a
  * plan step's [model: NAME] annotation) to a DispatchTarget.
  *
@@ -83,12 +98,12 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 			if err != nil {
 				return DispatchTarget{}, true, err
 			}
-			return DispatchTarget{Client: client, Restore: noop}, true, nil
+			return DispatchTarget{Client: wireDebugLog(client, a.DebugLog), Restore: noop}, true, nil
 		}
 	}
 
 	if active := currentActiveName(a); active != "" && strings.EqualFold(active, name) {
-		return DispatchTarget{Client: a.Client, Restore: noop}, true, nil
+		return DispatchTarget{Client: wireDebugLog(a.Client, a.DebugLog), Restore: noop}, true, nil
 	}
 
 	switchFn := func(n string, w io.Writer) (bool, error) { return attemptModelSwitch(a, n, w) }
@@ -119,5 +134,5 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 		a.Client = newOllamaLLMClient(a.Config.Ollama.URL, prevOllamaModel, a.Config.Ollama.Timeout)
 	}
 
-	return DispatchTarget{Client: a.Client, Restore: restore}, true, nil
+	return DispatchTarget{Client: wireDebugLog(a.Client, a.DebugLog), Restore: restore}, true, nil
 }

@@ -164,7 +164,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 						DocType:     docType,
 						Config:      a.Config.Chunking,
 					}
-					synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, a.DebugLog, params, a.Out)
+					synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, params, a.Out)
 					if synthErr != nil {
 						return "", fmt.Errorf("read_file: chunked analysis: %w", synthErr)
 					}

@@ -48,14 +48,16 @@ type ChunkAnalysisParams struct {
  * in partialResults and synthesis runs over all available results. A synthesis
  * failure is unrecoverable and is returned as an error.
  *
- * rec and dbg may each be nil; when nil, the respective recording/logging calls
- * are silently skipped.
+ * rec may be nil; when nil, recording calls are silently skipped. There is no
+ * separate debug-log parameter — client (an *AnyLLMClient, in production)
+ * already logs its own llm_request/llm_response events internally; a caller-
+ * side debug log here would just duplicate that (see DECISIONS.md, the
+ * chunk-analysis double-logging fix).
  *
  * Parameters:
  *   ctx    (context.Context)     — cancellation context.
  *   client (LLMClient)           — LLM backend for map and reduce calls.
  *   rec    (*Recorder)           — session recorder; nil is accepted.
- *   dbg    (*DebugLog)           — debug log for llm_request/llm_response events; nil is accepted.
  *   params (ChunkAnalysisParams) — all inputs.
  *   w      (io.Writer)           — progress output (usually os.Stdout).
  *
@@ -64,7 +66,7 @@ type ChunkAnalysisParams struct {
  *   error  — synthesis error, or nil.
  *
  * Example:
- *   result, err := RunChunkedAnalysis(ctx, client, rec, dbg, params, os.Stdout)
+ *   result, err := RunChunkedAnalysis(ctx, client, rec, params, os.Stdout)
  *   if err != nil { log.Fatal(err) }
  *   fmt.Println(result)
  */
@@ -75,7 +77,7 @@ const chunkSystemPrompt = "You are a focused document analysis assistant. " +
 	"Analyse ONLY the text provided in this message. " +
 	"Do not reference any information from outside the provided content."
 
-func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, dbg *DebugLog, params ChunkAnalysisParams, w io.Writer) (string, error) {
+func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, params ChunkAnalysisParams, w io.Writer) (string, error) {
 	n := len(params.Chunks)
 
 	if rec != nil {
@@ -96,26 +98,16 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, db
 			{Role: "user", Content: prompt},
 		}
 
-		if dbg != nil {
-			dbg.LogLLMRequest(params.Model, len(messages), 0)
-		}
-
 		var buf strings.Builder
-		stats, err := client.Chat(ctx, messages, &buf)
+		_, err := client.Chat(ctx, messages, &buf)
 
 		outcome := "ok"
 		var result string
 		if err != nil {
 			outcome = "error: " + firstLine(err.Error())
 			result = fmt.Sprintf("[chunk %d failed: %v]", chunkNum, err)
-			if dbg != nil {
-				dbg.LogError("chunk_llm", err.Error())
-			}
 		} else {
 			result = buf.String()
-			if dbg != nil {
-				dbg.LogLLMResponse(stats, 0)
-			}
 		}
 
 		partialResults = append(partialResults, result)
@@ -138,18 +130,11 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, db
 		{Role: "user", Content: synthesisPrompt},
 	}
 
-	if dbg != nil {
-		dbg.LogLLMRequest(params.Model, len(messages), 0)
-	}
-
 	var synBuf strings.Builder
-	stats, err := client.Chat(ctx, messages, &synBuf)
+	_, err := client.Chat(ctx, messages, &synBuf)
 	if err != nil {
 		if rec != nil {
 			_ = rec.RecordChunkSynthesis(params.Model, "", "error: "+firstLine(err.Error()))
-		}
-		if dbg != nil {
-			dbg.LogError("chunk_synthesis", err.Error())
 		}
 		return "", fmt.Errorf("chunked analysis synthesis: %w", err)
 	}
@@ -157,9 +142,6 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, db
 	synthesis := synBuf.String()
 	if rec != nil {
 		_ = rec.RecordChunkSynthesis(params.Model, synthesis, "ok")
-	}
-	if dbg != nil {
-		dbg.LogLLMResponse(stats, 0)
 	}
 	return synthesis, nil
 }

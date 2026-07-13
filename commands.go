@@ -382,7 +382,7 @@ func (a *Agent) registerCommands() {
 				"remove": routeNameCandidates,
 				"use":    routeNameCandidates,
 				"probe":  routeNameCandidates,
-				"set":   routeNameCandidates,
+				"set":    routeNameCandidates,
 			},
 		},
 		"safemode": {
@@ -1205,7 +1205,6 @@ func cmdHint(a *Agent, _ []string, out io.Writer) error {
 	return nil
 }
 
-
 // ─── /safemode ──────────────────────────────────────────────────────────────
 
 /** cmdSafeMode handles safe mode configuration for restricting which commands
@@ -1339,7 +1338,6 @@ func safeModeReset(a *Agent, out io.Writer) error {
 	fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.Security.AllowedCommands, ", "))
 	return nil
 }
-
 
 func cmdInspect(a *Agent, args []string, out io.Writer) error {
 	ac, ok := a.Client.(*AnyLLMClient)
@@ -1668,7 +1666,6 @@ func printDirTree(dir, prefix string, out io.Writer) {
 	}
 }
 
-
 // ollamaFormatCtx returns a human-readable context-length string.
 func ollamaFormatCtx(tokens int) string {
 	if tokens <= 0 {
@@ -1679,7 +1676,6 @@ func ollamaFormatCtx(tokens int) string {
 	}
 	return fmt.Sprintf("%d", tokens)
 }
-
 
 // ─── /record ─────────────────────────────────────────────────────────────────
 
@@ -2090,7 +2086,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 		Config:      cfg,
 	}
 
-	synthesis, err := RunChunkedAnalysis(context.Background(), client, a.Recorder, a.DebugLog, params, out)
+	synthesis, err := RunChunkedAnalysis(context.Background(), client, a.Recorder, params, out)
 	if err != nil {
 		return fmt.Errorf("read-chunks: %w", err)
 	}
@@ -3388,7 +3384,6 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 	return nil
 }
 
-
 // cmdModelAlias manages the model_aliases map in harvey.yaml.
 // Subcommands: list, set ALIAS FULLNAME [--tags T,T], tags ALIAS TAG..., remove ALIAS
 func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
@@ -3732,7 +3727,6 @@ func (a *Agent) logAction(kind, target string, choice actionChoice, outcome stri
 		_ = a.Recorder.RecordAgentAction(kind, target, choiceStr(choice), outcome)
 	}
 }
-
 
 // ─── /format ─────────────────────────────────────────────────────────────────
 

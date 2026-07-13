@@ -101,18 +101,21 @@
   an unreachable backend fails immediately with one clear message instead of
   N per-chunk ones.
 
-- [ ] Debug log records each chunk's LLM call twice during `/read-chunks`.
-  `RunChunkedAnalysis` (`chunk_analyzer.go:100,116-118,141-163`) calls
-  `dbg.LogLLMRequest`/`LogLLMResponse` itself around every `client.Chat`
-  call, but `AnyLLMClient.chatInternal` (`anyllm_client.go:162,202`) logs the
-  same request/response a second time internally — so
-  `agents/logs/*.jsonl` gets two near-identical `llm_request` lines (and two
-  `llm_response`/error lines) per actual HTTP call, not two real requests.
-  Cosmetic, but it'll skew any tooling built on top of the debug log,
-  including the per-chunk timing benchmark tracked above. Fix: only one of
-  the two call sites should log — likely drop the caller-side logging in
-  `chunk_analyzer.go` since `chatInternal` already logs unconditionally for
-  every `Chat`/`ChatWithTools` call.
+- [x] Debug log records each chunk's LLM call twice during `/read-chunks` — fixed 2026-07-13.
+  Root cause confirmed as described: `RunChunkedAnalysis` (`chunk_analyzer.go`) logged every chunk/synthesis call
+  itself while `AnyLLMClient.chatInternal` (`anyllm_client.go`) already logs the same call internally. Fix was not
+  a simple "drop the caller-side calls," though: `chatInternal`'s own `DebugLog` field is nil for any freshly-
+  constructed client (`resolveDispatchTarget`'s route-registry and local-switch branches both build fresh
+  `*AnyLLMClient`s that were never wired), so naively removing the caller-side logging would have silently dropped
+  logging entirely for `@mention`-dispatched chunk analysis instead of fixing a duplicate. Fixed in two parts:
+  (1) `resolveDispatchTarget` (`dispatch_target.go`) now wires `DebugLog` onto whatever client it resolves, for
+  all three of its branches; (2) the now-redundant `dbg *DebugLog` parameter was removed entirely from
+  `RunChunkedAnalysis`, along with all its internal logging calls. See DECISIONS.md 2026-07-13 entry. Tests:
+  `TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog`, `TestResolveDispatchTarget_LocalSwitch_WiresDebugLog`.
+  **Related finding, not fixed (out of scope):** `builtin_tools.go`'s `read_file` pre-read chunking guard has the
+  same cosmetic-only `@mention` bug already fixed elsewhere for `/read-chunks`/`injectOrChunk` during Direction D
+  (Bug 1 in `subagent-dispatch-design.md`) — it parses `@mention` to relabel `ChunkAnalysisParams.Model` but always
+  dispatches via `a.Client`, never the mentioned model. Missed during that work; worth a follow-up fix.
 
 - [ ] `Qwen3.5-4B-Q5_K_S`'s `/read-chunks` chunk 1 ran 54+ minutes (interrupted
   by user 2026-07-06, still pegged at ~389% CPU when stopped — genuinely

@@ -126,3 +126,66 @@ func TestResolveDispatchTarget_UnknownName_ReturnsNotFound(t *testing.T) {
 		t.Error("expected ok=false for an unknown name")
 	}
 }
+
+// TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog is the regression test
+// for a debug-logging gap found while fixing the chunk-analysis double-logging
+// bug (TODO.md): clientForEndpoint constructs a fresh *AnyLLMClient with no
+// DebugLog set, so its own chatInternal never logs anything unless
+// resolveDispatchTarget wires it explicitly.
+func TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog(t *testing.T) {
+	a := newTestAgent(t)
+	a.Client = &mockLLMClient{reply: "orig"}
+	dbg := &DebugLog{}
+	a.DebugLog = dbg
+	a.Routes = NewRouteRegistry()
+	a.Routes.Add(&RouteEndpoint{Name: "remote", URL: "ollama://example:11434", Model: "llama3.1:8b", Kind: KindOllama})
+
+	var out strings.Builder
+	target, ok, err := resolveDispatchTarget(a, "remote", &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	ac, isAnyLLM := target.Client.(*AnyLLMClient)
+	if !isAnyLLM {
+		t.Fatalf("expected *AnyLLMClient, got %T", target.Client)
+	}
+	if ac.DebugLog != dbg {
+		t.Error("expected the resolved route client's DebugLog to be wired to a.DebugLog")
+	}
+}
+
+// TestResolveDispatchTarget_LocalSwitch_WiresDebugLog covers the other branch
+// with the same gap: a real local model switch (attemptModelSwitch's Ollama
+// branch, simulated here via the override) also constructs a fresh
+// *AnyLLMClient with no DebugLog set.
+func TestResolveDispatchTarget_LocalSwitch_WiresDebugLog(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.Llamafile.Active = "original-model"
+	a.Client = &mockLLMClient{reply: "orig"}
+	dbg := &DebugLog{}
+	a.DebugLog = dbg
+	a.attemptModelSwitchOverride = func(name string, out io.Writer) (bool, error) {
+		a.Config.Llamafile.Active = name
+		a.Client = newOllamaLLMClient("http://127.0.0.1:1", name, 0) // fresh client, DebugLog unset
+		return true, nil
+	}
+
+	var out strings.Builder
+	target, ok, err := resolveDispatchTarget(a, "step-model", &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	ac, isAnyLLM := target.Client.(*AnyLLMClient)
+	if !isAnyLLM {
+		t.Fatalf("expected *AnyLLMClient, got %T", target.Client)
+	}
+	if ac.DebugLog != dbg {
+		t.Error("expected the freshly-switched client's DebugLog to be wired to a.DebugLog")
+	}
+}
