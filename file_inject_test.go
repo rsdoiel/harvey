@@ -619,6 +619,41 @@ func TestInjectOrChunk_LargeFileRunsChunking(t *testing.T) {
 	}
 }
 
+// TestInjectOrChunk_LargeFileMentionDispatchesToNamedModel is the direct
+// regression test for Bug 1 (subagent-dispatch-design.md) on the auto-chunk
+// path: an @mention in the user's chunk instruction previously only
+// relabeled ChunkAnalysisParams.Model for recording — the actual chunk/
+// synthesis calls always ran against a.Client regardless. Using
+// attemptModelSwitchOverride to simulate a real local switch makes the
+// resolved client's replies distinguishable from a.Client's.
+func TestInjectOrChunk_LargeFileMentionDispatchesToNamedModel(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.Ollama.ContextLength = 100
+	a.Config.Chunking = DefaultChunkConfig()
+	a.Config.Chunking.Enabled = true
+	a.Client = &mockLLMClient{reply: "default reply"}
+	a.attemptModelSwitchOverride = func(name string, out io.Writer) (bool, error) {
+		a.Client = &mockLLMClient{reply: "reply from " + name}
+		return true, nil
+	}
+	a.In = strings.NewReader("@granite summarise each section\n")
+
+	big := strings.Repeat("This is a paragraph about something important. ", maxInjectFileBytes/4)
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "doc.md"), []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	got := a.injectOrChunk(context.Background(), "review doc.md", &out, nil)
+
+	if !strings.Contains(got, "reply from granite") {
+		t.Errorf("expected chunk analysis to run against the @-mentioned model; got:\n%s", got)
+	}
+	if strings.Contains(got, "default reply") {
+		t.Errorf("expected no output from the default client once @granite resolved; got:\n%s", got)
+	}
+}
+
 // TestInjectOrChunk_LargeFileFitsInBudget verifies that a file larger than
 // maxInjectFileBytes but within the context budget is injected directly
 // without prompting the user.

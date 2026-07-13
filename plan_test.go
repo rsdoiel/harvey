@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -208,19 +209,40 @@ func TestParsePlan_modelAnnotation(t *testing.T) {
 
 // ─── plan executor model switch ───────────────────────────────────────────────
 
+// TestCmdPlanNext_modelAnnotationSwitches is the regression test for Bug 2
+// (subagent-dispatch-design.md): the pre-fix restore read
+// a.Config.Llamafile.Active AFTER the step's switch had already overwritten
+// it to the step's own model, so it never actually returned to the original.
+// Using attemptModelSwitchOverride lets the switch genuinely succeed in-test
+// (no real llamafile process needed) so this can assert on the *result*,
+// not just "didn't panic."
 func TestCmdPlanNext_modelAnnotationSwitches(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	// Register a llamafile model so attemptModelSwitch can find it.
-	cfg.Llamafile.Models = []LlamafileEntry{{Name: "phi-mini", Path: "/tmp/phi.llamafile"}}
 	a := NewAgent(cfg, ws)
+	a.Config.Llamafile.Active = "original-model"
 	a.Client = &mockLLMClient{reply: "done"}
 
-	// Save a plan with a model-annotated step.
+	var switchedTo []string
+	a.attemptModelSwitchOverride = func(name string, out io.Writer) (bool, error) {
+		switchedTo = append(switchedTo, name)
+		// Simulate switchLlamafileModel's real mutation (llamafile.go:220).
+		a.Config.Llamafile.Active = name
+		a.Client = &mockLLMClient{reply: "reply from " + name}
+		return true, nil
+	}
+
+	// Save a plan with a model-annotated step. The [model: NAME] marker must
+	// be embedded in Title itself, not just set on the Model field directly:
+	// formatPlan (called by SavePlan) only ever writes s.Title verbatim and
+	// never re-emits Model separately, so a Model set without the marker in
+	// Title is silently dropped on the SavePlan → LoadPlan round trip
+	// cmdPlanNext performs — confirmed by first writing this test the naive
+	// way and finding it never actually exercised the switch path at all.
 	p := &Plan{
 		Goal: "test",
 		Steps: []PlanStep{
-			{Index: 0, Done: false, Title: "do something small", Model: "phi-mini"},
+			{Index: 0, Done: false, Title: "do something small [model: phi-mini]"},
 		},
 	}
 	if err := SavePlan(ws, p); err != nil {
@@ -228,11 +250,24 @@ func TestCmdPlanNext_modelAnnotationSwitches(t *testing.T) {
 	}
 
 	var buf strings.Builder
-	// cmdPlanNext should attempt the model switch before executing the step.
-	// The switch will fail (server not running) but that's OK for this test —
-	// we just verify it was attempted (ActiveRoute unchanged but model switch was tried).
-	_ = cmdPlanNext(a, &buf)
-	// The test passes if cmdPlanNext does not panic and returns without crashing.
+	if err := cmdPlanNext(a, &buf); err != nil {
+		t.Fatalf("cmdPlanNext: %v", err)
+	}
+
+	if len(switchedTo) != 2 {
+		t.Fatalf("expected 2 switch calls (to phi-mini, then back), got %v", switchedTo)
+	}
+	if switchedTo[0] != "phi-mini" {
+		t.Errorf("first switch: got %q, want %q", switchedTo[0], "phi-mini")
+	}
+	if switchedTo[1] != "original-model" {
+		t.Errorf("restore switch: got %q, want %q (the pre-step model, not the step's own)",
+			switchedTo[1], "original-model")
+	}
+	if a.Config.Llamafile.Active != "original-model" {
+		t.Errorf("Llamafile.Active after cmdPlanNext = %q, want %q (restored)",
+			a.Config.Llamafile.Active, "original-model")
+	}
 }
 
 func TestExtractStepModelRoundTrip(t *testing.T) {

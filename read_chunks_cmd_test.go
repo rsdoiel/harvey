@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"io"
 	"strings"
 	"testing"
 )
@@ -119,6 +120,39 @@ func TestCmdReadChunks_InvalidChunkSizeFlag(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "invalid --chunk-size") {
 		t.Errorf("expected invalid --chunk-size message, got: %s", out.String())
+	}
+}
+
+// TestCmdReadChunks_MentionDispatchesToNamedModel is the direct regression
+// test for Bug 1 (subagent-dispatch-design.md): @mention in a /read-chunks
+// instruction previously only relabeled ChunkAnalysisParams.Model for
+// recording — the actual chunk/synthesis calls always ran against a.Client
+// regardless. Using attemptModelSwitchOverride to simulate a real local
+// switch (no process spawn needed) makes the resolved client's replies
+// distinguishable from a.Client's, proving which one actually ran.
+func TestCmdReadChunks_MentionDispatchesToNamedModel(t *testing.T) {
+	a := newTestAgent(t)
+	a.Client = &mockLLMClient{reply: "default reply"}
+	a.attemptModelSwitchOverride = func(name string, out io.Writer) (bool, error) {
+		a.Client = &mockLLMClient{reply: "reply from " + name}
+		return true, nil
+	}
+
+	content := "First paragraph about topic A.\n\nSecond paragraph about topic B.\n"
+	if err := a.Workspace.WriteFile("doc.md", []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	var out strings.Builder
+	err := cmdReadChunks(a, []string{"doc.md", "--chunk-size", "20", "@granite", "summarize", "this"}, &out)
+	if err != nil {
+		t.Fatalf("cmdReadChunks: %v", err)
+	}
+	if !strings.Contains(out.String(), "reply from granite") {
+		t.Errorf("expected chunk analysis to run against the @-mentioned model, got: %s", out.String())
+	}
+	if strings.Contains(out.String(), "default reply") {
+		t.Errorf("expected no output from the default client once @granite resolved, got: %s", out.String())
 	}
 }
 

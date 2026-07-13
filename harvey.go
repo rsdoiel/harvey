@@ -177,6 +177,13 @@ type Agent struct {
 	// in toolsReliable(). Set in tests to simulate a known-reliable or
 	// known-unreliable model without requiring a real AnyLLMClient.
 	toolsReliableOverride func() bool
+	// attemptModelSwitchOverride, when non-nil, overrides attemptModelSwitch in
+	// resolveDispatchTarget's local-swap branch. Set in tests to simulate a
+	// successful model switch without spawning a real llamafile/llama.cpp
+	// server process (attemptModelSwitch's llamafile-registry branch does so
+	// via switchLlamafileModel → StartLlamafileService, impractical to exercise
+	// in a unit test).
+	attemptModelSwitchOverride func(name string, out io.Writer) (bool, error)
 	memoryContextPending   bool         // true after ClearHistory until first user turn injects memories
 	sessionInjectedTokens  int          // tokens injected via UnifiedMemory this session
 	sessionCompressed      bool         // true if rolling summary fired at least once this session
@@ -285,6 +292,23 @@ func NewAgent(cfg *Config, ws *Workspace) *Agent {
  */
 func (a *Agent) AddMessage(role, content string) {
 	a.History = append(a.History, Message{Role: role, Content: content})
+}
+
+/** foldBackTurn appends a user/assistant turn to a.History — the shared
+ * pattern behind /read-chunks and @mention route dispatch, which both
+ * summarize a bounded sub-dispatch back into the main conversation rather
+ * than inlining the two AddMessage calls independently at each call site.
+ *
+ * Parameters:
+ *   userContent      (string) — the user-role message to append.
+ *   assistantContent (string) — the assistant-role message to append.
+ *
+ * Example:
+ *   a.foldBackTurn(input, reply)
+ */
+func (a *Agent) foldBackTurn(userContent, assistantContent string) {
+	a.AddMessage("user", userContent)
+	a.AddMessage("assistant", assistantContent)
 }
 
 /** AddMessageParts appends a multimodal message to the conversation history.

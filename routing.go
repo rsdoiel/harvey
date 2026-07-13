@@ -208,15 +208,7 @@ func DispatchToEndpoint(ctx context.Context, ep *RouteEndpoint, history []Messag
 	var buf strings.Builder
 	w := io.MultiWriter(&buf, out)
 
-	if ep.Tools && registry != nil {
-		ex := NewToolExecutor(registry, client, cfg)
-		if _, _, err := ex.RunToolLoop(ctx, msgs, w); err != nil {
-			return "", fmt.Errorf("route %s: %w", ep.Name, err)
-		}
-		return buf.String(), nil
-	}
-
-	if _, err := client.Chat(ctx, msgs, w); err != nil {
+	if _, _, err := runBoundedTurn(ctx, client, registry, cfg, ep.Tools, msgs, nil, w); err != nil {
 		return "", fmt.Errorf("route %s: %w", ep.Name, err)
 	}
 	return buf.String(), nil

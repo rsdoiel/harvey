@@ -836,8 +836,7 @@ func (a *Agent) Run(out io.Writer) error {
 					fmt.Fprint(out, reply)
 					fmt.Fprintln(out)
 					fmt.Fprintln(out, dim("  @"+name))
-					a.AddMessage("user", input)
-					a.AddMessage("assistant", reply)
+					a.foldBackTurn(input, reply)
 
 					if a.Recorder != nil {
 						// Route dispatch is remote computation — use EXT. scene.

@@ -222,16 +222,30 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer,
 		if cancelled {
 			continue
 		}
+		client := a.Client
 		model := a.Client.Name()
 		if ac, ok := a.Client.(*AnyLLMClient); ok {
 			model = ac.ModelName()
 		}
+		var restore func()
 		if mentionName, rest, ok := ParseAtMention(instruction); ok {
-			model = mentionName
 			instruction = rest
+			target, resolved, resolveErr := resolveDispatchTarget(a, mentionName, out)
+			if resolveErr != nil {
+				fmt.Fprintf(out, yellow("  ⚠ @%s failed to resolve: ")+"%v — using current model.\n", mentionName, resolveErr)
+			} else if !resolved {
+				fmt.Fprintf(out, yellow("  ⚠ @%s not found — using current model.\n"), mentionName)
+			} else {
+				client = target.Client
+				model = mentionName
+				restore = target.Restore
+			}
 		}
 		chunkData, readErr := os.ReadFile(absPath)
 		if readErr != nil {
+			if restore != nil {
+				restore()
+			}
 			continue
 		}
 		docType := DetectDocType(absPath)
@@ -244,7 +258,10 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer,
 			DocType:     docType,
 			Config:      a.Config.Chunking,
 		}
-		synthesis, synthErr := RunChunkedAnalysis(ctx, a.Client, a.Recorder, a.DebugLog, params, out)
+		synthesis, synthErr := RunChunkedAnalysis(ctx, client, a.Recorder, a.DebugLog, params, out)
+		if restore != nil {
+			restore()
+		}
 		if synthErr != nil {
 			fmt.Fprintf(out, yellow("  ✗")+" Chunked analysis: %v\n", synthErr)
 			continue

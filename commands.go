@@ -2056,13 +2056,23 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 		a.AuditBuffer.Log(ActionFileRead, relPath, StatusSuccess)
 	}
 
+	client := a.Client
 	model := a.Client.Name()
 	if ac, ok := a.Client.(*AnyLLMClient); ok {
 		model = ac.ModelName()
 	}
 	if mentionName, rest, ok := ParseAtMention(instruction); ok {
-		model = mentionName
 		instruction = rest
+		target, resolved, err := resolveDispatchTarget(a, mentionName, out)
+		if err != nil {
+			fmt.Fprintf(out, yellow("  ⚠ @%s failed to resolve: ")+"%v — using current model.\n", mentionName, err)
+		} else if !resolved {
+			fmt.Fprintf(out, yellow("  ⚠ @%s not found — using current model.\n"), mentionName)
+		} else {
+			client = target.Client
+			model = mentionName
+			defer target.Restore()
+		}
 	}
 
 	docType := DetectDocType(absPath)
@@ -2080,7 +2090,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 		Config:      cfg,
 	}
 
-	synthesis, err := RunChunkedAnalysis(context.Background(), a.Client, a.Recorder, a.DebugLog, params, out)
+	synthesis, err := RunChunkedAnalysis(context.Background(), client, a.Recorder, a.DebugLog, params, out)
 	if err != nil {
 		return fmt.Errorf("read-chunks: %w", err)
 	}
@@ -2088,8 +2098,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, synthesis)
 
-	a.AddMessage("user", fmt.Sprintf("[/read-chunks %s — %d chunk(s)]\n%s", relPath, len(chunks), instruction))
-	a.AddMessage("assistant", synthesis)
+	a.foldBackTurn(fmt.Sprintf("[/read-chunks %s — %d chunk(s)]\n%s", relPath, len(chunks), instruction), synthesis)
 
 	return nil
 }

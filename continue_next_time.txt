@@ -1,5 +1,5 @@
 CONTINUE NEXT TIME — Harvey harness-engineering work
-Last session: 2026-07-12
+Last session: 2026-07-13
 
 WHAT THIS THREAD OF WORK IS
 ---------------------------
@@ -30,6 +30,39 @@ WHAT'S DONE
      unused-param check, changed-file-without-changed-test heuristic,
      hunspell/grammar checking. Not built. Candidates only.
 
+3. Direction B (lint the feedforward side) — both phases complete:
+   - harvey/feedforward-budget-design.md
+   - harvey/feedforward-budget-plan.md
+   - Decisions logged in harvey/DECISIONS.md (two 2026-07-13 entries)
+   - Shipped: BudgetTracker shared across ragAugment + injectOrChunk (one
+     per-turn pool instead of three uncoordinated checks); a real regression
+     found and fixed along the way (unknown context limit → zero budget →
+     all injection silently blocked); a cause-neutral gofmt Check() message
+     after finding the original "likely a syntax error" wording would be
+     wrong under Config.AutoFormat=false.
+   - Item 1 (content-aware guide selection) explicitly out of scope — no
+     path-scoped skill exists yet in Harvey's own catalog to gate.
+
+4. Direction D (one subagent-dispatch primitive) — all four phases complete:
+   - harvey/subagent-dispatch-design.md
+   - harvey/subagent-dispatch-plan.md
+   - Decisions logged in harvey/DECISIONS.md (four 2026-07-13 entries)
+   - Auditing /plan next, /read-chunks+injectOrChunk, and @mention before
+     designing found two real, previously-uncaught bugs, not just
+     duplicated code: (1) @mention in a chunk-analysis instruction only
+     relabeled the session recording, never actually dispatched to the
+     named model; (2) /plan next's post-step model restore read a config
+     field the step's own switch had already overwritten, so it never
+     actually restored the pre-step model. Both fixed via one
+     resolveDispatchTarget primitive (Phases A-B) — each regression test
+     verified to fail against the pre-fix code before confirming the fix.
+     Phases C-D removed two further real duplications (runBoundedTurn,
+     foldBackTurn), each verified behavior-preserving via unmodified
+     pre-existing tests, not just new tests passing.
+   - @mention's local-model-switch fallthrough and chunk analysis's
+     tool-free design were both explicitly audited and left out of scope
+     (genuinely different mechanisms, not consolidation targets).
+
 Full test suite is green except one pre-existing, unrelated failure
 (TestCmdModelList_ShowsLlamafileEntries — tied to already-uncommitted
 llamafile-discovery work in llamafile.go/backend_startup.go that predates
@@ -37,21 +70,18 @@ this whole thread; not caused by anything above).
 
 WHAT'S OPEN
 -----------
-Directions B, D, E, F from harness-engineering-exploration.md — none started.
-
-  B — Lint the feedforward side (content-aware guide selection +
-      generalizing systemPromptExceedsContext to gate dynamic RAG/file-
-      injection content before it's assembled, not just warn after).
-
-  D — Consolidate /plan + /read-chunks + @mention into one subagent-
-      dispatch primitive (two of the three already work in production).
+Directions E, F from harness-engineering-exploration.md — neither started.
 
   E — Use cmd/assay to empirically test whether an always-on guide still
       earns its tokens once a sensor exists for the same failure mode
       (a --guide-compare flag, analogous to the existing --rag-compare).
+      Needs live Ollama/llamafile sessions to produce a comparison result,
+      not just unit tests — different in kind from A/B/D's work so far.
 
   F — Harness-template skills that scaffold sensor config alongside guide
-      markdown, not just guide markdown alone.
+      markdown, not just guide markdown alone. Sequenced last in the
+      exploration doc itself — downstream of A having more sensors to
+      template, not low-value.
 
 commands.go (3877 lines, 71 functions) remains explicitly out of scope for
 all of this — real debt, doesn't block any harness-engineering direction,
@@ -59,31 +89,32 @@ tracked separately if it's ever addressed.
 
 SUGGESTED STARTING POINT (a suggestion, not a decision already made)
 ---------------------------------------------------------------------
-Direction B. Reasoning: it's the most already-scoped of the four — the
-underlying budget-tracking design largely already exists in
-harvey/small-model-budget-design.md (its Directions 1/2, BudgetTracker),
-which harness-prerequisite-refactor-design.md's Item 4 explicitly deferred
-to rather than re-designing. B is mostly "make a decision on an
-already-drafted design and implement it," not fresh architecture — lower
-risk than D (a real multi-feature consolidation) and doesn't require live
-model runs to get useful signal, unlike E (which needs actual Ollama/
-llamafile sessions to produce a comparison result, not just unit tests).
-F is arguably premature until Direction A has more than two sensors to
-template.
+Direction E is the only one left with a concrete design to scope — F is
+still arguably premature (only two sensors exist from Direction A to
+template; the exploration doc itself sequences F last for this reason).
+E's own open question ("what's the smallest assay change that lets a
+--guide-compare run happen without a large corpus-format rework") hasn't
+been scoped yet — that's the first thing a design doc for E would need to
+answer, and it requires deciding which HARVEY.md/skill guide is the best
+first candidate to test for removal, which in turn needs a sensor
+counterpart from Direction A to already exist for the same failure mode
+(one does now: go vet / gofmt Check()).
 
 If a different priority has come up since this was written, ignore this
-section — it reflects reasoning as of 2026-07-12, not a standing plan.
+section — it reflects reasoning as of 2026-07-13, not a standing plan.
 
 HOW TO PICK THIS UP
 -------------------
 Whichever direction is chosen needs its own design -> decisions -> planning
-cycle before implementation, same as every item in this session: a
-<topic>-design.md, explicit decisions confirmed before coding (not assumed),
-a <topic>-plan.md, then TDD-first implementation with each decision logged
-in DECISIONS.md. Don't skip the plan artifact even for small-seeming work —
-that was a real mistake caught mid-session this time.
+cycle before implementation, same as every item in this thread so far: a
+<topic>-design.md auditing what's actually in the code first (not assumed),
+explicit decisions confirmed before coding, a <topic>-plan.md, then
+TDD-first implementation with each decision logged in DECISIONS.md. Every
+increment in this thread so far has turned up at least one real, previously
+unknown finding during the audit step (a latent bug, a stale premise, a
+design-vs-implementation gap) — the audit is not a formality.
 
 Cross-referenced findings from this whole thread are also recorded in
 agents/knowledge.db (project_id=1, name='harvey') as a chronological set of
-'decision' observations dated 2026-07-12 — useful for a quick narrative
-recap without re-reading every design doc in full.
+'decision' observations dated 2026-07-12 and 2026-07-13 — useful for a quick
+narrative recap without re-reading every design doc in full.

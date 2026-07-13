@@ -134,14 +134,22 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 		return nil
 	}
 
-	// Switch model if the step has a [model: NAME] annotation.
-	defaultModel := activeModelLabel(a) // label to restore after the step
+	// Resolve model if the step has a [model: NAME] annotation. client stays
+	// a.Client (and restore stays nil) when there is no annotation, or when
+	// resolution fails — the step then just runs against whatever is
+	// currently active.
+	client := a.Client
+	var restore func()
 	if step.Model != "" {
-		fmt.Fprintf(out, "  Switching to %s for this step...\n", step.Model)
-		if switched, err := attemptModelSwitch(a, step.Model, out); err != nil {
+		target, ok, err := resolveDispatchTarget(a, step.Model, out)
+		if err != nil {
 			fmt.Fprintf(out, yellow("  ⚠ Model switch failed: ")+"%v — using current model.\n", err)
-		} else if !switched {
+		} else if !ok {
 			fmt.Fprintf(out, yellow("  ⚠ Model %q not found — using current model.\n"), step.Model)
+		} else {
+			fmt.Fprintf(out, "  Switching to %s for this step...\n", step.Model)
+			client = target.Client
+			restore = target.Restore
 		}
 	}
 
@@ -166,30 +174,26 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 	defer cancel()
 
 	var buf strings.Builder
-	toolErrors := false
-	if a.Tools != nil && a.Config.ToolsEnabled {
-		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
-		ex.DebugLog = a.DebugLog
-		updatedHistory, _, err := ex.RunToolLoop(ctx, freshHistory, &buf)
-		if err != nil {
-			return fmt.Errorf("step execution failed: %w", err)
+	updatedHistory, _, err := runBoundedTurn(ctx, client, a.Tools, a.Config, a.Config.ToolsEnabled, freshHistory, a.DebugLog, &buf)
+	if err != nil {
+		if restore != nil {
+			restore()
 		}
-		toolErrors = planStepHadErrors(updatedHistory)
-	} else {
-		if _, err := a.Client.Chat(ctx, freshHistory, &buf); err != nil {
-			return fmt.Errorf("step execution failed: %w", err)
-		}
+		return fmt.Errorf("step execution failed: %w", err)
 	}
+	toolErrors := planStepHadErrors(updatedHistory)
 
 	if txt := strings.TrimSpace(buf.String()); txt != "" {
 		fmt.Fprintln(out, txt)
 	}
 
-	// Restore the default model if the step used a different one.
-	if step.Model != "" && activeModelLabel(a) != defaultModel {
-		if _, err := attemptModelSwitch(a, a.Config.Llamafile.Active, out); err != nil {
-			fmt.Fprintf(out, yellow("  ⚠ Could not restore model: ")+"%v\n", err)
-		}
+	// Restore the pre-step model, if the step switched to a different one.
+	// resolveDispatchTarget captured whatever state is needed to do this
+	// correctly (see subagent-dispatch-design.md's Bug 2) — unlike the prior
+	// restore attempt, this does not re-read a field the switch itself may
+	// already have overwritten.
+	if restore != nil {
+		restore()
 	}
 
 	if toolErrors {
