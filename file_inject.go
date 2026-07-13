@@ -114,12 +114,25 @@ func injectFileContext(ws *Workspace, prompt string) string {
 // but fit within the context budget are also injected directly. Files that
 // exceed both the cap and the budget are skipped with a short hint when
 // chunking is disabled or the context limit is unknown.
-func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer) string {
+//
+// tracker, when non-nil, is a shared per-turn BudgetTracker (see
+// budget_tracker.go) — the same instance ragAugment already consumed from
+// this turn. Both direct-inject branches (≤ maxInjectFileBytes, and
+// oversized-but-fits-remainingContext) reserve from it before appending;
+// a file that doesn't fit is skipped with a human-visible dim note (matching
+// the existing "too large"/"context full" skip style) and named in a
+// model-visible omission note appended after the loop. The interactive
+// chunked-analysis branch is unaffected — it already does its own
+// remainingContext(a) check and is interactive/self-limiting. A nil tracker
+// means "unconstrained" — every file that fits its own existing checks is
+// injected, matching pre-Direction-B behavior.
+func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer, tracker *BudgetTracker) string {
 	if a.Workspace == nil {
 		return prompt
 	}
 	var header strings.Builder
 	seen := map[string]bool{}
+	var budgetSkipped []string
 
 	for _, tok := range strings.Fields(prompt) {
 		tok = strings.Trim(tok, ".,;:!?\"'`()")
@@ -152,6 +165,11 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer)
 			// Within the conservative per-file cap — inject directly.
 			content, err := os.ReadFile(absPath)
 			if err != nil {
+				continue
+			}
+			if tracker != nil && !tracker.Reserve(estimateTokens(string(content))) {
+				fmt.Fprint(out, dim("  (skipping "+tok+" — context budget)\n"))
+				budgetSkipped = append(budgetSkipped, tok)
 				continue
 			}
 			fmt.Fprintf(&header, "### File: %s\n\n%s\n\n---\n\n", tok, string(content))
@@ -187,7 +205,13 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer)
 			if err != nil {
 				continue
 			}
-			fmt.Fprintf(&header, "### File: %s\n\n%s\n\n---\n\n", tok, capOutput(string(content), a.Config.MaxOutputBytes))
+			capped := capOutput(string(content), a.Config.MaxOutputBytes)
+			if tracker != nil && !tracker.Reserve(estimateTokens(capped)) {
+				fmt.Fprint(out, dim("  (skipping "+tok+" — context budget)\n"))
+				budgetSkipped = append(budgetSkipped, tok)
+				continue
+			}
+			fmt.Fprintf(&header, "### File: %s\n\n%s\n\n---\n\n", tok, capped)
 			continue
 		}
 
@@ -226,6 +250,11 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer)
 			continue
 		}
 		fmt.Fprintf(&header, "### Analysis of %s\n\n%s\n\n---\n\n", tok, synthesis)
+	}
+
+	if len(budgetSkipped) > 0 {
+		fmt.Fprintf(&header, "[Note: %d file(s) exceeded context budget and were not injected: %s]\n\n",
+			len(budgetSkipped), strings.Join(budgetSkipped, ", "))
 	}
 
 	if header.Len() == 0 {

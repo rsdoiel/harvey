@@ -1096,14 +1096,24 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	}
 
 	// RAG context injection — prepend relevant chunks before sending.
-	augmented, ragInfo := a.ragAugment(input)
+	turnBudget := remainingContext(a)
+	// remainingContext returns 0 both when the limit is genuinely exhausted
+	// and when it's simply unknown (effectiveContextLimit() <= 0) — the same
+	// ambiguity injectOrChunk's oversized-file branch already resolves below.
+	// Only fall back to a conservative default in the "unknown" case; a
+	// genuinely full context must still yield a zero budget.
+	if turnBudget <= 0 && a.effectiveContextLimit() <= 0 {
+		turnBudget = 4096 // context limit unknown — conservative default
+	}
+	tracker := NewBudgetTracker(turnBudget)
+	augmented, ragInfo := a.ragAugment(input, tracker)
 	a.LastRAGInfo = ragInfo
 
 	// File-reference injection — for models that don't reliably call read_file,
 	// resolve any mentioned file paths and prepend their content directly.
 	// injectOrChunk extends injectFileContext with chunked analysis for large files.
 	if !a.toolsReliable() {
-		augmented = a.injectOrChunk(ctx, augmented, out)
+		augmented = a.injectOrChunk(ctx, augmented, out, tracker)
 	}
 
 	augmented += stmWarnNudge(a)

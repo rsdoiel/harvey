@@ -164,6 +164,33 @@ func TestPipeExtFormatter_Check_NoChange(t *testing.T) {
 	}
 }
 
+// TestPipeExtFormatter_Check_ReportsCauseNeutralMessage verifies that a
+// "differs" finding names both real causes (auto-format disabled, or a
+// syntax error) rather than asserting one as if it were the only cause —
+// Check() itself cannot tell them apart, since it only ever compares raw
+// content against the formatter's canonical output (see
+// feedforward-budget-design.md's 2026-07-13 correction).
+func TestPipeExtFormatter_Check_ReportsCauseNeutralMessage(t *testing.T) {
+	f := newPipeExtFormatter("text", "tr", "a-z", "A-Z")
+	ok, issues := f.Check("hello\n", "test.txt")
+	if ok {
+		t.Fatal("expected Check to report a difference (tr uppercases input)")
+	}
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 FormatIssue, got %d", len(issues))
+	}
+	msg := issues[0].Message
+	if !strings.Contains(msg, "not in canonical format") {
+		t.Errorf("expected message to name the finding, got %q", msg)
+	}
+	if !strings.Contains(msg, "auto-format is disabled") {
+		t.Errorf("expected message to cover the auto-format-disabled cause, got %q", msg)
+	}
+	if !strings.Contains(msg, "syntax error") {
+		t.Errorf("expected message to cover the syntax-error cause, got %q", msg)
+	}
+}
+
 // ─── FileExternalFormatter tests ─────────────────────────────────────────────
 
 func TestFileExtFormatter_Language(t *testing.T) {

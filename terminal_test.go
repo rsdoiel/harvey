@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -702,7 +703,7 @@ func TestRAGAugment_RagOff(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
 	a.RagOn = false
-	out, info := a.ragAugment("hello")
+	out, info := a.ragAugment("hello", nil)
 	if out != "hello" || info != nil {
 		t.Errorf("expected (prompt, nil) when RagOn=false, got (%q, %v)", out, info)
 	}
@@ -713,7 +714,7 @@ func TestRAGAugment_NilStore(t *testing.T) {
 	a := NewAgent(DefaultConfig(), ws)
 	a.RagOn = true
 	a.Rag = nil
-	out, info := a.ragAugment("hello")
+	out, info := a.ragAugment("hello", nil)
 	if out != "hello" || info != nil {
 		t.Errorf("expected (prompt, nil) when Rag=nil, got (%q, %v)", out, info)
 	}
@@ -749,7 +750,7 @@ func TestRAGAugment_ReturnsInfo(t *testing.T) {
 	a.RagOn = true
 	a.Rag = store
 
-	augmented, info := a.ragAugment("package main")
+	augmented, info := a.ragAugment("package main", nil)
 	if info == nil {
 		t.Fatal("expected non-nil RAGAugmentInfo when chunks found")
 	}
@@ -808,11 +809,142 @@ func TestRAGAugment_SkipPerPrompt(t *testing.T) {
 	a.RagOn = true
 	a.Rag = store
 
-	out, info := a.ragAugment("package main")
+	out, info := a.ragAugment("package main", nil)
 	if out != "package main" {
 		t.Errorf("SkipPerPrompt: expected prompt unchanged; got %q", out)
 	}
 	if info != nil {
 		t.Errorf("SkipPerPrompt: expected nil info; got %v", info)
+	}
+}
+
+func TestRAGAugment_BudgetTracker_TrimsLowerScoredChunks(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	store, err := NewRagStore(dbPath, "stub")
+	if err != nil {
+		t.Fatalf("NewRagStore: %v", err)
+	}
+	defer store.db.Close()
+
+	// content1 scores 1.0 against the query vector [1,0]; content2 scores 0.8
+	// (still above ragMinScore=0.3, so both are "relevant") — but lower-ranked.
+	// Each is ~50 tokens (200 chars / 4) so a tracker with Total=60 fits only
+	// the first.
+	content1 := strings.Repeat("a", 200)
+	content2 := strings.Repeat("b", 200)
+	ingestEmbedder := &precomputedEmbedder{
+		name: "stub",
+		vectors: map[string][]float64{
+			content1: {1.0, 0.0},
+			content2: {0.8, 0.6},
+		},
+	}
+	if err := store.Ingest("src.go", []string{content1, content2}, ingestEmbedder); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	// Query embedding is fixed at [1,0], matching content1 exactly.
+	srv := fakeOllamaEmbedServer(t, []float64{1.0, 0.0})
+	defer srv.Close()
+
+	cfg := DefaultConfig()
+	cfg.Ollama.URL = srv.URL
+	cfg.Memory.RagStores = []RagStoreEntry{
+		{Name: "test", DBPath: dbPath, EmbeddingModel: "stub"},
+	}
+	cfg.Memory.RagActive = "test"
+
+	ws, _ := NewWorkspace(dir)
+	a := NewAgent(cfg, ws)
+	a.RagOn = true
+	a.Rag = store
+
+	tracker := NewBudgetTracker(60)
+	augmented, info := a.ragAugment("query", tracker)
+	if info == nil {
+		t.Fatal("expected non-nil RAGAugmentInfo")
+	}
+	if info.Chunks != 1 {
+		t.Errorf("info.Chunks = %d, want 1 (only the highest-scored chunk fits)", info.Chunks)
+	}
+	if !strings.Contains(augmented, content1) {
+		t.Error("expected augmented prompt to contain the highest-scored chunk (content1)")
+	}
+	if strings.Contains(augmented, content2) {
+		t.Error("expected augmented prompt to omit the lower-scored chunk (content2)")
+	}
+	if !strings.Contains(augmented, "omitted") {
+		t.Errorf("expected an omission note in the augmented prompt, got: %s", augmented)
+	}
+	if !strings.Contains(augmented, "query") {
+		t.Error("expected augmented prompt to still end with the original prompt text")
+	}
+}
+
+// TestBudgetTracker_SharedAcrossRAGAndFileInjection proves the BudgetTracker
+// is a genuinely shared per-turn pool, not two independent budgets: RAG
+// consuming most of it must measurably reduce what injectOrChunk can still
+// fit afterward in the same turn.
+func TestBudgetTracker_SharedAcrossRAGAndFileInjection(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	store, err := NewRagStore(dbPath, "stub")
+	if err != nil {
+		t.Fatalf("NewRagStore: %v", err)
+	}
+	defer store.db.Close()
+
+	// ~200 tokens (800 chars / 4).
+	ragContent := strings.Repeat("r", 800)
+	ingestEmbedder := &precomputedEmbedder{
+		name:    "stub",
+		vectors: map[string][]float64{ragContent: {1.0, 0.0}},
+	}
+	if err := store.Ingest("src.go", []string{ragContent}, ingestEmbedder); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	srv := fakeOllamaEmbedServer(t, []float64{1.0, 0.0})
+	defer srv.Close()
+
+	cfg := DefaultConfig()
+	cfg.Ollama.URL = srv.URL
+	cfg.Ollama.ContextLength = 8192
+	cfg.Chunking = DefaultChunkConfig()
+	cfg.Memory.RagStores = []RagStoreEntry{
+		{Name: "test", DBPath: dbPath, EmbeddingModel: "stub"},
+	}
+	cfg.Memory.RagActive = "test"
+
+	ws, _ := NewWorkspace(dir)
+	a := NewAgent(cfg, ws)
+	a.RagOn = true
+	a.Rag = store
+	a.Client = &mockLLMClient{reply: "ok"}
+
+	// ~40 tokens (160 chars / 4) — comfortably fits a fresh 8192-token budget,
+	// but not the ~20 tokens left over after RAG consumes ~200 from a
+	// deliberately tight shared tracker.
+	fileContent := strings.Repeat("f", 160)
+	if err := os.WriteFile(filepath.Join(dir, "small.md"), []byte(fileContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tracker := NewBudgetTracker(220)
+	var out strings.Builder
+	augmented, _ := a.ragAugment("review small.md", tracker)
+	if !strings.Contains(augmented, ragContent) {
+		t.Fatalf("expected RAG content in augmented prompt: %s", augmented)
+	}
+
+	final := a.injectOrChunk(context.Background(), augmented, &out, tracker)
+	if strings.Contains(final, "### File: small.md") {
+		t.Error("expected small.md to be skipped — RAG already consumed most of the shared budget")
+	}
+	if !strings.Contains(final, "small.md") {
+		t.Errorf("expected an omission note naming small.md; got:\n%s", final)
 	}
 }

@@ -149,7 +149,9 @@ func (f *PipeExternalFormatter) Check(content string, filePath string) (bool, []
 	if formatted == content {
 		return true, nil
 	}
-	return false, []FormatIssue{{Line: 1, Column: 0, Message: "content differs from formatted output", Severity: "info"}}
+	return false, []FormatIssue{{Line: 1, Column: 0, Message: "gofmt: content is not in canonical format — " +
+		"if auto-format is disabled, run gofmt or write already-formatted content; " +
+		"if it was enabled, a syntax error may have prevented it (check the file compiles)", Severity: "info"}}
 }
 
 // ─── FileExternalFormatter ────────────────────────────────────────────────────

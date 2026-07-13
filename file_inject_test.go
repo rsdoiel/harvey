@@ -528,7 +528,7 @@ func TestInjectOrChunk_SmallFile(t *testing.T) {
 	}
 
 	var out strings.Builder
-	got := a.injectOrChunk(context.Background(), "review small.md", &out)
+	got := a.injectOrChunk(context.Background(), "review small.md", &out, nil)
 
 	if !strings.Contains(got, "### File: small.md") {
 		t.Errorf("expected file header for small file; got:\n%s", got)
@@ -553,7 +553,7 @@ func TestInjectOrChunk_LargeFileChunkingDisabled(t *testing.T) {
 	}
 
 	var out strings.Builder
-	got := a.injectOrChunk(context.Background(), "review big.md", &out)
+	got := a.injectOrChunk(context.Background(), "review big.md", &out, nil)
 
 	if strings.Contains(got, "### File: big.md") {
 		t.Errorf("large file should not be injected when chunking is disabled")
@@ -583,7 +583,7 @@ func TestInjectOrChunk_LargeFileUserCancels(t *testing.T) {
 	}
 
 	var out strings.Builder
-	got := a.injectOrChunk(context.Background(), "review large.md", &out)
+	got := a.injectOrChunk(context.Background(), "review large.md", &out, nil)
 
 	if strings.Contains(got, "### File:") || strings.Contains(got, "### Analysis of") {
 		t.Errorf("cancelled chunking should leave prompt unmodified; got:\n%s", got)
@@ -609,7 +609,7 @@ func TestInjectOrChunk_LargeFileRunsChunking(t *testing.T) {
 	}
 
 	var out strings.Builder
-	got := a.injectOrChunk(context.Background(), "review doc.md", &out)
+	got := a.injectOrChunk(context.Background(), "review doc.md", &out, nil)
 
 	if !strings.Contains(got, "### Analysis of doc.md") {
 		t.Errorf("expected analysis header in prompt; got:\n%s", got)
@@ -638,7 +638,7 @@ func TestInjectOrChunk_LargeFileFitsInBudget(t *testing.T) {
 	}
 
 	var out strings.Builder
-	got := a.injectOrChunk(context.Background(), "review medium.md", &out)
+	got := a.injectOrChunk(context.Background(), "review medium.md", &out, nil)
 
 	if !strings.Contains(got, "### File: medium.md") {
 		t.Errorf("file within budget should be injected directly; got:\n%s", got)
@@ -646,6 +646,45 @@ func TestInjectOrChunk_LargeFileFitsInBudget(t *testing.T) {
 	// No prompt should have been shown.
 	if strings.Contains(out.String(), "Context overflow") {
 		t.Errorf("should not show context-overflow prompt when file fits in budget; out:\n%s", out.String())
+	}
+}
+
+// TestInjectOrChunk_BudgetTracker_SkipsFileThatDoesNotFit verifies that when
+// two small files are mentioned in one prompt and a shared BudgetTracker only
+// has room for the first, the first is injected, the second is skipped with a
+// human-visible dim note, and a model-visible omission note names it.
+func TestInjectOrChunk_BudgetTracker_SkipsFileThatDoesNotFit(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.Ollama.ContextLength = 8192
+	a.Config.Chunking = DefaultChunkConfig()
+	a.Client = &mockLLMClient{reply: "ok"}
+
+	// ~40 tokens (160 chars / 4) each.
+	contentA := strings.Repeat("a", 160)
+	contentB := strings.Repeat("b", 160)
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "a.md"), []byte(contentA), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(a.Workspace.Root, "b.md"), []byte(contentB), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Room for exactly one of the two ~40-token files.
+	tracker := NewBudgetTracker(50)
+	var out strings.Builder
+	got := a.injectOrChunk(context.Background(), "review a.md and b.md", &out, tracker)
+
+	if !strings.Contains(got, "### File: a.md") {
+		t.Errorf("expected a.md (first-seen) to be injected; got:\n%s", got)
+	}
+	if strings.Contains(got, "### File: b.md") {
+		t.Errorf("expected b.md to be skipped once the shared budget is exhausted; got:\n%s", got)
+	}
+	if !strings.Contains(got, "b.md") {
+		t.Errorf("expected an omission note naming b.md; got:\n%s", got)
+	}
+	if !strings.Contains(out.String(), "skipping b.md") {
+		t.Errorf("expected a human-visible dim skip note for b.md; out:\n%s", out.String())
 	}
 }
 

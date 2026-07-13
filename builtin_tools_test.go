@@ -296,7 +296,7 @@ func TestWriteFile_FormatCheckSensor_reportsWhenAutoFormatOff(t *testing.T) {
 	if status.events[0].Class != Computational {
 		t.Errorf("expected Computational class, got %v", status.events[0].Class)
 	}
-	if strings.Contains(got, "differs from formatted") {
+	if strings.Contains(got, "not in canonical format") {
 		t.Errorf("expected no format-check finding in tool result by default, got %q", got)
 	}
 }
@@ -318,7 +318,7 @@ func TestWriteFile_FormatCheckSensor_injectsWhenConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write_file: %v", err)
 	}
-	if !strings.Contains(got, "differs from formatted") {
+	if !strings.Contains(got, "not in canonical format") {
 		t.Errorf("expected format-check finding appended to tool result, got %q", got)
 	}
 }

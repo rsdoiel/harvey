@@ -602,7 +602,15 @@ const ragMinScore = 0.3
 // Returns the original prompt unchanged when RAG is off, unconfigured, or
 // when no chunks are retrieved. Errors are silently swallowed so a RAG
 // failure never blocks the chat turn.
-func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
+//
+// tracker, when non-nil, is a shared per-turn BudgetTracker (see
+// budget_tracker.go). Chunks are kept in score-descending order until one
+// doesn't fit the tracker's remaining budget; that chunk and all lower-scored
+// ones after it are omitted, and a model-visible note naming how many were
+// omitted is appended to the context block. A nil tracker means
+// "unconstrained" — every relevant chunk is included, matching pre-Direction-B
+// behavior.
+func (a *Agent) ragAugment(prompt string, tracker *BudgetTracker) (string, *RAGAugmentInfo) {
 	if !a.RagOn || a.Rag == nil {
 		return prompt, nil
 	}
@@ -643,14 +651,33 @@ func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
 	topScore := relevant[0].Score
 	a.DebugLog.LogRAGInject(entry.Name, prompt, len(relevant), topScore)
 
+	// Keep chunks in score-descending order until one doesn't fit the shared
+	// per-turn budget; that chunk and all lower-scored ones after it are
+	// omitted. A nil tracker means unconstrained — every relevant chunk is
+	// included (pre-Direction-B behavior).
+	included := relevant
+	omitted := 0
+	if tracker != nil {
+		for i, c := range relevant {
+			if !tracker.Reserve(estimateTokens(c.Content)) {
+				included = relevant[:i]
+				omitted = len(relevant) - i
+				break
+			}
+		}
+	}
+
 	var sb strings.Builder
 	sb.WriteString("### Context (from knowledge base)\n\n")
-	for i, c := range relevant {
+	for i, c := range included {
 		if c.Source != "" {
 			fmt.Fprintf(&sb, "[%d] (source: %s)\n%s\n\n", i+1, c.Source, c.Content)
 		} else {
 			fmt.Fprintf(&sb, "[%d] %s\n\n", i+1, c.Content)
 		}
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&sb, "[Note: %d lower-relevance chunk(s) omitted — context budget]\n\n", omitted)
 	}
 	sb.WriteString("---\n\n")
 	sb.WriteString(prompt)
@@ -658,7 +685,7 @@ func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
 	// Deduplicate sources by file path, preserving retrieval rank order.
 	seen := map[string]bool{}
 	var sources []RAGChunkRef
-	for _, c := range relevant {
+	for _, c := range included {
 		key := c.Source
 		if key == "" {
 			key = c.Content
@@ -676,7 +703,7 @@ func (a *Agent) ragAugment(prompt string) (string, *RAGAugmentInfo) {
 	}
 	return sb.String(), &RAGAugmentInfo{
 		StoreName: entry.Name,
-		Chunks:    len(relevant),
+		Chunks:    len(included),
 		TopScore:  topScore,
 		Sources:   sources,
 	}
