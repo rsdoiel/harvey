@@ -83,6 +83,29 @@ WHAT'S DONE
      deliberately deferred, confirmed with the user, rather than
      manufacturing a guide or sensor purely to have a subject.
 
+6. Direction F (harness-template skills) — audited, resolved as
+   blocked-not-pursued, no code changes:
+   - Decision logged in harvey/DECISIONS.md (one 2026-07-13 entry)
+   - Auditing commands_skill.go's skillLoad (the /skill load
+     implementation) before designing found it does exactly one thing —
+     injects the skill's markdown body into context. No hook exists for a
+     skill to provision anything else into the workspace.
+   - More fundamentally: no sensor in Harvey today is config-driven at
+     all. gofmt Check() and go vet (Direction A's only two shipped
+     sensors) are both hardcoded; Config's only sensor-related field
+     (SensorInjectFormatFindings) is a visibility bool, not a ruleset.
+     "Scaffold sensor config alongside guide markdown" has no artifact to
+     scaffold, independent of how many sensors exist — a more fundamental
+     gap than "not enough sensors yet."
+   - Confirmed with the user: stop here, document, build nothing. Revisit
+     only if/when a config-driven sensor exists in Harvey for independent
+     reasons — at that point F would have a first real artifact and
+     Direction E's "mechanism only" pattern likely applies.
+
+**This closes out the harness-engineering-exploration.md thread.**
+Directions A-F are now each either implemented (A, B, D, E) or explicitly
+resolved as blocked-not-pursued with the reason documented (F).
+
 Full test suite is green except one pre-existing, unrelated failure
 (TestCmdModelList_ShowsLlamafileEntries — tied to already-uncommitted
 llamafile-discovery work in llamafile.go/backend_startup.go that predates
@@ -90,18 +113,16 @@ this whole thread; not caused by anything above).
 
 WHAT'S OPEN
 -----------
-Direction F from harness-engineering-exploration.md — not started.
+Nothing from harness-engineering-exploration.md's Directions A-F remains
+actionable without a new prerequisite existing first:
 
-  F — Harness-template skills that scaffold sensor config alongside guide
-      markdown, not just guide markdown alone. Sequenced last in the
-      exploration doc itself — downstream of A having more sensors to
-      template, not low-value.
-
-Also open, not itself a numbered direction: a real first Direction E
-experiment needs either a new guide-vs-sensor pair or one to emerge
-naturally from other work. The most plausible candidate noted (not built):
-HARVEY.md's "Documentation conventions" section (doc-comment presence)
-paired with a new doc-comment-presence sensor — neither exists yet.
+- A real first Direction E experiment needs either a new guide-vs-sensor
+  pair or one to emerge naturally from other work. The most plausible
+  candidate noted (not built): HARVEY.md's "Documentation conventions"
+  section (doc-comment presence) paired with a new doc-comment-presence
+  sensor — neither exists yet.
+- Direction F needs a config-driven sensor to exist first (see above) —
+  not itself scheduled anywhere.
 
 commands.go (3877 lines, 71 functions) remains explicitly out of scope for
 all of this — real debt, doesn't block any harness-engineering direction,
@@ -109,11 +130,12 @@ tracked separately if it's ever addressed.
 
 SUGGESTED STARTING POINT (a suggestion, not a decision already made)
 ---------------------------------------------------------------------
-Direction F is what's left, but it's arguably still premature — only two
-sensors exist from Direction A to template, and the exploration doc itself
-sequences F last for this reason. Before starting F, worth checking whether
-anything has changed that gives it a better foothold (e.g. a third sensor
-having been added some other way).
+This thread has no more directly-actionable work from
+harness-engineering-exploration.md without first creating a prerequisite
+(a real guide/sensor pair for E, a config-driven sensor for F) that doesn't
+exist yet for its own sake. If picking this up again, the natural entry
+point is deciding whether either prerequisite is worth building
+deliberately, or waiting for one to arise from unrelated work first.
 
 If a different priority has come up since this was written, ignore this
 section — it reflects reasoning as of 2026-07-13, not a standing plan.
