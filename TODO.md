@@ -93,18 +93,23 @@
   `ContextLength`. See DECISIONS.md 2026-07-13 entry. Test:
   `TestStartAndUseLlamafile_AdoptedDifferentName_RegistersEntry`.
 
-- [ ] `/read-chunks` doesn't fail fast when the llamafile backend is
+- [x] `/read-chunks` doesn't fail fast when the llamafile backend is
   unreachable (e.g. the server died after cancelling a prior prompt). Found
   2026-07-06 via `agents/logs/harvey-20260706-172458.jsonl`: every chunk in
   the map phase fired its own "connection refused" to `localhost:8080` and
   was recorded as a per-chunk failure (by design — a chunk failure doesn't
   abort the map phase), then the run only actually errored out at the
   synthesis call. On a multi-chunk document this burns through the whole
-  file before surfacing what is really a single root-cause problem. Add a
-  cheap preflight reachability probe (e.g. `ProbeLlamafile`/equivalent for
-  the active backend) at the top of `cmdReadChunks`/`RunChunkedAnalysis` so
-  an unreachable backend fails immediately with one clear message instead of
-  N per-chunk ones.
+  file before surfacing what is really a single root-cause problem. Fixed
+  2026-07-13: a new `probeClientReachable` helper (`chunk_analyzer.go`)
+  dispatches on the client's `ProviderName()` (ollama/llamafile/llamacpp use
+  their existing local health probes; cloud providers and test doubles are
+  skipped, `checked=false`) and is called once at the top of
+  `RunChunkedAnalysis` — fixing all three chunk-analysis call sites
+  (`cmdReadChunks`, `injectOrChunk`, `read_file`'s guard) through their
+  existing error-handling paths, no per-call-site change needed. See
+  DECISIONS.md 2026-07-13 entry. Test:
+  `TestRunChunkedAnalysis_FailsFastWhenBackendUnreachable`.
 
 - [x] Debug log records each chunk's LLM call twice during `/read-chunks` — fixed 2026-07-13.
   Root cause confirmed as described: `RunChunkedAnalysis` (`chunk_analyzer.go`) logged every chunk/synthesis call

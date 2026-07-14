@@ -80,6 +80,13 @@ const chunkSystemPrompt = "You are a focused document analysis assistant. " +
 func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, params ChunkAnalysisParams, w io.Writer) (string, error) {
 	n := len(params.Chunks)
 
+	// Preflight reachability check — fail immediately with one clear message
+	// instead of letting every chunk in the map phase fire its own connection
+	// error before the run finally errors out at synthesis (TODO.md).
+	if reachable, checked := probeClientReachable(client); checked && !reachable {
+		return "", fmt.Errorf("chunked analysis: %s is unreachable — check the server is running before retrying", client.Name())
+	}
+
 	if rec != nil {
 		_ = rec.RecordChunkAnalysisStart(params.Filename, n, params.Model, params.DocType, params.Config)
 	}
@@ -152,4 +159,40 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+/** probeClientReachable reports whether client's backend is currently
+ * reachable, for backends with a known local health-check endpoint (ollama,
+ * llamafile, llamacpp). checked is false for backends with no local
+ * reachability probe (cloud providers, or any client that isn't an
+ * *AnyLLMClient, e.g. a test double) — callers should treat checked=false as
+ * "nothing to verify, proceed as usual," not as a failure.
+ *
+ * Parameters:
+ *   client (LLMClient) — the client whose backend to probe.
+ *
+ * Returns:
+ *   reachable (bool) — true when the backend responded to its health probe.
+ *   checked   (bool) — true when a probe was actually attempted.
+ *
+ * Example:
+ *   if reachable, checked := probeClientReachable(client); checked && !reachable {
+ *       return "", fmt.Errorf("backend unreachable")
+ *   }
+ */
+func probeClientReachable(client LLMClient) (reachable, checked bool) {
+	ac, ok := client.(*AnyLLMClient)
+	if !ok {
+		return false, false
+	}
+	switch ac.ProviderName() {
+	case "ollama":
+		return ProbeOllama(ac.BackendURL()), true
+	case "llamafile":
+		return ProbeLlamafile(LlamafileHealthURL(ac.BackendURL())), true
+	case "llamacpp":
+		return probeLlamaCpp(LlamafileHealthURL(ac.BackendURL())), true
+	default:
+		return false, false
+	}
 }

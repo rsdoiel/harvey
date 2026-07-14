@@ -68,6 +68,28 @@ func defaultParams(chunks []DocumentChunk) ChunkAnalysisParams {
 
 // ─── RunChunkedAnalysis tests ─────────────────────────────────────────────────
 
+// TestRunChunkedAnalysis_FailsFastWhenBackendUnreachable is the regression
+// test for TODO.md: previously, an unreachable backend meant every chunk in
+// the map phase fired its own "connection refused" (recorded as a per-chunk
+// failure, by design — a chunk failure doesn't abort the map phase) before
+// the run finally errored out at the synthesis call. On a multi-chunk
+// document this burned through the whole file before surfacing what is
+// really a single root-cause problem. A preflight reachability check must
+// now fail immediately, before any chunk is processed at all.
+func TestRunChunkedAnalysis_FailsFastWhenBackendUnreachable(t *testing.T) {
+	client := newLlamafileLLMClient("http://127.0.0.1:1/v1", "test-model", 0)
+	params := defaultParams(strChunks("chunk one content", "chunk two content"))
+
+	var progress strings.Builder
+	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, &progress)
+	if err == nil {
+		t.Fatal("expected an error when the backend is unreachable")
+	}
+	if strings.Contains(progress.String(), "Processing chunk") {
+		t.Errorf("expected the preflight check to fail before any chunk processing, got progress:\n%s", progress.String())
+	}
+}
+
 func TestRunChunkedAnalysis_TwoChunks(t *testing.T) {
 	client := &seqMockClient{
 		replies: []string{"result1", "result2", "final"},
