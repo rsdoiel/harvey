@@ -1,0 +1,157 @@
+
+# Sensor development for Harvey
+
+I think the following tools would be helpful for general text revision and editing
+
+- hunspell
+- [Harper](https://github.com/Automattic/harper/) or [LanguageTool](https://github.com/languagetool-org/languagetool) for grammar analysis
+
+I have open question about picking up keyboard of concept works from a text using computational rather than language model approaches.
+
+
+## Some tools to review
+
+# Non-LLM Text Analysis Tools for Harness Sensors
+
+Rule-based, statistical, and graph-based tools only — no embedding models or
+LLMs required. Everything here runs on CPU with no GPU dependency, which
+makes it a good fit as lightweight "sensors" alongside a small local
+language model.
+
+---
+
+## Spelling / Grammar
+
+### Hunspell
+Spell-checking engine (used by LibreOffice, Firefox, Chrome).
+
+```bash
+# Debian/Ubuntu
+sudo apt install hunspell hunspell-en-us libhunspell-dev
+
+# macOS
+brew install hunspell
+
+# Python bindings
+pip install spylls          # pure-Python hunspell-compatible
+# or
+pip install hunspell        # requires libhunspell-dev
+```
+
+### LanguageTool
+Rule-based grammar/style checker with some statistical n-gram checks.
+Runs as a local Java server.
+
+```bash
+# Requires Java 17+
+sudo apt install default-jre   # or: brew install openjdk
+
+# Download and run
+curl -LO https://languagetool.org/download/LanguageTool-stable.zip
+unzip LanguageTool-stable.zip
+cd LanguageTool-*/
+java -cp languagetool-server.jar org.languagetool.server.HTTPServer --port 8081
+
+# Python client
+pip install language-tool-python
+```
+
+### Harper
+Rust-based grammar checker, designed as a lightweight LanguageTool
+alternative — no JVM needed.
+
+```bash
+# Requires Rust toolchain
+curl https://sh.rustup.rs -sSf | sh
+cargo install harper-cli
+
+# Or via npm (LSP server for editor integration)
+npm install -g harper-ls
+```
+
+---
+
+## Keyword Extraction (statistical, no training corpus needed)
+
+### RAKE (Rapid Automatic Keyword Extraction)
+```bash
+pip install rake-nltk
+python -m nltk.downloader stopwords punkt
+```
+
+### YAKE (Yet Another Keyword Extractor)
+```bash
+pip install yake
+```
+
+---
+
+## Graph-Based Keyphrase Extraction
+
+### pke (Python Keyphrase Extraction)
+Bundles TextRank, SingleRank, TopicRank, PositionRank, and others under
+one API.
+
+```bash
+pip install git+https://github.com/boudinfl/pke.git
+python -m spacy download en_core_web_sm
+```
+
+---
+
+## NLP Pipeline / Entity & Noun-Phrase Extraction
+
+### spaCy
+Fast CPU-based tokenization, POS tagging, dependency parsing, and NER.
+No LLM involved — uses small statistical models.
+
+```bash
+pip install spacy
+python -m spacy download en_core_web_sm
+```
+
+### textacy
+Adds keyterm extraction (wraps several algorithms above) and readability
+statistics on top of spaCy.
+
+```bash
+pip install textacy
+```
+
+---
+
+## Topic Modeling (corpus-level themes)
+
+### gensim (LDA / NMF)
+```bash
+pip install gensim scikit-learn
+```
+
+---
+
+## Suggested Minimal Install (covers spelling, grammar, and
+keywords/concepts with least overhead)
+
+```bash
+pip install spylls language-tool-python yake rake-nltk spacy textacy
+python -m spacy download en_core_web_sm
+python -m nltk.downloader stopwords punkt
+```
+
+Add Harper via `cargo install harper-cli` if you want a faster,
+non-JVM grammar checker instead of / alongside LanguageTool.
+
+---
+
+## Notes for building the harness "skill"
+
+Each tool above can be wrapped as a simple function that:
+1. Takes the model's draft text as input.
+2. Runs the check (spelling, grammar, or keyword/concept extraction).
+3. Returns a structured result (list of issues, or list of ranked
+   keywords/phrases) that the harness can feed back to the model or
+   surface to the user.
+
+Because none of these require a GPU or a second LLM call, they're cheap
+enough to run on every generation pass without materially slowing down
+a local small-model setup.

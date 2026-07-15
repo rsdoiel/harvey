@@ -200,9 +200,15 @@ benchmark rather than a platform-wide decision either way.
 
 Add lint/format/spellcheck/codemod tools as builtin tools, not model
 capabilities. Candidates already available on this workspace's toolchain:
-`gofmt`/`go vet` (code), `hunspell` (spelling), a grammar/style checker —
-LibreOffice reportedly ships one — for the scholarly-prose use case Harvey
-also serves. These run in milliseconds on CPU and cost zero tokens — exactly
+`gofmt`/`go vet` (code), `hunspell` (spelling), Harper (`cargo install
+harper-cli` — grammar/style, no JVM) or LanguageTool (JVM server, heavier)
+for the scholarly-prose use case Harvey also serves. Verified 2026-07-15 on
+this workspace's actual Raspberry Pi OS host (Debian 13 trixie, aarch64):
+`hunspell` is already installed and working; Rust and JVM toolchains for
+Harper/LanguageTool are both present. See `computational-sensors-plan.md`'s
+"Deferred to a follow-on increment" section — `hunspell`/grammar is the
+named next candidate for this direction. These run in milliseconds on CPU
+and cost zero tokens — exactly
 what small models are worst at holding onto reliably (consistent style,
 spelling, import-boundary rules) and exactly what a deterministic tool does
 without fail. Given the Pi's token economics, this is likely the single
@@ -246,7 +252,18 @@ introducing new machinery:
    (`services -> clients + domain`) only matters for files under
    `./service/`; the same import scan that would power a
    `clients-no-services` sensor, run proactively, tells you whether to send
-   that guide at all.
+   that guide at all. Candidate tool for the same slot, non-code content:
+   statistical keyword/keyphrase extraction (RAKE, YAKE, graph-based
+   TextRank/`pke`) run over a file or RAG chunk before context assembly, to
+   decide what's actually relevant to inject — cheaper than an embedding
+   search and a plausible complement to the keyword-match fallback
+   `UnifiedMemory` already uses when no embedder is configured
+   (`agentic-memory-design.md`). Verified 2026-07-15: `yake`, `rake-nltk`,
+   `pke`, `spacy`, `textacy`, `gensim` all resolve to prebuilt aarch64 wheels
+   on this Pi (no local compile). The full `pke`/`spacy`/`textacy`/`gensim`
+   stack is dependency-heavy for one sensor (pulls in `scikit-learn`,
+   compiled BLAS); start with YAKE alone if this is picked up — see
+   `computational-sensors-plan.md`'s deferred-increment note.
 2. **Meta-lint on the constructed prompt itself.** Generalize
    `systemPromptExceedsContext` (currently static-content-only) to gate
    `ragAugment` and `injectOrChunk` output the same way, using

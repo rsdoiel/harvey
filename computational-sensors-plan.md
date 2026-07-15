@@ -129,3 +129,31 @@ for the scholarly-prose use case — all named as candidates in
 this plan. Per that document's own Risks and Limits section, introduce one
 sensor at a time and observe real behavior before adding the next, rather
 than activating a bulk ruleset in one pass.
+
+**Named next candidate (2026-07-15):** `hunspell`/grammar checking, above,
+is the next item in this deferred list — same post-write sensor slot as
+`go vet`, `Class: Computational`. Checked directly on this workspace's
+Raspberry Pi OS host (Debian 13 trixie, aarch64): `hunspell` is already
+installed and works (`apt-cache policy hunspell hunspell-en-us
+libhunspell-dev`, all present; `hunspell -d en_US -l` correctly flags
+misspellings). For the grammar half, prefer **Harper**
+(`cargo install harper-cli`) over LanguageTool — both run on this hardware
+(the Rust toolchain and a JVM are both already present), but LanguageTool
+is a persistent Java server process, a heavier moving part than a single
+native binary for what's meant to stay a cheap sensor; Harper has no JVM
+dependency. See `harvey-tools-and-sensor.txt` (repo root) for install
+one-liners for both.
+
+**Feedforward-side candidate, not part of this deferred list:** statistical
+keyword/keyphrase extraction (RAKE, YAKE, graph-based methods like TextRank
+via `pke`) is a Direction B tool, not Direction A — it belongs at prompt
+*construction* time (content-aware guide/context selection, see Direction B
+item 1 in `harness-engineering-exploration.md`), not the post-write sensor
+path. Checked wheel availability on this Pi: `yake`, `rake-nltk`, `pke`,
+`spacy`, `textacy`, and `gensim` all resolve to prebuilt aarch64 wheels via
+`uv pip install --dry-run` — no local compilation required. That said, the
+full `pke`/`spacy`/`textacy`/`gensim` stack pulls in `scikit-learn` and a
+compiled BLAS (`thinc`/`blis`), a lot of dependency weight for one sensor.
+If this direction is picked up, start with **YAKE alone** (pure statistical,
+no spaCy model download) rather than the full stack, matching this
+document's own one-sensor-at-a-time discipline.
