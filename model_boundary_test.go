@@ -11,12 +11,15 @@ import (
 // ─── /model list — all backends ───────────────────────────────────────────────
 
 // TestCmdModelList_ShowsLlamafileEntries verifies that /model list prints
-// registered llamafile models.
+// llamafile models found in the Llamafile models directory.
 func TestCmdModelList_ShowsLlamafileEntries(t *testing.T) {
-	a := newTestAgent(t)
-	a.Config.Llamafile.Models = []LlamafileEntry{
-		{Name: "bonsai-8b", Path: "/models/bonsai-8b.llamafile"},
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "bonsai-8b.llamafile"), []byte("stub"), 0o644); err != nil {
+		t.Fatal(err)
 	}
+
+	a := newTestAgent(t)
+	a.Config.Llamafile.ModelsDir = dir
 
 	var out strings.Builder
 	if err := cmdModelList(a, &out); err != nil {
