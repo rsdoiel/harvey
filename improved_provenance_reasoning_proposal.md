@@ -206,6 +206,16 @@ Facts a chosen design must respect, so they don't need rediscovering:
 - Session recordings (`.spmd` files via `Recorder.RecordTurnWithStats`)
   already capture `RAGAugmentInfo` — any design should preserve that
   forensic trail rather than duplicating or replacing it.
+- Harvey has two independent RAG injection paths that can both fire for the
+  same store: `ragAugment()` per-prompt (`rag_support.go:613`) and
+  `UnifiedMemory.Recall()` at session start (`harvey.go:358`,
+  `injectMemoryContext`). A per-store `per_prompt: false` opt-out
+  (`SkipPerPrompt`, `config.go:68`, shipped 2026-06-28) lets a user manually
+  silence the per-prompt path, but nothing makes the two paths aware of
+  each other automatically. A and B must be designed against **both**
+  injection paths, not just `ragAugment`'s, or `Recall()`-injected chunks
+  will stay ungrounded (A) and confidence-invisible (B) even after this
+  proposal ships. See DECISIONS.md's 2026-06-02 and 2026-07-25 entries.
 
 ## Non-goals
 

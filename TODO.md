@@ -132,11 +132,31 @@
 - [ ] `Qwen3.5-4B-Q5_K_S`'s `/read-chunks` chunk 1 ran 54+ minutes (interrupted
   by user 2026-07-06, still pegged at ~389% CPU when stopped — genuinely
   computing, not hung) versus the ~10 min/chunk baseline already measured for
-  `gemma-4-E4B-it-Q5_K_M`. The likely difference: this entry's
-  `harvey.yaml` `context_length` is 180224, vs. 16384–65536 for the other
+  `gemma-4-E4B-it-Q5_K_M`. Original theory: this entry's `harvey.yaml`
+  `context_length` was 180224 at the time, vs. 16384–65536 for the other
   registered models — a much larger configured context can inflate CPU-only
-  KV-cache setup/compute cost regardless of actual chunk size. Unconfirmed;
-  needs a controlled retest with the Qwen entry's context_length temporarily
-  lowered (e.g. to 16384) to see if chunk time drops accordingly before
-  folding Qwen into the per-model timing table above.
+  KV-cache setup/compute cost regardless of actual chunk size.
+
+  **Update 2026-07-25:** confirmed via `gguf-dump` against the GGUF embedded
+  in `Qwen3.5-4B-Q5_K_S.llamafile` (extracted with `unzip`, since llamafile is
+  a zip-appended APE binary, not a raw GGUF) that the model's own *trained*
+  context length is `qwen35.context_length = 262144` — even larger than the
+  180224 this item suspected, and far above the 16384–65536 range of every
+  other registered model. This makes the KV-cache-allocation theory more
+  plausible, not less: llama.cpp/llamafile allocate KV cache proportional to
+  the configured `-c` value at server startup (`ActiveLlamafileContextLength()`
+  → `StartLlamafileService`, see `backend_llamafile.go`), independent of
+  actual prompt/chunk size, so a `-c` anywhere near this model's native max
+  would explain slow, CPU-bound startup cost.
+
+  Also confirmed: `agents/harvey.yaml`'s registered entry for
+  `Qwen3.5-4B-Q5_K_S` **already reads `context_length: 16384`** — the exact
+  value this item proposed testing. No record exists of when or why it was
+  changed (no matching git history in this repo — `git log -p -S 180224`
+  returns nothing), so this may already be applied but never re-benchmarked.
+  Remaining step: run `/read-chunks PATH --chunk-size 800 --max-chunks 2`
+  against the current (16384) config to confirm chunk time now falls in line
+  with the ~10 min/chunk baseline, then fold into the per-model timing table
+  above. Not run yet — this is a multi-minute, CPU-heavy operation and
+  deserves an explicit go-ahead rather than running unattended.
 

@@ -4,6 +4,18 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-07-25 — AI HAT+ 2 / `hailo-ollama` as a candidate fourth backend (proposed, not committed)
+
+**Context.** *AI Projects with Raspberry Pi* (Hattersley & Jepson, 2026), reviewed in `../AI_Pi_Projects_Lessons.md`, describes the Raspberry Pi AI HAT+ 2: a Hailo-10H NPU (40 TOPS, INT4) with its own dedicated 8GB onboard RAM, entirely separate from the host Pi's RAM and CPU, supporting local LLMs/VLMs up to roughly 6B parameters. It's driven by a local server process, `hailo-ollama`, exposing a REST API shaped like Ollama's own (`/api/pull`, `/api/chat`, streaming JSON with the same `done`/`eval_count`/`done_reason` fields) on port 8000 instead of Ollama's 11434 — specifically so the two don't collide when both are present.
+
+This is directly relevant to the CPU-only-inference pain already documented across `TODO.md` and this log (the `GPULayers` default fix, the multi-hour `/read-chunks` runs, the per-model timing benchmarking still in progress): a hardware accelerator with dedicated RAM that competes with the host for neither CPU nor memory would sidestep that class of problem structurally rather than by further tuning CPU-only settings.
+
+**Decision.** Not yet committed. Given Harvey's existing pluggable backend architecture (`backend_ollama.go`, `backend_llamafile.go`, `backend_llamacpp.go`, all wired through `any-llm-go`), adding AI HAT+ 2 support is plausibly closer to "point the existing Ollama client at `http://localhost:8000` instead of `:11434`" than a new backend implementation — but this is unconfirmed. A design spike is needed to verify actual API compatibility (does `hailo-ollama` support everything Harvey's `backend_ollama.go` calls, e.g. `/api/show` for model metadata, streaming semantics, embeddings) before any implementation work is scheduled. Model choice on Hailo is also constrained to Hailo-optimised models (e.g. `deepseek_r1_distill_qwen:1.5b`, `llama3.2:3b`, `qwen2.5-coder:1.5b`), which is a real trade-off against the open model selection Harvey's other three backends allow.
+
+**Consequences.** No code change. Logged here and as a `hypothesis`-kind observation in `agents/knowledge.db` (project `harvey`, tagged with a new `hardware-acceleration` concept) so the idea persists across sessions. Requires hardware Harvey's current test environment doesn't have (an AI HAT+ 2 board) before the design spike can actually run.
+
+---
+
 ## 2026-07-13 — Preflight reachability check in `RunChunkedAnalysis` (TODO.md bug fix)
 
 **Context.** `TODO.md`, found 2026-07-06 via a real debug-log trace: with an unreachable backend (server died mid-session), every chunk in `RunChunkedAnalysis`'s map phase fired its own "connection refused," was recorded as a per-chunk failure (by design — a single chunk failure doesn't abort the map phase, so genuinely-partial failures still get a synthesis attempt over what succeeded), and the run only actually errored out at the synthesis call. On a multi-chunk document this burns through the whole file's worth of failed HTTP calls before surfacing what is really one root-cause problem. The TODO's own suggested fix: "a cheap preflight reachability probe... at the top of `cmdReadChunks`/`RunChunkedAnalysis`."
@@ -1534,6 +1546,19 @@ A user with both `memory.enabled` and `rag.enabled` may receive RAG content twic
 **Decision.** Deferred. Audit and fix when a user observes noticeably degraded context efficiency. The fix would be to either: (a) skip RAG chunks in `UnifiedMemory.Recall()` when `a.RagOn` is true, or (b) make `ragAugment` a no-op when `UnifiedMemory` already injected from the same store.
 
 **Consequences.** Known overlap. No immediate action required.
+
+---
+
+## 2026-07-25 — Dual RAG injection audit: status update, folded into provenance proposal
+
+**Context.** Since the 2026-06-02 entry above, `per_prompt: false` (`SkipPerPrompt`, `config.go:68`) shipped 2026-06-28 as part of the M6 memory milestone. When set on a RAG store entry, `ragAugment` (`rag_support.go:621`) skips per-prompt injection for that store entirely. This is a related but distinct fix from either option the 2026-06-02 entry proposed: it's a static, per-store, manually-opted-in YAML flag, not an automatic check of whether `a.RagOn` is set (option a) or whether `UnifiedMemory.Recall()` already injected from the same store this session (option b). A user who isn't aware of the overlap, and leaves `per_prompt` unset, still gets double injection today — the default behavior described in the 2026-06-02 entry is unchanged.
+
+**Decision.** Do not close this as a standalone item. Fold the remaining automatic-dedup work into the design phase of `improved_provenance_reasoning_proposal.md`, informed by Doc Searls' "personal AI" writing (digested in `../doc_searchs_personal_ai_summary.md`):
+- The proposal's Problem 1 (grounding checks don't see RAG-injected content) and Problem 2 (retrieval confidence isn't visible) are both currently scoped only to `ragAugment`'s injection. `UnifiedMemory.Recall()`'s session-start RAG injection (`harvey.go:358`, `injectMemoryContext`) is a second, currently-unaddressed injection path into the same conversation — a hallucinated misreading of `Recall()`-injected content is exactly as ungrounded as one from `ragAugment`-injected content (Searls' "logohybris": confident, fluent wrongness indistinguishable from a real answer).
+- Designing the grounding fix (A) and the confidence-display fix (B) against only one of the two injection paths would leave the other path's chunks silently ungrounded and confidence-invisible even after the proposal ships — reproducing, at the injection-plumbing level, the exact problem the proposal exists to close.
+- Closing the automatic-dedup gap and closing the grounding/confidence gap are best done as one pass over everything RAG injects into the model's context, not two separate patches to the same call sites later.
+
+**Consequences.** No code change from this entry alone. `improved_provenance_reasoning_proposal.md`'s "Constraints for the design phase" section gains a bullet naming this fact so a future design pass doesn't have to rediscover it. The 2026-06-02 entry above is left as historical record.
 
 ---
 
