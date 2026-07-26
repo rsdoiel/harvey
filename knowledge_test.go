@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"io"
+	"reflect"
 	"testing"
 )
 
@@ -619,5 +620,303 @@ func TestCheckRetractions_SkipsAlreadyRetracted(t *testing.T) {
 	}
 	if checked != 0 || updated != 0 || calls != 0 {
 		t.Errorf("already-retracted source should be skipped: checked=%d updated=%d calls=%d", checked, updated, calls)
+	}
+}
+
+// ─── UUID migration ──────────────────────────────────────────────────────────
+
+// reopenTestKB closes kb and reopens the same underlying database file,
+// so the lazy-migration and backfill logic in OpenKnowledgeBase runs again.
+// Mirrors the reopen pattern in TestSourceMigration_ExistingDOI.
+func reopenTestKB(t *testing.T, kb *KnowledgeBase) *KnowledgeBase {
+	t.Helper()
+	path := kb.path
+	kb.Close()
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+	kb2, err := OpenKnowledgeBase(ws, path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { kb2.Close() })
+	return kb2
+}
+
+// projectUUIDs returns id -> uuid for every row in projects.
+func projectUUIDs(t *testing.T, kb *KnowledgeBase) map[int64]string {
+	t.Helper()
+	rows, err := kb.db.Query(`SELECT id, uuid FROM projects`)
+	if err != nil {
+		t.Fatalf("query projects: %v", err)
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var u string
+		if err := rows.Scan(&id, &u); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		out[id] = u
+	}
+	return out
+}
+
+func TestUUIDBackfill_AssignsDistinctUUIDs(t *testing.T) {
+	kb := openTestKB(t)
+
+	pres, err := kb.db.Exec(`INSERT INTO projects (name) VALUES ('legacy-proj')`)
+	if err != nil {
+		t.Fatalf("insert legacy project: %v", err)
+	}
+	pid, _ := pres.LastInsertId()
+
+	if _, err := kb.db.Exec(
+		`INSERT INTO observations (project_id, kind, body) VALUES (?, 'note', 'legacy obs')`, pid,
+	); err != nil {
+		t.Fatalf("insert legacy observation: %v", err)
+	}
+	if _, err := kb.db.Exec(`INSERT INTO concepts (name) VALUES ('legacy-concept')`); err != nil {
+		t.Fatalf("insert legacy concept: %v", err)
+	}
+	if _, err := kb.db.Exec(`INSERT INTO sources (title) VALUES ('legacy-source')`); err != nil {
+		t.Fatalf("insert legacy source: %v", err)
+	}
+
+	kb2 := reopenTestKB(t, kb)
+
+	seen := map[string]bool{}
+	for _, table := range []string{"projects", "observations", "concepts", "sources"} {
+		rows, err := kb2.db.Query(`SELECT uuid FROM ` + table)
+		if err != nil {
+			t.Fatalf("query %s: %v", table, err)
+		}
+		count := 0
+		for rows.Next() {
+			var u string
+			if err := rows.Scan(&u); err != nil {
+				rows.Close()
+				t.Fatalf("scan %s: %v", table, err)
+			}
+			count++
+			if u == "" {
+				t.Errorf("%s: found row with empty uuid", table)
+			}
+			if seen[u] {
+				t.Errorf("%s: duplicate uuid %q", table, u)
+			}
+			seen[u] = true
+		}
+		rows.Close()
+		if count == 0 {
+			t.Errorf("%s: expected at least one seeded row", table)
+		}
+	}
+}
+
+func TestUUIDBackfill_Idempotent(t *testing.T) {
+	kb := openTestKB(t)
+	if _, err := kb.db.Exec(`INSERT INTO projects (name) VALUES ('legacy-proj')`); err != nil {
+		t.Fatalf("insert legacy project: %v", err)
+	}
+
+	kb2 := reopenTestKB(t, kb)
+	first := projectUUIDs(t, kb2)
+	if len(first) != 1 || first[1] == "" {
+		t.Fatalf("expected one project with a non-empty uuid after first backfill, got %v", first)
+	}
+
+	kb3 := reopenTestKB(t, kb2)
+	second := projectUUIDs(t, kb3)
+
+	if !reflect.DeepEqual(first, second) {
+		t.Errorf("uuid changed across reopen: first=%v second=%v", first, second)
+	}
+}
+
+func TestUUIDBackfill_PreservesExistingIDsAndFKs(t *testing.T) {
+	kb := openTestKB(t)
+
+	pres, err := kb.db.Exec(`INSERT INTO projects (name) VALUES ('legacy-proj')`)
+	if err != nil {
+		t.Fatalf("insert legacy project: %v", err)
+	}
+	pid, _ := pres.LastInsertId()
+
+	ores, err := kb.db.Exec(
+		`INSERT INTO observations (project_id, kind, body) VALUES (?, 'note', 'legacy obs')`, pid,
+	)
+	if err != nil {
+		t.Fatalf("insert legacy observation: %v", err)
+	}
+	oid, _ := ores.LastInsertId()
+
+	cres, err := kb.db.Exec(`INSERT INTO concepts (name) VALUES ('legacy-concept')`)
+	if err != nil {
+		t.Fatalf("insert legacy concept: %v", err)
+	}
+	cid, _ := cres.LastInsertId()
+
+	if _, err := kb.db.Exec(
+		`INSERT INTO observation_concepts (observation_id, concept_id) VALUES (?, ?)`, oid, cid,
+	); err != nil {
+		t.Fatalf("insert legacy link: %v", err)
+	}
+
+	kb2 := reopenTestKB(t, kb)
+
+	var gotPID int64
+	if err := kb2.db.QueryRow(`SELECT id FROM projects WHERE name = 'legacy-proj'`).Scan(&gotPID); err != nil {
+		t.Fatalf("select project: %v", err)
+	}
+	if gotPID != pid {
+		t.Errorf("project id changed across backfill: got %d, want %d", gotPID, pid)
+	}
+
+	var gotOID int64
+	if err := kb2.db.QueryRow(`SELECT id FROM observations WHERE body = 'legacy obs'`).Scan(&gotOID); err != nil {
+		t.Fatalf("select observation: %v", err)
+	}
+	if gotOID != oid {
+		t.Errorf("observation id changed across backfill: got %d, want %d", gotOID, oid)
+	}
+
+	var gotCID int64
+	if err := kb2.db.QueryRow(`SELECT id FROM concepts WHERE name = 'legacy-concept'`).Scan(&gotCID); err != nil {
+		t.Fatalf("select concept: %v", err)
+	}
+	if gotCID != cid {
+		t.Errorf("concept id changed across backfill: got %d, want %d", gotCID, cid)
+	}
+
+	var linkCount int
+	if err := kb2.db.QueryRow(
+		`SELECT COUNT(*) FROM observation_concepts WHERE observation_id = ? AND concept_id = ?`, oid, cid,
+	).Scan(&linkCount); err != nil {
+		t.Fatalf("select link: %v", err)
+	}
+	if linkCount != 1 {
+		t.Errorf("expected join row (observation_id=%d, concept_id=%d) to survive backfill untouched, got count=%d", oid, cid, linkCount)
+	}
+}
+
+func TestUUIDBackfill_OriginHostSentinel(t *testing.T) {
+	kb := openTestKB(t)
+	if _, err := kb.db.Exec(`INSERT INTO projects (name) VALUES ('legacy-proj')`); err != nil {
+		t.Fatalf("insert legacy project: %v", err)
+	}
+
+	kb2 := reopenTestKB(t, kb)
+
+	var originHost string
+	if err := kb2.db.QueryRow(
+		`SELECT origin_host FROM projects WHERE name = 'legacy-proj'`,
+	).Scan(&originHost); err != nil {
+		t.Fatalf("select origin_host: %v", err)
+	}
+	if originHost != "unknown" {
+		t.Errorf("origin_host = %q, want %q", originHost, "unknown")
+	}
+}
+
+func TestAddProject_SetsUUIDAndOriginHost(t *testing.T) {
+	kb := openTestKB(t)
+	id, err := kb.AddProject("proj", "")
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	var u, host string
+	if err := kb.db.QueryRow(`SELECT uuid, origin_host FROM projects WHERE id = ?`, id).Scan(&u, &host); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if u == "" {
+		t.Error("expected non-empty uuid")
+	}
+	if host == "" || host == "unknown" {
+		t.Errorf("expected real hostname, got %q", host)
+	}
+}
+
+func TestAddObservationWithSource_SetsUUIDAndOriginHost(t *testing.T) {
+	kb := openTestKB(t)
+	pid, _ := kb.AddProject("proj", "")
+	id, err := kb.AddObservationWithSource(pid, "note", "body", "")
+	if err != nil {
+		t.Fatalf("AddObservationWithSource: %v", err)
+	}
+	var u, host string
+	if err := kb.db.QueryRow(`SELECT uuid, origin_host FROM observations WHERE id = ?`, id).Scan(&u, &host); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if u == "" {
+		t.Error("expected non-empty uuid")
+	}
+	if host == "" || host == "unknown" {
+		t.Errorf("expected real hostname, got %q", host)
+	}
+}
+
+func TestAddConceptWithIdentifier_SetsUUIDAndOriginHost(t *testing.T) {
+	kb := openTestKB(t)
+	id, err := kb.AddConceptWithIdentifier("concept", "", "", "")
+	if err != nil {
+		t.Fatalf("AddConceptWithIdentifier: %v", err)
+	}
+	var u, host string
+	if err := kb.db.QueryRow(`SELECT uuid, origin_host FROM concepts WHERE id = ?`, id).Scan(&u, &host); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if u == "" {
+		t.Error("expected non-empty uuid")
+	}
+	if host == "" || host == "unknown" {
+		t.Errorf("expected real hostname, got %q", host)
+	}
+}
+
+func TestAddSource_SetsUUIDAndOriginHost(t *testing.T) {
+	kb := openTestKB(t)
+	id, err := kb.AddSource(Source{Title: "src"})
+	if err != nil {
+		t.Fatalf("AddSource: %v", err)
+	}
+	var u, host string
+	if err := kb.db.QueryRow(`SELECT uuid, origin_host FROM sources WHERE id = ?`, id).Scan(&u, &host); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if u == "" {
+		t.Error("expected non-empty uuid")
+	}
+	if host == "" || host == "unknown" {
+		t.Errorf("expected real hostname, got %q", host)
+	}
+}
+
+func TestAddProject_ConflictPreservesOriginalUUID(t *testing.T) {
+	kb := openTestKB(t)
+	id1, err := kb.AddProject("proj", "first")
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	var firstUUID string
+	if err := kb.db.QueryRow(`SELECT uuid FROM projects WHERE id = ?`, id1).Scan(&firstUUID); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+
+	id2, err := kb.AddProject("proj", "second")
+	if err != nil {
+		t.Fatalf("AddProject (conflict): %v", err)
+	}
+	if id2 != id1 {
+		t.Fatalf("expected same project id on name conflict, got %d vs %d", id2, id1)
+	}
+	var secondUUID string
+	if err := kb.db.QueryRow(`SELECT uuid FROM projects WHERE id = ?`, id2).Scan(&secondUUID); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if secondUUID != firstUUID {
+		t.Errorf("uuid changed on conflict: first=%q second=%q", firstUUID, secondUUID)
 	}
 }

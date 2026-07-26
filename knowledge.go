@@ -4,9 +4,12 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	_ "github.com/glebarez/go-sqlite" // pure-Go SQLite driver; registers "sqlite" with database/sql
 )
@@ -201,6 +204,52 @@ var kbAlterStmts = []string{
 	`ALTER TABLE observations ADD COLUMN source_doi TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE concepts ADD COLUMN identifier_type TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE concepts ADD COLUMN identifier_value TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE projects ADD COLUMN uuid TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE projects ADD COLUMN origin_host TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE observations ADD COLUMN uuid TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE observations ADD COLUMN origin_host TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE concepts ADD COLUMN uuid TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE concepts ADD COLUMN origin_host TEXT NOT NULL DEFAULT ''`,
+}
+
+// kbSourcesAlterStmts are lazy-migration statements for the sources table,
+// applied separately since sources doesn't exist yet when kbAlterStmts runs.
+var kbSourcesAlterStmts = []string{
+	`ALTER TABLE sources ADD COLUMN uuid TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sources ADD COLUMN origin_host TEXT NOT NULL DEFAULT ''`,
+}
+
+// backfillUUIDs assigns a UUID v7 and the "unknown" origin_host sentinel to
+// every row in table whose uuid is still empty. It is idempotent: once every
+// row has a non-empty uuid, the SELECT returns nothing and it is a no-op.
+func backfillUUIDs(db *sql.DB, table string) error {
+	rows, err := db.Query(`SELECT id FROM ` + table + ` WHERE uuid = ''`)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	for _, id := range ids {
+		u, err := uuid.NewV7()
+		if err != nil {
+			return err
+		}
+		if _, err := db.Exec(
+			`UPDATE `+table+` SET uuid = ?, origin_host = 'unknown' WHERE id = ? AND uuid = ''`,
+			u.String(), id,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 /** OpenKnowledgeBase opens (or creates) the SQLite knowledge base. customPath
@@ -259,6 +308,9 @@ func OpenKnowledgeBase(ws *Workspace, customPath string) (*KnowledgeBase, error)
 		db.Close()
 		return nil, fmt.Errorf("knowledge: apply sources schema: %w", err)
 	}
+	for _, stmt := range kbSourcesAlterStmts {
+		_, _ = db.Exec(stmt)
+	}
 	// One-time data migration: promote existing source_doi values into the
 	// sources authority table and link them via observation_sources.
 	_, _ = db.Exec(`
@@ -270,6 +322,13 @@ func OpenKnowledgeBase(ws *Workspace, customPath string) (*KnowledgeBase, error)
 		SELECT o.id, s.id, 'cited'
 		FROM observations o JOIN sources s ON s.identifier_value = o.source_doi
 		WHERE o.source_doi != ''`)
+	for _, t := range []string{"projects", "observations", "concepts", "sources"} {
+		if err := backfillUUIDs(db, t); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("knowledge: backfill uuid on %s: %w", t, err)
+		}
+		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_` + t + `_uuid ON ` + t + `(uuid)`)
+	}
 	kb := &KnowledgeBase{db: db, path: dbPath}
 	if _, err := db.Exec(ftsSchema); err == nil {
 		kb.ftsAvailable = true
@@ -309,12 +368,17 @@ func (kb *KnowledgeBase) Close() error {
  *   id, err := kb.AddProject("harvey", "Terminal coding agent backed by Ollama")
  */
 func (kb *KnowledgeBase) AddProject(name, description string) (int64, error) {
+	u, err := uuid.NewV7()
+	if err != nil {
+		return 0, fmt.Errorf("knowledge: generate uuid: %w", err)
+	}
+	host, _ := os.Hostname()
 	var id int64
-	err := kb.db.QueryRow(
-		`INSERT INTO projects (name, description) VALUES (?, ?)
+	err = kb.db.QueryRow(
+		`INSERT INTO projects (name, description, uuid, origin_host) VALUES (?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
 		 RETURNING id`,
-		name, description,
+		name, description, u.String(), host,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("knowledge: add project: %w", err)
@@ -413,9 +477,14 @@ func (kb *KnowledgeBase) AddObservationWithSource(projectID int64, kind, body, s
 		return 0, fmt.Errorf("knowledge: invalid kind %q; must be one of: %s",
 			kind, strings.Join(ValidObservationKinds, ", "))
 	}
+	u, err := uuid.NewV7()
+	if err != nil {
+		return 0, fmt.Errorf("knowledge: generate uuid: %w", err)
+	}
+	host, _ := os.Hostname()
 	res, err := kb.db.Exec(
-		`INSERT INTO observations (project_id, kind, body, source_doi) VALUES (?, ?, ?, ?)`,
-		projectID, kind, body, sourceDOI,
+		`INSERT INTO observations (project_id, kind, body, source_doi, uuid, origin_host) VALUES (?, ?, ?, ?, ?, ?)`,
+		projectID, kind, body, sourceDOI, u.String(), host,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("knowledge: add observation: %w", err)
@@ -520,13 +589,18 @@ func (kb *KnowledgeBase) AddConcept(name, description string) (int64, error) {
  *       string(IdentifierORCID), "0000-0003-0900-6903")
  */
 func (kb *KnowledgeBase) AddConceptWithIdentifier(name, description, identifierType, identifierValue string) (int64, error) {
+	u, err := uuid.NewV7()
+	if err != nil {
+		return 0, fmt.Errorf("knowledge: generate uuid: %w", err)
+	}
+	host, _ := os.Hostname()
 	res, err := kb.db.Exec(
-		`INSERT INTO concepts (name, description, identifier_type, identifier_value) VALUES (?, ?, ?, ?)
+		`INSERT INTO concepts (name, description, identifier_type, identifier_value, uuid, origin_host) VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
 		     description = excluded.description,
 		     identifier_type = CASE WHEN excluded.identifier_type = '' THEN concepts.identifier_type ELSE excluded.identifier_type END,
 		     identifier_value = CASE WHEN excluded.identifier_value = '' THEN concepts.identifier_value ELSE excluded.identifier_value END`,
-		name, description, identifierType, identifierValue,
+		name, description, identifierType, identifierValue, u.String(), host,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("knowledge: add concept: %w", err)
@@ -1066,11 +1140,16 @@ func (kb *KnowledgeBase) AddSource(s Source) (int64, error) {
 			return id, nil
 		}
 	}
+	u, err := uuid.NewV7()
+	if err != nil {
+		return 0, fmt.Errorf("knowledge: generate uuid: %w", err)
+	}
+	host, _ := os.Hostname()
 	res, err := kb.db.Exec(
-		`INSERT INTO sources (title, identifier_type, identifier_value, authors, published_date, publisher, rights, version)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO sources (title, identifier_type, identifier_value, authors, published_date, publisher, rights, version, uuid, origin_host)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.Title, s.IdentifierType, s.IdentifierValue,
-		s.Authors, s.PublishedDate, s.Publisher, s.Rights, s.Version,
+		s.Authors, s.PublishedDate, s.Publisher, s.Rights, s.Version, u.String(), host,
 	)
 	if err != nil {
 		return 0, err
