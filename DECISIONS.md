@@ -4,6 +4,18 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-07-26 — `knowledge.go` UUID migration: v7 ids, `origin_host` sentinel, index-after-backfill
+
+**Context.** `agents/knowledge.db` drifts independently between `macmini-rd.local` and `wren.local` because every table uses a plain autoincrement integer PK with no cross-machine identity — full problem statement in `../knowledge_db_merge_design.md`. This is step 1 of that document's sequencing (UUID migration → SQL/ATTACH merge → module split → JSON-L export): give every row in `projects`, `observations`, `concepts`, `sources` a stable, globally-unique id at creation time so a future merge is an idempotent set-union instead of best-effort content matching. Design and decisions reviewed against the live code on this date — no drift since the 2026-07-25 design session (no `uuid` column exists yet, `github.com/google/uuid` still indirect in `go.mod`).
+
+**Decision.** Add `uuid TEXT NOT NULL DEFAULT ''` to all four entity tables (not the join tables) via the existing `kbAlterStmts` lazy-migration idiom, backfilled in Go with UUID **v7** (`github.com/google/uuid`, already a `go.mod` dependency) since SQLite has no built-in generator — mirrors the existing one-time `source_doi → sources` backfill already in `OpenKnowledgeBase`, idempotent via a `WHERE uuid = ''` guard. A `UNIQUE` index is created only *after* backfill completes, since `ADD COLUMN` sets every existing row to the same `''` default at once and an earlier index would fail immediately. Also add `origin_host`, backfilling pre-existing rows to an explicit `"unknown"` sentinel — never the current machine's `os.Hostname()`, which would misattribute rows actually created on the other machine to whichever machine happens to run the migration first; only new rows stamp the real hostname, at insert time. Full design in `uuid-migration-design.md`; phased implementation plan (W1–W6, TDD-first) in `uuid-migration-plan.md`.
+
+**Rejected.** UUID v4 for some/all tables — v7's time-ordering is a free bonus with no downside for internal ids, so there was no reason to mix schemes. Backfilling `origin_host` to the current machine's real hostname — would silently misattribute every pre-migration row, including ones from the other machine, to whichever machine happens to migrate first.
+
+**Consequences.** No merge tool, module extraction, or JSON-L export yet — all remain out of scope and deferred per the sequencing already decided in `../knowledge_db_merge_design.md`. Implementation not yet started as of this entry; see `uuid-migration-plan.md` for the TDD work items.
+
+---
+
 ## 2026-07-25 — AI HAT+ 2 / `hailo-ollama` as a candidate fourth backend (proposed, not committed)
 
 **Context.** *AI Projects with Raspberry Pi* (Hattersley & Jepson, 2026), reviewed in `../AI_Pi_Projects_Lessons.md`, describes the Raspberry Pi AI HAT+ 2: a Hailo-10H NPU (40 TOPS, INT4) with its own dedicated 8GB onboard RAM, entirely separate from the host Pi's RAM and CPU, supporting local LLMs/VLMs up to roughly 6B parameters. It's driven by a local server process, `hailo-ollama`, exposing a REST API shaped like Ollama's own (`/api/pull`, `/api/chat`, streaming JSON with the same `done`/`eval_count`/`done_reason` fields) on port 8000 instead of Ollama's 11434 — specifically so the two don't collide when both are present.
