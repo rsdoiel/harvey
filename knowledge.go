@@ -202,6 +202,11 @@ type Concept struct {
 // errors via _, _ = db.Exec(...).
 var kbAlterStmts = []string{
 	`ALTER TABLE observations ADD COLUMN source_doi TEXT NOT NULL DEFAULT ''`,
+	// No DEFAULT clause: SQLite rejects ADD COLUMN with a non-constant
+	// default (CURRENT_TIMESTAMP) on a table that already has rows, which
+	// every real-world legacy concepts table does. Existing rows are
+	// backfilled separately, below.
+	`ALTER TABLE concepts ADD COLUMN created_at DATETIME`,
 	`ALTER TABLE concepts ADD COLUMN identifier_type TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE concepts ADD COLUMN identifier_value TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE projects ADD COLUMN uuid TEXT NOT NULL DEFAULT ''`,
@@ -304,6 +309,10 @@ func OpenKnowledgeBase(ws *Workspace, customPath string) (*KnowledgeBase, error)
 	for _, stmt := range kbAlterStmts {
 		_, _ = db.Exec(stmt)
 	}
+	// One-time backfill for concepts rows that predate the created_at column
+	// (see the comment on the ALTER statement above). Idempotent: once every
+	// row has a non-null created_at, the UPDATE matches no rows.
+	_, _ = db.Exec(`UPDATE concepts SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL`)
 	if _, err := db.Exec(sourcesSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("knowledge: apply sources schema: %w", err)

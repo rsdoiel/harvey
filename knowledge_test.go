@@ -1,7 +1,9 @@
 package harvey
 
 import (
+	"database/sql"
 	"io"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -918,5 +920,56 @@ func TestAddProject_ConflictPreservesOriginalUUID(t *testing.T) {
 	}
 	if secondUUID != firstUUID {
 		t.Errorf("uuid changed on conflict: first=%q second=%q", firstUUID, secondUUID)
+	}
+}
+
+// TestOpenKnowledgeBase_BackfillsLegacyConceptsCreatedAt reproduces a real
+// database found on a second machine (macmini-rd.local): a concepts table
+// created before created_at was added to the base schema's CREATE TABLE
+// statement. Since CREATE TABLE IF NOT EXISTS never retrofits an existing
+// table, and kbAlterStmts had no ALTER for this column, such a table never
+// gained created_at on later opens. This must be backfilled the same way
+// identifier_type/identifier_value/uuid/origin_host already are.
+func TestOpenKnowledgeBase_BackfillsLegacyConceptsCreatedAt(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/agents/knowledge.db"
+	if err := os.MkdirAll(dir+"/agents", 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	raw, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := raw.Exec(`CREATE TABLE concepts (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		name        TEXT UNIQUE NOT NULL,
+		description TEXT
+	)`); err != nil {
+		t.Fatalf("create legacy concepts table: %v", err)
+	}
+	if _, err := raw.Exec(`INSERT INTO concepts (name, description) VALUES ('legacy-concept', 'seeded before created_at existed')`); err != nil {
+		t.Fatalf("seed legacy concept: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+	kb, err := OpenKnowledgeBase(ws, dbPath)
+	if err != nil {
+		t.Fatalf("OpenKnowledgeBase on legacy concepts table: %v", err)
+	}
+	defer kb.Close()
+
+	var createdAt sql.NullString
+	if err := kb.db.QueryRow(`SELECT created_at FROM concepts WHERE name = 'legacy-concept'`).Scan(&createdAt); err != nil {
+		t.Fatalf("select created_at: %v", err)
+	}
+	if !createdAt.Valid || createdAt.String == "" {
+		t.Errorf("expected legacy row's created_at to be backfilled to a non-empty value, got %+v", createdAt)
 	}
 }

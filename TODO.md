@@ -4,20 +4,38 @@
 ## Update next
 
 - [ ] Cross-machine `knowledge.db` sync — resume here. Step 1 (UUID migration) and step 2 (merge tool) are both
-  DONE and verified on `macmini-rd.local`, per `uuid-migration-design.md`/`-plan.md`,
-  `merge-tool-design.md`/`-plan.md`, and the 2026-07-26 entries in `DECISIONS.md`. **Update 2026-07-27 (on
-  `wren`):** the UUID migration has also already run here — confirmed all 3 projects / 84 observations / 17
-  concepts / 6 sources have non-empty `uuid`s, and 4 observations already show `origin_host='wren'` (new rows
-  written after migration), so this machine picked up the lazy, idempotent migration automatically on a prior
-  `OpenKnowledgeBase` call, with no action needed. **Next concrete action:** both machines are now migrated, but
-  a real cross-machine `bin/kbmerge` run still hasn't happened — it needs an actual copy of the other machine's
-  `agents/knowledge.db` transferred onto one of them; everything verified so far used two copies of the same
-  machine's file as a stand-in, not two genuinely divergent databases. After that: knowledge-base module
-  extraction (own repo/`go.mod`) is step 3, JSON-L export (deferred) is step 4 — full sequencing in
-  `../knowledge_db_merge_design.md`. Full resume context also recorded as a `note` observation in
-  `agents/knowledge.db` (project `harvey`, concept `cross-machine-sync`, most recent entry).
+  DONE, per `uuid-migration-design.md`/`-plan.md`, `merge-tool-design.md`/`-plan.md`, and the 2026-07-26 entries
+  in `DECISIONS.md`. **Correction 2026-07-27:** the 2026-07-26 work was actually all done on `wren`, not
+  `macmini-rd.local` as originally labeled (see the 2026-07-27 "Correction" entry in `DECISIONS.md`).
+  `macmini-rd.local`'s real `agents/knowledge.db` had never been migrated as of 2026-07-27 — fixed same day over
+  SSH (`git pull` to `394b499`, then a throwaway `go run` trigger of `OpenKnowledgeBase`, now removed). Both
+  machines are confirmed migrated now, and their data is genuinely divergent: macmini has only the `henry`
+  project (35 concepts, 93 observations, 0 sources); wren has `harvey`/`henry`/`antennaApp` (17 concepts, 85
+  observations, 6 sources). A real copy of macmini's `knowledge.db` was placed on `wren` at
+  `macmini-rd.local-agents/knowledge.db` (copied by the user) and a genuine `bin/kbmerge -force` run against it
+  found and fixed one real bug (missing `concepts.created_at`, see `DECISIONS.md` 2026-07-27), then hit the next
+  one: `no such column: o.project_id` when merging `observations` — macmini's `observations` table is still on
+  the legacy `experiment_id → experiments(id)` schema, never migrated to `project_id → projects(id)`. This is a
+  separate, bigger, explicitly deferred piece of work (see the 2026-07-27 "Legacy data" decision in
+  `DECISIONS.md`) — not fixed yet. **Next concrete action:** design a proper `experiments`→`projects` data
+  migration (this affects any pre-rename `knowledge.db`, not just macmini's) before another `kbmerge` attempt can
+  get past `observations`. After that: knowledge-base module extraction (own repo/`go.mod`) is step 3, JSON-L
+  export (deferred) is step 4 — full sequencing in `../knowledge_db_merge_design.md`. Full resume context also
+  recorded as a `note` observation in `agents/knowledge.db` (project `harvey`, concept `cross-machine-sync`, most
+  recent entry).
 
 ## Bugs
+
+- [x] `concepts` table missing `created_at` on any `knowledge.db` created before that column was added to the
+  base schema DDL (found on macmini-rd.local's real database 2026-07-27, via a genuine cross-machine
+  `bin/kbmerge` attempt — `kbAlterStmts` had no `ALTER` for it, unlike every other column added after the
+  original `CREATE TABLE`). **Fixed 2026-07-27:** added the missing `ALTER TABLE concepts ADD COLUMN created_at
+  DATETIME` (no `DEFAULT CURRENT_TIMESTAMP` — SQLite rejects a non-constant `ADD COLUMN` default on any
+  non-empty table, confirmed against real `sqlite3`, not just the Go driver) plus an idempotent one-time
+  `UPDATE ... WHERE created_at IS NULL` backfill. TDD: `TestOpenKnowledgeBase_BackfillsLegacyConceptsCreatedAt`
+  (`knowledge_test.go`) reproduces macmini's exact legacy shape. See `DECISIONS.md` same date. **Still open:**
+  macmini's actual live `agents/knowledge.db` needs this fix applied via its own `git pull` + reopen — only a
+  copy was fixed/tested here.
 
 - [x] 24 of 101 `observation_concepts` rows in `agents/knowledge.db` (this machine) reference `observation_id`
   values that no longer exist in `observations` — dangling links, found 2026-07-26 while manually verifying the
