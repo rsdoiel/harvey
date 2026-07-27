@@ -4,29 +4,36 @@
 ## Update next
 
 - [ ] Cross-machine `knowledge.db` sync — resume here. Step 1 (UUID migration) and step 2 (merge tool) are both
-  DONE and verified on this machine (`macmini-rd.local`), per `uuid-migration-design.md`/`-plan.md`,
-  `merge-tool-design.md`/`-plan.md`, and the 2026-07-26 entries in `DECISIONS.md`. **Next concrete action:**
-  apply the UUID migration on `wren.local` (Pi 500+) — it hasn't run there yet; it applies itself automatically
-  on the next `OpenKnowledgeBase` call once that machine has this code (`git pull`, then any command that opens
-  the knowledge base). Only after both machines are migrated can a real cross-machine `bin/kbmerge` run happen —
-  everything verified so far used two copies of *this* machine's `knowledge.db` as a stand-in, not two genuinely
-  divergent databases. After that: knowledge-base module extraction (own repo/`go.mod`) is step 3, JSON-L export
-  (deferred) is step 4 — full sequencing in `../knowledge_db_merge_design.md`. Full resume context also recorded
-  as a `note` observation in `agents/knowledge.db` (project `harvey`, concept `cross-machine-sync`, most recent
-  entry).
+  DONE and verified on `macmini-rd.local`, per `uuid-migration-design.md`/`-plan.md`,
+  `merge-tool-design.md`/`-plan.md`, and the 2026-07-26 entries in `DECISIONS.md`. **Update 2026-07-27 (on
+  `wren`):** the UUID migration has also already run here — confirmed all 3 projects / 84 observations / 17
+  concepts / 6 sources have non-empty `uuid`s, and 4 observations already show `origin_host='wren'` (new rows
+  written after migration), so this machine picked up the lazy, idempotent migration automatically on a prior
+  `OpenKnowledgeBase` call, with no action needed. **Next concrete action:** both machines are now migrated, but
+  a real cross-machine `bin/kbmerge` run still hasn't happened — it needs an actual copy of the other machine's
+  `agents/knowledge.db` transferred onto one of them; everything verified so far used two copies of the same
+  machine's file as a stand-in, not two genuinely divergent databases. After that: knowledge-base module
+  extraction (own repo/`go.mod`) is step 3, JSON-L export (deferred) is step 4 — full sequencing in
+  `../knowledge_db_merge_design.md`. Full resume context also recorded as a `note` observation in
+  `agents/knowledge.db` (project `harvey`, concept `cross-machine-sync`, most recent entry).
 
 ## Bugs
 
-- [ ] 24 of 101 `observation_concepts` rows in `agents/knowledge.db` (this machine) reference `observation_id`
+- [x] 24 of 101 `observation_concepts` rows in `agents/knowledge.db` (this machine) reference `observation_id`
   values that no longer exist in `observations` — dangling links, found 2026-07-26 while manually verifying the
   merge tool (see `DECISIONS.md`, same date, "Cross-machine `knowledge.db` merge tool" entry). Likely a historical
   delete that ran on a connection without `PRAGMA foreign_keys=ON` active (SQLite enforces FKs per-connection, not
-  persistently in the file). Not caused by, and doesn't affect the correctness of, the UUID migration or merge
-  tool — `MergeKnowledgeBases`'s join-based copy already excludes unresolvable links rather than propagating
-  them. Not fixed yet; low priority, but should be cleaned up (`DELETE FROM observation_concepts WHERE
-  observation_id NOT IN (SELECT id FROM observations)` after confirming no other tables have the same issue)
-  before it's forgotten. Query to find them:
-  `SELECT COUNT(*) FROM observation_concepts oc LEFT JOIN observations o ON o.id=oc.observation_id WHERE o.id IS NULL;`
+  persistently in the file) — e.g. a raw `sqlite3` CLI session, since `OpenKnowledgeBase` itself pins a single
+  connection (`db.SetMaxOpenConns(1)`) and sets the pragma on every open, so the current Go code path was never
+  the source. Not caused by, and didn't affect the correctness of, the UUID migration or merge tool —
+  `MergeKnowledgeBases`'s join-based copy already excludes unresolvable links rather than propagating them.
+  **Fixed 2026-07-27 (on `wren`):** backed up the live file to
+  `agents/knowledge.db.pre-cleanup-20260727`, then ran `DELETE FROM observation_concepts WHERE observation_id NOT
+  IN (SELECT id FROM observations)` — removed exactly 24 rows. Also checked the other five parent/join
+  combinations (`observation_concepts`→`concepts`, `project_concepts`→`projects`/`concepts`,
+  `observation_sources`→`observations`/`sources`) — all were already clean, so no further cleanup was needed.
+  This machine's `agents/knowledge.db` only; `macmini-rd.local`'s copy was not touched and should be checked
+  separately.
 
 - [x] Remove the prompt to remove previous session at startup (we have a `-resume` and `/resume` option if needed) —
   already fixed in commit `9e3e13b` (2026-07-12, bundled into an earlier "Quick Save" commit, not checked off at

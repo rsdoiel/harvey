@@ -4,6 +4,20 @@ This file records significant architectural and UX decisions, their rationale, a
 
 ---
 
+## 2026-07-27 — Dangling `observation_concepts` rows cleaned up on `wren`; UUID migration confirmed already applied there
+
+**Context.** `TODO.md`'s Bugs section (added 2026-07-26 on `macmini-rd.local`) flagged 24 of 101 `observation_concepts` rows in `agents/knowledge.db` referencing `observation_id`s that no longer existed — found while manually verifying the merge tool. Picked up on `wren` (2026-07-27). Also relevant: `TODO.md`'s "Update next" item still said the UUID migration hadn't run on `wren` yet; checking the live file directly showed otherwise.
+
+**Decision.** Delete the dangling rows directly (`DELETE FROM observation_concepts WHERE observation_id NOT IN (SELECT id FROM observations)`), after taking a file-level backup (`agents/knowledge.db.pre-cleanup-20260727`), rather than adding any code path — the root cause is a historical write outside `OpenKnowledgeBase`'s single pinned connection (`db.SetMaxOpenConns(1)` plus `PRAGMA foreign_keys=ON` applied at every open means the current Go code enforces FKs correctly on every insert/delete it performs; a raw `sqlite3` CLI session, which does not enable `foreign_keys` by default, is the more likely origin). No `Delete*` function exists anywhere in `knowledge.go` today, ruling out the application code as the source. Also checked the other five parent→child combinations (`observation_concepts`→`concepts`, `project_concepts`→`projects`, `project_concepts`→`concepts`, `observation_sources`→`observations`, `observation_sources`→`sources`) before stopping — all were already clean, so the fix is scoped to exactly the one table TODO.md named.
+
+**Additionally confirmed (same session):** `wren`'s `agents/knowledge.db` already has the UUID migration fully applied — all 3 projects / 84 observations / 17 concepts / 6 sources have non-empty `uuid`s, and 4 observations already carry `origin_host='wren'`, meaning the lazy migration ran automatically here on some prior `OpenKnowledgeBase` call and new rows have been written since. `TODO.md`'s "hasn't run there yet" language (written from `macmini-rd.local`, which cannot observe `wren`'s state) is now corrected in place.
+
+**Rejected.** Adding a `PRAGMA foreign_keys=ON` guard or connection-init hook to `knowledge.go` — the existing `SetMaxOpenConns(1)` + schema-time pragma already makes every code path through `OpenKnowledgeBase` FK-safe; the dangling rows predate that, or came from outside the Go code entirely, so a code change would not have fixed anything that's still capable of recurring through the app.
+
+**Consequences.** This machine's `agents/knowledge.db` now has zero dangling join-table rows across all six checked combinations. `macmini-rd.local`'s copy was not touched and needs the same check run there independently — its dangling-row count (if any) is unknown until someone runs the same query on that machine. Both machines are now confirmed UUID-migrated, which was the actual remaining blocker on a real cross-machine `bin/kbmerge` run (see `TODO.md`) — but that run itself still needs a physical transfer of one machine's `knowledge.db` to the other, which hasn't happened.
+
+---
+
 ## 2026-07-26 — Cross-machine `knowledge.db` merge tool: SQL/`ATTACH`, `cmd/kbmerge` binary (design only, not yet implemented)
 
 **Context.** Step 2 of the `../knowledge_db_merge_design.md` sequencing, unblocked by the same-day UUID migration (previous entry): reconcile `agents/knowledge.db` after it drifts independently on `macmini-rd.local` and `wren.local`. Full design in `merge-tool-design.md`; phased plan (M1–M8, TDD-first) in `merge-tool-plan.md`.
