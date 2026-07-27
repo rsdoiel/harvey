@@ -3,27 +3,22 @@
 
 ## Update next
 
-- [ ] Cross-machine `knowledge.db` sync — resume here. Step 1 (UUID migration) and step 2 (merge tool) are both
-  DONE, per `uuid-migration-design.md`/`-plan.md`, `merge-tool-design.md`/`-plan.md`, and the 2026-07-26 entries
-  in `DECISIONS.md`. **Correction 2026-07-27:** the 2026-07-26 work was actually all done on `wren`, not
-  `macmini-rd.local` as originally labeled (see the 2026-07-27 "Correction" entry in `DECISIONS.md`).
-  `macmini-rd.local`'s real `agents/knowledge.db` had never been migrated as of 2026-07-27 — fixed same day over
-  SSH (`git pull` to `394b499`, then a throwaway `go run` trigger of `OpenKnowledgeBase`, now removed). Both
-  machines are confirmed migrated now, and their data is genuinely divergent: macmini has only the `henry`
-  project (35 concepts, 93 observations, 0 sources); wren has `harvey`/`henry`/`antennaApp` (17 concepts, 85
-  observations, 6 sources). A real copy of macmini's `knowledge.db` was placed on `wren` at
-  `macmini-rd.local-agents/knowledge.db` (copied by the user) and a genuine `bin/kbmerge -force` run against it
-  found and fixed two real bugs in sequence: missing `concepts.created_at`, then `no such column: o.project_id`
-  (macmini's `observations` table was still on the legacy `experiment_id → experiments(id)` schema — see
-  `experiments-migration-design.md`/`-plan.md` and the 2026-07-27 "`experiments` → `projects`" entry in
-  `DECISIONS.md`). **Both fixed 2026-07-27** — `bin/kbmerge -a <wren> -b <migrated macmini copy> -force` now
-  **succeeds end-to-end**: 3+4→5 projects, 17+35→46 concepts, 87+93→180 observations, no data lost, merged
-  database written and reviewable. This was the concrete blocker this whole thread existed to clear. **Next
-  concrete action:** macmini's actual **live** `agents/knowledge.db` still needs both fixes applied via its own
-  `git pull` + reopen (only the copy on wren was exercised) — do that before treating the two databases as
-  truly ready to merge for real; then decide whether to actually copy a merged result into place on either
-  machine (`bin/kbmerge` deliberately never does this automatically). After that: knowledge-base module
-  extraction (own repo/`go.mod`) is step 3, JSON-L export (deferred) is step 4 — full sequencing in
+- [x] Cross-machine `knowledge.db` sync — **DONE 2026-07-27**. Steps 1 (UUID migration) and 2 (merge tool) were
+  already built; this session applied both, fixed two real bugs discovered along the way
+  (`concepts.created_at`, `experiments`→`projects`), and completed a genuine merge, placed on both machines.
+  Sequence: pulled both `~/Laboratory` and `~/Laboratory/harvey` up to date on `macmini-rd.local` over SSH (no
+  conflicts — checked incoming commits against macmini's one unpushed local commit first); backed up and
+  migrated macmini's real live `agents/knowledge.db` (both fixes, verified identical to the earlier copy-based
+  test); `scp`'d it to wren; ran `bin/kbmerge -a <wren> -b <macmini> -force` locally; independently verified the
+  merged output (`PRAGMA integrity_check` clean, zero dangling join rows, all UUIDs present) before placing it
+  anywhere; backed up wren's pre-merge live db; replaced wren's live `agents/knowledge.db` with the merged file;
+  `scp`'d that same file to replace macmini's. Confirmed byte-identical (checksum) on both machines afterward.
+  Result: 5 projects (`harvey`/`henry`/`antennaApp`/`sparqlset`/`audiobox`), 46 concepts, 181 observations, no
+  data lost. See the 2026-07-27 "Cross-machine `knowledge.db` merge completed" entry in `DECISIONS.md`.
+  Backups on both machines: `.pre-cleanup-20260727`, `.pre-experiments-migration-20260727` (macmini),
+  `.pre-merge-20260727` (wren). **Not done:** macmini's root `Laboratory` repo has an unpushed merge commit
+  (`e418c8e`) from the `git pull` step — ask before pushing. **Next, if wanted:** knowledge-base module
+  extraction (own repo/`go.mod`, step 3) and JSON-L export (deferred, step 4) — full sequencing in
   `../knowledge_db_merge_design.md`. Full resume context also recorded as a `note` observation in
   `agents/knowledge.db` (project `harvey`, concept `cross-machine-sync`, most recent entry).
 
