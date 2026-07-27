@@ -77,7 +77,7 @@ Harvey has three independent knowledge stores, unified at retrieval time by `Uni
 |---|---|---|---|
 | **RAG store** | `rag_support.go`, `agents/rag/*.db` | Vector-embedded document chunks | Per-prompt via `ragAugment()` when RAG is on |
 | **Memory store** | `memory_store.go`, `memory_miner.go`, `memory_manifest.go`, `agents/memories/` | Typed experience records extracted from sessions | Session start via `UnifiedMemory.Recall()` |
-| **Knowledge base** | `knowledge.go`, `agents/knowledge.db` | Hand-authored experiments/observations/concepts (relational) | Optional, also via `UnifiedMemory` |
+| **Knowledge base** | `github.com/rsdoiel/knowledge` (external module, via `replace` in `go.mod` until published), `agents/knowledge.db` | Hand-authored projects/observations/concepts (relational) | Optional, also via `UnifiedMemory` |
 
 `UnifiedMemory.Recall()` queries all three silos in priority order: `workspace_profile` + `project_fact` first (always injected, score 1.0), then experiential memories (FTS5 + optional cosine), then RAG chunks, then KB observations. Token budget is enforced.
 
