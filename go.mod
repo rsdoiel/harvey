@@ -11,6 +11,7 @@ require (
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/mozilla-ai/any-llm-go v0.9.0
 	github.com/rsdoiel/fountain v1.0.2
+	github.com/rsdoiel/knowledge v0.0.0-20260727191731-8fc360911d54
 	github.com/rsdoiel/termlib v0.0.9
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -55,7 +56,6 @@ require (
 	github.com/ollama/ollama v0.17.6 // indirect
 	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/rsdoiel/knowledge v0.0.0
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -77,5 +77,3 @@ require (
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.28.0 // indirect
 )
-
-replace github.com/rsdoiel/knowledge => ../knowledge
