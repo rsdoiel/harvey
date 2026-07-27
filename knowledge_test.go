@@ -973,3 +973,315 @@ func TestOpenKnowledgeBase_BackfillsLegacyConceptsCreatedAt(t *testing.T) {
 		t.Errorf("expected legacy row's created_at to be backfilled to a non-empty value, got %+v", createdAt)
 	}
 }
+
+// ─── experiments → projects migration ───────────────────────────────────────
+
+// seedLegacyExperimentsSchema creates the pre-harvey experiments/
+// experiment_concepts schema directly against a raw connection, mirroring
+// the real shape found on macmini-rd.local's agents/knowledge.db (see
+// experiments-migration-design.md's "Current schema" section). The caller
+// must close the returned *sql.DB before opening the same path via
+// OpenKnowledgeBase.
+func seedLegacyExperimentsSchema(t *testing.T, dbPath string) *sql.DB {
+	t.Helper()
+	raw, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	stmts := []string{
+		`CREATE TABLE experiments (
+			id       INTEGER PRIMARY KEY AUTOINCREMENT,
+			name     TEXT NOT NULL,
+			status   TEXT NOT NULL DEFAULT 'concept',
+			language TEXT,
+			repo_url TEXT
+		)`,
+		`CREATE TABLE concepts (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			name        TEXT UNIQUE NOT NULL,
+			description TEXT
+		)`,
+		`CREATE TABLE observations (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			experiment_id INTEGER NOT NULL REFERENCES experiments(id),
+			kind          TEXT NOT NULL,
+			body          TEXT NOT NULL,
+			created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE experiment_concepts (
+			experiment_id INTEGER NOT NULL REFERENCES experiments(id),
+			concept_id    INTEGER NOT NULL REFERENCES concepts(id),
+			PRIMARY KEY (experiment_id, concept_id)
+		)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := raw.Exec(stmt); err != nil {
+			t.Fatalf("create legacy schema: %v", err)
+		}
+	}
+	return raw
+}
+
+func TestOpenKnowledgeBase_MigratesExperimentsWithoutCollision(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/knowledge.db"
+	raw := seedLegacyExperimentsSchema(t, dbPath)
+
+	if _, err := raw.Exec(
+		`INSERT INTO experiments (name, status, language, repo_url) VALUES
+		 ('harvey', 'active', 'Go', 'https://github.com/rsdoiel/Laboratory')`,
+	); err != nil {
+		t.Fatalf("seed experiment: %v", err)
+	}
+	if _, err := raw.Exec(
+		`INSERT INTO observations (experiment_id, kind, body) VALUES (1, 'note', 'legacy harvey observation')`,
+	); err != nil {
+		t.Fatalf("seed observation: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+	kb, err := OpenKnowledgeBase(ws, dbPath)
+	if err != nil {
+		t.Fatalf("OpenKnowledgeBase: %v", err)
+	}
+	defer kb.Close()
+
+	var projectID int64
+	var desc string
+	if err := kb.db.QueryRow(`SELECT id, description FROM projects WHERE name = 'harvey'`).Scan(&projectID, &desc); err != nil {
+		t.Fatalf("expected a new harvey project to be created: %v", err)
+	}
+	wantDesc := "Go — https://github.com/rsdoiel/Laboratory"
+	if desc != wantDesc {
+		t.Errorf("description = %q, want %q", desc, wantDesc)
+	}
+
+	var obsProjectID sql.NullInt64
+	if err := kb.db.QueryRow(
+		`SELECT project_id FROM observations WHERE body = 'legacy harvey observation'`,
+	).Scan(&obsProjectID); err != nil {
+		t.Fatalf("select observation project_id: %v", err)
+	}
+	if !obsProjectID.Valid || obsProjectID.Int64 != projectID {
+		t.Errorf("observation project_id = %+v, want %d", obsProjectID, projectID)
+	}
+}
+
+func TestOpenKnowledgeBase_MigratesExperimentsWithCollision(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/knowledge.db"
+	raw := seedLegacyExperimentsSchema(t, dbPath)
+
+	if _, err := raw.Exec(
+		`CREATE TABLE projects (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			name        TEXT NOT NULL UNIQUE,
+			description TEXT NOT NULL DEFAULT '',
+			status      TEXT NOT NULL DEFAULT 'active',
+			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+	); err != nil {
+		t.Fatalf("create pre-existing projects table: %v", err)
+	}
+	if _, err := raw.Exec(`INSERT INTO projects (name) VALUES ('henry')`); err != nil {
+		t.Fatalf("seed pre-existing henry project: %v", err)
+	}
+	if _, err := raw.Exec(
+		`INSERT INTO experiments (name, status, language, repo_url) VALUES ('henry', 'active', 'bash, make', '')`,
+	); err != nil {
+		t.Fatalf("seed experiment: %v", err)
+	}
+	if _, err := raw.Exec(
+		`INSERT INTO observations (experiment_id, kind, body) VALUES (1, 'note', 'legacy henry observation')`,
+	); err != nil {
+		t.Fatalf("seed observation: %v", err)
+	}
+	if _, err := raw.Exec(`INSERT INTO concepts (name) VALUES ('llamafile-integration')`); err != nil {
+		t.Fatalf("seed concept: %v", err)
+	}
+	if _, err := raw.Exec(`INSERT INTO experiment_concepts (experiment_id, concept_id) VALUES (1, 1)`); err != nil {
+		t.Fatalf("seed experiment_concepts link: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+	kb, err := OpenKnowledgeBase(ws, dbPath)
+	if err != nil {
+		t.Fatalf("OpenKnowledgeBase: %v", err)
+	}
+	defer kb.Close()
+
+	var henryCount int
+	if err := kb.db.QueryRow(`SELECT COUNT(*) FROM projects WHERE name = 'henry'`).Scan(&henryCount); err != nil {
+		t.Fatalf("count henry projects: %v", err)
+	}
+	if henryCount != 1 {
+		t.Fatalf("expected exactly one henry project after migration, got %d", henryCount)
+	}
+
+	var henryID int64
+	if err := kb.db.QueryRow(`SELECT id FROM projects WHERE name = 'henry'`).Scan(&henryID); err != nil {
+		t.Fatalf("select henry project id: %v", err)
+	}
+
+	var obsProjectID sql.NullInt64
+	if err := kb.db.QueryRow(
+		`SELECT project_id FROM observations WHERE body = 'legacy henry observation'`,
+	).Scan(&obsProjectID); err != nil {
+		t.Fatalf("select observation project_id: %v", err)
+	}
+	if !obsProjectID.Valid || obsProjectID.Int64 != henryID {
+		t.Errorf("observation project_id = %+v, want the pre-existing henry project's id %d", obsProjectID, henryID)
+	}
+
+	var linkCount int
+	if err := kb.db.QueryRow(
+		`SELECT COUNT(*) FROM project_concepts pc
+		 JOIN concepts c ON c.id = pc.concept_id
+		 WHERE pc.project_id = ? AND c.name = 'llamafile-integration'`, henryID,
+	).Scan(&linkCount); err != nil {
+		t.Fatalf("count project_concepts link: %v", err)
+	}
+	if linkCount != 1 {
+		t.Errorf("expected exactly one translated project_concepts link, got %d", linkCount)
+	}
+}
+
+func TestOpenKnowledgeBase_MigrationIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/knowledge.db"
+	raw := seedLegacyExperimentsSchema(t, dbPath)
+	if _, err := raw.Exec(
+		`INSERT INTO experiments (name, status, language, repo_url) VALUES ('harvey', 'active', 'Go', '')`,
+	); err != nil {
+		t.Fatalf("seed experiment: %v", err)
+	}
+	if _, err := raw.Exec(
+		`INSERT INTO observations (experiment_id, kind, body) VALUES (1, 'note', 'legacy harvey observation')`,
+	); err != nil {
+		t.Fatalf("seed observation: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+	kb, err := OpenKnowledgeBase(ws, dbPath)
+	if err != nil {
+		t.Fatalf("OpenKnowledgeBase (first open): %v", err)
+	}
+
+	type snapshot struct {
+		projectCount int
+		projectID    int64
+		obsProjectID int64
+	}
+	snap := func(kb *KnowledgeBase) snapshot {
+		var s snapshot
+		if err := kb.db.QueryRow(`SELECT COUNT(*) FROM projects`).Scan(&s.projectCount); err != nil {
+			t.Fatalf("count projects: %v", err)
+		}
+		if err := kb.db.QueryRow(`SELECT id FROM projects WHERE name = 'harvey'`).Scan(&s.projectID); err != nil {
+			t.Fatalf("select harvey project id: %v", err)
+		}
+		if err := kb.db.QueryRow(
+			`SELECT project_id FROM observations WHERE body = 'legacy harvey observation'`,
+		).Scan(&s.obsProjectID); err != nil {
+			t.Fatalf("select observation project_id: %v", err)
+		}
+		return s
+	}
+
+	first := snap(kb)
+	kb.Close()
+
+	kb2, err := OpenKnowledgeBase(ws, dbPath)
+	if err != nil {
+		t.Fatalf("OpenKnowledgeBase (second open): %v", err)
+	}
+	defer kb2.Close()
+	second := snap(kb2)
+
+	if first != second {
+		t.Errorf("migration not idempotent: first=%+v second=%+v", first, second)
+	}
+}
+
+func TestOpenKnowledgeBase_MigrationLeavesLegacyTablesIntact(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/knowledge.db"
+	raw := seedLegacyExperimentsSchema(t, dbPath)
+	if _, err := raw.Exec(
+		`INSERT INTO experiments (name, status, language, repo_url) VALUES ('harvey', 'active', 'Go', '')`,
+	); err != nil {
+		t.Fatalf("seed experiment: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewWorkspace: %v", err)
+	}
+	kb, err := OpenKnowledgeBase(ws, dbPath)
+	if err != nil {
+		t.Fatalf("OpenKnowledgeBase: %v", err)
+	}
+	defer kb.Close()
+
+	var count int
+	if err := kb.db.QueryRow(`SELECT COUNT(*) FROM experiments`).Scan(&count); err != nil {
+		t.Fatalf("count experiments: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected the legacy experiments table to still have its 1 row, got %d", count)
+	}
+	var name string
+	if err := kb.db.QueryRow(`SELECT name FROM experiments WHERE id = 1`).Scan(&name); err != nil {
+		t.Fatalf("select experiment name: %v", err)
+	}
+	if name != "harvey" {
+		t.Errorf("expected legacy experiments row unchanged, got name=%q", name)
+	}
+}
+
+func TestOpenKnowledgeBase_NoExperimentsTableIsNoOp(t *testing.T) {
+	kb := openTestKB(t)
+
+	var count int
+	if err := kb.db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='experiments'`,
+	).Scan(&count); err != nil {
+		t.Fatalf("check for experiments table: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("test setup error: openTestKB's database unexpectedly has an experiments table")
+	}
+
+	if _, err := kb.AddProject("alpha", "first project"); err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	projects, err := kb.Projects()
+	if err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	if len(projects) != 1 {
+		t.Errorf("expected exactly the one project just added, got %d", len(projects))
+	}
+}

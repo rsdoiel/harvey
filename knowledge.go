@@ -202,6 +202,7 @@ type Concept struct {
 // errors via _, _ = db.Exec(...).
 var kbAlterStmts = []string{
 	`ALTER TABLE observations ADD COLUMN source_doi TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE observations ADD COLUMN project_id INTEGER REFERENCES projects(id)`,
 	// No DEFAULT clause: SQLite rejects ADD COLUMN with a non-constant
 	// default (CURRENT_TIMESTAMP) on a table that already has rows, which
 	// every real-world legacy concepts table does. Existing rows are
@@ -339,11 +340,102 @@ func OpenKnowledgeBase(ws *Workspace, customPath string) (*KnowledgeBase, error)
 		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_` + t + `_uuid ON ` + t + `(uuid)`)
 	}
 	kb := &KnowledgeBase{db: db, path: dbPath}
+	if err := migrateExperimentsToProjects(kb); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("knowledge: migrate experiments: %w", err)
+	}
 	if _, err := db.Exec(ftsSchema); err == nil {
 		kb.ftsAvailable = true
 		_ = kb.rebuildFTSIfNeeded()
 	}
 	return kb, nil
+}
+
+// migrateExperimentsToProjects bridges a pre-harvey, hand-authored
+// agents/knowledge.db (experiments/experiment_concepts/experiment_id,
+// documented historically in the Laboratory root CLAUDE.md, predating this
+// package — harvey's own schema has used projects/project_id since its
+// first commit) onto the current projects/project_id schema. No-op if the
+// legacy experiments table doesn't exist. Idempotent: a second call finds
+// no unmigrated rows, since every write here is guarded by a "not already
+// migrated" condition (name lookup before insert, project_id IS NULL
+// before update, INSERT OR IGNORE on the join table's primary key).
+// experiments/experiment_concepts are never modified or dropped.
+func migrateExperimentsToProjects(kb *KnowledgeBase) error {
+	var hasExperiments int
+	if err := kb.db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='experiments'`,
+	).Scan(&hasExperiments); err != nil {
+		return err
+	}
+	if hasExperiments == 0 {
+		return nil
+	}
+
+	rows, err := kb.db.Query(`SELECT id, name, language, repo_url FROM experiments`)
+	if err != nil {
+		return err
+	}
+	type legacyExperiment struct {
+		id                   int64
+		name, language, repo string
+	}
+	var experiments []legacyExperiment
+	for rows.Next() {
+		var e legacyExperiment
+		var language, repo sql.NullString
+		if err := rows.Scan(&e.id, &e.name, &language, &repo); err != nil {
+			rows.Close()
+			return err
+		}
+		e.language, e.repo = language.String, repo.String
+		experiments = append(experiments, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+
+	for _, e := range experiments {
+		var projectID int64
+		err := kb.db.QueryRow(`SELECT id FROM projects WHERE name = ?`, e.name).Scan(&projectID)
+		switch {
+		case err == sql.ErrNoRows:
+			var desc string
+			switch {
+			case e.language == "" && e.repo == "":
+				desc = ""
+			case e.language == "":
+				desc = e.repo
+			case e.repo == "":
+				desc = e.language
+			default:
+				desc = e.language + " — " + e.repo
+			}
+			projectID, err = kb.AddProject(e.name, desc)
+			if err != nil {
+				return fmt.Errorf("migrate experiment %q: %w", e.name, err)
+			}
+		case err != nil:
+			return err
+		}
+
+		if _, err := kb.db.Exec(
+			`UPDATE observations SET project_id = ? WHERE experiment_id = ? AND project_id IS NULL`,
+			projectID, e.id,
+		); err != nil {
+			return fmt.Errorf("migrate observations for experiment %q: %w", e.name, err)
+		}
+
+		if _, err := kb.db.Exec(
+			`INSERT OR IGNORE INTO project_concepts (project_id, concept_id)
+			 SELECT ?, concept_id FROM experiment_concepts WHERE experiment_id = ?`,
+			projectID, e.id,
+		); err != nil {
+			return fmt.Errorf("migrate concepts for experiment %q: %w", e.name, err)
+		}
+	}
+	return nil
 }
 
 /** Close releases the database connection. It should be deferred immediately

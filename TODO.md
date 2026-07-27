@@ -13,18 +13,32 @@
   project (35 concepts, 93 observations, 0 sources); wren has `harvey`/`henry`/`antennaApp` (17 concepts, 85
   observations, 6 sources). A real copy of macmini's `knowledge.db` was placed on `wren` at
   `macmini-rd.local-agents/knowledge.db` (copied by the user) and a genuine `bin/kbmerge -force` run against it
-  found and fixed one real bug (missing `concepts.created_at`, see `DECISIONS.md` 2026-07-27), then hit the next
-  one: `no such column: o.project_id` when merging `observations` — macmini's `observations` table is still on
-  the legacy `experiment_id → experiments(id)` schema, never migrated to `project_id → projects(id)`. This is a
-  separate, bigger, explicitly deferred piece of work (see the 2026-07-27 "Legacy data" decision in
-  `DECISIONS.md`) — not fixed yet. **Next concrete action:** design a proper `experiments`→`projects` data
-  migration (this affects any pre-rename `knowledge.db`, not just macmini's) before another `kbmerge` attempt can
-  get past `observations`. After that: knowledge-base module extraction (own repo/`go.mod`) is step 3, JSON-L
-  export (deferred) is step 4 — full sequencing in `../knowledge_db_merge_design.md`. Full resume context also
-  recorded as a `note` observation in `agents/knowledge.db` (project `harvey`, concept `cross-machine-sync`, most
-  recent entry).
+  found and fixed two real bugs in sequence: missing `concepts.created_at`, then `no such column: o.project_id`
+  (macmini's `observations` table was still on the legacy `experiment_id → experiments(id)` schema — see
+  `experiments-migration-design.md`/`-plan.md` and the 2026-07-27 "`experiments` → `projects`" entry in
+  `DECISIONS.md`). **Both fixed 2026-07-27** — `bin/kbmerge -a <wren> -b <migrated macmini copy> -force` now
+  **succeeds end-to-end**: 3+4→5 projects, 17+35→46 concepts, 87+93→180 observations, no data lost, merged
+  database written and reviewable. This was the concrete blocker this whole thread existed to clear. **Next
+  concrete action:** macmini's actual **live** `agents/knowledge.db` still needs both fixes applied via its own
+  `git pull` + reopen (only the copy on wren was exercised) — do that before treating the two databases as
+  truly ready to merge for real; then decide whether to actually copy a merged result into place on either
+  machine (`bin/kbmerge` deliberately never does this automatically). After that: knowledge-base module
+  extraction (own repo/`go.mod`) is step 3, JSON-L export (deferred) is step 4 — full sequencing in
+  `../knowledge_db_merge_design.md`. Full resume context also recorded as a `note` observation in
+  `agents/knowledge.db` (project `harvey`, concept `cross-machine-sync`, most recent entry).
 
 ## Bugs
+
+- [x] macmini-rd.local's `agents/knowledge.db` was still on the pre-`harvey` `experiments`/`experiment_id` schema
+  (documented historically in root `CLAUDE.md`, predating `harvey/knowledge.go`, which has used `projects`/
+  `project_id` since its first commit) — 93 real observations and 35 concepts across 4 real projects were
+  invisible to the app, and `observations` had no `project_id` column at all. **Fixed 2026-07-27:**
+  `migrateExperimentsToProjects` in `knowledge.go`, called from `OpenKnowledgeBase`; no-op if no legacy
+  `experiments` table exists (confirmed true for every other reachable `knowledge.db`). See
+  `experiments-migration-design.md`/`-plan.md` and `DECISIONS.md` same date. TDD: five new tests in
+  `knowledge_test.go`, three confirmed red before implementation. Verified against the real copy of macmini's
+  database and via a full successful `bin/kbmerge` run. **Still open:** apply to macmini's actual live database
+  (only the copy was migrated/tested).
 
 - [x] `concepts` table missing `created_at` on any `knowledge.db` created before that column was added to the
   base schema DDL (found on macmini-rd.local's real database 2026-07-27, via a genuine cross-machine
