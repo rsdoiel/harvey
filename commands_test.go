@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	knowledge "github.com/rsdoiel/knowledge"
 )
 
 // newTestAgent returns an Agent with a real workspace in a temp directory,
@@ -1485,9 +1487,9 @@ func TestSessionContinue_noArg_showsPicker(t *testing.T) {
 func newTestAgentWithKB(t *testing.T) (*Agent, int64) {
 	t.Helper()
 	a := newTestAgent(t)
-	kb, err := OpenKnowledgeBase(a.Workspace, "")
+	kb, err := knowledge.Open(knowledge.DefaultPath(a.Workspace.Root))
 	if err != nil {
-		t.Fatalf("OpenKnowledgeBase: %v", err)
+		t.Fatalf("knowledge.Open: %v", err)
 	}
 	t.Cleanup(func() { kb.Close() })
 	a.KB = kb
@@ -1513,7 +1515,7 @@ func TestKBObserve_SetsLastObservationID(t *testing.T) {
 func TestKBObserve_HintsRAGSources(t *testing.T) {
 	a, _ := newTestAgentWithKB(t)
 	// Seed a source and set LastRAGInfo with it.
-	srcID, _ := a.KB.AddSource(Source{Title: "Test Paper", IdentifierType: "doi", IdentifierValue: "10.1/test"})
+	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Test Paper", IdentifierType: "doi", IdentifierValue: "10.1/test"})
 	a.LastRAGInfo = &RAGAugmentInfo{
 		StoreName: "docs.db",
 		Chunks:    1,
@@ -1538,7 +1540,7 @@ func TestKBCite_LinksToLastObservation(t *testing.T) {
 	a, pid := newTestAgentWithKB(t)
 	obsID, _ := a.KB.AddObservation(pid, "note", "needs a citation")
 	a.LastObservationID = obsID
-	srcID, _ := a.KB.AddSource(Source{Title: "Cited Work"})
+	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Cited Work"})
 
 	var buf strings.Builder
 	if err := kbCite(a, []string{strconv.FormatInt(srcID, 10)}, &buf); err != nil {
@@ -1572,7 +1574,7 @@ func TestKBCite_NoLastObservation(t *testing.T) {
 func TestKBShow_WithSources(t *testing.T) {
 	a, pid := newTestAgentWithKB(t)
 	obsID, _ := a.KB.AddObservation(pid, "finding", "important finding")
-	srcID, _ := a.KB.AddSource(Source{Title: "Key Reference", IdentifierType: "doi", IdentifierValue: "10.1/key"})
+	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Key Reference", IdentifierType: "doi", IdentifierValue: "10.1/key"})
 	_ = a.KB.LinkObservationSource(obsID, srcID, "cited")
 
 	var buf strings.Builder
@@ -1591,7 +1593,7 @@ func TestKBShow_WithSources(t *testing.T) {
 func TestKBShow_RetractedSourceWarning(t *testing.T) {
 	a, pid := newTestAgentWithKB(t)
 	obsID, _ := a.KB.AddObservation(pid, "note", "based on a paper")
-	srcID, _ := a.KB.AddSource(Source{Title: "Retracted Paper"})
+	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Retracted Paper"})
 	_ = a.KB.LinkObservationSource(obsID, srcID, "cited")
 	_ = a.KB.RetractSource(srcID, "Withdrawn by publisher")
 

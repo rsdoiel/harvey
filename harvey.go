@@ -12,6 +12,7 @@ import (
 	"time"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
+	knowledge "github.com/rsdoiel/knowledge"
 )
 
 /** ChatStats holds timing and token-count data returned by a backend after
@@ -103,11 +104,11 @@ func (s ChatStats) FormatWithModels(models []string) string {
  *   msg := Message{Role: "user", Content: "Hello!"}
  */
 type Message struct {
-	Role       string                `json:"role"`
-	Content    string                `json:"content"`
-	Parts      []anyllm.ContentPart  `json:"parts,omitempty"`
-	ToolCalls  []anyllm.ToolCall     `json:"tool_calls,omitempty"`
-	ToolCallID string                `json:"tool_call_id,omitempty"`
+	Role       string               `json:"role"`
+	Content    string               `json:"content"`
+	Parts      []anyllm.ContentPart `json:"parts,omitempty"`
+	ToolCalls  []anyllm.ToolCall    `json:"tool_calls,omitempty"`
+	ToolCallID string               `json:"tool_call_id,omitempty"`
 }
 
 /** LLMClient is the interface implemented by each LLM backend (Ollama,
@@ -152,27 +153,27 @@ const maxStatHistory = 5
  *   agent := NewAgent(cfg, ws)
  */
 type Agent struct {
-	Client        LLMClient
-	Config        *Config
-	History       []Message
-	Workspace     *Workspace
-	KB            *KnowledgeBase
-	ModelCache    *ModelCache    // capability cache for installed Ollama models; nil until initModelCache runs
-	Rag           *RagStore      // RAG chunk store; nil when RAG is not configured
-	RagOn         bool           // when true, top-K chunks are injected before each Chat call
-	SessionsDir   string         // absolute path to the sessions directory
-	Skills        SkillCatalog   // skills discovered at startup; nil until loadSkills runs
-	Recorder      *Recorder
-	In            io.Reader      // source for interactive prompts; defaults to os.Stdin
-	Out           io.Writer      // destination for interactive output; defaults to os.Stdout
-	PinnedContext string         // persists across /clear; re-injected after system prompt
-	Routes        *RouteRegistry // registered remote endpoints; nil when routing not configured
-	ActiveSkill   string         // name of the most recently loaded skill; "" when none
-	ActiveSkillSet string        // name of the currently loaded skill-set bundle; "" when none
-	Tools         *ToolRegistry  // schema-based tool registry; nil when tools are disabled
-	Memory        *MemorySystem  // session-scoped memory subsystems; nil until initMemory runs
-	LastRAGInfo            *RAGAugmentInfo // set after each chat turn that fires RAG; cleared by ClearHistory
-	LastObservationID      int64           // ID of the most recently recorded /kb observe; cleared by ClearHistory
+	Client            LLMClient
+	Config            *Config
+	History           []Message
+	Workspace         *Workspace
+	KB                *knowledge.KnowledgeBase
+	ModelCache        *ModelCache  // capability cache for installed Ollama models; nil until initModelCache runs
+	Rag               *RagStore    // RAG chunk store; nil when RAG is not configured
+	RagOn             bool         // when true, top-K chunks are injected before each Chat call
+	SessionsDir       string       // absolute path to the sessions directory
+	Skills            SkillCatalog // skills discovered at startup; nil until loadSkills runs
+	Recorder          *Recorder
+	In                io.Reader       // source for interactive prompts; defaults to os.Stdin
+	Out               io.Writer       // destination for interactive output; defaults to os.Stdout
+	PinnedContext     string          // persists across /clear; re-injected after system prompt
+	Routes            *RouteRegistry  // registered remote endpoints; nil when routing not configured
+	ActiveSkill       string          // name of the most recently loaded skill; "" when none
+	ActiveSkillSet    string          // name of the currently loaded skill-set bundle; "" when none
+	Tools             *ToolRegistry   // schema-based tool registry; nil when tools are disabled
+	Memory            *MemorySystem   // session-scoped memory subsystems; nil until initMemory runs
+	LastRAGInfo       *RAGAugmentInfo // set after each chat turn that fires RAG; cleared by ClearHistory
+	LastObservationID int64           // ID of the most recently recorded /kb observe; cleared by ClearHistory
 	// toolsReliableOverride, when non-nil, overrides the capability-based logic
 	// in toolsReliable(). Set in tests to simulate a known-reliable or
 	// known-unreliable model without requiring a real AnyLLMClient.
@@ -184,16 +185,16 @@ type Agent struct {
 	// via switchLlamafileModel → StartLlamafileService, impractical to exercise
 	// in a unit test).
 	attemptModelSwitchOverride func(name string, out io.Writer) (bool, error)
-	memoryContextPending   bool         // true after ClearHistory until first user turn injects memories
-	sessionInjectedTokens  int          // tokens injected via UnifiedMemory this session
-	sessionCompressed      bool         // true if rolling summary fired at least once this session
-	sessionTurns           int          // total completed user turns in this session (never rolls off)
-	commands               map[string]*Command
-	statHistory            []ChatStats  // rolling window of recent turn stats
-	AuditBuffer            *AuditBuffer // in-memory audit log ring buffer; nil until initialized
-	DebugLog               *DebugLog    // JSONL diagnostic log; nil when --debug not set
-	Backend                ManagedBackend // active inference backend; nil when no backend is wired
-	ActiveRoute            string       // session-sticky route name; when set, prompts are auto-dispatched via @NAME
+	memoryContextPending       bool // true after ClearHistory until first user turn injects memories
+	sessionInjectedTokens      int  // tokens injected via UnifiedMemory this session
+	sessionCompressed          bool // true if rolling summary fired at least once this session
+	sessionTurns               int  // total completed user turns in this session (never rolls off)
+	commands                   map[string]*Command
+	statHistory                []ChatStats    // rolling window of recent turn stats
+	AuditBuffer                *AuditBuffer   // in-memory audit log ring buffer; nil until initialized
+	DebugLog                   *DebugLog      // JSONL diagnostic log; nil when --debug not set
+	Backend                    ManagedBackend // active inference backend; nil when no backend is wired
+	ActiveRoute                string         // session-sticky route name; when set, prompts are auto-dispatched via @NAME
 	// ActiveStatus is the current turn's StatusReporter, set by runChatTurn
 	// alongside the ToolExecutor's own Status field and cleared once the
 	// turn's spinner stops. Lets tool handlers (which capture *Agent via
@@ -239,7 +240,7 @@ func (a *Agent) effectiveContextLimit() int {
 
 /** NewAgent creates an Agent from cfg and ws with an empty conversation
  * history. The knowledge base is opened lazily — it is nil if
- * OpenKnowledgeBase has not been called.
+ * initKnowledgeBase has not been called.
  *
  * Parameters:
  *   cfg (*Config)    — runtime configuration.

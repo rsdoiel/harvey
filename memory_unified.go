@@ -2,7 +2,10 @@ package harvey
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
+
+	knowledge "github.com/rsdoiel/knowledge"
 )
 
 // factualTypes are always included at score 1.0 regardless of query.
@@ -271,7 +274,17 @@ func (u *UnifiedMemory) recallRAG(query string, embedder Embedder) ([]UnifiedRes
 
 // recallKB returns observations from the knowledge base that contain query text.
 func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
-	kb, err := OpenKnowledgeBase(u.ws, u.cfg.KnowledgeDB)
+	dbPath := u.cfg.KnowledgeDB
+	if dbPath == "" {
+		dbPath = knowledge.DefaultPath(u.ws.Root)
+	} else if !filepath.IsAbs(dbPath) {
+		var err error
+		dbPath, err = u.ws.AbsPath(dbPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+	kb, err := knowledge.Open(dbPath)
 	if err != nil {
 		return nil, err
 	}

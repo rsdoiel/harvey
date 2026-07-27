@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	knowledge "github.com/rsdoiel/knowledge"
 	"github.com/rsdoiel/termlib"
 )
 
@@ -1546,7 +1547,18 @@ func (a *Agent) initWorkspace(out io.Writer) error {
 // initKnowledgeBase opens (or creates) the SQLite knowledge base. Failures are
 // non-fatal: the user is warned but Harvey continues without a KB.
 func (a *Agent) initKnowledgeBase(out io.Writer) {
-	kb, err := OpenKnowledgeBase(a.Workspace, a.Config.Memory.KnowledgeDB)
+	dbPath := a.Config.Memory.KnowledgeDB
+	if dbPath == "" {
+		dbPath = knowledge.DefaultPath(a.Workspace.Root)
+	} else if !filepath.IsAbs(dbPath) {
+		var err error
+		dbPath, err = a.Workspace.AbsPath(dbPath)
+		if err != nil {
+			fmt.Fprintf(out, yellow("  ✗")+" Knowledge base unavailable: %v\n", err)
+			return
+		}
+	}
+	kb, err := knowledge.Open(dbPath)
 	if err != nil {
 		fmt.Fprintf(out, yellow("  ✗")+" Knowledge base unavailable: %v\n", err)
 		return
