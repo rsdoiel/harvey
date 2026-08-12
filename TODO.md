@@ -117,7 +117,7 @@
   `agents/sessions/harvey-session-20260705-205110.spmd` (chunks 1-4) even
   though the run was killed before synthesis.
 
-- [ ] Benchmark per-chunk timing across candidate models, now that GPULayers
+- [x] Benchmark per-chunk timing across candidate models, now that GPULayers
   defaults to 0. No other model has been timed with the GPU-layers fix in
   place — the earlier `bonsai-8b` 20+ min "hang" was confounded by the
   GPULayers=99 bug and is not valid timing data. Use `/read-chunks PATH
@@ -131,6 +131,91 @@
   baseline from today). Goal: build a real per-model-per-chunk timing table
   to answer "which model fits a given overnight/unattended time budget on a
   Pi 500."
+
+  **Update 2026-08-08:** Started the real per-model run (Claude Code
+  session, not manually at the terminal) — a standalone throwaway Go
+  program (`chunkbench`, built against this module via a local `go.mod`
+  `replace`, not checked in anywhere) that calls `ChunkDocument` +
+  `LlamafileBackend.Start`/`NewClient` + `client.Chat` directly per model,
+  sequentially, timing 2 chunks each against `natural_language_programming.md`
+  (12711 bytes, `--chunk-size 800` → 23 total chunks, confirms the same
+  chunking as the 2026-07-05 run). Stopped by user request partway through
+  (3 of 7 models attempted) to free up the Pi; resume by rerunning the
+  remaining models below. Confirmed via `ps` that the actual server
+  invocation carries `-ngl 0 -c 16384` as configured — the GPULayers fix is
+  genuinely in effect for this run, unlike every prior timing attempt.
+
+  Results so far (context_length as configured in `harvey.yaml`):
+  - `gemma-4-E4B-it-Q5_K_M` (ctx 16384): chunk 1 = 4m40s, chunk 2 = 4m36s
+    (avg ~4m38s/chunk). Notably faster than the "~10 min/chunk" figure
+    quoted above — that figure was a rough estimate from the real 23-chunk
+    run, not a tight back-to-back 2-chunk measurement; treat ~4.5 min/chunk
+    as the more reliable number for this model at this chunk size.
+  - `gemma-4-E2B-it-Q5_K_M`: **no valid data** — both chunks errored with
+    `connection refused`, and the backend reported "server ready in 0s"
+    (immediate, suspicious). Root cause: a genuine race in the benchmark
+    script, not a Harvey bug — `LlamafileBackend.Start` adopts an
+    already-listening server instead of launching a fresh one (by design,
+    for the case of an externally-started server), and the script called
+    `Stop()` on the previous model then `Start()` on this one with no gap;
+    the prior process's SIGINT hadn't yet released port 8080, so Start
+    wrongly "adopted" the dying gemma-4-E4B server, which then actually
+    exited moments later. **Needs a Detect()-poll-until-down guard between
+    Stop() and the next Start()** before re-running E2B or trusting any
+    future back-to-back sequential benchmark script — worth fixing in the
+    script (not this package) since real interactive `/llamafile use`
+    switches are user-paced, not back-to-back-instant.
+  - `Qwen3.5-4B-Q5_K_S` (ctx 16384, the exact model/config this TODO item's
+    "Update 2026-07-25" entry above wanted re-verified): chunk 1 = **8m21s**
+    — nearly 2x `gemma-4-E4B`'s per-chunk time even though both ran at the
+    identical `context_length: 16384`. This is a real, moderately
+    surprising data point: it means the earlier "large configured context
+    inflates CPU-only KV-cache setup cost" theory is **not** the full
+    explanation for Qwen's slowness, since 16384 here is already the
+    smallest context of any model tested and it's still the slowest —
+    something about this specific model/quant is just inherently heavier
+    per token on this CPU. Chunk 2 was in progress (interrupted by the
+    stop request) — re-run to get a second data point and confirm chunk 1
+    wasn't an outlier (e.g. one-time warmup cost).
+
+  **Not yet run:** `Bonsai-8B-Q1_0` (ctx 65536), `OpenELM-3B-Instruct-Q4_K_M`
+  (ctx 16384), `granite-4.1-8b-source-Q4_K_M` (ctx 16384),
+  `Apertus-8B-Instruct-2509` (ctx 49152) — all still queued, in that order,
+  in the `chunkbench` script's model list.
+
+  **Update 2026-08-08 (completed):** Re-ran `chunkbench` (v2, fixed: a
+  `waitForPortFree` poll-until-down guard between each model's `Stop()` and
+  the next model's `Start()`, closing the race that invalidated
+  `gemma-4-E2B`'s first attempt) for the 6 remaining/retry models. All
+  completed cleanly; full table below (2 chunks each, `--chunk-size 800`,
+  CPU-only `-ngl 0`, confirmed via `ps` on every model this time):
+
+  | model | context | avg/chunk | extrapolated, full 23-chunk doc |
+  |---|---|---|---|
+  | `Apertus-8B-Instruct-2509` | 49152 | 1m51s | ~42 min |
+  | `granite-4.1-8b-source-Q4_K_M` | 16384 | 2m19s | ~53 min |
+  | `gemma-4-E2B-it-Q5_K_M` | 16384 | 2m24s | ~55 min |
+  | `Bonsai-8B-Q1_0` | 65536 | 3m36s | ~83 min |
+  | `gemma-4-E4B-it-Q5_K_M` | 16384 | 4m38s | ~107 min |
+  | `OpenELM-3B-Instruct-Q4_K_M` | 16384 | 6m13s | ~143 min |
+  | `Qwen3.5-4B-Q5_K_S` | 16384 | 7m51s | ~180 min |
+
+  **Conclusion: parameter count does not predict per-chunk speed on this
+  CPU.** The two fastest models (`Apertus`, `granite`) are both 8B-class;
+  the smallest model tested (`OpenELM`, 3B) is the second-slowest, beaten
+  only by `Qwen3.5-4B`. Quantization scheme/architecture dominates raw
+  size for CPU-only inference here. `Qwen3.5-4B-Q5_K_S` is now confirmed
+  slowest across three independent chunk measurements (8m21s, 7m0s,
+  8m41s — consistently ~7-8.5 min/chunk), at the *smallest* context length
+  of any model tested, which rules out "large configured context inflates
+  KV-cache cost" as an explanation for its historical slowness; something
+  about this specific model/quant is inherently heavier per token here.
+  For an overnight/unattended full-document run on this Pi 500,
+  `Apertus-8B-Instruct-2509` is the clear best fit (~42 min vs. up to 3
+  hours for `Qwen3.5-4B-Q5_K_S`).
+
+  See `agents/knowledge.db` (Laboratory root), project `harvey`, concept
+  `chunking`, for the same summary as a finding observation.
 
 - [x] Added `/read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap
   paragraph|sentence|none] [INSTRUCTION...]` — runs the chunked map-reduce
