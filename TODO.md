@@ -3,6 +3,30 @@
 
 ## Update next
 
+- [ ] Release readiness (as of 2026-08-08): `TODO.md` has zero other open items,
+  `go build`/`go test` clean, and 136 commits of real work have accumulated since
+  the last tag (`v0.0.15`) — the full agentic-memory tool suite (M0–M6:
+  `retrieve_memory`/`add_memory`/`update_memory`/`delete_memory`/`filter_context`/
+  `summary_context`), the R0–R8 refactor series, multi-model routing, the
+  `knowledge` module extraction, chunk-analysis bug fixes, a retraction-checking
+  feature, and the per-model chunk-timing benchmark above. Three things needed
+  before actually tagging a release:
+  1. **Remove the stale `replace github.com/rsdoiel/termlib => ../termlib` in
+     `go.mod`.** `termlib v0.0.9` — the exact version already `require`d — is
+     already tagged upstream, so the local-path replace is no longer needed and
+     currently breaks the build for anyone without a local `../termlib` checkout
+     (i.e. everyone but this machine). Same class of stale-local-replace issue
+     already fixed for the `knowledge` dependency (see `DECISIONS.md`/the
+     `codemeta.json` history around the 0.0.2→0.0.3 knowledge bump); rebuild and
+     `go test ./...` after removing it.
+  2. **Decide the next version number.** `codemeta.json`'s `version` is
+     currently `"0.0.15a"` — not a clean, tag-able number. Likely `0.0.16`
+     given the scope of what shipped, but confirm before bumping.
+  3. **Write `releaseNotes` covering everything since `v0.0.15`** (the feature
+     list above), then `cmt codemeta.json version.go CITATION.cff about.md
+     README.md` to regenerate the derived files, then run the actual release
+     process (`release.bash`/`make release`) once the version/notes are set.
+
 - [x] Cross-machine `knowledge.db` sync — **DONE 2026-07-27**. Steps 1 (UUID migration) and 2 (merge tool) were
   already built; this session applied both, fixed two real bugs discovered along the way
   (`concepts.created_at`, `experiments`→`projects`), and completed a genuine merge, placed on both machines.
@@ -270,7 +294,7 @@
   three chunk-analysis call sites were found at the time); now fixed the same way, via `resolveDispatchTarget`.
   See DECISIONS.md 2026-07-13 entry. Test: `TestReadFile_MentionDispatchesToNamedModel`.
 
-- [ ] `Qwen3.5-4B-Q5_K_S`'s `/read-chunks` chunk 1 ran 54+ minutes (interrupted
+- [x] `Qwen3.5-4B-Q5_K_S`'s `/read-chunks` chunk 1 ran 54+ minutes (interrupted
   by user 2026-07-06, still pegged at ~389% CPU when stopped — genuinely
   computing, not hung) versus the ~10 min/chunk baseline already measured for
   `gemma-4-E4B-it-Q5_K_M`. Original theory: this entry's `harvey.yaml`
@@ -300,4 +324,15 @@
   with the ~10 min/chunk baseline, then fold into the per-model timing table
   above. Not run yet — this is a multi-minute, CPU-heavy operation and
   deserves an explicit go-ahead rather than running unattended.
+
+  **Resolved 2026-08-08**, by the completed per-model benchmark above: at
+  `context_length: 16384` — the exact config this item wanted verified —
+  `Qwen3.5-4B-Q5_K_S` measured 8m21s, 7m0s, and 8m41s per chunk across three
+  independent runs (~7-8.5 min/chunk, consistent). This confirms the 16384
+  setting already fixed the original 54+ minute outlier, but **not** the
+  KV-cache-allocation theory itself: 16384 is the smallest context of any
+  model benchmarked, yet `Qwen3.5-4B-Q5_K_S` is still the single slowest
+  model tested (nearly 2x the next-slowest, `OpenELM-3B`). The remaining
+  slowness is model/quant-specific, not context-length-driven — no further
+  action planned here.
 
