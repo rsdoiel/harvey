@@ -3,6 +3,13 @@
 
 ## Update next
 
+- [ ] **Blocked on `knowledge`:** do not tag this release until the open
+  `kb ingest` bugs and the `[[wikilink]]` tagging feature in
+  `../knowledge/TODO.md` are addressed — harvey consumes `knowledge` via a
+  `go.mod` `replace` pending its own publish, so its instability should
+  settle first. Decided 2026-09-08 (see `agents/knowledge.db`, project
+  `harvey`, observation id 398).
+
 - [ ] Release readiness (as of 2026-08-08): `TODO.md` has zero other open items,
   `go build`/`go test` clean, and 136 commits of real work have accumulated since
   the last tag (`v0.0.15`) — the full agentic-memory tool suite (M0–M6:
