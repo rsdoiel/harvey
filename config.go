@@ -230,6 +230,7 @@ type Config struct {
 var DefaultAllowedCommands = []string{
 	"ls", "cat", "grep", "head", "tail", "wc",
 	"find", "stat", "jq", "htmlq", "bat", "batcat",
+	"kb", "man",
 }
 
 func DefaultConfig() *Config {
