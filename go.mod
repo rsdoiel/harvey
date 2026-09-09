@@ -1,6 +1,6 @@
 module github.com/rsdoiel/harvey
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.42.0
@@ -11,6 +11,7 @@ require (
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/mozilla-ai/any-llm-go v0.9.0
 	github.com/rsdoiel/fountain v1.0.2
+	github.com/rsdoiel/knowledge v0.0.3
 	github.com/rsdoiel/termlib v0.0.9
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -47,7 +48,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
-	github.com/google/uuid v1.6.0
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect

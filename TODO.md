@@ -5,27 +5,53 @@
 
 ## Update next
 
-- [ ] Cross-machine `knowledge.db` sync — resume here. Step 1 (UUID migration) and step 2 (merge tool) are both
-  DONE, per `uuid-migration-design.md`/`-plan.md`, `merge-tool-design.md`/`-plan.md`, and the 2026-07-26 entries
-  in `DECISIONS.md`. **Correction 2026-07-27:** the 2026-07-26 work was actually all done on `wren`, not
-  `macmini-rd.local` as originally labeled (see the 2026-07-27 "Correction" entry in `DECISIONS.md`).
-  `macmini-rd.local`'s real `agents/knowledge.db` had never been migrated as of 2026-07-27 — fixed same day over
-  SSH (`git pull` to `394b499`, then a throwaway `go run` trigger of `OpenKnowledgeBase`, now removed). Both
-  machines are confirmed migrated now, and their data is genuinely divergent: macmini has only the `henry`
-  project (35 concepts, 93 observations, 0 sources); wren has `harvey`/`henry`/`antennaApp` (17 concepts, 85
-  observations, 6 sources). A real copy of macmini's `knowledge.db` was placed on `wren` at
-  `macmini-rd.local-agents/knowledge.db` (copied by the user) and a genuine `bin/kbmerge -force` run against it
-  found and fixed two real bugs in sequence: missing `concepts.created_at`, then `no such column: o.project_id`
-  (macmini's `observations` table was still on the legacy `experiment_id → experiments(id)` schema — see
-  `experiments-migration-design.md`/`-plan.md` and the 2026-07-27 "`experiments` → `projects`" entry in
-  `DECISIONS.md`). **Both fixed 2026-07-27** — `bin/kbmerge -a <wren> -b <migrated macmini copy> -force` now
-  **succeeds end-to-end**: 3+4→5 projects, 17+35→46 concepts, 87+93→180 observations, no data lost, merged
-  database written and reviewable. This was the concrete blocker this whole thread existed to clear. **Next
-  concrete action:** macmini's actual **live** `agents/knowledge.db` still needs both fixes applied via its own
-  `git pull` + reopen (only the copy on wren was exercised) — do that before treating the two databases as
-  truly ready to merge for real; then decide whether to actually copy a merged result into place on either
-  machine (`bin/kbmerge` deliberately never does this automatically). After that: knowledge-base module
-  extraction (own repo/`go.mod`) is step 3, JSON-L export (deferred) is step 4 — full sequencing in
+- [ ] **Blocked on `knowledge`:** do not tag this release until the open
+  `kb ingest` bugs and the `[[wikilink]]` tagging feature in
+  `../knowledge/TODO.md` are addressed — harvey consumes `knowledge` via a
+  `go.mod` `replace` pending its own publish, so its instability should
+  settle first. Decided 2026-09-08 (see `agents/knowledge.db`, project
+  `harvey`, observation id 398).
+
+- [ ] Release readiness (as of 2026-08-08): `TODO.md` has zero other open items,
+  `go build`/`go test` clean, and 136 commits of real work have accumulated since
+  the last tag (`v0.0.15`) — the full agentic-memory tool suite (M0–M6:
+  `retrieve_memory`/`add_memory`/`update_memory`/`delete_memory`/`filter_context`/
+  `summary_context`), the R0–R8 refactor series, multi-model routing, the
+  `knowledge` module extraction, chunk-analysis bug fixes, a retraction-checking
+  feature, and the per-model chunk-timing benchmark above. Three things needed
+  before actually tagging a release:
+  1. **Remove the stale `replace github.com/rsdoiel/termlib => ../termlib` in
+     `go.mod`.** `termlib v0.0.9` — the exact version already `require`d — is
+     already tagged upstream, so the local-path replace is no longer needed and
+     currently breaks the build for anyone without a local `../termlib` checkout
+     (i.e. everyone but this machine). Same class of stale-local-replace issue
+     already fixed for the `knowledge` dependency (see `DECISIONS.md`/the
+     `codemeta.json` history around the 0.0.2→0.0.3 knowledge bump); rebuild and
+     `go test ./...` after removing it.
+  2. **Decide the next version number.** `codemeta.json`'s `version` is
+     currently `"0.0.15a"` — not a clean, tag-able number. Likely `0.0.16`
+     given the scope of what shipped, but confirm before bumping.
+  3. **Write `releaseNotes` covering everything since `v0.0.15`** (the feature
+     list above), then `cmt codemeta.json version.go CITATION.cff about.md
+     README.md` to regenerate the derived files, then run the actual release
+     process (`release.bash`/`make release`) once the version/notes are set.
+
+- [x] Cross-machine `knowledge.db` sync — **DONE 2026-07-27**. Steps 1 (UUID migration) and 2 (merge tool) were
+  already built; this session applied both, fixed two real bugs discovered along the way
+  (`concepts.created_at`, `experiments`→`projects`), and completed a genuine merge, placed on both machines.
+  Sequence: pulled both `~/Laboratory` and `~/Laboratory/harvey` up to date on `macmini-rd.local` over SSH (no
+  conflicts — checked incoming commits against macmini's one unpushed local commit first); backed up and
+  migrated macmini's real live `agents/knowledge.db` (both fixes, verified identical to the earlier copy-based
+  test); `scp`'d it to wren; ran `bin/kbmerge -a <wren> -b <macmini> -force` locally; independently verified the
+  merged output (`PRAGMA integrity_check` clean, zero dangling join rows, all UUIDs present) before placing it
+  anywhere; backed up wren's pre-merge live db; replaced wren's live `agents/knowledge.db` with the merged file;
+  `scp`'d that same file to replace macmini's. Confirmed byte-identical (checksum) on both machines afterward.
+  Result: 5 projects (`harvey`/`henry`/`antennaApp`/`sparqlset`/`audiobox`), 46 concepts, 181 observations, no
+  data lost. See the 2026-07-27 "Cross-machine `knowledge.db` merge completed" entry in `DECISIONS.md`.
+  Backups on both machines: `.pre-cleanup-20260727`, `.pre-experiments-migration-20260727` (macmini),
+  `.pre-merge-20260727` (wren). **Not done:** macmini's root `Laboratory` repo has an unpushed merge commit
+  (`e418c8e`) from the `git pull` step — ask before pushing. **Next, if wanted:** knowledge-base module
+  extraction (own repo/`go.mod`, step 3) and JSON-L export (deferred, step 4) — full sequencing in
   `../knowledge_db_merge_design.md`. Full resume context also recorded as a `note` observation in
   `agents/knowledge.db` (project `harvey`, concept `cross-machine-sync`, most recent entry).
 
@@ -124,7 +150,7 @@
   `agents/sessions/harvey-session-20260705-205110.spmd` (chunks 1-4) even
   though the run was killed before synthesis.
 
-- [ ] Benchmark per-chunk timing across candidate models, now that GPULayers
+- [x] Benchmark per-chunk timing across candidate models, now that GPULayers
   defaults to 0. No other model has been timed with the GPU-layers fix in
   place — the earlier `bonsai-8b` 20+ min "hang" was confounded by the
   GPULayers=99 bug and is not valid timing data. Use `/read-chunks PATH
@@ -138,6 +164,91 @@
   baseline from today). Goal: build a real per-model-per-chunk timing table
   to answer "which model fits a given overnight/unattended time budget on a
   Pi 500."
+
+  **Update 2026-08-08:** Started the real per-model run (Claude Code
+  session, not manually at the terminal) — a standalone throwaway Go
+  program (`chunkbench`, built against this module via a local `go.mod`
+  `replace`, not checked in anywhere) that calls `ChunkDocument` +
+  `LlamafileBackend.Start`/`NewClient` + `client.Chat` directly per model,
+  sequentially, timing 2 chunks each against `natural_language_programming.md`
+  (12711 bytes, `--chunk-size 800` → 23 total chunks, confirms the same
+  chunking as the 2026-07-05 run). Stopped by user request partway through
+  (3 of 7 models attempted) to free up the Pi; resume by rerunning the
+  remaining models below. Confirmed via `ps` that the actual server
+  invocation carries `-ngl 0 -c 16384` as configured — the GPULayers fix is
+  genuinely in effect for this run, unlike every prior timing attempt.
+
+  Results so far (context_length as configured in `harvey.yaml`):
+  - `gemma-4-E4B-it-Q5_K_M` (ctx 16384): chunk 1 = 4m40s, chunk 2 = 4m36s
+    (avg ~4m38s/chunk). Notably faster than the "~10 min/chunk" figure
+    quoted above — that figure was a rough estimate from the real 23-chunk
+    run, not a tight back-to-back 2-chunk measurement; treat ~4.5 min/chunk
+    as the more reliable number for this model at this chunk size.
+  - `gemma-4-E2B-it-Q5_K_M`: **no valid data** — both chunks errored with
+    `connection refused`, and the backend reported "server ready in 0s"
+    (immediate, suspicious). Root cause: a genuine race in the benchmark
+    script, not a Harvey bug — `LlamafileBackend.Start` adopts an
+    already-listening server instead of launching a fresh one (by design,
+    for the case of an externally-started server), and the script called
+    `Stop()` on the previous model then `Start()` on this one with no gap;
+    the prior process's SIGINT hadn't yet released port 8080, so Start
+    wrongly "adopted" the dying gemma-4-E4B server, which then actually
+    exited moments later. **Needs a Detect()-poll-until-down guard between
+    Stop() and the next Start()** before re-running E2B or trusting any
+    future back-to-back sequential benchmark script — worth fixing in the
+    script (not this package) since real interactive `/llamafile use`
+    switches are user-paced, not back-to-back-instant.
+  - `Qwen3.5-4B-Q5_K_S` (ctx 16384, the exact model/config this TODO item's
+    "Update 2026-07-25" entry above wanted re-verified): chunk 1 = **8m21s**
+    — nearly 2x `gemma-4-E4B`'s per-chunk time even though both ran at the
+    identical `context_length: 16384`. This is a real, moderately
+    surprising data point: it means the earlier "large configured context
+    inflates CPU-only KV-cache setup cost" theory is **not** the full
+    explanation for Qwen's slowness, since 16384 here is already the
+    smallest context of any model tested and it's still the slowest —
+    something about this specific model/quant is just inherently heavier
+    per token on this CPU. Chunk 2 was in progress (interrupted by the
+    stop request) — re-run to get a second data point and confirm chunk 1
+    wasn't an outlier (e.g. one-time warmup cost).
+
+  **Not yet run:** `Bonsai-8B-Q1_0` (ctx 65536), `OpenELM-3B-Instruct-Q4_K_M`
+  (ctx 16384), `granite-4.1-8b-source-Q4_K_M` (ctx 16384),
+  `Apertus-8B-Instruct-2509` (ctx 49152) — all still queued, in that order,
+  in the `chunkbench` script's model list.
+
+  **Update 2026-08-08 (completed):** Re-ran `chunkbench` (v2, fixed: a
+  `waitForPortFree` poll-until-down guard between each model's `Stop()` and
+  the next model's `Start()`, closing the race that invalidated
+  `gemma-4-E2B`'s first attempt) for the 6 remaining/retry models. All
+  completed cleanly; full table below (2 chunks each, `--chunk-size 800`,
+  CPU-only `-ngl 0`, confirmed via `ps` on every model this time):
+
+  | model | context | avg/chunk | extrapolated, full 23-chunk doc |
+  |---|---|---|---|
+  | `Apertus-8B-Instruct-2509` | 49152 | 1m51s | ~42 min |
+  | `granite-4.1-8b-source-Q4_K_M` | 16384 | 2m19s | ~53 min |
+  | `gemma-4-E2B-it-Q5_K_M` | 16384 | 2m24s | ~55 min |
+  | `Bonsai-8B-Q1_0` | 65536 | 3m36s | ~83 min |
+  | `gemma-4-E4B-it-Q5_K_M` | 16384 | 4m38s | ~107 min |
+  | `OpenELM-3B-Instruct-Q4_K_M` | 16384 | 6m13s | ~143 min |
+  | `Qwen3.5-4B-Q5_K_S` | 16384 | 7m51s | ~180 min |
+
+  **Conclusion: parameter count does not predict per-chunk speed on this
+  CPU.** The two fastest models (`Apertus`, `granite`) are both 8B-class;
+  the smallest model tested (`OpenELM`, 3B) is the second-slowest, beaten
+  only by `Qwen3.5-4B`. Quantization scheme/architecture dominates raw
+  size for CPU-only inference here. `Qwen3.5-4B-Q5_K_S` is now confirmed
+  slowest across three independent chunk measurements (8m21s, 7m0s,
+  8m41s — consistently ~7-8.5 min/chunk), at the *smallest* context length
+  of any model tested, which rules out "large configured context inflates
+  KV-cache cost" as an explanation for its historical slowness; something
+  about this specific model/quant is inherently heavier per token here.
+  For an overnight/unattended full-document run on this Pi 500,
+  `Apertus-8B-Instruct-2509` is the clear best fit (~42 min vs. up to 3
+  hours for `Qwen3.5-4B-Q5_K_S`).
+
+  See `agents/knowledge.db` (Laboratory root), project `harvey`, concept
+  `chunking`, for the same summary as a finding observation.
 
 - [x] Added `/read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap
   paragraph|sentence|none] [INSTRUCTION...]` — runs the chunked map-reduce
@@ -192,7 +303,7 @@
   three chunk-analysis call sites were found at the time); now fixed the same way, via `resolveDispatchTarget`.
   See DECISIONS.md 2026-07-13 entry. Test: `TestReadFile_MentionDispatchesToNamedModel`.
 
-- [ ] `Qwen3.5-4B-Q5_K_S`'s `/read-chunks` chunk 1 ran 54+ minutes (interrupted
+- [x] `Qwen3.5-4B-Q5_K_S`'s `/read-chunks` chunk 1 ran 54+ minutes (interrupted
   by user 2026-07-06, still pegged at ~389% CPU when stopped — genuinely
   computing, not hung) versus the ~10 min/chunk baseline already measured for
   `gemma-4-E4B-it-Q5_K_M`. Original theory: this entry's `harvey.yaml`
@@ -222,4 +333,15 @@
   with the ~10 min/chunk baseline, then fold into the per-model timing table
   above. Not run yet — this is a multi-minute, CPU-heavy operation and
   deserves an explicit go-ahead rather than running unattended.
+
+  **Resolved 2026-08-08**, by the completed per-model benchmark above: at
+  `context_length: 16384` — the exact config this item wanted verified —
+  `Qwen3.5-4B-Q5_K_S` measured 8m21s, 7m0s, and 8m41s per chunk across three
+  independent runs (~7-8.5 min/chunk, consistent). This confirms the 16384
+  setting already fixed the original 54+ minute outlier, but **not** the
+  KV-cache-allocation theory itself: 16384 is the smallest context of any
+  model benchmarked, yet `Qwen3.5-4B-Q5_K_S` is still the single slowest
+  model tested (nearly 2x the next-slowest, `OpenELM-3B`). The remaining
+  slowness is model/quant-specific, not context-length-driven — no further
+  action planned here.
 

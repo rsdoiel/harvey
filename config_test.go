@@ -69,6 +69,15 @@ func TestDefaultConfig_MemoryBudgetPct(t *testing.T) {
 	}
 }
 
+func TestDefaultConfig_AllowedCommandsIncludesKbAndMan(t *testing.T) {
+	cfg := DefaultConfig()
+	for _, want := range []string{"kb", "man"} {
+		if !cfg.IsCommandAllowed(want) {
+			t.Errorf("DefaultAllowedCommands: got %v, want it to include %q", cfg.Security.AllowedCommands, want)
+		}
+	}
+}
+
 func TestDefaultConfig_RollingSummaryDefaults(t *testing.T) {
 	cfg := DefaultConfig()
 	rs := cfg.Memory.RollingSummary

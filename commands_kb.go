@@ -7,6 +7,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	knowledge "github.com/rsdoiel/knowledge"
 )
 
 // ─── /kb ─────────────────────────────────────────────────────────────────────
@@ -213,7 +215,7 @@ func kbProject(a *Agent, args []string, out io.Writer) error {
 func kbObserve(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		fmt.Fprintln(out, "Usage: /kb observe [KIND] TEXT")
-		fmt.Fprintf(out, "Kinds: %s  (default: note)\n", strings.Join(ValidObservationKinds, ", "))
+		fmt.Fprintf(out, "Kinds: %s  (default: note)\n", strings.Join(knowledge.ValidObservationKinds, ", "))
 		return nil
 	}
 	if a.Config.Memory.CurrentProjectID == 0 {
@@ -223,7 +225,7 @@ func kbObserve(a *Agent, args []string, out io.Writer) error {
 
 	kind := "note"
 	bodyArgs := args
-	if isValidKind(strings.ToLower(args[0])) {
+	if knowledge.IsValidKind(strings.ToLower(args[0])) {
 		kind = strings.ToLower(args[0])
 		bodyArgs = args[1:]
 	}
@@ -331,7 +333,7 @@ func kbSource(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintf(out, "  %-4d  %-32s  %-24s  %s\n", s.ID, truncate(s.Title, 32), truncate(ident, 24), retracted)
 		}
 	case "add":
-		var s Source
+		var s knowledge.Source
 		var i int
 		for i = 1; i < len(args); i++ {
 			switch args[i] {
@@ -521,19 +523,14 @@ func kbShow(a *Agent, args []string, out io.Writer) error {
 		return nil
 	}
 
-	// Load observation by querying Observations for the project, then filtering.
-	// Simpler: query directly.
-	var kind, body, sourceDOI string
-	err := a.KB.db.QueryRow(
-		`SELECT kind, body, source_doi FROM observations WHERE id = ?`, obsID,
-	).Scan(&kind, &body, &sourceDOI)
+	obs, err := a.KB.ObservationByID(obsID)
 	if err != nil {
 		fmt.Fprintf(out, "  Observation %d not found.\n", obsID)
 		return nil
 	}
-	fmt.Fprintf(out, "  [%s] %s\n", kind, body)
-	if sourceDOI != "" {
-		fmt.Fprintf(out, "  DOI (legacy): %s\n", sourceDOI)
+	fmt.Fprintf(out, "  [%s] %s\n", obs.Kind, obs.Body)
+	if obs.SourceDOI != "" {
+		fmt.Fprintf(out, "  DOI (legacy): %s\n", obs.SourceDOI)
 	}
 
 	sources, err := a.KB.ObservationSources(obsID)
