@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	knowledge "github.com/rsdoiel/knowledge"
 )
 
 func TestFormatContext_Empty(t *testing.T) {
@@ -377,5 +379,213 @@ func TestStatsCount_Empty(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("StatsCount on empty store: got %d, want 0", n)
+	}
+}
+
+// ─── recallKB: concept-tag primary path, substring fallback ──────────────────
+
+// newTestUnifiedMemoryWithKB returns a UnifiedMemory backed by a live
+// KnowledgeBase at the workspace's default path, with a current project set.
+func newTestUnifiedMemoryWithKB(t *testing.T) (*UnifiedMemory, *knowledge.KnowledgeBase, int64) {
+	t.Helper()
+	ws, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	kb, err := knowledge.Open(knowledge.DefaultPath(ws.Root))
+	if err != nil {
+		t.Fatalf("knowledge.Open: %v", err)
+	}
+	t.Cleanup(func() { kb.Close() })
+	pid, err := kb.AddProject("test-project", "")
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	cfg := &MemoryConfig{CurrentProjectID: pid}
+	um := NewUnifiedMemory(nil, cfg, ws)
+	return um, kb, pid
+}
+
+func TestRecallKB_ConceptMatch_PrimaryPath(t *testing.T) {
+	um, kb, pid := newTestUnifiedMemoryWithKB(t)
+
+	conceptID, err := kb.AddConcept("chunking", "")
+	if err != nil {
+		t.Fatalf("AddConcept: %v", err)
+	}
+	obsID, err := kb.AddObservation(pid, "finding", "map-reduce chunking is sound on CPU-only hardware")
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+	if err := kb.LinkObservationConcept(obsID, conceptID); err != nil {
+		t.Fatalf("LinkObservationConcept: %v", err)
+	}
+
+	results, err := um.recallKB("how does chunking behave on a Pi?")
+	if err != nil {
+		t.Fatalf("recallKB: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("recallKB: got %d results, want 1: %+v", len(results), results)
+	}
+	if !strings.Contains(results[0].Content, "map-reduce chunking is sound") {
+		t.Errorf("Content = %q, want observation body", results[0].Content)
+	}
+	if results[0].Score != 0.6 {
+		t.Errorf("Score = %v, want 0.6 for concept-tag match", results[0].Score)
+	}
+}
+
+func TestRecallKB_ConceptMatch_NotProjectScoped(t *testing.T) {
+	um, kb, _ := newTestUnifiedMemoryWithKB(t)
+
+	otherPID, err := kb.AddProject("other-project", "")
+	if err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	conceptID, err := kb.AddConcept("RAG", "")
+	if err != nil {
+		t.Fatalf("AddConcept: %v", err)
+	}
+	obsID, err := kb.AddObservation(otherPID, "note", "RAG chunk retrieval note from a different project")
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+	if err := kb.LinkObservationConcept(obsID, conceptID); err != nil {
+		t.Fatalf("LinkObservationConcept: %v", err)
+	}
+
+	// The current project (from newTestUnifiedMemoryWithKB) is neither
+	// otherPID nor linked to the observation; RecallByConceptNames is
+	// deliberately not project-scoped, so the match must still surface.
+	results, err := um.recallKB("what do we know about RAG?")
+	if err != nil {
+		t.Fatalf("recallKB: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("recallKB: got %d results, want 1 (cross-project concept match): %+v", len(results), results)
+	}
+}
+
+func TestRecallKB_RecordMatch(t *testing.T) {
+	um, kb, pid := newTestUnifiedMemoryWithKB(t)
+
+	conceptID, err := kb.AddConcept("routing", "")
+	if err != nil {
+		t.Fatalf("AddConcept: %v", err)
+	}
+	recID, err := kb.AddRecord(knowledge.Record{
+		RecordID: "0001", ProjectID: pid, Title: "Adopt multi-model routing",
+		Date: "2026-06-01", Status: "accepted", Kind: "decision",
+		Body: "Route prompts by declared model capability.",
+	})
+	if err != nil {
+		t.Fatalf("AddRecord: %v", err)
+	}
+	if err := kb.LinkRecordConcept(recID, conceptID); err != nil {
+		t.Fatalf("LinkRecordConcept: %v", err)
+	}
+
+	results, err := um.recallKB("why did we choose this routing approach?")
+	if err != nil {
+		t.Fatalf("recallKB: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("recallKB: got %d results, want 1: %+v", len(results), results)
+	}
+	if !strings.Contains(results[0].Content, "Adopt multi-model routing") {
+		t.Errorf("Content = %q, want record title", results[0].Content)
+	}
+	if !strings.Contains(results[0].Content, "Route prompts by declared model capability") {
+		t.Errorf("Content = %q, want record body", results[0].Content)
+	}
+}
+
+func TestRecallKB_SkipsUnreviewedDocumentMatches(t *testing.T) {
+	um, kb, pid := newTestUnifiedMemoryWithKB(t)
+
+	conceptID, err := kb.AddConcept("harness", "")
+	if err != nil {
+		t.Fatalf("AddConcept: %v", err)
+	}
+	docID, err := kb.AddDocument(knowledge.Document{
+		ProjectID: pid, Title: "harness-engineering-notes", Format: "markdown", Path: "notes.md",
+	})
+	if err != nil {
+		t.Fatalf("AddDocument: %v", err)
+	}
+	sectionID, err := kb.AddDocumentSection(knowledge.DocumentSection{
+		DocumentID: docID, Level: "section", Seq: 1, Heading: "Harness gaps",
+		Body: "raw ingested text", SummaryStatus: "unsummarized",
+	})
+	if err != nil {
+		t.Fatalf("AddDocumentSection: %v", err)
+	}
+	if err := kb.LinkDocumentSectionConcept(sectionID, conceptID); err != nil {
+		t.Fatalf("LinkDocumentSectionConcept: %v", err)
+	}
+
+	results, err := um.recallKB("what's the state of the harness work?")
+	if err != nil {
+		t.Fatalf("recallKB: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("recallKB: got %d results, want 0 (unreviewed document summary must not surface as content): %+v", len(results), results)
+	}
+}
+
+func TestRecallKB_ReviewedDocumentMatch_Surfaces(t *testing.T) {
+	um, kb, pid := newTestUnifiedMemoryWithKB(t)
+
+	conceptID, err := kb.AddConcept("harness", "")
+	if err != nil {
+		t.Fatalf("AddConcept: %v", err)
+	}
+	docID, err := kb.AddDocument(knowledge.Document{
+		ProjectID: pid, Title: "harness-engineering-notes", Format: "markdown", Path: "notes.md",
+	})
+	if err != nil {
+		t.Fatalf("AddDocument: %v", err)
+	}
+	sectionID, err := kb.AddDocumentSection(knowledge.DocumentSection{
+		DocumentID: docID, Level: "section", Seq: 1, Heading: "Harness gaps",
+		Body: "raw ingested text", SummaryBody: "A reviewed, human-approved summary.",
+		SummaryStatus: "reviewed",
+	})
+	if err != nil {
+		t.Fatalf("AddDocumentSection: %v", err)
+	}
+	if err := kb.LinkDocumentSectionConcept(sectionID, conceptID); err != nil {
+		t.Fatalf("LinkDocumentSectionConcept: %v", err)
+	}
+
+	results, err := um.recallKB("what's the state of the harness work?")
+	if err != nil {
+		t.Fatalf("recallKB: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("recallKB: got %d results, want 1: %+v", len(results), results)
+	}
+	if !strings.Contains(results[0].Content, "A reviewed, human-approved summary.") {
+		t.Errorf("Content = %q, want reviewed summary body", results[0].Content)
+	}
+}
+
+func TestRecallKB_FallsBackToSubstring_WhenNoConceptMatch(t *testing.T) {
+	um, kb, pid := newTestUnifiedMemoryWithKB(t)
+
+	if _, err := kb.AddObservation(pid, "note", "the release process needs a version bump first"); err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	results, err := um.recallKB("version bump")
+	if err != nil {
+		t.Fatalf("recallKB: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("recallKB: got %d results, want 1 (substring fallback): %+v", len(results), results)
+	}
+	if results[0].Score != 0.5 {
+		t.Errorf("Score = %v, want 0.5 for substring fallback", results[0].Score)
 	}
 }

@@ -6,12 +6,24 @@
 
 ## Update next
 
-- [ ] **Blocked on `knowledge`:** do not tag this release until the open
-  `kb ingest` bugs and the `[[wikilink]]` tagging feature in
-  `../knowledge/TODO.md` are addressed — harvey consumes `knowledge` via a
-  `go.mod` `replace` pending its own publish, so its instability should
-  settle first. Decided 2026-09-08 (see `agents/knowledge.db`, project
-  `harvey`, observation id 398).
+- [x] **Blocked on `knowledge`** — **resolved 2026-09-15.** Decided
+  2026-09-08 (see `agents/knowledge.db`, project `harvey`, observation id
+  398) to hold the release until `kb ingest`'s bugs and `[[wikilink]]`
+  tagging settled. Both shipped in `knowledge` v0.0.4–v0.0.6
+  (`wikilink-tagging`, `concept-tag-retrieval`, `narrative-documents` — see
+  `../knowledge/CHANGES.md`), and `go.mod` had no local `replace` for
+  `knowledge` by the time this was checked — it was already a plain tagged
+  dependency. Bumped `go.mod` `github.com/rsdoiel/knowledge` v0.0.3 → v0.0.6;
+  `go build`/`go test ./...` clean. Also rewired `memory_unified.go`'s
+  `recallKB` to try `kb.MatchConceptNames`/`RecallByConceptNames` first
+  (concept-tag match, not project-scoped, widened to `records` and
+  `reviewed`-status `document` sections), falling back to the original
+  project-scoped substring scan over `observations` when no concept matches
+  — item 1–2 of `knowledge-learning-mode-feature-request.md`. TDD: 6 new
+  tests in `memory_unified_test.go`, confirmed red before implementation.
+  **Still open:** items 3–6 of that feature-request doc (the learning-mode
+  UX itself, session-to-document ingestion, decisions-directory
+  realignment) — untouched by this change.
 
 - [ ] Release readiness (as of 2026-08-08): `TODO.md` has zero other open items,
   `go build`/`go test` clean, and 136 commits of real work have accumulated since

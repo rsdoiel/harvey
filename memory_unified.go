@@ -272,7 +272,17 @@ func (u *UnifiedMemory) recallRAG(query string, embedder Embedder) ([]UnifiedRes
 	return out, nil
 }
 
-// recallKB returns observations from the knowledge base that contain query text.
+// kbConceptRecallLimit caps both the concept-tag primary path and the
+// substring fallback path in recallKB, matching the pre-existing fallback cap.
+const kbConceptRecallLimit = 5
+
+// recallKB returns knowledge-base content related to query. It first tries
+// concept-tag matching (kb.MatchConceptNames against query, then
+// kb.RecallByConceptNames) — not scoped to CurrentProjectID, since a tagged
+// concept is a deliberate cross-project signal. When no concept matches (or
+// none of the matches carry surfaceable content — see formatConceptMatch),
+// it falls back to the original substring scan over the current project's
+// observations.
 func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 	dbPath := u.cfg.KnowledgeDB
 	if dbPath == "" {
@@ -290,6 +300,35 @@ func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 	}
 	defer kb.Close()
 
+	if query != "" {
+		names, err := kb.MatchConceptNames(query)
+		if err != nil {
+			return nil, err
+		}
+		if len(names) > 0 {
+			matches, err := kb.RecallByConceptNames(names, kbConceptRecallLimit)
+			if err != nil {
+				return nil, err
+			}
+			var out []UnifiedResult
+			for _, m := range matches {
+				content := formatConceptMatch(m)
+				if content == "" {
+					continue
+				}
+				out = append(out, UnifiedResult{
+					Source:  "kb",
+					ID:      fmt.Sprintf("kb:%s:%d", m.SourceType, m.ID),
+					Content: content,
+					Score:   0.6,
+				})
+			}
+			if len(out) > 0 {
+				return out, nil
+			}
+		}
+	}
+
 	obs, err := kb.Observations(u.cfg.CurrentProjectID)
 	if err != nil {
 		return nil, err
@@ -306,11 +345,32 @@ func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 			Content: o.Kind + ": " + o.Body,
 			Score:   0.5,
 		})
-		if len(out) >= 5 {
+		if len(out) >= kbConceptRecallLimit {
 			break
 		}
 	}
 	return out, nil
+}
+
+// formatConceptMatch renders a knowledge.ConceptMatch as injectable context
+// text, or "" when the match has nothing surfaceable — an unreviewed document
+// match carries no Body by knowledge's own design (only a "reviewed" summary
+// is trustworthy content; see ConceptMatch's doc comment), so it is dropped
+// here rather than injected as an empty block.
+func formatConceptMatch(m knowledge.ConceptMatch) string {
+	switch m.SourceType {
+	case "observation":
+		return "observation: " + m.Body
+	case "record":
+		return "record: " + m.Title + "\n\n" + m.Body
+	case "document_gist", "document_section":
+		if m.Body == "" {
+			return ""
+		}
+		return "document: " + m.Title + "\n\n" + m.Body
+	default:
+		return ""
+	}
 }
 
 /** FormatContext formats a slice of UnifiedResults into a context injection
