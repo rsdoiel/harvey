@@ -12,8 +12,8 @@
     }
   ],
   "dateCreated": "2026-04-15",
-  "dateModified": "2026-06-28",
-  "datePublished": "2026-06-26",
+  "dateModified": "2026-09-15",
+  "datePublished": "2026-09-15",
   "description": "Harvey is an agent REPL written in Go and designed to use Llamafile models or Ollama server to access language models locally. It is a terminal based application.\n\nThe Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and my personal language model agent.  Many people think of agents only in the context of very big companies. I think small models running on small or tiny computers are an opportunity. Harvey, is a small agent for small and tiny computers and is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.",
   "name": "harvey",
   "license": "https://www.gnu.org/licenses/agpl-3.0.txt",
@@ -29,9 +29,9 @@
     "Pandoc >= 3.9",
     "GNU Make >= 3.8"
   ],
-  "version": "0.0.15a",
+  "version": "0.0.16",
   "developmentStatus": "active",
   "issueTracker": "https://github.com/rsdoiel/harvey/issues",
-  "releaseNotes": "- `/model mode [MODEL] {structured|prose|inject|none}`: set or display the tool-execution strategy for a model; persisted in the model cache and survives re-probes\n- File-reference injection: when a model does not reliably call tools, Harvey pre-injects the content of workspace files mentioned in the prompt as `### File:` blocks\n- Cannot-read retry: if a model responds indicating it cannot access a file, Harvey retries once with file content pre-loaded; retry uses RunToolLoop when in structured mode\n- `ModelCapability.ToolMode` field and `ToolMode*` constants added; `tool_mode` column added to the model cache database with automatic migration\n- Bug fix: `FastProbeModel` no longer overwrites a user-set tool mode on re-probe\n- Bug fix: option-2 retry now clears stale `toolCallRecords` before history rollback, preventing inconsistent session transcripts\n- Bug fix: `noToolCalls` computed correctly after option-2 retry using pre-rollback `hadToolCalls` flag\n- Bug fix: option-2 retry uses `RunToolLoop` (not bare `Client.Chat`) when in structured-tools mode\n- Bug fix: `cantReadPhrases` entry tightened from `\"please provide the file\"` to `\"please provide the file content\"` to avoid spurious retries",
+  "releaseNotes": "- Full agentic-memory tool suite: `retrieve_memory`, `add_memory`, `update_memory`, `delete_memory`, `filter_context`, `summary_context` builtin tools, plus proactive STM-budget warnings\n- Unified `/model` command: `/llamafile` and `/llamacpp` merged into one backend-agnostic facade; `@mention` switches the active model while preserving history; unregistered `.llamafile`/`.gguf` models are now found via disk scan\n- `knowledge` module extraction: knowledge-base code split into its own module (`github.com/rsdoiel/knowledge`), now consumed at v0.0.6; `recallKB` tries concept-tag matching (`MatchConceptNames`/`RecallByConceptNames`) before falling back to substring search, and now surfaces decision records and reviewed document summaries, not just observations\n- Cross-machine `knowledge.db` sync: UUID-based merge tool (`bin/kbmerge`), legacy `experiments`→`projects` migration\n- Retraction-checking for cited sources in the knowledge base\n- `/read-chunks`: explicit chunked document analysis, independent of context-overflow triggers\n- Bug fix: chunk-prompt guard now triggers correctly on models with an unknown context limit (previously never fired) — fixed and live-verified against Gemma-4-E4B\n- Bug fix: Llamafile `GPULayers` now defaults to 0 (CPU-only) instead of 99, fixing an apparent multi-hour \"hang\" on Raspberry Pi hardware with no GPU backend\n- Bug fix: `pickBackend` startup picker now lists `.gguf`/llama.cpp models, not just llamafiles and Ollama\n- `kb` and `man` added to the safe-mode default command allowlist\n- Removed a stale local `replace github.com/rsdoiel/termlib => ../termlib` that was silently masking a broken build for anyone without a local `../termlib` checkout; now consumes the tagged `v0.0.9`",
   "copyrightHolder": "R. S. Doiel"
 }

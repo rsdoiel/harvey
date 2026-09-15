@@ -12,30 +12,32 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.15a
+version: 0.0.16
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go >= 1.26.4
 
 
-date_released: 2026-06-26
+date_released: 2026-09-15
 ---
 
 About this software
 ===================
 
-## harvey 0.0.15a
+## harvey 0.0.16
 
-- `/model mode [MODEL] {structured|prose|inject|none}`: set or display the tool-execution strategy for a model; persisted in the model cache and survives re-probes
-- File-reference injection: when a model does not reliably call tools, Harvey pre-injects the content of workspace files mentioned in the prompt as `### File:` blocks
-- Cannot-read retry: if a model responds indicating it cannot access a file, Harvey retries once with file content pre-loaded; retry uses RunToolLoop when in structured mode
-- `ModelCapability.ToolMode` field and `ToolMode*` constants added; `tool_mode` column added to the model cache database with automatic migration
-- Bug fix: `FastProbeModel` no longer overwrites a user-set tool mode on re-probe
-- Bug fix: option-2 retry now clears stale `toolCallRecords` before history rollback, preventing inconsistent session transcripts
-- Bug fix: `noToolCalls` computed correctly after option-2 retry using pre-rollback `hadToolCalls` flag
-- Bug fix: option-2 retry uses `RunToolLoop` (not bare `Client.Chat`) when in structured-tools mode
-- Bug fix: `cantReadPhrases` entry tightened from `"please provide the file"` to `"please provide the file content"` to avoid spurious retries
+- Full agentic-memory tool suite: `retrieve_memory`, `add_memory`, `update_memory`, `delete_memory`, `filter_context`, `summary_context` builtin tools, plus proactive STM-budget warnings
+- Unified `/model` command: `/llamafile` and `/llamacpp` merged into one backend-agnostic facade; `@mention` switches the active model while preserving history; unregistered `.llamafile`/`.gguf` models are now found via disk scan
+- `knowledge` module extraction: knowledge-base code split into its own module (`github.com/rsdoiel/knowledge`), now consumed at v0.0.6; `recallKB` tries concept-tag matching (`MatchConceptNames`/`RecallByConceptNames`) before falling back to substring search, and now surfaces decision records and reviewed document summaries, not just observations
+- Cross-machine `knowledge.db` sync: UUID-based merge tool (`bin/kbmerge`), legacy `experiments`→`projects` migration
+- Retraction-checking for cited sources in the knowledge base
+- `/read-chunks`: explicit chunked document analysis, independent of context-overflow triggers
+- Bug fix: chunk-prompt guard now triggers correctly on models with an unknown context limit (previously never fired) — fixed and live-verified against Gemma-4-E4B
+- Bug fix: Llamafile `GPULayers` now defaults to 0 (CPU-only) instead of 99, fixing an apparent multi-hour "hang" on Raspberry Pi hardware with no GPU backend
+- Bug fix: `pickBackend` startup picker now lists `.gguf`/llama.cpp models, not just llamafiles and Ollama
+- `kb` and `man` added to the safe-mode default command allowlist
+- Removed a stale local `replace github.com/rsdoiel/termlib => ../termlib` that was silently masking a broken build for anyone without a local `../termlib` checkout; now consumes the tagged `v0.0.9`
 
 ## Authors
 

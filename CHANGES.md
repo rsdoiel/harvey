@@ -1,5 +1,48 @@
 # CHANGES
 
+## v0.0.16 (2026-09-15)
+
+### New features
+
+- Full agentic-memory tool suite: `retrieve_memory`, `add_memory`,
+  `update_memory`, `delete_memory`, `filter_context`, `summary_context`
+  builtin tools, plus proactive STM-budget warnings
+- Unified `/model` command: `/llamafile` and `/llamacpp` merged into one
+  backend-agnostic facade; `@mention` switches the active model while
+  preserving history; unregistered `.llamafile`/`.gguf` models are now found
+  via disk scan
+- `knowledge` module extraction: knowledge-base code split into its own
+  module (`github.com/rsdoiel/knowledge`), now consumed at v0.0.6;
+  `recallKB` tries concept-tag matching (`MatchConceptNames`/
+  `RecallByConceptNames`) before falling back to substring search, and now
+  surfaces decision records and reviewed document summaries, not just
+  observations
+- Cross-machine `knowledge.db` sync: UUID-based merge tool (`bin/kbmerge`),
+  legacy `experiments`→`projects` migration
+- Retraction-checking for cited sources in the knowledge base
+- `/read-chunks`: explicit chunked document analysis, independent of
+  context-overflow triggers
+
+### Bug fixes
+
+- Chunk-prompt guard: two bugs prevented the chunking UX from ever
+  triggering on models with an unknown context limit — fixed and
+  live-verified against Gemma-4-E4B
+- Llamafile `GPULayers` now defaults to 0 (CPU-only) instead of 99, fixing
+  an apparent multi-hour "hang" on Raspberry Pi hardware with no GPU backend
+- `pickBackend` startup picker now lists `.gguf`/llama.cpp models, not just
+  llamafiles and Ollama
+- `kb` and `man` added to the safe-mode default command allowlist
+
+### Internal
+
+- R0–R8 refactor series: shared `BudgetTracker`, `resolveDispatchTarget`,
+  `runBoundedTurn`/`foldBackTurn` helpers; unified sensor/status reporting;
+  `go vet` and `gofmt Check()` wired in as sensors
+- Removed a stale local `replace github.com/rsdoiel/termlib => ../termlib`
+  — was silently masking a broken build for anyone without a local
+  `../termlib` checkout; now consumes the tagged `v0.0.9`
+
 ## v0.0.15 (2026-06-26)
 
 ### New features
