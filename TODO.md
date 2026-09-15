@@ -25,29 +25,24 @@
   UX itself, session-to-document ingestion, decisions-directory
   realignment) — untouched by this change.
 
-- [ ] Release readiness (as of 2026-08-08): `TODO.md` has zero other open items,
-  `go build`/`go test` clean, and 136 commits of real work have accumulated since
-  the last tag (`v0.0.15`) — the full agentic-memory tool suite (M0–M6:
-  `retrieve_memory`/`add_memory`/`update_memory`/`delete_memory`/`filter_context`/
-  `summary_context`), the R0–R8 refactor series, multi-model routing, the
-  `knowledge` module extraction, chunk-analysis bug fixes, a retraction-checking
-  feature, and the per-model chunk-timing benchmark above. Three things needed
-  before actually tagging a release:
-  1. **Remove the stale `replace github.com/rsdoiel/termlib => ../termlib` in
-     `go.mod`.** `termlib v0.0.9` — the exact version already `require`d — is
-     already tagged upstream, so the local-path replace is no longer needed and
-     currently breaks the build for anyone without a local `../termlib` checkout
-     (i.e. everyone but this machine). Same class of stale-local-replace issue
-     already fixed for the `knowledge` dependency (see `DECISIONS.md`/the
-     `codemeta.json` history around the 0.0.2→0.0.3 knowledge bump); rebuild and
-     `go test ./...` after removing it.
-  2. **Decide the next version number.** `codemeta.json`'s `version` is
-     currently `"0.0.15a"` — not a clean, tag-able number. Likely `0.0.16`
-     given the scope of what shipped, but confirm before bumping.
-  3. **Write `releaseNotes` covering everything since `v0.0.15`** (the feature
-     list above), then `cmt codemeta.json version.go CITATION.cff about.md
-     README.md` to regenerate the derived files, then run the actual release
-     process (`release.bash`/`make release`) once the version/notes are set.
+- [ ] Release readiness — **prep done 2026-09-15, tagging/publishing still
+  open.** All three prep items from the original note are done: (1) stale
+  `replace github.com/rsdoiel/termlib => ../termlib` removed from `go.mod`
+  — `go mod tidy` confirmed the build against the real tagged `v0.0.9`, no
+  local checkout needed; (2) version bumped `0.0.15a` → `0.0.16`; (3)
+  `releaseNotes` written covering everything since `v0.0.15` and propagated
+  to `CHANGES.md`/`about.md`/`CITATION.cff`/`version.go` via `cmt`. **Note:**
+  `cmt codemeta.json README.md` was run but reverted — it discards
+  hand-curated content (Security Note, Features, Quick Start, Documentation
+  index) that root `CLAUDE.md`'s "regenerated, never hand-edited"
+  categorization doesn't account for; `README.md` was hand-patched instead
+  (version/date/notes only). If `cmt codemeta.json README.md` is ever run
+  again, diff it before committing — same class of gotcha as the `knowledge`
+  repo's Makefile (see root `CLAUDE.md`'s "Note for knowledge"). **Still
+  open:** run the actual release process (`make release` to cross-compile
+  `dist/*.zip`, then `release.bash` to tag `v0.0.16`, push, and create the
+  draft GitHub release) — deliberately not run automatically since it
+  pushes commits and creates a public (draft) release.
 
 - [x] Cross-machine `knowledge.db` sync — **DONE 2026-07-27**. Steps 1 (UUID migration) and 2 (merge tool) were
   already built; this session applied both, fixed two real bugs discovered along the way
