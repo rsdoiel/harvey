@@ -25,8 +25,23 @@
   UX itself, session-to-document ingestion, decisions-directory
   realignment) — untouched by this change.
 
+- [ ] **Evaluate deprecating the `github.com/rsdoiel/termlib` dependency —
+  before the next release is tagged.** Requested 2026-09-15, prompted by
+  the same-day discovery that its `go.mod` `replace` had gone stale (see
+  the "Blocked on `knowledge`"-adjacent fix above and `agents/knowledge.db`
+  project `harvey`, observation id 424). `termlib` is a real, in-use
+  dependency today — not dead weight — providing `termlib.NewLineEditor`
+  and `termlib.ErrInterrupted` in `terminal.go` (interactive line editing,
+  command-history load/save: `loadCmdHistory`/`saveCmdHistory`). Evaluation
+  not started yet; scope is to determine whether termlib's surface can be
+  replaced (vendored minimal implementation, a different dependency, or
+  Go stdlib/`x/term`) or should stay. **Gates the next release tag** — do
+  not run `make release`/`release.bash` until this evaluation has
+  happened, even though `v0.0.16`'s other prep is otherwise done (below).
+
 - [ ] Release readiness — **prep done 2026-09-15, tagging/publishing still
-  open.** All three prep items from the original note are done: (1) stale
+  open, now also gated on the termlib evaluation above.** All three prep
+  items from the original note are done: (1) stale
   `replace github.com/rsdoiel/termlib => ../termlib` removed from `go.mod`
   — `go mod tidy` confirmed the build against the real tagged `v0.0.9`, no
   local checkout needed; (2) version bumped `0.0.15a` → `0.0.16`; (3)
@@ -39,10 +54,11 @@
   (version/date/notes only). If `cmt codemeta.json README.md` is ever run
   again, diff it before committing — same class of gotcha as the `knowledge`
   repo's Makefile (see root `CLAUDE.md`'s "Note for knowledge"). **Still
-  open:** run the actual release process (`make release` to cross-compile
-  `dist/*.zip`, then `release.bash` to tag `v0.0.16`, push, and create the
-  draft GitHub release) — deliberately not run automatically since it
-  pushes commits and creates a public (draft) release.
+  open:** the termlib evaluation above, then the actual release process
+  (`make release` to cross-compile `dist/*.zip`, then `release.bash` to tag
+  `v0.0.16`, push, and create the draft GitHub release) — deliberately not
+  run automatically since it pushes commits and creates a public (draft)
+  release.
 
 - [x] Cross-machine `knowledge.db` sync — **DONE 2026-07-27**. Steps 1 (UUID migration) and 2 (merge tool) were
   already built; this session applied both, fixed two real bugs discovered along the way
