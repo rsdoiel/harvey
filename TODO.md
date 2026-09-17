@@ -25,6 +25,20 @@
   UX itself, session-to-document ingestion, decisions-directory
   realignment) — untouched by this change.
 
+  **Update 2026-09-17:** re-bumped `go.mod` `github.com/rsdoiel/knowledge`
+  v0.0.6 → v0.0.9 (`v0.0.7` ingest/search bug fixes, `v0.0.8` `index --check`
+  + `observation update` correction path, `v0.0.9` `project rename`/
+  `concept rename` + cross-machine last-writer-wins + `kb index --all` — see
+  `../knowledge/CHANGES.md`). `go build ./...` and `go test ./...` clean, no
+  API changes touched harvey's four consumers (`harvey.go`,
+  `commands_kb.go`, `memory_unified.go`, `terminal.go`); `knowledge.go`/
+  `knowledge_merge.go` no longer exist in harvey (fully extracted into the
+  module already). `go test -race ./...` could not run on this machine
+  (Pi: "ThreadSanitizer: unsupported VMA range, Found 47 - Supported 48") —
+  a platform limitation, not something this bump caused; unverified under
+  the race detector until run on hardware ThreadSanitizer supports. Items
+  3–6 of the feature-request doc remain open and untouched.
+
 - [ ] **Evaluate deprecating the `github.com/rsdoiel/termlib` dependency —
   before the next release is tagged.** Requested 2026-09-15, prompted by
   the same-day discovery that its `go.mod` `replace` had gone stale (see
