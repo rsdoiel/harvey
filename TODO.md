@@ -4,6 +4,24 @@
 - [ ] Fully integrate the updates to the knowledge model, Harvey should support a learning mode that integrates both human, model and hybrid dialogs for evaluation, summarization, concept tagging and re-ingest for the knowledge base.
 - [ ] I've evolved the development methodology since last working on Harvey. The knowledge took kb has been updated to reflect those changes. Harvey repo needs to be brought into alignment with the new practrices around design decision reviews and recording them in a decisions directory that kb can be used to update the agents knowledge base for the active workspace. This could impact how we treat the knowledge base as a memory reservoir for Harvey, it could also shed light of how we handle boundries between memory layers, documents versus querying SQLite3 database representations, TAGS and the workspace knowledge base
 
+- [ ] **Design spike: AI HAT+ 2 (Hailo-10H) as a fourth Harvey backend.**
+  Blocked on hardware — a Raspberry Pi 5 16GB + AI HAT+ 2 build is planned
+  but not yet purchased (parts list: `../Harvey-Project-Parts-List.txt`).
+  `hailo-ollama` (the HAT's local server) exposes `/api/pull` and
+  `/api/chat` on port 8000 with the same streaming JSON shape
+  (`done`/`eval_count`/`done_reason`) as Ollama's own API on 11434 — the
+  spike is to confirm how close that compatibility actually is and
+  whether it can reuse `backend_ollama.go` pointed at a different
+  URL/port, or needs its own `backend_hailo.go` alongside
+  `backend_llamafile.go`/`backend_llamacpp.go`. Model choice is
+  constrained to Hailo's curated set (deepseek_r1_distill_qwen:1.5b,
+  llama3.2:3b, qwen2.5-coder:1.5b, qwen2.5-instruct:1.5b, qwen2:1.5b — all
+  smaller than Harvey's current CPU-only lineup), so this is an
+  offload/speed play, not a capability upgrade. See `agents/knowledge.db`
+  project `harvey`, observations 423 (original near-drop-in-backend idea),
+  444 (unrelated dual-model arbitration hypothesis, same session), 445
+  (book review this spike is drawn from), and 446 (parts list).
+
 ## Update next
 
 - [x] **Blocked on `knowledge`** — **resolved 2026-09-15.** Decided
