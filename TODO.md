@@ -4,6 +4,8 @@
 - [ ] Fully integrate the updates to the knowledge model, Harvey should support a learning mode that integrates both human, model and hybrid dialogs for evaluation, summarization, concept tagging and re-ingest for the knowledge base.
 - [ ] I've evolved the development methodology since last working on Harvey. The knowledge took kb has been updated to reflect those changes. Harvey repo needs to be brought into alignment with the new practrices around design decision reviews and recording them in a decisions directory that kb can be used to update the agents knowledge base for the active workspace. This could impact how we treat the knowledge base as a memory reservoir for Harvey, it could also shed light of how we handle boundries between memory layers, documents versus querying SQLite3 database representations, TAGS and the workspace knowledge base
 
+  **Status 2026-09-24:** both items above are scheduled for **v0.0.16**, per `knowledge-learning-mode-design.md` / `-plan.md`. Done so far: `go.mod` at `knowledge` v0.0.11 (v0.0.12 is released, H3 bumps to it), `DECISIONS.md` frozen with new decisions in `decisions/` (DR-0001, DR-0002, both still `proposed`), skills updated. Next: H3 (bump + `editTextInEditor`), then H4–H7 (session-to-document pipeline, `/kb learn draft`/`review`, concept curation, live verification).
+
 - [ ] **Design spike: AI HAT+ 2 (Hailo-10H) as a fourth Harvey backend.**
   Blocked on hardware — a Raspberry Pi 5 16GB + AI HAT+ 2 build is planned
   but not yet purchased (parts list: `../Harvey-Project-Parts-List.txt`).
@@ -56,6 +58,15 @@
   a platform limitation, not something this bump caused; unverified under
   the race detector until run on hardware ThreadSanitizer supports. Items
   3–6 of the feature-request doc remain open and untouched.
+
+  **Update 2026-09-23:** re-bumped v0.0.9 → v0.0.11 (`v0.0.10` `concept
+  suggest`/`document tag`/density-linking/`project rename` for record-owning
+  projects; `v0.0.11` `document fuzzy-tag`/`frontmatter`, fuzzy clustering,
+  `kb search` punctuation fix). `go build`, `go vet`, `go test ./...` clean,
+  no code changes needed; race detector still unrunnable on this Pi. Items
+  3–6 are now designed: see `knowledge-learning-mode-design.md` /
+  `-plan.md` and `decisions/0001`–`0002` (all `proposed`). Track B of that
+  plan is gated on `knowledge` v0.0.12 (`../knowledge/library-lift-plan.md`).
 
 - [ ] **Evaluate deprecating the `github.com/rsdoiel/termlib` dependency —
   before the next release is tagged.** Requested 2026-09-15, prompted by

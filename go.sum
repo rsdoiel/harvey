@@ -123,10 +123,10 @@ github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0t
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/rsdoiel/fountain v1.0.2 h1:ALZFnzCP5MBcGdk3fBDA6IFUqnbrbCSoSRYut2irQc4=
 github.com/rsdoiel/fountain v1.0.2/go.mod h1:Sd3MZuWObP+tssyGIuUUfl3+nslvRVndkEEpBVsWAJU=
-github.com/rsdoiel/knowledge v0.0.6 h1:6gd2FVtEbBVqY2OY+QopYsydZ/ajVIDPom5q5ttVj6o=
-github.com/rsdoiel/knowledge v0.0.6/go.mod h1:DSJMWJtvxKhMPZ74GVeVkS594wWgIMX6whj9zCL9C10=
-github.com/rsdoiel/knowledge v0.0.9 h1:QsPubIrpr6G7fAVmGQMUhnFmXEqCxdBixYxWeOauLBs=
-github.com/rsdoiel/knowledge v0.0.9/go.mod h1:DSJMWJtvxKhMPZ74GVeVkS594wWgIMX6whj9zCL9C10=
+github.com/rsdoiel/knowledge v0.0.12 h1:s/ws6fbrZvzf3foDQA1VM/1BTCpM0yMOTndGFnahLGg=
+github.com/rsdoiel/knowledge v0.0.12/go.mod h1:DSJMWJtvxKhMPZ74GVeVkS594wWgIMX6whj9zCL9C10=
+github.com/rsdoiel/knowledge v0.0.13-0.20260924180814-fd588ef32885 h1:1GN9gRtEeoDCFtXgUVlEoW+O4HQmflUKJf31Dnq6KRM=
+github.com/rsdoiel/knowledge v0.0.13-0.20260924180814-fd588ef32885/go.mod h1:DSJMWJtvxKhMPZ74GVeVkS594wWgIMX6whj9zCL9C10=
 github.com/rsdoiel/termlib v0.0.9 h1:oTasnQBpBd1WRL1VqvruAHmHaym+cckAqlW0YCy+4/4=
 github.com/rsdoiel/termlib v0.0.9/go.mod h1:NfgwY5ndN2POnb1uvoupppxFOW/6gIFSdGzI88BVNj8=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

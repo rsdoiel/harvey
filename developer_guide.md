@@ -10,7 +10,7 @@ This guide is for developers who want to understand Harvey's internals, contribu
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — Component map, core types (Agent, LLMClient, Message, Workspace), and how they interact
 
 ### Design Documents
-- **[DECISIONS.md](DECISIONS.md)** — Key design decisions and their rationale
+- **[DECISIONS.md](DECISIONS.md)** — Historical design decisions (frozen 2026-09-23); newer ones are records in [decisions/](decisions/index.md)
 - **[RAG Support Design](RAG_Support_Design.md)** — Design document for retrieval-augmented generation support
 - **[Harvey Skill-Set Design](Harvey_Skill-Set_Design.md)** — Design for the `/skill-set` command and skill bundling system
 - **[Improved Tool Handling with Schemas](improved_tool_handling_with_schemas.md)** — Tool schema validation and handling design

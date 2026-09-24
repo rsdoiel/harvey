@@ -66,11 +66,13 @@ func cmdKB(a *Agent, args []string, out io.Writer) error {
 		return kbCite(a, args[1:], out)
 	case "show":
 		return kbShow(a, args[1:], out)
+	case "learn":
+		return kbLearn(a, args[1:], out)
 	case "check-retractions":
 		return kbCheckRetractions(a, out)
 	default:
 		fmt.Fprintf(out, "Unknown kb subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /kb <status|search|inject|project|observe|concept|source|retract|cite|show|check-retractions> [args...]")
+		fmt.Fprintln(out, "Usage: /kb <status|search|inject|project|observe|concept|source|retract|cite|show|learn|check-retractions> [args...]")
 	}
 	return nil
 }

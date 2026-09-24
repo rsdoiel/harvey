@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -480,53 +479,18 @@ func pluralise(singular, plural string, n int) string {
 	return plural
 }
 
-// findEditor returns the user's preferred editor command.
-func findEditor() string {
-	if e := os.Getenv("EDITOR"); e != "" {
-		return e
-	}
-	for _, candidate := range []string{"micro", "nano", "vi"} {
-		if path, err := exec.LookPath(candidate); err == nil {
-			return path
-		}
-	}
-	return "vi"
-}
-
-// editInEditor writes doc to a temp file, opens $EDITOR, and re-parses the
-// result on close.
+// editInEditor opens doc in the user's editor and re-parses the result on close.
+// The round trip is editTextInEditor; this adds only the MemoryDoc serialization.
 func editInEditor(doc *MemoryDoc, out io.Writer) (*MemoryDoc, error) {
 	data, err := doc.Bytes()
 	if err != nil {
 		return nil, err
 	}
-	tmp, err := os.CreateTemp("", "harvey-memory-*.fountain")
+	edited, err := editTextInEditor(string(data), ".fountain")
 	if err != nil {
 		return nil, err
 	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return nil, err
-	}
-	tmp.Close()
-
-	editor := findEditor()
-	cmd := exec.Command(editor, tmpPath)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("editor %q: %w", editor, err)
-	}
-
-	edited, err := os.ReadFile(tmpPath)
-	if err != nil {
-		return nil, err
-	}
-	return ParseMemoryDoc(edited)
+	return ParseMemoryDoc([]byte(edited))
 }
 
 // modelSegment holds a contiguous block of session text attributed to one model.

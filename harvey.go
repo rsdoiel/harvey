@@ -178,6 +178,12 @@ type Agent struct {
 	// in toolsReliable(). Set in tests to simulate a known-reliable or
 	// known-unreliable model without requiring a real AnyLLMClient.
 	toolsReliableOverride func() bool
+	// learnDrafterOverride, when non-nil, replaces how `/kb learn` resolves its
+	// drafting model. Set in tests to supply a fake Drafter without a real
+	// backend. It receives the resolved name (an @mention, else learn_model,
+	// else empty for the active model) and returns the Drafter and a restore
+	// function to call when the run ends.
+	learnDrafterOverride func(name string, out io.Writer) (Drafter, func(), error)
 	// attemptModelSwitchOverride, when non-nil, overrides attemptModelSwitch in
 	// resolveDispatchTarget's local-swap branch. Set in tests to simulate a
 	// successful model switch without spawning a real llamafile/llama.cpp

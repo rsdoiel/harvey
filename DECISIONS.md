@@ -1,6 +1,8 @@
 # Harvey — Architecture & UX Decision Log
 
-This file records significant architectural and UX decisions, their rationale, and known trade-offs. New decisions are added at the top. Each entry names the decision, the context that prompted it, the chosen approach, the rejected alternatives, and the consequences.
+> **Frozen 2026-09-23 (see `decisions/0002-*.md`).** This file is history and no longer receives new entries. New decisions are authored as decision records: `kb record new --project harvey --dir harvey/decisions`, then indexed with `kb ingest` and `kb index`, so `kb search` reaches them. An entry below that is still load-bearing can be converted to a record on demand; there is no bulk backfill.
+
+This file records significant architectural and UX decisions, their rationale, and known trade-offs. Entries were added at the top. Each entry names the decision, the context that prompted it, the chosen approach, the rejected alternatives, and the consequences.
 
 ---
 

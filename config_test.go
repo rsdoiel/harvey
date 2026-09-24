@@ -663,3 +663,64 @@ func TestLoadHarveyYAML_IgnoresPersistedLlamafileActive(t *testing.T) {
 		t.Errorf("Llamafile.Models = %+v, want one entry named bonsai-8b", cfg.Llamafile.Models)
 	}
 }
+
+// ─── learn_model (H5, knowledge-learning-mode-design.md decision 6) ──────────
+
+func writeHarveyYAML(t *testing.T, content string) (*Workspace, string) {
+	t.Helper()
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	agentsDir := filepath.Join(dir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(agentsDir, "harvey.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return ws, path
+}
+
+func TestLoadHarveyYAML_LearnModel(t *testing.T) {
+	ws, _ := writeHarveyYAML(t, "learn_model: granite\n")
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.LearnModel != "granite" {
+		t.Errorf("LearnModel = %q, want granite", cfg.LearnModel)
+	}
+}
+
+func TestLoadHarveyYAML_LearnModelUnsetMeansTheActiveModel(t *testing.T) {
+	ws, _ := writeHarveyYAML(t, "memory:\n  budget_pct: 0.4\n")
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.LearnModel != "" {
+		t.Errorf("LearnModel = %q, want empty (use the active model)", cfg.LearnModel)
+	}
+}
+
+func TestSaveMemoryConfig_KeepsLearnModel(t *testing.T) {
+	// SaveMemoryConfig reads the file into harveyYAML, edits it and writes it
+	// back, so a key missing from that struct is silently dropped on save.
+	ws, path := writeHarveyYAML(t, "learn_model: granite\n")
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	cfg.Memory.RagActive = "somestore"
+	if err := SaveMemoryConfig(ws, cfg); err != nil {
+		t.Fatalf("SaveMemoryConfig: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "learn_model: granite") {
+		t.Errorf("harvey.yaml after a save:\n%s\nwant learn_model kept", data)
+	}
+	cfg2 := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg2); err != nil || cfg2.LearnModel != "granite" {
+		t.Errorf("reloaded LearnModel = %q, %v; want granite", cfg2.LearnModel, err)
+	}
+}

@@ -212,6 +212,12 @@ type Config struct {
 	Memory MemoryConfig
 	// Chunking: context-overflow detection and chunked document analysis settings.
 	Chunking ChunkConfig
+	// LearnModel names the route or local model `/kb learn draft` uses to draft
+	// document summaries (knowledge-learning-mode-design.md decision 6). Empty
+	// means the active model. Kept distinct from any retrieval-time model: the
+	// model that drafts a summary should not be the one that matches against it.
+	// An @name on the command overrides it for one run.
+	LearnModel string
 }
 
 /** DefaultConfig returns a Config populated with sensible defaults. WorkDir
@@ -971,6 +977,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.Chunking.STMWarnPct > 0 {
 		cfg.Chunking.STMWarnPct = y.Chunking.STMWarnPct
 	}
+	if y.LearnModel != "" {
+		cfg.LearnModel = y.LearnModel
+	}
 	return nil
 }
 
@@ -1031,6 +1040,9 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	y.SyntaxHighlight = &cfg.SyntaxHighlight
 	y.AutoFormat = &cfg.AutoFormat
 	y.SensorInjectFormatFindings = &cfg.SensorInjectFormatFindings
+	if cfg.LearnModel != "" {
+		y.LearnModel = cfg.LearnModel
+	}
 	if !cfg.ToolResultCompaction {
 		f := false
 		y.Tools.ToolResultCompaction = &f

@@ -115,6 +115,7 @@ type harveyYAML struct {
 	Llamafile       llamafileYAML             `yaml:"llamafile,omitempty"`
 	LlamaCpp        llamacppYAML              `yaml:"llamacpp,omitempty"`
 	Chunking        chunkingYAML              `yaml:"chunking,omitempty"`
+	LearnModel      string                    `yaml:"learn_model,omitempty"`
 }
 
 type chunkingYAML struct {

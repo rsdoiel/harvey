@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -192,7 +191,7 @@ func editTemplateRaw(content []byte, out io.Writer) ([]byte, error) {
 	tmp.Close()
 
 	editor := findEditor()
-	cmd := exec.Command(editor, tmpPath)
+	cmd := editorCommand(editor, tmpPath)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -669,6 +669,17 @@ permissions:
   ".":      [read, write, exec, delete]
   "docs/":  [read]
 
+# ── Knowledge-base learning mode ─────────────────────────────────────────────
+# The model `/kb learn draft` uses to write summaries of ingested documents
+# (sessions and hand-offs). A route name or a local model name. Leave it unset
+# to use the active model. An @name on the command overrides it for one run:
+#   /kb learn draft @granite --limit 10
+# Kept separate from any retrieval-time model on purpose: the model that
+# drafts a summary should not be the one that later matches against it, and a
+# small, cheap model is usually enough for drafting because a human accepts
+# or edits every draft before it is trusted.
+learn_model: granite
+
 # ── Chunked document analysis ────────────────────────────────────────────────
 chunking:
   enabled: true                    # when false, read_file reads files without any size check
