@@ -3567,6 +3567,20 @@ const (
 //
 //	actionChoice — the user's decision.
 func promptAction(r *bufio.Reader, out io.Writer, header, preview string) actionChoice {
+	choice, _ := promptActionEOF(r, out, header, preview)
+	return choice
+}
+
+// promptActionEOF is promptAction that also reports whether input ended before
+// an answer was read (Ctrl-D, a closed pipe). promptAction's default of yes for
+// an empty answer is right for Enter and wrong for end of input, which no one
+// typed; callers that write files use this and treat ended as quit.
+//
+// Returns:
+//
+//	actionChoice — the user's decision; actionYes when ended is true.
+//	bool         — true if input ended with nothing read.
+func promptActionEOF(r *bufio.Reader, out io.Writer, header, preview string) (actionChoice, bool) {
 	const boxWidth = 56
 	const maxPreviewLines = 8
 
@@ -3594,16 +3608,17 @@ func promptAction(r *bufio.Reader, out io.Writer, header, preview string) action
 	fmt.Fprintf(out, "  └%s┘\n", strings.Repeat("─", boxWidth-1))
 	fmt.Fprint(out, "  [y]es  [n]o  [A]ll  [q]uit > ")
 
-	line, _ := r.ReadString('\n')
+	line, err := r.ReadString('\n')
+	ended := err != nil && line == ""
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "n", "no":
-		return actionNo
+		return actionNo, ended
 	case "a", "all":
-		return actionAll
+		return actionAll, ended
 	case "q", "quit":
-		return actionQuit
+		return actionQuit, ended
 	default: // "", "y", "yes" — Enter defaults to yes
-		return actionYes
+		return actionYes, ended
 	}
 }
 

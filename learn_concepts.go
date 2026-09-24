@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	knowledge "github.com/rsdoiel/knowledge"
 )
@@ -125,6 +126,111 @@ outer:
 	return edits, true
 }
 
+// A changed line longer than diffLongLine is shown as an excerpt: diffContext
+// characters either side of the change when its other half can be found, else
+// its first diffLongLine characters. Found in the live run on the real
+// DECISIONS.md, where a paragraph is one line of about a thousand characters
+// and a whole-line -/+ pair hides a two-word change.
+const (
+	diffLongLine = 160
+	diffContext  = 40
+)
+
+// alignStart moves i forward to a rune boundary of s; alignEnd moves it back.
+func alignStart(s string, i int) int {
+	for i < len(s) && !utf8.RuneStart(s[i]) {
+		i++
+	}
+	return i
+}
+
+func alignEnd(s string, i int) int {
+	for i > 0 && i < len(s) && !utf8.RuneStart(s[i]) {
+		i--
+	}
+	return i
+}
+
+// commonAffix returns how many leading and trailing bytes a and b share, with
+// the suffix not overlapping the prefix.
+func commonAffix(a, b string) (prefix, suffix int) {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for prefix < n && a[prefix] == b[prefix] {
+		prefix++
+	}
+	for suffix < n-prefix && a[len(a)-1-suffix] == b[len(b)-1-suffix] {
+		suffix++
+	}
+	return prefix, suffix
+}
+
+// truncateLine keeps the first diffLongLine bytes of a long line.
+func truncateLine(s string) string {
+	if len(s) <= diffLongLine {
+		return s
+	}
+	return s[:alignEnd(s, diffLongLine)] + "…"
+}
+
+// excerptEdits returns the text to show for each edit. A '-' and a '+' within
+// three entries of each other that share nearly all their text are a modified
+// line and are excerpted around the change, both to the same window; any other
+// long line is truncated.
+func excerptEdits(edits []lineEdit) []string {
+	shown := make([]string, len(edits))
+	done := make([]bool, len(edits))
+	for i, e := range edits {
+		if done[i] {
+			continue
+		}
+		for j := i + 1; j < len(edits) && j <= i+3; j++ {
+			o := edits[j]
+			if done[j] || o.op == e.op {
+				continue
+			}
+			minus, plus := e.text, o.text
+			if e.op == '+' {
+				minus, plus = plus, minus
+			}
+			if len(minus) <= diffLongLine && len(plus) <= diffLongLine {
+				continue
+			}
+			pre, suf := commonAffix(minus, plus)
+			shorter := len(minus)
+			if len(plus) < shorter {
+				shorter = len(plus)
+			}
+			if shorter == 0 || float64(pre+suf) < 0.8*float64(shorter) {
+				continue
+			}
+			ex := func(t string) string {
+				from := alignStart(t, max(0, pre-diffContext))
+				to := alignEnd(t, min(len(t), len(t)-suf+diffContext))
+				out := t[from:to]
+				if from > 0 {
+					out = "…" + out
+				}
+				if to < len(t) {
+					out += "…"
+				}
+				return out
+			}
+			shown[i], shown[j] = ex(e.text), ex(o.text)
+			done[i], done[j] = true, true
+			break
+		}
+	}
+	for i, e := range edits {
+		if !done[i] {
+			shown[i] = truncateLine(e.text)
+		}
+	}
+	return shown
+}
+
 /** lineDiff renders the lines that differ between two texts, and only those:
  * "-N: text" for a line removed from before, "+N: text" for a line added in
  * after, N being its line number in that text. Tagging changes a handful of
@@ -153,9 +259,10 @@ func lineDiff(before, after string) string {
 	if !ok {
 		return fmt.Sprintf("  (more than %d lines differ; too many to list)\n", diffMaxEdits)
 	}
+	shown := excerptEdits(edits)
 	var sb strings.Builder
-	for _, e := range edits {
-		fmt.Fprintf(&sb, "  %c%d: %s\n", e.op, e.line, e.text)
+	for i, e := range edits {
+		fmt.Fprintf(&sb, "  %c%d: %s\n", e.op, e.line, shown[i])
 	}
 	return sb.String()
 }
@@ -442,7 +549,13 @@ func kbLearnConcepts(a *Agent, args []string, out io.Writer) error {
 
 		fmt.Fprintf(out, "\n%s: %d link(s), %d footnote(s)\n%s", rel, len(linked), len(notes), lineDiff(string(raw), next))
 		if !applyAll {
-			switch promptAction(reader, out, "Write: "+rel, "") {
+			choice, ended := promptActionEOF(reader, out, "Write: "+rel, "")
+			if ended {
+				fmt.Fprintln(out, "\nInput ended; nothing more was changed.")
+				quit = true
+				continue
+			}
+			switch choice {
 			case actionNo:
 				declined++
 				continue

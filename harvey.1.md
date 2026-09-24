@@ -1,6 +1,6 @@
-%harvey(1) user manual | version 0.0.15a 0771289
+%harvey(1) user manual | version 0.0.16 66875a0
 % R. S. Doiel
-% 2026-06-28
+% 2026-09-15
 
 # NAME
 
@@ -192,6 +192,18 @@ are also available from the shell: harvey --help TOPIC.
 
 /kb <status|search TEXT|inject TEXT|project [ID]|observe KIND BODY|concept NAME>
 : query and update the SQLite knowledge base
+
+/kb learn ingest [--min-words N] [--all] [--dry-run]
+: offer recorded sessions (at least 200 words) and hand-off notes to the knowledge base as documents, and ingest the ones you choose
+
+/kb learn draft [--limit N] [--dry-run] [@model]
+: draft summaries for the ingested documents with a model (@model, else learn_model in harvey.yaml, else the active model); default 25 items, --limit 0 for all. Nothing is trusted until you accept it
+
+/kb learn review [@model]
+: walk the drafts: [a]ccept makes a summary trusted and searchable, [e]dit opens $EDITOR, [r]edraft asks the model again, [s]kip, [q]uit. Bare /kb learn drafts, then reviews
+
+/kb learn concepts [--limit N]
+: suggest new concepts from the ingested documents; you pick which become concepts, then see each affected document as a diff of changed lines and choose whether to write it. Writes obey the permissions table; Fountain documents (sessions, hand-offs) are never rewritten
 
 /rag <list|new NAME|use NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
 : manage retrieval-augmented generation stores

@@ -201,12 +201,42 @@ from the permissions table (no `safe_mode` check on curation writes):
 
 ### H7 — Live verification
 
-Before calling anything done, run the built binary against a **copy** of
-`agents/knowledge.db` and real session files (per the smoke-test-data-
-transforms rule): ingest a real session, draft with a real small model,
-accept one, edit one, confirm `kb document review list` agrees with harvey's
-view. Then rebuild `harvey.1.md`/help text via the existing Makefile paths;
-do not `cmt`-regenerate README.
+**DONE 2026-09-24** (uncommitted). Run with the built binary on a scratch workspace holding a **copy** of
+`agents/knowledge.db` (documents rows removed), copies of three real Markdown files from `harvey/`
+(`DECISIONS.md`, `developer_guide.md`, the design doc), two real hand-offs, and the sessions the run itself
+recorded. The real database and real files were not touched.
+
+What was checked, and what it agreed with:
+- **Curation write.** Picked three real candidates (llamafile, ollama, sensor), wrote one file, declined
+  one. `DECISIONS.md` written by Harvey is **byte-identical** to what release `kb document tag --concept
+  llamafile,ollama,sensor` writes; the declined file is byte-identical to the original; disk sha256 equals
+  the stored `documents.checksum` for all three documents.
+- **Permission denial.** After `/permissions set notes/ read`, all three documents were refused before any
+  prompt ("write permission denied; not touched"), files unchanged. Seven Fountain documents reported as
+  skipped.
+- **Ingest.** `/kb learn ingest` added 7 real Fountain files (5 sessions, 2 hand-offs).
+- **Draft, accept, edit.** With olmo-3:7b-instruct, `/kb learn draft --limit 2` drafted two items; review
+  accepted one and edited the other through `$EDITOR`. Release `kb document review list` shows both as
+  `reviewed`; the edited one is recorded `generated_by = human`; the fixed `kb search` finds the accepted
+  edited summary by a hyphenated term (`HUMAN-EDITED`), so the knowledge hyphen fix works through the real
+  data path too.
+
+Found and fixed during H7 (each red first): **end of input was read as "yes"** at the write prompt
+(`promptAction` cannot tell Enter from Ctrl-D; `promptActionEOF` added, `/kb learn concepts` treats it as
+quit; two older callers filed in `TODO.md`); **long changed lines hid the change** (real `DECISIONS.md`
+paragraphs are ~1000 characters, so `lineDiff` now shows an excerpt around the change, both sides in the
+same window).
+
+Not a bug, but worth knowing: a `DECISIONS.md` section is 4-5k characters and one draft on this CPU-only Pi
+took minutes, not the ~55 s the H5 run saw on hand-off sections. `--limit` and the ordering matter more than
+they looked. Two harness slips of mine, not product bugs: restoring a database copy without deleting its
+`-wal` file replays the earlier run's inserts, and piping several lines into Harvey lets a prompt's
+buffered reader swallow the lines after it (a terminal delivers one line at a time).
+
+Docs: `harvey.1.md` regenerated from the binary (as `make build` does, so its header moves from 0.0.15a to
+0.0.16); `helptext.go`'s `/kb learn` lines and a new LEARNING MODE section in `KBHelpText`, with
+`harvey-kb.7.md` regenerated from it; `CONFIGURATION.md` already documented `learn_model`. README not
+regenerated.
 
 ---
 

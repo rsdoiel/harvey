@@ -595,3 +595,80 @@ func TestMyersEdits_ApplyingTheEditsReproducesAfter(t *testing.T) {
 		}
 	}
 }
+
+func TestLearnConcepts_EndOfInputAtAPreviewDoesNotWrite(t *testing.T) {
+	// promptAction treats an empty answer as yes, and it cannot tell "the user
+	// pressed Enter" from "input ended" (Ctrl-D, a closed pipe). For a write
+	// that must never mean yes.
+	f := newConceptsFixture(t, "")
+	path := f.place(t, "notes/a.md", gizmoDoc)
+	before := f.checksum(t, path)
+	f.a.In = strings.NewReader(strconv.Itoa(f.pick(t, "gizmo")) + "\n") // input ends at the preview
+	out := f.run(t)
+	if readFile(t, path) != gizmoDoc || f.checksum(t, path) != before {
+		t.Errorf("end of input must not be taken as yes:\n%s", out)
+	}
+}
+
+func TestLearnConcepts_AnEmptyAnswerAtAPreviewStillMeansYes(t *testing.T) {
+	// Enter is yes everywhere else in harvey; only a genuine end of input differs.
+	f := newConceptsFixture(t, "")
+	path := f.place(t, "notes/a.md", gizmoDoc)
+	f.a.In = strings.NewReader(strconv.Itoa(f.pick(t, "gizmo")) + "\n\n")
+	f.run(t)
+	if !strings.Contains(readFile(t, path), "[[gizmo]]") {
+		t.Error("an empty line (Enter) should still write, as it does for every other confirmation")
+	}
+}
+
+// Found in the live run on the real DECISIONS.md: paragraphs are single lines
+// of about a thousand characters, so a whole-line -/+ pair hides a two-word
+// change. A long changed line is shown as an excerpt around the change.
+
+func TestLineDiff_ALongChangedLineIsShownAsAnExcerptAroundTheChange(t *testing.T) {
+	long := strings.Repeat("word ", 120) // 600 characters
+	before := "intro\n" + long + "MIDDLE " + long + "\nend\n"
+	after := "intro\n" + long + "[[MIDDLE]] " + long + "\nend\n"
+	got := lineDiff(before, after)
+	if !strings.Contains(got, "[[MIDDLE]]") {
+		t.Fatalf("the changed words must be visible:\n%s", got)
+	}
+	if len(got) > 500 {
+		t.Errorf("a 1200-character line should be an excerpt, diff is %d bytes:\n%s", len(got), got)
+	}
+	if !strings.Contains(got, "…") {
+		t.Errorf("an excerpt should say it is cut with …:\n%s", got)
+	}
+	if !strings.Contains(got, "-2:") || !strings.Contains(got, "+2:") {
+		t.Errorf("both sides keep their line numbers:\n%s", got)
+	}
+}
+
+func TestLineDiff_TheExcerptShowsTheSameWindowOnBothSides(t *testing.T) {
+	long := strings.Repeat("word ", 120)
+	got := lineDiff("x\n"+long+"MIDDLE "+long+"\n", "x\n"+long+"[[MIDDLE]] "+long+"\n")
+	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want one - and one + line, got %d:\n%s", len(lines), got)
+	}
+	minus := strings.SplitN(lines[0], ": ", 2)[1]
+	plus := strings.SplitN(lines[1], ": ", 2)[1]
+	if strings.ReplaceAll(strings.ReplaceAll(plus, "[[", ""), "]]", "") != minus {
+		t.Errorf("the two excerpts should differ only by the inserted brackets:\n-%s\n+%s", minus, plus)
+	}
+}
+
+func TestLineDiff_ALongUnpairedLineIsTruncated(t *testing.T) {
+	long := strings.Repeat("word ", 200)
+	got := lineDiff("a\n", "a\n"+long+"\n")
+	if len(got) > 400 || !strings.Contains(got, "…") {
+		t.Errorf("a long added line should be truncated with …, got %d bytes", len(got))
+	}
+}
+
+func TestLineDiff_ShortLinesAreShownWhole(t *testing.T) {
+	got := lineDiff("The gizmo hummed.\n", "The [[gizmo]] hummed.\n")
+	if !strings.Contains(got, "-1: The gizmo hummed.") || !strings.Contains(got, "+1: The [[gizmo]] hummed.") || strings.Contains(got, "…") {
+		t.Errorf("short lines are not excerpted:\n%s", got)
+	}
+}

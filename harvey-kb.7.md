@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 00feb2f
+%harvey(7) user manual | version 0.0.16 66875a0
 % R. S. Doiel
-% 2026-06-19
+% 2026-09-15
 
 # NAME
 
@@ -14,6 +14,7 @@ KB — knowledge base management
 /kb project <list|add NAME [DESC]|use ID>
 /kb observe [KIND] TEXT
 /kb concept <list|add NAME [DESC]>
+/kb learn [ingest|draft|review|concepts] [ARGS]
 
 # DESCRIPTION
 
@@ -104,6 +105,61 @@ and RAG to retrieve relevant document passages automatically.
   /kb concept add RAG "retrieval-augmented generation"
   /kb concept add "context window" "token budget for a single LLM call"
 ~~~
+
+# LEARNING MODE
+
+/kb learn turns Harvey's own recorded sessions and hand-off notes into
+searchable knowledge. Every step ends with a human decision: nothing a model
+writes is trusted, or found by /kb search, until you accept it. All four
+steps work on the active project (/kb project use ID).
+
+/kb learn ingest [--min-words N] [--all] [--dry-run]
+  List the hand-off notes and recorded sessions that are not yet in the
+  knowledge base, newest first, and ingest the ones you choose. Hand-offs
+  are always offered; a session must have at least 200 words (--min-words
+  changes that, --all offers every session). New sections start
+  unsummarized.
+
+/kb learn draft [--limit N] [--dry-run] [@model]
+  Ask a model to draft a summary of each unsummarized section, then of each
+  whole document from its section summaries. The model is @model if given,
+  else learn_model in agents/harvey.yaml, else the active model. Default
+  limit is 25 items (--limit 0 drafts everything queued); a small local model
+  takes about a minute per item, so a full run over many documents is long.
+  Each draft gets a confidence score, which is only how many of the known
+  concepts in the source the draft also names. It is not a measure of
+  whether the draft is faithful.
+
+/kb learn review [@model]
+  Walk the drafts one at a time, showing the source excerpt, size, known
+  concepts mentioned, confidence and which model wrote it:
+
+~~~
+  [a]ccept   trust the summary; it becomes searchable
+  [e]dit     open $EDITOR on the draft (the edit is recorded as "human")
+  [r]edraft  ask the model again
+  [s]kip     leave it drafted (Enter also skips)
+  [q]uit
+~~~
+
+  Bare /kb learn drafts, then reviews. A summary whose source changed after
+  it was written is marked STALE.
+
+/kb learn concepts [--limit N]
+  Suggest new concepts from the ingested documents (most distinctive terms
+  that are not yet concepts; default 20). You pick which become concepts,
+  by number, range (1-3), all or none. Each pick is added to the knowledge
+  base at once. Then, for each project document that mentions a picked
+  concept more than once, Harvey shows the changed lines and asks before
+  writing: [[Concept]] links, and footnotes for near-miss spellings.
+
+  A write goes through the permissions table (/permissions) like any other
+  file write, and a path Harvey may not write is refused before you are
+  asked. The document is re-ingested straight afterwards; if that fails,
+  the file is put back. Fountain documents (sessions and hand-offs) are
+  never rewritten: they are records, and [[...]] in them reads as a note.
+  Tagging changes source text, so summaries of changed sections are marked
+  stale; the closing line says how many.
 
 # WORKFLOW EXAMPLE
 
