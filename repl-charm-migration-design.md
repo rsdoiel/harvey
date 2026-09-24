@@ -1,5 +1,8 @@
 # REPL line-editor migration: termlib → Charm — Design Brief
 
+> **Correction 2026-09-24:** the problem statement below says the user "has decided" to drop termlib for
+> Charm. That overstated it: `TODO.md` frames the gate as an *evaluation*. See `termlib-evaluation.md`.
+>
 > Phase 1 (Discussion/Design) of `DISCUSS_REVIEW_PLAN_IMPLEMENT.md`. Nothing
 > is agreed by this document; it exists to be reviewed and turned into
 > decision records in `harvey/decisions/` (new — see the "Decisions

@@ -3554,7 +3554,7 @@ const (
 )
 
 // promptAction displays a box-drawing preview of a proposed action and reads
-// the user's choice. Returns actionYes for empty input (Enter = yes).
+// the user's choice. An empty answer (Enter) is yes.
 //
 // Parameters:
 //
@@ -3565,22 +3565,12 @@ const (
 //
 // Returns:
 //
-//	actionChoice — the user's decision.
-func promptAction(r *bufio.Reader, out io.Writer, header, preview string) actionChoice {
-	choice, _ := promptActionEOF(r, out, header, preview)
-	return choice
-}
-
-// promptActionEOF is promptAction that also reports whether input ended before
-// an answer was read (Ctrl-D, a closed pipe). promptAction's default of yes for
-// an empty answer is right for Enter and wrong for end of input, which no one
-// typed; callers that write files use this and treat ended as quit.
-//
-// Returns:
-//
 //	actionChoice — the user's decision; actionYes when ended is true.
-//	bool         — true if input ended with nothing read.
-func promptActionEOF(r *bufio.Reader, out io.Writer, header, preview string) (actionChoice, bool) {
+//	bool         — true if input ended with nothing read (Ctrl-D, a closed
+//	               pipe). An empty answer is yes when the user pressed Enter
+//	               and nothing when input ended, so a caller that writes files
+//	               must treat ended as quit, never as the returned actionYes.
+func promptAction(r *bufio.Reader, out io.Writer, header, preview string) (actionChoice, bool) {
 	const boxWidth = 56
 	const maxPreviewLines = 8
 
@@ -3652,9 +3642,25 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 
 	// 1. Tagged code blocks — always offer to apply.
 	for _, b := range blocks {
+		// A path the permissions table forbids is refused before it is offered,
+		// so a yes is never asked for a write that cannot happen.
+		if !a.CheckWritePermission(b.path) {
+			if a.AuditBuffer != nil {
+				a.AuditBuffer.Log(ActionFileWrite, b.path, StatusDenied)
+			}
+			fmt.Fprintf(out, "  write permission denied for %s\n", b.path)
+			a.logAction("write", b.path, actionNo, "denied")
+			continue
+		}
 		choice := actionYes
 		if !applyAll {
-			choice = promptAction(reader, out, "Write: "+b.path, b.content)
+			var ended bool
+			choice, ended = promptAction(reader, out, "Write: "+b.path, b.content)
+			if ended {
+				fmt.Fprintln(out, "\n  input ended; aborted remaining actions.")
+				a.logAction("write", b.path, actionQuit, "aborted")
+				return
+			}
 		}
 		switch choice {
 		case actionNo:
@@ -3687,8 +3693,10 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 			if suggested := suggestPathFromHistory(a.History); suggested != "" {
 				// Path inferred from conversation — show the promptAction box
 				// (same UX as tagged blocks: Enter = yes, n = skip).
-				choice := promptAction(reader, out, "Write: "+suggested, content)
-				if choice != actionNo && choice != actionQuit {
+				choice, ended := promptAction(reader, out, "Write: "+suggested, content)
+				if ended {
+					fmt.Fprintln(out, "\n  input ended; nothing written.")
+				} else if choice != actionNo && choice != actionQuit {
 					dest = suggested
 				}
 			} else {

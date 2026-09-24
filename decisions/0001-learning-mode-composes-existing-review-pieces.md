@@ -2,7 +2,7 @@
 id: "0001"
 title: "Learning mode composes existing review pieces; harvey consumes the knowledge library"
 date: "2026-09-23"
-status: proposed
+status: accepted
 kind: decision
 trigger: design
 project: harvey

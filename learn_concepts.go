@@ -549,7 +549,7 @@ func kbLearnConcepts(a *Agent, args []string, out io.Writer) error {
 
 		fmt.Fprintf(out, "\n%s: %d link(s), %d footnote(s)\n%s", rel, len(linked), len(notes), lineDiff(string(raw), next))
 		if !applyAll {
-			choice, ended := promptActionEOF(reader, out, "Write: "+rel, "")
+			choice, ended := promptAction(reader, out, "Write: "+rel, "")
 			if ended {
 				fmt.Fprintln(out, "\nInput ended; nothing more was changed.")
 				quit = true

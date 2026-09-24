@@ -312,11 +312,11 @@ func newReader(s string) *bufio.Reader {
 
 func TestAutoExecuteReply_writesTaggedBlocks(t *testing.T) {
 	a := newTestAgent(t)
-	// Empty input → Enter → default "yes" for the confirmation prompt.
+	// A bare Enter is the default "yes" for the confirmation prompt.
 	reply := "Here is your script:\n\n```bash:testout/hello.bash\n#!/bin/bash\necho hi\n```\n"
 
 	var out strings.Builder
-	a.autoExecuteReply(reply, &out, newReader(""), context.Background())
+	a.autoExecuteReply(reply, &out, newReader("\n"), context.Background())
 
 	data, err := a.Workspace.ReadFile("testout/hello.bash")
 	if err != nil {
@@ -1774,5 +1774,103 @@ func TestCmdModelMode_ShowAutoWhenNotSet(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "auto") {
 		t.Errorf("expected 'auto' in output when ToolMode is not set; got: %s", out.String())
+	}
+}
+
+// ─── autoExecuteReply: end of input and write permission ─────────────────────
+//
+// promptAction reads an empty answer as yes, so Ctrl-D or a closed pipe used to
+// write the file. Only a real Enter ("\n") means yes. And the tagged-block path
+// never asked the permissions: table, unlike the untagged fallback.
+
+const taggedReply = "```bash:testout/hello.bash\n#!/bin/bash\necho hi\n```\n"
+
+func TestAutoExecuteReply_taggedBlockEndOfInputDoesNotWrite(t *testing.T) {
+	a := newTestAgent(t)
+	var out strings.Builder
+	a.autoExecuteReply(taggedReply, &out, newReader(""), context.Background())
+	if _, err := a.Workspace.ReadFile("testout/hello.bash"); err == nil {
+		t.Errorf("end of input must not be taken as yes; output:\n%s", out.String())
+	}
+}
+
+func TestAutoExecuteReply_taggedBlockEnterStillMeansYes(t *testing.T) {
+	a := newTestAgent(t)
+	var out strings.Builder
+	a.autoExecuteReply(taggedReply, &out, newReader("\n"), context.Background())
+	if _, err := a.Workspace.ReadFile("testout/hello.bash"); err != nil {
+		t.Errorf("Enter should still write: %v", err)
+	}
+}
+
+func TestAutoExecuteReply_endOfInputStopsTheRemainingBlocks(t *testing.T) {
+	a := newTestAgent(t)
+	reply := "```bash:testout/a.bash\necho a\n```\n\n```bash:testout/b.bash\necho b\n```\n"
+	var out strings.Builder
+	a.autoExecuteReply(reply, &out, newReader("y\n"), context.Background()) // input ends at the second prompt
+	if _, err := a.Workspace.ReadFile("testout/a.bash"); err != nil {
+		t.Errorf("the first block was answered y and should be written: %v", err)
+	}
+	if _, err := a.Workspace.ReadFile("testout/b.bash"); err == nil {
+		t.Error("the second block hit end of input and must not be written")
+	}
+}
+
+func TestAutoExecuteReply_taggedBlockHonoursWritePermission(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.SetPermission(".", []string{"read"})
+	var out strings.Builder
+	a.autoExecuteReply(taggedReply, &out, newReader("y\n"), context.Background())
+	if _, err := a.Workspace.ReadFile("testout/hello.bash"); err == nil {
+		t.Error("a path the permissions table denies must not be written, even after a yes")
+	}
+	if !strings.Contains(out.String(), "permission denied") {
+		t.Errorf("the denial should be reported:\n%s", out.String())
+	}
+}
+
+func TestAutoExecuteReply_aDeniedTaggedBlockIsNotOffered(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.SetPermission(".", []string{"read"})
+	var out strings.Builder
+	a.autoExecuteReply(taggedReply, &out, newReader("y\n"), context.Background())
+	if strings.Contains(out.String(), "[y]es") {
+		t.Errorf("no confirmation should be offered for a write that cannot happen:\n%s", out.String())
+	}
+}
+
+func TestAutoExecuteReply_aDeniedBlockDoesNotStopTheOthers(t *testing.T) {
+	a := newTestAgent(t)
+	a.Config.SetPermission("locked/", []string{"read"})
+	reply := "```bash:locked/a.bash\necho a\n```\n\n```bash:open/b.bash\necho b\n```\n"
+	var out strings.Builder
+	a.autoExecuteReply(reply, &out, newReader("y\n"), context.Background())
+	if _, err := a.Workspace.ReadFile("locked/a.bash"); err == nil {
+		t.Error("locked/ is read-only and must not be written")
+	}
+	if _, err := a.Workspace.ReadFile("open/b.bash"); err != nil {
+		t.Errorf("the allowed block should still be offered and written: %v", err)
+	}
+}
+
+func TestAutoExecuteReply_suggestedPathEndOfInputDoesNotWrite(t *testing.T) {
+	a := newTestAgent(t)
+	a.History = []Message{{Role: "user", Content: "please save it as parse_pdf.sh"}}
+	reply := "```bash\n#!/bin/bash\necho hello\n```\n"
+	var out strings.Builder
+	a.autoExecuteReply(reply, &out, newReader(""), context.Background())
+	if _, err := a.Workspace.ReadFile("parse_pdf.sh"); err == nil {
+		t.Errorf("end of input at the suggested-path prompt must not write:\n%s", out.String())
+	}
+}
+
+func TestAutoExecuteReply_suggestedPathEnterStillMeansYes(t *testing.T) {
+	a := newTestAgent(t)
+	a.History = []Message{{Role: "user", Content: "please save it as parse_pdf.sh"}}
+	reply := "```bash\n#!/bin/bash\necho hello\n```\n"
+	var out strings.Builder
+	a.autoExecuteReply(reply, &out, newReader("\n"), context.Background())
+	if _, err := a.Workspace.ReadFile("parse_pdf.sh"); err != nil {
+		t.Errorf("Enter should still write the suggested path: %v", err)
 	}
 }

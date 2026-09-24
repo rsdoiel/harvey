@@ -4,9 +4,9 @@
 - [ ] Fully integrate the updates to the knowledge model, Harvey should support a learning mode that integrates both human, model and hybrid dialogs for evaluation, summarization, concept tagging and re-ingest for the knowledge base.
 - [ ] I've evolved the development methodology since last working on Harvey. The knowledge took kb has been updated to reflect those changes. Harvey repo needs to be brought into alignment with the new practrices around design decision reviews and recording them in a decisions directory that kb can be used to update the agents knowledge base for the active workspace. This could impact how we treat the knowledge base as a memory reservoir for Harvey, it could also shed light of how we handle boundries between memory layers, documents versus querying SQLite3 database representations, TAGS and the workspace knowledge base
 
-  **Status 2026-09-24 (end of day):** both items above are scheduled for **v0.0.16**, per `knowledge-learning-mode-design.md` / `-plan.md`. H0-H7 are done and committed or pending commit: `/kb learn ingest|draft|review|concepts`, `learn_model` in `harvey.yaml`, `go.mod` pinned to knowledge `fd588ef` (unreleased v0.0.13; move to the tag when it is cut). Harvey `decisions/` DR-0001 and DR-0002 are still `proposed`. Still to do before tagging v0.0.16: the termlib evaluation gate below, and `harvey/CLAUDE.md`'s stale "replace directive" line.
+  **Status 2026-09-24 (end of day):** both items above are done and scheduled for **v0.0.16**, per `knowledge-learning-mode-design.md` / `-plan.md`. H0-H7 are done and committed: `/kb learn ingest|draft|review|concepts`, `learn_model` in `harvey.yaml`, `go.mod` at knowledge `fd588ef` (unreleased v0.0.13; RSDOIEL chose to ship on it). Harvey `decisions/`: DR-0001 and DR-0002 accepted, DR-0003 (keep termlib) proposed. The termlib gate is cleared and `harvey/CLAUDE.md` is fixed. What remains before the tag is the release process itself (below), which is RSDOIEL's step.
 
-- [ ] **`promptAction` treats end of input as "yes".** Found 2026-09-24 while building `/kb learn concepts`: `promptAction` reads with `line, _ := r.ReadString('\n')` and maps an empty answer to `actionYes`, so Ctrl-D or a closed pipe at a "Write: PATH" box writes the file. `/kb learn concepts` now uses `promptActionEOF` (same box, also reports end of input, treated as quit). The two older callers still use `promptAction`: `autoExecuteReply` for tagged code blocks (`commands.go`, `choice = promptAction(...)`) and for an untagged block with a suggested path. Fix: switch both to `promptActionEOF` and treat `ended` as quit, with a red test first for each.
+- [x] **FIXED 2026-09-24. `promptAction` treated end of input as "yes".** Found while building `/kb learn concepts`: Ctrl-D or a closed pipe at a "Write: PATH" box wrote the file. `promptAction` now returns `(choice, ended)` and every caller treats `ended` as quit (`/kb learn concepts`, and both write prompts in `autoExecuteReply`); a bare Enter is still yes. The same pass found that the tagged-block path in `autoExecuteReply` never checked `CheckWritePermission` (only the untagged fallback did), so a read-only path could be written after a yes; it is now refused before the prompt. 8 red-first tests in `commands_test.go`; one older test had encoded the bug ("Empty input → Enter → yes") and now sends a real Enter.
 
 - [ ] **Design spike: AI HAT+ 2 (Hailo-10H) as a fourth Harvey backend.**
   Blocked on hardware — a Raspberry Pi 5 16GB + AI HAT+ 2 build is planned
@@ -70,19 +70,7 @@
   `-plan.md` and `decisions/0001`–`0002` (all `proposed`). Track B of that
   plan is gated on `knowledge` v0.0.12 (`../knowledge/library-lift-plan.md`).
 
-- [ ] **Evaluate deprecating the `github.com/rsdoiel/termlib` dependency —
-  before the next release is tagged.** Requested 2026-09-15, prompted by
-  the same-day discovery that its `go.mod` `replace` had gone stale (see
-  the "Blocked on `knowledge`"-adjacent fix above and `agents/knowledge.db`
-  project `harvey`, observation id 424). `termlib` is a real, in-use
-  dependency today — not dead weight — providing `termlib.NewLineEditor`
-  and `termlib.ErrInterrupted` in `terminal.go` (interactive line editing,
-  command-history load/save: `loadCmdHistory`/`saveCmdHistory`). Evaluation
-  not started yet; scope is to determine whether termlib's surface can be
-  replaced (vendored minimal implementation, a different dependency, or
-  Go stdlib/`x/term`) or should stay. **Gates the next release tag** — do
-  not run `make release`/`release.bash` until this evaluation has
-  happened, even though `v0.0.16`'s other prep is otherwise done (below).
+- [x] **DONE 2026-09-24: evaluated the `github.com/rsdoiel/termlib` dependency; decision is to keep it for v0.0.16.** Requested 2026-09-15 after the stale `go.mod` `replace` was found. Full facts and options in `termlib-evaluation.md` (Harvey's whole use is 6 lines in `terminal.go`; termlib is the author's own small module with one dependency; Charm would add about 30 packages and a rebuild of the line editor). RSDOIEL chose "keep termlib"; recorded as `decisions/0003-*.md` (`proposed`). `repl-charm-migration-design.md` had wrongly said the drop was already decided; corrected there. **Optional, author's step:** termlib `main` is one commit ahead of `v0.0.9` (`354195d`, a wide/multi-row prompt fix that does not affect Harvey's one-row prompt); tag `v0.0.10` and bump `go.mod` if wanted. Charm stays a later, separate effort.
 
 - [ ] Release readiness — **prep done 2026-09-15, tagging/publishing still
   open, now also gated on the termlib evaluation above.** All three prep
@@ -98,8 +86,8 @@
   categorization doesn't account for; `README.md` was hand-patched instead
   (version/date/notes only). If `cmt codemeta.json README.md` is ever run
   again, diff it before committing — same class of gotcha as the `knowledge`
-  repo's Makefile (see root `CLAUDE.md`'s "Note for knowledge"). **Still
-  open:** the termlib evaluation above, then the actual release process
+  repo's Makefile (see root `CLAUDE.md`'s "Note for knowledge"). **Update 2026-09-24:** the termlib gate is cleared (above); release notes now cover the learning mode, the write-prompt and permission fixes and the `/kb search` hyphen fix (hand-patched in `codemeta.json`, `CHANGES.md`, `about.md`, `README.md`; `cmt` was not run). RSDOIEL chose to ship on the knowledge pre-release commit `fd588ef` (v0.0.13 is not tagged), so `go.mod` requires a pseudo-version and the notes say so. **Still
+  open:** the actual release process
   (`make release` to cross-compile `dist/*.zip`, then `release.bash` to tag
   `v0.0.16`, push, and create the draft GitHub release) — deliberately not
   run automatically since it pushes commits and creates a public (draft)

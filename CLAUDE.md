@@ -77,7 +77,7 @@ Harvey has three independent knowledge stores, unified at retrieval time by `Uni
 |---|---|---|---|
 | **RAG store** | `rag_support.go`, `agents/rag/*.db` | Vector-embedded document chunks | Per-prompt via `ragAugment()` when RAG is on |
 | **Memory store** | `memory_store.go`, `memory_miner.go`, `memory_manifest.go`, `agents/memories/` | Typed experience records extracted from sessions | Session start via `UnifiedMemory.Recall()` |
-| **Knowledge base** | `github.com/rsdoiel/knowledge` (external module, via `replace` in `go.mod` until published), `agents/knowledge.db` | Hand-authored projects/observations/concepts (relational) | Optional, also via `UnifiedMemory` |
+| **Knowledge base** | `github.com/rsdoiel/knowledge` (external module, a normal versioned `require` in `go.mod`; no `replace`), `agents/knowledge.db` | Hand-authored projects/observations/concepts (relational) | Optional, also via `UnifiedMemory` |
 
 `UnifiedMemory.Recall()` queries all three silos in priority order: `workspace_profile` + `project_fact` first (always injected, score 1.0), then experiential memories (FTS5 + optional cosine), then RAG chunks, then KB observations. Token budget is enforced.
 
@@ -112,5 +112,5 @@ When adding corpus prompts, follow the narrow-prompt principle: one testable cap
 
 - `ToolRegistry.Dispatch` returns `fmt.Errorf("unknown tool %q", name)` — `tryExecuteProseToolCalls` detects this via `strings.Contains(r.Content, "unknown tool")`.
 - `ragMinScore = 0.3` is shared between `terminal.go` and `cmd/assay/main.go` — keep them in sync if changed.
-- `suggestPathFromHistory` returns `""` when there are ≠1 path-like tokens in the last user message. The `autoExecuteReply` fallback only calls `promptAction` (the Y/n box) when a single candidate is found; otherwise it asks the user to type a path.
+- `suggestPathFromHistory` returns `""` when there are ≠1 path-like tokens in the last user message. The `autoExecuteReply` fallback only calls `promptAction` (the Y/n box, which also reports end of input; a caller that writes files must treat that as quit, never as yes) when a single candidate is found; otherwise it asks the user to type a path.
 - The `mockLLMClient` in `tier3_test.go` is the canonical test double for `LLMClient` — reuse it rather than creating new ones.
