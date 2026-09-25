@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 /** probeActiveBackend returns true if the currently configured backend server
@@ -534,4 +535,36 @@ func (a *Agent) setOllamaModel(model string) {
 	b.SetActiveModel(model)
 	b.running = true // we know Ollama is reachable at this point
 	a.Backend = b
+	a.probeOllamaModelAndCache(model)
+}
+
+/** probeOllamaModelAndCache runs FastProbeModel on an Ollama model and stores
+ * the result in the model cache. Every path that selects an Ollama model
+ * reaches it through setOllamaModel, so the model's capabilities (tool support,
+ * embedding support, context length) are known whether or not the user saved
+ * an alias, and an entry left stale by an Ollama update is refreshed. A tool
+ * mode the user set with /model mode is carried over: the probe itself always
+ * reports ToolModeAuto. A failed probe (server unreachable, model unknown)
+ * changes nothing. It is a no-op when there is no model cache.
+ *
+ * Parameters:
+ *   model (string) — the Ollama model name, e.g. "llama3.2:latest".
+ *
+ * Example:
+ *   a.probeOllamaModelAndCache("llama3.2:latest")
+ */
+func (a *Agent) probeOllamaModelAndCache(model string) {
+	if a.ModelCache == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cap, err := FastProbeModel(ctx, a.Config.Ollama.URL, model)
+	if err != nil {
+		return
+	}
+	if existing, _ := a.ModelCache.Get(model); existing != nil {
+		cap.ToolMode = existing.ToolMode
+	}
+	_ = a.ModelCache.Set(cap)
 }

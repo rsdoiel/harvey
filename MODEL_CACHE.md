@@ -12,7 +12,7 @@ Harvey's **Model Cache** is a SQLite-backed database that stores **capability me
 | Problem | Without Cache | With Cache |
 |---------|---------------|------------|
 | Slow startup with many models | Probes every model on each startup (5-10s per model) | Loads cached results instantly |
-| Redundant network calls | Repeated /api/show requests to Ollama | Single probe per model, cached indefinitely |
+| Redundant network calls | Repeated /api/show requests to Ollama | One `/api/show` per selection, cached for `/model show` and offline use |
 | Inconsistent capability detection | Must re-check every time | Results persist until explicitly updated |
 
 ### Key Benefits
@@ -28,12 +28,9 @@ Harvey's **Model Cache** is a SQLite-backed database that stores **capability me
 The model cache works automatically — no configuration required:
 
 ```bash
-# Pick a model; when you save an alias for an Ollama model, Harvey
-# probes it and caches the result
+# Selecting an Ollama model (startup picker, /model use, or @NAME) probes
+# it and caches the result; selecting it again refreshes the entry
 harvey> /model use llama3.2:latest
-
-# Later sessions load the cached capabilities
-harvey
 ```
 
 ## Architecture
@@ -69,14 +66,17 @@ harvey
 
 1. **Harvey Startup:**
    - Open model cache database (`agents/model_cache.db`)
-   - Load all cached ModelCapability entries
-   - Use cached data for model selection UI
+   - Harvey does not probe installed models at startup; it probes the one
+     it selects (below)
 
-2. **Model Probe (on demand):**
-   - Call `FastProbeModel()` or `ThoroughProbeModel()`
-   - Fetch model metadata from Ollama `/api/show`
-   - For thorough probe: test `/api/embed` endpoint
-   - Store results in cache with timestamp
+2. **Model selection (Ollama):**
+   - `setOllamaModel` calls `probeOllamaModelAndCache`, which runs
+     `FastProbeModel()` (one `/api/show` request) with a 5 second limit
+   - Any tool mode set with `/model mode` is carried over; the probe
+     itself always reports auto
+   - Store results in cache with timestamp; a failed probe changes nothing
+   - `ThoroughProbeModel()` (adds an `/api/embed` request) exists in the
+     library, but nothing in Harvey calls it today
 
 3. **Cache Query:**
    - Lookup model by name
@@ -346,25 +346,22 @@ First runs FastProbeModel, then makes a live `/api/embed` request to confirm emb
 
 ## Usage Patterns
 
-### Automatic Probing on Startup
+### Automatic Probing on Selection
 
-Harvey automatically probes models when needed:
+Every path that selects an Ollama model ends in `setOllamaModel`, which
+probes and caches it:
 
 ```go
-// In harvey initialization
-if model, ok := knownModels[name]; !ok {
-    cap, err := FastProbeModel(ctx, ollamaURL, name)
-    if err == nil {
-        cache.Set(cap)
-    }
+func (a *Agent) setOllamaModel(model string) {
+    // ... wire the client and backend ...
+    a.probeOllamaModelAndCache(model)
 }
 ```
 
 ### Manual Probing
 
-There is no manual probe command. An Ollama model is probed when you save a
-new alias for it in `/model use`. (`/ollama probe` was removed with the
-`/ollama` command.)
+There is no probe command (`/ollama probe` was removed with `/ollama`).
+Select the model again with `/model use NAME` to refresh its entry.
 
 ### Setting Tool Mode
 
@@ -458,7 +455,7 @@ The database is configured with:
    - Use when embedding model is known from name
    - Use for quick capability checks
 
-2. **Thorough Probe:**
+2. **Thorough Probe (library only; Harvey does not call it):**
    - Use when embedding capability is uncertain
    - Use before relying on embedding functionality
    - Use when fast probe returns unknown for embedding
@@ -467,11 +464,11 @@ The database is configured with:
 
 1. **Let Harvey manage the cache:**
    - Cache is automatically created on first use
-   - Probing happens automatically when needed
+   - A model is probed each time it is selected
 
 2. **Clear cache when needed:**
-   - If Ollama is updated, consider clearing the cache
-   - If model definitions change, re-probe specific models
+   - After an Ollama update, re-select the models you use
+   - To drop an entry, delete its row (see Force Re-probe)
 
 3. **Backup the cache:**
    - `agents/model_cache.db` contains valuable metadata
@@ -494,18 +491,18 @@ The database is configured with:
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| Model not found in cache | Never probed or deleted | Select it with `/model use MODEL` and save an alias |
-| Outdated cache entries | Model updated in Ollama | Re-probe the model or delete and re-probe |
+| Model not found in cache | Never selected, or the probe failed | Select it with `/model use MODEL` (Ollama must be running) |
+| Outdated cache entries | Model updated in Ollama | Select the model again with `/model use` |
 | Database locked | Multiple connections | Harvey uses MaxOpenConns(1) to prevent this |
-| "None" probe level | Model never probed | Run a probe to populate |
+| "None" probe level | Entry made by `/model mode` before the model was selected | Select the model with `/model use` |
 | Incorrect tool support | Heuristic detection failed | Use `/model mode structured` or `inject` to override |
-| Incorrect embed support | Keyword detection failed | Use thorough probe for definitive answer |
+| Incorrect embed support | Keyword detection failed | Not fixable from Harvey today (the thorough probe is not wired in) |
 | Model ignores tools schema | Small model, no native tool support | Use `/model mode inject` to enable file injection |
 | Tool mode reset unexpectedly | Manual DB edit or schema migration | Re-run `/model mode MODEL MODE` to restore |
 
 ### Force Re-probe
 
-To force a fresh probe of a model:
+Selecting the model again with `/model use NAME` re-probes it. From Go code:
 
 ```go
 // Delete the old entry
@@ -527,7 +524,7 @@ If the database file is corrupted:
 rm agents/model_cache.db
 
 # Harvey will create a new one on next startup
-# All capabilities will be re-probed
+# Each model is probed again the next time it is selected
 ```
 
 ### Verify Cache Contents
@@ -570,7 +567,7 @@ sqlite3 agents/model_cache.db "SELECT COUNT(*) FROM model_capabilities"
 Harvey v0.2+ includes automatic model caching:
 
 1. Start Harvey — cache is created automatically
-2. Models are probed as they're discovered
+2. Each Ollama model is probed when you select it
 3. Cache grows as you use more models
 
 ### From Old Cache Format

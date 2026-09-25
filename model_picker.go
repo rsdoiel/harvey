@@ -219,7 +219,13 @@ func useSelectedModel(a *Agent, selected ModelSummary, out io.Writer, offerAlias
 	// Wire the backend.
 	switch selected.Engine {
 	case "ollama":
-		a.setOllamaModel(selected.Name)
+		a.setOllamaModel(selected.Name) // probes and caches the model's capabilities
+		if a.ModelCache != nil {
+			if cap, _ := a.ModelCache.Get(selected.Name); cap != nil && cap.ProbeLevel == "fast" {
+				fmt.Fprintf(out, "  Probed: tools=%s  embed=%s  ctx=%d\n",
+					cap.SupportsTools, cap.SupportsEmbed, cap.ContextLength)
+			}
+		}
 	case "llamafile":
 		if err := switchLlamafileModel(a, selected.Name, selected.Path, out); err != nil {
 			return err
@@ -296,17 +302,6 @@ func promptLazyRegister(a *Agent, item ModelSummary, out io.Writer) (string, err
 		tagStr = " [" + strings.Join(tags, ", ") + "]"
 	}
 	fmt.Fprintf(out, "  Alias saved: %s → %s%s\n", alias, item.Name, tagStr)
-
-	// Auto-probe Ollama models on alias creation so capability data is cached
-	// immediately, so no separate probe step is needed.
-	if item.Engine == "ollama" && a.ModelCache != nil {
-		ctx := context.Background()
-		if cap, err := FastProbeModel(ctx, a.Config.Ollama.URL, item.Name); err == nil {
-			_ = a.ModelCache.Set(cap)
-			fmt.Fprintf(out, "  Probed: tools=%s  embed=%s  ctx=%d\n",
-				cap.SupportsTools, cap.SupportsEmbed, cap.ContextLength)
-		}
-	}
 
 	return alias, nil
 }
