@@ -108,6 +108,10 @@ Flags of note:
 
 When adding corpus prompts, follow the narrow-prompt principle: one testable capability per entry, at least one automatable `contains:` check, and 2–4 `human:` review questions targeting the specific failure modes that matter.
 
+## Exit codes
+
+Both binaries use the workspace exit-code convention (workspace DR-0003; the table is in the Laboratory `CLAUDE.md`, "Exit codes for command-line tools"): 0 ok, 1 negative, 2 usage, 65 data, 66 no_input, 69 unavailable, 70 internal, 73 cant_create, 74 io, 75 temp_fail, 77 no_permission, 78 config. `exitcode.go` is the classifier: constructors (`Usagef`, `NoInputf`, `Dataf`, …) and sentinels (`ErrNotFound`, `ErrInvalid`) classify at the source, `ExitCodeFor(err)` maps an error to its class, and an error nothing classified is 70, never 1. Never match message text to classify. Each `main` is a thin `os.Exit(mainRun(...))`; `flagSpecs` (harvey) and `defineAssayFlags` (assay) are the single lists of options, and `flags_test.go` in each `cmd/` compares them with the OPTIONS section of the manual, so a new option needs its manual entry and its mistakes must be usage errors (2). The `EXIT STATUS` sections in `HelpText` and `AssayHelpText` list the codes each tool can return and are tested. `harvey` treats a session as non-interactive when stdin is not a terminal, or for `--replay` without `--replay-continue`; problems a person could fix in the session are then failures (`harvey.yaml` 78, no backend 69). `assay` finishes its run and exits with the class of the first failure; failing automatic checks are results (exit 0). Design and history: `exit-codes-survey.md`, `exit-codes-plan.md`.
+
 ## Key invariants to preserve
 
 - `ToolRegistry.Dispatch` returns `fmt.Errorf("unknown tool %q", name)` — `tryExecuteProseToolCalls` detects this via `strings.Contains(r.Content, "unknown tool")`.

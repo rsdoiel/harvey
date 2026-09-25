@@ -839,6 +839,44 @@ func main() {
 	os.Exit(mainRun(os.Args, os.Stdout, os.Stderr))
 }
 
+// assayFlags holds the value each assay option was parsed into.
+type assayFlags struct {
+	corpusPath *string
+	modelsFlag *string
+	category *string
+	ollamaURL *string
+	llamafilePath *string
+	llamacppURL *string
+	outputDir *string
+	ragDB *string
+	ragEmbedModel *string
+	ragTopK *int
+	ragCompare *bool
+	guideFile *string
+	guideCompare *bool
+}
+
+// defineAssayFlags registers every assay option on fs. It is the single list
+// of them: mainRun parses with it, and the enforcement test compares it with
+// the OPTIONS section of the manual.
+func defineAssayFlags(fs *flag.FlagSet) assayFlags {
+	corpusPath    := fs.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
+	modelsFlag    := fs.String("models", "", "comma-separated model list (default: all from Ollama)")
+	category      := fs.String("category", "", "only run prompts from this category")
+	ollamaURL     := fs.String("ollama", "http://localhost:11434", "Ollama base URL")
+	llamafilePath := fs.String("llamafile", "", "path to a llamafile binary to evaluate; starts and stops the process automatically")
+	llamacppURL   := fs.String("llamacpp", "", "base URL of a running llama-server (e.g. http://localhost:8081); user manages the process")
+	outputDir     := fs.String("output", defaultOutputDir(),
+		"write report and results to PATH\n\t\t\t(default: $WORKSPACE/assay-results/assay-TIMESTAMP/\n\t\t\t or assay-results/assay-TIMESTAMP/ if not in a workspace)")
+	ragDB         := fs.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
+	ragEmbedModel := fs.String("rag-embed-model", "nomic-embed-text", "embedding model for RAG queries")
+	ragTopK       := fs.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
+	ragCompare    := fs.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
+	guideFile     := fs.String("guide-file", "", "path to a text file whose content becomes the system message for the 'guide' variant")
+	guideCompare  := fs.Bool("guide-compare", false, "run each prompt twice (base + guide) and show delta; requires --guide-file")
+	return assayFlags{corpusPath: corpusPath, modelsFlag: modelsFlag, category: category, ollamaURL: ollamaURL, llamafilePath: llamafilePath, llamacppURL: llamacppURL, outputDir: outputDir, ragDB: ragDB, ragEmbedModel: ragEmbedModel, ragTopK: ragTopK, ragCompare: ragCompare, guideFile: guideFile, guideCompare: guideCompare}
+}
+
 // mainRun is the whole of assay's command line, with the process's arguments and
 // streams passed in so it can be tested. args[0] is the program name. It returns
 // the exit status; main only calls os.Exit with it.
@@ -857,20 +895,20 @@ func mainRun(args []string, out, errOut io.Writer) int {
 
 	fs := flag.NewFlagSet(appName, flag.ContinueOnError)
 	fs.SetOutput(errOut)
-	corpusPath    := fs.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
-	modelsFlag    := fs.String("models", "", "comma-separated model list (default: all from Ollama)")
-	category      := fs.String("category", "", "only run prompts from this category")
-	ollamaURL     := fs.String("ollama", "http://localhost:11434", "Ollama base URL")
-	llamafilePath := fs.String("llamafile", "", "path to a llamafile binary to evaluate; starts and stops the process automatically")
-	llamacppURL   := fs.String("llamacpp", "", "base URL of a running llama-server (e.g. http://localhost:8081); user manages the process")
-	outputDir     := fs.String("output", defaultOutputDir(),
-		"write report and results to PATH\n\t\t\t(default: $WORKSPACE/assay-results/assay-TIMESTAMP/\n\t\t\t or assay-results/assay-TIMESTAMP/ if not in a workspace)")
-	ragDB         := fs.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
-	ragEmbedModel := fs.String("rag-embed-model", "nomic-embed-text", "embedding model for RAG queries")
-	ragTopK       := fs.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
-	ragCompare    := fs.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
-	guideFile     := fs.String("guide-file", "", "path to a text file whose content becomes the system message for the 'guide' variant")
-	guideCompare  := fs.Bool("guide-compare", false, "run each prompt twice (base + guide) and show delta; requires --guide-file")
+	f := defineAssayFlags(fs)
+	corpusPath := f.corpusPath
+	modelsFlag := f.modelsFlag
+	category := f.category
+	ollamaURL := f.ollamaURL
+	llamafilePath := f.llamafilePath
+	llamacppURL := f.llamacppURL
+	outputDir := f.outputDir
+	ragDB := f.ragDB
+	ragEmbedModel := f.ragEmbedModel
+	ragTopK := f.ragTopK
+	ragCompare := f.ragCompare
+	guideFile := f.guideFile
+	guideCompare := f.guideCompare
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2 // the flag set has already described the problem on errOut
 	}

@@ -104,6 +104,47 @@ failure mode. Mutually exclusive with -rag-compare.
 -v, -version, --version
 : Display version information.
 
+# EXIT STATUS
+
+assay does everything it can and then exits with the class of the first
+thing that failed, using the workspace's exit codes:
+
+0
+: The run finished. Prompts whose automatic checks failed are results, not
+  failures, and exit 0.
+
+1
+: Nothing to run: no prompts match -category, or the server has no models.
+
+2
+: The command line is wrong: an unknown option, an option without its value, a
+  surplus argument, or options that conflict (-rag-compare without -rag-db,
+  -guide-compare without -guide-file, -llamafile with -llamacpp).
+
+65
+: A file assay read is wrong: a corpus that will not parse or has no
+  prompts, or a RAG store it cannot use.
+
+66
+: A named input is missing: the -corpus, -guide-file or -llamafile file.
+
+69
+: A service cannot be reached: Ollama or llama-server while listing models, a
+  llamafile that will not start, or a model call that failed. The run still
+  finishes, writes its report, and says how many calls failed.
+
+70
+: An internal error, or one nothing classified. Please report it.
+
+73
+: The output directory cannot be created.
+
+74
+: report.md or results.json could not be written. The other is still tried.
+
+77
+: The operating system refused access to a file or directory.
+
 # OUTPUT
 
 assay writes two files to the output directory:

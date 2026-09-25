@@ -46,6 +46,75 @@ func main() {
 	os.Exit(mainRun(os.Args, os.Stdout, os.Stderr))
 }
 
+// startState is what the command line builds up before a session starts.
+type startState struct {
+	cfg             *harvey.Config
+	workDirExplicit bool   // -w/--workdir was given, so the cwd must lie inside it
+	llamafile       string // the path given to --llamafile, checked after parsing
+}
+
+// flagSpec is one option of harvey. The table below is the single list of
+// them: runArgs looks each argument up in it, and the enforcement test compares
+// it with the OPTIONS section of the manual, so a flag cannot be added to one
+// and not the other.
+type flagSpec struct {
+	names      []string // every spelling, for example "-m" and "--model"
+	takesValue bool     // the next argument is its value
+	apply      func(st *startState, v string) error
+}
+
+var flagSpecs = []flagSpec{
+	{[]string{"-m", "--model"}, true, func(st *startState, v string) error { st.cfg.Ollama.Model = v; return nil }},
+	{[]string{"--ollama"}, true, func(st *startState, v string) error { st.cfg.Ollama.URL = v; return nil }},
+	{[]string{"--llamafile"}, true, func(st *startState, v string) error {
+		// Session-only: create a synthetic registry entry without persisting.
+		// The file itself is checked once the whole command line has parsed, so
+		// a usage mistake later in it is reported as one.
+		st.llamafile = v
+		st.cfg.Llamafile.Models = append(st.cfg.Llamafile.Models, harvey.LlamafileEntry{
+			Name: harvey.LlamafileModelNameFromPath(v),
+			Path: v,
+		})
+		st.cfg.Llamafile.Active = harvey.LlamafileModelNameFromPath(v)
+		return nil
+	}},
+	{[]string{"--llamafile-url"}, true, func(st *startState, v string) error { st.cfg.Llamafile.URL = v; return nil }},
+	{[]string{"--llamafile-dir"}, true, func(st *startState, v string) error { st.cfg.Llamafile.ModelsDir = v; return nil }},
+	{[]string{"-w", "--workdir"}, true, func(st *startState, v string) error {
+		st.cfg.WorkDir = v
+		st.workDirExplicit = true
+		return nil
+	}},
+	{[]string{"-r", "--record"}, false, func(st *startState, _ string) error { st.cfg.Session.AutoRecord = true; return nil }},
+	{[]string{"--record-file"}, true, func(st *startState, v string) error {
+		st.cfg.Session.RecordPath = v
+		st.cfg.Session.AutoRecord = true
+		return nil
+	}},
+	{[]string{"--resume"}, false, func(st *startState, _ string) error { st.cfg.Session.ResumeLatest = true; return nil }},
+	{[]string{"--continue"}, true, func(st *startState, v string) error { st.cfg.Session.ContinuePath = v; return nil }},
+	{[]string{"--replay"}, true, func(st *startState, v string) error { st.cfg.Session.ReplayPath = v; return nil }},
+	{[]string{"--replay-output"}, true, func(st *startState, v string) error { st.cfg.Session.ReplayOutputPath = v; return nil }},
+	{[]string{"--replay-continue"}, false, func(st *startState, _ string) error { st.cfg.Session.ReplayContinue = true; return nil }},
+	{[]string{"--debug"}, false, func(st *startState, _ string) error {
+		st.cfg.Debug = true
+		setDebugEnv()
+		return nil
+	}},
+}
+
+// findFlag returns the table entry that has arg as one of its spellings.
+func findFlag(arg string) *flagSpec {
+	for i := range flagSpecs {
+		for _, n := range flagSpecs[i].names {
+			if n == arg {
+				return &flagSpecs[i]
+			}
+		}
+	}
+	return nil
+}
+
 // exitStatus is the process exit status for an error mainRun is returning: the
 // code of its class, and 70 for an error nothing classified.
 func exitStatus(err error) int {
@@ -73,8 +142,8 @@ func runArgs(args []string, out, errOut io.Writer) error {
 	version, releaseDate, releaseHash := harvey.Version, harvey.ReleaseDate, harvey.ReleaseHash
 	licenseText, fmtHelp, helpText := harvey.LicenseText, harvey.FmtHelp, harvey.HelpText
 
-	cfg := harvey.DefaultConfig()
-	workDirExplicit := false
+	st := &startState{cfg: harvey.DefaultConfig()}
+	cfg := st.cfg
 
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
@@ -86,15 +155,6 @@ func runArgs(args []string, out, errOut io.Writer) error {
 			}
 			return args[i], nil
 		}
-		// value sets *dst from the flag's argument.
-		value := func(dst *string) error {
-			v, err := next()
-			if err != nil {
-				return err
-			}
-			*dst = v
-			return nil
-		}
 		switch arg {
 		case "init":
 			// harvey init <source> — seed model aliases from another workspace or YAML file
@@ -103,7 +163,7 @@ func runArgs(args []string, out, errOut io.Writer) error {
 			}
 			i++
 			source := args[i]
-			if err := checkWorkDir(cfg.WorkDir, workDirExplicit); err != nil {
+			if err := checkWorkDir(cfg.WorkDir, st.workDirExplicit); err != nil {
 				return err
 			}
 			ws, wsErr := harvey.NewWorkspace(cfg.WorkDir)
@@ -152,72 +212,24 @@ func runArgs(args []string, out, errOut io.Writer) error {
 		case "-l", "--license":
 			fmt.Fprint(out, licenseText)
 			return nil
-		case "-m", "--model":
-			if err := value(&cfg.Ollama.Model); err != nil {
-				return err
-			}
-		case "--ollama":
-			if err := value(&cfg.Ollama.URL); err != nil {
-				return err
-			}
-		case "--llamafile":
-			// Session-only: create a synthetic registry entry without persisting.
-			p, err := next()
-			if err != nil {
-				return err
-			}
-			if err := harvey.CheckLlamafileInput(p); err != nil {
-				return err
-			}
-			cfg.Llamafile.Models = append(cfg.Llamafile.Models, harvey.LlamafileEntry{
-				Name: harvey.LlamafileModelNameFromPath(p),
-				Path: p,
-			})
-			cfg.Llamafile.Active = harvey.LlamafileModelNameFromPath(p)
-		case "--llamafile-url":
-			if err := value(&cfg.Llamafile.URL); err != nil {
-				return err
-			}
-		case "--llamafile-dir":
-			if err := value(&cfg.Llamafile.ModelsDir); err != nil {
-				return err
-			}
-		case "-w", "--workdir":
-			if err := value(&cfg.WorkDir); err != nil {
-				return err
-			}
-			workDirExplicit = true
-		case "-r", "--record":
-			cfg.Session.AutoRecord = true
-		case "--record-file":
-			if err := value(&cfg.Session.RecordPath); err != nil {
-				return err
-			}
-			cfg.Session.AutoRecord = true
-		case "--resume":
-			cfg.Session.ResumeLatest = true
-		case "--continue":
-			if err := value(&cfg.Session.ContinuePath); err != nil {
-				return err
-			}
-		case "--replay":
-			if err := value(&cfg.Session.ReplayPath); err != nil {
-				return err
-			}
-		case "--replay-output":
-			if err := value(&cfg.Session.ReplayOutputPath); err != nil {
-				return err
-			}
-		case "--replay-continue":
-			cfg.Session.ReplayContinue = true
-		case "--debug":
-			cfg.Debug = true
-			setDebugEnv()
 		default:
-			if strings.HasPrefix(arg, "-") {
-				return harvey.Usagef("Unknown flag: %s", arg)
+			spec := findFlag(arg)
+			if spec == nil {
+				if strings.HasPrefix(arg, "-") {
+					return harvey.Usagef("Unknown flag: %s", arg)
+				}
+				return harvey.Usagef("unexpected argument: %s", arg)
 			}
-			return harvey.Usagef("unexpected argument: %s", arg)
+			v := ""
+			if spec.takesValue {
+				var err error
+				if v, err = next(); err != nil {
+					return err
+				}
+			}
+			if err := spec.apply(st, v); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -227,7 +239,12 @@ func runArgs(args []string, out, errOut io.Writer) error {
 		cfg.Llamafile.ModelsDir = v
 	}
 
-	if err := checkWorkDir(cfg.WorkDir, workDirExplicit); err != nil {
+	if st.llamafile != "" {
+		if err := harvey.CheckLlamafileInput(st.llamafile); err != nil {
+			return err
+		}
+	}
+	if err := checkWorkDir(cfg.WorkDir, st.workDirExplicit); err != nil {
 		return err
 	}
 	ws, err := harvey.NewWorkspace(cfg.WorkDir)

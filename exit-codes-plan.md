@@ -206,7 +206,21 @@ written exits 74 while the other file is still attempted.
 
 ---
 
-## H5 — Enforcement, and the manuals
+## H5 — Enforcement, and the manuals (done)
+
+**Done 2026-09-25.** Both binaries now have one list of options in code (`flagSpecs` in
+`cmd/harvey`, `defineAssayFlags` in `cmd/assay`), and `flags_test.go` in each compares it with
+the OPTIONS section of the manual, then runs every option with a bogus flag before and after,
+without its value, and with a surplus argument, asserting 2 and nothing on stdout. `harvey`
+also runs every help topic and alias in `help topics` (exit 0). The comparison found two
+manual gaps at once (`--replay-continue` undocumented; `-m, --model` had its placeholder on
+the wrong line) and one ordering bug: `--llamafile MISSING --bogus` exited 66 because the file
+was checked as the flag parsed; it is now checked after the whole command line parses, so a
+usage mistake anywhere is 2. `EXIT STATUS` is in `HelpText` and `AssayHelpText` and in the
+regenerated `harvey.1.md` and `assay.1.md` (existing headers kept), with a test that each
+lists exactly the codes the tool can return. `CLAUDE.md` has an "Exit codes" section.
+Mutation-checked: an option missing from the manual (harvey and assay), a changed documented
+code, and a surplus argument being ignored each break a test.
 
 **Enforcement.** Modelled on `kb`'s `verbcoverage_test.go`: derive the flag and
 subcommand list from the help text or the flag set, and run every path with a bogus flag,

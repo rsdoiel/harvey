@@ -58,8 +58,8 @@ init <source>
   SOURCE may be a workspace directory (reads agents/harvey.yaml inside it) or a
   standalone .yaml file with a model_aliases: map at the top level.
 
--m, --model
-: MODEL   Ollama model to use on startup
+-m, --model MODEL
+: Ollama model to use on startup
 
 --ollama URL
 : Ollama base URL (default: http://localhost:11434)
@@ -88,6 +88,9 @@ init <source>
 --continue FILE
 : load conversation history from a Fountain recording and open the REPL
 
+--replay-continue
+: with --replay, open the REPL after the replay instead of exiting
+
 --replay FILE
 : re-send every user turn from FILE to the current model and record fresh responses
 
@@ -110,6 +113,60 @@ OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
 
 All of the above API key variables are filtered out of every child process
 environment — they are never passed to commands run via ! or /run.
+
+# EXIT STATUS
+
+{app_name} exits with the workspace's exit codes, so a script can tell what
+went wrong from the number:
+
+0
+: The session ended normally (/exit, Ctrl-D or Ctrl-C at the prompt), or the
+  option printed its output and exited (--help, --version, --license, init).
+
+2
+: The command line is wrong and nothing was attempted: an unknown option, an
+  option without its value, a surplus argument, a help topic that does not
+  exist, or a -w directory that the current directory is not inside.
+
+65
+: A file {app_name} read is wrong: a --replay recording that will not parse, an
+  init source that is malformed, or a system prompt too large for the model's
+  context window.
+
+66
+: A named input is missing or is the wrong kind of thing: the -w directory, the
+  --continue or --replay file, the init source, or the --llamafile file. These
+  are checked before a model is started.
+
+69
+: A service cannot be reached: no model is connected and nobody is at a
+  terminal to choose one, or a llamafile will not start.
+
+70
+: An internal error, or one nothing classified. Please report it.
+
+73
+: An output cannot be created: the --record-file path, or the workspace
+  directory.
+
+74
+: A read or write failed part way.
+
+75
+: A locked database; trying again may work.
+
+77
+: The operating system refused access to a file or directory.
+
+78
+: agents/harvey.yaml is present but malformed, and nobody is at a terminal.
+
+A session is interactive when standard input is a terminal, except that --replay
+without --replay-continue never reaches the prompt and counts as not
+interactive. At a terminal a malformed harvey.yaml is a warning and a session
+with no model still starts (use /model use to connect one); without a terminal
+both are failures, so a script does not run a session that cannot work. The exit
+status of commands typed inside a session is not reported.
 
 # COMMANDS
 
@@ -3821,6 +3878,47 @@ failure mode. Mutually exclusive with -rag-compare.
 
 -v, -version, --version
 : Display version information.
+
+# EXIT STATUS
+
+{app_name} does everything it can and then exits with the class of the first
+thing that failed, using the workspace's exit codes:
+
+0
+: The run finished. Prompts whose automatic checks failed are results, not
+  failures, and exit 0.
+
+1
+: Nothing to run: no prompts match -category, or the server has no models.
+
+2
+: The command line is wrong: an unknown option, an option without its value, a
+  surplus argument, or options that conflict (-rag-compare without -rag-db,
+  -guide-compare without -guide-file, -llamafile with -llamacpp).
+
+65
+: A file {app_name} read is wrong: a corpus that will not parse or has no
+  prompts, or a RAG store it cannot use.
+
+66
+: A named input is missing: the -corpus, -guide-file or -llamafile file.
+
+69
+: A service cannot be reached: Ollama or llama-server while listing models, a
+  llamafile that will not start, or a model call that failed. The run still
+  finishes, writes its report, and says how many calls failed.
+
+70
+: An internal error, or one nothing classified. Please report it.
+
+73
+: The output directory cannot be created.
+
+74
+: report.md or results.json could not be written. The other is still tried.
+
+77
+: The operating system refused access to a file or directory.
 
 # OUTPUT
 
