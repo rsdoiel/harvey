@@ -257,7 +257,7 @@ func skillNew(a *Agent, out io.Writer) error {
 // skillCompile compiles a named skill to compiled.bash and compiled.ps1.
 func skillCompile(a *Agent, name string, out io.Writer) error {
 	if a.Client == nil {
-		fmt.Fprintln(out, "  No backend connected. Use /ollama start first.")
+		fmt.Fprintln(out, "  No backend connected. Use /model use to connect a model (for Ollama, run `ollama serve` first).")
 		return nil
 	}
 	skill, ok := a.Skills[name]

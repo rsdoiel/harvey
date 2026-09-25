@@ -1177,7 +1177,7 @@ type LlamaCppConfig struct {
 /** LlamafileEntry describes a registered llamafile model.
  *
  * Fields:
- *   Name          (string) — short identifier used with /llamafile use and /llamafile add.
+ *   Name          (string) — short identifier used with /model use and /model alias add.
  *   Path          (string) — path to the llamafile binary, relative to workspace root or absolute.
  *   ContextLength (int)    — context window size in tokens; 0 means unknown (probed at startup).
  *

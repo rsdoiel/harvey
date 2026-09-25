@@ -1,5 +1,5 @@
-// Package harvey — llamafile.go implements the /llamafile slash command family
-// for registering, switching, and managing llamafile model backends.
+// Package harvey — llamafile.go implements llamafile model registration, switching, and
+// management, reached through the /model command.
 package harvey
 
 import (

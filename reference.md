@@ -54,14 +54,6 @@ All Harvey commands are organized into logical categories. Each command has its 
 
 - **[harvey-kb.7.md](harvey-kb.7.md)** — Query and update the SQLite knowledge base
 
-### Llamafile Integration
-
-- **[harvey-llamafile.7.md](harvey-llamafile.7.md)** — Manage llamafile backends: `/llamafile add|use|list|start|status|remove|download`
-
-### Ollama Integration
-
-- **[harvey-ollama.7.md](harvey-ollama.7.md)** — Manage the local Ollama server and installed models
-
 ### Unified Model Management
 
 - **[harvey-model-alias.7.md](harvey-model-alias.7.md)** — `@NAME` inline model switching and `/model alias` short-name definitions
@@ -138,7 +130,7 @@ See **[harvey.1.md](harvey.1.md#environment)** for complete list:
 ### Models
 
 - **[models.md](models.md)** — Models in use and evaluation status
-- **[model_guide.md](model_guide.md)** — Model selection guide based on `/ollama probe` results
+- **[model_guide.md](model_guide.md)** — Model selection guide based on capability probing results
 - **[Llamafile_notes.md](Llamafile_notes.md)** — Mozilla AI's single-file runnable models (note: not currently integrated with Harvey)
 
 ### Development
@@ -179,12 +171,12 @@ See **[harvey.1.md](harvey.1.md#environment)** for complete list:
 
 | Task | Command |
 |------|---------|
-| List models | `/ollama list` |
-| Pull a model | `/ollama pull <model>` |
-| Use a model | `/ollama use <model>` |
-| Show model info | `/ollama show <model>` |
-| Start Ollama | `/ollama start` |
-| Check Ollama status | `/ollama status` |
+| List models | `/model list` |
+| Pull a model | `ollama pull <model>` (in a shell) |
+| Use a model | `/model use <model>` |
+| Show model info | `/model show <model>` |
+| Start Ollama | `ollama serve` (in a shell) |
+| Check the backend | `/model status` |
 
 ### RAG Operations
 

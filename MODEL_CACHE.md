@@ -28,14 +28,12 @@ Harvey's **Model Cache** is a SQLite-backed database that stores **capability me
 The model cache works automatically — no configuration required:
 
 ```bash
-# First run: probes all installed models and caches results
-harvey
+# Pick a model; when you save an alias for an Ollama model, Harvey
+# probes it and caches the result
+harvey> /model use llama3.2:latest
 
-# Subsequent runs: loads from cache, much faster
+# Later sessions load the cached capabilities
 harvey
-
-# Force re-probe a specific model
-harvey> /ollama probe llama3.2:latest
 ```
 
 ## Architecture
@@ -364,13 +362,9 @@ if model, ok := knownModels[name]; !ok {
 
 ### Manual Probing
 
-```bash
-# Probe a specific model
-harvey> /ollama probe llama3.2:latest
-
-# Probe all installed models
-harvey> /ollama probe --all
-```
+There is no manual probe command. An Ollama model is probed when you save a
+new alias for it in `/model use`. (`/ollama probe` was removed with the
+`/ollama` command.)
 
 ### Setting Tool Mode
 
@@ -391,14 +385,14 @@ harvey> /model mode granite4.1:8b structured
 sqlite3 agents/model_cache.db "UPDATE model_capabilities SET tool_mode='' WHERE name='phi4:latest'"
 ```
 
-Tool modes survive `/ollama probe` — re-probing a model does not overwrite a
+Tool modes survive a re-probe — re-probing a model does not overwrite a
 mode set via `/model mode`.
 
 ### Checking Model Capabilities
 
 ```bash
 # List all models with their capabilities
-harvey> /ollama list
+harvey> /inspect
 
 # The output shows:
 # - Model name and family
@@ -500,7 +494,7 @@ The database is configured with:
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| Model not found in cache | Never probed or deleted | Run `/ollama probe MODEL` |
+| Model not found in cache | Never probed or deleted | Select it with `/model use MODEL` and save an alias |
 | Outdated cache entries | Model updated in Ollama | Re-probe the model or delete and re-probe |
 | Database locked | Multiple connections | Harvey uses MaxOpenConns(1) to prevent this |
 | "None" probe level | Model never probed | Run a probe to populate |

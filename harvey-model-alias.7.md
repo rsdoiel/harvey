@@ -79,5 +79,5 @@ is equivalent to switching to qwen2.5-coder:7b.
 
 # SEE ALSO
 
-  harvey-llamafile(7), harvey-ollama(7), harvey-routing(7),
+  harvey-model(7), harvey-routing(7),
   harvey-getting-started(7)

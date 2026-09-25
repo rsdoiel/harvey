@@ -1,6 +1,6 @@
 # Harvey Model Selection Guide
 
-*Last updated: 2026-05-12 — model inventory from `/ollama probe` (agents/model_cache.db).
+*Last updated: 2026-05-12 — model inventory from probing (agents/model_cache.db).
 M1 Mac is the primary machine; Raspberry Pi 500+ runs a subset.*
 
 ---
@@ -163,7 +163,7 @@ When working on the Pi, treat `ministral-3:latest` as the Tier 4 ceiling and
 ## Suggested model aliases
 
 Add to `agents/harvey.yaml` under `model_aliases:`. Use
-`/ollama alias NAME MODEL` or edit the file directly.
+`/model alias add NAME MODEL` or edit the file directly.
 
 ```yaml
 model_aliases:
@@ -214,10 +214,10 @@ Before starting, ask:
 harvey
 
 # 2. Select model mid-session (or use an alias):
-/ollama use agent              # → apertus-tools:8b (agent tasks)
-/ollama use coder              # → devstral-small-2:24b (complex coding)
-/ollama use docs               # → ministral-3:latest (long documents)
-/ollama use fast               # → cogito:3b (quick Q&A)
+/model use agent              # → apertus-tools:8b (agent tasks)
+/model use coder              # → devstral-small-2:24b (complex coding)
+/model use docs               # → ministral-3:latest (long documents)
+/model use fast               # → cogito:3b (quick Q&A)
 
 # 3. Enable RAG if needed
 /rag on
@@ -263,7 +263,7 @@ session before granting broader permissions.
 
 ## Keeping this guide current
 
-Run `/ollama probe` after installing new models to update `agents/model_cache.db`.
+Save an alias for a new model in `/model use` after installing it; that probes it and updates `agents/model_cache.db`.
 Re-examine the capability columns (tools, tagged blocks) and update the inventory
 table above when results change. The `probed_at` column tracks when each entry
 was last verified.

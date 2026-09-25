@@ -68,7 +68,7 @@ retrieval-optimised model whenever possible.
 The /rag new wizard detects which embedding models are installed and
 proposes the best available one, preferring nomic-embed-text > mxbai-embed-large
 > bge- > all-minilm. If none are installed, it prints a list of recommended
-models you can pull with /ollama pull.
+models you can pull with "ollama pull" in a shell.
 
 Each store is bound to one embedding model at creation time. If you want to
 try a different embedding model for the same topic, create a new store and
@@ -78,7 +78,7 @@ re-ingest the documents.
 
 ~~~
   # Step 1 — choose an embedding model (one-time)
-  /ollama pull nomic-embed-text
+  ollama pull nomic-embed-text      (in a shell, outside Harvey)
 
   # Step 2 — create and name a store
   /rag new golang

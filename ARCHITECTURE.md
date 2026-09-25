@@ -32,7 +32,7 @@ lear_messages.go            Edward Lear-themed spinner waiting messages
 --- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
 anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go for cloud providers
-llamafile.go                /llamafile command family; model registration and discovery
+llamafile.go                llamafile model registration and discovery (reached through /model)
 llamafile_service.go        Llamafile server lifecycle (start, probe, port selection)
 model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
@@ -260,10 +260,9 @@ The REPL calls `dispatch(input, out)` for any line beginning with `/`.
 
 | Command | Purpose |
 |---|---|
-| `/ollama start\|stop\|status\|list\|ps\|pull\|push\|show\|create\|cp\|rm\|probe\|logs\|use\|env\|alias` | Manage local Ollama server |
+| `/model list\|use\|show\|status\|stop\|clean\|mode\|alias` | Manage models across llamafile, llama.cpp and Ollama |
 | `/inspect [MODEL]` | Show detailed model capability information |
 | `/route add\|rm\|models\|probe\|set\|list\|on\|off\|status` | Manage named remote endpoints |
-| `/llamafile add\|use\|list\|start\|status\|drop` | Manage llamafile model backends |
 
 ### Context and history commands
 
@@ -572,7 +571,7 @@ Named remote endpoints are managed by `RouteRegistry` (`routing.go`). The
 
 ### Llamafile backend (`llamafile.go`, `llamafile_service.go`)
 
-Llamafile binaries are registered via `/llamafile add` and stored in
+Llamafile binaries are registered via `/model use` and stored in
 `Config.LlamafileModels`. `llamafile_service.go` handles the server lifecycle:
 `FindFreePort` selects an available TCP port, `StartLlamafileServer` launches the
 binary via `/bin/sh` (required on macOS for APE format binaries), and probes the

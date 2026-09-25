@@ -135,7 +135,7 @@ rag:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Short identifier used by `/llamafile use` and `@mention` |
+| `name` | string | Yes | Short identifier used by `/model use` and `@mention` |
 | `path` | string | Yes | Absolute or `~/`-relative path to the `.llamafile` executable |
 | `context_length` | integer | No | Context window in tokens; probed from the server when omitted |
 
@@ -454,7 +454,7 @@ Workspace files:
 ## Available Tools
 
 You have access to the following slash commands: /read, /write, /run, /search,
-/git, /apply, /clear, /summarize, /context, /kb, /rag, /ollama, /route, /skill.
+/git, /clear, /summarize, /context, /kb, /rag, /model, /route, /skill.
 
 ## Rules
 
@@ -579,7 +579,7 @@ Result: In myproject/, the golang store is active.
 **"Model cache not found"**
 - Harvey creates it automatically
 - Check `agents/model_cache.db` exists
-- Run `/ollama probe` to populate it
+- Save an alias for a model in `/model use`; that probes an Ollama model and fills the cache
 
 **"RAG store not found"**
 - Run `/rag new NAME` to create a store

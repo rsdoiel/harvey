@@ -51,7 +51,7 @@ Harvey is **experimental** — a **working proof of concept**, not production-re
 3. **Run**: `harvey`
 4. **Try it**:
    ```
-   harvey > /llamafile add /path/to/model.llamafile
+   harvey > /model use
    harvey > /read LICENSE
    harvey > /help
    ```

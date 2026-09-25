@@ -1833,9 +1833,9 @@ Spinner (transient, not shown by /status)
 
 # SEE ALSO
 
-  /ollama status   — check whether the Ollama daemon is reachable
+  /model status    — check whether the active backend is reachable
   /hint            — actionable suggestions for improving results
-  /help ollama     — Ollama server and model management
+  /help model      — model management across backends
   /help record     — session recording
 
 `
@@ -2214,7 +2214,7 @@ retrieval-optimised model whenever possible.
 The /rag new wizard detects which embedding models are installed and
 proposes the best available one, preferring nomic-embed-text > mxbai-embed-large
 > bge- > all-minilm. If none are installed, it prints a list of recommended
-models you can pull with /ollama pull.
+models you can pull with "ollama pull" in a shell.
 
 Each store is bound to one embedding model at creation time. If you want to
 try a different embedding model for the same topic, create a new store and
@@ -2224,7 +2224,7 @@ re-ingest the documents.
 
 ~~~
   # Step 1 — choose an embedding model (one-time)
-  /ollama pull nomic-embed-text
+  ollama pull nomic-embed-text      (in a shell, outside Harvey)
 
   # Step 2 — create and name a store
   /rag new golang
@@ -3669,12 +3669,12 @@ INSPECT — show detailed Ollama model information
 # DESCRIPTION
 
 /inspect queries the local Ollama server for detailed information about
-installed models. Requires an Ollama backend; use /ollama start first if
-Ollama is not running.
+installed models. Requires an Ollama backend; use /model use to pick an
+Ollama model, and run "ollama serve" in a shell if Ollama is not running.
 
 Without a MODEL argument, /inspect shows a summary table of all installed
 models: name, disk size, family, context length, and capability flags
-(tools, embed, tagged-blocks). This is identical to /ollama list.
+(tools, embed, tagged-blocks).
 
 With a MODEL argument, /inspect shows the full detail view for that model:
 family, parameter count, quantization level, disk size, context length,
@@ -3705,10 +3705,10 @@ Detail view for a specific model:
 
 # SEE ALSO
 
-  /ollama list        — model table (same as /inspect with no args)
-  /ollama probe       — test and cache capability flags
-  /ollama show MODEL  — raw Modelfile via the ollama CLI
-  /help ollama
+  /model list         — models across llamafile, llama.cpp, and Ollama
+  /model use NAME     — switch models (an Ollama model is probed on first alias)
+  ollama show MODEL   — raw Modelfile, run in a shell
+  /help model
 
 `
 

@@ -10,22 +10,22 @@ Taking the models for a spin.
 ~~~shell
 # Startup Harvey in your work directory
 harvey
-# Pull some models to use with Harve
-/ollama pull phi4-mini:3.8b
-/ollama pull ibm/granite4.1:3b
-/ollama pull granite-code:3b
-/ollama pull granite3-moe:3b
-/ollama pull qwen2.5-coder:latest
+# Pull some models to use with Harvey (in a shell, outside Harvey)
+ollama pull phi4-mini:3.8b
+ollama pull ibm/granite4.1:3b
+ollama pull granite-code:3b
+ollama pull granite3-moe:3b
+ollama pull qwen2.5-coder:latest
 # Pull some models to support Retrieval Augmented Generation (RAG)
-/ollama pull nomic-embed-text-v2-moe
-/ollama pull nomic-embed-text
-/ollama pull mxbai-embed-large
-/ollama pull bge-small-en-v1.5
-/ollama pull bge-m3
+ollama pull nomic-embed-text-v2-moe
+ollama pull nomic-embed-text
+ollama pull mxbai-embed-large
+ollama pull bge-small-en-v1.5
+ollama pull bge-m3
 # List your models
-/ollama list
+/model list
 # Use a model
-/ollama use ibm/granite4.1:3b
+/model use ibm/granite4.1:3b
 # Now you're ready to play
 # Exit harvey using the /exit command
 /exit
@@ -56,7 +56,7 @@ This what I did for steps 3 and 4.
 ~~~shell
 harvey
 # Let's use the ibm/granite4.1:3b model
-/ollama use ibm/granite4.1:3b
+/model use ibm/granite4.1:3b
 # Now let's setup our RAG
 /rag setup
 # Now ingest our content (this will take a while)

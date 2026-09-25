@@ -461,9 +461,9 @@ harvey
 ssh pi2 ollama pull llama3.1:8b
 ```
 
-Or pull it directly through Harvey:
+Or pull it in a shell:
 ```
-harvey> /ollama pull llama3.1:8b
+ollama pull llama3.1:8b
 ```
 (Note: This pulls on the local machine, not the remote)
 

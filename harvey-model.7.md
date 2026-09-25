@@ -34,8 +34,7 @@ History is preserved — the switch is like a new character entering the scene.
 
   /model use NAME
     Switch to the named model. Harvey checks llamafile models first, then
-    Ollama models. Equivalent to /llamafile use or /ollama use depending on
-    where NAME is registered.
+    Ollama models.
 
   /model status
     Show whether the active backend is reachable.
@@ -69,5 +68,5 @@ Aliases are resolved in @NAME switching and /model use.
 
 # SEE ALSO
 
-  harvey-llamafile(7), harvey-ollama(7), harvey-routing(7)
+  harvey-routing(7)
 

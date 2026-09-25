@@ -391,7 +391,7 @@ func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) 
 
 	// ── Ollama path ────────────────────────────────────────────────────────────
 	if !ProbeOllama(a.Config.Ollama.URL) {
-		fmt.Fprintln(out, "Ollama is not running. Use /ollama start first.")
+		fmt.Fprintln(out, "Ollama is not running. Start it in a shell with: ollama serve")
 		return nil
 	}
 
@@ -423,7 +423,7 @@ func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) 
 	if len(embedModels) == 0 {
 		fmt.Fprintln(out, "No embedding models found on this Ollama server.")
 		fmt.Fprintln(out, "")
-		fmt.Fprintln(out, "Recommended options (run /ollama pull to install):")
+		fmt.Fprintln(out, "Recommended options (in a shell, run: ollama pull NAME):")
 		fmt.Fprintln(out, "  nomic-embed-text        (~274 MB) — best general-purpose retrieval")
 		fmt.Fprintln(out, "  mxbai-embed-large       (~670 MB) — high quality retrieval")
 		fmt.Fprintln(out, "  qllama/bge-small-en-v1.5 (~46 MB) — small but retrieval-optimized")

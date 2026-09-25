@@ -1356,7 +1356,7 @@ func safeModeReset(a *Agent, out io.Writer) error {
 func cmdInspect(a *Agent, args []string, out io.Writer) error {
 	ac, ok := a.Client.(*AnyLLMClient)
 	if !ok || ac.ProviderName() != "ollama" {
-		fmt.Fprintln(out, "Inspect requires an Ollama backend. Use /ollama start first.")
+		fmt.Fprintln(out, "Inspect requires an Ollama backend. Use /model use to pick an Ollama model.")
 		return nil
 	}
 	oc := NewOllamaClient(ac.BackendURL(), "")
@@ -1397,7 +1397,7 @@ func cmdInspect(a *Agent, args []string, out io.Writer) error {
 		return err
 	}
 	if len(summaries) == 0 {
-		fmt.Fprintln(out, "No models installed. Pull one with: /ollama pull <model>")
+		fmt.Fprintln(out, "No models installed. In a shell, pull one with: ollama pull <model>")
 		return nil
 	}
 
@@ -1569,7 +1569,7 @@ func ollamaModelTable(a *Agent, summaries []OllamaModelSummary, out io.Writer, n
 	}
 
 	if unknownCount > 0 {
-		fmt.Fprintf(out, "\n  %d model(s) not yet probed — run /ollama probe to fill in capabilities.\n", unknownCount)
+		fmt.Fprintf(out, "\n  %d model(s) not yet probed — /model use NAME probes a model and caches its capabilities.\n", unknownCount)
 	}
 }
 
@@ -1970,7 +1970,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 		return nil
 	}
 	if a.Client == nil {
-		fmt.Fprintln(out, "No backend connected. Use /ollama start or /llamafile start.")
+		fmt.Fprintln(out, "No backend connected. Use /model use to connect a model (for Ollama, run `ollama serve` first).")
 		return nil
 	}
 	if len(args) == 0 {
@@ -3119,7 +3119,7 @@ const summarizePrompt = "Please summarize this conversation concisely. Capture t
 // into a single summary message, then replaces the history with that summary.
 func cmdSummarize(a *Agent, args []string, out io.Writer) error {
 	if a.Client == nil {
-		fmt.Fprintln(out, "No backend connected. Use /ollama start.")
+		fmt.Fprintln(out, "No backend connected. Use /model use to connect a model (for Ollama, run `ollama serve` first).")
 		return nil
 	}
 
@@ -3387,7 +3387,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 			outPath = DefaultSessionPath(a.SessionsDir)
 		}
 		if a.Client == nil {
-			fmt.Fprintln(out, "  No backend connected. Use /llamafile start or /ollama start.")
+			fmt.Fprintln(out, "  No backend connected. Use /model use to connect a model (for Ollama, run `ollama serve` first).")
 			return nil
 		}
 		return a.ReplayFromFountain(context.Background(), src, outPath, out)

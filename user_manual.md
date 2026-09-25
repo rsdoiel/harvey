@@ -55,7 +55,7 @@ The `add` vs `new` distinction: `add` registers something you already have;
 `new` creates something Harvey manages from scratch.
 
 Learning this vocabulary for one command teaches you all the others:
-`/llamafile`, `/rag`, `/route`, `/session`, `/skill`, `/skill-set`, and
+`/model`, `/rag`, `/route`, `/session`, `/skill`, `/skill-set`, and
 `/memory profile` all follow the same pattern.
 
 ---
@@ -77,10 +77,8 @@ Learning this vocabulary for one command teaches you all the others:
 
 ### Model Management
 
-- **[Llamafile Commands](harvey-llamafile.7.md)** — Primary local backend: add, use, show, list, start, download, remove
-- **[Unified /model Command](harvey-model.7.md)** — `/model list|use|show|status` works across llamafile and Ollama
+- **[Unified /model Command](harvey-model.7.md)** — `/model list|use|show|status` works across llamafile, llama.cpp and Ollama
 - **[Model & Alias Commands](harvey-model-alias.7.md)** — `@mention` inline model switching and `/model alias` short names
-- **[Ollama Commands](harvey-ollama.7.md)** — Alternative local backend: service control and model management
 - **[Routing](ROUTING.md)** — Connect to remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI, remote Ollama) via @mention syntax
 - **[Routing Commands](harvey-routing.7.md)** — `/route` slash command reference
 - **[Model Guide](model_guide.md)** — Model selection guide based on capability probing results

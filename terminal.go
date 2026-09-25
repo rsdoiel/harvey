@@ -570,7 +570,7 @@ func (a *Agent) Run(out io.Writer) error {
 	if a.Config.Session.ContinuePath != "" {
 		if a.Client == nil {
 			fmt.Fprintf(out, yellow("  ⚠")+" No backend connected — %s will load read-only.\n", a.Config.Session.ContinuePath)
-			fmt.Fprintln(out, dim("  Use /llamafile start or /ollama start to connect a model."))
+			fmt.Fprintln(out, dim("  Use /model use to connect a model."))
 		} else if sessionModel != "" {
 			// Health check: warn when the connected backend differs from the
 			// session's recorded model so the user knows responses may change.
@@ -578,7 +578,7 @@ func (a *Agent) Run(out io.Writer) error {
 			if !strings.Contains(connected, sessionModel) {
 				fmt.Fprintf(out, yellow("  ⚠")+" Session used %s but connected to %s — responses may differ.\n",
 					sessionModel, activeModelLabel(a))
-				fmt.Fprintln(out, dim("  Use /model use NAME or /llamafile use NAME to switch."))
+				fmt.Fprintln(out, dim("  Use /model use NAME to switch."))
 			}
 		}
 		n, contErr := a.ContinueFromFountain(a.Config.Session.ContinuePath)
@@ -594,7 +594,7 @@ func (a *Agent) Run(out io.Writer) error {
 	if a.Client != nil {
 		fmt.Fprintf(out, "  Connected: %s\n", green(activeModelLabel(a)))
 	} else {
-		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /llamafile start or /ollama start"))
+		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /model use"))
 	}
 	fmt.Fprintln(out, dim("  /help for commands · /exit to quit"))
 	fmt.Fprintln(out, cyan(bold(sep)))
@@ -896,7 +896,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 		// Chat
 		if a.Client == nil {
-			fmt.Fprintln(out, yellow("No backend connected.")+" Use /ollama start.")
+			fmt.Fprintln(out, yellow("No backend connected.")+" Use /model use.")
 			continue
 		}
 
@@ -1704,8 +1704,8 @@ func askYesNo(reader *bufio.Reader, out io.Writer, prompt string, defaultYes boo
 // the text typed up to the cursor and returns candidate completions for the
 // last word, covering four contexts:
 //
-//   - Ollama model names and aliases: for `/ollama use`, `/ollama probe`,
-//     `/ollama alias set` (third token position)
+//   - Model names and aliases: for the model argument of
+//     `/model alias add ALIAS MODEL`
 //   - Route @names: when input starts with "@"
 //   - Slash command names: when the first token starts with "/"
 //   - Workspace file/directory paths: for file-system commands
@@ -1793,13 +1793,13 @@ func (a *Agent) buildCompleter() func(string) []string {
 			}
 		}
 
-		// Ollama model / alias completion for subcommands that take a model name.
-		if len(tokens) >= 2 {
-			cmd := strings.ToLower(tokens[0])
-			sub := strings.ToLower(tokens[1])
-			needsModel := (cmd == "/ollama" && (sub == "use" || sub == "probe")) ||
-				(cmd == "/ollama" && sub == "alias" && len(tokens) == 4) // alias set ALIAS <model>
-			if needsModel {
+		// Model / alias completion for the model argument of
+		// `/model alias add ALIAS MODEL` (the fifth token).
+		if len(tokens) >= 4 && strings.ToLower(tokens[0]) == "/model" &&
+			strings.ToLower(tokens[1]) == "alias" && strings.ToLower(tokens[2]) == "add" {
+			atModel := (len(tokens) == 4 && strings.HasSuffix(line, " ")) ||
+				(len(tokens) == 5 && !strings.HasSuffix(line, " "))
+			if atModel {
 				return a.modelAndAliasCandidates(word)
 			}
 		}

@@ -99,6 +99,5 @@ Registered endpoints and the on/off state persist across sessions in
 # SEE ALSO
 
   /model use NAME        — backend-agnostic model switching
-  /llamafile             — local llamafile backend management
   /help security         — API key filtering for cloud endpoints
 

@@ -62,7 +62,7 @@ func cmdPlan(a *Agent, args []string, out io.Writer) error {
 // checklist from the response, and saves it to agents/plan.md.
 func cmdPlanCreate(a *Agent, task string, out io.Writer) error {
 	if a.Client == nil {
-		return fmt.Errorf("no backend connected — use /ollama start or /llamafile add first")
+		return fmt.Errorf("no backend connected — use /model use first")
 	}
 
 	planningPrompt := "You are planning a multi-step task. " +
@@ -113,7 +113,7 @@ func cmdPlanCreate(a *Agent, task string, out io.Writer) error {
 // a fresh bounded context, marks it done, and saves the updated plan.
 func cmdPlanNext(a *Agent, out io.Writer) error {
 	if a.Client == nil {
-		return fmt.Errorf("no backend connected — use /ollama start or /llamafile add first")
+		return fmt.Errorf("no backend connected — use /model use first")
 	}
 	if a.Workspace == nil {
 		return fmt.Errorf("no workspace available")

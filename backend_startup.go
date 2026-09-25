@@ -141,7 +141,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 	// Case 4: Nothing reachable — guide new users.
 	fmt.Fprintln(out)
 	if err := runFirstRunWizard(a, reader, out); err != nil {
-		fmt.Fprintln(out, dim("  No backend connected — use /llamafile start or /ollama start once inside."))
+		fmt.Fprintln(out, dim("  No backend connected — use /model use once inside."))
 	}
 	return nil
 }

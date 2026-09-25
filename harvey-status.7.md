@@ -75,8 +75,8 @@ Spinner (transient, not shown by /status)
 
 # SEE ALSO
 
-  /ollama status   — check whether the Ollama daemon is reachable
+  /model status    — check whether the active backend is reachable
   /hint            — actionable suggestions for improving results
-  /help ollama     — Ollama server and model management
+  /help model      — model management across backends
   /help record     — session recording
 
