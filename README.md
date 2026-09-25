@@ -85,7 +85,7 @@ Harvey runs on:
 
 - Full agentic-memory tool suite: `retrieve_memory`, `add_memory`, `update_memory`, `delete_memory`, `filter_context`, `summary_context` builtin tools, plus proactive STM-budget warnings
 - Unified `/model` command: `/llamafile` and `/llamacpp` merged into one backend-agnostic facade; `@mention` switches the active model while preserving history; unregistered `.llamafile`/`.gguf` models are now found via disk scan
-- `knowledge` module extraction: knowledge-base code split into its own module (`github.com/rsdoiel/knowledge`), now consumed at a v0.0.13 pre-release (`fd588ef`); `recallKB` tries concept-tag matching (`MatchConceptNames`/`RecallByConceptNames`) before falling back to substring search, and now surfaces decision records and reviewed document summaries, not just observations
+- `knowledge` module extraction: knowledge-base code split into its own module (`github.com/rsdoiel/knowledge`), now consumed at the released v0.0.13; `recallKB` tries concept-tag matching (`MatchConceptNames`/`RecallByConceptNames`) before falling back to substring search, and now surfaces decision records and reviewed document summaries, not just observations
 - Cross-machine `knowledge.db` sync: UUID-based merge tool (`bin/kbmerge`), legacy `experiments`→`projects` migration
 - Retraction-checking for cited sources in the knowledge base
 - `/read-chunks`: explicit chunked document analysis, independent of context-overflow triggers
@@ -94,7 +94,7 @@ Harvey runs on:
 - Bug fix: Llamafile `GPULayers` now defaults to 0 (CPU-only) instead of 99, fixing an apparent multi-hour "hang" on Raspberry Pi hardware with no GPU backend
 - Bug fix: `pickBackend` startup picker now lists `.gguf`/llama.cpp models, not just llamafiles and Ollama
 - Bug fix: file-write confirmations no longer treat end of input (Ctrl-D, a closed pipe) as "yes", and tagged code-block writes now honour the `permissions:` table (previously only the untagged fallback did)
-- Bug fix: `/kb search` no longer fails on hyphenated terms such as `map-reduce` (picked up from `knowledge`; the release is built against a v0.0.13 pre-release commit, `fd588ef`)
+- Bug fix: `/kb search` no longer fails on hyphenated terms such as `map-reduce` (picked up from `knowledge` v0.0.13)
 - `kb` and `man` added to the safe-mode default command allowlist
 - Removed a stale local `replace github.com/rsdoiel/termlib => ../termlib` that was silently masking a broken build for anyone without a local `../termlib` checkout; now consumes the tagged `v0.0.9`
 

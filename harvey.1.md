@@ -1,6 +1,6 @@
 %harvey(1) user manual | version 0.0.16 7a1cb26
 % R. S. Doiel
-% 2026-09-15
+% 2026-09-24
 
 # NAME
 

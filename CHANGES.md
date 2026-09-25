@@ -1,6 +1,6 @@
 # CHANGES
 
-## v0.0.16 (2026-09-15)
+## v0.0.16 (2026-09-24)
 
 ### New features
 
@@ -12,9 +12,8 @@
   preserving history; unregistered `.llamafile`/`.gguf` models are now found
   via disk scan
 - `knowledge` module extraction: knowledge-base code split into its own
-  module (`github.com/rsdoiel/knowledge`), now consumed at a v0.0.13
-  pre-release (`fd588ef`);
-  `recallKB` tries concept-tag matching (`MatchConceptNames`/
+  module (`github.com/rsdoiel/knowledge`), now consumed at the released
+  v0.0.13; `recallKB` tries concept-tag matching (`MatchConceptNames`/
   `RecallByConceptNames`) before falling back to substring search, and now
   surfaces decision records and reviewed document summaries, not just
   observations
@@ -46,8 +45,7 @@
   pipe) as "yes", and tagged code-block writes now honour the `permissions:`
   table (previously only the untagged fallback did)
 - `/kb search` no longer fails on hyphenated terms such as `map-reduce`
-  (picked up from `knowledge`; built against a v0.0.13 pre-release commit,
-  `fd588ef`)
+  (picked up from `knowledge` v0.0.13)
 
 ### Internal
 
