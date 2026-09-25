@@ -227,7 +227,7 @@ func StartLlamafileService(path, baseURL, logPath string, timeout time.Duration,
 	// Only binaries with a recognised llamafile extension are launched.
 	lower := strings.ToLower(path)
 	if !strings.HasSuffix(lower, ".llamafile") && !strings.HasSuffix(lower, ".llamafile.exe") {
-		return nil, fmt.Errorf("llamafile: %q does not have a .llamafile or .llamafile.exe extension", path)
+		return nil, NoInputf("llamafile: %q does not have a .llamafile or .llamafile.exe extension", path)
 	}
 
 	if timeout <= 0 {
@@ -259,7 +259,7 @@ func StartLlamafileService(path, baseURL, logPath string, timeout time.Duration,
 	}
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("could not launch llamafile: %w", err)
+		return nil, Unavailablef("could not launch llamafile: %w", err)
 	}
 
 	// Watch for early process exit in a goroutine so the poll loop can fail
@@ -275,7 +275,7 @@ func StartLlamafileService(path, baseURL, logPath string, timeout time.Duration,
 		if out := strings.TrimSpace(stderrBuf.String()); out != "" {
 			msg += "\n" + out
 		}
-		return fmt.Errorf("%s", msg)
+		return Unavailablef("%s", msg)
 	}
 
 	// llamafile must extract its embedded GGUF and initialise the inference
@@ -304,5 +304,5 @@ func StartLlamafileService(path, baseURL, logPath string, timeout time.Duration,
 			dotTick = time.Now()
 		}
 	}
-	return nil, fmt.Errorf("llamafile started but did not respond within %s", timeout)
+	return nil, Unavailablef("llamafile started but did not respond within %s", timeout)
 }

@@ -17,6 +17,7 @@ import (
 
 	knowledge "github.com/rsdoiel/knowledge"
 	"github.com/rsdoiel/termlib"
+	"golang.org/x/term"
 )
 
 // ANSI escape codes for terminal styling.
@@ -356,6 +357,11 @@ func (a *Agent) prompt() string {
  */
 func (a *Agent) Run(out io.Writer) error {
 	a.registerCommands()
+	in := a.stdin
+	if in == nil {
+		in = os.Stdin
+	}
+	interactive := a.interactiveSession(in)
 	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			a.Config.Ollama.ContextLength = n
@@ -376,8 +382,8 @@ func (a *Agent) Run(out io.Writer) error {
 	// reader is used only for startup yes/no prompts. newLineReader takes exactly what
 	// it is asked for, so it cannot consume bytes that the LineEditor needs for the REPL
 	// loop (bufio's smallest buffer is 16 bytes, so a "1-byte" bufio reader did).
-	reader := newLineReader(os.Stdin)
-	le := termlib.NewLineEditor(os.Stdin, out)
+	reader := newLineReader(in)
+	le := termlib.NewLineEditor(in, out)
 
 	// Banner
 	fmt.Fprintln(out, cyan(bold(sep)))
@@ -391,8 +397,13 @@ func (a *Agent) Run(out io.Writer) error {
 	loadCmdHistory(a.Workspace, le)
 
 	// harvey/harvey.yaml — apply path overrides before any path-dependent init.
+	// A person at a terminal can fix it in the session, so it is a warning there;
+	// nobody can when the session is not interactive, so it is exit 78.
 	if err := LoadHarveyYAML(a.Workspace, a.Config); err != nil {
 		fmt.Fprintf(out, yellow("  ✗")+" harvey.yaml: %v\n", err)
+		if !interactive {
+			return fmt.Errorf("harvey.yaml: %w", err)
+		}
 	}
 	if a.Config.Security.SafeMode {
 		fmt.Fprintln(out, green("✓")+" Safe mode on")
@@ -458,6 +469,11 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 		if err := a.selectBackend(reader, out, hint); err != nil {
 			return err
+		}
+		// At a terminal, no backend leaves the session usable: /model use can
+		// connect one. Without a terminal there is nobody to do that.
+		if a.Client == nil && !interactive {
+			return Unavailablef("no backend connected: start Ollama or register a llamafile, then use /model use")
 		}
 	}
 
@@ -2072,4 +2088,40 @@ func remotePathCandidates(word string) []string {
 		}
 	}
 	return results
+}
+
+/** isTerminal reports whether f is a terminal. It is a variable so tests can
+ * stand in for a terminal or a pipe.
+ *
+ * Parameters:
+ *   f (*os.File) — the file to test, normally os.Stdin.
+ *
+ * Returns:
+ *   bool — true when f is a terminal.
+ *
+ * Example:
+ *   if isTerminal(os.Stdin) { promptTheUser() }
+ */
+var isTerminal = func(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }
+
+/** interactiveSession reports whether a person is at the other end of the
+ * session, which decides whether a problem the session could survive is a
+ * warning (interactive) or a failure (not). A session is not interactive when
+ * stdin is not a terminal, or when --replay runs without --replay-continue,
+ * because that path never reaches the prompt.
+ *
+ * Parameters:
+ *   in (*os.File) — the file the session reads from.
+ *
+ * Returns:
+ *   bool — true when the session is interactive.
+ *
+ * Example:
+ *   if !a.interactiveSession(os.Stdin) { return Configf("harvey.yaml: %w", err) }
+ */
+func (a *Agent) interactiveSession(in *os.File) bool {
+	if a.Config.Session.ReplayPath != "" && !a.Config.Session.ReplayContinue {
+		return false
+	}
+	return isTerminal(in)
 }

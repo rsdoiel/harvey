@@ -57,7 +57,7 @@ func NewWorkspace(dir string) (*Workspace, error) {
 	}
 	ws := &Workspace{Root: real}
 	if err := ws.MkdirAll(harveySubdir); err != nil {
-		return nil, fmt.Errorf("workspace: create harvey dir: %w", err)
+		return nil, AsCreate(fmt.Errorf("workspace: create harvey dir: %w", err))
 	}
 	return ws, nil
 }
@@ -282,7 +282,7 @@ func RequireCWDInRoot(cwd, root string) error {
 	}
 	rel, err := filepath.Rel(realRoot, realCWD)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("workspace: current directory %q is not inside workspace root %q (run harvey from within the workspace tree, or drop -w/--workdir)", realCWD, realRoot)
+		return Usagef("workspace: current directory %q is not inside workspace root %q (run harvey from within the workspace tree, or drop -w/--workdir)", realCWD, realRoot)
 	}
 	return nil
 }

@@ -51,7 +51,7 @@ func ImportAliasesFrom(sourcePath string, destWS *Workspace, destCfg *Config, ou
 		ModelAliases map[string]modelAliasYAML `yaml:"model_aliases"`
 	}
 	if err := yaml.Unmarshal(data, &y); err != nil {
-		return 0, 0, fmt.Errorf("parse %s: %w", yamlPath, err)
+		return 0, 0, Dataf("parse %s: %w", yamlPath, err)
 	}
 
 	if len(y.ModelAliases) == 0 {
@@ -95,7 +95,7 @@ func resolveSourceYAML(sourcePath string) (string, error) {
 	if fi.IsDir() {
 		candidate := filepath.Join(sourcePath, harveySubdir, "harvey.yaml")
 		if _, err := os.Stat(candidate); err != nil {
-			return "", fmt.Errorf("no agents/harvey.yaml in %q", sourcePath)
+			return "", NoInputf("no agents/harvey.yaml in %q", sourcePath)
 		}
 		return candidate, nil
 	}

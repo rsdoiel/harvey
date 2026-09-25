@@ -753,7 +753,7 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	var y harveyYAML
 	if err := yaml.Unmarshal(data, &y); err != nil {
-		return err
+		return ClassedAs(ClassConfig, err)
 	}
 	if y.Memory.KnowledgeBase.Path != "" {
 		cfg.Memory.KnowledgeDB = y.Memory.KnowledgeBase.Path

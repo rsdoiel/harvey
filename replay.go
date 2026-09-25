@@ -53,7 +53,11 @@ type PlaybackTurn struct {
 func parseFountainSession(path string) (userName, modelName string, turns []PlaybackTurn, err error) {
 	doc, err := fountain.ParseFile(path)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("replay: parse %s: %w", path, err)
+		err = fmt.Errorf("replay: parse %s: %w", path, err)
+		if _, classified := ExitClassOf(err); !classified {
+			err = ClassedAs(ClassData, err) // not a file error, so the content is wrong
+		}
+		return "", "", nil, err
 	}
 
 	userName = "USER"
@@ -196,13 +200,14 @@ func (a *Agent) ContinueFromFountain(path string) (int, error) {
 //
 //	err := agent.ReplayFromFountain(ctx, "old.fountain", "new.fountain", os.Stdout)
 func (a *Agent) ReplayFromFountain(ctx context.Context, srcPath, outPath string, out io.Writer) error {
-	if a.Client == nil {
-		return fmt.Errorf("replay: no backend connected")
-	}
-
+	// The file is checked before the backend, so a missing or malformed replay
+	// file is reported as that and not as "no backend".
 	_, _, turns, err := parseFountainSession(srcPath)
 	if err != nil {
 		return err
+	}
+	if a.Client == nil {
+		return Unavailablef("replay: no backend connected")
 	}
 	if len(turns) == 0 {
 		fmt.Fprintf(out, "  No chat turns found in %s\n", srcPath)

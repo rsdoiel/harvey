@@ -102,6 +102,21 @@ usage cases must not change in this item; the tests above are the only new asser
 
 ## H3 — `harvey`: inputs, the session, and non-interactive runs
 
+**Done 2026-09-25.** Two changes from the plan as written: (1) the named-input checks live in
+`startup_check.go` (`CheckStartupInputs`, `CheckLlamafileInput`) and run in `runArgs` before
+any agent exists, so a script gets its status before a model loads; the classified sites in
+`Run` cover what only `Run` can know (no backend, bad `harvey.yaml`, replay ordering). (2)
+`-w` on a directory that is missing or not a directory is 66, checked before the containment
+rule, which is 2; the plan's table did not separate them. Seams for testing: `Agent.stdin`
+and the `isTerminal` variable. The survey's probe matrix, old build against new: eight exit
+codes changed (`init` missing 1 to 66, `init` malformed 1 to 65, `-w` missing 1 to 66, `-w`
+outside 1 to 2, `--replay` missing 1 to 66, `--continue` missing 0 to 66, no backend and no
+terminal 0 to 69, `--llamafile` missing 1 to 66), and `--record-file` uncreatable is 73 and a
+malformed `harvey.yaml` without a terminal is 78, both checked by hand. Mutation-checked: the
+exit-status mapping, the no-backend rule, the `harvey.yaml` rule, the replay ordering and the
+`--continue` check each break a test. `exitStatus` is now `ExitCodeFor`, so an error nobody
+classified exits 70; none of the probed paths does.
+
 Classify at the source, then let `mainRun` map:
 
 | Site | Class |

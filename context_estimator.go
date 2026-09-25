@@ -246,7 +246,7 @@ func systemPromptExceedsContext(modelName string, n, limit int) error {
 	if limit <= 0 || n < limit {
 		return nil
 	}
-	return fmt.Errorf("system prompt (~%d tokens) exceeds %s's context window (%d tokens) — "+
+	return Dataf("system prompt (~%d tokens) exceeds %s's context window (%d tokens) — "+
 		"switch to a model with a larger context, or shorten HARVEY.md / reduce the number "+
 		"of registered skills in agents/skills/", n, modelName, limit)
 }

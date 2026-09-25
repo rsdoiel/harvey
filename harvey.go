@@ -165,6 +165,7 @@ type Agent struct {
 	Skills            SkillCatalog // skills discovered at startup; nil until loadSkills runs
 	Recorder          *Recorder
 	In                io.Reader       // source for interactive prompts; defaults to os.Stdin
+	stdin             *os.File        // the file Run reads from; nil means os.Stdin (a test seam)
 	Out               io.Writer       // destination for interactive output; defaults to os.Stdout
 	PinnedContext     string          // persists across /clear; re-injected after system prompt
 	Routes            *RouteRegistry  // registered remote endpoints; nil when routing not configured

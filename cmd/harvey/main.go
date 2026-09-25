@@ -26,6 +26,15 @@ func checkWorkDir(workDir string, explicit bool) error {
 	if !explicit {
 		return nil
 	}
+	// A directory that is not there is a missing input (66); the containment
+	// check below is a bad -w value (2).
+	fi, err := os.Stat(workDir)
+	if err != nil {
+		return harvey.NoInputf("workspace directory %s does not exist: %w", workDir, err)
+	}
+	if !fi.IsDir() {
+		return harvey.NoInputf("workspace %s is not a directory", workDir)
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -37,14 +46,10 @@ func main() {
 	os.Exit(mainRun(os.Args, os.Stdout, os.Stderr))
 }
 
-// exitStatus is the process exit status for an error mainRun is returning. A
-// usage error is 2; every other error is still 1 until the classified sites of
-// exit-codes-plan.md H3 replace this with harvey.ExitCodeFor.
+// exitStatus is the process exit status for an error mainRun is returning: the
+// code of its class, and 70 for an error nothing classified.
 func exitStatus(err error) int {
-	if harvey.ExitCodeFor(err) == harvey.ClassUsage {
-		return harvey.ClassUsage.Code
-	}
-	return 1
+	return harvey.ExitCodeFor(err).Code
 }
 
 // mainRun is the whole of harvey's command line, with the process's streams
@@ -161,6 +166,9 @@ func runArgs(args []string, out, errOut io.Writer) error {
 			if err != nil {
 				return err
 			}
+			if err := harvey.CheckLlamafileInput(p); err != nil {
+				return err
+			}
 			cfg.Llamafile.Models = append(cfg.Llamafile.Models, harvey.LlamafileEntry{
 				Name: harvey.LlamafileModelNameFromPath(p),
 				Path: p,
@@ -224,6 +232,9 @@ func runArgs(args []string, out, errOut io.Writer) error {
 	}
 	ws, err := harvey.NewWorkspace(cfg.WorkDir)
 	if err != nil {
+		return err
+	}
+	if err := harvey.CheckStartupInputs(cfg); err != nil {
 		return err
 	}
 	cfg.SystemPrompt = ws.LoadHarveyMD()
