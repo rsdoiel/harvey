@@ -35,10 +35,13 @@ name.
 - Constructors: `Usagef`, `Negativef`, `NotFoundf`, `Dataf`, `NoInputf`, `Unavailablef`,
   `CantCreatef`, `IOf`, `Configf`, and `ClassedAs(class, err)` for reclassifying what a
   helper returned (the outermost class wins).
-- `ExitCodeFor(err error) (ExitClass, int)`: `nil` is 0; a `*ClassedError` gives its
+- `ExitClassOf(err) (ExitClass, bool)` and `ExitCodeFor(err) ExitClass` (the class carries
+  the code): `nil` is 0; a `*ClassedError` gives its
   class; then the standard-library rules from the convention (`fs.ErrNotExist` 66,
   `fs.ErrPermission` 77, `fs.ErrExist` 73, other `*fs.PathError` 74, `net.Error` and
-  `*url.Error` 69, `context.DeadlineExceeded` 69, a SQLite busy or locked error 75, other
+  `*url.Error` 69 (checked by concrete type *before* the file errors, because a refused
+  connection wraps a `*os.SyscallError`, and not by the `net.Error` interface first,
+  because a bare `syscall.Errno` satisfies it), `context.DeadlineExceeded` 69, a SQLite busy or locked error 75, other
   SQLite constraint and corruption codes 65); anything else is `ClassInternal`.
 - Library sentinels only where a case needs one: `ErrInvalid` (bad value, usage when it
   came from an argument, data when it came from a file) and `ErrNotFound`. More only when
