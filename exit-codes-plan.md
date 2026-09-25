@@ -24,7 +24,7 @@ name.
 
 ---
 
-## H1 — The classifier and the sentinels
+## H1 — The classifier and the sentinels (done, `0cb0c97`)
 
 **Add** `exitcode.go` in package `harvey`:
 
@@ -63,11 +63,20 @@ mutation check: change the fallback to 1 and the test fails). No production call
 
 ---
 
-## H2 — `mainRun`, the argument parsers, and the usage sites
+## H2 — `mainRun`, the argument parsers, and the usage sites (done)
+
+**Done 2026-09-25.** Until H3 replaces it, `exitStatus` in `cmd/harvey` maps a usage error to 2 and
+every other error to 1, so nothing else moved. Checked by running the survey's 31 probe
+commands against the v0.0.16 build and the new one: eight exit codes changed, all 1 to 2
+and all usage cases (`help nosuchtopic`, `--bogus`, `-m` with no argument, `init` with no
+source, and assay's three flag-combination checks; assay's bad flag was already 2), and no
+other exit code, stdout or stderr line differs but the `Usage of` line, which now names
+`assay` instead of its full path. A side effect worth knowing: `assay`'s `defer proc.Kill()`
+now runs on error exits, where `os.Exit` used to skip it.
 
 Neither `main` can be tested, and every later item needs to run them. Split each into
-`func mainRun(args []string, in io.Reader, out, errOut io.Writer) int` in the `cmd/`
-package, with `main` calling it and `os.Exit`; `harvey`'s `--version`, `--help` and `help`
+`func mainRun(args []string, out, errOut io.Writer) int` in the `cmd/`
+package (no `in`: `Agent.Run` reads `os.Stdin` itself, and no H2 path reaches it), with `main` calling it and `os.Exit`; `harvey`'s `--version`, `--help` and `help`
 already write to a writer or stdout, so they move over unchanged.
 
 **`cmd/harvey`:** the hand-written loop keeps its flags. Usage errors become

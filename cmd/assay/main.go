@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -832,49 +833,64 @@ func defaultOutputDir() string {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
-	appName := filepath.Base(os.Args[0])
-	for _, arg := range os.Args[1:] {
+	os.Exit(mainRun(os.Args, os.Stdout, os.Stderr))
+}
+
+// mainRun is the whole of assay's command line, with the process's arguments and
+// streams passed in so it can be tested. args[0] is the program name. It returns
+// the exit status; main only calls os.Exit with it.
+func mainRun(args []string, out, errOut io.Writer) int {
+	appName := filepath.Base(args[0])
+	for _, arg := range args[1:] {
 		switch arg {
 		case "-h", "-help", "--help":
-			fmt.Print(harvey.FmtHelp(harvey.AssayHelpText, appName, harvey.Version, harvey.ReleaseDate, harvey.ReleaseHash))
-			os.Exit(0)
+			fmt.Fprint(out, harvey.FmtHelp(harvey.AssayHelpText, appName, harvey.Version, harvey.ReleaseDate, harvey.ReleaseHash))
+			return 0
 		case "-v", "-version", "--version":
-			fmt.Printf("%s %s %s\n", appName, harvey.Version, harvey.ReleaseHash)
-			os.Exit(0)
+			fmt.Fprintf(out, "%s %s %s\n", appName, harvey.Version, harvey.ReleaseHash)
+			return 0
 		}
 	}
 
-	corpusPath    := flag.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
-	modelsFlag    := flag.String("models", "", "comma-separated model list (default: all from Ollama)")
-	category      := flag.String("category", "", "only run prompts from this category")
-	ollamaURL     := flag.String("ollama", "http://localhost:11434", "Ollama base URL")
-	llamafilePath := flag.String("llamafile", "", "path to a llamafile binary to evaluate; starts and stops the process automatically")
-	llamacppURL   := flag.String("llamacpp", "", "base URL of a running llama-server (e.g. http://localhost:8081); user manages the process")
-	outputDir     := flag.String("output", defaultOutputDir(),
+	fs := flag.NewFlagSet(appName, flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	corpusPath    := fs.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
+	modelsFlag    := fs.String("models", "", "comma-separated model list (default: all from Ollama)")
+	category      := fs.String("category", "", "only run prompts from this category")
+	ollamaURL     := fs.String("ollama", "http://localhost:11434", "Ollama base URL")
+	llamafilePath := fs.String("llamafile", "", "path to a llamafile binary to evaluate; starts and stops the process automatically")
+	llamacppURL   := fs.String("llamacpp", "", "base URL of a running llama-server (e.g. http://localhost:8081); user manages the process")
+	outputDir     := fs.String("output", defaultOutputDir(),
 		"write report and results to PATH\n\t\t\t(default: $WORKSPACE/assay-results/assay-TIMESTAMP/\n\t\t\t or assay-results/assay-TIMESTAMP/ if not in a workspace)")
-	ragDB         := flag.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
-	ragEmbedModel := flag.String("rag-embed-model", "nomic-embed-text", "embedding model for RAG queries")
-	ragTopK       := flag.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
-	ragCompare    := flag.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
-	guideFile     := flag.String("guide-file", "", "path to a text file whose content becomes the system message for the 'guide' variant")
-	guideCompare  := flag.Bool("guide-compare", false, "run each prompt twice (base + guide) and show delta; requires --guide-file")
-	flag.Parse()
+	ragDB         := fs.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
+	ragEmbedModel := fs.String("rag-embed-model", "nomic-embed-text", "embedding model for RAG queries")
+	ragTopK       := fs.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
+	ragCompare    := fs.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
+	guideFile     := fs.String("guide-file", "", "path to a text file whose content becomes the system message for the 'guide' variant")
+	guideCompare  := fs.Bool("guide-compare", false, "run each prompt twice (base + guide) and show delta; requires --guide-file")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2 // the flag set has already described the problem on errOut
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(errOut, "assay: unexpected argument: %s\n", fs.Arg(0))
+		return 2
+	}
 
 	if *ragCompare && *ragDB == "" {
-		fmt.Fprintln(os.Stderr, "assay: --rag-compare requires --rag-db")
-		os.Exit(1)
+		fmt.Fprintln(errOut, "assay: --rag-compare requires --rag-db")
+		return 2
 	}
 	if *guideCompare && *guideFile == "" {
-		fmt.Fprintln(os.Stderr, "assay: --guide-compare requires --guide-file")
-		os.Exit(1)
+		fmt.Fprintln(errOut, "assay: --guide-compare requires --guide-file")
+		return 2
 	}
 	if *guideCompare && *ragCompare {
-		fmt.Fprintln(os.Stderr, "assay: --guide-compare and --rag-compare are mutually exclusive")
-		os.Exit(1)
+		fmt.Fprintln(errOut, "assay: --guide-compare and --rag-compare are mutually exclusive")
+		return 2
 	}
 	if *llamafilePath != "" && *llamacppURL != "" {
-		fmt.Fprintln(os.Stderr, "assay: --llamafile and --llamacpp are mutually exclusive")
-		os.Exit(1)
+		fmt.Fprintln(errOut, "assay: --llamafile and --llamacpp are mutually exclusive")
+		return 2
 	}
 
 	// Backend selection: determine llmURL, backend name, and start any managed process.
@@ -886,35 +902,35 @@ func main() {
 	case *llamafilePath != "":
 		// RAG + llamafile requires Ollama for embeddings.
 		if *ragDB != "" && !harvey.ProbeLlamafile(*ollamaURL+"/api/tags") {
-			fmt.Fprintf(os.Stderr, "assay: RAG evaluation with --llamafile requires Ollama for embeddings.\n"+
+			fmt.Fprintf(errOut, "assay: RAG evaluation with --llamafile requires Ollama for embeddings.\n"+
 				"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s\n", *ollamaURL)
-			os.Exit(1)
+			return 1
 		}
 		port, err := harvey.FindFreePort()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "assay: llamafile: cannot find free port: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintf(errOut, "assay: llamafile: cannot find free port: %v\n", err)
+			return 1
 		}
 		llmURL = fmt.Sprintf("http://localhost:%d", port)
-		fmt.Printf("Starting llamafile %s on %s ...\n", filepath.Base(*llamafilePath), llmURL)
-		proc, err := harvey.StartLlamafileService(*llamafilePath, llmURL, "", 30*time.Second, -1, 0, os.Stdout)
+		fmt.Fprintf(out, "Starting llamafile %s on %s ...\n", filepath.Base(*llamafilePath), llmURL)
+		proc, err := harvey.StartLlamafileService(*llamafilePath, llmURL, "", 30*time.Second, -1, 0, out)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "assay: llamafile: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintf(errOut, "assay: llamafile: %v\n", err)
+			return 1
 		}
 		defer proc.Kill()
-		fmt.Printf("  Llamafile ready at %s\n", llmURL)
+		fmt.Fprintf(out, "  Llamafile ready at %s\n", llmURL)
 		backend    = "Llamafile"
 		backendURL = llmURL
 
 	case *llamacppURL != "":
 		// RAG + llamacpp requires Ollama for embeddings.
 		if *ragDB != "" && !harvey.ProbeLlamafile(*ollamaURL+"/api/tags") {
-			fmt.Fprintf(os.Stderr,
+			fmt.Fprintf(errOut,
 				"assay: RAG evaluation with --llamacpp requires Ollama for embeddings.\n"+
 					"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s\n",
 				*ollamaURL)
-			os.Exit(1)
+			return 1
 		}
 		llmURL    = *llamacppURL
 		backend   = "LlamaCpp"
@@ -923,8 +939,8 @@ func main() {
 
 	corpus, err := loadCorpus(*corpusPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "assay: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(errOut, "assay: %v\n", err)
+		return 1
 	}
 
 	// Resolve model list.
@@ -944,9 +960,9 @@ func main() {
 		} else {
 			models, err = listOpenAIModels(*llamacppURL)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "assay: could not list llama.cpp models: %v\n"+
+				fmt.Fprintf(errOut, "assay: could not list llama.cpp models: %v\n"+
 					"Use --models NAME to specify the model explicitly.\n", err)
-				os.Exit(1)
+				return 1
 			}
 		}
 
@@ -960,13 +976,13 @@ func main() {
 	default:
 		models, err = listOllamaModels(llmURL)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "assay: could not list Ollama models: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintf(errOut, "assay: could not list Ollama models: %v\n", err)
+			return 1
 		}
 	}
 	if len(models) == 0 {
-		fmt.Fprintln(os.Stderr, "assay: no models to run (use --models or start Ollama)")
-		os.Exit(1)
+		fmt.Fprintln(errOut, "assay: no models to run (use --models or start Ollama)")
+		return 1
 	}
 
 	// Filter prompts by category.
@@ -977,8 +993,8 @@ func main() {
 		}
 	}
 	if len(prompts) == 0 {
-		fmt.Fprintf(os.Stderr, "assay: no prompts match category %q\n", *category)
-		os.Exit(1)
+		fmt.Fprintf(errOut, "assay: no prompts match category %q\n", *category)
+		return 1
 	}
 
 	// Open RAG store when requested.
@@ -987,21 +1003,21 @@ func main() {
 	if *ragDB != "" {
 		ragStore, err = harvey.NewRagStore(*ragDB, *ragEmbedModel)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "assay: open RAG store: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintf(errOut, "assay: open RAG store: %v\n", err)
+			return 1
 		}
 		ragEmbedder = harvey.NewOllamaEmbedder(*ollamaURL, *ragEmbedModel)
-		fmt.Printf("RAG store: %s (embed: %s, top-k: %d)\n", *ragDB, *ragEmbedModel, *ragTopK)
+		fmt.Fprintf(out, "RAG store: %s (embed: %s, top-k: %d)\n", *ragDB, *ragEmbedModel, *ragTopK)
 		if *ragCompare {
-			fmt.Println("Compare mode: each prompt runs twice (base + RAG)")
+			fmt.Fprintln(out, "Compare mode: each prompt runs twice (base + RAG)")
 		}
 	}
 
 	// Create output directory.
 	outDir := *outputDir
 	if err := os.MkdirAll(outDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "assay: could not create output dir: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(errOut, "assay: could not create output dir: %v\n", err)
+		return 1
 	}
 
 	ar := AssayResults{
@@ -1044,8 +1060,8 @@ func main() {
 	if *guideFile != "" {
 		data, err := os.ReadFile(*guideFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "assay: read guide file: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintf(errOut, "assay: read guide file: %v\n", err)
+			return 1
 		}
 		guideText = strings.TrimSpace(string(data))
 	}
@@ -1060,7 +1076,7 @@ func main() {
 		// Per-model extracted code directory.
 		extractedDir := filepath.Join(outDir, "extracted", sanitizeModelName(model))
 		if err := os.MkdirAll(extractedDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "assay: mkdir extracted: %v\n", err)
+			fmt.Fprintf(errOut, "assay: mkdir extracted: %v\n", err)
 		}
 
 		for _, p := range prompts {
@@ -1070,7 +1086,7 @@ func main() {
 				if v.name != "" {
 					variantLabel = "[" + v.name + "] "
 				}
-				fmt.Printf("[%d/%d] %s%s · %s ... ", done, total, variantLabel, model, p.ID)
+				fmt.Fprintf(out, "[%d/%d] %s%s · %s ... ", done, total, variantLabel, model, p.ID)
 
 				// Build prompt text, injecting RAG context when requested.
 				promptText := p.PromptText
@@ -1092,7 +1108,7 @@ func main() {
 				elapsed := time.Since(start)
 
 				if callErr != nil {
-					fmt.Printf("ERROR: %v\n", callErr)
+					fmt.Fprintf(out, "ERROR: %v\n", callErr)
 					ar.Results = append(ar.Results, PromptResult{
 						PromptID: p.ID,
 						Category: p.Category,
@@ -1131,7 +1147,7 @@ func main() {
 				if ragChunks > 0 {
 					chunkNote = fmt.Sprintf(" · %d RAG chunks", ragChunks)
 				}
-				fmt.Printf("%s · %s · %.1f tok/s%s\n",
+				fmt.Fprintf(out, "%s · %s · %.1f tok/s%s\n",
 					passLabel, elapsed.Round(time.Millisecond), stats.TokensPerSec, chunkNote)
 			}
 		}
@@ -1140,11 +1156,12 @@ func main() {
 	}
 
 	if err := writeReport(outDir, ar, corpus); err != nil {
-		fmt.Fprintf(os.Stderr, "assay: write report: %v\n", err)
+		fmt.Fprintf(errOut, "assay: write report: %v\n", err)
 	}
 	if err := writeJSON(outDir, ar); err != nil {
-		fmt.Fprintf(os.Stderr, "assay: write JSON: %v\n", err)
+		fmt.Fprintf(errOut, "assay: write JSON: %v\n", err)
 	}
 
-	fmt.Printf("\nResults written to %s/\n", outDir)
+	fmt.Fprintf(out, "\nResults written to %s/\n", outDir)
+	return 0
 }

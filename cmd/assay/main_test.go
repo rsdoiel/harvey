@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	harvey "github.com/rsdoiel/harvey"
 )
 
 // TestNewAssayClient_ReturnsNonNilClient verifies that newAssayClient creates
@@ -173,5 +176,59 @@ func TestWriteReport_GuideCompare_RendersDeltaTable(t *testing.T) {
 	}
 	if !strings.Contains(report, "func Foo() {}") || !strings.Contains(report, `fmt.Errorf("x: %w", err)`) {
 		t.Errorf("expected both variants' response bodies present, got:\n%s", report)
+	}
+}
+
+// H2 of exit-codes-plan.md: main is split into mainRun so the command line can
+// be tested in process. Only usage errors change their exit status here (2).
+
+func runAssay(t *testing.T, args ...string) (code int, out, errOut string) {
+	t.Helper()
+	var o, e bytes.Buffer
+	code = mainRun(append([]string{"assay"}, args...), &o, &e)
+	return code, o.String(), e.String()
+}
+
+func TestMainRun_VersionAndHelpExitZero(t *testing.T) {
+	for _, args := range [][]string{{"--version"}, {"-v"}, {"-version"}, {"--help"}, {"-h"}, {"-help"}} {
+		code, out, errOut := runAssay(t, args...)
+		if code != 0 || out == "" || errOut != "" {
+			t.Errorf("assay %v: exit %d, stdout %d bytes, stderr %q; want 0, some output, none",
+				args, code, len(out), errOut)
+		}
+	}
+	if _, out, _ := runAssay(t, "--version"); !strings.Contains(out, harvey.Version) {
+		t.Errorf("--version prints %q, want it to contain %q", out, harvey.Version)
+	}
+}
+
+func TestMainRun_UsageErrorsExitTwoWithNothingOnStdout(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		msg  string
+	}{
+		{"unknown flag", []string{"--bogus"}, "bogus"},
+		{"flag missing its value", []string{"--corpus"}, "corpus"},
+		{"bad integer value", []string{"--rag-top-k", "many"}, "rag-top-k"},
+		{"surplus positional argument", []string{"extra"}, "unexpected argument: extra"},
+		{"surplus after flags", []string{"--models", "m", "extra"}, "unexpected argument: extra"},
+		{"--rag-compare needs --rag-db", []string{"--rag-compare"}, "--rag-compare requires --rag-db"},
+		{"--guide-compare needs --guide-file", []string{"--guide-compare"}, "--guide-compare requires --guide-file"},
+		{"the two compares conflict", []string{"--rag-compare", "--rag-db", "x", "--guide-compare", "--guide-file", "y"},
+			"--guide-compare and --rag-compare are mutually exclusive"},
+		{"the two local backends conflict", []string{"--llamafile", "x", "--llamacpp", "http://x"},
+			"--llamafile and --llamacpp are mutually exclusive"},
+	} {
+		code, out, errOut := runAssay(t, tc.args...)
+		if code != 2 {
+			t.Errorf("%s: assay %v exit %d, want 2", tc.name, tc.args, code)
+		}
+		if out != "" {
+			t.Errorf("%s: stdout %q, want nothing", tc.name, out)
+		}
+		if !strings.Contains(errOut, tc.msg) {
+			t.Errorf("%s: stderr %q, want it to contain %q", tc.name, errOut, tc.msg)
+		}
 	}
 }
