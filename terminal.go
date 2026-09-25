@@ -1674,7 +1674,11 @@ func (a *Agent) loadSkills(out io.Writer) {
 }
 
 /** askYesNo prints prompt, reads a line, and returns true for "y"/"yes".
- * defaultYes controls what an empty (Enter) response means.
+ * defaultYes controls what an empty (Enter) response means. End of input with
+ * nothing typed (a closed pipe, /dev/null, Ctrl-D) is not an answer, so it
+ * returns false whatever defaultYes is: a default-yes prompt starts servers and
+ * runs compiled skills, and must not do that when nobody answered. A final
+ * answer with no trailing newline ("y" then end of input) still counts.
  *
  * Parameters:
  *   reader     (*bufio.Reader) — source for the user's answer.
@@ -1683,18 +1687,22 @@ func (a *Agent) loadSkills(out io.Writer) {
  *   defaultYes (bool)          — return value when the user presses Enter.
  *
  * Returns:
- *   bool — true if the user answered yes (or pressed Enter with defaultYes=true).
+ *   bool — true if the user answered yes (or pressed Enter with defaultYes=true);
+ *          false for no, any other answer, or end of input with no answer.
  *
  * Example:
- *   if askYesNo(out, reader, "Continue? [Y/n] ", true) {
+ *   if askYesNo(reader, out, "Continue? [Y/n] ", true) {
  *       // proceed
  *   }
  */
 func askYesNo(reader *bufio.Reader, out io.Writer, prompt string, defaultYes bool) bool {
 	fmt.Fprint(out, prompt)
-	line, _ := reader.ReadString('\n')
+	line, err := reader.ReadString('\n')
 	answer := strings.ToLower(strings.TrimSpace(line))
 	if answer == "" {
+		if err != nil {
+			return false // end of input, not an answer
+		}
 		return defaultYes
 	}
 	return answer == "y" || answer == "yes"
