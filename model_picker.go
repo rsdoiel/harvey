@@ -4,6 +4,7 @@
 package harvey
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -123,8 +124,80 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
 	if idx < 1 || idx > len(models) {
 		return nil
 	}
-	selected := models[idx-1]
+	return useSelectedModel(a, models[idx-1], out, true)
+}
 
+/** listLocalModels is the source of the local-model list that /model use NAME
+ * searches. It is a variable so a test can stand in for the disk scan and the
+ * live Ollama query.
+ */
+var listLocalModels = aggregateModels
+
+/** matchModel finds the local model a user meant by name. An exact name
+ * (ignoring case) wins over a prefix; a name that matches exactly one model on
+ * one engine, or is a prefix of exactly one, selects it. A name that matches
+ * several (the same name on two engines, or a prefix shared by two models) selects
+ * nothing and returns the candidates, so the caller can list them.
+ *
+ * Parameters:
+ *   models ([]ModelSummary) — the local models, as aggregateModels returns them.
+ *   query  (string)          — what the user typed after /model use.
+ *
+ * Returns:
+ *   ModelSummary   — the selected model when ok is true.
+ *   []ModelSummary — the candidates when the query was ambiguous, else nil.
+ *   bool           — true when exactly one model was selected.
+ *
+ * Example:
+ *   m, ambiguous, ok := matchModel(models, "apert")
+ */
+func matchModel(models []ModelSummary, query string) (ModelSummary, []ModelSummary, bool) {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return ModelSummary{}, nil, false
+	}
+	var exact, prefix []ModelSummary
+	for _, m := range models {
+		name := strings.ToLower(m.Name)
+		switch {
+		case name == q:
+			exact = append(exact, m)
+		case strings.HasPrefix(name, q):
+			prefix = append(prefix, m)
+		}
+	}
+	for _, group := range [][]ModelSummary{exact, prefix} {
+		switch len(group) {
+		case 0:
+			continue
+		case 1:
+			return group[0], nil, true
+		default:
+			return ModelSummary{}, group, false
+		}
+	}
+	return ModelSummary{}, nil, false
+}
+
+/** useSelectedModel switches Harvey to one model from the local list: it warns
+ * and stops the outgoing server when the engine changes, optionally offers to save
+ * a short alias, wires the backend, and confirms. The picker and /model use NAME
+ * share it.
+ *
+ * Parameters:
+ *   a          (*Agent)       — the running Harvey agent.
+ *   selected   (ModelSummary) — the model to use.
+ *   out        (io.Writer)    — output sink.
+ *   offerAlias (bool)         — prompt to save an alias for an unaliased model; the
+ *                               picker does, a model named directly does not.
+ *
+ * Returns:
+ *   error — when the backend cannot be started or the engine is unknown.
+ *
+ * Example:
+ *   err := useSelectedModel(a, ModelSummary{Name: "llama3.2:3b", Engine: "ollama"}, out, false)
+ */
+func useSelectedModel(a *Agent, selected ModelSummary, out io.Writer, offerAlias bool) error {
 	// Warn and switch when engines differ.
 	if a.Backend != nil && a.Backend.Name() != selected.Engine {
 		fmt.Fprintf(out, "  Switching from %s (%s) → %s (%s)\n",
@@ -136,10 +209,11 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
 	}
 
 	// Lazy alias registration.
-	alias, _ := promptLazyRegister(a, selected, out)
 	displayName := selected.Name
-	if alias != "" {
-		displayName = alias
+	if offerAlias {
+		if alias, _ := promptLazyRegister(a, selected, out); alias != "" {
+			displayName = alias
+		}
 	}
 
 	// Wire the backend.
@@ -266,4 +340,35 @@ func shortenPath(p string) string {
 		return "~" + p[len(home):]
 	}
 	return p
+}
+
+// oneByteReader hands out at most one byte per Read, however large the caller's
+// buffer, so a bufio.Reader wrapped around it never reads ahead.
+type oneByteReader struct{ r io.Reader }
+
+func (o oneByteReader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	return o.r.Read(p[:1])
+}
+
+/** newLineReader returns a bufio.Reader over r that consumes exactly the bytes it is
+ * asked for and no more. bufio's smallest buffer is 16 bytes, so bufio.NewReaderSize(r, 1)
+ * still reads ahead, and after a prompt it swallowed the start of the next line of piped
+ * input, which the REPL's line editor then never saw. Here the source returns one byte per
+ * Read, so the buffer can only ever hold what one Read returned.
+ *
+ * Parameters:
+ *   r (io.Reader) — the input, normally os.Stdin.
+ *
+ * Returns:
+ *   *bufio.Reader — a reader for startup yes/no prompts and confirmations.
+ *
+ * Example:
+ *   reader := newLineReader(os.Stdin)
+ *   answer, _ := reader.ReadString('\n')
+ */
+func newLineReader(r io.Reader) *bufio.Reader {
+	return bufio.NewReaderSize(oneByteReader{r}, 1)
 }

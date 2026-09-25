@@ -19,8 +19,9 @@ documented work.
 > **Tip:** The easiest way to get started is to download a llamafile from the
 > [Mozilla AI pre-built llamafiles page](https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles),
 > place it in `~/Models/`, and run `harvey`. Harvey will find and connect to
-> it automatically. See [Llamafile Commands](harvey-llamafile.7.md) for details.
-> Ollama is also supported as an alternative backend.
+> it automatically. Ollama and llama.cpp servers are also supported. Use
+> `/model list` to see every model Harvey can reach and `/model use NAME` to
+> switch; see [Model Commands](harvey-model.7.md).
 
 All file I/O is constrained to the workspace.
 A knowledge base is stored at `<workspace>/agents/knowledge.db` and is
@@ -125,7 +126,7 @@ Today: <!-- @date -->
 $ harvey
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Harvey  0.0.14
+  Harvey  0.0.16
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ Workspace: /home/user/myproject
 ✓ Knowledge base: agents/knowledge.db
@@ -231,22 +232,22 @@ them once and you can predict subcommands for any command family.
 | `rename OLD NEW` | Rename an item | Renaming a workspace or session |
 | `status` | Health/connection state of a *service* | Backend and store health checks |
 
-The key distinction: **`add`** registers something you already have (a llamafile
-binary, a route URL); **`new`** creates something Harvey manages from scratch
+The key distinction: **`add`** registers something you already have (a route
+URL, a model alias); **`new`** creates something Harvey manages from scratch
 (a RAG database, a skill bundle, a plan). Both verbs are distinct from `use`,
 which activates something already registered.
 
-For backend services (`/llamafile`, `/ollama`), `status` checks whether the
+For backend services (`/model`, `/route`), `status` checks whether the
 server is reachable — it is not the same as `show`, which displays item
 content.
 
 **Examples across command families:**
 
 ```
-/llamafile add ~/Models/Qwen.llamafile   — register an existing file
-/llamafile use qwen-coding               — activate a registered model
-/llamafile show qwen-coding              — show model details
-/llamafile remove qwen-coding            — unregister
+/model list                              — models across llamafile, llama.cpp, Ollama
+/model use qwen-coding                   — activate one (name, alias, or unique prefix)
+/model show qwen-coding                  — show model details
+/model alias add qc qwen2.5-coder:7b     — define a short alias
 
 /rag new my-docs                         — create a new RAG database
 /rag use my-docs                         — activate it
@@ -264,59 +265,95 @@ content.
 ## Slash commands
 
 Type `/help` at any prompt for a live command list. All commands begin with `/`.
+Each command has its own manual page, named `harvey-COMMAND.7`, and the full
+list is in [harvey(1)](harvey.1.md).
 
-## Session commands
+### Session
 
 | Command | Description |
 |---|---|
 | `/help` | List all available slash commands |
 | `/status` | Show backend, history length, workspace, KB state, and recording status |
+| `/hint` | Show suggestions for improving results (RAG, memory, KB) |
 | `/clear` | Reset conversation history (system prompt and pinned context are kept) |
+| `/summarize` `/compact` | Ask the model to summarize the history and replace it with the summary |
+| `/context <show\|add TEXT...\|clear>` | Manage pinned context that survives `/clear` |
 | `/exit` `/quit` `/bye` | End the session |
 
-## Backend commands
-
-**Llamafile (primary)**
+### Models and routing
 
 | Command | Description |
 |---|---|
-| `/llamafile add [PATH] [NAME]` | Register a llamafile and connect to it; picker shown when PATH is omitted |
-| `/llamafile use [NAME]` | Switch to a registered llamafile; picker shown when NAME is omitted |
-| `/llamafile show [NAME]` | Show path, size, and context length for a model |
-| `/llamafile list` | List all registered models; active model marked with `→` |
-| `/llamafile start [NAME]` | Start the active (or named) model's server |
-| `/llamafile status` | Show active model, API URL, and reachability |
-| `/llamafile remove NAME` | Unregister a model (binary not deleted) |
-| `/llamafile download` | Print a table of recommended models with download URLs |
-
-See [Llamafile Commands](harvey-llamafile.7.md) for full reference.
-
-**Unified model management**
-
-| Command | Description |
-|---|---|
-| `/model list` | List all models across llamafile and Ollama |
-| `/model use NAME` | Switch to a named model regardless of backend |
-| `/model show [NAME]` | Show the active (or named) model details |
+| `/model list` | List models across llamafile, llama.cpp, and Ollama |
+| `/model use [NAME]` | Switch to a model by name, alias, or unique prefix; a picker is shown when NAME is omitted |
+| `/model show [NAME]` | Show the active (or named) model's details |
 | `/model status` | Check whether the active backend is reachable |
-| `/model alias add ALIAS FULLNAME` | Define a short alias for a long model name |
-| `/model alias list` | List all defined aliases |
+| `/model stop` | Stop the active llamafile or llama.cpp server, if Harvey started it |
+| `/model clean` | Remove aliases whose model is no longer installed |
+| `/model mode [MODEL] [MODE]` | Show or set how a model gets tools: `structured`, `prose`, `inject`, or `none` |
+| `/model alias add ALIAS FULLNAME` | Define a short alias for a long model name (`alias list` shows them) |
+| `/inspect [MODEL]` | Show capability details for installed Ollama models |
+| `/route add NAME URL [MODEL]` | Register a remote endpoint, then address it with `@NAME` in a prompt |
+| `/route <list\|use\|rm\|models\|probe\|set\|on\|off\|status>` | Manage registered routes |
 
-**Ollama (alternative)**
+Harvey does not pull Ollama models for you. To install one, run
+`ollama pull MODEL` in a shell (or `/run ollama pull MODEL`), then `/model list`.
+See [Model Commands](harvey-model.7.md) and [Routing](harvey-routing.7.md).
+
+### Files and code
 
 | Command | Description |
 |---|---|
-| `/ollama start [debug]` | Launch `ollama serve` in the background |
-| `/ollama stop` | Print a reminder to use your system's service manager |
-| `/ollama status` | Check whether Ollama is reachable |
-| `/ollama list` | List installed models; the current model is marked with `*` |
-| `/ollama pull MODEL` | Download a model from the Ollama registry |
-| `/ollama use MODEL` | Switch to a different installed model mid-session |
-| `/ollama probe [MODEL]` | Test and cache capability flags for a model |
-| `/ollama logs` | Tail the Ollama service log |
-| `/ollama env` | Show Ollama environment variables as seen by Harvey |
+| `/read FILE [FILE...]` | Inject workspace files into the conversation |
+| `/read-dir [PATH] [--depth N]` | Read all eligible files in a directory into context |
+| `/read-pdf FILE [PAGES]` | Extract text from a PDF (requires poppler) |
+| `/read-chunks PATH [--chunk-size N] ...` | Run chunked map-reduce analysis on a large file |
+| `/attach FILE` | Attach an image, PDF, or text file to the next turn |
+| `/write PATH` | Write the last reply (or its first code block) to a file |
+| `/files [PATH]` `/file-tree [PATH]` | List files, or show a tree |
+| `/search PATTERN [PATH]` | Search workspace files and inject the matches |
+| `/run COMMAND [ARGS...]` | Run a command in the workspace and inject its output |
+| `/git <status\|diff\|log\|show\|blame>` | Run a read-only git command and inject the output |
+| `/format FILE [FILE...]` | Format source files in place |
 
-See [Ollama Commands](harvey-ollama.7.md) for full reference.
+### Planning and repetition
+
+| Command | Description |
+|---|---|
+| `/plan <TASK\|next\|status\|show\|clear>` | Generate a step-by-step plan and run it with bounded context per step |
+| `/loop INTERVAL [--count N] PROMPT` | Repeat a prompt or command on an interval (default 10 times, max 100) |
+| `/pipeline CONFIDENCE% FILE...` | Chain Markdown prompt files through models with confidence gating |
+
+### Memory, knowledge, and skills
+
+| Command | Description |
+|---|---|
+| `/memory <mine\|list\|show\|flag\|forget\|status\|recall\|profile>` | Mine sessions for memories and manage the memory store |
+| `/recall QUERY` | Alias for `/memory recall` |
+| `/profile <list\|show\|edit\|use\|rename\|on\|off>` | Alias for `/memory profile` |
+| `/kb ...` | The knowledge base; see [Knowledge base commands](#knowledge-base-commands) |
+| `/rag <list\|new\|use\|show\|remove\|drop\|ingest\|status\|query\|on\|off>` | Named RAG knowledge stores |
+| `/skill <list\|load\|show\|info\|status\|new\|run\|suggest>` | List, load, create, and run Agent Skills |
+| `/skill-set <list\|load\|show\|info\|new\|create\|status\|unload>` | Load named bundles of skills |
+| `/workspace <init [FROM_PATH]\|status>` | Workspace settings; `init` copies aliases from another workspace |
+
+### Sessions and recording
+
+| Command | Description |
+|---|---|
+| `/record <start [FILE]\|stop\|status>` | Record the session to a Fountain file |
+| `/rename NAME` | Rename the active recording |
+| `/session <list\|show\|use\|continue\|replay>` | List, inspect, load, or replay recordings |
+| `/resume [FILE]` | Alias for `/session use` |
+
+### Security
+
+| Command | Description |
+|---|---|
+| `/safemode <on\|off\|status\|allow CMD\|deny CMD\|reset>` `/safe` | Safe mode and the command allowlist |
+| `/permissions <list\|set PATH PERMS\|reset>` | Per-path read, write, exec, and delete permissions |
+| `/audit <show [n]\|clear\|status>` | View or clear the audit log |
+| `/security status` | Overview of safe mode, permissions, and audit |
 
 ## File operations
 
@@ -403,7 +440,7 @@ Subcommands: `on`, `off`, `status`, `allow CMD`, `deny CMD`, `reset`.
 ### Workspace permissions
 
 Fine-grained read/write/exec/delete control per path prefix, checked before
-every `/read`, `/write`, and `/apply` operation.
+every `/read`, `/write`, and tagged-code-block write.
 
 ```
 harvey > /permissions set docs/ read
@@ -577,12 +614,20 @@ sessions.
 | Command | Description |
 |---|---|
 | `/kb status` | Show all projects with recent observations |
+| `/kb search TERM...` | Full-text search (quote phrases, `*` for a prefix) |
+| `/kb inject [PROJECT]` | Add the current (or named) project's knowledge to the conversation context |
 | `/kb project list` | List projects with ID and status |
 | `/kb project add NAME [DESC]` | Create a project and set it as current |
 | `/kb project use ID` | Set the active project by ID |
 | `/kb observe [KIND] TEXT` | Record an observation against the active project |
+| `/kb show OBS_ID` | Show one observation in full |
 | `/kb concept list` | List all concepts |
 | `/kb concept add NAME [DESC]` | Add a named concept |
+| `/kb source <list\|add\|show ID\|remove ID>` | Manage cited sources (papers, pages, datasets) |
+| `/kb cite SOURCE_ID...` | Link sources to the most recently recorded observation |
+| `/kb retract SOURCE_ID [--note NOTE]` | Mark a source as retracted |
+| `/kb check-retractions` | Check every source's DOI against Retraction Watch and mark hits |
+| `/kb learn <ingest\|draft\|review>` | Turn recorded sessions and hand-off notes into reviewed documents; see [the learn manual](harvey-learn.7.md) |
 
 Observation kinds: `note`, `finding`, `decision`, `question`, `hypothesis`.
 
@@ -593,14 +638,14 @@ Project "harvey" added (id=1) and set as current.
 harvey > /kb observe finding WAL mode doubled write throughput in the knowledge base
 Observation recorded (id=1, kind=finding).
 
-harvey > /kb observe decision Use bufio.Scanner for all interactive prompt reading
+harvey > /kb observe decision Use WAL mode for the knowledge base
 Observation recorded (id=2, kind=decision).
 
 harvey > /kb status
   [1] harvey  (active)
       Terminal coding agent
       [finding] WAL mode doubled write throughput in the knowledge base
-      [decision] Use bufio.Scanner for all interactive prompt reading
+      [decision] Use WAL mode for the knowledge base
 ```
 
 ## Recording commands

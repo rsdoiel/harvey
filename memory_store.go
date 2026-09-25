@@ -234,7 +234,9 @@ func (s *MemoryStore) Close() error {
  *   embedder (Embedder)   — used to compute the embedding vector.
  *
  * Returns:
- *   error — on file write, embedding, or database failure.
+ *   error — on file write, embedding, or database failure. An embedding failure
+ *           writes nothing; an index failure removes the file it wrote (or restores
+ *           the one it replaced), so a failed save never leaves an orphan.
  *
  * Example:
  *   err := store.Save(doc, embedder)
@@ -248,22 +250,21 @@ func (s *MemoryStore) Save(doc *MemoryDoc, embedder Embedder) error {
 	}
 
 	path := doc.FilePath(s.dir)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("memory store: save: mkdir: %w", err)
-	}
 	data, err := doc.Bytes()
 	if err != nil {
 		return fmt.Errorf("memory store: save: serialise: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("memory store: save: write file: %w", err)
-	}
 
+	// Embed first: nothing touches the disk until the embedding is in hand. The file
+	// used to be written before the embedding was asked for, so a failure (the
+	// embedding model not installed, Ollama down) left an orphan file with no
+	// database row.
 	var blob []byte
 	if embedder != nil {
 		vec, err := embedder.Embed(doc.EmbedText())
 		if err != nil {
-			return fmt.Errorf("memory store: save: embed: %w", err)
+			return fmt.Errorf("memory store: save: embed with %s (nothing was written)%s: %w",
+				embedder.Name(), missingModelHint(embedder.Name(), err), err)
 		}
 		blob, err = serialize(vec)
 		if err != nil {
@@ -277,8 +278,26 @@ func (s *MemoryStore) Save(doc *MemoryDoc, embedder Embedder) error {
 		}
 	}
 
+	// Write the file, remembering what was there so a failed index write can put it back.
+	previous, readErr := os.ReadFile(path)
+	hadPrevious := readErr == nil
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("memory store: save: mkdir: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("memory store: save: write file: %w", err)
+	}
+	restore := func() {
+		if hadPrevious {
+			_ = os.WriteFile(path, previous, 0o644)
+		} else {
+			_ = os.Remove(path)
+		}
+	}
+
 	tagsJSON, err := json.Marshal(doc.Meta.Tags)
 	if err != nil {
+		restore()
 		return fmt.Errorf("memory store: save: marshal tags: %w", err)
 	}
 
@@ -307,6 +326,7 @@ func (s *MemoryStore) Save(doc *MemoryDoc, embedder Embedder) error {
 		blob,
 	)
 	if err != nil {
+		restore()
 		return fmt.Errorf("memory store: save: index: %w", err)
 	}
 
@@ -1066,4 +1086,14 @@ func scanMemoryMetas(rows *sql.Rows) ([]MemoryMeta, error) {
 		out = []MemoryMeta{}
 	}
 	return out, rows.Err()
+}
+
+// missingModelHint returns a hint to pull the embedding model when err is Ollama's
+// "not found, try pulling it first" answer, and nothing for any other failure: a
+// pull would be wrong advice for a connection that was refused.
+func missingModelHint(model string, err error) string {
+	if err != nil && strings.Contains(err.Error(), "try pulling it first") {
+		return fmt.Sprintf(" \u2014 is the model installed? try running: ollama pull %s", model)
+	}
+	return ""
 }

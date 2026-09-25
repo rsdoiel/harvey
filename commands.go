@@ -204,10 +204,10 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdClear,
 		},
 		"kb": {
-			Usage:       "/kb <status|search|inject|project|observe|concept> [args...]",
+			Usage:       "/kb <status|search|inject|project|observe|concept|source|retract|cite|show|learn|check-retractions> [args...]",
 			Description: "Manage and query the workspace knowledge base",
 			Handler:     cmdKB,
-			Subcommands: []string{"status", "search", "inject", "project", "observe", "concept"},
+			Subcommands: []string{"status", "search", "inject", "project", "observe", "concept", "source", "retract", "cite", "show", "learn", "check-retractions"},
 		},
 		"memory": {
 			Usage:       "/memory <mine|list|show|flag|forget|status|recall|profile> [args...]",
@@ -523,7 +523,7 @@ func (a *Agent) registerSkillCommands() {
 			Handler: func(ag *Agent, args []string, out io.Writer) error {
 				warnIfSkillStale(captured, out)
 				prompt := strings.Join(args, " ")
-				reader := bufio.NewReaderSize(ag.In, 1)
+				reader := newLineReader(ag.In)
 				_, err := DispatchSkill(context.Background(), ag, captured, prompt, reader, out)
 				return err
 			},
@@ -789,9 +789,23 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if !switched {
-			fmt.Fprintf(out, "  Model %q not found — use /model use (no arg) for a picker.\n", args[1])
+		if switched {
+			return nil
 		}
+		// Not in the registry or the aliases: search the same list the picker shows
+		// (llamafile, llama.cpp and Ollama models), by name or by a unique prefix.
+		if models, lerr := listLocalModels(a); lerr == nil {
+			if m, ambiguous, ok := matchModel(models, args[1]); ok {
+				return useSelectedModel(a, m, out, false)
+			} else if len(ambiguous) > 0 {
+				fmt.Fprintf(out, "  %q matches several models; use the full name, or /model use for a picker:\n", args[1])
+				for _, c := range ambiguous {
+					fmt.Fprintf(out, "    %s [%s]\n", c.Name, c.Engine)
+				}
+				return nil
+			}
+		}
+		fmt.Fprintf(out, "  Model %q not found — see /model list, or /model use (no arg) for a picker.\n", args[1])
 		return nil
 	case "alias":
 		return cmdModelAlias(a, args[1:], out)

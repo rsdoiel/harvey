@@ -1,7 +1,6 @@
 package harvey
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -477,7 +476,7 @@ func kbLearnConcepts(a *Agent, args []string, out io.Writer) error {
 		}
 	}
 
-	reader := bufio.NewReaderSize(a.In, 1)
+	reader := newLineReader(a.In)
 	fmt.Fprint(out, "\nWhich should become concepts? Numbers, ranges like 1-3, all, or none: ")
 	line, rerr := reader.ReadString('\n')
 	if rerr != nil && strings.TrimSpace(line) == "" {

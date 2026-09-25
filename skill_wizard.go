@@ -204,7 +204,7 @@ Step-by-step instructions for the model to follow when this skill is active.
  * Parameters:
  *   ws        (*Workspace)    — workspace for path resolution and file writes.
  *   agentsDir (string)        — agents directory name; empty defaults to "agents".
- *   reader    (*bufio.Reader) — reads short field responses; use bufio.NewReaderSize(os.Stdin, 1).
+ *   reader    (*bufio.Reader) — reads short field responses; use newLineReader(os.Stdin).
  *   out       (io.Writer)     — destination for prompts and status messages.
  *
  * Returns:
@@ -212,7 +212,7 @@ Step-by-step instructions for the model to follow when this skill is active.
  *   err     (error)  — on validation failure, editor error, or write failure.
  *
  * Example:
- *   relPath, err := RunSkillWizard(ws, "", bufio.NewReaderSize(os.Stdin, 1), os.Stdout)
+ *   relPath, err := RunSkillWizard(ws, "", newLineReader(os.Stdin), os.Stdout)
  *   if err != nil { log.Fatal(err) }
  *   fmt.Println("created:", relPath)
  */

@@ -373,9 +373,10 @@ func (a *Agent) Run(out io.Writer) error {
 			a.DebugLog = nil
 		}
 	}()
-	// reader is used only for startup yes/no prompts. A 1-byte buffer prevents
-	// it from consuming bytes that the LineEditor needs for the REPL loop.
-	reader := bufio.NewReaderSize(os.Stdin, 1)
+	// reader is used only for startup yes/no prompts. newLineReader takes exactly what
+	// it is asked for, so it cannot consume bytes that the LineEditor needs for the REPL
+	// loop (bufio's smallest buffer is 16 bytes, so a "1-byte" bufio reader did).
+	reader := newLineReader(os.Stdin)
 	le := termlib.NewLineEditor(os.Stdin, out)
 
 	// Banner
@@ -920,7 +921,7 @@ func (a *Agent) Run(out io.Writer) error {
 				skill := a.Skills[name]
 				if MatchesTrigger(skill, input) {
 					fmt.Fprintf(out, dim("  (trigger matched skill %q)\n"), name)
-					triggerReader := bufio.NewReaderSize(a.In, 1)
+					triggerReader := newLineReader(a.In)
 					var err error
 					skillWantsLLM, err = DispatchSkill(context.Background(), a, skill, input, triggerReader, out)
 					if err != nil {

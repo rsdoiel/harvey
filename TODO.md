@@ -1,9 +1,9 @@
 
 ## Bugs
 
-- [ ] The gettting_started.md file is very stale
-- [ ] The `/model use MODEL_NAME` will not load that model, I can only change models by using the pick list. If a model is provided and it is a model then I could be able to directly use that model without going through the pick list
-- [ ] When I was running `/memory mine` using the Apertus (llamafile) I was getting and error when saving the memory. See below
+- [x] **FIXED 2026-09-25.** `getting_started.md` was stale (21 registered commands missing, `/llamafile` and `/ollama` documented though no longer registered, `/kb` subcommands short). Command tables now come from the registry; the `/kb` registry entry itself omitted `learn`, `source`, `retract`, `cite`, `show` and `check-retractions` and is fixed (`kb_registry_test.go` keeps it in step with `cmdKB`).
+- [x] **FIXED 2026-09-25.** `/model use NAME` only searched the registry and aliases, so an Ollama model could be reached only through the picker. It now falls back to every model `/model list` shows: exact name (case-insensitive), then a unique prefix; an ambiguous prefix lists the candidates. Tests: `model_use_name_test.go`.
+- [x] **FIXED 2026-09-25.** (Original report below.) Cause: `nomic-embed-text` was not installed, and `MemoryStore.Save` wrote the memory file before embedding, so each failed save left an orphan `.fountain` file. `Save` now embeds first, writes nothing on failure, restores any prior file if the index write fails, and the error says to run `ollama pull MODEL`. Tests: `memory_save_atomic_test.go`. Two orphans from the report remain on disk in `agents/memories/tool_use/` (`tool_use_b39dd1.fountain`, `tool_use_760a04.fountain`); delete by hand.
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -65,11 +65,16 @@ harvey > /memory mine
 Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session-20260706-172458.spmd …
 ```
 
+- [x] **FIXED 2026-09-25.** `bufio.NewReaderSize(x, 1)` was used in six places to read a line without reading ahead, with comments claiming a one-byte buffer. `bufio` enforces a 16-byte minimum, so it swallowed up to 15 bytes of following input (verified). `newLineReader` (in `model_picker.go`) reads one byte per call and replaces all six sites. Tests: `line_reader_test.go`, mutation-checked.
+
+- [ ] **Stale `/ollama` and `/llamafile` references.** Neither command is registered any more (`/model` replaced them), but user-facing text still tells people to run them: about 10 messages in `commands.go` (lines near 1359, 1400, 1572, 1973, 3122, 3390) and `commands_rag.go` (394, 426), `helptext.go` (about 15 lines: 1836, 2217, 2227, 3672-3710), and the man pages `harvey-ollama.7.md`, `harvey-llamafile.7.md`. Found 2026-09-25 while rewriting `getting_started.md`; not fixed there. A test that walks every `/word` in message strings and `helptext.go` against the registry would keep it from recurring.
+
+- [ ] **Adopt the workspace exit-code convention** (workspace DR-0003; the `kb` implementation is knowledge DR-0047 to DR-0049). `cmd/harvey` and `cmd/assay` exit only 0 or 1 today. Wanted: 0 ok, 1 negative answer, 2 usage, 65 wrong content, 66 missing input, 69 unreachable service (a backend that is down), 70 internal, 74 I/O, 77 permission, 78 config, `--json` errors carrying `class` and `code`. RSDOIEL chose "not now" on 2026-09-25; `knowledge/exit-codes-plan.md` is the worked example (survey, table, verb-coverage test, comparison against the last release).
 
 ## Action Items
 
-- [ ] Fully integrate the updates to the knowledge model, Harvey should support a learning mode that integrates both human, model and hybrid dialogs for evaluation, summarization, concept tagging and re-ingest for the knowledge base.
-- [ ] I've evolved the development methodology since last working on Harvey. The knowledge took kb has been updated to reflect those changes. Harvey repo needs to be brought into alignment with the new practrices around design decision reviews and recording them in a decisions directory that kb can be used to update the agents knowledge base for the active workspace. This could impact how we treat the knowledge base as a memory reservoir for Harvey, it could also shed light of how we handle boundries between memory layers, documents versus querying SQLite3 database representations, TAGS and the workspace knowledge base
+- [x] **DONE, shipped in v0.0.16.** Fully integrate the updates to the knowledge model, Harvey should support a learning mode that integrates both human, model and hybrid dialogs for evaluation, summarization, concept tagging and re-ingest for the knowledge base.
+- [x] **DONE, shipped in v0.0.16.** I've evolved the development methodology since last working on Harvey. The knowledge took kb has been updated to reflect those changes. Harvey repo needs to be brought into alignment with the new practrices around design decision reviews and recording them in a decisions directory that kb can be used to update the agents knowledge base for the active workspace. This could impact how we treat the knowledge base as a memory reservoir for Harvey, it could also shed light of how we handle boundries between memory layers, documents versus querying SQLite3 database representations, TAGS and the workspace knowledge base
 
   **Status 2026-09-24 (end of day):** both items above are done and scheduled for **v0.0.16**, per `knowledge-learning-mode-design.md` / `-plan.md`. H0-H7 are done and committed: `/kb learn ingest|draft|review|concepts`, `learn_model` in `harvey.yaml`, `go.mod` at knowledge `fd588ef` (unreleased v0.0.13; RSDOIEL chose to ship on it). Harvey `decisions/`: DR-0001 and DR-0002 accepted, DR-0003 (keep termlib) proposed. The termlib gate is cleared and `harvey/CLAUDE.md` is fixed. What remains before the tag is the release process itself (below), which is RSDOIEL's step.
 
@@ -139,7 +144,7 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 - [x] **DONE 2026-09-24: evaluated the `github.com/rsdoiel/termlib` dependency; decision is to keep it for v0.0.16.** Requested 2026-09-15 after the stale `go.mod` `replace` was found. Full facts and options in `termlib-evaluation.md` (Harvey's whole use is 6 lines in `terminal.go`; termlib is the author's own small module with one dependency; Charm would add about 30 packages and a rebuild of the line editor). RSDOIEL chose "keep termlib"; recorded as `decisions/0003-*.md` (`proposed`). `repl-charm-migration-design.md` had wrongly said the drop was already decided; corrected there. **Optional, author's step:** termlib `main` is one commit ahead of `v0.0.9` (`354195d`, a wide/multi-row prompt fix that does not affect Harvey's one-row prompt); tag `v0.0.10` and bump `go.mod` if wanted. Charm stays a later, separate effort.
 
-- [ ] Release readiness — **prep done 2026-09-15, tagging/publishing still
+- [x] Release readiness — **v0.0.16 is tagged and published (checked 2026-09-25); the tag is left as is and later fixes go forward into the next release. `go.mod` now pins knowledge v0.0.13. The note below is history.** Original: **prep done 2026-09-15, tagging/publishing still
   open, now also gated on the termlib evaluation above.** All three prep
   items from the original note are done: (1) stale
   `replace github.com/rsdoiel/termlib => ../termlib` removed from `go.mod`

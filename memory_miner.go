@@ -1,7 +1,6 @@
 package harvey
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -236,7 +235,7 @@ func (m *Miner) extract(ctx context.Context, sessionText string, agent *Agent, o
 // reviewInteractive presents each proposed memory to the user in a REPL.
 // Returns accepted IDs, skipped count, whether the user quit early, and any error.
 func (m *Miner) reviewInteractive(proposed []MemoryDoc, embedder Embedder, workspacePath string, out io.Writer, in io.Reader) (accepted []string, skipped int, quit bool, err error) {
-	reader := bufio.NewReaderSize(in, 1)
+	reader := newLineReader(in)
 	total := len(proposed)
 
 	for i := range proposed {

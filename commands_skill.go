@@ -3,7 +3,6 @@
 package harvey
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -243,7 +242,7 @@ func skillStatus(a *Agent, out io.Writer) error {
 
 // skillNew runs the interactive skill wizard via /skill new.
 func skillNew(a *Agent, out io.Writer) error {
-	reader := bufio.NewReaderSize(a.In, 1)
+	reader := newLineReader(a.In)
 	relPath, err := RunSkillWizard(a.Workspace, a.Config.AgentsDir, reader, out)
 	if err != nil {
 		return err
@@ -288,7 +287,7 @@ func skillRun(a *Agent, name string, out io.Writer) error {
 		return nil
 	}
 	warnIfSkillStale(skill, out)
-	reader := bufio.NewReaderSize(a.In, 1)
+	reader := newLineReader(a.In)
 	_, err := DispatchSkill(context.Background(), a, skill, "", reader, out)
 	return err
 }

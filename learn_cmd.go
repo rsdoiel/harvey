@@ -1,7 +1,6 @@
 package harvey
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -252,7 +251,7 @@ func kbLearnReview(a *Agent, args []string, out io.Writer) error {
 			restore()
 		}
 	}()
-	reader := bufio.NewReaderSize(a.In, 1)
+	reader := newLineReader(a.In)
 	refresh := func(id int64) (knowledge.DocumentReviewItem, bool) {
 		fresh, err := s.DraftedItems()
 		if err != nil {

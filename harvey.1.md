@@ -190,7 +190,7 @@ are also available from the shell: harvey --help TOPIC.
 
 **Knowledge base**
 
-/kb <status|search TEXT|inject TEXT|project [ID]|observe KIND BODY|concept NAME>
+/kb <status|search TEXT|inject [PROJECT]|project [ID]|observe KIND BODY|concept NAME|source|retract ID|cite ID...|show ID|check-retractions>
 : query and update the SQLite knowledge base
 
 /kb learn ingest [--min-words N] [--all] [--dry-run]
