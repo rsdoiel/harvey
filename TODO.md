@@ -1,5 +1,72 @@
 
-# Action Items
+## Bugs
+
+- [ ] The gettting_started.md file is very stale
+- [ ] The `/model use MODEL_NAME` will not load that model, I can only change models by using the pick list. If a model is provided and it is a model then I could be able to directly use that model without going through the pick list
+- [ ] When I was running `/memory mine` using the Apertus (llamafile) I was getting and error when saving the memory. See below
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Connected: Apertus (llamafile)
+  /help for commands · /exit to quit
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  25 session(s) unmined — /memory mine to extract learnings
+  RAG has 514 chunk(s) but is off — /rag on to enable context injection
+harvey > /memory list
+project_fact_019f37             project_fact      -               0.5  safe_mode default allowed_commands now includes kb and man
+workspace_profile_29074f        workspace_profile  -               0.5  Data Scientist — Laboratory
+project_fact_84e77b             project_fact      -               0.5  Project: Laboratory
+project_fact_4f8e21             project_fact      pattern         1.0  harvey/INSTALL.md is hand-maintained, not cmt-generated; installer.sh/ps1 removed (pre-release, no binary distribution yet)
+harvey > /memory mine
+Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session-20260924-143905.spmd …
+LLM proposed 1 memory candidate(s). Starting review…
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Proposed memory 1 of 1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Type:        tool_use
+ Kind:        pitfall
+ Description: Never use the '+' character in filenames to avoid shell parameter expansion issues.
+ Action:      Use '-' or '_' instead of '+' in filenames.
+ Tags:        shell, filenames, parameters
+ Summary:     The '+' character in filenames triggers parameter expansion, leading to incorrect file handling by shells. This is a permanent shell behavior.
+
+[a]ccept  [e]dit  [s]how similar  [r]eplace <id>  [f]ull view  [k]skip  [q]uit
+> a
+Error saving memory: memory store: save: embed: ollama embed: HTTP 404: {"error":"model \"nomic-embed-text:latest\" not found, try pulling it first"}
+
+Done. Accepted: 0  Skipped: 0
+harvey > /memory list
+project_fact_019f37             project_fact      -               0.5  safe_mode default allowed_commands now includes kb and man
+workspace_profile_29074f        workspace_profile  -               0.5  Data Scientist — Laboratory
+project_fact_84e77b             project_fact      -               0.5  Project: Laboratory
+project_fact_4f8e21             project_fact      pattern         1.0  harvey/INSTALL.md is hand-maintained, not cmt-generated; installer.sh/ps1 removed (pre-release, no binary distribution yet)
+harvey > /memory mine
+Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session-20260713-171056.spmd …
+LLM proposed 1 memory candidate(s). Starting review…
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Proposed memory 1 of 1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Type:        tool_use
+ Kind:        pitfall
+ Description: Always use the chunk-size parameter when processing large files with Qwen3.5-4B-Q5_K_S.
+ Action:      Increase the chunk-size parameter when processing large files.
+ Tags:        model, processing, chunk-size
+ Summary:     Files over 800 characters without chunk-size cause errors. This is a permanent model quirk.
+
+[a]ccept  [e]dit  [s]how similar  [r]eplace <id>  [f]ull view  [k]skip  [q]uit
+> a
+Error saving memory: memory store: save: embed: ollama embed: HTTP 404: {"error":"model \"nomic-embed-text:latest\" not found, try pulling it first"}
+
+Done. Accepted: 0  Skipped: 0
+harvey > /memory mine
+Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session-20260706-172458.spmd …
+```
+
+
+## Action Items
 
 - [ ] Fully integrate the updates to the knowledge model, Harvey should support a learning mode that integrates both human, model and hybrid dialogs for evaluation, summarization, concept tagging and re-ingest for the knowledge base.
 - [ ] I've evolved the development methodology since last working on Harvey. The knowledge took kb has been updated to reflect those changes. Harvey repo needs to be brought into alignment with the new practrices around design decision reviews and recording them in a decisions directory that kb can be used to update the agents knowledge base for the active workspace. This could impact how we treat the knowledge base as a memory reservoir for Harvey, it could also shed light of how we handle boundries between memory layers, documents versus querying SQLite3 database representations, TAGS and the workspace knowledge base

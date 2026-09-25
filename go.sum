@@ -127,6 +127,8 @@ github.com/rsdoiel/knowledge v0.0.12 h1:s/ws6fbrZvzf3foDQA1VM/1BTCpM0yMOTndGFnah
 github.com/rsdoiel/knowledge v0.0.12/go.mod h1:DSJMWJtvxKhMPZ74GVeVkS594wWgIMX6whj9zCL9C10=
 github.com/rsdoiel/knowledge v0.0.13-0.20260924180814-fd588ef32885 h1:1GN9gRtEeoDCFtXgUVlEoW+O4HQmflUKJf31Dnq6KRM=
 github.com/rsdoiel/knowledge v0.0.13-0.20260924180814-fd588ef32885/go.mod h1:DSJMWJtvxKhMPZ74GVeVkS594wWgIMX6whj9zCL9C10=
+github.com/rsdoiel/knowledge v0.0.13 h1:mBhniS0VxAdnMUXmEh7jLbJxE7jQe9Auukx7+/U9OAw=
+github.com/rsdoiel/knowledge v0.0.13/go.mod h1:DSJMWJtvxKhMPZ74GVeVkS594wWgIMX6whj9zCL9C10=
 github.com/rsdoiel/termlib v0.0.9 h1:oTasnQBpBd1WRL1VqvruAHmHaym+cckAqlW0YCy+4/4=
 github.com/rsdoiel/termlib v0.0.9/go.mod h1:NfgwY5ndN2POnb1uvoupppxFOW/6gIFSdGzI88BVNj8=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
