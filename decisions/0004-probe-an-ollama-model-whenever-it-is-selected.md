@@ -2,7 +2,7 @@
 id: "0004"
 title: "Probe an Ollama model whenever it is selected"
 date: "2026-09-25"
-status: proposed
+status: accepted
 kind: decision
 trigger: request
 project: harvey

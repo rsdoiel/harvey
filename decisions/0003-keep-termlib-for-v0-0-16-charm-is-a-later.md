@@ -2,7 +2,7 @@
 id: "0003"
 title: "Keep termlib for v0.0.16; Charm is a later, separate effort"
 date: "2026-09-24"
-status: proposed
+status: accepted
 kind: decision
 trigger: design
 project: harvey
