@@ -160,7 +160,21 @@ changes today's 0 to non-zero (five cases); the upgrade notes cover it.
 
 ---
 
-## H4 — `assay`: inputs, availability, outputs, the bulk rule
+## H4 — `assay`: inputs, availability, outputs, the bulk rule (done)
+
+**Done 2026-09-25.** Ten exit codes changed in the probe matrix, old build against new, and
+nothing else did: corpus missing 1 to 66, corpus malformed 1 to 65, Ollama unreachable 1 to 69,
+llama.cpp unreachable 1 to 69, `--llamafile` missing 1 to 66, `--guide-file` missing 1 to 66,
+`--output` under a missing directory 1 to 73, `--rag-db` in a directory the user may not create
+1 to 77, and every call failing 0 to 69 (with `assay: 1 model call(s) failed`). Notes: a
+permission refusal keeps its own class (77), as `AsCreate` does in `kb`, so an `--output` or
+`--rag-db` denied by the operating system is 77 and only a path that cannot be made is 73. A
+model call that fails without classifying itself (an HTTP 500) is 69, since the service could
+not do the work. A corpus with no prompts is 65, decided in `loadCorpus`. A store bound to a
+different embedding model that arrives unclassified is 65. Mutation-checked: a failing check
+setting the exit, calls not being remembered, the last failure replacing the first, and the
+final exit being 0 each break a test. The fake model server (`fakeModelServer` in
+`cmd/assay/main_test.go`) speaks `/v1/chat/completions` streaming and not, and `/api/tags`.
 
 | Site | Class |
 |---|---|

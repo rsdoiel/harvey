@@ -105,7 +105,10 @@ func loadCorpus(path string) (*Corpus, error) {
 	}
 	var c Corpus
 	if err := yaml.Unmarshal(src, &c); err != nil {
-		return nil, fmt.Errorf("parse corpus: %w", err)
+		return nil, harvey.Dataf("parse corpus: %w", err)
+	}
+	if len(c.Prompts) == 0 {
+		return nil, harvey.Dataf("corpus %s has no prompts", path)
 	}
 	return &c, nil
 }
@@ -140,7 +143,7 @@ func listOllamaModels(baseURL string) ([]string, error) {
 	defer resp.Body.Close()
 	var tags ollamaTagsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
-		return nil, fmt.Errorf("ollama list decode: %w", err)
+		return nil, harvey.Unavailablef("ollama list decode: %w", err)
 	}
 	names := make([]string, 0, len(tags.Models))
 	for _, m := range tags.Models {
@@ -178,7 +181,7 @@ func listOpenAIModels(baseURL string) ([]string, error) {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("openai models decode: %w", err)
+		return nil, harvey.Unavailablef("openai models decode: %w", err)
 	}
 	ids := make([]string, 0, len(out.Data))
 	for _, d := range out.Data {
@@ -893,6 +896,22 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		return 2
 	}
 
+	// fail reports err and returns the exit status of its class.
+	fail := func(err error) int {
+		fmt.Fprintf(errOut, "assay: %v\n", err)
+		return harvey.ExitCodeFor(err).Code
+	}
+	// A run does everything it can, then exits with the class of the first
+	// failed step (workspace DR-0003: no exit 0 with failures). note remembers
+	// it; failedCalls counts the model calls that errored.
+	var firstFailure error
+	failedCalls := 0
+	note := func(err error) {
+		if firstFailure == nil {
+			firstFailure = err
+		}
+	}
+
 	// Backend selection: determine llmURL, backend name, and start any managed process.
 	llmURL    := *ollamaURL
 	backend   := "Ollama"
@@ -900,23 +919,23 @@ func mainRun(args []string, out, errOut io.Writer) int {
 
 	switch {
 	case *llamafilePath != "":
+		if err := harvey.CheckLlamafileInput(*llamafilePath); err != nil {
+			return fail(err)
+		}
 		// RAG + llamafile requires Ollama for embeddings.
 		if *ragDB != "" && !harvey.ProbeLlamafile(*ollamaURL+"/api/tags") {
-			fmt.Fprintf(errOut, "assay: RAG evaluation with --llamafile requires Ollama for embeddings.\n"+
-				"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s\n", *ollamaURL)
-			return 1
+			return fail(harvey.Unavailablef("RAG evaluation with --llamafile requires Ollama for embeddings.\n"+
+				"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s", *ollamaURL))
 		}
 		port, err := harvey.FindFreePort()
 		if err != nil {
-			fmt.Fprintf(errOut, "assay: llamafile: cannot find free port: %v\n", err)
-			return 1
+			return fail(fmt.Errorf("llamafile: cannot find free port: %w", err))
 		}
 		llmURL = fmt.Sprintf("http://localhost:%d", port)
 		fmt.Fprintf(out, "Starting llamafile %s on %s ...\n", filepath.Base(*llamafilePath), llmURL)
 		proc, err := harvey.StartLlamafileService(*llamafilePath, llmURL, "", 30*time.Second, -1, 0, out)
 		if err != nil {
-			fmt.Fprintf(errOut, "assay: llamafile: %v\n", err)
-			return 1
+			return fail(fmt.Errorf("llamafile: %w", err))
 		}
 		defer proc.Kill()
 		fmt.Fprintf(out, "  Llamafile ready at %s\n", llmURL)
@@ -926,11 +945,8 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	case *llamacppURL != "":
 		// RAG + llamacpp requires Ollama for embeddings.
 		if *ragDB != "" && !harvey.ProbeLlamafile(*ollamaURL+"/api/tags") {
-			fmt.Fprintf(errOut,
-				"assay: RAG evaluation with --llamacpp requires Ollama for embeddings.\n"+
-					"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s\n",
-				*ollamaURL)
-			return 1
+			return fail(harvey.Unavailablef("RAG evaluation with --llamacpp requires Ollama for embeddings.\n"+
+				"Start Ollama or use --ollama to specify a running instance.\nOllama URL: %s", *ollamaURL))
 		}
 		llmURL    = *llamacppURL
 		backend   = "LlamaCpp"
@@ -939,8 +955,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 
 	corpus, err := loadCorpus(*corpusPath)
 	if err != nil {
-		fmt.Fprintf(errOut, "assay: %v\n", err)
-		return 1
+		return fail(err)
 	}
 
 	// Resolve model list.
@@ -960,9 +975,8 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		} else {
 			models, err = listOpenAIModels(*llamacppURL)
 			if err != nil {
-				fmt.Fprintf(errOut, "assay: could not list llama.cpp models: %v\n"+
-					"Use --models NAME to specify the model explicitly.\n", err)
-				return 1
+				return fail(fmt.Errorf("could not list llama.cpp models: %w\n"+
+					"Use --models NAME to specify the model explicitly.", err))
 			}
 		}
 
@@ -976,13 +990,11 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	default:
 		models, err = listOllamaModels(llmURL)
 		if err != nil {
-			fmt.Fprintf(errOut, "assay: could not list Ollama models: %v\n", err)
-			return 1
+			return fail(fmt.Errorf("could not list Ollama models: %w", err))
 		}
 	}
 	if len(models) == 0 {
-		fmt.Fprintln(errOut, "assay: no models to run (use --models or start Ollama)")
-		return 1
+		return fail(harvey.Negativef("no models to run (use --models or start Ollama)"))
 	}
 
 	// Filter prompts by category.
@@ -993,8 +1005,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		}
 	}
 	if len(prompts) == 0 {
-		fmt.Fprintf(errOut, "assay: no prompts match category %q\n", *category)
-		return 1
+		return fail(harvey.Negativef("no prompts match category %q", *category))
 	}
 
 	// Open RAG store when requested.
@@ -1003,8 +1014,11 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	if *ragDB != "" {
 		ragStore, err = harvey.NewRagStore(*ragDB, *ragEmbedModel)
 		if err != nil {
-			fmt.Fprintf(errOut, "assay: open RAG store: %v\n", err)
-			return 1
+			e := fmt.Errorf("open RAG store: %w", err)
+			if _, ok := harvey.ExitClassOf(e); !ok {
+				e = harvey.ClassedAs(harvey.ClassData, e) // e.g. a store bound to another embedding model
+			}
+			return fail(e)
 		}
 		ragEmbedder = harvey.NewOllamaEmbedder(*ollamaURL, *ragEmbedModel)
 		fmt.Fprintf(out, "RAG store: %s (embed: %s, top-k: %d)\n", *ragDB, *ragEmbedModel, *ragTopK)
@@ -1016,8 +1030,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	// Create output directory.
 	outDir := *outputDir
 	if err := os.MkdirAll(outDir, 0755); err != nil {
-		fmt.Fprintf(errOut, "assay: could not create output dir: %v\n", err)
-		return 1
+		return fail(harvey.AsCreate(fmt.Errorf("could not create output dir: %w", err)))
 	}
 
 	ar := AssayResults{
@@ -1060,8 +1073,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	if *guideFile != "" {
 		data, err := os.ReadFile(*guideFile)
 		if err != nil {
-			fmt.Fprintf(errOut, "assay: read guide file: %v\n", err)
-			return 1
+			return fail(fmt.Errorf("read guide file: %w", err))
 		}
 		guideText = strings.TrimSpace(string(data))
 	}
@@ -1076,7 +1088,9 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		// Per-model extracted code directory.
 		extractedDir := filepath.Join(outDir, "extracted", sanitizeModelName(model))
 		if err := os.MkdirAll(extractedDir, 0755); err != nil {
-			fmt.Fprintf(errOut, "assay: mkdir extracted: %v\n", err)
+			e := harvey.AsCreate(fmt.Errorf("mkdir extracted: %w", err))
+			fmt.Fprintf(errOut, "assay: %v\n", e)
+			note(e)
 		}
 
 		for _, p := range prompts {
@@ -1109,6 +1123,8 @@ func mainRun(args []string, out, errOut io.Writer) int {
 
 				if callErr != nil {
 					fmt.Fprintf(out, "ERROR: %v\n", callErr)
+					failedCalls++
+					note(callFailure(callErr))
 					ar.Results = append(ar.Results, PromptResult{
 						PromptID: p.ID,
 						Category: p.Category,
@@ -1156,12 +1172,43 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	}
 
 	if err := writeReport(outDir, ar, corpus); err != nil {
-		fmt.Fprintf(errOut, "assay: write report: %v\n", err)
+		e := writeFailure(fmt.Errorf("write report: %w", err))
+		fmt.Fprintf(errOut, "assay: %v\n", e)
+		note(e)
 	}
 	if err := writeJSON(outDir, ar); err != nil {
-		fmt.Fprintf(errOut, "assay: write JSON: %v\n", err)
+		e := writeFailure(fmt.Errorf("write JSON: %w", err))
+		fmt.Fprintf(errOut, "assay: %v\n", e)
+		note(e)
 	}
 
 	fmt.Fprintf(out, "\nResults written to %s/\n", outDir)
+	if firstFailure != nil {
+		if failedCalls > 0 {
+			fmt.Fprintf(errOut, "assay: %d model call(s) failed\n", failedCalls)
+		}
+		return harvey.ExitCodeFor(firstFailure).Code
+	}
 	return 0
+}
+
+// callFailure classifies a failed model call. One that classifies itself (a
+// refused connection is unavailable) keeps its class; any other failure of the
+// call, such as an HTTP error from the server, means the service could not do
+// the work, which is also unavailable.
+func callFailure(err error) error {
+	if _, ok := harvey.ExitClassOf(err); ok {
+		return err
+	}
+	return harvey.Unavailablef("%w", err)
+}
+
+// writeFailure classifies a failure to write a result file: the operating
+// system's refusal is no_permission and anything else is io (a write that
+// failed), including a target that vanished or is not a file.
+func writeFailure(err error) error {
+	if harvey.ExitCodeFor(err) == harvey.ClassNoPermission {
+		return err
+	}
+	return harvey.ClassedAs(harvey.ClassIO, err)
 }

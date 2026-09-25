@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -230,5 +231,237 @@ func TestMainRun_UsageErrorsExitTwoWithNothingOnStdout(t *testing.T) {
 		if !strings.Contains(errOut, tc.msg) {
 			t.Errorf("%s: stderr %q, want it to contain %q", tc.name, errOut, tc.msg)
 		}
+	}
+}
+
+// H4 of exit-codes-plan.md: assay's inputs, availability and outputs by class,
+// and the bulk rule: a run does everything, then exits with the class of the
+// first failed step. Failing automatic checks are results, not failures.
+
+// fakeModelServer speaks the parts of an OpenAI-compatible server assay uses
+// (/v1/chat/completions, streaming or not) and Ollama's /api/tags. A chat
+// request for a model in fail gets an HTTP 500.
+func fakeModelServer(t *testing.T, tags []string, fail ...string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			var models []map[string]string
+			for _, n := range tags {
+				models = append(models, map[string]string{"name": n})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"models": models})
+		case "/v1/chat/completions":
+			var req struct {
+				Model  string `json:"model"`
+				Stream bool   `json:"stream"`
+			}
+			json.NewDecoder(r.Body).Decode(&req)
+			for _, f := range fail {
+				if req.Model == f {
+					http.Error(w, "boom", http.StatusInternalServerError)
+					return
+				}
+			}
+			if req.Stream {
+				w.Header().Set("Content-Type", "text/event-stream")
+				fmt.Fprint(w, `data: {"id":"1","object":"chat.completion.chunk","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"say hi"},"finish_reason":null}]}`+"\n\n")
+				fmt.Fprint(w, `data: {"id":"1","object":"chat.completion.chunk","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n")
+				fmt.Fprint(w, "data: [DONE]\n\n")
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{
+				"id": "1", "object": "chat.completion", "model": req.Model,
+				"choices": []map[string]any{{"index": 0, "finish_reason": "stop",
+					"message": map[string]string{"role": "assistant", "content": "say hi"}}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+const oneCheckCorpus = `version: "1"
+description: test
+prompts:
+  - id: p1
+    category: cat-a
+    description: d
+    language: go
+    prompt: say hi
+    checks:
+      contains: ["hi"]
+    human: []
+    notes: ""
+`
+
+func writeFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func closedURL(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.NotFoundHandler())
+	u := srv.URL
+	srv.Close()
+	return u
+}
+
+func TestMainRun_InputsAndAvailabilityByClass(t *testing.T) {
+	dir := t.TempDir()
+	corpus := writeFile(t, dir, "corpus.yaml", oneCheckCorpus)
+	bad := writeFile(t, dir, "bad.yaml", "prompts: [broken\n")
+	empty := writeFile(t, dir, "empty.yaml", "version: \"1\"\nprompts: []\n")
+	file := writeFile(t, dir, "afile", "x")
+	up := fakeModelServer(t, nil) // Ollama that is running and has no models
+	closed := closedURL(t)
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want int
+	}{
+		{"corpus missing", []string{"--corpus", filepath.Join(dir, "nope.yaml"), "--models", "m", "--ollama", up.URL}, 66},
+		{"corpus malformed", []string{"--corpus", bad, "--models", "m", "--ollama", up.URL}, 65},
+		{"corpus with no prompts", []string{"--corpus", empty, "--models", "m", "--ollama", up.URL}, 65},
+		{"category matches nothing", []string{"--corpus", corpus, "--models", "m", "--category", "nosuch", "--ollama", up.URL}, 1},
+		{"guide file missing", []string{"--corpus", corpus, "--models", "m", "--guide-file", filepath.Join(dir, "nope"), "--ollama", up.URL}, 66},
+		{"llamafile missing", []string{"--corpus", corpus, "--llamafile", filepath.Join(dir, "nope.llamafile")}, 66},
+		{"llamafile of the wrong kind", []string{"--corpus", corpus, "--llamafile", file}, 66},
+		{"ollama unreachable while listing models", []string{"--corpus", corpus, "--ollama", closed}, 69},
+		{"llama.cpp unreachable while listing models", []string{"--corpus", corpus, "--llamacpp", closed}, 69},
+		{"ollama up with no models", []string{"--corpus", corpus, "--ollama", up.URL}, 1},
+		{"output directory cannot be created", []string{"--corpus", corpus, "--models", "m", "--ollama", up.URL, "--output", filepath.Join(file, "sub")}, 73},
+	} {
+		code, _, errOut := runAssay(t, tc.args...)
+		if code != tc.want {
+			t.Errorf("%s: exit %d, want %d\nstderr: %.300s", tc.name, code, tc.want, errOut)
+		}
+	}
+}
+
+// A RAG store that cannot be opened is a classified failure, never 70.
+func TestMainRun_RagStoreThatCannotBeOpenedIsClassified(t *testing.T) {
+	dir := t.TempDir()
+	corpus := writeFile(t, dir, "corpus.yaml", oneCheckCorpus)
+	file := writeFile(t, dir, "afile", "x")
+	up := fakeModelServer(t, nil)
+	code, _, errOut := runAssay(t, "--corpus", corpus, "--models", "m", "--ollama", up.URL,
+		"--rag-db", filepath.Join(file, "sub", "r.db"), "--output", filepath.Join(dir, "out"))
+	if code == 0 || code == 70 {
+		t.Errorf("exit %d, want a classified failure\nstderr: %.300s", code, errOut)
+	}
+}
+
+func readResults(t *testing.T, outDir string) []map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(outDir, "results.json"))
+	if err != nil {
+		t.Fatalf("results.json was not written: %v", err)
+	}
+	var ar struct {
+		Results []map[string]any `json:"Results"`
+	}
+	if err := json.Unmarshal(data, &ar); err != nil {
+		t.Fatal(err)
+	}
+	return ar.Results
+}
+
+// Working calls exit 0, including when the prompt's automatic checks fail:
+// a failing check is a result of the evaluation.
+func TestMainRun_FailingChecksAreResultsNotFailures(t *testing.T) {
+	dir := t.TempDir()
+	srv := fakeModelServer(t, nil)
+	pass := writeFile(t, dir, "pass.yaml", oneCheckCorpus)
+	fail := writeFile(t, dir, "fail.yaml", strings.Replace(oneCheckCorpus, `["hi"]`, `["never-said"]`, 1))
+	for name, c := range map[string]string{"passing": pass, "failing": fail} {
+		out := filepath.Join(dir, "out-"+name)
+		code, _, errOut := runAssay(t, "--corpus", c, "--models", "m", "--ollama", srv.URL, "--output", out)
+		if code != 0 {
+			t.Errorf("%s checks: exit %d, want 0\nstderr: %.300s", name, code, errOut)
+		}
+		if len(readResults(t, out)) != 1 {
+			t.Errorf("%s checks: expected one result recorded", name)
+		}
+	}
+}
+
+// Every call failing is a failed run, but the run still finishes and writes
+// its report, and the exit status names the class of the first failure.
+func TestMainRun_FailedCallsFinishTheRunThenExit69(t *testing.T) {
+	dir := t.TempDir()
+	corpus := writeFile(t, dir, "corpus.yaml", oneCheckCorpus)
+	out := filepath.Join(dir, "out")
+	code, stdout, errOut := runAssay(t, "--corpus", corpus, "--models", "m", "--ollama", closedURL(t), "--output", out)
+	if code != 69 {
+		t.Fatalf("exit %d, want 69\nstderr: %.300s", code, errOut)
+	}
+	if !strings.Contains(errOut, "1 model call") {
+		t.Errorf("stderr %q does not say how many calls failed", errOut)
+	}
+	if !strings.Contains(stdout, "Results written") {
+		t.Errorf("the run stopped before writing its report:\n%s", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(out, "report.md")); err != nil {
+		t.Errorf("report.md missing: %v", err)
+	}
+	if got := readResults(t, out); len(got) != 1 {
+		t.Errorf("results = %d, want the failed call recorded", len(got))
+	}
+}
+
+// One model failing among several: the others still run and are recorded.
+func TestMainRun_SomeCallsFailingStillRunTheRest(t *testing.T) {
+	dir := t.TempDir()
+	corpus := writeFile(t, dir, "corpus.yaml", oneCheckCorpus)
+	srv := fakeModelServer(t, nil, "bad")
+	out := filepath.Join(dir, "out")
+	code, _, errOut := runAssay(t, "--corpus", corpus, "--models", "bad,good", "--ollama", srv.URL, "--output", out)
+	if code != 69 {
+		t.Fatalf("exit %d, want 69\nstderr: %.300s", code, errOut)
+	}
+	if got := readResults(t, out); len(got) != 2 {
+		t.Errorf("results = %d, want both models recorded", len(got))
+	}
+}
+
+// A report that cannot be written is 74, and the other output is still tried.
+func TestMainRun_UnwritableReportIsIOAndJSONIsStillWritten(t *testing.T) {
+	dir := t.TempDir()
+	corpus := writeFile(t, dir, "corpus.yaml", oneCheckCorpus)
+	srv := fakeModelServer(t, nil)
+	out := filepath.Join(dir, "out")
+	if err := os.MkdirAll(filepath.Join(out, "report.md"), 0o755); err != nil { // a directory where the file goes
+		t.Fatal(err)
+	}
+	code, _, errOut := runAssay(t, "--corpus", corpus, "--models", "m", "--ollama", srv.URL, "--output", out)
+	if code != 74 {
+		t.Errorf("exit %d, want 74\nstderr: %.300s", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(out, "results.json")); err != nil {
+		t.Errorf("results.json was not written after report.md failed: %v", err)
+	}
+}
+
+// When two things fail, the exit status is the class of the first: the failed
+// call (69) comes before the unwritable report (74).
+func TestMainRun_TheFirstFailureDecidesTheClass(t *testing.T) {
+	dir := t.TempDir()
+	corpus := writeFile(t, dir, "corpus.yaml", oneCheckCorpus)
+	out := filepath.Join(dir, "out")
+	if err := os.MkdirAll(filepath.Join(out, "report.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errOut := runAssay(t, "--corpus", corpus, "--models", "m", "--ollama", closedURL(t), "--output", out)
+	if code != 69 {
+		t.Errorf("exit %d, want 69 (the call failed before the report did)\nstderr: %.300s", code, errOut)
 	}
 }
