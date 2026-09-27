@@ -290,3 +290,10 @@ H1 → H2 → H3 → H4 → H5 → H6, with H3 and H4 independent of each other 
   harvey`), and a `--json` error mode. Both are in the survey's "Not covered".
 - **The knowledge bump** (v0.0.14) adds its markers to the classifier's table; do it after
   H1 and before H3 if the tag exists by then, otherwise as a follow-up.
+
+**Update, 2026-09-27 (harvey DR-0006):** both "later items" above are done. `--json`
+(`harvey.PrintJSONError`, `harvey.ExtractJSONFlag`) is on both binaries. A non-interactive
+`harvey` session now exits with the class of its first failed slash command or chat turn
+(`keepFirstFailure` in `terminal.go`) — the `echo /read x | harvey` case specifically now
+depends on that command itself returning a classified error, which not every handler does
+yet; `plan_cmd.go`'s were reclassified as the first case, the rest are a further follow-up.

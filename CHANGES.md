@@ -39,6 +39,26 @@ none unexpected, no exit 70, no hang.
   first failure; a prompt's failing automatic checks are still a result, not a tool
   failure, and still exit 0.
 
+### Added (harvey DR-0006)
+
+- `-json`/`--json` on `harvey` and `assay`: a failing startup/flag-parsing error (or, for
+  `harvey`, a failed non-interactive session — see below) prints as
+  `{"error","class","code"}` JSON on stderr instead of text, matching `kb`'s shape.
+  Recognised wherever it sits on the command line, so it still applies when a later flag —
+  or the flag package's own parse, for `assay` — is what fails.
+- A non-interactive `harvey` session (piped stdin, or `--replay` without
+  `--replay-continue`) now exits with the class of the first slash command or chat turn
+  that failed, instead of always 0. An interactive session at a terminal is unaffected.
+  `/plan`'s two previously-unclassified errors ("no backend connected", "no plan found")
+  now carry a real class (69, 1); most other command families do not yet and still exit 0
+  or 70 on a failure — a named follow-up, not done here.
+- `/rag setup`'s embedding-model auto-pick now confirms its keyword-based guess with one
+  live `/api/embed` call before committing to it, falling back to another candidate (or
+  warning) when the guess turns out to be wrong. `ThoroughProbeModel` gets its first
+  caller.
+- `github.com/rsdoiel/termlib` bumped to the `v0.0.9`+`354195d` pseudo-version (no
+  `v0.0.10` tag exists yet).
+
 ## v0.0.16 (2026-09-24)
 
 ### New features

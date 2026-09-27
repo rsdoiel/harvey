@@ -343,6 +343,49 @@ func ParseEmbedderFlags(args []string) (kind, url string) {
 // reconfiguring it in the registry. embedderKind and embedderURL select the
 // embedder backend: "" or "ollama" uses Ollama; "encoderfile" uses an
 // Encoderfile binary server at embedderURL.
+/** confirmEmbedder thoroughly probes preferred with a live /api/embed call and,
+ * if that fails, tries the rest of candidates in order until one is confirmed.
+ * If nothing confirms — the server is unreachable, or no candidate actually
+ * embeds — preferred is returned unchanged with a warning printed: a failed
+ * probe never blocks /rag setup, the same rule FastProbeModel's own failures
+ * follow (DR-0004).
+ *
+ * Parameters:
+ *   ctx        (context.Context) — controls each probe's HTTP request lifetime.
+ *   ollamaURL  (string)          — Ollama server base URL.
+ *   preferred  (string)          — the keyword-based guess to confirm first.
+ *   candidates ([]string)        — every embedding-model candidate, in the
+ *     order /rag setup would otherwise have trusted; preferred need not be
+ *     first, and is tried first regardless of its position.
+ *   out        (io.Writer)       — destination for a fallback/warning line.
+ *
+ * Returns:
+ *   string — a candidate ThoroughProbeModel confirmed, or preferred unchanged.
+ *
+ * Example:
+ *   embedder := confirmEmbedder(ctx, "http://localhost:11434", "nomic-embed-text",
+ *       embedModels, out)
+ */
+func confirmEmbedder(ctx context.Context, ollamaURL, preferred string, candidates []string, out io.Writer) string {
+	ordered := append([]string{preferred}, candidates...)
+	tried := map[string]bool{}
+	for _, name := range ordered {
+		if name == "" || tried[name] {
+			continue
+		}
+		tried[name] = true
+		cap, err := ThoroughProbeModel(ctx, ollamaURL, name)
+		if err == nil && cap.SupportsEmbed == CapYes {
+			if name != preferred {
+				fmt.Fprintf(out, "  %s does not actually embed (confirmed live); using %s instead.\n", preferred, name)
+			}
+			return name
+		}
+	}
+	fmt.Fprintf(out, "  Could not confirm an embedding model live; using %s (unconfirmed).\n", preferred)
+	return preferred
+}
+
 func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) error {
 	ctx := context.Background()
 	ragDir := filepath.Join(harveySubdir, "rag")
@@ -447,6 +490,11 @@ func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) 
 		}
 	}
 foundPref:
+	// The name-based guess above is confirmed (or corrected) with one live
+	// /api/embed call before committing to it — everything else in embedModels
+	// was itself only a keyword guess, and a wrong one here silently degrades
+	// every future RAG query, unlike a wrong guess elsewhere in the model cache.
+	preferred = confirmEmbedder(ctx, a.Config.Ollama.URL, preferred, embedModels, out)
 
 	// Build proposed model map: all non-embedding generation models → preferred embedder.
 	genModels, _ := newOllamaLLMClient(a.Config.Ollama.URL, "", a.Config.Ollama.Timeout).Models(ctx)

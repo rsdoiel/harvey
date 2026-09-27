@@ -75,8 +75,12 @@ harvey> /model use llama3.2:latest
    - Any tool mode set with `/model mode` is carried over; the probe
      itself always reports auto
    - Store results in cache with timestamp; a failed probe changes nothing
-   - `ThoroughProbeModel()` (adds an `/api/embed` request) exists in the
-     library, but nothing in Harvey calls it today
+   - `ThoroughProbeModel()` (adds an `/api/embed` request) is wired into
+     `/rag setup`'s embedder auto-pick only (`confirmEmbedder` in
+     `commands_rag.go`), confirming or correcting the keyword guess with one
+     live call before committing to it. Nothing else calls it — a full
+     `setOllamaModel`-wide swap would cost an extra request on every model
+     switch for a signal most selections never use
 
 3. **Cache Query:**
    - Lookup model by name
@@ -496,7 +500,7 @@ The database is configured with:
 | Database locked | Multiple connections | Harvey uses MaxOpenConns(1) to prevent this |
 | "None" probe level | Entry made by `/model mode` before the model was selected | Select the model with `/model use` |
 | Incorrect tool support | Heuristic detection failed | Use `/model mode structured` or `inject` to override |
-| Incorrect embed support | Keyword detection failed | Not fixable from Harvey today (the thorough probe is not wired in) |
+| Incorrect embed support | Keyword detection failed | `/rag setup` confirms live before committing; elsewhere, not fixable from Harvey today |
 | Model ignores tools schema | Small model, no native tool support | Use `/model mode inject` to enable file injection |
 | Tool mode reset unexpectedly | Manual DB edit or schema migration | Re-run `/model mode MODEL MODE` to restore |
 
