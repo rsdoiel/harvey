@@ -82,6 +82,9 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
+
+- [ ] Harvey session files should be formated as jsonl document will a function to convert to fountain format. That way the session can structure the whole session closer to a traditional screenplay. exterior scenes would be those that involve running shell commands triggeref from the LLM, int scenes are those that are contained within the repl. Slash commands would fall into the action block for the scene. Converting from a raw jsonl file would be triggered by a slash command.
+
 - [x] **DONE, shipped in v0.0.16.** Fully integrate the updates to the knowledge model, Harvey should support a learning mode that integrates both human, model and hybrid dialogs for evaluation, summarization, concept tagging and re-ingest for the knowledge base.
 - [x] **DONE, shipped in v0.0.16.** I've evolved the development methodology since last working on Harvey. The knowledge took kb has been updated to reflect those changes. Harvey repo needs to be brought into alignment with the new practrices around design decision reviews and recording them in a decisions directory that kb can be used to update the agents knowledge base for the active workspace. This could impact how we treat the knowledge base as a memory reservoir for Harvey, it could also shed light of how we handle boundries between memory layers, documents versus querying SQLite3 database representations, TAGS and the workspace knowledge base
 
