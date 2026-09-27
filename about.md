@@ -12,35 +12,32 @@ authors:
 
 
 repository_code: https://github.com/rsdoiel/harvey
-version: 0.0.16
+version: 0.0.17
 license_url: https://www.gnu.org/licenses/agpl-3.0.txt
 
 programming_language:
   - Go >= 1.26.4
 
 
-date_released: 2026-09-24
+date_released: 2026-09-27
 ---
 
 About this software
 ===================
 
-## harvey 0.0.16
+## harvey 0.0.17
 
-- Full agentic-memory tool suite: `retrieve_memory`, `add_memory`, `update_memory`, `delete_memory`, `filter_context`, `summary_context` builtin tools, plus proactive STM-budget warnings
-- Unified `/model` command: `/llamafile` and `/llamacpp` merged into one backend-agnostic facade; `@mention` switches the active model while preserving history; unregistered `.llamafile`/`.gguf` models are now found via disk scan
-- `knowledge` module extraction: knowledge-base code split into its own module (`github.com/rsdoiel/knowledge`), now consumed at the released v0.0.13; `recallKB` tries concept-tag matching (`MatchConceptNames`/`RecallByConceptNames`) before falling back to substring search, and now surfaces decision records and reviewed document summaries, not just observations
-- Cross-machine `knowledge.db` sync: UUID-based merge tool (`bin/kbmerge`), legacy `experiments`→`projects` migration
-- Retraction-checking for cited sources in the knowledge base
-- `/read-chunks`: explicit chunked document analysis, independent of context-overflow triggers
-- Knowledge learning mode: `/kb learn ingest|draft|review|concepts` turns recorded sessions and hand-off notes into searchable, human-reviewed knowledge. A model drafts summaries (`@model`, else `learn_model` in `agents/harvey.yaml`, else the active model); nothing is trusted or searchable until you accept it; `$EDITOR` edits are recorded as human. `/kb learn concepts` suggests new concepts, previews each affected document as a diff of changed lines, and writes only after a yes, through the permissions table. Fountain sessions and hand-offs are never rewritten
-- Bug fix: chunk-prompt guard now triggers correctly on models with an unknown context limit (previously never fired) — fixed and live-verified against Gemma-4-E4B
-- Bug fix: Llamafile `GPULayers` now defaults to 0 (CPU-only) instead of 99, fixing an apparent multi-hour "hang" on Raspberry Pi hardware with no GPU backend
-- Bug fix: `pickBackend` startup picker now lists `.gguf`/llama.cpp models, not just llamafiles and Ollama
-- Bug fix: file-write confirmations no longer treat end of input (Ctrl-D, a closed pipe) as "yes", and tagged code-block writes now honour the `permissions:` table (previously only the untagged fallback did)
-- Bug fix: `/kb search` no longer fails on hyphenated terms such as `map-reduce` (picked up from `knowledge` v0.0.13)
-- `kb` and `man` added to the safe-mode default command allowlist
-- Removed a stale local `replace github.com/rsdoiel/termlib => ../termlib` that was silently masking a broken build for anyone without a local `../termlib` checkout; now consumes the tagged `v0.0.9`
+- Breaking: `harvey` and `assay` now use the workspace exit-code convention (workspace DR-0003; harvey DR-0005/DR-0006) instead of exiting only 0 or 1. Five cases that exited 0 now fail (`--continue`/`--record-file` naming a bad path, a malformed `harvey.yaml` or no reachable backend in a non-interactive session, and `assay` when every model call fails); every other case exits a more specific code than a bare 1. See `harvey/CHANGES.md`'s v0.0.17 section for the full upgrade table
+- `-json`/`--json` on both binaries: a failing startup/flag-parsing error (or, for `harvey`, a failed non-interactive session) prints as `{"error","class","code"}` JSON on stderr instead of text, matching `kb`'s shape
+- A non-interactive `harvey` session (piped stdin, or `--replay` without `--replay-continue`) now exits with the class of its first failed slash command or chat turn, instead of always 0; an interactive session at a terminal is unaffected. `/plan`'s errors are the first command family reclassified to give real signal here
+- `/rag setup`'s embedding-model auto-pick now confirms its keyword-based guess with one live `/api/embed` call before committing to it, falling back to another candidate (or warning) when the guess is wrong — `ThoroughProbeModel`'s first caller
+- Ollama models are now probed on every selection, not just when a new alias is saved, so `/model use NAME` and the startup picker no longer silently degrade to file-injection instead of tool calls; a `/model mode` override survives re-probing (previously erased)
+- Removed roughly 30 stale `/ollama`/`/llamafile` references across runtime messages, help text and generated docs; both commands were replaced by `/model` months ago. `stale_commands_test.go` guards against regressions
+- Bug fix: closed stdin (Ctrl-D, a closed pipe) at a yes/no prompt no longer defaults to "yes" — affected `Start Ollama now?`, `Restart MODEL?`, and three skill prompts
+- Bug fix: a failed memory-embed no longer leaves an orphaned `.fountain` file; the error now says to run `ollama pull MODEL`
+- Bug fix: `/model use NAME` now matches any registered model by exact name or unique prefix, not just the picker's list
+- Bug fix: the "1-byte" line reader actually buffered 16 bytes (`bufio`'s minimum) and could swallow piped multi-line input after a prompt
+- `knowledge` bumped to the released v0.0.14; `termlib` bumped to the released v0.0.10 (a display-corrupting bug fix for prompts wider than the terminal or containing an embedded newline)
 
 ## Authors
 

@@ -1,6 +1,6 @@
-%assay(1) user manual | version 0.0.16 7a1cb26
+%assay(1) user manual | version 0.0.17 7de438a
 % R. S. Doiel
-% 2026-09-24
+% 2026-09-27
 
 # NAME
 
@@ -104,6 +104,11 @@ failure mode. Mutually exclusive with -rag-compare.
 -v, -version, --version
 : Display version information.
 
+-json
+: On a failing command line or run, print the error as
+  {"error","class","code"} JSON on stderr instead of text. Wherever -json
+  appears on the line, it still applies to whatever else fails.
+
 # EXIT STATUS
 
 assay does everything it can and then exits with the class of the first
@@ -144,6 +149,10 @@ thing that failed, using the workspace's exit codes:
 
 77
 : The operating system refused access to a file or directory.
+
+With -json, an error prints as {"error","class","code"} JSON on stderr
+instead of text; class and code are the same class name and number as the
+table above.
 
 # OUTPUT
 

@@ -1,6 +1,6 @@
 # CHANGES
 
-## Unreleased
+## v0.0.17 (2026-09-27)
 
 ### Breaking (exit codes)
 
