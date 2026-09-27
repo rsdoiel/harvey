@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="capability-based-routing-and-adapter-tiers-concept">Capability-Based
+Routing and Adapter Tiers — Concept</h1>
+<p><strong>Source:</strong> IBM Research, “Granite Libraries and Project
+Granite Switch” (Luis Lastras et al.)
+https://research.ibm.com/blog/granite-libraries-project-switch</p>
+<p>This document explores what Harvey might look like if the
+architectural ideas in that work were applied to its routing, tool-call,
+and output-enforcement subsystems. Nothing here is a commitment; it is a
+design space to reason from.</p>
+<hr />
+<h2 id="background">Background</h2>
+<p>Project Granite Switch introduces a <em>switching layer</em> — an
+additional transformer mechanism that dynamically activates specialized
+adapter components (aLoRAs) based on control tokens in the prompt. The
+key properties:</p>
+<ul>
+<li>Adapters are independently trained, composable, and replaceable
+without retraining the base model.</li>
+<li>The switching layer preserves context across sequential adapter
+activations.</li>
+<li>Adapter selection is driven by <em>capability need</em>, not by a
+static endpoint name.</li>
+<li>Output can be made deterministic by enforcing strict format
+contracts (IBM calls this the “Mellea” layer).</li>
+</ul>
+<p>Harvey already expresses several of these ideas in nascent form. The
+question is whether making them explicit and first-class improves
+reliability, reduces friction, and opens new capabilities.</p>
+<hr />
+<h2 id="idea-1-capability-based-routing">Idea 1 — Capability-Based
+Routing</h2>
+<h3 id="current-state">Current state</h3>
+<p><code>routing.go</code> maintains a <code>RouteRegistry</code> of
+named remote endpoints. Dispatch happens via <code>@mention</code> in
+the user’s message: <code>@openai explain this</code> sends the prompt
+to the <code>openai</code> endpoint. The user names the endpoint
+explicitly.</p>
+<h3 id="what-granite-switch-suggests">What Granite Switch suggests</h3>
+<p>Instead of (or alongside) naming endpoints, Harvey could route by
+<em>capability declaration</em>. The router would match a required
+capability against what each registered endpoint is known to be good
+at:</p>
+<pre><code>Capability          Preferred endpoint
+──────────────────  ──────────────────────────────
+structured-tools    a model with reliable JSON tool calls
+long-context        a model with large context window
+code-generation     a model fine-tuned on code
+summarization       a model optimized for compression tasks</code></pre>
+<p><code>ModelCache</code> already stores capability data per installed
+Ollama model. The gap is that routing today ignores that cache
+entirely.</p>
+<h3 id="possible-design">Possible design</h3>
+<p>Add a <code>Capability</code> field to <code>RouteEntry</code> in
+<code>route_persist.go</code>. Add a <code>RoutingPolicy</code> to
+<code>Config</code> with a default of <code>"explicit"</code> (current
+behavior) and an optional <code>"capability"</code> mode. In capability
+mode, Harvey inspects the active tool registry, the size of the context,
+and the task type inferred from the user’s message, then selects the
+best available endpoint automatically.</p>
+<p>The user can still override with <code>@mention</code>. Capability
+routing is the fallback when no explicit mention is given.</p>
+<p><strong>Open question:</strong> Task-type inference from a user
+message is itself an LLM call. A lightweight local classifier (or even a
+fast keyword heuristic) may be more appropriate than a full chat
+round-trip.</p>
+<hr />
+<h2 id="idea-2-a-third-tool-call-tier">Idea 2 — A Third Tool-Call
+Tier</h2>
+<h3 id="current-state-1">Current state</h3>
+<p>Harvey has two execution paths for tool calls:</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Tier</th>
+<th scope="col">Trigger</th>
+<th scope="col">Mechanism</th>
+<th scope="col">Reliability</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Structured</td>
+<td>Model returns <code>tool_calls</code> in API response</td>
+<td><code>RunToolLoop</code> (multi-turn)</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Prose</td>
+<td>Small model emits JSON in a fenced block</td>
+<td><code>tryExecuteProseToolCalls</code> (single-turn)</td>
+<td>Fragile</td>
+</tr>
+</tbody>
+</table>
+<p>The prose path exists because small local models (common Ollama
+targets) do not reliably emit structured <code>tool_calls</code>. The
+workaround is best-effort text parsing, which breaks on minor format
+deviations.</p>
+<h3 id="what-granite-switch-suggests-1">What Granite Switch
+suggests</h3>
+<p>IBM’s aLoRA adapters sit between “full generalist model” and “fragile
+text parsing”: a small model fine-tuned <em>specifically</em> for tool
+dispatch. It learns one narrow behavior (emit valid JSON tool calls)
+rather than general reasoning. This is cheaper than requiring a large
+structured-call-capable model and more reliable than prose parsing.</p>
+<h3 id="possible-design-for-harvey">Possible design for Harvey</h3>
+<p>Introduce a <strong>tier 2.5</strong>: a dedicated tool-dispatch
+adapter model registered as a capability-endpoint. Harvey would route
+tool calls through this model when the primary model is in prose
+mode:</p>
+<pre><code>User message → Primary model (reasoning, answer generation)
+                    ↓
+             Tool dispatch needed?
+                    ↓  yes
+             Tool-dispatch adapter (JSON emit only)
+                    ↓
+             ToolRegistry.Dispatch()
+                    ↓
+             Result injected into history
+                    ↓
+             Primary model (continue generation)</code></pre>
+<p>The adapter model never sees the full conversation — it receives only
+a compact tool-call instruction schema and the primary model’s intent.
+This mirrors how Granite Switch keeps the context object alive while
+activating the right adapter for each sub-task.</p>
+<p>In practice this could be an Ollama model fine-tuned on Harvey’s tool
+schemas, registered as a named route with
+<code>capability: tool-dispatch</code>. The primary prose path remains
+as an ultimate fallback.</p>
+<hr />
+<h2 id="idea-3-strict-output-enforcement-mellea-analogue">Idea 3 —
+Strict Output Enforcement (Mellea Analogue)</h2>
+<h3 id="current-state-2">Current state</h3>
+<p>When prose-tool-call mode is active, Harvey parses the assistant’s
+raw text looking for JSON fenced blocks. If the model drifts from the
+expected format, parsing silently fails or produces garbage. The user
+sees an unhelpful “try /tools off or a larger model” warning.</p>
+<p>The partial mitigation already in Harvey: when
+<code>unknownNames</code> is non-empty after a parse attempt,
+<code>tryExecuteProseToolCalls</code> injects available tool names into
+history. This is a correction <em>after</em> a partial parse failure —
+not a contract that prevents the failure in the first place.</p>
+<h3 id="what-granite-switch-suggests-2">What Granite Switch
+suggests</h3>
+<p>IBM’s Mellea layer converts unpredictable text generation into
+reliable function signatures by <em>enforcing a contract before parsing,
+not after</em>. The model is told, via a strict system prompt injection,
+exactly what its output must look like. Non-conforming output is caught
+early and the model is asked to self-correct.</p>
+<h3 id="why-this-matters-beyond-tool-calls">Why this matters beyond tool
+calls</h3>
+<p>Idea 3 is the structural foundation for IVR (see <a
+href="plan-ivr-design.html">plan-ivr-design.md</a>). IVR is the same
+pattern applied at a higher level of abstraction:</p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 28%" />
+<col style="width: 28%" />
+<col style="width: 22%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Level</th>
+<th scope="col">Instruct</th>
+<th scope="col">Validate</th>
+<th scope="col">Repair</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Format (Idea 3)</td>
+<td>System prompt contract</td>
+<td>JSON schema check</td>
+<td>Correction message, re-prompt</td>
+</tr>
+<tr>
+<td>Behavioral (IVR)</td>
+<td>Step annotation (<code>[validate: type:value]</code>)</td>
+<td>Deterministic check (command, file, regex)</td>
+<td>Repair prompt with feedback</td>
+</tr>
+</tbody>
+</table>
+<p>Implementing Idea 3 first proves the I→V→R loop works at the format
+level, reveals implementation patterns that IVR can reuse, and resolves
+IVR’s core question: “what does validation mean?” Format validation is
+unambiguous (is the JSON conformant?); behavioral validation can be
+modeled the same way once the plumbing is established.</p>
+<h3 id="design-for-harvey">Design for Harvey</h3>
+<h4 id="when-to-activate">When to activate</h4>
+<p>Inject the format contract at session start, conditionally:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> a<span class="op">.</span>Config<span class="op">.</span>ToolsEnabled <span class="op">&amp;&amp;</span> a<span class="op">.</span>modelToolMode<span class="op">()</span> <span class="op">==</span> ToolModeProse <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    a<span class="op">.</span>systemPrompt <span class="op">+=</span> formatContractBlock<span class="op">(</span>a<span class="op">.</span>Tools<span class="op">)</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>This fires once per session, not per turn.
+<code>formatContractBlock</code> generates the contract from the actual
+registered tool schemas so the model sees real tool names and argument
+shapes.</p>
+<h4 id="the-contract-block">The contract block</h4>
+<pre><code>## Tool-call format contract
+
+You are operating in prose tool-call mode. When you need to invoke a tool,
+your response MUST contain exactly one fenced JSON block with this structure
+and nothing else inside the block:
+
+` + &quot;```json&quot; + `
+{&quot;tool&quot;: &quot;&lt;name&gt;&quot;, &quot;arguments&quot;: {&quot;&lt;param&gt;&quot;: &lt;value&gt;, ...}}
+` + &quot;```&quot; + `
+
+Valid tool names: read_file, write_file, run_command, ...
+Any deviation from this structure is an error. Do not wrap the block in
+prose. Do not emit multiple JSON blocks. Do not add commentary inside the
+block.</code></pre>
+<p>The tool name list is generated from <code>a.Tools.Names()</code> so
+it is always accurate and does not go stale.</p>
+<h4 id="validation-before-parsing">Validation before parsing</h4>
+<p>In <code>tryExecuteProseToolCalls</code>, before attempting JSON
+parsing, run a lightweight structural check:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> validateToolCallFormat<span class="op">(</span>response <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>json<span class="op">.</span>RawMessage<span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 1. Exactly one fenced ```json block present?</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 2. Block parses as JSON object?</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// 3. Object has &quot;tool&quot; (string) and &quot;arguments&quot; (object) keys?</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Returns the raw JSON if valid, error otherwise.</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>If <code>validateToolCallFormat</code> returns an error, inject the
+correction message and re-prompt once before falling through to the
+current warning path:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>correctionMsg <span class="op">:=</span> <span class="st">&quot;Your last response did not match the required tool-call format. &quot;</span> <span class="op">+</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Please restate only the tool call as a single ```json block &quot;</span> <span class="op">+</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;with {</span><span class="ch">\&quot;</span><span class="st">tool</span><span class="ch">\&quot;</span><span class="st">: </span><span class="ch">\&quot;</span><span class="st">&lt;name&gt;</span><span class="ch">\&quot;</span><span class="st">, </span><span class="ch">\&quot;</span><span class="st">arguments</span><span class="ch">\&quot;</span><span class="st">: {...}}.&quot;</span></span></code></pre></div>
+<h4 id="tracking">Tracking</h4>
+<p>Add a <code>proseToolCallRepairs int</code> counter to
+<code>ChatStats</code> so the assay corpus can measure how often the
+correction fires and whether it actually helps. This is the metric that
+will tell us whether Idea 3 is worth keeping or whether it needs further
+tuning.</p>
+<h4 id="acceptance-criteria">Acceptance criteria</h4>
+<ul>
+<li>With a model in prose tool-call mode, a response missing the JSON
+block triggers exactly one correction re-prompt.</li>
+<li>A response that is correct on the second attempt is parsed and
+dispatched normally.</li>
+<li>A response that is wrong twice falls through to the existing “try a
+larger model” warning.</li>
+<li>The contract block is NOT injected when
+<code>modelToolMode() == ToolModeStructured</code>.</li>
+<li><code>go test -race</code> passes.</li>
+</ul>
+<h4 id="connection-to-ivr">Connection to IVR</h4>
+<p>Once Idea 3 is working, the I→V→R pattern in Harvey has a proven
+runtime. The IVR work in <code>/plan</code> can then: 1. Reuse
+<code>validateToolCallFormat</code> as a model for “validate step output
+against a contract” — just with a different contract and validator. 2.
+Reuse the correction-message injection pattern for repair prompts. 3.
+Inherit the <code>ChatStats</code> counter approach for plan-level
+repair metrics.</p>
+<hr />
+<h2 id="idea-4-context-continuity-across-tool-loops">Idea 4 — Context
+Continuity Across Tool Loops</h2>
+<h3 id="current-state-3">Current state</h3>
+<p><code>RunToolLoop</code> appends tool call/result pairs to
+<code>a.History</code>, so the model retains context across turns within
+a single tool loop. However, when Harvey exits a tool loop and returns
+to the prose REPL path, the rolling summary treats tool-call/result
+message pairs the same as conversational turns — compressing them into
+prose that loses the structured information (tool name, arguments, which
+file was read, what the result was).</p>
+<p>Concrete symptom: after a long session where Harvey read several
+files, the model may not know which files it already read because the
+<code>read_file</code> tool calls were compressed to something like
+“Harvey reviewed some files earlier.”</p>
+<h3 id="what-granite-switch-suggests-3">What Granite Switch
+suggests</h3>
+<p>IBM’s aLoRA architecture preserves the context object across adapter
+activations. The Harvey analogue is the rolling summary — the key
+insight is that the rolling summary should be <em>tool-loop-aware</em>,
+compressing tool turns differently from prose turns.</p>
+<h3 id="design-for-harvey-toolturnsummary">Design for Harvey —
+<code>ToolTurnSummary</code></h3>
+<p><strong>This is the most immediately implementable idea in this
+document.</strong></p>
+<p>Define a structured type for compressed tool-call turns:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ToolTurnSummary is the compressed representation of a tool call/result</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="co">// pair after the rolling summary fires. It replaces the raw message pair</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co">// in compressed history and is included in the summary injected at context</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co">// window start.</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ToolTurnSummary <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    Turn   <span class="dt">int</span>            <span class="co">// turn number in the session</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    Tool   <span class="dt">string</span>         <span class="co">// tool name</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    Args   <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span><span class="dt">any</span> <span class="co">// tool arguments</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    Result <span class="dt">string</span>         <span class="co">// result content, truncated to ResultMaxTokens</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="co">// ResultMaxTokens is the maximum token estimate for a ToolTurnSummary</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="co">// result. Keeps compressed tool history from consuming too much budget.</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> ToolTurnSummaryMaxTokens <span class="op">=</span> <span class="dv">100</span></span></code></pre></div>
+<h4 id="in-memory_rolling.go">In <code>memory_rolling.go</code></h4>
+<p>When the rolling summary fires and processes a turn that contains
+tool call/result messages:</p>
+<ol type="1">
+<li>Extract each tool call/result pair.</li>
+<li>For each pair, build a <code>ToolTurnSummary</code>: tool name and
+args from the tool call message; truncated result from the tool result
+message.</li>
+<li>Format the summary as a compact structured line in the compressed
+history block:</li>
+</ol>
+<pre><code>[turn 7] read_file: path=&quot;harvey.go&quot; → 1240 lines, package harvey
+[turn 7] write_file: path=&quot;context_estimator.go&quot; → ok
+[turn 8] run_command: cmd=&quot;go test ./...&quot; → PASS 47 tests (exit 0)</code></pre>
+<ol start="4" type="1">
+<li>For conversational (non-tool) turns, use the existing prose
+compression.</li>
+</ol>
+<h4 id="injection-into-context">Injection into context</h4>
+<p>The existing rolling summary injects a
+<code>[Session summary: ...]</code> block at the beginning of the
+retained history window. Extend this block with a
+<code>Tool calls (compressed):</code> section listing all
+<code>ToolTurnSummary</code> entries from compressed turns.</p>
+<h4 id="why-this-is-more-immediate-than-ideas-1-and-2">Why this is more
+immediate than Ideas 1 and 2</h4>
+<ul>
+<li>It is a contained change to <code>memory_rolling.go</code> with no
+new dependencies.</li>
+<li>It has a clear, testable outcome: after rolling compression, the
+model should be able to answer “which files did I read earlier?” from
+the structured summary rather than guessing from prose.</li>
+<li>It improves long-session reliability for all users, regardless of
+model size or backend.</li>
+<li>It requires no new infrastructure — <code>ToolTurnSummary</code> is
+a pure data type extracted from existing <code>Message</code>
+fields.</li>
+</ul>
+<h4 id="tests">Tests</h4>
+<ul>
+<li><code>TestRollingSummary_PreservesToolCalls</code> — after
+compression, the injected summary contains structured tool turn lines
+for any tool-call turns that were compressed out of raw history.</li>
+<li><code>TestToolTurnSummary_Truncation</code> — result content longer
+than <code>ToolTurnSummaryMaxTokens</code> is truncated and marked
+<code>[truncated]</code>.</li>
+<li><code>TestRollingSummary_MixedTurns</code> — a session with both
+conversational and tool-call turns compresses each correctly;
+conversational turns get prose compression, tool turns get structured
+summary.</li>
+</ul>
+<hr />
+<h2 id="sequencing">Sequencing</h2>
+<h3 id="near-term-current-release-cycle">Near-term (current release
+cycle)</h3>
+<ol type="1">
+<li><p><strong>Tool-loop-aware rolling summary (Idea 4)</strong> —
+contained change to <code>memory_rolling.go</code>, no new dependencies,
+immediate long-session reliability benefit. Design and acceptance
+criteria are complete above.</p></li>
+<li><p><strong>Strict output enforcement (Idea 3)</strong> — format
+contract injection + one re-prompt on failure. This is the precursor to
+full IVR: once the I→V→R loop works at the format level, IVR can layer
+behavioral validation on top. The design above is complete enough to
+plan implementation.</p></li>
+</ol>
+<h3
+id="medium-term-after-assay-corpus-measures-baseline-tool-call-reliability">Medium-term
+(after assay corpus measures baseline tool-call reliability)</h3>
+<ol start="3" type="1">
+<li><p><strong>Capability-based routing (Idea 1)</strong> — requires
+adding capability metadata to <code>RouteEntry</code> and a routing
+policy to <code>Config</code>. The keyword-heuristic approach (route by
+message content patterns) is sufficient for Harvey; avoid LLM-based task
+classification.</p></li>
+<li><p><strong>Tool-dispatch adapter tier (Idea 2)</strong> — requires a
+fine-tuned &lt;3B model for Pi feasibility. Depends on assay showing
+that the prose-tool-call path has measurable failure rate after Idea 3
+is applied.</p></li>
+</ol>
+<h3 id="relationship-to-other-work">Relationship to other work</h3>
+<ul>
+<li><strong>IVR (<a
+href="plan-ivr-design.html">plan-ivr-design.md</a>)</strong>: Idea 3 is
+the precursor. Do not re-open IVR design until Idea 3’s I→V→R loop is
+implemented and validated. The patterns from Idea 3 directly answer
+IVR’s unresolved questions.</li>
+<li><strong>Chunked analysis / budget management</strong>: See <a
+href="small-model-budget-design.html">small-model-budget-design.md</a>
+for how Ideas 3 and 4 fit into a broader resource-aware prompt
+management system.</li>
+</ul>
+</section>
+</body>
+</html>

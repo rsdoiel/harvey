@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-plan-ivr-support-design-document">Harvey
+<code>/plan</code> IVR Support — Design Document</h1>
+<h2 id="summary">Summary</h2>
+<p>This document describes the <strong>design</strong> for adding
+Instruct-Validate-Repair (IVR) pattern support to Harvey’s
+<code>/plan</code> command. The IVR pattern addresses the fundamental
+reliability challenge with LLM-based agents: models produce incorrect or
+incomplete output 5-50% of the time (per <a
+href="https://mellea.ai/blogs/why-mellea/">Mellea’s research</a>).</p>
+<p><strong>Status</strong>: Deferred — design incomplete
+<strong>Author</strong>: Generated with Mistral Vibe
+<strong>Date</strong>: 2026-06-28 <strong>Related Decision</strong>: See
+DECISIONS.md (2026-06-28 — <code>/plan</code> IVR support deferred —
+design incomplete)</p>
+<hr />
+<blockquote>
+<p><strong>This design is deferred and incomplete.</strong> The open
+questions in the section below are not cosmetic — they block
+implementation. Do not proceed with code until the validation-target
+question (what does each validation type validate against?) is resolved,
+the repair prompt token budget is specified, and the relationship with
+Idea 3 in <a
+href="capability-adapter-concept.html">capability-adapter-concept.md</a>
+is explored. See DECISIONS.md for the full rationale.</p>
+</blockquote>
+<hr />
+<h2 id="problem-statement">Problem Statement</h2>
+<p>Harvey’s current <code>/plan</code> feature provides
+<strong>bounded-context task execution</strong>, which is a significant
+improvement over monolithic prompt approaches. Each step executes with
+only the system prompt and current plan state, keeping turn times
+constant regardless of plan length.</p>
+<p>However, <code>/plan</code> lacks:</p>
+<ol type="1">
+<li><strong>Output validation</strong>: No mechanism to verify that a
+step’s output meets requirements</li>
+<li><strong>Automatic repair</strong>: No way to retry with corrective
+feedback when output is invalid</li>
+<li><strong>Reliability metrics</strong>: No visibility into step
+success rates or validation results</li>
+</ol>
+<p>This means that even with bounded context, <strong>steps can silently
+produce incorrect results</strong>. Users must manually verify each
+step’s output, which defeats the purpose of automation and contributes
+to the 80-95% failure rate observed in LLM pilot projects.</p>
+<p>The IVR pattern directly addresses this by making validation a
+<strong>first-class concern</strong> in the execution flow.</p>
+<hr />
+<h2 id="requirements">Requirements</h2>
+<h3 id="functional-requirements">Functional Requirements</h3>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 48%" />
+<col style="width: 37%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">ID</th>
+<th scope="col">Requirement</th>
+<th scope="col">Priority</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1</td>
+<td>Support validation annotations on individual plan steps</td>
+<td>Must Have</td>
+</tr>
+<tr>
+<td>R2</td>
+<td>Validate step output after execution</td>
+<td>Must Have</td>
+</tr>
+<tr>
+<td>R3</td>
+<td>Provide automatic repair attempts with feedback when validation
+fails</td>
+<td>Must Have</td>
+</tr>
+<tr>
+<td>R4</td>
+<td>Surface validation results clearly in the UI</td>
+<td>Must Have</td>
+</tr>
+<tr>
+<td>R5</td>
+<td>Maintain backward compatibility with existing plans</td>
+<td>Must Have</td>
+</tr>
+<tr>
+<td>R6</td>
+<td>Preserve bounded-context execution model</td>
+<td>Must Have</td>
+</tr>
+<tr>
+<td>R7</td>
+<td>Support multiple validation types (command, file existence, regex,
+etc.)</td>
+<td>Should Have</td>
+</tr>
+<tr>
+<td>R8</td>
+<td>Make validation opt-in (not required for all steps)</td>
+<td>Should Have</td>
+</tr>
+<tr>
+<td>R9</td>
+<td>Configurable repair attempt limits</td>
+<td>Could Have</td>
+</tr>
+<tr>
+<td>R10</td>
+<td>Record IVR events in Fountain session format</td>
+<td>Could Have</td>
+</tr>
+</tbody>
+</table>
+<h3 id="non-functional-requirements">Non-Functional Requirements</h3>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 48%" />
+<col style="width: 37%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">ID</th>
+<th scope="col">Requirement</th>
+<th scope="col">Priority</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NF1</td>
+<td>Minimal changes to existing <code>/plan</code> workflow</td>
+<td>Must Have</td>
+</tr>
+<tr>
+<td>NF2</td>
+<td>Deterministic validation (not LLM-based)</td>
+<td>Must Have</td>
+</tr>
+<tr>
+<td>NF3</td>
+<td>Fast validation execution (&lt; 1 second for most types)</td>
+<td>Should Have</td>
+</tr>
+<tr>
+<td>NF4</td>
+<td>Clear error messages for validation failures</td>
+<td>Must Have</td>
+</tr>
+<tr>
+<td>NF5</td>
+<td>Local-first execution (no external dependencies)</td>
+<td>Must Have</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="constraints">Constraints</h2>
+<ol type="1">
+<li><strong>No changes to core <code>/plan</code> execution
+model</strong>: Bounded context must be preserved</li>
+<li><strong>No new top-level commands</strong>: IVR extends
+<code>/plan</code>, not a separate feature</li>
+<li><strong>No LLM-based validation</strong>: Validation must be
+deterministic and reliable</li>
+<li><strong>Backward compatible</strong>: Existing plans must continue
+to work unchanged</li>
+<li><strong>Safe mode compatible</strong>: Must respect existing safe
+mode restrictions</li>
+<li><strong>Workspace sandboxed</strong>: All validation must operate
+within workspace constraints</li>
+</ol>
+<hr />
+<h2 id="architecture-overview">Architecture Overview</h2>
+<h3 id="design-principle">Design Principle</h3>
+<p><strong>“Validation is code, not prompt.”</strong></p>
+<p>Following Mellea’s philosophy, validation logic must be: -
+<strong>Explicit</strong>: Defined by the user, not inferred by the LLM
+- <strong>Deterministic</strong>: Same input always produces same
+validation result - <strong>Executable</strong>: Runs in the host
+environment, not inside the LLM - <strong>Composable</strong>: Multiple
+validations can be chained per step</p>
+<h3 id="high-level-components">High-Level Components</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                           /plan next                               │
+├─────────────────────────────────────────────────────────────────┤
+│  1. Load Plan (with validation annotations)                      │
+│  2. Execute Step (bounded context)                               │
+│  3. Capture Output                                               │
+│  4. Validation Phase ←───────────────────────────┐              │
+│     ├─ Parse validations from step title           │              │
+│     ├─ Run each validation against output          │              │
+│     └─ Return pass/fail with error details         │              │
+│  5. Decision: All passed? ──────────────────────────┼─ YES ──────► Mark done
+│                                                   │              │
+│                    NO                              │              │
+│                                                   ▼              │
+│  6. Repair Phase ←─────────────────────────────────────────────┘
+│     ├─ Inject validation feedback into prompt
+│     ├─ Re-execute step with fresh context
+│     ├─ Re-validate output
+│     └─ Repeat up to configured limit
+│     
+│  7. All repairs exhausted? ─────────────── YES ──────► Escalate to user
+│                                              
+│                                          NO ──────────► Continue repairs
+└─────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="key-design-decisions">Key Design Decisions</h3>
+<h4 id="inline-annotation-syntax">1. Inline Annotation Syntax</h4>
+<p><strong>Decision</strong>: Use GFM checklist format with inline
+annotations.</p>
+<p><strong>Rationale</strong>: - Consistent with existing
+<code>/plan</code> markdown format - Human-readable and editable - No
+new file format to learn - Supports multiple validations per step</p>
+<p><strong>Syntax</strong>:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span><span class="va">[ ]</span> Step title <span class="co">[</span><span class="ot">validate: type:value</span><span class="co">] [validate: type2:value2]</span></span></code></pre></div>
+<p><strong>Examples</strong>: -
+<code>- [ ] Build project [validate: command: go build ./...]</code> -
+<code>- [ ] Create config file [validate: file_exists: config.yaml]</code>
+- <code>- [ ] Write test [validate: regex: ^func Test]</code> -
+<code>- [ ] Clean up [validate: file_not_exists: temp.txt]</code></p>
+<h4 id="validation-types">2. Validation Types</h4>
+<p><strong>Decision</strong>: Support a core set of validation types
+that cover 90% of use cases.</p>
+<p><strong>Core Types</strong>: | Type | Purpose | Example |
+|——|———|———| | <code>command</code> | Run shell command, pass on exit 0
+| <code>go build -o /dev/null file.go</code> | |
+<code>file_exists</code> | File exists in workspace |
+<code>config.yaml</code> | | <code>file_not_exists</code> | File does
+NOT exist | <code>temp.txt</code> | | <code>regex</code> | Output
+matches regex pattern | <code>^func.*Test</code> | |
+<code>contains</code> | Output contains string |
+<code>import "testing"</code> | | <code>not_contains</code> | Output
+does NOT contain string | <code>TODO</code> | | <code>no_errors</code> |
+No common error patterns detected | (no value) | | <code>custom</code> |
+Run executable validation script | <code>./validate.sh</code> |</p>
+<p><strong>Rationale</strong>: - Covers code generation, file
+operations, and output validation - Simple to implement and understand -
+Extensible (can add more types later) - All types are deterministic and
+fast</p>
+<h4 id="opt-in-validation">3. Opt-In Validation</h4>
+<p><strong>Decision</strong>: Validation is opt-in via annotations;
+steps without annotations skip validation.</p>
+<p><strong>Rationale</strong>: - Maintains backward compatibility -
+Reduces friction for simple plans - Users add validation only where
+needed - Aligns with progressive enhancement principle</p>
+<h4 id="repair-mechanism">4. Repair Mechanism</h4>
+<p><strong>Decision</strong>: Automatic repair with configurable attempt
+limit (default: 2).</p>
+<p><strong>Repair Flow</strong>: 1. Validation fails with specific error
+message 2. Build repair prompt with: - Original plan context - Step
+description - Validation feedback (error message) - Previous output 3.
+Re-execute step with repair prompt 4. Re-validate 5. Repeat up to
+limit</p>
+<p><strong>Rationale</strong>: - Matches how humans debug: try, get
+error, fix based on error - Provides immediate feedback to the LLM -
+Prevents infinite loops with attempt limit - Configurable to balance
+automation vs. control</p>
+<h4 id="validation-feedback">5. Validation Feedback</h4>
+<p><strong>Decision</strong>: Inject structured validation feedback into
+repair prompts.</p>
+<p><strong>Feedback Format</strong>:</p>
+<pre><code>VALIDATION FEEDBACK:
+  Step failed with error: &quot;&lt;specific error message&gt;&quot;
+  Validation type: &lt;type&gt;
+  Expected: &lt;what was expected&gt;
+  Actual: &lt;what was received&gt;
+
+Please fix the issue and complete ONLY this step.</code></pre>
+<p><strong>Rationale</strong>: - Structured format is easier for LLMs to
+parse - Specific error messages guide the repair - Separates feedback
+from step instructions - Prevents prompt injection</p>
+<h4 id="bounded-context-preservation">6. Bounded Context
+Preservation</h4>
+<p><strong>Decision</strong>: Validation and repair operate within the
+existing bounded context model.</p>
+<p><strong>Implications</strong>: - Validation runs in host environment
+(Go), not LLM - Repair attempts use same bounded context as original
+step - Validation state is NOT added to conversation history - Only the
+repair prompt includes validation feedback</p>
+<p><strong>Rationale</strong>: - Preserves the performance benefits of
+bounded context - Keeps validation separate from LLM execution -
+Maintains consistency with existing <code>/plan</code> behavior</p>
+<hr />
+<h2 id="data-model">Data Model</h2>
+<h3 id="conceptual-types">Conceptual Types</h3>
+<h4 id="validationrequirement">ValidationRequirement</h4>
+<p>Represents a single validation rule for a plan step.</p>
+<p><strong>Fields</strong>: - <code>Type</code>: Validation type
+(command, file_exists, regex, etc.) - <code>Pattern</code>: For
+regex/contains validations, the pattern to match - <code>Command</code>:
+For command/custom validations, the command to run -
+<code>Negate</code>: Boolean flag for not_* validations</p>
+<h4 id="validationresult">ValidationResult</h4>
+<p>Captures the outcome of a validation check.</p>
+<p><strong>Fields</strong>: - <code>Requirement</code>: The validation
+that was run - <code>Passed</code>: Boolean indicating success -
+<code>Error</code>: Error message if failed - <code>Duration</code>: How
+long validation took</p>
+<h4 id="extended-planstep">Extended PlanStep</h4>
+<p>Adds IVR support to existing PlanStep.</p>
+<p><strong>New Fields</strong>: - <code>Validations</code>: Slice of
+ValidationRequirement - <code>RepairCount</code>: Number of repair
+attempts made - <code>ValidationError</code>: Last validation error (if
+any)</p>
+<p><strong>Note</strong>: These fields are optional and only populated
+when IVR is used.</p>
+<hr />
+<h2 id="integration-points">Integration Points</h2>
+<h3 id="with-existing-plan-features">With Existing <code>/plan</code>
+Features</h3>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 59%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Feature</th>
+<th scope="col">Integration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bounded context</td>
+<td>Validation runs in host; repair uses same bounded context as
+step</td>
+</tr>
+<tr>
+<td>Model switching</td>
+<td>Validation respects [model: name] annotations</td>
+</tr>
+<tr>
+<td>Step tracking</td>
+<td>RepairCount and ValidationError persisted in plan.md</td>
+</tr>
+<tr>
+<td>Session recording</td>
+<td>IVR events recorded as Fountain notes</td>
+</tr>
+</tbody>
+</table>
+<h3 id="with-harvey-infrastructure">With Harvey Infrastructure</h3>
+<table>
+<colgroup>
+<col style="width: 45%" />
+<col style="width: 54%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Component</th>
+<th scope="col">Integration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Workspace sandboxing</td>
+<td>All validation file operations use Workspace methods</td>
+</tr>
+<tr>
+<td>Safe mode</td>
+<td>Validation commands respect safe mode restrictions</td>
+</tr>
+<tr>
+<td>Tool execution</td>
+<td>Repair phase uses same tool execution path as regular steps</td>
+</tr>
+<tr>
+<td>Configuration</td>
+<td>IVR settings in agents/harvey.yaml under <code>plan:</code>
+stanza</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="user-experience-impact">User Experience Impact</h2>
+<h3 id="before-ivr">Before IVR</h3>
+<pre><code>harvey &gt; /plan next
+  Executing step 1/3: Build project
+  
+  ` /run go build ./...`
+  # github.com/user/project
+  ./main.go:12: undefined: jwt
+  
+  ✓ Step 1/3 complete.
+  
+  &lt;&lt; User must manually notice the error and fix it &gt;&gt;</code></pre>
+<h3 id="after-ivr">After IVR</h3>
+<pre><code>harvey &gt; /plan next
+  Executing step 1/3: Build project [validate: command: go build -o /dev/null ./...]
+  
+  ` /run go build ./...`
+  # github.com/user/project
+  ./main.go:12: undefined: jwt
+  
+  Validating step 1...
+    ✗ Validation failed: exit status 1
+    Repair attempt 1/2...
+    
+    &lt;&lt; LLM regenerates with validation feedback &gt;&gt;
+    ` /run go get github.com/golang-jwt/jwt/v5`
+    
+    Validating step 1...
+    ✓ All validations passed.
+  
+  ✓ Step 1/3 complete.</code></pre>
+<hr />
+<h2 id="security-considerations">Security Considerations</h2>
+<h3 id="validation-command-execution">Validation Command Execution</h3>
+<ul>
+<li>Validation commands run with same environment filtering as
+<code>/run</code></li>
+<li>Respect safe mode command allowlists</li>
+<li>Workspace sandboxing applies to all file operations</li>
+<li>Custom validation scripts must be executable and in workspace</li>
+</ul>
+<h3 id="preventing-validation-abuse">Preventing Validation Abuse</h3>
+<ul>
+<li>Validation commands have timeout (default: 30s)</li>
+<li>Repair attempt limit prevents infinite loops</li>
+<li>Validation errors are sanitized before display</li>
+<li>No LLM-based validation prevents prompt injection</li>
+</ul>
+<h3 id="data-safety">Data Safety</h3>
+<ul>
+<li>Validation operates on step output, not user data</li>
+<li>File existence checks use workspace-relative paths</li>
+<li>Custom scripts cannot access sensitive environment variables</li>
+</ul>
+<hr />
+<h2 id="performance-considerations">Performance Considerations</h2>
+<h3 id="validation-overhead">Validation Overhead</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Validation Type</th>
+<th scope="col">Expected Duration</th>
+<th scope="col">Impact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>file_exists</td>
+<td>&lt; 1ms</td>
+<td>Negligible</td>
+</tr>
+<tr>
+<td>file_not_exists</td>
+<td>&lt; 1ms</td>
+<td>Negligible</td>
+</tr>
+<tr>
+<td>contains</td>
+<td>&lt; 1ms</td>
+<td>Negligible</td>
+</tr>
+<tr>
+<td>not_contains</td>
+<td>&lt; 1ms</td>
+<td>Negligible</td>
+</tr>
+<tr>
+<td>regex</td>
+<td>&lt; 1ms</td>
+<td>Negligible</td>
+</tr>
+<tr>
+<td>no_errors</td>
+<td>&lt; 1ms</td>
+<td>Negligible</td>
+</tr>
+<tr>
+<td>command</td>
+<td>Variable (command-dependent)</td>
+<td>Configurable timeout</td>
+</tr>
+<tr>
+<td>custom</td>
+<td>Variable (script-dependent)</td>
+<td>Configurable timeout</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Mitigation</strong>: - Command and custom validations have
+configurable timeout - Validation runs in parallel where possible
+(future optimization) - Total validation time &lt;&lt; LLM execution
+time for most workflows</p>
+<h3 id="repair-overhead">Repair Overhead</h3>
+<ul>
+<li>Each repair attempt = 1 additional LLM call</li>
+<li>Default limit of 2 repairs = 2x LLM cost for failing steps</li>
+<li>Configurable limit allows users to balance cost vs. reliability</li>
+</ul>
+<hr />
+<h2 id="error-handling">Error Handling</h2>
+<h3 id="validation-errors">Validation Errors</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Error Type</th>
+<th scope="col">Handling</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Validation command fails</td>
+<td>Return error message, attempt repair</td>
+</tr>
+<tr>
+<td>Validation timeout</td>
+<td>Fail validation, attempt repair</td>
+</tr>
+<tr>
+<td>Invalid validation syntax</td>
+<td>Skip validation, warn user, continue</td>
+</tr>
+<tr>
+<td>Unknown validation type</td>
+<td>Skip validation, warn user, continue</td>
+</tr>
+<tr>
+<td>File not found (file_exists)</td>
+<td>Fail validation, attempt repair</td>
+</tr>
+</tbody>
+</table>
+<h3 id="repair-errors">Repair Errors</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Error Type</th>
+<th scope="col">Handling</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LLM execution fails</td>
+<td>Abort repair, escalate to user</td>
+</tr>
+<tr>
+<td>All repair attempts exhausted</td>
+<td>Escalate to user with final error</td>
+</tr>
+<tr>
+<td>Repair validation fails</td>
+<td>Continue to next repair attempt</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="backward-compatibility">Backward Compatibility</h2>
+<h3 id="existing-plans">Existing Plans</h3>
+<ul>
+<li>Plans without validation annotations work exactly as before</li>
+<li><code>Validations</code>, <code>RepairCount</code>,
+<code>ValidationError</code> fields are optional</li>
+<li>Serialization handles missing fields gracefully</li>
+</ul>
+<h3 id="existing-workflows">Existing Workflows</h3>
+<ul>
+<li><code>/plan TASK</code> unchanged</li>
+<li><code>/plan next</code> unchanged for steps without validation</li>
+<li><code>/plan status</code> extended to show validation info</li>
+<li><code>/plan show</code> unchanged (shows raw markdown)</li>
+<li><code>/plan clear</code> unchanged</li>
+</ul>
+<hr />
+<h2 id="open-questions">Open Questions</h2>
+<p>These questions must be answered before implementation begins.
+Questions 1–3 are <strong>blocking</strong> — they determine the core
+data model and execution path.</p>
+<h3 id="blocking">Blocking</h3>
+<ol type="1">
+<li><p><strong>What does each validation type validate
+against?</strong></p>
+<p>This is the most fundamental unresolved question. Two targets are
+possible:</p>
+<ul>
+<li><em>Model response text</em>: the raw text the LLM produced for this
+step</li>
+<li><em>Workspace state</em>: the filesystem after the step’s tool calls
+completed</li>
+</ul>
+<p><code>command</code> and <code>file_exists</code> clearly test
+workspace state. <code>regex</code> and <code>contains</code> are
+ambiguous: if the step writes a function to a file, does
+<code>[validate: regex:^func Test]</code> match the model’s <em>reply
+text</em> (which might just say “Done”) or does it read the <em>written
+file</em> (which has the function)? If workspace state, which file? This
+must be resolved per-type before the data model can be defined.</p>
+<p>A possible resolution: <code>regex</code>, <code>contains</code>, and
+<code>not_contains</code> always validate the model’s response text;
+<code>file_exists</code>, <code>file_not_exists</code>, and
+<code>command</code> always validate workspace state. Separate
+<code>file_contains</code> and <code>file_regex</code> types can be
+added for file-content checks. This clean split makes the model
+unambiguous.</p></li>
+<li><p><strong>What is the repair prompt token budget?</strong></p>
+<p>The current design injects “previous output” into the repair prompt.
+Previous output can be arbitrarily large (full file contents, build
+logs). On a 4K-context 8B model, this can exhaust the budget before the
+correction instruction is even included. A concrete cap — e.g., last 500
+tokens of previous output — must be specified and enforced.</p></li>
+<li><p><strong>What is the <code>no_errors</code> validation
+type?</strong></p>
+<p>“No common error patterns detected” is not deterministic (NF2
+violation). Either: define it precisely as “exit code 0 from the last
+<code>/run</code> command executed during the step” — making it
+redundant with <code>command: &lt;cmd&gt;</code> — or remove it from
+v1.</p></li>
+</ol>
+<h3 id="design-questions-resolve-before-finalizing-data-model">Design
+questions (resolve before finalizing data model)</h3>
+<ol start="4" type="1">
+<li><strong>Should multiple validations on one step run all-at-once or
+stop on first failure?</strong>
+<ul>
+<li>Recommended: run all, collect all failures, include full list in
+repair prompt.</li>
+</ul></li>
+<li><strong>Should validation annotations be stripped from step titles
+before the LLM sees them?</strong>
+<ul>
+<li>Yes, required. The LLM must receive “Build project” not “Build
+project [validate: command: go build ./…]”.</li>
+<li>Verify <code>ParsePlanStep</code> is updated to strip
+annotations.</li>
+</ul></li>
+<li><strong>Should validation failures block the entire plan?</strong>
+<ul>
+<li>Recommended: yes, block at step level, matching CI behavior.</li>
+</ul></li>
+<li><strong>Relationship with Idea 3 in
+capability-adapter-concept.md</strong>: Idea 3 (strict output
+enforcement) applies the IVR pattern at the <em>format</em> level:
+Instruct (contract in system prompt) → Validate (schema check) → Repair
+(correction message). IVR here applies it at the <em>behavioral</em>
+level (did the step accomplish its goal?). Explore whether Idea 3’s
+implementation reveals a general IVR execution primitive that
+<code>/plan</code> validation can reuse. This may resolve several of the
+ambiguities above.</li>
+</ol>
+<hr />
+<h2 id="success-criteria">Success Criteria</h2>
+<p>This design is successful if:</p>
+<ol type="1">
+<li>Users can add validation to plan steps via simple annotations</li>
+<li>Invalid output is automatically detected and repaired (within
+limits)</li>
+<li>Validation failures are clearly communicated to users</li>
+<li>Existing plans continue to work without modification</li>
+<li>IVR adds &lt; 100ms overhead for non-command validations</li>
+<li>The feature is intuitive and discoverable</li>
+</ol>
+<hr />
+<h2 id="next-steps">Next Steps</h2>
+<p>After design approval:</p>
+<ol type="1">
+<li><strong>Create implementation plan</strong> with detailed tasks and
+estimates</li>
+<li><strong>Implement core validation types</strong> (command,
+file_exists, regex, contains)</li>
+<li><strong>Integrate with <code>/plan next</code></strong> command</li>
+<li><strong>Add configuration support</strong></li>
+<li><strong>Write tests</strong></li>
+<li><strong>Document the feature</strong></li>
+</ol>
+<hr />
+<h2 id="appendix">Appendix</h2>
+<h3 id="references">References</h3>
+<ul>
+<li><a href="https://mellea.ai/blogs/why-mellea/">Mellea: Why
+Mellea?</a> — Original IVR pattern description</li>
+<li><a
+href="https://mellea.ai/blogs/getting-started-with-mellea/">Mellea:
+Instruct-Validate-Repair</a> — IVR implementation details</li>
+<li><a href="../DECISIONS.html">Harvey DECISIONS.md</a> — Related
+architectural decisions</li>
+</ul>
+<h3 id="related-harvey-files">Related Harvey Files</h3>
+<ul>
+<li><code>plan.go</code> — Core plan data structures (will be
+extended)</li>
+<li><code>plan_cmd.go</code> — Plan command handlers (will be
+modified)</li>
+<li><code>config.go</code> — Configuration (will be extended)</li>
+<li><code>recorder.go</code> — Session recording (may be extended)</li>
+</ul>
+<h3 id="glossary">Glossary</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 66%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Term</th>
+<th scope="col">Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IVR</td>
+<td>Instruct-Validate-Repair: A pattern for reliable LLM task
+execution</td>
+</tr>
+<tr>
+<td>GFM</td>
+<td>GitHub Flavored Markdown</td>
+</tr>
+<tr>
+<td>LLM</td>
+<td>Large Language Model</td>
+</tr>
+</tbody>
+</table>
+</section>
+</body>
+</html>

@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-linting-the-feedforward-side-direction-b-design">Harvey —
+Linting the Feedforward Side (Direction B) — Design</h1>
+<p><strong>Date</strong>: 2026-07-13 <strong>Status</strong>: ✅ Both
+phases implemented 2026-07-13 — see <code>DECISIONS.md</code> and <a
+href="feedforward-budget-plan.html">feedforward-budget-plan.md</a>
+<strong>Related</strong>: <a
+href="harness-engineering-exploration.html">harness-engineering-exploration.md</a>
+Direction B, <a
+href="small-model-budget-design.html">small-model-budget-design.md</a>
+(Directions 1/2, which this document implements rather than re-designs),
+<a
+href="computational-sensors-design.html">computational-sensors-design.md</a>
+/ <a
+href="computational-sensors-plan.html">computational-sensors-plan.md</a>
+(Direction A, whose sensors Phase B of this document extends),
+<code>DECISIONS.md</code> (2026-07-12 entries this builds on)</p>
+<hr />
+<h2 id="whats-already-there-found-during-scoping-not-assumed">What’s
+already there (found during scoping, not assumed)</h2>
+<p>Direction B lists three items. Checked each against current code
+before proposing anything.</p>
+<h3
+id="item-2-budgettracker-the-gap-is-real-and-exactly-as-described">Item
+2 (BudgetTracker) — the gap is real and exactly as described</h3>
+<p><code>runChatTurn</code> (<code>terminal.go:1091-1119</code>) runs,
+unconditionally, in this order:</p>
+<ol type="1">
+<li><code>a.ragAugment(input)</code> — always requests top-5 chunks
+(<code>rag_support.go:626</code>), discards anything below
+<code>ragMinScore</code> (0.3), but never checks whether the
+<em>surviving</em> chunks fit in what’s left of the context window.</li>
+<li><code>a.injectOrChunk(ctx, augmented, out)</code> (when
+<code>!a.toolsReliable()</code>) — for each path-like token in the
+prompt: files ≤ <code>maxInjectFileBytes</code> (16KB) are injected
+directly with <strong>no budget check at all</strong>, one file at a
+time, independent of how many other files are also being injected in the
+same prompt or how much RAG already consumed. Files over the cap
+<em>do</em> check <code>remainingContext(a)</code> before triggering
+chunked analysis — that path is already budget-aware.</li>
+<li><code>a.AddMessage("user", augmented)</code> — content is now in
+history.</li>
+<li><em>Only then</em> does <code>a.contextUsage()</code> /
+<code>formatContextUsage()</code> run, to decide whether to print a
+warning. By this point the content is already committed to history; the
+warning is diagnostic, not preventive.</li>
+</ol>
+<p>This confirms <code>small-model-budget-design.md</code>’s own
+diagnosis (“Multi-file request → neither mechanism handles this… no
+budget check is run across the aggregate”) is still accurate. Two more
+things not called out there, found while re-checking against current
+code:</p>
+<ul>
+<li><code>injectMemoryContext</code> (<code>harvey.go:332-357</code>)
+already takes an explicit <code>budget</code> parameter and
+<code>UnifiedMemory.Recall</code> already enforces it
+(<code>memory_unified.go:93-99</code>) — but that budget is
+`Config.Ollama.ContextLength
+<ul>
+<li>Config.Memory.BudgetPct<code>(a fixed fraction of the *nominal* window, computed once at session start when</code>memoryContextPending<code>fires), not coordinated with</code>remainingContext(a)`
+or with what RAG/files consume later in the same or subsequent turns.
+It’s already “budget-aware” in isolation, just not part of the same
+shared pool.</li>
+</ul></li>
+<li>The existing large-file chunking path (<code>injectOrChunk</code>’s
+oversized-file branch) already does real budget math:
+<code>budget := int(float64(rem) * a.Config.Chunking.Threshold)</code>
+where <code>rem := remainingContext(a)</code>. This document does not
+touch that branch’s logic — only the two <em>direct-inject</em> branches
+(small files, and oversized-but-fits-anyway files) are missing a shared,
+cumulative check.</li>
+</ul>
+<p>So the fix is narrower than “add budget-awareness from scratch”: one
+component (chunking) already has it in isolation; two others (RAG,
+direct file inject) have none; and a fourth (memory) has its own
+independent budget that isn’t part of the same pool. The job is
+coordination, not invention — matching
+<code>small-model-budget-design.md</code> Direction 2’s own framing.</p>
+<h3
+id="item-3-sensor-messages-as-micro-guides-narrower-than-the-exploration-doc-implies">Item
+3 (sensor messages as micro-guides) — narrower than the exploration doc
+implies</h3>
+<p>Checked both of Direction A’s shipped sensors’ actual message
+text:</p>
+<ul>
+<li><p><code>go vet</code> findings (<code>runGoVet</code>,
+<code>builtin_tools.go:1462</code>) are already concrete and actionable
+as-is — <code>go vet</code>’s own output format is
+<code>file:line:col: message</code>,
+e.g. <code>main.go:10:2: Printf format %d has arg of wrong type string</code>.
+There is nothing generic to sharpen. <code>go vet</code> also has no
+first-class inline-suppress convention the way <code>staticcheck</code>
+has <code>//lint:ignore</code> — inventing an escape-hatch instruction
+here (“suppress and justify”) would describe a mechanism that doesn’t
+exist, not a real option available to the model. <strong>No change
+proposed for <code>go vet</code>.</strong></p></li>
+<li><p><code>Check()</code>/gofmt findings
+(<code>code_formatters.go:152</code>,
+<code>PipeExternalFormatter.Check</code>) return one hardcoded, generic
+message regardless of cause:
+<code>"content differs from formatted output"</code>.</p>
+<p><strong>Correction, found only by re-checking existing test coverage
+before implementing (not assumed):</strong> the design’s first draft
+claimed this finding “almost never fires after a successful
+<code>applyAutoFormat</code>” and that the realistic residual case is a
+syntax error. That’s incomplete.
+<code>TestWriteFile_FormatCheckSensor_reportsWhenAutoFormatOff</code> /
+<code>_injectsWhenConfigured</code>
+(<code>builtin_tools_test.go:277-324</code>) deliberately set
+<code>Config.AutoFormat = false</code> and write
+syntactically-valid-but-unformatted Go (extra whitespace, no syntax
+error) — a real, tested, supported configuration where
+<code>runPostWriteSensors</code> still calls <code>Check()</code> (it
+always runs regardless of <code>AutoFormat</code>), and the finding is
+genuinely “auto-format is disabled,” not a parse failure.
+<code>Check()</code> itself has no way to distinguish the two causes —
+it only ever compares raw content against <code>gofmt</code>’s canonical
+output. <strong>Confirmed with the user (2026-07-13):</strong> the
+message must be cause-neutral, covering both real cases, rather than
+asserting “likely a syntax error” as if it were the only or dominant
+one.</p></li>
+</ul>
+<p>The exploration doc’s example escape hatch (“you may raise this
+file’s max-lines threshold… if it’s only slightly over”) describes a
+<em>threshold/style</em> sensor that doesn’t exist yet in Harvey
+(<code>gocyclo</code>, unused-param, max-lines — all still deferred per
+<code>computational-sensors-design.md</code>’s own scope cut).
+Force-fitting an override mechanism onto
+<code>go vet</code>/<code>gofmt</code> — sensors with no legitimate
+override case — would encode a fake option. Scoping this item down: make
+the one genuinely vague message (<code>gofmt</code>
+<code>Check()</code>’s) name its likely real cause instead of restating
+the symptom. The full “escape hatch” pattern is worth revisiting once a
+threshold-style sensor actually exists to need it — noting that
+explicitly rather than skipping it silently.</p>
+<h3
+id="item-1-content-aware-guide-selection-no-concrete-target-in-harvey-yet">Item
+1 (content-aware guide selection) — no concrete target in Harvey
+yet</h3>
+<p>The exploration doc’s own example
+(<code>services -&gt; clients + domain</code>, gated to files under
+<code>./service/</code>) is from the user’s external notes about a
+different codebase, not an existing Harvey skill. Checked
+<code>agents/skills/*/SKILL.md</code> (<code>compile-skill</code>,
+<code>fountain-analysis</code>, <code>fountain-session</code>,
+<code>harvey-memory</code>, <code>multi-file</code>,
+<code>review-knowledge-base</code>, <code>setup-knowledge-base</code>,
+<code>update-knowledge-base</code>) — none are file-path-scoped the way
+the example assumes; all are workflow/procedure skills invoked by name,
+not by touching a particular directory. There is currently nothing in
+Harvey’s skill catalog for a content-aware selector to gate. Building
+the selection mechanism now would be speculative infrastructure with no
+real skill to apply it to — the same anti-pattern flagged in
+<code>CLAUDE.md</code>’s “don’t design for hypothetical future
+requirements.”</p>
+<p><strong>Not pursued in this increment.</strong> Revisit if/when a
+path-scoped skill or convention is added to Harvey’s own skill catalog.
+This also sidesteps the exploration doc’s own open question about item 1
+(risk of removing a guide still needed for an unrelated, non-path-scoped
+reason) — there’s nothing to build prematurely wrong.</p>
+<hr />
+<h2 id="scope-for-this-increment">Scope for this increment</h2>
+<p>Two phases, mirroring <code>computational-sensors-design.md</code>’s
+Phase A / Phase B split:</p>
+<ul>
+<li><strong>Phase A — <code>BudgetTracker</code></strong>: a shared,
+per-turn token pool threaded through <code>ragAugment</code> and the two
+direct-inject branches of <code>injectOrChunk</code>, so each consumes
+from (and is aware of) what the other already spent, instead of three
+independent, uncoordinated checks.</li>
+<li><strong>Phase B — sharpen the one vague sensor message</strong>:
+<code>gofmt</code> <code>Check()</code>’s generic string names its
+likely real cause (unparseable syntax) instead of restating the
+symptom.</li>
+</ul>
+<p>Item 1 is out of scope entirely, per the audit above.</p>
+<h2 id="phase-a-proposed-shape">Phase A — proposed shape</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// BudgetTracker is a per-turn, shared token pool. Callers Reserve() before</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">// adding content; a failed Reserve means &quot;this doesn&#39;t fit — skip it and</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co">// note that it was skipped,&quot; not an error.</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> BudgetTracker <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    Total <span class="dt">int</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    Used  <span class="dt">int</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> NewBudgetTracker<span class="op">(</span>total <span class="dt">int</span><span class="op">)</span> <span class="op">*</span>BudgetTracker</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>b <span class="op">*</span>BudgetTracker<span class="op">)</span> Reserve<span class="op">(</span>tokens <span class="dt">int</span><span class="op">)</span> <span class="dt">bool</span> <span class="co">// false when it would exceed Total</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>b <span class="op">*</span>BudgetTracker<span class="op">)</span> Remaining<span class="op">()</span> <span class="dt">int</span></span></code></pre></div>
+<p>Wiring, in <code>runChatTurn</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>tracker <span class="op">:=</span> NewBudgetTracker<span class="op">(</span>remainingContext<span class="op">(</span>a<span class="op">))</span>   <span class="co">// one per turn, before ragAugment</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>augmented<span class="op">,</span> ragInfo <span class="op">:=</span> a<span class="op">.</span>ragAugment<span class="op">(</span>input<span class="op">,</span> tracker<span class="op">)</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="op">...</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>augmented <span class="op">=</span> a<span class="op">.</span>injectOrChunk<span class="op">(</span>ctx<span class="op">,</span> augmented<span class="op">,</span> out<span class="op">,</span> tracker<span class="op">)</span></span></code></pre></div>
+<p><strong><code>ragAugment</code></strong>: iterate
+<code>relevant</code> chunks in existing score-descending order; for
+each, <code>tracker.Reserve(estimateTokens(chunk))</code> before
+appending it to the context block; stop at the first chunk that doesn’t
+fit (later chunks are lower-scored, so this is “keep the best chunks
+that fit,” not an arbitrary cutoff). When at least one chunk was dropped
+this way, append a short note to the context block
+(<code>[N lower-relevance chunk(s) omitted — context budget]</code>) so
+the model knows retrieval found more than it received, mirroring the
+existing “N additional files … were not injected” pattern
+<code>small-model-budget-design.md</code> Direction 1 proposed for
+files.</p>
+<p><strong><code>injectOrChunk</code></strong>: for the two
+direct-inject branches only (size ≤ <code>maxInjectFileBytes</code>, and
+oversized-but-fits-<code>remainingContext</code> today) —
+<code>tracker.Reserve(estimateTokens(content))</code> before appending;
+on failure, skip with the same per-file dim note style already used for
+the “too large to inject” case, plus one summary line if any files were
+skipped this way. The oversized-and-chunking branch (interactive
+<code>promptChunkInstruction</code> → <code>RunChunkedAnalysis</code>)
+is unchanged — it already does its own <code>remainingContext(a)</code>
+check and is interactive/self-limiting, not part of this increment’s
+scope.</p>
+<p>Memory injection (<code>injectMemoryContext</code>) is
+<strong>not</strong> wired into the same tracker in this increment — it
+fires once per session (not per turn, gated by
+<code>memoryContextPending</code>), so it isn’t part of the same
+per-turn coordination gap the other two are. Noted as a candidate for a
+later increment if session-start memory budget and per-turn RAG/file
+budget are ever found to actually collide in practice.</p>
+<h2 id="phase-b-proposed-shape">Phase B — proposed shape</h2>
+<p><code>code_formatters.go:152</code>
+(<code>PipeExternalFormatter.Check</code>), change:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> <span class="ot">false</span><span class="op">,</span> <span class="op">[]</span>FormatIssue<span class="op">{{</span>Line<span class="op">:</span> <span class="dv">1</span><span class="op">,</span> Column<span class="op">:</span> <span class="dv">0</span><span class="op">,</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    Message<span class="op">:</span> <span class="st">&quot;content differs from formatted output&quot;</span><span class="op">,</span> Severity<span class="op">:</span> <span class="st">&quot;info&quot;</span><span class="op">}}</span></span></code></pre></div>
+<p>to a cause-neutral message covering both real cases (confirmed
+2026-07-13):</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> <span class="ot">false</span><span class="op">,</span> <span class="op">[]</span>FormatIssue<span class="op">{{</span>Line<span class="op">:</span> <span class="dv">1</span><span class="op">,</span> Column<span class="op">:</span> <span class="dv">0</span><span class="op">,</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    Message<span class="op">:</span> <span class="st">&quot;gofmt: content is not in canonical format — if auto-format is &quot;</span> <span class="op">+</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;disabled, run gofmt or write already-formatted content; if it was &quot;</span> <span class="op">+</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;enabled, a syntax error may have prevented it (check the file &quot;</span> <span class="op">+</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;compiles)&quot;</span><span class="op">,</span> Severity<span class="op">:</span> <span class="st">&quot;info&quot;</span><span class="op">}}</span></span></code></pre></div>
+<p>Only <code>PipeExternalFormatter</code> (the gofmt path, the only one
+wired into <code>runPostWriteSensors</code> per Direction A’s Go-only
+scope) changes.
+<code>FileExternalFormatter</code>/<code>BuiltinFormatter</code>
+messages are untouched — neither is currently reachable from
+<code>runPostWriteSensors</code>, so rewriting their text would be
+speculative.</p>
+<hr />
+<h2 id="decisions-confirmed-2026-07-13">Decisions confirmed
+(2026-07-13)</h2>
+<p>Confirmed with the user before writing the plan:</p>
+<ol type="1">
+<li><strong>Omitted-content notes are model-visible</strong>, appended
+to the prompt text (not only a <code>SensorEvent</code>). Rationale:
+“some retrieved/requested content was withheld” is directly relevant to
+how the model should answer this turn — unlike a code-quality finding
+(Direction A’s territory), this is about the completeness of what the
+model is about to reason over, so the default-off token-cost gating
+Direction A uses for low-severity findings doesn’t apply the same way
+here.</li>
+<li><strong><code>BudgetTracker.Total = remainingContext(a)</code>
+as-is</strong>, no additional response-headroom reservation in this
+increment. <code>remainingContext(a)</code> already carries its own 10%
+safety margin. A dedicated response-headroom constant (closing
+<code>small-model-budget-design.md</code>’s priority-table gap) is left
+as a separate, adjacent future change, not bundled into this one.</li>
+<li><strong>Phase A / Phase B scope confirmed as written</strong> —
+proceed to the plan doc. Item 1 (content-aware guide selection) remains
+out of scope per the audit above.</li>
+</ol>
+<h2 id="remaining-open-question-for-the-plan">Remaining open question
+for the plan</h2>
+<ul>
+<li>Exact token-estimate granularity for <code>ragAugment</code>’s
+per-chunk <code>Reserve</code> call:
+<code>estimateTokens(chunk content)</code> alone, or the chunk content
+plus its <code>[%d] (source: %s)</code> header/formatting overhead?
+Small either way, but worth being precise about in the plan so tests
+assert the right number.</li>
+</ul>
+</section>
+</body>
+</html>

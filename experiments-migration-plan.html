@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="experiments-projects-data-migration-implementation-plan"><code>experiments</code>
+→ <code>projects</code> Data Migration — Implementation Plan</h1>
+<p>See <a
+href="experiments-migration-design.html">experiments-migration-design.md</a>
+for the full audit, rationale, and confirmed decisions. This document
+covers only the migration inside <code>knowledge.go</code> — no
+<code>bin/kbmerge</code> changes, no root <code>CLAUDE.md</code> edits
+(not asked for), no dropping of legacy tables.</p>
+<p>Verified against the live code on 2026-07-27 (line numbers below):
+<code>kbAlterStmts</code> at <code>knowledge.go:203-218</code>, the
+alter-loop call site at <code>knowledge.go:309-311</code>, the
+UUID-backfill loop at <code>knowledge.go:334-340</code>,
+<code>kb := &amp;KnowledgeBase{...}</code> at
+<code>knowledge.go:341</code>. <code>AddProject</code> at
+<code>knowledge.go:379-404</code>
+(<code>name, description string) (int64, error)</code>).</p>
+<p>Work items ordered W1 → W6. Per this workspace’s TDD-first
+convention, W1 (the tests) is written and confirmed <strong>red</strong>
+before W2–W4 are implemented.</p>
+<hr />
+<h2 id="w1-migration-tests-red">W1 — Migration tests (red)</h2>
+<h3 id="file-to-modify">File to modify</h3>
+<p><code>knowledge_test.go</code> — new test function(s), following the
+same raw-DDL seeding pattern as
+<code>TestOpenKnowledgeBase_BackfillsLegacyConceptsCreatedAt</code>.</p>
+<h3 id="helper">Helper</h3>
+<p>A small local helper to build the exact legacy shape from the design
+doc’s “Current schema” section: <code>experiments</code>,
+<code>experiment_concepts</code>, and an <code>observations</code> table
+with <code>experiment_id</code> (no <code>project_id</code> column) —
+opened via raw <code>sql.Open("sqlite", dbPath)</code>, not
+<code>OpenKnowledgeBase</code>, so the seed reflects a genuinely
+pre-migration file.</p>
+<h3 id="tests-to-add">Tests to add</h3>
+<ul>
+<li><code>TestOpenKnowledgeBase_MigratesExperimentsWithoutCollision</code>
+— seed <code>experiments</code> with one row
+(<code>name='harvey', status='active', language='Go', repo_url='https://github.com/rsdoiel/Laboratory'</code>),
+one <code>observations</code> row linked via <code>experiment_id</code>,
+no <code>projects</code> row named <code>harvey</code>. After
+<code>OpenKnowledgeBase</code>: assert a new <code>projects</code> row
+named <code>harvey</code> exists with
+<code>description = "Go — https://github.com/rsdoiel/Laboratory"</code>;
+assert the observation’s <code>project_id</code> now equals that new
+project’s <code>id</code>.</li>
+<li><code>TestOpenKnowledgeBase_MigratesExperimentsWithCollision</code>
+— seed <code>experiments</code> with <code>henry</code> (real data: one
+observation, one <code>experiment_concepts</code> link)
+<strong>and</strong> seed <code>projects</code> with an existing
+<code>henry</code> row (empty, as found on macmini). After
+<code>OpenKnowledgeBase</code>: assert exactly one <code>henry</code>
+row remains in <code>projects</code> (no duplicate); assert the migrated
+observation’s <code>project_id</code> points at the
+<em>pre-existing</em> <code>henry</code> project’s <code>id</code>, not
+a new one; assert <code>project_concepts</code> gained the translated
+link.</li>
+<li><code>TestOpenKnowledgeBase_MigrationIdempotent</code> — run the two
+seeds above, open once, capture every
+<code>projects.id</code>/<code>project_id</code> value touched, close
+and reopen against the same file, assert nothing changed (no duplicate
+projects, no duplicate <code>project_concepts</code> rows, same
+<code>project_id</code> values).</li>
+<li><code>TestOpenKnowledgeBase_MigrationLeavesLegacyTablesIntact</code>
+— after migration, assert <code>experiments</code> and
+<code>experiment_concepts</code> still exist with their original row
+counts and column values unchanged (decision 5: never dropped, never
+rewritten).</li>
+<li><code>TestOpenKnowledgeBase_NoExperimentsTableIsNoOp</code> — open a
+normal, already-current-schema <code>KnowledgeBase</code> (via
+<code>openTestKB(t)</code>, no <code>experiments</code> table at all)
+and assert <code>OpenKnowledgeBase</code> succeeds with no error and no
+<code>experiments</code>-related side effects (guards decision 1: the
+common case must stay a true no-op).</li>
+</ul>
+<p>Confirm all fail (mostly on <code>no such column: o.project_id</code>
+or missing migrated rows) before starting W2.</p>
+<hr />
+<h2 id="w2-schema-add-observations.project_id">W2 — Schema: add
+<code>observations.project_id</code></h2>
+<h3 id="file-to-modify-1">File to modify</h3>
+<p><code>knowledge.go:203-218</code> (<code>kbAlterStmts</code>) — add
+one line:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> kbAlterStmts <span class="op">=</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE observations ADD COLUMN source_doi TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE observations ADD COLUMN project_id INTEGER REFERENCES projects(id)`</span><span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ... existing entries unchanged</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Nullable, no default clause needed (not a non-constant-default case —
+plain <code>NULL</code> is always a valid ADD COLUMN default). Safe to
+run unconditionally: on every database that already has
+<code>project_id</code> (i.e. everything except a legacy
+<code>experiments</code>-shaped file), SQLite’s “duplicate column name”
+error is already silently swallowed by the existing
+<code>_, _ = db.Exec(stmt)</code> loop at
+<code>knowledge.go:309-311</code>.</p>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> succeeds.</li>
+<li><code>TestOpenKnowledgeBase_NoExperimentsTableIsNoOp</code> passes
+(this change alone shouldn’t break the common
+no-<code>experiments</code> case).</li>
+</ul>
+<hr />
+<h2 id="w3-go-side-migration-function">W3 — Go-side migration
+function</h2>
+<h3 id="file-to-modify-2">File to modify</h3>
+<p><code>knowledge.go</code> — new unexported function, called from
+<code>OpenKnowledgeBase</code> after the W2 alter loop and after the
+UUID-backfill loop (<code>knowledge.go:334-340</code>) has run, since
+newly-created projects need real UUIDs and the migration relies on
+<code>AddProject</code>’s normal insert path for that (see design
+decision 3). Call it before <code>kb := &amp;KnowledgeBase{...}</code>
+(<code>knowledge.go:341</code>), so a migration failure can still
+<code>db.Close()</code> and return an error the same way the
+UUID-backfill block above it does.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">// migrateExperimentsToProjects bridges a pre-harvey, hand-authored</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co">// agents/knowledge.db (experiments/experiment_concepts/experiment_id,</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">// documented historically in the Laboratory root CLAUDE.md, predating</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co">// this package) onto the current projects/project_id schema. No-op if</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co">// the legacy experiments table doesn&#39;t exist. Idempotent: a second call</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">// finds no unmigrated rows.</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> migrateExperimentsToProjects<span class="op">(</span>kb <span class="op">*</span>KnowledgeBase<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> hasExperiments <span class="dt">int</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    kb<span class="op">.</span>db<span class="op">.</span>QueryRow<span class="op">(</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        <span class="st">`SELECT COUNT(*) FROM sqlite_master WHERE type=&#39;table&#39; AND name=&#39;experiments&#39;`</span><span class="op">,</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">).</span>Scan<span class="op">(&amp;</span>hasExperiments<span class="op">)</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> hasExperiments <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    rows<span class="op">,</span> err <span class="op">:=</span> kb<span class="op">.</span>db<span class="op">.</span>Query<span class="op">(</span><span class="st">`SELECT id, name, status, language, repo_url FROM experiments`</span><span class="op">)</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> err</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    <span class="kw">type</span> legacyExperiment <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>        id                    <span class="dt">int64</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>        name<span class="op">,</span> language<span class="op">,</span> repo <span class="dt">string</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> experiments <span class="op">[]</span>legacyExperiment</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> rows<span class="op">.</span>Next<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>        <span class="kw">var</span> e legacyExperiment</span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>        <span class="kw">var</span> status sql<span class="op">.</span>NullString</span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">:=</span> rows<span class="op">.</span>Scan<span class="op">(&amp;</span>e<span class="op">.</span>id<span class="op">,</span> <span class="op">&amp;</span>e<span class="op">.</span>name<span class="op">,</span> <span class="op">&amp;</span>status<span class="op">,</span> <span class="op">&amp;</span>e<span class="op">.</span>language<span class="op">,</span> <span class="op">&amp;</span>e<span class="op">.</span>repo<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>            rows<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> err</span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>        experiments <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>experiments<span class="op">,</span> e<span class="op">)</span></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>    rows<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> e <span class="op">:=</span> <span class="kw">range</span> experiments <span class="op">{</span></span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>        <span class="kw">var</span> projectID <span class="dt">int64</span></span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a>        err <span class="op">:=</span> kb<span class="op">.</span>db<span class="op">.</span>QueryRow<span class="op">(</span><span class="st">`SELECT id FROM projects WHERE name = ?`</span><span class="op">,</span> e<span class="op">.</span>name<span class="op">).</span>Scan<span class="op">(&amp;</span>projectID<span class="op">)</span></span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">==</span> sql<span class="op">.</span>ErrNoRows <span class="op">{</span></span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>            desc <span class="op">:=</span> strings<span class="op">.</span>TrimSpace<span class="op">(</span>strings<span class="op">.</span>Join<span class="op">(</span></span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>                <span class="op">[]</span><span class="dt">string</span><span class="op">{</span>e<span class="op">.</span>language<span class="op">,</span> e<span class="op">.</span>repo<span class="op">},</span> <span class="st">&quot; — &quot;</span><span class="op">))</span></span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>            <span class="co">// strings.Join always inserts &quot; — &quot; even with one side empty;</span></span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a>            <span class="co">// normalize the two-empty and one-empty cases explicitly.</span></span>
+<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>            <span class="cf">switch</span> <span class="op">{</span></span>
+<span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a>            <span class="cf">case</span> e<span class="op">.</span>language <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> e<span class="op">.</span>repo <span class="op">==</span> <span class="st">&quot;&quot;</span><span class="op">:</span></span>
+<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a>                desc <span class="op">=</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb2-47"><a href="#cb2-47" aria-hidden="true" tabindex="-1"></a>            <span class="cf">case</span> e<span class="op">.</span>language <span class="op">==</span> <span class="st">&quot;&quot;</span><span class="op">:</span></span>
+<span id="cb2-48"><a href="#cb2-48" aria-hidden="true" tabindex="-1"></a>                desc <span class="op">=</span> e<span class="op">.</span>repo</span>
+<span id="cb2-49"><a href="#cb2-49" aria-hidden="true" tabindex="-1"></a>            <span class="cf">case</span> e<span class="op">.</span>repo <span class="op">==</span> <span class="st">&quot;&quot;</span><span class="op">:</span></span>
+<span id="cb2-50"><a href="#cb2-50" aria-hidden="true" tabindex="-1"></a>                desc <span class="op">=</span> e<span class="op">.</span>language</span>
+<span id="cb2-51"><a href="#cb2-51" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb2-52"><a href="#cb2-52" aria-hidden="true" tabindex="-1"></a>            projectID<span class="op">,</span> err <span class="op">=</span> kb<span class="op">.</span>AddProject<span class="op">(</span>e<span class="op">.</span>name<span class="op">,</span> desc<span class="op">)</span></span>
+<span id="cb2-53"><a href="#cb2-53" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-54"><a href="#cb2-54" aria-hidden="true" tabindex="-1"></a>                <span class="cf">return</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: migrate experiment %q: %w&quot;</span><span class="op">,</span> e<span class="op">.</span>name<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb2-55"><a href="#cb2-55" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb2-56"><a href="#cb2-56" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-57"><a href="#cb2-57" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> err</span>
+<span id="cb2-58"><a href="#cb2-58" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-59"><a href="#cb2-59" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-60"><a href="#cb2-60" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> kb<span class="op">.</span>db<span class="op">.</span>Exec<span class="op">(</span></span>
+<span id="cb2-61"><a href="#cb2-61" aria-hidden="true" tabindex="-1"></a>            <span class="st">`UPDATE observations SET project_id = ? WHERE experiment_id = ? AND project_id IS NULL`</span><span class="op">,</span></span>
+<span id="cb2-62"><a href="#cb2-62" aria-hidden="true" tabindex="-1"></a>            projectID<span class="op">,</span> e<span class="op">.</span>id<span class="op">,</span></span>
+<span id="cb2-63"><a href="#cb2-63" aria-hidden="true" tabindex="-1"></a>        <span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-64"><a href="#cb2-64" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: migrate observations for experiment %q: %w&quot;</span><span class="op">,</span> e<span class="op">.</span>name<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb2-65"><a href="#cb2-65" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-66"><a href="#cb2-66" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-67"><a href="#cb2-67" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> kb<span class="op">.</span>db<span class="op">.</span>Exec<span class="op">(</span></span>
+<span id="cb2-68"><a href="#cb2-68" aria-hidden="true" tabindex="-1"></a>            <span class="st">`INSERT OR IGNORE INTO project_concepts (project_id, concept_id)</span></span>
+<span id="cb2-69"><a href="#cb2-69" aria-hidden="true" tabindex="-1"></a><span class="st">             SELECT ?, concept_id FROM experiment_concepts WHERE experiment_id = ?`</span><span class="op">,</span></span>
+<span id="cb2-70"><a href="#cb2-70" aria-hidden="true" tabindex="-1"></a>            projectID<span class="op">,</span> e<span class="op">.</span>id<span class="op">,</span></span>
+<span id="cb2-71"><a href="#cb2-71" aria-hidden="true" tabindex="-1"></a>        <span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-72"><a href="#cb2-72" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: migrate concepts for experiment %q: %w&quot;</span><span class="op">,</span> e<span class="op">.</span>name<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb2-73"><a href="#cb2-73" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-74"><a href="#cb2-74" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-75"><a href="#cb2-75" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb2-76"><a href="#cb2-76" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Call site (right before
+<code>kb := &amp;KnowledgeBase{db: db, path: dbPath}</code> at
+<code>knowledge.go:341</code>):</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>kbTmp <span class="op">:=</span> <span class="op">&amp;</span>KnowledgeBase<span class="op">{</span>db<span class="op">:</span> db<span class="op">,</span> path<span class="op">:</span> dbPath<span class="op">}</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> err <span class="op">:=</span> migrateExperimentsToProjects<span class="op">(</span>kbTmp<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    db<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: migrate experiments: %w&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>(<code>migrateExperimentsToProjects</code> takes
+<code>*KnowledgeBase</code> rather than <code>*sql.DB</code> so it can
+call <code>kb.AddProject</code> directly instead of duplicating its
+UUID/origin_host/FTS-index logic — construct the real <code>kb</code>
+value one statement earlier than today rather than introducing a second,
+temporary wrapper type.)</p>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>TestOpenKnowledgeBase_MigratesExperimentsWithoutCollision</code>
+and <code>TestOpenKnowledgeBase_MigratesExperimentsWithCollision</code>
+pass.</li>
+<li><code>TestOpenKnowledgeBase_MigrationLeavesLegacyTablesIntact</code>
+passes (this function only ever reads
+<code>experiments</code>/<code>experiment_concepts</code>, never writes
+to or drops them).</li>
+</ul>
+<hr />
+<h2 id="w4-idempotency">W4 — Idempotency</h2>
+<p>No new code expected — idempotency should fall out of W3’s guards
+(<code>WHERE name = ?</code> lookup before insert,
+<code>WHERE project_id IS NULL</code> on the <code>UPDATE</code>,
+<code>INSERT OR IGNORE</code> on the composite PK). This step is purely
+verification:</p>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>TestOpenKnowledgeBase_MigrationIdempotent</code> passes.</li>
+<li>If it doesn’t on the first attempt, the likely gap is the
+<code>UPDATE observations SET project_id = ? WHERE experiment_id = ? AND project_id IS NULL</code>
+guard not actually preventing a second no-op run — check that before
+adding new state-tracking machinery.</li>
+</ul>
+<hr />
+<h2 id="w5-verify-against-the-real-copy">W5 — Verify against the real
+copy</h2>
+<p>Manual, not automated — this exercises the actual file, not a
+synthetic seed.</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> macmini-rd.local-agents/knowledge.db /tmp/macmini-knowledge.db.bak</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> run ./cmd/migrateonce   <span class="co"># throwaway trigger program, same pattern used</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>                           <span class="co"># earlier this session for the created_at fix —</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>                           <span class="co"># write, run once, delete; confirm git status</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>                           <span class="co"># clean afterward</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> macmini-rd.local-agents/knowledge.db <span class="st">&quot;SELECT name FROM projects;&quot;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"># expect: audiobox, harvey, henry, sparqlset (henry pre-existing, three new)</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> macmini-rd.local-agents/knowledge.db <span class="dt">\</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;SELECT COUNT(*) FROM observations WHERE experiment_id IS NOT NULL AND project_id IS NULL;&quot;</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co"># expect: 0</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> macmini-rd.local-agents/knowledge.db <span class="st">&quot;.tables&quot;</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co"># expect: experiments/experiment_concepts/experiment_summary still present</span></span></code></pre></div>
+<p>Then re-attempt the real cross-machine merge that motivated this
+whole thread:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build <span class="at">-o</span> bin/kbmerge ./cmd/kbmerge</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">./bin/kbmerge</span> <span class="at">-a</span> agents/knowledge.db <span class="at">-b</span> macmini-rd.local-agents/knowledge.db <span class="dt">\</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">-out</span> /tmp/kbmerge-real-test.db <span class="at">-force</span></span></code></pre></div>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li>The migration output matches the expectations above.</li>
+<li><code>bin/kbmerge</code> gets past <code>observations</code> (the
+blocker this design exists to remove) — whatever it does next (succeed,
+or surface a further distinct issue) is genuinely new information, not a
+re-occurrence of <code>no such column: o.project_id</code>.</li>
+</ul>
+<hr />
+<h2 id="w6-verify-green-and-document">W6 — Verify green and
+document</h2>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> vet ./...</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span></code></pre></div>
+<p>(<code>go test -race</code> remains blocked on this machine by the
+pre-existing Raspberry Pi ThreadSanitizer VMA-width issue noted in the
+2026-07-26 <code>DECISIONS.md</code> entries — not a new gap introduced
+here.)</p>
+<p>Log the outcome in <code>DECISIONS.md</code> (new entry, same
+convention as the <code>concepts.created_at</code> entry), and check off
+the relevant <code>TODO.md</code> item once macmini’s
+<strong>live</strong> <code>agents/knowledge.db</code> (not just the
+copy on wren) has actually been migrated — that’s a separate, explicit
+action over SSH, not implied by this plan finishing.</p>
+<hr />
+<h2 id="out-of-scope-here">Out of scope here</h2>
+<ul>
+<li>Applying this migration to macmini’s real, live
+<code>agents/knowledge.db</code> (only the copy gets exercised in W5) —
+a deliberate, separate step, same as how the
+<code>concepts.created_at</code> fix was scoped.</li>
+<li>Updating root <code>CLAUDE.md</code>’s stale Knowledge Base section
+(documents <code>experiments</code>/<code>experiment_*</code> as
+current) — not asked for.</li>
+<li>Re-running <code>bin/kbmerge</code> against macmini’s real live
+file, or actually placing a merged database into position on either
+machine.</li>
+<li>The knowledge-base module extraction and JSON-L export steps from
+<code>../knowledge_db_merge_design.md</code> — unrelated to this
+fix.</li>
+</ul>
+</section>
+</body>
+</html>

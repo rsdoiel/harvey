@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-small-model-budget-management-design-exploration">Harvey
+Small-Model Budget Management — Design Exploration</h1>
+<p><strong>Date</strong>: 2026-06-28<br />
+<strong>Status</strong>: Exploration — not yet approved for
+implementation<br />
+<strong>Related</strong>: <a
+href="chunked-analysis-design.html">chunked-analysis-design.md</a>, <a
+href="capability-adapter-concept.html">capability-adapter-concept.md</a>,
+<a href="plan-ivr-design.html">plan-ivr-design.md</a></p>
+<hr />
+<h2 id="the-unifying-problem">The Unifying Problem</h2>
+<p>Harvey runs on an 8B model on a Raspberry Pi with 15.8 GiB RAM,
+CPU-only. The nominal context window may be 8K–32K tokens, but at CPU
+speed on Pi, long contexts cause two distinct failure modes:</p>
+<ul>
+<li><strong>Memory exhaustion (OOM)</strong>: the KV cache for a large
+context does not fit in available RAM. The process dies or stalls. This
+is what happened when <code>natural_language_programming.md</code>
+(30KB, ~7,500 tokens) was injected into a session that already had
+history and memories loaded.</li>
+<li><strong>Quality degradation</strong>: even within the memory limit,
+small models produce significantly worse output as context fills. The
+“effective” context for reliable inference is often 30–50% of the
+nominal window.</li>
+</ul>
+<p>Harvey has several mechanisms that each address one slice of this
+problem:</p>
+<table>
+<colgroup>
+<col style="width: 32%" />
+<col style="width: 47%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Mechanism</th>
+<th scope="col">What it handles</th>
+<th scope="col">Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chunked analysis</td>
+<td>File content too large for one turn</td>
+<td><code>builtin_tools.go</code>, <code>chunk_analyzer.go</code></td>
+</tr>
+<tr>
+<td>Rolling summary</td>
+<td>History growing too long</td>
+<td><code>memory_rolling.go</code></td>
+</tr>
+<tr>
+<td>RAG score threshold</td>
+<td>Too many RAG chunks retrieved</td>
+<td><code>terminal.go</code> (<code>ragMinScore</code>)</td>
+</tr>
+<tr>
+<td><code>injectFileContext</code> cap</td>
+<td>File injection capped at 64KB</td>
+<td><code>file_inject.go</code></td>
+</tr>
+<tr>
+<td><code>capOutput</code></td>
+<td>Tool result output capped</td>
+<td><code>builtin_tools.go</code></td>
+</tr>
+</tbody>
+</table>
+<p>These mechanisms were designed independently. None of them
+coordinate. A file might pass the 64KB <code>injectFileContext</code>
+cap (e.g., a 30KB file) but still overflow context when combined with 4K
+tokens of existing history, a 2K system prompt, and 1K of injected
+memories.</p>
+<p><strong>The hypothesis:</strong> there is a general relationship
+between large file handling and complex prompt handling — both are
+instances of the same resource constraint. A unified budget-aware
+approach would handle both more reliably than the current collection of
+independent caps.</p>
+<hr />
+<h2 id="the-context-budget-model">The Context Budget Model</h2>
+<p>Before each turn, the available context budget can be computed:</p>
+<pre><code>budget = model.ContextWindow - safety_margin
+       - len(system_prompt_tokens)
+       - len(history_tokens)         // all prior turns
+       - len(memory_tokens)          // injected memories and RAG
+       - response_headroom           // tokens reserved for the model&#39;s reply</code></pre>
+<p><code>remainingContext(a)</code> in <code>context_estimator.go</code>
+already computes this (subtracting history, system prompt, and a 10%
+safety margin). What is missing is the per-component accounting and the
+allocation policy that decides what to do when a component exceeds its
+share.</p>
+<h3 id="budget-components-in-priority-order">Budget components in
+priority order</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 22%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Priority</th>
+<th scope="col">Component</th>
+<th scope="col">Current behavior when tight</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>System prompt + workspace profile</td>
+<td>Always included; never trimmed</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Response headroom (~1K tokens)</td>
+<td>Implicit; not explicitly reserved</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Current user input</td>
+<td>Always included; can be arbitrarily large</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Memories + KB context</td>
+<td>Included if budget allows (approximate)</td>
+</tr>
+<tr>
+<td>5</td>
+<td>RAG context</td>
+<td>Capped by <code>ragMinScore</code> threshold</td>
+</tr>
+<tr>
+<td>6</td>
+<td>File content (injected)</td>
+<td>Capped at 64KB, not budget-aware</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Prior history</td>
+<td>Compressed by rolling summary when full</td>
+</tr>
+</tbody>
+</table>
+<p>The problem is that items 5 and 6 are not aware of each other or of
+items 3 and 4. When a large file is injected (item 6) and RAG is on
+(item 5) and the session has 20 turns of history (item 7), the model
+receives more than it can handle, and fails.</p>
+<hr />
+<h2 id="the-relationship-between-large-files-and-complex-prompts">The
+Relationship Between Large Files and Complex Prompts</h2>
+<p>A large file is one specific case of “input that exceeds the
+remaining budget.” A complex prompt is another. Both share the same
+response: <strong>decompose the work into budget-sized
+pieces</strong>.</p>
+<h3 id="large-file-chunked-analysis-already-designed">Large file →
+chunked analysis (already designed)</h3>
+<p>When <code>read_file</code> would deliver more content than
+<code>remainingContext() × threshold</code>, chunked analysis breaks the
+file into paragraphs, processes each with a map call, and synthesizes a
+combined result.</p>
+<h3 id="complex-prompt-plan-decomposition-partially-implemented">Complex
+prompt → plan decomposition (partially implemented)</h3>
+<p>When a user’s request requires more steps than can fit in one turn
+with reliable output, <code>/plan</code> breaks the request into
+bounded-context steps. Today the user triggers this explicitly
+(<code>/plan TASK</code>). There is no automatic detection that a prompt
+is “too complex for one turn.”</p>
+<h3 id="multi-file-request-neither-mechanism-handles-this">Multi-file
+request → neither mechanism handles this</h3>
+<p>When a user says “review these three files: A.go, B.go, C.go” and
+each file is 8KB: - <code>injectFileContext</code> injects all three
+(total 24KB, ~6K tokens) - No budget check is run across the aggregate -
+With history + memories, this likely overflows</p>
+<p>The chunked analysis feature handles one large file. It does not
+handle multiple medium files whose aggregate exceeds budget.</p>
+<hr />
+<h2 id="design-directions">Design Directions</h2>
+<p>These are exploratory directions, not implementation plans. Each
+needs refinement before it can be planned.</p>
+<h3 id="direction-1-budget-aware-injectfilecontext">Direction 1 —
+Budget-aware <code>injectFileContext</code></h3>
+<p>The most impactful near-term change. Make
+<code>injectFileContext</code> a method on <code>Agent</code> so it can
+access the budget:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> injectFileContext<span class="op">(</span>prompt <span class="dt">string</span><span class="op">)</span> <span class="dt">string</span></span></code></pre></div>
+<p>For each file candidate extracted from the prompt: 1. Estimate its
+token cost (<code>fileExceedsBudget</code>). 2. Track a running total
+against <code>remainingContext(a)</code>. 3. When the running total
+would exceed, say, 40% of the budget: - Stop injecting files. - Append a
+note:
+<code>[Note: N additional files exceeded context budget and were not injected: X, Y, Z]</code></p>
+<p>This is a purely defensive improvement. It does not add chunked
+analysis to the injection path (too complex for a synchronous path), but
+it prevents the OOM case that triggered the original bug.</p>
+<p>A more aggressive version: when a single file exceeds budget, instead
+of injecting it, route it to chunked analysis synchronously before the
+turn begins. This requires making the injection path async-capable,
+which is a larger change.</p>
+<h3
+id="direction-2-explicit-budget-allocation-for-rag-and-memories">Direction
+2 — Explicit budget allocation for RAG and memories</h3>
+<p>Currently <code>ragAugment</code> and
+<code>UnifiedMemory.Recall</code> each consume tokens without knowing
+what the other took. Add a shared budget tracker:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> BudgetTracker <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    Total    <span class="dt">int</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    Used     <span class="dt">int</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>b <span class="op">*</span>BudgetTracker<span class="op">)</span> Reserve<span class="op">(</span>tokens <span class="dt">int</span><span class="op">)</span> <span class="dt">bool</span> <span class="op">{</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> b<span class="op">.</span>Used<span class="op">+</span>tokens <span class="op">&gt;</span> b<span class="op">.</span>Total <span class="op">{</span> <span class="cf">return</span> <span class="ot">false</span> <span class="op">}</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    b<span class="op">.</span>Used <span class="op">+=</span> tokens</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">true</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Pass a <code>BudgetTracker</code> to both <code>ragAugment</code> and
+<code>UnifiedMemory.Recall</code>. Each consumes from the same pool.
+When the pool is exhausted, further injections are skipped rather than
+causing overflow.</p>
+<p>This also resolves the dual RAG injection audit (TODO.md): with a
+shared tracker, double-injection is harmless because the second
+injection is budget-checked against what the first already consumed.</p>
+<h3
+id="direction-3-complexity-detection-for-automatic-plan-decomposition">Direction
+3 — Complexity detection for automatic plan decomposition</h3>
+<p>When the user submits a prompt, estimate its complexity before
+sending:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> estimatePromptComplexity<span class="op">(</span>prompt <span class="dt">string</span><span class="op">,</span> history <span class="op">[]</span>Message<span class="op">)</span> ComplexityLevel <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// heuristics:</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// - number of distinct file references</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// - presence of multi-step keywords (&quot;then&quot;, &quot;after that&quot;, &quot;finally&quot;)</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// - estimated turn count from known patterns</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>If complexity exceeds a threshold and <code>remainingContext</code>
+is below a second threshold, offer (don’t force) a plan
+decomposition:</p>
+<pre><code>  ⚠ This request involves multiple steps and the context is 75% full.
+  Decompose into a plan? [Y/n]:</code></pre>
+<p>This is the most speculative direction. Complexity estimation from
+text is imprecise, and false positives (offering /plan when it’s not
+needed) are annoying. Leave for a later exploration once Directions 1
+and 2 are in place.</p>
+<h3 id="direction-4-effective-context-window-calibration">Direction 4 —
+Effective context window calibration</h3>
+<p>Instead of using the model’s nominal context window, calibrate an
+“effective” window for reliable inference on Pi:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># harvey.yaml</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">models</span><span class="kw">:</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">llama3.2</span><span class="kw">:</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">context_window</span><span class="kw">:</span><span class="at"> </span><span class="dv">8192</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">effective_context</span><span class="kw">:</span><span class="at"> </span><span class="dv">4096</span><span class="co">   # actual reliable window on this hardware</span></span></code></pre></div>
+<p><code>remainingContext(a)</code> would use
+<code>effective_context</code> when set, falling back to
+<code>context_window</code>. Users can tune this per-model based on
+observed quality.</p>
+<p>This is a simple, low-risk change with high practical impact because
+it makes the budget math more honest without requiring any algorithmic
+changes.</p>
+<hr />
+<h2 id="relationship-to-other-features">Relationship to Other
+Features</h2>
+<h3 id="chunked-analysis">Chunked analysis</h3>
+<p>Chunked analysis is the right answer for large single files read via
+<code>read_file</code>. The bug fix (Direction 1 above) addresses the
+gap where files reach the model via <code>injectFileContext</code>
+instead of <code>read_file</code>.</p>
+<p>The two mechanisms are complementary, not competing: -
+<code>injectFileContext</code> → budget-aware, cap or skip files that
+exceed budget - <code>read_file</code> + chunked analysis → decompose
+large files into LLM sub-calls</p>
+<h3 id="ivr-repair-loops">IVR repair loops</h3>
+<p>An IVR repair attempt is itself a turn that consumes context. Under
+the current budget model, if a step fills 90% of context, there is no
+room for a repair turn. A budget-aware system would refuse to offer
+repair when the remaining budget cannot support it, rather than
+launching a repair that itself OOMs.</p>
+<p>This is a concrete prerequisite for IVR on small models: IVR must be
+budget-aware, not just repair-count-aware. The
+<code>RepairBudgetTotal</code> field in the deferred IVR design
+(<code>plan-ivr-design.md</code>) is the right instinct but needs the
+budget tracker from Direction 2 to be meaningful.</p>
+<h3 id="idea-3-strict-output-enforcement">Idea 3 (strict output
+enforcement)</h3>
+<p>Format correction re-prompts (one extra turn per correction) also
+consume context. The correction turn is small (~100 tokens) but the
+model’s prior response (which is in history) is not. Budget-awareness
+would prevent attempting correction when the context is already too full
+for a useful response.</p>
+<h3 id="idea-4-tool-loop-aware-rolling-summary">Idea 4 (tool-loop-aware
+rolling summary)</h3>
+<p>Structured <code>ToolTurnSummary</code> entries are more
+space-efficient than prose compression of the same information. A tool
+call with a large result compresses to a single short line rather than a
+multi-sentence prose summary. This directly increases the effective
+budget available per turn by reclaiming space in compressed history.</p>
+<hr />
+<h2 id="immediate-actions">Immediate Actions</h2>
+<p>Before any of the above directions are implemented, two low-risk
+changes should happen:</p>
+<ol type="1">
+<li><p><strong>Lower <code>maxInjectFileBytes</code> in
+<code>file_inject.go</code></strong> from 64KB to 16KB. This immediately
+reduces the worst-case injection from ~16K tokens to ~4K tokens, making
+OOM much less likely without any algorithmic changes. It is a one-line
+fix with a clear rationale.</p></li>
+<li><p><strong>Add <code>effective_context</code> to the model
+cache</strong> (Direction 4 above). This is a config-only change that
+lets the Pi user tell Harvey “this model reliably handles 4K tokens, not
+8K” without code changes.</p></li>
+</ol>
+<p>These two changes close the immediate safety gap while the larger
+design directions are explored.</p>
+</section>
+</body>
+</html>

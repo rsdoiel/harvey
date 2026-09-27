@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-unified-model-support-design">Harvey Unified Model
+Support — Design</h1>
+<p><strong>Status (2026-06-28):</strong> Design draft. See <a
+href="unified-models-plan.html">unified-models-plan.md</a> for the
+phased implementation plan.</p>
+<hr />
+<h2 id="background">Background</h2>
+<p>Harvey supports three model backends: <strong>Ollama</strong>
+(active), <strong>Llamafile</strong> (active), and
+<strong>llama.cpp</strong> (planned). Each backend has its own model
+management, configuration, and startup lifecycle. As a result, the user
+experience for registering models and routing to them diverges across
+backends, and metadata important for model selection is either missing
+or captured inconsistently.</p>
+<p>Two open questions from <a
+href="unified-models-questions.html">unified-models-questions.md</a>
+drive this design:</p>
+<ol type="1">
+<li><p><strong>Purpose metadata</strong>: How does a user tell Harvey
+that a given model is good at code generation but not vision, so that
+Harvey (and the user via <code>@mention</code>) can route to the right
+model for the task?</p></li>
+<li><p><strong>Cross-backend discovery</strong>: How does Harvey
+integrate with models already installed by Ollama or llama.cpp/llamafile
+without re-downloading them?</p></li>
+</ol>
+<hr />
+<h2 id="current-state">Current state</h2>
+<h3 id="ollama">Ollama</h3>
+<p>Harvey probes <code>/api/tags</code> to list installed models and
+<code>/api/show</code> for per-model metadata (context size, parameter
+count, tool-call capability). This is stored in
+<code>model_cache.db</code> as operational capability data.</p>
+<p><code>model_aliases</code> in <code>harvey.yaml</code> maps a short
+name to the full Ollama model ID
+(e.g. <code>"granite" → "granite3.3:8b"</code>). Aliases are set via
+<code>/ollama alias set</code> and used for <code>@mention</code>
+routing.</p>
+<p><strong>Gap</strong>: <code>/ollama use MODEL</code> switches the
+active model but does not prompt for an alias. Users who want
+<code>@mention</code> routing must run <code>/ollama alias set</code> as
+a separate step, which they often skip.</p>
+<h3 id="llamafile">Llamafile</h3>
+<p><code>/llamafile add [PATH]</code> scans <code>~/Models</code> for
+<code>.llamafile</code> files, shows a numbered picker, prompts for a
+short name, starts the process, and saves the registration to
+<code>harvey.yaml</code>. The name is the alias used for
+<code>@mention</code>.</p>
+<p><code>/llamafile use NAME</code> switches between already-registered
+models.</p>
+<p><strong>Gap</strong>: No purpose/capability tags beyond what the
+operational probe captures (context size, tool-call support, embedding
+ability).</p>
+<h3 id="llama.cpp-planned">llama.cpp (planned)</h3>
+<p>llama.cpp uses <code>.gguf</code> model files (the same format as
+many llamafiles internally) and a separate <code>llama-server</code>
+binary. The model management pattern is identical to llamafile (files in
+<code>~/Models</code>, external binary, local HTTP server) but with a
+different binary and flag interface.</p>
+<p><strong>Gap</strong>: No Harvey integration yet.</p>
+<hr />
+<h2 id="design-goals">Design goals</h2>
+<ol type="1">
+<li><p><strong>Consistent registration UX across backends.</strong> All
+three backends converge on the same gesture: pick a model file or
+installed model, give it a short name (alias), optionally annotate its
+purpose. Harvey saves the registration and routes <code>@mention</code>
+through the alias.</p></li>
+<li><p><strong>Purpose tags.</strong> Extend model aliases from a flat
+string map to a struct carrying the full model name plus an optional
+tags list. Tags are user-authored (not auto-probed), short, and drawn
+from a common vocabulary. Example:
+<code>tags: [code, instruct]</code>.</p></li>
+<li><p><strong>No re-downloading installed models.</strong> Harvey
+discovers models already available to each backend and offers them in
+pickers rather than requiring manual path entry or a separate pull
+step.</p></li>
+<li><p><strong><code>@mention</code> routing by tag.</strong> When the
+user types <code>@code</code>, Harvey resolves it to the
+highest-capability model tagged <code>code</code> (combining purpose tag
+match with the existing capability score from
+<code>model_cache.db</code>).</p></li>
+</ol>
+<hr />
+<h2 id="architecture">Architecture</h2>
+<h3 id="u1-unified-picker-with-lazy-registration">U1 — Unified picker
+with lazy registration</h3>
+<p><strong>Supersedes the original <code>/ollama use</code> alias
+prompt.</strong></p>
+<p><code>/model use</code> with no argument presents a single picker
+built from all available sources:</p>
+<ol type="1">
+<li><code>.llamafile</code> files in <code>~/Models</code> — engine:
+llamafile</li>
+<li><code>.gguf</code> files in <code>~/Models</code> — engine:
+llama-server</li>
+<li>Ollama models from <code>/api/tags</code> — engine: ollama (omitted
+if unreachable)</li>
+</ol>
+<p>If the selected model has no alias, Harvey prompts inline:</p>
+<pre><code>Short alias for &#39;granite3.3:8b&#39; (Enter to skip): 
+Optional tags (e.g. code,instruct — Enter to skip): </code></pre>
+<p>This replaces <code>/llamafile add</code>,
+<code>/llamacpp add</code>, and the post-<code>/ollama use</code> alias
+prompt with a single registration gesture that works identically for all
+three engines. Lazy registration applies to Ollama models and file-based
+models alike.</p>
+<h3 id="u2-purpose-tags-in-model-aliases">U2 — Purpose tags in model
+aliases</h3>
+<p><strong>Current YAML:</strong></p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model_aliases</span><span class="kw">:</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">granite</span><span class="kw">:</span><span class="at"> granite3.3:8b</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">qwen</span><span class="kw">:</span><span class="at"> qwen3:8b</span></span></code></pre></div>
+<p><strong>New YAML (backward-compatible):</strong></p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model_aliases</span><span class="kw">:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">granite</span><span class="kw">:</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">model</span><span class="kw">:</span><span class="at"> granite3.3:8b</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">tags</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">code</span><span class="kw">,</span><span class="at"> instruct</span><span class="kw">]</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">qwen</span><span class="kw">:</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">model</span><span class="kw">:</span><span class="at"> qwen3:8b</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">tags</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">reasoning</span><span class="kw">,</span><span class="at"> instruct</span><span class="kw">]</span></span></code></pre></div>
+<p>To preserve backward compatibility, the YAML loader accepts both
+forms: a plain string value is treated as
+<code>model: VALUE, tags: []</code>.</p>
+<p>In Go, <code>ModelAliases</code> changes from
+<code>map[string]string</code> to
+<code>map[string]ModelAlias</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ModelAlias <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    Model <span class="dt">string</span>   <span class="co">// full model name passed to the backend</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    Tags  <span class="op">[]</span><span class="dt">string</span> <span class="co">// e.g. [&quot;code&quot;, &quot;instruct&quot;, &quot;embedding&quot;, &quot;vision&quot;, &quot;reasoning&quot;]</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The helper <code>Config.ResolveAlias(alias string) string</code>
+continues to work unchanged from callers’ perspective; it reads
+<code>ModelAlias.Model</code>.</p>
+<p><strong>Common tag vocabulary:</strong></p>
+<table>
+<thead>
+<tr>
+<th scope="col">Tag</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>code</code></td>
+<td>Trained for code generation / completion</td>
+</tr>
+<tr>
+<td><code>embedding</code></td>
+<td>Produces text embeddings (not chat)</td>
+</tr>
+<tr>
+<td><code>vision</code></td>
+<td>Accepts image input</td>
+</tr>
+<tr>
+<td><code>reasoning</code></td>
+<td>Extended chain-of-thought / math reasoning</td>
+</tr>
+<tr>
+<td><code>instruct</code></td>
+<td>Fine-tuned to follow instructions</td>
+</tr>
+<tr>
+<td><code>general</code></td>
+<td>General-purpose chat; no specialisation</td>
+</tr>
+</tbody>
+</table>
+<p>Tags are advisory — there is no validation against this list. Users
+may add their own.</p>
+<p><strong>Management commands</strong> — <code>/model alias</code>
+(replaces <code>/ollama alias</code>):</p>
+<pre><code>/model alias set CODE granite3.3:8b --tags code,instruct
+/model alias tags CODE code instruct
+/model alias list              # shows engine + tags columns</code></pre>
+<h3 id="u3-mention-routing-by-purpose-tag">U3 — <code>@mention</code>
+routing by purpose tag</h3>
+<p>When the user types <code>@code</code>, the routing resolver
+currently looks up <code>code</code> as a literal alias. With U2 in
+place, the resolver also searches tags:</p>
+<ol type="1">
+<li>Exact alias name match → use that model.</li>
+<li>Tag match → collect all aliases with that tag; pick the one with the
+highest <code>CapabilityStatus.Score</code> in
+<code>model_cache.db</code>; fall back to first listed if no score
+data.</li>
+<li>No match → existing “model not found” behaviour.</li>
+</ol>
+<p>This extends the existing routing resolver in
+<code>routing.go</code>; no change to the <code>@mention</code> parsing
+or the REPL loop is required.</p>
+<h3 id="u4-llama.cpp-backend-mirroring-llamafile">U4 — llama.cpp backend
+(mirroring llamafile)</h3>
+<p>llama.cpp uses <code>.gguf</code> files in <code>~/Models</code>
+(same directory as llamafile) and a separate <code>llama-server</code>
+binary. The registration and use flow mirrors llamafile exactly:</p>
+<table>
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 39%" />
+<col style="width: 39%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Step</th>
+<th scope="col">Llamafile</th>
+<th scope="col">llama.cpp</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scan dir</td>
+<td><code>scanLlamafileModels</code> finds <code>*.llamafile</code></td>
+<td><code>scanLlamacppModels</code> finds <code>*.gguf</code></td>
+</tr>
+<tr>
+<td>Start server</td>
+<td>Execute the <code>.llamafile</code> binary</td>
+<td>Run <code>llama-server --model PATH</code></td>
+</tr>
+<tr>
+<td>Stop server</td>
+<td><code>proc.Kill()</code></td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Probe ready</td>
+<td><code>ProbeLlamafile(url)</code></td>
+<td>Same URL, same probe</td>
+</tr>
+<tr>
+<td>Harvey config</td>
+<td><code>LlamafileEntry{Name, Path, ContextLength}</code></td>
+<td><code>LlamacppEntry{Name, Path, ContextLength, ServerBin}</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>ServerBin</code> is the path to the <code>llama-server</code>
+binary (default: <code>llama-server</code> on <code>$PATH</code>). Since
+both backends serve the same OpenAI-compatible HTTP API, the rest of the
+chat loop is unchanged.</p>
+<p>Commands: <code>/llamacpp add</code>, <code>/llamacpp use</code>,
+<code>/llamacpp list</code>, <code>/llamacpp drop</code>,
+<code>/llamacpp status</code> — exact same subcommand set as
+<code>/llamafile</code>.</p>
+<h3 id="u5-cross-workspace-model-registry-deferred">U5 — Cross-workspace
+model registry (deferred)</h3>
+<p>Ollama is typically a single system-wide server; all Harvey
+workspaces share the same installed models. The current design requires
+each workspace’s <code>harvey.yaml</code> to list aliases independently,
+leading to repetition.</p>
+<p>A future global registry at
+<code>$HOME/.config/harvey/models.yaml</code> (or merged into a global
+<code>harvey.yaml</code>) would let all workspaces inherit aliases and
+tags defined once, with per-workspace overrides. This requires a merge
+strategy for the config loader and is deferred until the per-workspace
+alias UX (U1–U3) is stable.</p>
+<hr />
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<p><strong>Auto-probing purpose from model metadata.</strong> Ollama’s
+<code>/api/show</code> returns the Modelfile, which sometimes contains a
+SYSTEM prompt hinting at purpose. HuggingFace model cards use structured
+tags. Both sources are inconsistent and require parsing heuristics. User
+annotation at registration time is more reliable and already matches the
+workflow for llamafile naming. Auto-probing can supplement user tags in
+a later pass if needed.</p>
+<p><strong>Separate <code>purposes.yaml</code> file.</strong> Keeping
+purpose metadata outside <code>harvey.yaml</code> avoids touching
+<code>model_aliases</code>. Rejected: splitting alias and purpose data
+across two files adds lookup complexity and a second file to keep in
+sync. Embedding tags in the alias entry keeps the information
+co-located.</p>
+<p><strong>Tag validation against a fixed vocabulary.</strong> Enforcing
+a closed tag set avoids misspellings but prevents users from using
+domain-specific terms (e.g. <code>medical</code>, <code>legal</code>,
+<code>japanese</code>). Open vocabulary with a documented common set is
+a better fit for a single-user tool.</p>
+<p><strong>llama.cpp as a separate binary.</strong> llama.cpp could be
+wrapped into a llamafile-style self-contained binary. In practice, users
+who have llama.cpp installed already have <code>llama-server</code> and
+<code>.gguf</code> files. Harvey should work with that setup rather than
+require repackaging.</p>
+<hr />
+<h2 id="appendix-onnx-in-process-embedding-future-path">Appendix — ONNX
+in-process embedding (future path)</h2>
+<h3 id="what-onnx-would-add">What ONNX would add</h3>
+<p>Harvey currently has two embedder backends, both HTTP-based:
+<code>OllamaEmbedder</code> (calls Ollama’s
+<code>/api/embeddings</code>) and <code>EncoderfileEmbedder</code>
+(calls a local Encoderfile HTTP server). Both require an external
+process to be running before embedding can happen.</p>
+<p>An <code>ONNXEmbedder</code> would run an embedding model
+<strong>in-process</strong> — no server, no HTTP round-trip, no external
+dependency at query time. The model file (<code>.onnx</code>) is loaded
+once at startup; <code>Embed(text)</code> calls directly into the ONNX
+Runtime C library via CGo. This is the lowest possible latency path and
+works fully offline.</p>
+<p>The <code>Embedder</code> interface Harvey already defines is the
+right abstraction; <code>ONNXEmbedder</code> would implement it
+alongside the existing two backends. <code>NewEmbedderForEntry</code>
+would dispatch on <code>embedder_kind: "onnx"</code>, reading
+<code>embedder_url</code> as a local file path to the <code>.onnx</code>
+model file.</p>
+<h3 id="obstacles">Obstacles</h3>
+<p><strong>CGo dependency — resolved by
+<code>onnxruntime-purego</code>.</strong> The traditional blocker was
+that every production-grade Go ONNX binding (<code>onnxruntime_go</code>
+by yalue-gio is the main one) wraps the ONNX Runtime C shared library
+via CGo, requiring pre-built shared libraries for each cross-compilation
+target and a more complex build pipeline.</p>
+<p><a
+href="https://github.com/shota3506/onnxruntime-purego"><code>github.com/shota3506/onnxruntime-purego</code></a>
+eliminates this: it uses the <code>purego</code> library to load the
+ONNX Runtime shared library via
+<code>dlopen</code>/<code>LoadLibraryW</code> at runtime rather than
+linking at compile time. The Go binary remains CGo-free, so Harvey’s
+six-target cross-compilation pipeline stays clean with no build-tag
+split.</p>
+<p>The trade-off: users still need the ONNX Runtime shared library
+present at runtime (<code>libonnxruntime.so</code> on Linux,
+<code>.dylib</code> on macOS, <code>.dll</code> on Windows). This is a
+lighter end-user dependency than a CGo build setup, but it is still a
+dependency.</p>
+<p><strong>Tokenization — still unresolved (dominant blocker).</strong>
+ONNX Runtime runs the model computation graph, but the caller must
+tokenize raw text into token ID sequences first — in exactly the
+vocabulary and format the embedding model expects. HuggingFace models
+use a <code>tokenizer.json</code> file. There is no mature pure-Go
+implementation of the full HuggingFace tokenizers spec; the available Go
+options (<code>sugarme/tokenizer</code>) are also CGo-based. The
+tokenizer is not optional — without it, the ONNX model cannot be called
+at all.</p>
+<p>The right trigger for adding <code>ONNXEmbedder</code> to Harvey is a
+stable pure-Go tokenizer. The CGo build obstacle is now gone.</p>
+<h3 id="role-of-henry-the-llamafile-factory">Role of Henry (the
+llamafile factory)</h3>
+<p>Henry currently packages GGUF chat models into self-contained
+llamafile executables. The same packaging concept applies to ONNX
+embedding models: bundle the <code>.onnx</code> model file + ONNX
+Runtime + a small HTTP server shim into a single executable, producing
+an Encoderfile-compatible binary that Harvey’s existing
+<code>EncoderfileEmbedder</code> can consume without any code changes to
+Harvey.</p>
+<p>This is actually a cleaner path than native ONNX embedding in
+Harvey:</p>
+<pre><code>HuggingFace ONNX embedding model
+  → Henry packages it as an Encoderfile-style binary
+  → Harvey uses it via the existing EncoderfileEmbedder (embedder_kind: encoderfile)
+  → No CGo in Harvey; no tokenizer problem in Harvey</code></pre>
+<p>Henry would need a new <code>package-encoderfile.sh</code> script (or
+a new YAML model type, e.g. <code>kind: encoderfile</code>) alongside
+its existing <code>package.sh</code> for llamafile/GGUF models. The ONNX
+Runtime library would be bundled into the binary using the same APE
+polyglot technique that llamafile uses for llama.cpp.</p>
+<h3 id="role-of-mable-the-model-builder">Role of Mable (the model
+builder)</h3>
+<p>Mable trains a transformer model from scratch on a curated corpus and
+targets deployment via Ollama (i.e. conversion to GGUF). ONNX connects
+to Mable in two ways:</p>
+<p><strong>1. Export path for the trained model.</strong> PyTorch models
+can be exported to ONNX via <code>torch.onnx.export</code> or the
+HuggingFace <code>optimum</code> library. This is not useful for the
+generative (decoder) model Mable is building — Ollama/GGUF is the right
+target for that. But if Mable ever trains an <strong>encoder</strong>
+model on the same corpus (for semantic similarity or embedding-based
+retrieval within the classical corpus), ONNX is the natural export
+format, and that model could be packaged by Henry and consumed by
+Harvey’s RAG pipeline.</p>
+<p><strong>2. Tokenizer export.</strong> Mable trains a custom BPE
+tokenizer (vocab 50,000) using HuggingFace tokenizers. That tokenizer is
+already stored as <code>tokenizer.json</code> — the exact format an ONNX
+embedding model would need. If Mable later exports an ONNX embedding
+model, the tokenizer is already in the right format; no conversion step
+is needed.</p>
+<p><strong>The full pipeline, when mature:</strong></p>
+<pre><code>Mable trains classical corpus embedding model (PyTorch)
+  → exports encoder to ONNX via optimum
+  → Henry packages ONNX model + tokenizer.json + ONNX Runtime
+      as a self-contained Encoderfile binary
+  → Harvey /rag new classical --embedder encoderfile --embedder-url http://localhost:8080
+  → RAG queries use Mable&#39;s classical-corpus embedding space</code></pre>
+<p>This means Harvey’s RAG retrieval for classical texts would use
+embeddings from a model that “understands” that corpus rather than a
+general-purpose embedding model like nomic-embed-text. That is a
+meaningful quality improvement for Mable’s intended use.</p>
+<h3 id="summary">Summary</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 31%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Project</th>
+<th scope="col">ONNX role</th>
+<th scope="col">When relevant</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Harvey</strong></td>
+<td><code>ONNXEmbedder</code> implementing <code>Embedder</code></td>
+<td>After pure-Go tokenizer matures or CGo accepted</td>
+</tr>
+<tr>
+<td><strong>Henry</strong></td>
+<td>Package ONNX models as Encoderfile binaries</td>
+<td>As soon as an ONNX embedding model worth packaging exists</td>
+</tr>
+<tr>
+<td><strong>Mable</strong></td>
+<td>Export trained encoder to ONNX; tokenizer.json already
+compatible</td>
+<td>When/if Mable trains an encoder model alongside its decoder</td>
+</tr>
+</tbody>
+</table>
+<p>The near-term path that requires no new CGo work: Mable exports an
+encoder model → Henry packages it as an Encoderfile binary → Harvey
+consumes it via the existing <code>EncoderfileEmbedder</code>. Native
+ONNX support in Harvey (<code>ONNXEmbedder</code>) is a later
+optimization, not a prerequisite.</p>
+</section>
+</body>
+</html>

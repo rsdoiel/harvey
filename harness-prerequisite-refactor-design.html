@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-pre-harness-engineering-refactor-design">Harvey —
+Pre-Harness-Engineering Refactor — Design</h1>
+<p><strong>Date</strong>: 2026-07-12 <strong>Status</strong>: Design —
+decisions logging in <code>DECISIONS.md</code> as each item lands; see
+<a
+href="harness-prerequisite-refactor-plan.html">harness-prerequisite-refactor-plan.md</a>
+for the phased implementation plan. <strong>Related</strong>: <a
+href="harness-engineering-exploration.html">harness-engineering-exploration.md</a>,
+<a
+href="small-model-budget-design.html">small-model-budget-design.md</a></p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>Before starting the guide/sensor tooling work in
+<code>harness-engineering-exploration.md</code>, stabilize the specific
+code paths that work will build on. This is deliberately scoped narrow:
+four items already surfaced with concrete file:line references while
+auditing Harvey against Böckeler’s framework, each one a direct
+dependency of a specific harness- engineering direction. This is not a
+general debt-reduction sweep.</p>
+<p><strong>Explicitly out of scope for this cycle:</strong>
+<code>commands.go</code> (3877 lines, 71 functions). It’s real debt but
+doesn’t block any harness-engineering direction — decided out during
+scoping (2026-07-12) so this cycle stays small and low-risk. Track
+separately if/when it becomes a blocker.</p>
+<p>Each item below follows the same shape: current state, the problem, a
+proposed direction, and what it would take to verify the refactor didn’t
+change behavior. None of these are decided yet — that’s the next step,
+to be logged in <code>DECISIONS.md</code> once agreed.</p>
+<hr />
+<h2
+id="item-1-unify-token-budgetcontext-percentage-reporting-implemented-2026-07-12">Item
+1 — Unify token-budget/context-percentage reporting ✅ Implemented
+2026-07-12</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-12 entry) and
+<code>harness-prerequisite-refactor-plan.md</code> Phase B for what was
+actually found and decided. The proposal below is kept as-written for
+the historical record.</p>
+<p><strong>Current state.</strong> The same “estimate tokens used,
+compute %, pick a warning tier” logic is written three times:</p>
+<ul>
+<li><code>terminal.go:1112-1129</code> — Ollama path (exact count via
+<code>CountTokens</code>)</li>
+<li><code>terminal.go:1130-1143</code> — llamafile/llama.cpp path
+(estimated via <code>estimateTokens</code>)</li>
+<li><code>commands.go:640-664</code> — <code>/status</code>, a
+near-identical third copy of both, branching on provider again</li>
+</ul>
+<p><strong>Problem.</strong> Three call sites means three places to
+update if the warning thresholds (<code>80%</code>, <code>100%</code>)
+or the qualifier logic (<code>~</code> for estimated vs. exact) ever
+change, and it’s already happened once without all three being touched
+consistently — worth confirming they still agree before refactoring.</p>
+<p><strong>Proposed direction.</strong> One method,
+<code>Agent.contextUsage() (used int, limit int, exact bool)</code>,
+used by all three call sites; a second small function formats the
+<code>%</code>/qualifier/warning-tier text from that tuple.
+<code>runChatTurn</code> and <code>cmdStatus</code> both call the
+formatter; the only difference between them is whether the result is
+gated behind a threshold (turn warnings only print at ≥80%) or always
+shown (<code>/status</code>).</p>
+<p><strong>Verification.</strong> Existing behavior for both providers
+must be byte-identical for the same inputs — this is a pure Extract
+Method refactor. Add table-driven tests for
+<code>contextUsage()</code>/the formatter directly (currently this logic
+has no direct unit tests; it’s only exercised indirectly through
+whatever integration tests hit
+<code>runChatTurn</code>/<code>cmdStatus</code>).</p>
+<hr />
+<h2
+id="item-2-unify-tool-call-dispatch-and-report-implemented-2026-07-12">Item
+2 — Unify tool-call dispatch-and-report ✅ Implemented 2026-07-12</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-12 entry) for the final
+decision and test list. The proposal below is kept as-written for the
+historical record; the “unknown tool” asymmetry it flags was resolved by
+making both paths print the warning, per that decision entry.</p>
+<p><strong>Current state.</strong>
+<code>tryExecuteApertusToolCalls</code>
+(<code>tool_executor.go:252</code>) and
+<code>tryExecuteProseToolCalls</code>
+(<code>tool_executor.go:291</code>) are near-byte-identical: same
+<code>NewToolExecutor</code> setup, same <code>ExecuteToolCalls</code>
+call, same per-result loop printing <code>dim("  [name]")</code> +
+content and collecting <code>unknownNames</code>. They differ only in
+which parser produces <code>calls</code>
+(<code>ParseApertusToolCalls</code> vs.
+<code>ParseProseToolCalls</code>).</p>
+<p><strong>Problem.</strong> Any change to how tool results are
+reported/dispatched (e.g. Direction C’s <code>SensorEvent</code>
+routing, or Direction A’s tool tier needing a different report format)
+has to be made twice, and already risks drifting —
+<code>tryExecuteProseToolCalls</code> has the extra “Unknown tool(s)…
+Available tools:” block (<code>tool_executor.go:316-324</code>) that
+<code>tryExecuteApertusToolCalls</code> does not.</p>
+<p><strong>Proposed direction.</strong> One function,
+<code>executeAndReportToolCalls(a *Agent, calls []anyllm.ToolCall, out io.Writer) (dispatched bool, unknownNames []string)</code>,
+parameterized by nothing extra — both callers already produce
+<code>[]anyllm.ToolCall</code> from their respective parsers before
+calling in. Each of today’s two functions becomes:
+<code>calls := ParseXToolCalls(...); if len(calls)==0 {return false,nil}; return executeAndReportToolCalls(a, calls, out)</code>.
+The “unknown tool” block currently only in the prose path should almost
+certainly apply to both — worth confirming that’s an oversight, not an
+intentional difference, before merging.</p>
+<p><strong>Verification.</strong> <code>tool_executor_test.go</code>
+likely already covers both paths separately; after the merge, both
+existing test sets should pass unmodified against the shared function
+(same behavior, less code). If the “unknown tool” block turns out to be
+deliberately prose-only, that becomes an explicit parameter instead of a
+silent behavior change.</p>
+<hr />
+<h2
+id="item-3-unify-sensorstatus-reporting-into-one-channel-implemented-2026-07-12">Item
+3 — Unify sensor/status reporting into one channel ✅ Implemented
+2026-07-12</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-12 entry) and
+<code>harness-prerequisite-refactor-plan.md</code> Phase C. This was the
+last item of this refactor cycle — Item 4 remains owned by
+<code>small-model-budget-design.md</code>. The proposal below is kept
+as-written for the historical record.</p>
+<p><strong>Current state.</strong> Three disconnected reporting
+mechanisms for what are all, conceptually, sensor signals:</p>
+<ul>
+<li><code>tool_executor.go:118-133</code> —
+<code>e.Status.UpdateStatus(...)</code>, transient, erased by the
+spinner’s next Lear-quote tick (<code>spinner.go:155-159</code>)</li>
+<li><code>terminal.go:1265</code> — <code>groundingCheck</code> result,
+printed as a bare warning line after the spinner has already
+stopped</li>
+<li><code>terminal.go:1298</code> — prose-tool-call “only tool-call
+syntax” warning, another independent print</li>
+</ul>
+<p><strong>Problem.</strong> This is the direct prerequisite for
+<code>harness-engineering-exploration.md</code> Direction C (the
+sensor-sidecar pattern) and Direction A (new computational sensors need
+somewhere to report). Building either on top of three uncoordinated
+paths means the new work has to integrate with three different call
+shapes instead of one.</p>
+<p><strong>Proposed direction.</strong> Introduce the
+<code>SensorEvent{Kind, Message, Class}</code> type sketched in
+Direction C now, as pure plumbing — no new sensors yet, just rerouting
+the three existing signals through it. Concretely:
+<code>Status StatusReporter</code> becomes (or gains) a method taking a
+<code>SensorEvent</code>; <code>groundingCheck</code> and the
+prose-tool-call warning call the same method instead of
+<code>fmt.Fprintln</code> directly. The spinner’s rendering behavior
+does not need to change yet — this item is about giving all three
+signals one shape and one destination, not redesigning the UI. Actual UI
+changes (a trailing status log, the human/agent two-view split) stay in
+Direction C’s scope, to be designed after this plumbing exists.</p>
+<p><strong>Verification.</strong> Since this changes user-visible output
+shape (even if only internally routed the same way), this needs
+before/after manual comparison of the printed output for a
+grounding-check warning and an unknown-tool warning, plus whatever tests
+currently assert on the exact printed text of either — those assertions
+may need updating to match the new (hopefully equivalent) output.</p>
+<hr />
+<h2
+id="item-4-budget-gate-feedforward-assembly-before-its-added-to-history">Item
+4 — Budget-gate feedforward assembly before it’s added to history</h2>
+<p><strong>Current state.</strong> Already tracked in detail in
+<code>small-model-budget-design.md</code> (Directions 1 and 2,
+<code>BudgetTracker</code>); not re-designed here. Restating only the
+sequencing point: <code>runChatTurn</code>
+(<code>terminal.go:1091-1109</code>) runs memory injection →
+<code>ragAugment</code> → file injection → <em>then</em> appends to
+history → <em>then</em> computes the token-budget warning
+(<code>terminal.go:1112-1143</code>). The budget check runs after the
+content it should be gating is already committed.</p>
+<p><strong>Proposed direction.</strong> Defer entirely to
+<code>small-model-budget-design.md</code>’s existing Direction 1
+(<code>Agent.injectFileContext</code>, budget-aware, skip/note files
+that don’t fit) and Direction 2 (<code>BudgetTracker</code> shared
+between <code>ragAugment</code> and <code>UnifiedMemory.Recall</code>).
+Listed here only so this refactor cycle’s four items are the complete
+prerequisite set for <code>harness-engineering-exploration.md</code>’s
+Directions A-C in one place — the actual design work for this item
+already exists and doesn’t need repeating.</p>
+<p><strong>Verification.</strong> Whatever
+<code>small-model-budget-design.md</code> specifies when that design is
+decided; likely the two “Immediate Actions” it already lists (lower
+<code>maxInjectFileBytes</code>, add <code>effective_context</code>)
+plus tests for <code>BudgetTracker.Reserve</code>.</p>
+<hr />
+<h2 id="sequencing">Sequencing</h2>
+<p>Items 1 and 2 are small, mechanical, independently shippable, and
+touch disjoint code — either order, or in parallel. Item 3
+(sensor-channel unification) is easiest once Item 2 exists, since both
+tool-call dispatch functions currently print directly rather than
+through any shared reporting call — merging them first means Item 3 only
+has to redirect one call site’s output instead of two. Item 4 is already
+scoped in its own document and can proceed independently of 1-3 on
+whatever timeline that design is decided.</p>
+<p>Recommended order: <strong>Item 2 → Item 1 → Item 3</strong>, with
+Item 4 proceeding in parallel under its own document.</p>
+<h2 id="next-step">Next step</h2>
+<p>See <a
+href="harness-prerequisite-refactor-plan.html">harness-prerequisite-refactor-plan.md</a>
+for the phased implementation plan (added 2026-07-12 — this design doc
+originally skipped a plan artifact given the small size of each item,
+but the user’s requested cycle is design → decisions → planning, all
+three, so the plan doc was added after Item 2 was already implemented).
+Each phase in that plan logs its decision in <code>DECISIONS.md</code>
+following the existing Context/Decision/Rejected/Consequences format as
+it lands.</p>
+</section>
+</body>
+</html>

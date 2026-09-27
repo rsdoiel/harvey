@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-assay-llama.cpp-backend-support-design">Harvey Assay —
+llama.cpp Backend Support — Design</h1>
+<p><strong>Status (2026-06-30):</strong> Design settled. See <a
+href="assay-llamacpp-plan.html">assay-llamacpp-plan.md</a> for the
+implementation plan.</p>
+<hr />
+<h2 id="background">Background</h2>
+<p><code>bin/assay</code> is Harvey’s LLM evaluation harness. It reads a
+corpus of prompts from <code>agents/assay/corpus.yaml</code>, sends each
+prompt to a model backend, scores responses against
+<code>contains:</code> checks, and writes a Markdown + JSON report.</p>
+<p>As of 2026-06-30, assay supports two backends:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Backend</th>
+<th scope="col">Flag</th>
+<th scope="col">How connected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ollama</td>
+<td><code>--ollama URL</code></td>
+<td>HTTP to running Ollama daemon</td>
+</tr>
+<tr>
+<td>Llamafile</td>
+<td><code>--llamafile PATH</code></td>
+<td>Assay starts the binary, finds a free port, stops on exit</td>
+</tr>
+</tbody>
+</table>
+<p>Both back-ends are called via a private <code>callOllama</code>
+function that speaks Ollama’s proprietary <code>/api/chat</code> JSON
+shape. For llamafile this works because llamafile also exposes the
+Ollama-compatible endpoint alongside its OpenAI-compatible one.</p>
+<p><strong>llama.cpp</strong> (<code>llama-server</code>) does
+<strong>not</strong> expose the Ollama endpoint. It speaks only the
+OpenAI-compatible <code>/v1/chat/completions</code> API. The harvey
+package already wraps this via <code>AnyLLMClient</code> (in
+<code>anyllm_client.go</code>), but assay has never imported that
+type.</p>
+<hr />
+<h2 id="goals">Goals</h2>
+<ol type="1">
+<li><code>bin/assay --llamacpp URL</code> connects to a running
+<code>llama-server</code> instance and runs the full corpus evaluation
+against it.</li>
+<li>The existing <code>--ollama</code> and <code>--llamafile</code>
+flags continue to work unchanged.</li>
+<li>The report header identifies the backend as “LlamaCpp” and records
+the URL.</li>
+<li>Token stats (prompt tokens, reply tokens, TPS) are correctly
+populated for all three backends.</li>
+<li>RAG evaluation (<code>--rag-db</code>, <code>--rag-compare</code>)
+continues to work; embeddings still use Ollama (the only embedding
+backend available).</li>
+</ol>
+<hr />
+<h2 id="non-goals">Non-Goals</h2>
+<ul>
+<li>Assay does <strong>not</strong> start or stop
+<code>llama-server</code>. The user is responsible for starting it
+before running assay and stopping it afterward. This matches the
+<code>--ollama</code> pattern and avoids assay needing to know the model
+path, GPU layers, context size, and other server flags.</li>
+<li>No new embedding backend. RAG always requires Ollama regardless of
+inference backend — same constraint as llamafile.</li>
+<li>No automatic model discovery for llama.cpp.
+<code>llama-server</code> does expose <code>/v1/models</code> but
+returns only the one loaded model. The user must supply
+<code>--models NAME</code> explicitly when using
+<code>--llamacpp</code>. If <code>--models</code> is omitted and
+<code>--llamacpp</code> is set, assay queries <code>/v1/models</code>
+and uses whatever the server reports.</li>
+</ul>
+<hr />
+<h2 id="design">Design</h2>
+<h3 id="flag-interface">Flag interface</h3>
+<pre><code>bin/assay --llamacpp URL [--models NAME] [other flags]</code></pre>
+<p><code>URL</code> — full base URL of the running
+<code>llama-server</code>, e.g. <code>http://localhost:8081</code>. The
+<code>/v1/chat/completions</code> path is appended internally.</p>
+<p>When <code>--llamacpp</code> is set, <code>--ollama</code> is used
+only for embeddings (RAG path). They are not mutually exclusive.</p>
+<h3 id="replacing-callollama-with-anyllmclient">Replacing
+<code>callOllama</code> with <code>AnyLLMClient</code></h3>
+<p>The current <code>callOllama</code> function is Ollama-specific.
+Rather than adding a parallel <code>callOpenAI</code> function, the
+cleaner fix is to replace <code>callOllama</code> with
+<code>harvey.AnyLLMClient</code> (already tested against Ollama,
+llamafile, and llama.cpp in the harvey package).</p>
+<p><code>AnyLLMClient</code> accepts an OpenAI-compatible base URL and
+model name. For Ollama, the base URL is
+<code>http://localhost:11434/v1</code> (Ollama exposes an OpenAI-
+compatible shim at <code>/v1</code>). For llamafile and llama.cpp, it is
+whatever port the server is listening on.</p>
+<p>This eliminates the private <code>ollamaRequest</code>,
+<code>ollamaMessage</code>, and <code>ollamaResponse</code> structs
+entirely. Token stats come from <code>harvey.ChatStats</code> (returned
+by <code>AnyLLMClient.Chat</code>).</p>
+<h3 id="stats-mapping">Stats mapping</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Old field (<code>ollamaResponse</code>)</th>
+<th scope="col">New source (<code>harvey.ChatStats</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EvalCount</code> (reply tokens)</td>
+<td><code>ChatStats.ReplyTokens</code></td>
+</tr>
+<tr>
+<td><code>PromptEvalCount</code></td>
+<td><code>ChatStats.PromptTokens</code></td>
+</tr>
+<tr>
+<td>TPS computed from <code>EvalDuration</code></td>
+<td><code>ChatStats.TokensPerSec</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="backend-selection-logic">Backend selection logic</h3>
+<pre><code>--llamacpp set  →  backend = &quot;LlamaCpp&quot;,  llmURL = *llamacppURL + &quot;/v1&quot;
+--llamafile set →  backend = &quot;Llamafile&quot;, llmURL = derived from free port + &quot;/v1&quot;
+(neither set)   →  backend = &quot;Ollama&quot;,    llmURL = *ollamaURL + &quot;/v1&quot;</code></pre>
+<p>Mutually exclusive: <code>--llamafile</code> and
+<code>--llamacpp</code> cannot both be set. If both are provided, assay
+exits with an error.</p>
+<h3 id="model-name-resolution">Model name resolution</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Condition</th>
+<th scope="col">How model name is obtained</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--llamafile PATH</code></td>
+<td><code>harvey.LlamafileModelNameFromPath(PATH)</code> (existing)</td>
+</tr>
+<tr>
+<td><code>--llamacpp URL</code>, <code>--models NAME</code></td>
+<td>Use NAME directly</td>
+</tr>
+<tr>
+<td><code>--llamacpp URL</code>, no <code>--models</code></td>
+<td>Query <code>GET /v1/models</code>, use <code>data[0].id</code></td>
+</tr>
+<tr>
+<td><code>--ollama URL</code>, <code>--models NAME</code></td>
+<td>Use NAME directly</td>
+</tr>
+<tr>
+<td><code>--ollama URL</code>, no <code>--models</code></td>
+<td>Query <code>GET /api/tags</code> (existing)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rag-guard-for-llama.cpp">RAG guard for llama.cpp</h3>
+<p>When <code>--llamacpp</code> and <code>--rag-db</code> are both set,
+assay verifies Ollama is reachable for embeddings before loading the
+corpus, exactly as it does for llamafile:</p>
+<pre><code>assay: RAG evaluation with --llamacpp requires Ollama for embeddings.
+Start Ollama or use --ollama to specify a running instance.</code></pre>
+<h3 id="report-header">Report header</h3>
+<p>The report header gains a “URL” row for llama.cpp (and for llamafile
+now that the URL is dynamically assigned):</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Backend <span class="pp">|</span> LlamaCpp              <span class="pp">|</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> URL     <span class="pp">|</span> http://localhost:8081 <span class="pp">|</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Model   <span class="pp">|</span> phi4-Q4_K_M           <span class="pp">|</span></span></code></pre></div>
+<p>For Ollama:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Backend <span class="pp">|</span> Ollama                     <span class="pp">|</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> URL     <span class="pp">|</span> http://localhost:11434      <span class="pp">|</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Model   <span class="pp">|</span> llama3.2:3b                <span class="pp">|</span></span></code></pre></div>
+<p>For Llamafile:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Backend <span class="pp">|</span> Llamafile                               <span class="pp">|</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Binary  <span class="pp">|</span> /home/user/Models/phi4-mini.llamafile   <span class="pp">|</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="pp">|</span> Model   <span class="pp">|</span> phi4-mini                               <span class="pp">|</span></span></code></pre></div>
+<hr />
+<h2 id="migration-of-callollama">Migration of
+<code>callOllama</code></h2>
+<p>The switch from <code>callOllama</code> to <code>AnyLLMClient</code>
+is internal and does not change any flags or output format. It is the
+riskiest part of the change because it touches every prompt evaluation
+call. Acceptance criteria include running the corpus against Ollama
+after the change to confirm scores are unchanged.</p>
+<p><code>AnyLLMClient</code> streams responses token-by-token; assay
+needs the full string. The existing pattern (pass a
+<code>strings.Builder</code> as <code>out</code>, read after
+<code>Chat</code> returns) already handles this correctly in the harvey
+package.</p>
+<hr />
+<h2 id="out-of-scope">Out of Scope</h2>
+<ul>
+<li>Starting/stopping <code>llama-server</code> from assay. Users manage
+the process.</li>
+<li>Side-by-side backend comparison (e.g. Ollama vs. llama.cpp on the
+same corpus). Deferred.</li>
+<li>llama.cpp embedding support. Not available upstream.</li>
+<li>Corpus management CLI. Corpus remains a hand-edited YAML file.</li>
+</ul>
+</section>
+</body>
+</html>

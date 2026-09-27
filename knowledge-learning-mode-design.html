@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="knowledge-base-learning-mode-and-v0.0.11-integration-design">Knowledge-Base
+Learning Mode and v0.0.11 Integration — Design</h1>
+<p><strong>Status (2026-09-23):</strong> Decisions drafted with
+recommendations, awaiting RSDOIEL’s review. Nothing implemented.
+Supersedes the “Proposal” section of
+<code>knowledge-learning-mode-feature-request.md</code> (items 3–6),
+which predates <code>knowledge</code> v0.0.10/v0.0.11 and does not know
+about the review loop harvey already has (decision 2). Items 1–2 of that
+request are done. See <code>knowledge-learning-mode-plan.md</code> for
+the phased build.</p>
+<p><strong>References:</strong> -
+<code>knowledge-learning-mode-feature-request.md</code> — the request
+this resolves. - <code>../knowledge/library-lift-design.md</code> —
+moves <code>cmd/kb</code>’s workflow logic into the
+<code>knowledge</code> package so harvey can import it. Prerequisite for
+decisions 6–8 here. - <code>../knowledge/CHANGES.md</code>
+v0.0.10–v0.0.11 — <code>concept suggest</code>,
+<code>document tag</code>, <code>document fuzzy-tag</code>,
+<code>document frontmatter</code>, density-linking,
+<code>project rename</code> for record-owning projects. -
+<code>TODO.md</code> — both Action Items this responds to.</p>
+<h2 id="what-changed-since-the-feature-request">What changed since the
+feature request</h2>
+<ol type="1">
+<li><code>knowledge</code> shipped v0.0.10 and v0.0.11: a full
+corpus-improvement toolchain (suggest → tag / fuzzy-tag → ingest →
+review) that the request never anticipated. Learning mode’s natural
+shape is now <em>driving that pipeline</em>, not just the review
+queue.</li>
+<li>That toolchain lives in <code>knowledge/cmd/kb</code>
+(<code>package main</code>), unimportable. RSDOIEL chose to move it into
+the library rather than shell out.</li>
+<li><strong>Harvey already has a review loop.</strong>
+<code>Miner.reviewInteractive</code> (<code>memory_miner.go:239</code>)
+does accept / edit / skip over proposed items, with a near-duplicate
+check, and <code>editInEditor</code> (<code>:498</code>) already does
+the <code>$EDITOR</code> temp-file round trip the request listed as
+needing to be built. <code>promptAction</code>
+(<code>commands.go:3569</code>) is the shared Y/n/edit prompt. The
+request’s open question “unify with the miner or stay parallel?” is
+answerable now that the code has been read.</li>
+<li><code>harvey.yaml</code> has <strong>no model-role
+configuration</strong> (grep for role/draft/summar/route found nothing).
+“Which model drafts” needs a new setting or reuse of
+<code>@mention</code>. Routing itself exists
+(<code>RouteRegistry</code>, <code>DispatchToEndpoint</code>,
+<code>resolveDispatchTarget</code>, <code>ParseAtMention</code>).</li>
+<li><code>harvey/go.mod</code> has <strong>no <code>charmbracelet</code>
+dependency</strong> yet; the termlib→Charm migration is still an
+unreviewed design brief.</li>
+</ol>
+<h2 id="decisions">Decisions</h2>
+<ol type="1">
+<li><p><strong>Harvey consumes the <code>knowledge</code> library; it
+does not shell out to <code>kb</code> for these features.</strong>
+Skills (decision 9) still drive the <code>kb</code> binary — that is
+manual use, a different surface. Consequence: items 4 and 3 are gated on
+<code>knowledge</code> v0.0.12.</p></li>
+<li><p><strong>Learning mode composes existing pieces; it does not unify
+with the memory miner.</strong> Extract exactly one shared primitive —
+<code>editTextInEditor(text string) (string, error)</code>, generalizing
+<code>editInEditor</code>’s <code>$EDITOR</code> round trip, which today
+is typed to <code>*MemoryDoc</code> — and leave the two review state
+machines separate. They review different objects with different rules
+(memory: near-duplicate check and confidence decay; summaries:
+<code>unsummarized→drafted→reviewed</code>, human-gated by
+<code>PromoteDocumentSummary</code>). Unifying them would refactor a
+working loop to save a small amount of code, against this workspace’s
+standing preference for reusing an existing per-feature pattern over a
+general mechanism.</p></li>
+<li><p><strong>UX v1 is line-oriented, under <code>/kb</code>, over a
+UI-agnostic core.</strong> <code>/kb learn</code> walks the queue one
+item at a time — <code>[a]ccept [e]dit [r]edraft [s]kip [q]uit</code> —
+using <code>promptAction</code> and <code>editTextInEditor</code>. The
+logic lives in a <code>LearnSession</code> type that knows nothing about
+terminals. The bubbletea menu RSDOIEL described is a later renderer over
+the same type, taken up after the termlib→Charm migration lands. This
+settles the request’s “UX shape before command surface” question: the
+surface is <code>/kb</code> (the three-silo namespace precedent), and
+the richer UI is deferred without blocking or forcing a
+rewrite.</p></li>
+<li><p><strong>Draft and review are separate primitives; the walk is
+their composition.</strong>
+<code>/kb learn draft [--limit N] [@model]</code> drafts unattended for
+queued items (batch, fits overnight small-model runs as with
+<code>/read-chunks</code>); <code>/kb learn review</code> is the
+interactive accept/edit loop; bare <code>/kb learn</code>
+drafts-if-missing then reviews per item. Answers the request’s
+batch-vs-interactive question: not either/or, and the batch half is the
+simpler thing to build and test first.</p></li>
+<li><p><strong>Three dialog modes map onto three code paths, none of
+which promote on its own.</strong> <em>Human</em>:
+<code>editTextInEditor</code> →
+<code>DraftDocumentSummary(..., "human", nil)</code>. <em>Model</em>:
+dispatch via <code>DispatchToEndpoint</code> →
+<code>DraftDocumentSummary(..., modelName, &amp;conf)</code>.
+<em>Hybrid</em>: model drafts, then the review loop presents draft plus
+triage signals (size, tag density, confidence).
+<code>PromoteDocumentSummary</code> is called from the accept keypath
+only. “A model may write but not accept” is <code>knowledge</code>’s
+existing rule; harvey enforces it by construction — no caller other than
+the accept handler holds a promote call.</p></li>
+<li><p><strong>Drafting model: a named route from the existing registry;
+default is the active model.</strong> Proposed optional
+<code>learn_model:</code> in <code>harvey.yaml</code> naming a route,
+overridable per call with <code>@name</code>. Kept distinct from any
+retrieval-time model, per
+<code>narrative-documents-feature-request.md</code>’s warning that the
+drafting model should not be the one doing retrieval matching.
+<strong>Open:</strong> new config key versus <code>@mention</code>-only
+(see Open questions).</p></li>
+<li><p><strong>Confidence is heuristic, not self-reported.</strong> A
+small model’s stated confidence is not trustworthy. Proposed: the
+fraction of the section’s own concept tags whose names appear in the
+draft, on the same 0.0–1.0 scale as <code>MemoryStore</code>. The exact
+formula is left to the plan’s red tests, with its worked example
+<strong>hand-computed before implementation</strong> — twice in v0.0.11
+a design’s own worked example was internally contradictory.</p>
+<p><strong>Revised 2026-09-24 (H5, on real data).</strong> Linked tags
+are the wrong basis: 9 of 12 real sections have none. Confidence is now
+the fraction of the known concepts <em>mentioned in the source</em> that
+the draft names (nil when none). Since those concepts are also given to
+the model as hints, it measures concept coverage, not faithfulness. See
+the plan’s H5 note.</p></li>
+<li><p><strong>Session-to-document pipeline: opt-in, with the “already
+ingested?” state read from the KB itself.</strong> Candidates are
+<code>.spmd</code> files under <code>agents/sessions/</code> meeting the
+miner’s existing gate (<code>sessionTurns &gt;= 10</code>) plus every
+file in <code>agents/hand-off/</code>, minus any that
+<code>DocumentByPath</code> already finds. Current volume: 34 session
+files and 32 hand-offs — small enough to list and confirm, not to
+auto-ingest. No new ledger is needed (contrast <code>Manifest</code>,
+which tracks <em>mining</em>); <code>documents.path</code> is the
+record. <code>ParseDocumentFile</code> already recognizes
+<code>.spmd</code> as Fountain (<code>documents.go:323</code>).
+<strong>Check needed:</strong> the stored path form (relative vs
+absolute) is now a cross-consumer contract — see the knowledge design’s
+Risks.</p></li>
+<li><p><strong>Concept curation pass:
+<code>/kb learn concepts</code>.</strong> Runs
+<code>SuggestConcepts</code>, lets the human accept candidates (→
+concept add), then previews
+<code>TagDocumentText</code>/<code>FuzzyTagDocumentText</code> edits as
+diffs and applies them through harvey’s own permission-checked file
+write, then re-ingests. This depends on the library returning edited
+text and leaving the write to the caller
+(<code>library-lift-design.md</code> decision 2); otherwise a library
+call would rewrite user documents outside harvey’s permission
+model.</p></li>
+<li><p><strong>Skills: extend the canonical <code>agents/skills/</code>
+copies.</strong> <code>review-knowledge-base</code> and
+<code>update-knowledge-base</code> already covered
+<code>record</code>/<code>document</code> (the feature request was stale
+on this); H2 added only the v0.0.11 verbs and output changes.
+Independent of the lift — skills drive <code>kb</code>.</p></li>
+<li><p><strong>Decisions realignment: freeze <code>DECISIONS.md</code>,
+write new records with <code>kb record new</code>, no bulk
+backfill.</strong> <code>DECISIONS.md</code> is 1,721 lines of history;
+converting it is large and mostly of archival value. New decisions go to
+<code>harvey/decisions/</code> (the <code>&lt;repo&gt;/decisions/</code>
+layout root <code>CLAUDE.md</code> documents;
+<code>kb record new</code>’s own default is
+<code>agents/projects/harvey/decisions/</code>, so pass
+<code>--dir harvey/decisions</code>). First record: the cutover itself.
+Selective backfill is on-demand for a decision that is still
+load-bearing. Independent of the lift.</p></li>
+</ol>
+<h2 id="sequencing">Sequencing</h2>
+<p>Two tracks, so nothing waits that doesn’t have to:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Track</th>
+<th scope="col">Items</th>
+<th scope="col">Depends on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A — independent, can start now</strong></td>
+<td>H0 bump <code>knowledge</code> to v0.0.11; skills (dec. 10);
+decisions cutover (dec. 11)</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td><strong>B — gated on <code>knowledge</code> v0.0.12</strong></td>
+<td>session-to-document pipeline (dec. 8); draft/review primitives and
+<code>/kb learn</code> (dec. 3–7); concept curation (dec. 9)</td>
+<td>library lift L1 (pipeline, review), L2–L3 (curation)</td>
+</tr>
+</tbody>
+</table>
+<h2
+id="release-scoping-resolved-2026-09-24-v0.0.16-includes-both-tracks">Release
+scoping — RESOLVED 2026-09-24: v0.0.16 includes both tracks</h2>
+<p>On 2026-09-17 v0.0.16 was scoped as items 4–6 without the curation
+UI, and choosing the library lift made item 4 depend on a new
+<code>knowledge</code> release. That release shipped on 2026-09-24
+(<code>knowledge</code> v0.0.12, tag <code>v0.0.12</code>, on the Go
+module proxy), so nothing has to wait. RSDOIEL decided that
+<strong>v0.0.16 includes all of this work: Track A and Track B
+(H3–H7)</strong>. The 2026-09-17 exclusion of the learning-mode curation
+dialog is lifted for the line-oriented v1 (<code>/kb learn</code>, H5
+and H6). The bubbletea menu stays deferred (see below), and the separate
+termlib→Charm evaluation that gates tagging v0.0.16
+(<code>TODO.md</code>) is unchanged by this decision.</p>
+<h2 id="deferred-explicitly">Deferred, explicitly</h2>
+<ul>
+<li>The bubbletea curation menu (until termlib→Charm is decided).</li>
+<li>PDF ingestion (no extraction tooling workspace-wide).</li>
+<li>Scheduling unattended batch drafting; <code>/kb learn draft</code>
+is the primitive, cron-style orchestration is not designed here.</li>
+<li>Unifying the memory miner’s review loop with learning mode (decision
+2).</li>
+</ul>
+<h2 id="open-questions-for-rsdoiel">Open questions for RSDOIEL</h2>
+<ol type="1">
+<li><del><strong>v0.0.16 scope</strong></del> — RESOLVED 2026-09-24:
+both tracks are in v0.0.16 (above).</li>
+<li><strong><code>learn_model:</code> config key</strong> versus
+<code>@mention</code>-only for the drafting model.</li>
+<li><strong><code>harvey/agents/skills/</code> sync.</strong> Skills
+exist in three places; the canonical <code>agents/skills/</code> copy is
+what decision 10 updates. The <code>harvey/agents/skills/</code> copies
+were left stale on purpose 2026-09-17. Update them too, or keep leaving
+them?</li>
+<li><strong>Freeze versus backfill</strong> for
+<code>DECISIONS.md</code> (decision 11).</li>
+<li><strong>Session ingest gate</strong> — the miner’s
+<code>&gt;= 10</code> turns, or a different threshold, or
+explicit-only.</li>
+</ol>
+</section>
+</body>
+</html>

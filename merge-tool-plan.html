@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="knowledge.db-cross-machine-merge-tool-implementation-plan">knowledge.db
+Cross-Machine Merge Tool — Implementation Plan</h1>
+<p>See <a href="merge-tool-design.html">merge-tool-design.md</a> for the
+full design and function signatures. Work items are ordered M1 → M8,
+TDD-first per this workspace’s convention — each work item’s test(s) are
+written and confirmed red before its implementation.</p>
+<p>All new code lives in <code>knowledge_merge.go</code> (package
+<code>harvey</code>) and <code>knowledge_merge_test.go</code>, plus
+<code>cmd/kbmerge/main.go</code> (M7, untested by <code>go test</code> —
+see M8 for its manual verification).</p>
+<hr />
+<h2 id="m1-collisionreport">M1 — <code>CollisionReport</code></h2>
+<p><strong>Goal:</strong> Detect the known pre-migration edge case (same
+<code>name</code>, two different <code>uuid</code>s) before any merge
+runs.</p>
+<h3 id="tests-to-add">Tests to add</h3>
+<ul>
+<li><code>TestCollisionReport_DetectsNameUUIDMismatch</code> — build two
+<code>KnowledgeBase</code>s at distinct temp paths,
+<code>AddProject("harvey", ...)</code> on both (distinct real uuids
+since each <code>AddProject</code> call generates its own), call
+<code>CollisionReport(aPath, bPath)</code>, assert one
+<code>NameCollision{ Table: "projects", Name: "harvey", ... }</code>
+comes back with <code>UUIDA != UUIDB</code>.</li>
+<li><code>TestCollisionReport_NoCollisionWhenUUIDsMatch</code> — same
+name inserted on both via <code>AddProject</code>, but manually
+<code>UPDATE</code>d on <code>b</code> to share <code>a</code>’s uuid
+(simulating a row already reconciled by a prior merge) — assert zero
+collisions.</li>
+<li><code>TestCollisionReport_ConceptsAlsoChecked</code> — same as the
+first test but for <code>AddConcept</code>.</li>
+<li><code>TestCollisionReport_EmptyWhenNoOverlap</code> — two KBs with
+disjoint project/concept names — assert empty result, no error.</li>
+</ul>
+<h3 id="implementation">Implementation</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> CollisionReport<span class="op">(</span>aPath<span class="op">,</span> bPath <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span>NameCollision<span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    db<span class="op">,</span> err <span class="op">:=</span> sql<span class="op">.</span>Open<span class="op">(</span><span class="st">&quot;sqlite&quot;</span><span class="op">,</span> aPath<span class="op">)</span> <span class="co">// any valid path opens the driver; ATTACH does the real work</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> db<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span><span class="st">`ATTACH DATABASE ? AS b`</span><span class="op">,</span> bPath<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: attach %s: %w&quot;</span><span class="op">,</span> bPath<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> out <span class="op">[]</span>NameCollision</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> table <span class="op">:=</span> <span class="kw">range</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;projects&quot;</span><span class="op">,</span> <span class="st">&quot;concepts&quot;</span><span class="op">}</span> <span class="op">{</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>        rows<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Query<span class="op">(</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>            <span class="st">`SELECT main.name, main.uuid, b.`</span> <span class="op">+</span> table <span class="op">+</span> <span class="st">`.uuid</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="st">             FROM main.`</span> <span class="op">+</span> table <span class="op">+</span> <span class="st">` JOIN b.`</span> <span class="op">+</span> table <span class="op">+</span> <span class="st">` USING(name)</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="st">             WHERE main.uuid != b.`</span> <span class="op">+</span> table <span class="op">+</span> <span class="st">`.uuid`</span><span class="op">,</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>        <span class="op">)</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> rows<span class="op">.</span>Next<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>            <span class="kw">var</span> c NameCollision</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>            c<span class="op">.</span>Table <span class="op">=</span> table</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> err <span class="op">:=</span> rows<span class="op">.</span>Scan<span class="op">(&amp;</span>c<span class="op">.</span>Name<span class="op">,</span> <span class="op">&amp;</span>c<span class="op">.</span>UUIDA<span class="op">,</span> <span class="op">&amp;</span>c<span class="op">.</span>UUIDB<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>                rows<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>                <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>            out <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>out<span class="op">,</span> c<span class="op">)</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>        rows<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> out<span class="op">,</span> <span class="ot">nil</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>aPath</code> doubles as the <code>main</code> schema simply by
+opening it directly — no third scratch file needed for a read-only
+report. <code>bPath</code> is the only one that needs an explicit
+<code>ATTACH</code>.</p>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li>All four tests pass.</li>
+<li>Calling <code>CollisionReport</code> never modifies either input
+file (read-only <code>SELECT</code>s only — no
+<code>INSERT</code>/<code>UPDATE</code>/<code>DELETE</code> anywhere in
+this path).</li>
+</ul>
+<hr />
+<h2
+id="m1.5-reconcilecollisions-added-2026-07-26-caught-during-m7-smoke-testing">M1.5
+— <code>ReconcileCollisions</code> (added 2026-07-26, caught during M7
+smoke-testing)</h2>
+<p><strong>Goal:</strong> Fix a real data-loss bug found by manually
+running <code>cmd/kbmerge</code> end-to-end: resolving a collision by
+“first wins” also silently drops every child row (observations, links)
+attached to the losing side’s row, not just the duplicate row itself,
+because those children have no merged parent to <code>uuid</code>-join
+against once it’s gone. See “Collision handling” in
+<code>merge-tool-design.md</code> for the full writeup.</p>
+<h3 id="tests-to-add-1">Tests to add</h3>
+<ul>
+<li><code>TestReconcileCollisions_RewritesUUIDToMatchA</code> — collide
+two projects named <code>"harvey"</code>; reconcile; assert
+<code>b</code>’s row now carries <code>a</code>’s uuid, and a follow-up
+<code>CollisionReport</code> finds nothing.</li>
+<li><code>TestReconcileCollisions_PreservesChildObservationsAfterMerge</code>
+— same collision, each side with one observation on the colliding
+project; reconcile, then merge; assert the merged db has exactly 1
+project and <strong>both</strong> observations (previously only 1
+survived).</li>
+</ul>
+<h3 id="implementation-1">Implementation</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> ReconcileCollisions<span class="op">(</span>bPath <span class="dt">string</span><span class="op">,</span> collisions <span class="op">[]</span>NameCollision<span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>collisions<span class="op">)</span> <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    db<span class="op">,</span> err <span class="op">:=</span> sql<span class="op">.</span>Open<span class="op">(</span><span class="st">&quot;sqlite&quot;</span><span class="op">,</span> bPath<span class="op">)</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: open %s: %w&quot;</span><span class="op">,</span> bPath<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> db<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> c <span class="op">:=</span> <span class="kw">range</span> collisions <span class="op">{</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>            <span class="st">`UPDATE `</span><span class="op">+</span>c<span class="op">.</span>Table<span class="op">+</span><span class="st">` SET uuid = ? WHERE name = ? AND uuid = ?`</span><span class="op">,</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>            c<span class="op">.</span>UUIDA<span class="op">,</span> c<span class="op">.</span>Name<span class="op">,</span> c<span class="op">.</span>UUIDB<span class="op">,</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>        <span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: reconcile %s %q: %w&quot;</span><span class="op">,</span> c<span class="op">.</span>Table<span class="op">,</span> c<span class="op">.</span>Name<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>c.Table</code> is always <code>"projects"</code> or
+<code>"concepts"</code> — the two literals <code>CollisionReport</code>
+hardcodes — never external input, so the concatenation is safe.</p>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li>Both tests pass.</li>
+<li><code>cmd/kbmerge -force</code> on two databases with a colliding
+project (each with its own observation) produces a merge containing both
+observations, not just one — reconfirmed via manual smoke test after
+wiring M7 to call this.</li>
+</ul>
+<hr />
+<h2 id="m2-mergeknowledgebases-skeleton-fresh-target-attach">M2 —
+<code>MergeKnowledgeBases</code> skeleton: fresh target + attach</h2>
+<p><strong>Goal:</strong> The scaffolding every later work item builds
+on: reject an existing <code>mergedPath</code>, create a fresh
+fully-migrated one, attach both sources.</p>
+<h3 id="tests-to-add-2">Tests to add</h3>
+<ul>
+<li><code>TestMergeKnowledgeBases_RejectsExistingMergedPath</code> —
+create an empty file at <code>mergedPath</code>, call
+<code>MergeKnowledgeBases</code>, assert an error and that the file is
+untouched (still zero bytes / not a valid sqlite file).</li>
+<li><code>TestMergeKnowledgeBases_CreatesMigratedSchema</code> — call
+with two empty (freshly-<code>AddProject</code>-free) source KBs, assert
+<code>mergedPath</code> exists afterward and — opened as a plain
+<code>KnowledgeBase</code> — <code>Projects()</code> returns an empty
+(not nil) slice, i.e. the schema is fully applied and queryable.</li>
+</ul>
+<h3 id="implementation-2">Implementation</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> MergeKnowledgeBases<span class="op">(</span>aPath<span class="op">,</span> bPath<span class="op">,</span> mergedPath <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span>MergeTableSummary<span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> os<span class="op">.</span>Stat<span class="op">(</span>mergedPath<span class="op">);</span> err <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: merge target %s already exists&quot;</span><span class="op">,</span> mergedPath<span class="op">)</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    ws<span class="op">,</span> err <span class="op">:=</span> NewWorkspace<span class="op">(</span>os<span class="op">.</span>TempDir<span class="op">())</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    kb<span class="op">,</span> err <span class="op">:=</span> OpenKnowledgeBase<span class="op">(</span>ws<span class="op">,</span> mergedPath<span class="op">)</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    kb<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    db<span class="op">,</span> err <span class="op">:=</span> sql<span class="op">.</span>Open<span class="op">(</span><span class="st">&quot;sqlite&quot;</span><span class="op">,</span> mergedPath<span class="op">)</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> db<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span><span class="st">`ATTACH DATABASE ? AS a`</span><span class="op">,</span> aPath<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: attach %s: %w&quot;</span><span class="op">,</span> aPath<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span><span class="st">`ATTACH DATABASE ? AS b`</span><span class="op">,</span> bPath<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: attach %s: %w&quot;</span><span class="op">,</span> bPath<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>    <span class="co">// M3–M6 insert into db here.</span></span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span><span class="st">`DETACH DATABASE a`</span><span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span><span class="st">`DETACH DATABASE b`</span><span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-33"><a href="#cb3-33" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a>    db<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a>    kb2<span class="op">,</span> err <span class="op">:=</span> OpenKnowledgeBase<span class="op">(</span>ws<span class="op">,</span> mergedPath<span class="op">)</span> <span class="co">// triggers FTS rebuild, W3 backfill no-op</span></span>
+<span id="cb3-38"><a href="#cb3-38" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-39"><a href="#cb3-39" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb3-40"><a href="#cb3-40" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-41"><a href="#cb3-41" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> kb2<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb3-42"><a href="#cb3-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-43"><a href="#cb3-43" aria-hidden="true" tabindex="-1"></a>    <span class="co">// M6 also returns the summary collected before DETACH.</span></span>
+<span id="cb3-44"><a href="#cb3-44" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> <span class="ot">nil</span></span>
+<span id="cb3-45"><a href="#cb3-45" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li>Both tests pass.</li>
+<li><code>go vet ./...</code> clean (no unused <code>db</code>
+connection paths).</li>
+</ul>
+<hr />
+<h2 id="m3-parent-tables-projects-concepts-sources">M3 — Parent tables
+(<code>projects</code>, <code>concepts</code>,
+<code>sources</code>)</h2>
+<p><strong>Goal:</strong> Copy with explicit column lists (never
+<code>id</code>), deduped by <code>uuid</code>/<code>name</code>.</p>
+<h3 id="tests-to-add-3">Tests to add</h3>
+<ul>
+<li><code>TestMergeKnowledgeBases_ProjectsUnion</code> — <code>a</code>
+has project “one”, <code>b</code> has project “two” (distinct uuids);
+assert merged has both, with fresh (not copied) ids.</li>
+<li><code>TestMergeKnowledgeBases_ProjectsDedupSharedUUID</code> — same
+project row (by uuid) present in both <code>a</code> and <code>b</code>
+(simulate: <code>AddProject</code> on <code>a</code>, then manually
+<code>INSERT</code> an identical-uuid row into <code>b</code>); assert
+merged has exactly one row for it.</li>
+<li><code>TestMergeKnowledgeBases_ConceptsAndSourcesUnion</code> — same
+shape, one test covering both remaining parent tables.</li>
+</ul>
+<h3 id="implementation-inside-the-attach-block-from-m2">Implementation
+(inside the ATTACH block from M2)</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>parentCols <span class="op">:=</span> <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span><span class="dt">string</span><span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;projects&quot;</span><span class="op">:</span> <span class="st">&quot;name, description, status, created_at, updated_at, uuid, origin_host&quot;</span><span class="op">,</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;concepts&quot;</span><span class="op">:</span> <span class="st">&quot;name, description, created_at, identifier_type, identifier_value, uuid, origin_host&quot;</span><span class="op">,</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;sources&quot;</span><span class="op">:</span>  <span class="st">&quot;title, identifier_type, identifier_value, authors, published_date, publisher, rights, version, retracted, retraction_note, first_seen_at, last_checked_at, uuid, origin_host&quot;</span><span class="op">,</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> table <span class="op">:=</span> <span class="kw">range</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;projects&quot;</span><span class="op">,</span> <span class="st">&quot;concepts&quot;</span><span class="op">,</span> <span class="st">&quot;sources&quot;</span><span class="op">}</span> <span class="op">{</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    cols <span class="op">:=</span> parentCols<span class="op">[</span>table<span class="op">]</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> src <span class="op">:=</span> <span class="kw">range</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;a&quot;</span><span class="op">,</span> <span class="st">&quot;b&quot;</span><span class="op">}</span> <span class="op">{</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>            <span class="st">`INSERT OR IGNORE INTO %s (%s) SELECT %s FROM %s.%s`</span><span class="op">,</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>            table<span class="op">,</span> cols<span class="op">,</span> cols<span class="op">,</span> src<span class="op">,</span> table<span class="op">,</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>        <span class="op">));</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: merge %s from %s: %w&quot;</span><span class="op">,</span> table<span class="op">,</span> src<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>table</code>/<code>src</code>/<code>cols</code> are all drawn
+from the two hardcoded literal slices above — never external input — so
+<code>fmt.Sprintf</code> into the query text is safe here, same
+reasoning as <code>backfillUUIDs</code>’s table-name concatenation.</p>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li>All three tests pass.</li>
+<li><code>TestMergeKnowledgeBases_CreatesMigratedSchema</code> (M2)
+still passes.</li>
+</ul>
+<hr />
+<h2 id="m4-observations">M4 — <code>observations</code></h2>
+<p><strong>Goal:</strong> Copy with <code>project_id</code> translated
+through the <code>uuid</code> join, never the raw source id.</p>
+<h3 id="tests-to-add-4">Tests to add</h3>
+<ul>
+<li><code>TestMergeKnowledgeBases_ObservationsTranslateProjectID</code>
+— <code>a</code> has project P + one observation on P; assert the merged
+observation’s <code>project_id</code> points at P’s <em>merged</em> id,
+not P’s id in <code>a</code>.</li>
+<li><code>TestMergeKnowledgeBases_ObservationsDedupSharedUUID</code> —
+mirrors the M3 dedup test, for observations.</li>
+</ul>
+<h3 id="implementation-3">Implementation</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> obsCols <span class="op">=</span> <span class="st">&quot;kind, body, created_at, source_doi, uuid, origin_host&quot;</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> src <span class="op">:=</span> <span class="kw">range</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;a&quot;</span><span class="op">,</span> <span class="st">&quot;b&quot;</span><span class="op">}</span> <span class="op">{</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">`</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="st">        INSERT OR IGNORE INTO observations (project_id, %s)</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="st">        SELECT mp.id, o.kind, o.body, o.created_at, o.source_doi, o.uuid, o.origin_host</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="st">        FROM %s.observations o</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN %s.projects sp ON sp.id = o.project_id</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN projects mp ON mp.uuid = sp.uuid`</span><span class="op">,</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        obsCols<span class="op">,</span> src<span class="op">,</span> src<span class="op">,</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">));</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: merge observations from %s: %w&quot;</span><span class="op">,</span> src<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="acceptance-criteria-4">Acceptance criteria</h3>
+<ul>
+<li>Both tests pass; M3’s tests unaffected.</li>
+</ul>
+<hr />
+<h2 id="m5-join-tables">M5 — Join tables</h2>
+<p><strong>Goal:</strong> <code>observation_concepts</code>,
+<code>project_concepts</code>, <code>observation_sources</code>, each
+joined through <code>uuid</code> on <strong>both</strong> sides.</p>
+<h3 id="tests-to-add-5">Tests to add</h3>
+<ul>
+<li><code>TestMergeKnowledgeBases_ObservationConceptsSurvive</code> —
+link an observation to a concept in <code>a</code>; assert the merged
+link exists, pointing at the merged-local ids.</li>
+<li><code>TestMergeKnowledgeBases_ProjectConceptsSurvive</code> — same
+shape for <code>project_concepts</code>.</li>
+<li><code>TestMergeKnowledgeBases_ObservationSourcesSurvive</code> —
+same shape for <code>observation_sources</code>, including a non-default
+<code>relationship</code> value.</li>
+</ul>
+<h3 id="implementation-4">Implementation</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> src <span class="op">:=</span> <span class="kw">range</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;a&quot;</span><span class="op">,</span> <span class="st">&quot;b&quot;</span><span class="op">}</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">`</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="st">        INSERT OR IGNORE INTO observation_concepts (observation_id, concept_id)</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="st">        SELECT mo.id, mc.id</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="st">        FROM %s.observation_concepts j</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN %s.observations so ON so.id = j.observation_id</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN %s.concepts     sc ON sc.id = j.concept_id</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN observations mo ON mo.uuid = so.uuid</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN concepts     mc ON mc.uuid = sc.uuid`</span><span class="op">,</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>        src<span class="op">,</span> src<span class="op">,</span> src<span class="op">,</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">));</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: merge observation_concepts from %s: %w&quot;</span><span class="op">,</span> src<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">`</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a><span class="st">        INSERT OR IGNORE INTO project_concepts (project_id, concept_id)</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="st">        SELECT mp.id, mc.id</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="st">        FROM %s.project_concepts j</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN %s.projects sp ON sp.id = j.project_id</span></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN %s.concepts sc ON sc.id = j.concept_id</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN projects mp ON mp.uuid = sp.uuid</span></span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN concepts mc ON mc.uuid = sc.uuid`</span><span class="op">,</span></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>        src<span class="op">,</span> src<span class="op">,</span> src<span class="op">,</span></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>    <span class="op">));</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: merge project_concepts from %s: %w&quot;</span><span class="op">,</span> src<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span>fmt<span class="op">.</span>Sprintf<span class="op">(</span><span class="st">`</span></span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a><span class="st">        INSERT OR IGNORE INTO observation_sources (observation_id, source_id, relationship)</span></span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a><span class="st">        SELECT mo.id, ms.id, j.relationship</span></span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a><span class="st">        FROM %s.observation_sources j</span></span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN %s.observations so ON so.id = j.observation_id</span></span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN %s.sources      ss ON ss.id = j.source_id</span></span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN observations mo ON mo.uuid = so.uuid</span></span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a><span class="st">        JOIN sources      ms ON ms.uuid = ss.uuid`</span><span class="op">,</span></span>
+<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a>        src<span class="op">,</span> src<span class="op">,</span> src<span class="op">,</span></span>
+<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a>    <span class="op">));</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-38"><a href="#cb6-38" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: merge observation_sources from %s: %w&quot;</span><span class="op">,</span> src<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb6-39"><a href="#cb6-39" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb6-40"><a href="#cb6-40" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="acceptance-criteria-5">Acceptance criteria</h3>
+<ul>
+<li>All three tests pass; M3/M4 tests unaffected.</li>
+</ul>
+<hr />
+<h2 id="m6-mergetablesummary-fts-rebuild">M6 —
+<code>MergeTableSummary</code> + FTS rebuild</h2>
+<p><strong>Goal:</strong> Wire the row-count summary and confirm the
+post-merge reopen actually populates <code>kb_fts</code>.</p>
+<h3 id="tests-to-add-6">Tests to add</h3>
+<ul>
+<li><code>TestMergeKnowledgeBases_SummaryCounts</code> — known small
+<code>a</code>/<code>b</code> fixture; assert
+<code>[]MergeTableSummary</code> has one entry per table with correct
+<code>FromA</code>/<code>FromB</code>/<code>Merged</code> counts,
+including a table with an intentional dedup
+(<code>Merged &lt; FromA+FromB</code>).</li>
+<li><code>TestMergeKnowledgeBases_FTSPopulatedAfterMerge</code> — merge
+two KBs with observations, then <code>Search()</code> the merged KB for
+a term from one of them; assert it’s found (proves
+<code>rebuildFTSIfNeeded</code> actually fired post-merge, not just that
+the row exists in <code>observations</code>).</li>
+</ul>
+<h3 id="implementation-5">Implementation</h3>
+<p>Collect counts (per table:
+<code>SELECT COUNT(*) FROM a.&lt;table&gt;</code>, same for
+<code>b</code> and the bare merged table name) right before the
+<code>DETACH</code> calls in M2’s skeleton, and return them as the final
+<code>[]MergeTableSummary</code> instead of <code>nil, nil</code>.</p>
+<h3 id="acceptance-criteria-6">Acceptance criteria</h3>
+<ul>
+<li>Both tests pass.</li>
+<li>Full <code>knowledge_merge_test.go</code> suite green.</li>
+</ul>
+<hr />
+<h2 id="m7-cmdkbmerge-binary">M7 — <code>cmd/kbmerge</code> binary</h2>
+<p><strong>Goal:</strong> Thin orchestration wrapper — not unit tested
+(touches real files/processes); verified manually in M8.</p>
+<h3 id="files-to-add">Files to add</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cmd/kbmerge/main.go</code></td>
+<td>Flags: <code>-a PATH -b PATH -out PATH [-force]</code>. Runs
+<code>PRAGMA wal_checkpoint(FULL)</code> + file copy (with
+<code>-wal</code>/<code>-shm</code> sidecars) into a scratch dir,
+<code>CollisionReport</code> (without <code>-force</code>: abort and
+print the report; with <code>-force</code>:
+<code>ReconcileCollisions</code> against the scratch copy of
+<code>b</code>, per M1.5, then proceed),
+<code>MergeKnowledgeBases</code>, prints the summary table. Does
+<strong>not</strong> auto-replace either machine’s live
+<code>knowledge.db</code> — prints the merged path and lets the user
+copy it into place themselves, matching this workspace’s convention of
+not automating hard-to-reverse file replacement.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-7">Acceptance criteria</h3>
+<ul>
+<li><code>go build -o bin/kbmerge cmd/kbmerge/*.go</code> succeeds.</li>
+<li><code>bin/kbmerge -a testdata/a.db -b testdata/b.db -out /tmp/merged.db</code>
+(manual run) prints a summary table and exits 0.</li>
+<li>Manual smoke test: two synthetic databases each with an
+independently-created same-name project (each with one observation);
+<code>-force</code> run reconciles the collision and the output contains
+<strong>both</strong> observations, not just one (confirms M1.5’s fix
+actually took effect end-to-end through the binary, not just in the unit
+tests).</li>
+</ul>
+<hr />
+<h2 id="m8-verify-green">M8 — Verify green</h2>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span>   <span class="co"># expected blocked on this machine by the same pre-existing</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>                 <span class="co"># ThreadSanitizer/kernel VMA-width issue noted in the</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>                 <span class="co"># UUID migration&#39;s DECISIONS.md entry — not a regression</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> vet ./...</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build ./...</span></code></pre></div>
+<p>Manual sanity check: copy the real, already-migrated
+<code>agents/knowledge.db</code> to two scratch paths, add one
+distinguishing observation to each copy via <code>AddObservation</code>,
+run <code>MergeKnowledgeBases</code> against them, and confirm via
+<code>sqlite3</code> that the merged database contains the union — both
+new observations, original row counts otherwise intact, no duplicate
+rows for anything unchanged between the two copies.</p>
+<h3 id="acceptance-criteria-8">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code>, <code>go vet ./...</code>,
+<code>go build ./...</code> all clean.</li>
+<li>Manual two-copy merge produces the expected union with zero
+duplicates and zero data loss.</li>
+</ul>
+<hr />
+<h2 id="out-of-scope-here">Out of scope here</h2>
+<p>Actually running this tool against <code>wren.local</code>’s real
+database (that machine hasn’t had the UUID migration applied yet), the
+knowledge-base module extraction, and JSON-L export all remain deferred
+per <code>../knowledge_db_merge_design.md</code>.</p>
+</section>
+</body>
+</html>

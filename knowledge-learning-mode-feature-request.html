@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="knowledge-base-learning-mode-feature-request">Knowledge-base
+learning mode — Feature Request</h1>
+<blockquote>
+<p><strong>2026-09-15: Filed.</strong> Captured from a conversation with
+RSDOIEL about bringing harvey up to date with the <code>knowledge</code>
+module’s v0.0.6 release and building the “learning mode” already named
+in <code>TODO.md</code>. No design/decide/ plan cycle has been run yet.
+This document preserves the idea and the decisions already implied by
+existing code/docs — a starting point for that cycle, not a committed
+design.</p>
+<p>Decided (or already true) going into the filing conversation: -
+<code>knowledge</code> v0.0.4–v0.0.6 shipped three feature requests
+(<code>wikilink-tagging</code>, <code>concept-tag-retrieval</code>,
+<code>narrative-documents</code> — all in
+<code>../knowledge/CHANGES.md</code>) that each explicitly deferred
+their harvey- side consumption. That consumption is this document’s
+scope. - harvey’s <code>go.mod</code> still pins
+<code>github.com/rsdoiel/knowledge v0.0.3</code> — three minor releases
+behind. The <code>TODO.md</code> entry that blocked tagging a release on
+<code>knowledge</code>’s wikilink/ingest instability
+(<code>observation 398</code>, project <code>harvey</code>) is stale:
+that instability is what v0.0.4–v0.0.6 resolved. - “Learning mode” is
+not a new subsystem to invent from scratch — it is harvey driving the
+<strong>review lifecycle <code>knowledge</code> already built</strong>
+(<code>unsummarized</code> → <code>drafted</code> →
+<code>reviewed</code>, human-gated promotion, no auto-promotion) via
+<code>kb document</code>/<code>kb record</code> verbs, using harvey’s
+<strong>already-working multi-model dispatch</strong>
+(<code>resolveDispatchTarget</code>, <code>@mention</code>) to source
+the “drafted by a model” half of that lifecycle, rather than a new
+routing mechanism.</p>
+</blockquote>
+<h2 id="motivation">Motivation</h2>
+<p><code>TODO.md</code> already names this work directly:</p>
+<blockquote>
+<p>Fully integrate the updates to the knowledge model, Harvey should
+support a learning mode that integrates both human, model and hybrid
+dialogs for evaluation, summarization, concept tagging and re-ingest for
+the knowledge base.</p>
+</blockquote>
+<p>and, related:</p>
+<blockquote>
+<p>I’ve evolved the development methodology since last working on
+Harvey. The knowledge tool kb has been updated to reflect those changes.
+Harvey repo needs to be brought into alignment with the new practices
+around design decision reviews and recording them in a decisions
+directory…</p>
+</blockquote>
+<p>Two things converge on the same gap. <code>knowledge</code>’s three
+most recent feature requests (<code>wikilink-tagging</code>,
+<code>concept-tag-retrieval</code>, <code>narrative-documents</code>)
+each ship a real capability but explicitly stop at the module
+boundary:</p>
+<ul>
+<li><code>concept-tag-retrieval-feature-request.md</code>: “harvey’s
+<code>recallKB</code> calls the new query as a first pass” is item 3 of
+its own proposal — never done.</li>
+<li><code>narrative-documents-feature-request.md</code>: “Consuming any
+of this from harvey’s <code>UnifiedMemory.Recall</code>, and building an
+eventual interactive/ dialogic re-ingest mode in harvey, remain
+explicitly out of scope here.”</li>
+</ul>
+<p>So <code>knowledge</code> built the storage, the tagging, the
+retrieval query, and the human-gated review lifecycle. harvey has
+consumed none of it — <code>recallKB</code> still does a
+<code>strings.Contains</code> scan against a v0.0.3 API, and nothing in
+harvey drives <code>kb document</code>/<code>kb record</code>’s review
+queue at all.</p>
+<h2 id="what-harvey-assumes-today">What harvey assumes today</h2>
+<ul>
+<li><p><strong><code>go.mod:14</code></strong>:
+<code>github.com/rsdoiel/knowledge v0.0.3</code> — predates
+<code>records</code> (v0.0.4), <code>kb init</code>/portable record
+layout (v0.0.5), and concepts/ documents/retrieval (v0.0.6) entirely.
+Per <code>CLAUDE.md</code>, harvey consumes <code>knowledge</code> via a
+<code>go.mod</code> <code>replace</code> pending its own publish, so
+this is a version bump plus a rebuild/retest, not a vendoring
+change.</p></li>
+<li><p><strong><code>memory_unified.go:275-314</code></strong>
+(<code>UnifiedMemory.recallKB</code>) is the entire current KB retrieval
+path:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>obs<span class="op">,</span> err <span class="op">:=</span> kb<span class="op">.</span>Observations<span class="op">(</span>u<span class="op">.</span>cfg<span class="op">.</span>CurrentProjectID<span class="op">)</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">...</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> o <span class="op">:=</span> <span class="kw">range</span> obs <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> qLower <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> <span class="op">!</span>strings<span class="op">.</span>Contains<span class="op">(</span>strings<span class="op">.</span>ToLower<span class="op">(</span>o<span class="op">.</span>Body<span class="op">),</span> qLower<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">continue</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    out <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>out<span class="op">,</span> UnifiedResult<span class="op">{</span>Source<span class="op">:</span> <span class="st">&quot;kb&quot;</span><span class="op">,</span> <span class="op">...,</span> Score<span class="op">:</span> <span class="fl">0.5</span><span class="op">})</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span><span class="op">(</span>out<span class="op">)</span> <span class="op">&gt;=</span> <span class="dv">5</span> <span class="op">{</span> <span class="cf">break</span> <span class="op">}</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Substring match on raw query text, scoped to
+<code>CurrentProjectID</code> only, fixed score 0.5, first-5-found —
+exactly the three limitations
+<code>concept-tag-retrieval-feature-request.md</code> already diagnosed,
+still present because the fix was never applied harvey-side. It also has
+no path to <code>records</code> or <code>documents</code> at all — both
+are invisible to <code>Recall</code>.</p></li>
+<li><p><strong>No document ingestion path exists in harvey.</strong>
+Session recordings (<code>agents/sessions/*.spmd</code>, Fountain
+format) and hand-off notes (<code>agents/hand-off/*.spmd</code>) are
+exactly the format <code>kb document ingest</code> already supports
+(<code>github.com/rsdoiel/fountain</code>, the same module harvey
+depends on) — nothing currently offers them to <code>knowledge</code> as
+documents.</p></li>
+<li><p><strong>No review-queue surface exists in harvey.</strong>
+<code>kb document review list</code> (or equivalent) and the
+<code>unsummarized</code>/<code>drafted</code>/<code>reviewed</code>
+lifecycle have no REPL command, skill, or dialog driving them from
+harvey’s side.</p></li>
+<li><p><strong><code>agents/skills/review-knowledge-base</code> and
+<code>update-knowledge-base</code></strong> only cover
+<code>project</code>/<code>observation</code>/<code>concept</code>/<code>source</code>
+— no <code>record</code> or <code>document</code> verbs, so even manual
+(non-learning-mode) use of the v0.0.4+ surface has no skill support
+yet.</p></li>
+<li><p><strong>Decisions live only in
+<code>DECISIONS.md</code></strong>, a single hand-appended file — not
+<code>knowledge</code>’s <code>agents/decisions/</code> +
+<code>agents/projects/&lt;project&gt;/ decisions/</code> record layout
+(DR-0021, <code>knowledge</code> v0.0.5), which <code>kb ingest</code>/
+<code>kb index</code> already know how to read. harvey’s own decision
+history is therefore outside <code>knowledge.db</code> entirely, unlike
+every other project in the workspace.</p></li>
+</ul>
+<h2 id="what-is-already-fine-reuse-points">What is already fine — reuse
+points</h2>
+<ul>
+<li><strong><code>resolveDispatchTarget</code></strong>
+(<code>dispatch_target.go</code>) plus <code>@mention</code> parsing is
+harvey’s existing, working way to send a task to a specific model
+distinct from the active chat model. This is the natural mechanism for
+“delegate simpler summarization passes to a module” — no new routing
+layer needed. Per past guidance in this workspace, an existing
+per-feature dispatch pattern should be reused rather than a new generic
+one designed alongside it.</li>
+<li><strong><code>MemoryStore</code>’s confidence convention</strong>
+(<code>memory_store.go</code>: 0.0–1.0, auto-archive at ≤0.2,
+<code>SetConfidence</code>) is already the exact shape
+<code>narrative-documents-feature-request.md</code> left open (“exact
+shape of the confidence value… same scale as harvey’s memory confidence
+scores, for consistency across the workspace” — that document names
+harvey’s convention directly as the target to match). Reuse it rather
+than invent a second confidence scale.</li>
+<li><strong><code>knowledge</code> v0.0.6’s
+<code>MatchConceptNames</code>/<code>RecallByConceptNames</code></strong>
+(<code>retrieval.go</code>) are exactly the embedder-free, whole-word,
+case- insensitive query
+<code>concept-tag-retrieval-feature-request.md</code> proposed — already
+implemented, already merged/exported, just unconsumed.
+<code>RecallByConceptNames</code> already spans
+<code>observation_concepts</code> and <code>record_concepts</code>, and
+widened to <code>documents</code> in the same release.</li>
+<li><strong>Decision records’ <code>proposed</code>/human-promoted
+split</strong> and documents’
+<code>unsummarized</code>/<code>drafted</code>/<code>reviewed</code>
+split are the same pattern knowledge already enforces at the module
+level (“a model may write a record but may not accept one”). Learning
+mode does not need to invent a new human-in- the-loop gate — it needs to
+drive the one that exists.</li>
+<li><strong>The three-silo REPL command namespace</strong>
+(<code>/rag</code>, <code>/memory</code>, <code>/kb</code>,
+<code>DECISIONS.md</code> 2026-05-28) is precedent for where a new
+command surface should live — most likely <code>/kb</code> gains
+subcommands rather than a fourth namespace being invented.</li>
+<li><strong><code>agents/skills/setup-knowledge-base</code>,
+<code>review-knowledge-base</code>,
+<code>update-knowledge-base</code></strong> are the existing
+skill-driven pattern for <code>kb</code> interaction from a Claude
+Code/harvey session — new record/document/ learning-mode capability
+should extend these, not bypass them with raw <code>kb</code>
+shell-outs.</li>
+</ul>
+<h2 id="proposal">Proposal</h2>
+<ol type="1">
+<li><p><strong>Bump the dependency.</strong> <code>go.mod</code> →
+<code>github.com/rsdoiel/knowledge v0.0.6</code>,
+<code>go build</code>/<code>go test</code>/<code>go test -race</code>,
+confirm nothing in harvey’s own
+<code>knowledge.go</code>/<code>knowledge_merge.go</code> wrapper code
+(extracted <em>from</em> <code>knowledge</code> per
+<code>CHANGES.md</code> v0.0.1) assumed the old schema. Update the stale
+<code>TODO.md</code> “Blocked on <code>knowledge</code>” entry once
+confirmed clean.</p></li>
+<li><p><strong>Rewire <code>recallKB</code></strong> to call
+<code>RecallByConceptNames</code>/<code>MatchConceptNames</code> as the
+primary path (concept-tag match against the current prompt, not
+project-scoped, no embedder), falling back to the existing substring-
+over-<code>CurrentProjectID</code>-observations behavior when no concept
+matches — exactly the sequencing
+<code>concept-tag-retrieval-feature-request.md</code> proposed. Widen
+the silo to surface <code>records</code> and
+<code>reviewed</code>-status <code>documents</code> (gist level first,
+matching <code>RecallByConceptNames</code>’s v0.0.6 scope), not just
+<code>observations</code>.</p></li>
+<li><p><strong>A learning-mode command/dialog</strong> (working shape —
+<code>/kb learn</code>, or a <code>/learn</code> command; naming is an
+open question below) that surfaces the review queue
+(<code>unsummarized</code>/<code>drafted</code> records and document
+sections) and drives three dialog modes, matching <code>TODO.md</code>’s
+own wording:</p>
+<ul>
+<li><strong>Human</strong> — human writes or edits a summary/tag
+directly; equivalent to today’s manual
+<code>kb record</code>/<code>kb document</code> authoring, just surfaced
+in-session instead of requiring a separate <code>kb</code>
+invocation.</li>
+<li><strong>Model</strong> — harvey dispatches a drafting pass via
+<code>resolveDispatchTarget</code>, writing back through
+<code>kb document draft</code>/ equivalent, never touching
+<code>reviewed</code> status itself (matches
+<code>narrative-documents-feature-request.md</code>’s decided
+no-auto-promotion policy).</li>
+<li><strong>Hybrid</strong> — model drafts, harvey presents the draft
+plus its mechanical triage signals (size, concept-tag density,
+confidence) for the human to accept
+(<code>kb document review</code>/promote to <code>reviewed</code>),
+edit, or reject — the same accept/reject shape
+<code>autoExecuteReply</code>’s Y/n <code>promptAction</code> already
+uses elsewhere in harvey, reusable here rather than inventing a new
+confirmation UI.</li>
+</ul></li>
+<li><p><strong>A session-to-document pipeline.</strong> Offer harvey’s
+own session recordings (<code>agents/sessions/*.spmd</code>) and
+hand-off notes (<code>agents/hand-off/*.spmd</code>) as
+<code>kb document ingest</code> candidates — Fountain format is already
+supported end-to-end. This gives learning mode a real,
+continuously-growing corpus to operate on without requiring the user to
+hand-feed files.</p></li>
+<li><p><strong>Skill updates.</strong> Extend
+<code>review-knowledge-base</code> to report on
+<code>record</code>/<code>document</code> state (counts by status,
+review-queue size) alongside today’s project/observation/concept
+sections; extend <code>update-knowledge-base</code> with
+<code>record</code>/<code>document</code> <code>ACTION</code> values so
+manual use of the v0.0.4+ surface doesn’t require raw <code>kb</code>
+invocations either.</p></li>
+<li><p><strong>Decisions-directory realignment</strong>
+(<code>TODO.md</code>’s second item). Adopt <code>knowledge</code>’s
+<code>agents/decisions/</code> (workspace-tier) and
+<code>agents/projects/harvey/decisions/</code> (project-tier) layout for
+harvey’s own design decisions going forward, authored via
+<code>kb record new</code> and indexed via
+<code>kb ingest</code>/<code>kb index</code>, so harvey’s own decision
+history becomes queryable through <code>kb search</code> the way every
+other project’s already is. <code>DECISIONS.md</code> as a hand-appended
+log and <code>kb</code>-managed records are not mutually exclusive
+short-term — this item needs its own scoping pass separate from items
+1-5 above, since it changes harvey’s own process, not just its
+<code>knowledge</code> integration, and touches the “boundary between
+memory layers” question <code>TODO.md</code> flags as still
+open.</p></li>
+</ol>
+<h2 id="open-questions-for-the-design-cycle">Open questions for the
+design cycle</h2>
+<ul>
+<li><strong>Where does learning mode live as a UX surface?</strong> New
+top-level <code>/learn</code> command, or subcommands under the existing
+<code>/kb</code> namespace? The three-silo precedent (<code>/rag</code>,
+<code>/memory</code>, <code>/kb</code>) argues for extending
+<code>/kb</code> rather than adding a fourth namespace, but the
+dialog-driven, multi-turn nature of triage-then-review may not fit a
+single-shot slash command well. RSDOIEL frames learning mode primarily
+as an <strong>interactive curation experience</strong>, not a scripting
+surface — likely more than plain REPL commands: a menu for navigating
+the drafted/unsummarized queue, and an <strong>external-editor
+handoff</strong> (write the current summary or record body to a temp
+file, launch <code>$EDITOR</code>, read the result back on return) for
+genuinely flexible editing of multi-paragraph text, rather than editing
+summaries inline at a prompt. This UX shape should be settled before the
+command-surface question above, since it constrains what a
+<code>/learn</code>-vs-<code>/kb</code> choice needs to support in the
+first place.</li>
+<li><strong>Which model drafts?</strong> A configured “small model” role
+in <code>agents/harvey.yaml</code> (paralleling the
+small/CPU-only-hardware motivation
+<code>concept-tag-retrieval-feature-request.md</code> was filed under),
+or whatever model is currently active?
+<code>narrative-documents-feature-request.md</code> explicitly flagged
+that the model drafting a summary at ingest time should not be the same
+small model doing retrieval-time matching — harvey’s
+<code>resolveDispatchTarget</code>/<code>@mention</code> mechanism can
+express this, but which model gets the role isn’t decided.</li>
+<li><strong>Synchronous dialog vs. batch queue.</strong> Does a
+learning-mode session walk the review queue interactively turn-by-turn,
+or does a human kick off a batch drafting pass (harvey dispatches drafts
+for N queued items unattended) and review results later via the queue
+listing? The batch shape fits unattended/overnight small-model runs
+already established for chunked analysis (<code>/read-chunks</code>);
+the interactive shape fits ad hoc single-document review. Possibly both,
+but which ships first is open.</li>
+<li><strong>Confidence value shape.</strong>
+<code>narrative-documents-feature-request.md</code> left open whether a
+drafting model’s confidence is self-reported or heuristic (e.g. how much
+of a segment’s own concept tags appear reflected in its summary).
+harvey’s <code>MemoryStore.SetConfidence</code> convention gives a scale
+to reuse, not an answer to this — still needs deciding here, since
+harvey is the one that would compute or request it.</li>
+<li><strong>Scope of session-to-document ingestion.</strong> Every
+<code>.spmd</code> automatically, or only ones a human explicitly marks
+worth keeping (mirroring <code>MemoryManifest.UnminedSessions()</code>’s
+existing opt-in-by-length gating, <code>sessionTurns &gt;= 10</code>)?
+Ingesting everything risks flooding the review queue with low-value
+drafts before learning mode has proven itself useful.</li>
+<li><strong>Relationship to harvey’s existing memory-mining
+loop.</strong> <code>memory_miner.go</code> already runs a
+model-extraction-then-human-review cycle for experiential memories,
+independent of <code>knowledge</code>. Does learning mode unify with
+that pipeline (one review surface, two content types) or stay parallel
+to it (two review surfaces, each already working)? Building a second,
+slightly different review loop next to a working one is a real risk
+worth naming before design starts.</li>
+<li><strong>PDF, and other format gaps.</strong>
+<code>narrative-documents-feature-request.md</code> left PDF ingestion
+unresolved workspace-wide (no extraction tooling exists). Not blocking
+for a first pass (Fountain/Markdown sessions and hand-off notes cover
+the session-to-document pipeline above), but worth naming so it isn’t
+assumed solved.</li>
+</ul>
+<h2 id="related">Related</h2>
+<ul>
+<li><code>TODO.md</code> — both “Action Items” entries this document
+responds to, and the now-stale “Blocked on <code>knowledge</code>” entry
+under “Update next.”</li>
+<li><code>../knowledge/CHANGES.md</code> v0.0.4–v0.0.6 — the released
+capability this integrates.</li>
+<li><code>../knowledge/concept-tag-retrieval-feature-request.md</code>,
+<code>../knowledge/narrative-documents-feature-request.md</code>,
+<code>../knowledge/wikilink-tagging-feature-request.md</code> — the
+three requests whose harvey-side consumption this document scopes.</li>
+<li><code>CLAUDE.md</code> — “Three-silo memory architecture” section;
+the existing <code>/rag</code>/<code>/memory</code>/<code>/kb</code>
+namespace precedent.</li>
+<li><code>DECISIONS.md</code>, 2026-05-28 entry — the three-silo
+architecture decision this proposal extends rather than replaces.</li>
+<li><code>memory_unified.go</code>, <code>dispatch_target.go</code>,
+<code>memory_store.go</code> — the code this proposal reuses or
+modifies.</li>
+<li><code>agents/skills/review-knowledge-base/SKILL.md</code>,
+<code>agents/skills/update-knowledge-base/SKILL.md</code> — skills to
+extend.</li>
+</ul>
+</section>
+</body>
+</html>

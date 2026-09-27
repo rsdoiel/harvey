@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-computational-guidesensor-tools-implementation-plan">Harvey —
+Computational Guide/Sensor Tools — Implementation Plan</h1>
+<p>See <a
+href="computational-sensors-design.html">computational-sensors-design.md</a>
+for the full rationale and the 2026-07-12 visibility decision. See <a
+href="DECISIONS.html">DECISIONS.md</a> for the finalized decision
+entries as each phase lands.</p>
+<p>Resolved here, as implementation-level judgment calls rather than
+user-facing policy decisions (the design doc’s two “open
+questions”):</p>
+<ul>
+<li><strong><code>go vet</code> only runs when the workspace has a
+<code>go.mod</code>.</strong> Trivial correctness requirement — avoids a
+confusing “go vet” note appearing in a non-Go project that happens to
+contain an incidental <code>.go</code> fixture file.</li>
+<li><strong>Distinguishing a real <code>go vet</code> finding from
+<code>go vet</code> itself failing to run</strong> (e.g. the package
+doesn’t compile yet, mid-edit): <code>go vet</code>’s output for a build
+failure includes a header line starting with <code>"# "</code> (package
+path), followed by raw compiler diagnostics, distinct from its own
+per-analyzer findings (which are plain
+<code>file:line:col: message</code> with no <code>"# "</code> header).
+Treat any output containing a <code>"# "</code>-prefixed line as a
+non-actionable build failure — suppress entirely, matching
+<code>applyAutoFormat</code>’s existing “errors are silently suppressed”
+policy — rather than attempting to surface it as a sensor finding.</li>
+</ul>
+<hr />
+<h2
+id="phase-a-wire-check-into-the-post-write-path-complete-2026-07-12">Phase
+A — Wire <code>Check()</code> into the post-write path ✅ Complete
+2026-07-12</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-12 entry) for the final shape
+and test list. The plan below is kept as-written for the historical
+record.</p>
+<p><strong>Goal.</strong> Surface the existing, tested, dormant
+<code>gofmt</code> <code>Check()</code> result as a
+<code>SensorEvent</code> after <code>write_file</code>, with no token
+cost by default (per the design doc’s visibility decision —
+<code>Check()</code> findings are <code>SensorEvent</code>-only unless
+<code>Config.SensorInjectFormatFindings</code> is set).</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.go</code></td>
+<td>Add <code>SensorInjectFormatFindings bool</code> (default
+<code>false</code>) to <code>Config</code>; surface in
+<code>config_yaml.go</code> as
+<code>sensors.inject_format_findings</code></td>
+</tr>
+<tr>
+<td><code>builtin_tools.go</code></td>
+<td>New
+<code>runPostWriteSensors(a *Agent, relPath string) (appendix string)</code>;
+called from the <code>write_file</code> handler, after
+<code>applyAutoFormat</code>; reports via <code>a.ActiveStatus</code>
+directly rather than returning events</td>
+</tr>
+<tr>
+<td><code>builtin_tools.go</code></td>
+<td><code>runPostWriteSensors</code>’s <code>Check()</code> half: call
+<code>f.Check(content, absPath)</code> (reusing the existing formatter
+already resolved for <code>applyAutoFormat</code>); build a
+<code>SensorEvent{Kind: "format_check", Message: ..., Class: Computational}</code>
+per <code>FormatIssue</code>; report each via <code>a</code>’s active
+<code>StatusReporter</code> if one is reachable from the tool handler
+(see note below), or return them for the caller to report — <strong>the
+tool-handler signature (<code>func(ctx, args) (string, error)</code>)
+has no <code>io.Writer</code>/<code>StatusReporter</code> parameter
+today; this phase must resolve how a tool handler reaches the same
+reporting path <code>ExecuteToolCalls</code> already has
+(<code>e.Status</code>)</strong> — likely by giving <code>Agent</code> a
+settable “current status reporter” field the handler closures can read,
+since <code>ToolRegistry.RegisterTool</code> closures already capture
+<code>a *Agent</code></td>
+</tr>
+<tr>
+<td><code>builtin_tools_test.go</code></td>
+<td>Tests for <code>runPostWriteSensors</code>’s <code>Check()</code>
+half: a file with a real gofmt issue produces a
+<code>SensorEvent</code>, not a tool-result appendix (default config);
+with <code>SensorInjectFormatFindings: true</code>, the appendix is
+non-empty too</td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach">Approach</h3>
+<ol type="1">
+<li><strong>Resolved mechanism for a tool handler to reach a
+<code>StatusReporter</code>:</strong> every builtin tool handler is a
+closure created in
+<code>RegisterBuiltinTools(r *ToolRegistry, a *Agent)</code>
+(<code>builtin_tools.go:41</code>), so it already captures
+<code>a</code> — but <code>a</code> has no reference to the turn’s live
+<code>StatusReporter</code> today (that lives only on
+<code>ToolExecutor.Status</code>, which the handler closures never see;
+<code>ToolExecutor</code> itself has no <code>*Agent</code> reference
+either — the two are wired together only via <code>terminal.go</code>).
+Adding a <code>ToolHandler</code> signature change to thread a reporter
+through would touch every registered tool. Instead: add
+<code>Agent.ActiveStatus StatusReporter</code> (<code>harvey.go</code>),
+set it alongside the two existing <code>ex.Status = sp</code> /
+<code>ex.Status = retrySp</code> assignments in <code>terminal.go</code>
+(<code>runChatTurn</code>’s main call and its cannot-read-file retry),
+and clear it back to <code>nil</code> once each spinner stops. A handler
+closure reports via <code>a.ActiveStatus.ReportSensor(ev)</code> with
+the existing <code>if ... != nil</code> nil-check pattern already used
+elsewhere for optional reporters. This keeps <code>ToolHandler</code>’s
+signature unchanged and only touches two call sites in
+<code>terminal.go</code> plus one new field.</li>
+<li>Write tests for <code>runPostWriteSensors</code>’s
+<code>Check()</code> half first (TDD), confirm red, implement, confirm
+green.</li>
+<li>Wire into <code>write_file</code> (Harvey’s only file-write
+tool).</li>
+</ol>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code>
+green.</label></li>
+<li><label><input type="checkbox" />Writing an intentionally-unformatted
+<code>.go</code> file produces a human-visible <code>SensorEvent</code>
+(default config) with no token cost added to the tool
+result.</label></li>
+<li><label><input type="checkbox" />With
+<code>sensors.inject_format_findings: true</code>, the same write also
+appends the finding to the tool-result string.</label></li>
+</ul>
+<hr />
+<h2
+id="phase-b-add-go-vet-as-the-first-new-sensor-complete-2026-07-12">Phase
+B — Add <code>go vet</code> as the first new sensor ✅ Complete
+2026-07-12</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-12 entry, second of that date)
+for the final shape and one deviation from this plan: the timeout uses a
+dedicated 15s constant rather than
+<code>Config.Security.RunTimeout</code> as originally suggested below —
+reusing the 5-minute <code>run_command</code> timeout would let a hung
+<code>go vet</code> block every single file write for far too long. The
+plan below is kept as-written for the historical record.</p>
+<p><strong>Goal.</strong> A genuinely new computational sensor: run
+<code>go vet</code> on the package containing a just-written
+<code>.go</code> file, report findings as <code>SensorEvent</code>s, and
+always append findings to the tool-result string (per the design doc’s
+visibility decision — <code>go vet</code> has no low-severity tier to
+gate on).</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>builtin_tools.go</code></td>
+<td><code>runPostWriteSensors</code>’s second half: when the workspace
+has <code>go.mod</code> and the written file is <code>.go</code>, run
+<code>go vet &lt;package-dir&gt;</code> via <code>os/exec</code> with a
+timeout; parse output; on any <code>"# "</code>-prefixed line, treat the
+whole result as a non-actionable build failure and suppress (see
+resolved judgment call above)</td>
+</tr>
+<tr>
+<td><code>builtin_tools_test.go</code></td>
+<td>Tests: a file with a real <code>go vet</code>-detectable issue
+(e.g. a <code>Printf</code> call with a format/argument mismatch)
+produces a <code>SensorEvent</code> <strong>and</strong> a tool-result
+appendix; a file with a genuine compile error (undefined symbol)
+produces neither — confirms the <code>"# "</code>-prefix suppression
+logic; a workspace without <code>go.mod</code> never invokes
+<code>go vet</code> at all</td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach-1">Approach</h3>
+<ol type="1">
+<li>Write the three characterization/new-behavior tests above first,
+confirm red (function doesn’t exist / doesn’t yet distinguish the
+compile-failure case), implement, confirm green.</li>
+<li>Timeout: reuse whatever timeout convention <code>run_command</code>
+(<code>builtin_tools.go</code>) already uses for external processes,
+rather than inventing a new one.</li>
+</ol>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code>
+green.</label></li>
+<li><label><input type="checkbox" />A real <code>go vet</code> finding
+(e.g. bad <code>Printf</code> format string) is both human-visible
+(<code>SensorEvent</code>) and model-visible (tool-result
+appendix).</label></li>
+<li><label><input type="checkbox" />A mid-edit compile error never
+surfaces as a false sensor finding and never blocks the
+write.</label></li>
+<li><label><input type="checkbox" />No <code>go.mod</code> in the
+workspace → <code>go vet</code> is never invoked (no wasted process
+spawn, no confusing output).</label></li>
+</ul>
+<hr />
+<h2 id="deferred-to-a-follow-on-increment">Deferred to a follow-on
+increment</h2>
+<p><code>staticcheck</code>/<code>gocyclo</code> (complexity),
+unused-parameter check, a changed-file-without-changed-test heuristic,
+and <code>hunspell</code>/grammar checking for the scholarly-prose use
+case — all named as candidates in
+<code>harness-engineering-exploration.md</code> Direction A,
+deliberately not part of this plan. Per that document’s own Risks and
+Limits section, introduce one sensor at a time and observe real behavior
+before adding the next, rather than activating a bulk ruleset in one
+pass.</p>
+<p><strong>Named next candidate (2026-07-15):</strong>
+<code>hunspell</code>/grammar checking, above, is the next item in this
+deferred list — same post-write sensor slot as <code>go vet</code>,
+<code>Class: Computational</code>. Checked directly on this workspace’s
+Raspberry Pi OS host (Debian 13 trixie, aarch64): <code>hunspell</code>
+is already installed and works
+(<code>apt-cache policy hunspell hunspell-en-us libhunspell-dev</code>,
+all present; <code>hunspell -d en_US -l</code> correctly flags
+misspellings). For the grammar half, prefer <strong>Harper</strong>
+(<code>cargo install harper-cli</code>) over LanguageTool — both run on
+this hardware (the Rust toolchain and a JVM are both already present),
+but LanguageTool is a persistent Java server process, a heavier moving
+part than a single native binary for what’s meant to stay a cheap
+sensor; Harper has no JVM dependency. See
+<code>harvey-tools-and-sensor.txt</code> (repo root) for install
+one-liners for both.</p>
+<p><strong>Feedforward-side candidate, not part of this deferred
+list:</strong> statistical keyword/keyphrase extraction (RAKE, YAKE,
+graph-based methods like TextRank via <code>pke</code>) is a Direction B
+tool, not Direction A — it belongs at prompt <em>construction</em> time
+(content-aware guide/context selection, see Direction B item 1 in
+<code>harness-engineering-exploration.md</code>), not the post-write
+sensor path. Checked wheel availability on this Pi: <code>yake</code>,
+<code>rake-nltk</code>, <code>pke</code>, <code>spacy</code>,
+<code>textacy</code>, and <code>gensim</code> all resolve to prebuilt
+aarch64 wheels via <code>uv pip install --dry-run</code> — no local
+compilation required. That said, the full
+<code>pke</code>/<code>spacy</code>/<code>textacy</code>/<code>gensim</code>
+stack pulls in <code>scikit-learn</code> and a compiled BLAS
+(<code>thinc</code>/<code>blis</code>), a lot of dependency weight for
+one sensor. If this direction is picked up, start with <strong>YAKE
+alone</strong> (pure statistical, no spaCy model download) rather than
+the full stack, matching this document’s own one-sensor-at-a-time
+discipline.</p>
+</section>
+</body>
+</html>

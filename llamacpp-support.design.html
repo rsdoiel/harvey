@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="llama.cpp-server-support-design-option-a---server-based">Llama.cpp
+Server Support Design (Option A - Server-Based)</h1>
+<p><strong>Author</strong>: Harvey Team<br />
+<strong>Date</strong>: 2026-06-28<br />
+<strong>Status</strong>: Superseded by design exploration — do not
+implement from this document<br />
+<strong>Related</strong>: DECISIONS.md entry “2026-06-28 — Local model
+backend design deferred — unified abstraction under exploration”</p>
+<blockquote>
+<p><strong>Implementation is deferred.</strong> This document describes
+a llama.cpp-specific design that predates the decision to pursue a
+unified model backend abstraction. It is retained as a reference for
+llama.cpp-specific details (command vocabulary, GGUF path conventions,
+startup probing, configuration fields). The authoritative design
+direction is <a
+href="unified-model-backend-design.html">unified-model-backend-design.md</a>.</p>
+</blockquote>
+<hr />
+<h2 id="overview">Overview</h2>
+<p>This document describes the design for adding <strong>server-based
+llama.cpp support</strong> to Harvey. This approach integrates llama.cpp
+as a first-class backend alongside Ollama, Llamafile, and cloud
+providers, while leveraging llama.cpp’s HTTP server mode
+(<code>llama-server</code>) rather than embedding the library
+directly.</p>
+<h3 id="why-server-based">Why Server-Based?</h3>
+<ul>
+<li><strong>Leverages existing infrastructure</strong>: Harvey already
+has a robust <code>any-llm-go</code> integration that includes a
+<code>llamacpp</code> provider</li>
+<li><strong>Simpler implementation</strong>: No CGO, no build
+complexity, no direct memory management</li>
+<li><strong>Proven architecture</strong>: Mirrors the existing Ollama
+integration pattern</li>
+<li><strong>Lower risk</strong>: Uses llama.cpp in its intended
+deployment mode (client-server)</li>
+<li><strong>Faster delivery</strong>: Can be implemented in 1-2 days
+vs. 1-2 weeks for direct embedding</li>
+</ul>
+<h3 id="key-design-decision">Key Design Decision</h3>
+<p><strong>Harvey’s model storage</strong>: All GGUF model files are
+stored in <code>~/Models/</code> and use the <code>.gguf</code>
+extension to distinguish them from Llamafile models (which use
+<code>.llamafile</code> extension).</p>
+<hr />
+<h2 id="goals">Goals</h2>
+<ol type="1">
+<li><strong>Parity with Ollama</strong>: Users should have equivalent
+experience for model management between Ollama and llama.cpp
+backends</li>
+<li><strong>Zero-config for common cases</strong>:
+<code>/llamacpp start phi-3-mini.gguf</code> should just work</li>
+<li><strong>Graceful degradation</strong>: If llama.cpp isn’t installed,
+provide clear error messages</li>
+<li><strong>Security by default</strong>: Bind to <code>127.0.0.1</code>
+by default, validate model paths</li>
+<li><strong>Integration with existing routing</strong>: Registered
+<code>llamacpp://</code> endpoints continue to work</li>
+</ol>
+<hr />
+<h2 id="non-goals">Non-Goals</h2>
+<ul>
+<li><strong>Direct embedding</strong> (Option B): Embedding llama.cpp
+via CGO for in-process inference is deferred to a future phase</li>
+<li><strong>Automatic model downloading</strong>: Users must explicitly
+pull models (or we provide a simple download helper)</li>
+<li><strong>Multi-GPU support</strong>: Out of scope for Raspberry
+Pi-focused use case</li>
+<li><strong>Model conversion</strong>: Converting models to GGUF format
+is out of scope (users do this externally)</li>
+</ul>
+<hr />
+<h2 id="architecture">Architecture</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                        Harvey Agent                               │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────────────┐  │
+│  │  /ollama     │  │ /llamacpp    │  │   RouteRegistry            │  │
+│  │  commands    │  │ commands     │  │ (existing)                 │  │
+│  └──────┬──────┘  └──────┬──────┘  └──────────────┬─────────────┘  │
+│         │                │                      │               │
+│         ▼                ▼                      ▼               │
+│  ┌─────────────┐  ┌─────────────┐      ┌─────────────────┐        │
+│  │ Ollama      │  │ LlamaCpp     │      │ RouteEndpoint    │        │
+│  │ Server      │  │ Server       │      │ (llamacpp://...) │        │
+│  │ Process     │  │ Process      │      │                 │        │
+│  └──────┬──────┘  └──────┬──────┘      └─────────────────┘        │
+│         │                │                                      │
+│         ▼                ▼                                      │
+│  ┌───────────────────────────────────────────────────────────┐   │
+│  │                 AnyLLMClient (any-llm-go)                  │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐   │   │
+│  │  │ ollama      │  │ llamacpp    │  │ openai, mistral,   │   │   │
+│  │  │ provider    │  │ provider    │  │ anthropic, etc.    │   │   │
+│  │  └─────────────┘  └─────────────┘  └───────────────────┘   │   │
+│  └───────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │   LLMClient     │ ← Harvey&#39;s interface
+                    │   interface      │
+                    └─────────────────┘</code></pre>
+<h3 id="component-model">Component Model</h3>
+<h4 id="model-storage-models">1. Model Storage
+(<code>~/Models/</code>)</h4>
+<ul>
+<li>All GGUF files are stored in <code>~/Models/</code> directory</li>
+<li>File extension: <code>.gguf</code> (distinguishes from Llamafile’s
+<code>.llamafile</code>)</li>
+<li>Example:
+<code>~/Models/phi-3-mini-4k-instruct.Q4_K_M.gguf</code></li>
+</ul>
+<h4 id="llamacppclient-new">2. LlamaCppClient (New)</h4>
+<p>A helper client for llama.cpp-specific operations:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">// llamacpp.go</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> LlamaCppClient <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    baseURL    <span class="dt">string</span>           <span class="co">// e.g., &quot;http://127.0.0.1:8080/v1&quot;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    modelDir   <span class="dt">string</span>           <span class="co">// Path to ~/Models</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    serverProc <span class="op">*</span>os<span class="op">.</span>Process      <span class="co">// Track running llama-server process</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>c <span class="op">*</span>LlamaCppClient<span class="op">)</span> StartServer<span class="op">(</span>modelPath <span class="dt">string</span><span class="op">,</span> host <span class="dt">string</span><span class="op">,</span> port <span class="dt">int</span><span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>c <span class="op">*</span>LlamaCppClient<span class="op">)</span> StopServer<span class="op">()</span> <span class="dt">error</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>c <span class="op">*</span>LlamaCppClient<span class="op">)</span> ListModels<span class="op">()</span> <span class="op">([]</span>ModelInfo<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>c <span class="op">*</span>LlamaCppClient<span class="op">)</span> DownloadModel<span class="op">(</span>repoID <span class="dt">string</span><span class="op">,</span> filename <span class="dt">string</span><span class="op">)</span> <span class="dt">error</span></span></code></pre></div>
+<h4 id="command-handler-cmdllamacpp">3. Command Handler
+(<code>cmdLlamaCpp</code>)</h4>
+<p>New command group in <code>commands.go</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> cmdLlamaCpp<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> args <span class="op">[]</span><span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span></code></pre></div>
+<p>Subcommands: - <code>start MODEL [host] [port]</code> - Launch
+llama-server with a model - <code>stop</code> - Stop the running
+llama-server - <code>pull REPO [FILENAME]</code> - Download a GGUF model
+from HuggingFace Hub - <code>list</code> - List available GGUF models in
+<code>~/Models/</code> - <code>status</code> - Check if llama-server is
+running - <code>use MODEL</code> - Switch to a different loaded
+model</p>
+<h4 id="agent-integration">4. Agent Integration</h4>
+<p>Add to <code>Agent</code> struct:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Agent <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ... existing fields ...</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Llama.cpp integration</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    llamaCppProc   <span class="op">*</span>os<span class="op">.</span>Process  <span class="co">// Track llama-server subprocess</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    llamaCppURL    <span class="dt">string</span>       <span class="co">// Current llama-server URL (e.g., &quot;http://127.0.0.1:8080/v1&quot;)</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    llamaCppModel  <span class="dt">string</span>       <span class="co">// Current loaded model name</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="configuration">5. Configuration</h4>
+<p>Add to <code>config.go</code>:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> LlamaCppConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    ServerPath <span class="dt">string</span>        <span class="co">// Path to llama-server binary (default: &quot;llama-server&quot;)</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    ModelDir   <span class="dt">string</span>        <span class="co">// Path to model directory (default: &quot;~/Models&quot;)</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    Host       <span class="dt">string</span>        <span class="co">// Default host to bind (default: &quot;127.0.0.1&quot;)</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    Port       <span class="dt">int</span>           <span class="co">// Default port (default: 8080)</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    Timeout    time<span class="op">.</span>Duration <span class="co">// HTTP timeout (default: 30s)</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> Config <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ... existing fields ...</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    LlamaCpp LlamaCppConfig</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<hr />
+<h2 id="file-changes">File Changes</h2>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 40%" />
+<col style="width: 40%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change Type</th>
+<th scope="col">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey/llamacpp.go</code></td>
+<td><strong>New</strong></td>
+<td>LlamaCppClient and helper functions</td>
+</tr>
+<tr>
+<td><code>harvey/commands.go</code></td>
+<td>Modify</td>
+<td>Add <code>cmdLlamaCpp</code> and subcommands</td>
+</tr>
+<tr>
+<td><code>harvey/harvey.go</code></td>
+<td>Modify</td>
+<td>Add fields to <code>Agent</code> struct</td>
+</tr>
+<tr>
+<td><code>harvey/config.go</code></td>
+<td>Modify</td>
+<td>Add <code>LlamaCppConfig</code> struct and defaults</td>
+</tr>
+<tr>
+<td><code>harvey/routing.go</code></td>
+<td>None</td>
+<td>Existing <code>KindLlamaCpp</code> support is sufficient</td>
+</tr>
+<tr>
+<td><code>harvey/anyllm_client.go</code></td>
+<td>None</td>
+<td>Existing <code>newLlamaCppLLMClient</code> is sufficient</td>
+</tr>
+<tr>
+<td><code>harvey/DECISIONS.md</code></td>
+<td>Modify</td>
+<td>Record the decision to use server-based approach</td>
+</tr>
+<tr>
+<td><code>harvey/ROUTING.md</code></td>
+<td>Modify</td>
+<td>Document llama.cpp endpoint usage</td>
+</tr>
+<tr>
+<td><code>man/man7/harvey-llamacpp.7.md</code></td>
+<td><strong>New</strong></td>
+<td>Man page for <code>/llamacpp</code> commands</td>
+</tr>
+<tr>
+<td><code>templates/help/llamacpp.md</code></td>
+<td><strong>New</strong></td>
+<td>Help template for <code>/help llamacpp</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="command-reference">Command Reference</h2>
+<h3
+id="llamacpp-start-model-host-port"><code>/llamacpp start [MODEL] [HOST] [PORT]</code></h3>
+<p>Starts a llama-server instance with the specified model.</p>
+<p><strong>Arguments:</strong> - <code>MODEL</code> (required): Model
+name or path. If just a name (e.g., <code>phi-3-mini</code>), Harvey
+searches <code>~/Models/</code> for <code>{name}.gguf</code>. If a path,
+uses it directly. - <code>HOST</code> (optional): Host to bind. Default:
+<code>127.0.0.1</code> - <code>PORT</code> (optional): Port to listen
+on. Default: <code>8080</code></p>
+<p><strong>Behavior:</strong> 1. Checks if <code>llama-server</code>
+binary is available on PATH 2. Resolves model path (search
+<code>~/Models/</code> if needed) 3. Validates the model file exists and
+has <code>.gguf</code> extension 4. Launches
+<code>llama-server --model &lt;path&gt; --host &lt;host&gt; --port &lt;port&gt; --nobrowse</code>
+5. Probes until server is ready (timeout: 30s) 6. Updates
+<code>a.Client</code> to use the new server 7. Sets
+<code>a.llamaCppProc</code> and <code>a.llamaCppURL</code> for
+tracking</p>
+<p><strong>Example:</strong></p>
+<pre><code>/llamacpp start phi-3-mini
+/llamacpp start ~/Models/phi-3-mini.Q4_K_M.gguf 0.0.0.0 9090</code></pre>
+<h3 id="llamacpp-stop"><code>/llamacpp stop</code></h3>
+<p>Stops the currently running llama-server instance.</p>
+<p><strong>Behavior:</strong> 1. If <code>a.llamaCppProc</code> is set,
+sends SIGTERM 2. Waits for process to exit (timeout: 5s) 3. Clears
+<code>a.llamaCppProc</code> and <code>a.llamaCppURL</code> 4. Falls back
+to previous client (if any) or no client</p>
+<h3
+id="llamacpp-pull-repo-filename"><code>/llamacpp pull REPO [FILENAME]</code></h3>
+<p>Downloads a GGUF model from HuggingFace Hub.</p>
+<p><strong>Arguments:</strong> - <code>REPO</code> (required):
+HuggingFace repository ID (e.g.,
+<code>bartowski/Meta-Llama-3-8B-Instruct-GGUF</code>) -
+<code>FILENAME</code> (optional): Specific GGUF file to download. If
+omitted, Harvey lists available GGUF files and prompts for
+selection.</p>
+<p><strong>Behavior:</strong> 1. Queries HuggingFace Hub API for
+repository files 2. Filters for <code>.gguf</code> files 3. If
+<code>FILENAME</code> provided, downloads that specific file 4. If no
+<code>FILENAME</code>, presents list of options 5. Downloads to
+<code>~/Models/</code> 6. Validates file integrity (basic size
+check)</p>
+<p><strong>Example:</strong></p>
+<pre><code>/llamacpp pull bartowski/Meta-Llama-3-8B-Instruct-GGUF Meta-Llama-3-8B-Instruct-Q4_K_M.gguf
+/llamacpp pull bartowski/Meta-Llama-3-8B-Instruct-GGUF</code></pre>
+<h3 id="llamacpp-list"><code>/llamacpp list</code></h3>
+<p>Lists all GGUF models available in <code>~/Models/</code>.</p>
+<p><strong>Output:</strong></p>
+<pre><code>Available GGUF models in ~/Models/:
+  phi-3-mini-4k-instruct.Q4_K_M.gguf    2.1 GB  2026-06-01
+  mistral-7b-instruct-v0.2.Q4_0.gguf     3.8 GB  2026-05-15</code></pre>
+<h3 id="llamacpp-status"><code>/llamacpp status</code></h3>
+<p>Checks if a llama-server instance is running and accessible.</p>
+<p><strong>Output:</strong> - If running:
+<code>llama-server is running at http://127.0.0.1:8080 with model phi-3-mini</code>
+- If not: <code>llama-server is not running</code></p>
+<h3 id="llamacpp-use-model"><code>/llamacpp use MODEL</code></h3>
+<p>Switches to a different model on the running server (requires server
+restart).</p>
+<p><strong>Behavior:</strong> 1. Stops current server (if running) 2.
+Starts new server with specified model 3. Updates client connection</p>
+<p><strong>Example:</strong></p>
+<pre><code>/llamacpp use mistral-7b-instruct.Q4_K_M.gguf</code></pre>
+<hr />
+<h2 id="integration-with-existing-features">Integration with Existing
+Features</h2>
+<h3 id="routing">Routing</h3>
+<p>Existing <code>llamacpp://</code> endpoints continue to work:</p>
+<pre><code>/route add pi5 llamacpp://192.168.1.100:8080
+@pi5 write a test</code></pre>
+<p>The new <code>/llamacpp start</code> command simply provides a
+convenient way to start and manage the local server.</p>
+<h3 id="session-persistence">Session Persistence</h3>
+<p>When Harvey starts a llama-server: - <code>a.llamaCppProc</code>
+tracks the subprocess - On Harvey exit, the server <strong>continues
+running</strong> (user must manually <code>/llamacpp stop</code> or
+Harvey can auto-stop if it started it) - On next Harvey session, if a
+server is detected at the default URL, Harvey can automatically
+connect</p>
+<h3 id="model-caching">Model Caching</h3>
+<ul>
+<li>Downloaded GGUF files persist in <code>~/Models/</code></li>
+<li>No re-download on subsequent starts</li>
+<li>Users can manually manage <code>~/Models/</code> directory</li>
+</ul>
+<hr />
+<h2 id="error-handling">Error Handling</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Scenario</th>
+<th scope="col">Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llama-server</code> not installed</td>
+<td>Clear error: “llama-server not found. Install from
+https://github.com/ggerganov/llama.cpp”</td>
+</tr>
+<tr>
+<td>Model not found in <code>~/Models/</code></td>
+<td>List available models: “Model not found. Available: phi-3-mini.gguf,
+…”</td>
+</tr>
+<tr>
+<td>Invalid <code>.gguf</code> file</td>
+<td>Error: “File is not a valid GGUF model (magic bytes mismatch)”</td>
+</tr>
+<tr>
+<td>Server fails to start</td>
+<td>Error with stderr output from llama-server</td>
+</tr>
+<tr>
+<td>Port already in use</td>
+<td>Error: “Port 8080 already in use. Try a different port with
+/llamacpp start model 127.0.0.1 8081”</td>
+</tr>
+<tr>
+<td>Server timeout</td>
+<td>Error: “llama-server failed to start within 30 seconds”</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="security-considerations">Security Considerations</h2>
+<h3 id="implemented">✅ Implemented</h3>
+<ol type="1">
+<li><strong>Default bind to <code>127.0.0.1</code></strong>: Server not
+exposed to network by default</li>
+<li><strong>Model path validation</strong>: Only allow
+<code>.gguf</code> files from <code>~/Models/</code> or explicit
+paths</li>
+<li><strong>No automatic execution</strong>: Users must explicitly start
+servers</li>
+<li><strong>Process isolation</strong>: llama-server runs as separate
+subprocess</li>
+</ol>
+<h3 id="user-responsibilities">⚠️ User Responsibilities</h3>
+<ol type="1">
+<li><strong>Model trust</strong>: Users must trust downloaded GGUF files
+(malicious models could have harmful prompts)</li>
+<li><strong>Network exposure</strong>: Users explicitly opt-in to
+<code>0.0.0.0</code> binding</li>
+<li><strong>Resource limits</strong>: Users responsible for monitoring
+server resource usage</li>
+</ol>
+<h3 id="future-enhancements">🔒 Future Enhancements</h3>
+<ol type="1">
+<li>Model file checksum verification</li>
+<li>Sandboxing for llama-server process</li>
+<li>Rate limiting for remote endpoints</li>
+</ol>
+<hr />
+<h2 id="performance-considerations">Performance Considerations</h2>
+<h3 id="server-startup-time">Server Startup Time</h3>
+<ul>
+<li><strong>Cold start</strong> (model not in memory): 5-30 seconds
+depending on model size</li>
+<li><strong>Warm start</strong> (model cached): &lt;1 second</li>
+<li>Harvey shows a spinner during startup with estimated time</li>
+</ul>
+<h3 id="token-throughput">Token Throughput</h3>
+<p>Expected performance on Raspberry Pi 5 (16GB):</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Model</th>
+<th scope="col">Quantization</th>
+<th scope="col">Tokens/sec</th>
+<th scope="col">VRAM Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>phi-3-mini</td>
+<td>Q4_K_M</td>
+<td>8-12</td>
+<td>1.2 GB</td>
+</tr>
+<tr>
+<td>mistral-7b</td>
+<td>Q4_K_M</td>
+<td>2-4</td>
+<td>3.8 GB</td>
+</tr>
+<tr>
+<td>llama-3-8b</td>
+<td>Q4_K_M</td>
+<td>1-2</td>
+<td>4.3 GB</td>
+</tr>
+</tbody>
+</table>
+<p><em>Note: Performance varies based on CPU, RAM, and system
+load</em></p>
+<h3 id="memory-usage">Memory Usage</h3>
+<ul>
+<li><strong>Model weights</strong>: Loaded into RAM (or VRAM if GPU
+available)</li>
+<li><strong>KV cache</strong>: Grows with context length</li>
+<li><strong>Server overhead</strong>: ~100-200 MB</li>
+</ul>
+<p>Harvey warns if model exceeds available RAM:</p>
+<pre><code>Warning: mistral-7b-instruct.Q4_K_M.gguf requires ~4GB RAM. 
+Your system has 8GB free. Proceed? (y/N)</code></pre>
+<hr />
+<h2 id="testing-strategy">Testing Strategy</h2>
+<h3 id="unit-tests">Unit Tests</h3>
+<ol type="1">
+<li><code>TestParseLlamaCppModelPath</code> - Path resolution logic</li>
+<li><code>TestLlamaCppConfigDefaults</code> - Configuration
+defaults</li>
+<li><code>TestLlamacppAPIURL</code> - URL conversion (existing, extend
+for new cases)</li>
+</ol>
+<h3 id="integration-tests">Integration Tests</h3>
+<ol type="1">
+<li><code>TestLlamaCppStartStop</code> - Start and stop server</li>
+<li><code>TestLlamaCppListModels</code> - Model enumeration</li>
+<li><code>TestLlamaCppRouting</code> - Integration with
+<code>@mention</code> routing</li>
+</ol>
+<h3 id="manual-testing">Manual Testing</h3>
+<ol type="1">
+<li>Start server with various model sizes</li>
+<li>Test concurrent requests</li>
+<li>Test error conditions (invalid model, port in use, etc.)</li>
+<li>Test integration with Harvey’s chat loop</li>
+</ol>
+<hr />
+<h2 id="migration-path">Migration Path</h2>
+<h3 id="for-existing-users">For Existing Users</h3>
+<p>No changes required. Existing workflows continue to work: - Remote
+<code>llamacpp://</code> endpoints: Unchanged - Ollama: Unchanged -
+Other backends: Unchanged</p>
+<h3 id="for-new-users">For New Users</h3>
+<ol type="1">
+<li>Ensure <code>llama-server</code> is installed and on PATH</li>
+<li>Download a GGUF model to <code>~/Models/</code></li>
+<li>Use <code>/llamacpp start model</code> or register a route</li>
+</ol>
+<h3 id="for-harvey-developers">For Harvey Developers</h3>
+<ol type="1">
+<li>Update documentation to mention llama.cpp support</li>
+<li>Add examples to getting started guide</li>
+<li>Update architecture diagrams</li>
+</ol>
+<hr />
+<h2 id="rollout-plan">Rollout Plan</h2>
+<h3 id="phase-1-core-implementation-1-2-days">Phase 1: Core
+Implementation (1-2 days)</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Create <code>llamacpp.go</code> with
+<code>LlamaCppClient</code></label></li>
+<li><label><input type="checkbox" />Add <code>/llamacpp start</code>
+command</label></li>
+<li><label><input type="checkbox" />Add <code>/llamacpp stop</code>
+command</label></li>
+<li><label><input type="checkbox" />Add <code>/llamacpp status</code>
+command</label></li>
+<li><label><input type="checkbox" />Update <code>Agent</code> struct
+with tracking fields</label></li>
+<li><label><input type="checkbox" />Update <code>Config</code> with
+<code>LlamaCppConfig</code></label></li>
+</ul>
+<h3 id="phase-2-model-management-1-day">Phase 2: Model Management (1
+day)</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Add <code>/llamacpp list</code>
+command</label></li>
+<li><label><input type="checkbox" />Add <code>/llamacpp use</code>
+command</label></li>
+<li><label><input type="checkbox" />Add <code>/llamacpp pull</code>
+command (basic version)</label></li>
+</ul>
+<h3 id="phase-3-polish-1-day">Phase 3: Polish (1 day)</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Add man page
+(<code>harvey-llamacpp.7.md</code>)</label></li>
+<li><label><input type="checkbox" />Add help template
+(<code>templates/help/llamacpp.md</code>)</label></li>
+<li><label><input type="checkbox" />Add warnings for large
+models</label></li>
+<li><label><input type="checkbox" />Add startup spinner with
+progress</label></li>
+<li><label><input type="checkbox" />Update <code>ROUTING.md</code> with
+llama.cpp examples</label></li>
+</ul>
+<h3 id="phase-4-documentation-testing-1-day">Phase 4: Documentation
+&amp; Testing (1 day)</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />Write unit tests</label></li>
+<li><label><input type="checkbox" />Write integration tests</label></li>
+<li><label><input type="checkbox" />Update <code>README.md</code> or
+<code>getting_started.md</code></label></li>
+<li><label><input type="checkbox" />Add to decision log</label></li>
+</ul>
+<hr />
+<h2 id="open-questions">Open Questions</h2>
+<ol type="1">
+<li><strong>Should Harvey auto-stop llama-server on exit?</strong>
+<ul>
+<li>Pro: Clean resource management</li>
+<li>Con: Users might want server to persist</li>
+<li><strong>Proposed</strong>: Add config option
+<code>llamacpp.auto_stop: true</code> (default: false)</li>
+</ul></li>
+<li><strong>Should we support multiple simultaneous llama-server
+instances?</strong>
+<ul>
+<li>Pro: Run different models concurrently</li>
+<li>Con: Complexity, port management</li>
+<li><strong>Proposed</strong>: Defer to future phase. For now, one
+server at a time.</li>
+</ul></li>
+<li><strong>Should we bundle llama-server with Harvey?</strong>
+<ul>
+<li>Pro: Better out-of-box experience</li>
+<li>Con: Large binary, versioning complexity</li>
+<li><strong>Proposed</strong>: No. Document installation
+requirements.</li>
+</ul></li>
+<li><strong>Should we support streaming model downloads?</strong>
+<ul>
+<li>Pro: Better UX for large models</li>
+<li>Con: Complexity</li>
+<li><strong>Proposed</strong>: Defer. For now, download entire file then
+start server.</li>
+</ul></li>
+</ol>
+<hr />
+<h2 id="success-criteria">Success Criteria</h2>
+<p>✅ <code>/llamacpp start phi-3-mini</code> works on first try
+(assuming model exists)<br />
+✅ <code>/llamacpp pull</code> successfully downloads a model from
+HuggingFace Hub<br />
+✅ <code>/llamacpp list</code> shows all <code>.gguf</code> files in
+<code>~/Models/</code><br />
+✅ <code>@llamacpp</code> routing works with locally started
+server<br />
+✅ Error messages are clear and actionable<br />
+✅ No security regressions from existing Ollama integration<br />
+✅ All existing tests continue to pass</p>
+<hr />
+<h2 id="references">References</h2>
+<ul>
+<li><a href="https://github.com/ggerganov/llama.cpp">llama.cpp
+GitHub</a></li>
+<li><a href="https://huggingface.co/models?search=gguf">HuggingFace
+Hub</a></li>
+<li><a
+href="https://github.com/mozilla-ai/any-llm-go/tree/main/providers/llamacpp">any-llm-go
+llamacpp provider</a></li>
+<li><a href="ROUTING.html">Harvey Routing Design</a></li>
+<li><a href="ARCHITECTURE.html">Harvey Architecture</a></li>
+</ul>
+</section>
+</body>
+</html>

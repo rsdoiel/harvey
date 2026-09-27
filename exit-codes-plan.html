@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="adopting-the-workspace-exit-codes-in-harvey-and-assay-implementation-plan">Adopting
+the workspace exit codes in <code>harvey</code> and <code>assay</code> —
+Implementation Plan</h1>
+<p>Implements the workspace convention (workspace DR-0003,
+<code>accepted</code>) in <code>cmd/harvey</code> and
+<code>cmd/assay</code>. The facts and the decisions this plan rests on
+are in <code>exit-codes-survey.md</code> (Q1 to Q5, taken 2026-09-25).
+<code>knowledge/exit-codes-plan.md</code> is the worked example for the
+method; <code>knowledge/cmd/kb/exitcode.go</code> is the model for the
+classifier.</p>
+<p>Work items H0 → H6. TDD-first: each item’s tests are written and
+confirmed red before the code changes. One commit per item, made only
+when RSDOIEL asks. Every new exported symbol gets the
+<code>/** … */</code> block (description, parameters, returns, example).
+H0 is done.</p>
+<p>The codes: 0 ok, 1 negative, 2 usage, 65 data, 66 no_input, 69
+unavailable, 70 internal, 73 cant_create, 74 io, 75 temp_fail, 77
+no_permission, 78 config. Unclassified is 70.</p>
+<p>Neither binary has a <code>--json</code> mode, so the class name is
+not printed; the number is the contract. If a machine-readable mode is
+added later, the class type already carries the name.</p>
+<hr />
+<h2 id="h0-closed-stdin-is-not-yes-done">H0 — Closed stdin is not “yes”
+(done)</h2>
+<p><code>askYesNo</code> returns false at end of input.
+<code>ask_yes_no_test.go</code>; committed <code>a50c2ca</code>.</p>
+<hr />
+<h2 id="h1-the-classifier-and-the-sentinels-done-0cb0c97">H1 — The
+classifier and the sentinels (done, <code>0cb0c97</code>)</h2>
+<p><strong>Add</strong> <code>exitcode.go</code> in package
+<code>harvey</code>:</p>
+<ul>
+<li><code>ExitClass{Name string; Code int}</code> and the twelve class
+values, exported (<code>ClassOK</code> … <code>ClassConfig</code>),
+because two packages under <code>cmd/</code> use them.</li>
+<li><code>ClassedError</code>, wrapping an error with a class.
+<code>Error</code> and <code>Unwrap</code> forward, so a message reads
+as it did and <code>errors.Is</code>/<code>As</code> reach the
+cause.</li>
+<li>Constructors: <code>Usagef</code>, <code>Negativef</code>,
+<code>NotFoundf</code>, <code>Dataf</code>, <code>NoInputf</code>,
+<code>Unavailablef</code>, <code>CantCreatef</code>, <code>IOf</code>,
+<code>Configf</code>, and <code>ClassedAs(class, err)</code> for
+reclassifying what a helper returned (the outermost class wins).</li>
+<li><code>ExitClassOf(err) (ExitClass, bool)</code> and
+<code>ExitCodeFor(err) ExitClass</code> (the class carries the code):
+<code>nil</code> is 0; a <code>*ClassedError</code> gives its class;
+then the standard-library rules from the convention
+(<code>fs.ErrNotExist</code> 66, <code>fs.ErrPermission</code> 77,
+<code>fs.ErrExist</code> 73, other <code>*fs.PathError</code> 74,
+<code>net.Error</code> and <code>*url.Error</code> 69 (checked by
+concrete type <em>before</em> the file errors, because a refused
+connection wraps a <code>*os.SyscallError</code>, and not by the
+<code>net.Error</code> interface first, because a bare
+<code>syscall.Errno</code> satisfies it),
+<code>context.DeadlineExceeded</code> 69, a SQLite busy or locked error
+75, other SQLite constraint and corruption codes 65); anything else is
+<code>ClassInternal</code>.</li>
+<li>Library sentinels only where a case needs one:
+<code>ErrInvalid</code> (bad value, usage when it came from an argument,
+data when it came from a file) and <code>ErrNotFound</code>. More only
+when a caller must tell them apart.</li>
+</ul>
+<p><strong>Not yet:</strong> the knowledge library’s own markers
+(<code>knowledge.ErrInvalid</code>, <code>ErrNotFound</code>,
+<code>ErrInUse</code>, <code>ErrConflict</code>) exist from v0.0.14, and
+<code>go.mod</code> pins v0.0.13. Until the bump, an error the knowledge
+library raises itself (as opposed to a SQLite or file error, which
+classify by the rules above) reaches the classifier as a plain error and
+exits 70. The startup paths that open the knowledge base fail on file
+and SQLite errors, so this affects little; it goes in the bump’s
+checklist.</p>
+<p><strong>Tests, first:</strong> <code>exitcode_test.go</code>. A table
+of error to class and code for every standard-library rule;
+<code>Unwrap</code> and message preservation; <code>nil</code>; the
+outermost-class rule; wrapping with <code>%w</code> still classifies; an
+unclassified plain error is 70 (this is the mutation check: change the
+fallback to 1 and the test fails). No production caller yet.</p>
+<p><strong>Commit boundary:</strong> <code>exitcode.go</code>,
+<code>exitcode_test.go</code>.</p>
+<hr />
+<h2 id="h2-mainrun-the-argument-parsers-and-the-usage-sites-done">H2 —
+<code>mainRun</code>, the argument parsers, and the usage sites
+(done)</h2>
+<p><strong>Done 2026-09-25.</strong> Until H3 replaces it,
+<code>exitStatus</code> in <code>cmd/harvey</code> maps a usage error to
+2 and every other error to 1, so nothing else moved. Checked by running
+the survey’s 31 probe commands against the v0.0.16 build and the new
+one: eight exit codes changed, all 1 to 2 and all usage cases
+(<code>help nosuchtopic</code>, <code>--bogus</code>, <code>-m</code>
+with no argument, <code>init</code> with no source, and assay’s three
+flag-combination checks; assay’s bad flag was already 2), and no other
+exit code, stdout or stderr line differs but the <code>Usage of</code>
+line, which now names <code>assay</code> instead of its full path. A
+side effect worth knowing: <code>assay</code>’s
+<code>defer proc.Kill()</code> now runs on error exits, where
+<code>os.Exit</code> used to skip it.</p>
+<p>Neither <code>main</code> can be tested, and every later item needs
+to run them. Split each into
+<code>func mainRun(args []string, out, errOut io.Writer) int</code> in
+the <code>cmd/</code> package (no <code>in</code>:
+<code>Agent.Run</code> reads <code>os.Stdin</code> itself, and no H2
+path reaches it), with <code>main</code> calling it and
+<code>os.Exit</code>; <code>harvey</code>’s <code>--version</code>,
+<code>--help</code> and <code>help</code> already write to a writer or
+stdout, so they move over unchanged.</p>
+<p><strong><code>cmd/harvey</code>:</strong> the hand-written loop keeps
+its flags. Usage errors become <code>Usagef</code>: an unknown flag; a
+flag missing its argument; <code>init</code> without a source;
+<code>help TOPIC</code> with an unknown topic. A surplus positional
+argument (anything that is not <code>init</code> or <code>help</code>
+and does not start with <code>-</code>) becomes “unexpected argument”,
+not “Unknown flag”. <code>checkWorkDir</code> stops calling
+<code>os.Exit</code> and returns an error.</p>
+<p><strong><code>cmd/assay</code>:</strong> it uses <code>flag</code>.
+Build a <code>flag.NewFlagSet</code> with <code>ContinueOnError</code>
+and route its output to <code>errOut</code>, so <code>-bogus</code>
+returns an error <code>mainRun</code> maps to 2 instead of
+<code>flag</code> exiting. The four flag-combination checks become
+<code>Usagef</code>. A surplus positional argument (assay takes none) is
+refused.</p>
+<p><strong>Tests, first:</strong> <code>cmd/harvey/main_test.go</code>
+and <code>cmd/assay/main_test.go</code>. For each binary:
+<code>--version</code> and <code>--help</code> exit 0 with output on
+<code>out</code>; a bogus flag, a missing flag argument, a surplus
+argument, and (assay) each flag conflict exit 2 with nothing on
+<code>out</code> and a message on <code>errOut</code>. These run
+in-process, so they need no build and no Ollama.</p>
+<p><strong>Commit boundary:</strong> the two <code>main.go</code>
+refactors and their tests. Behaviour outside the usage cases must not
+change in this item; the tests above are the only new assertions.</p>
+<hr />
+<h2 id="h3-harvey-inputs-the-session-and-non-interactive-runs">H3 —
+<code>harvey</code>: inputs, the session, and non-interactive runs</h2>
+<p><strong>Done 2026-09-25.</strong> Two changes from the plan as
+written: (1) the named-input checks live in
+<code>startup_check.go</code> (<code>CheckStartupInputs</code>,
+<code>CheckLlamafileInput</code>) and run in <code>runArgs</code> before
+any agent exists, so a script gets its status before a model loads; the
+classified sites in <code>Run</code> cover what only <code>Run</code>
+can know (no backend, bad <code>harvey.yaml</code>, replay ordering).
+(2) <code>-w</code> on a directory that is missing or not a directory is
+66, checked before the containment rule, which is 2; the plan’s table
+did not separate them. Seams for testing: <code>Agent.stdin</code> and
+the <code>isTerminal</code> variable. The survey’s probe matrix, old
+build against new: eight exit codes changed (<code>init</code> missing 1
+to 66, <code>init</code> malformed 1 to 65, <code>-w</code> missing 1 to
+66, <code>-w</code> outside 1 to 2, <code>--replay</code> missing 1 to
+66, <code>--continue</code> missing 0 to 66, no backend and no terminal
+0 to 69, <code>--llamafile</code> missing 1 to 66), and
+<code>--record-file</code> uncreatable is 73 and a malformed
+<code>harvey.yaml</code> without a terminal is 78, both checked by hand.
+Mutation-checked: the exit-status mapping, the no-backend rule, the
+<code>harvey.yaml</code> rule, the replay ordering and the
+<code>--continue</code> check each break a test. <code>exitStatus</code>
+is now <code>ExitCodeFor</code>, so an error nobody classified exits 70;
+none of the probed paths does.</p>
+<p>Classify at the source, then let <code>mainRun</code> map:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Site</th>
+<th scope="col">Class</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init</code> source path missing</td>
+<td><code>NoInputf</code> (66)</td>
+</tr>
+<tr>
+<td><code>init</code> source is malformed YAML</td>
+<td><code>Dataf</code> (65)</td>
+</tr>
+<tr>
+<td><code>-w</code> nonexistent or not a directory</td>
+<td><code>NoInputf</code> (66)</td>
+</tr>
+<tr>
+<td><code>-w</code> with the working directory outside it
+(<code>RequireCWDInRoot</code>)</td>
+<td><code>Usagef</code> (2)</td>
+</tr>
+<tr>
+<td><code>--replay FILE</code> missing</td>
+<td><code>NoInputf</code> (66), <strong>checked before the
+backend</strong></td>
+</tr>
+<tr>
+<td><code>--replay FILE</code> malformed Fountain</td>
+<td><code>Dataf</code> (65)</td>
+</tr>
+<tr>
+<td><code>--continue FILE</code> missing</td>
+<td><code>NoInputf</code> (66), before the session starts</td>
+</tr>
+<tr>
+<td><code>--record-file PATH</code> cannot be created</td>
+<td><code>CantCreatef</code> (73), before the session starts</td>
+</tr>
+<tr>
+<td><code>--llamafile PATH</code> missing</td>
+<td><code>NoInputf</code> (66)</td>
+</tr>
+<tr>
+<td><code>--llamafile</code> present but the server will not start</td>
+<td><code>Unavailablef</code> (69)</td>
+</tr>
+<tr>
+<td>Backend selection finds no model (<code>selectBackend</code>)</td>
+<td><code>Unavailablef</code> (69)</td>
+</tr>
+<tr>
+<td>System prompt larger than the model’s context
+(<code>systemPromptExceedsContext</code>)</td>
+<td><code>Dataf</code> (65)</td>
+</tr>
+<tr>
+<td><code>initWorkspace</code> errors</td>
+<td>by cause through <code>fs</code> rules (66, 73, 74, 77)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Non-interactive</strong> means stdin is not a terminal, or
+<code>--replay</code> without <code>--replay-continue</code>.
+Interactivity comes from one function, <code>interactive(in)</code>,
+using <code>golang.org/x/term</code>, so tests can inject it. Per
+Q3:</p>
+<ul>
+<li>A malformed <code>harvey.yaml</code> stays a printed warning at a
+terminal. When non-interactive, it is <code>Configf</code> (78) and the
+run does not start.</li>
+<li>No reachable backend stays “start anyway, offer
+<code>/model use</code>” at a terminal. When non-interactive it is
+69.</li>
+</ul>
+<p>A session that ends by <code>/exit</code>, Ctrl-D or Ctrl-C is 0.</p>
+<p><code>Agent.Run</code> keeps returning <code>error</code>;
+<code>mainRun</code> calls <code>ExitCodeFor</code>. The seven return
+sites in <code>Run</code> get a class by cause as above; nothing matches
+message text.</p>
+<p><strong>Tests, first:</strong> in
+<code>cmd/harvey/main_test.go</code>, one case per row above, run
+through <code>mainRun</code> in a temp workspace with Ollama pointed at
+a closed port and the <code>interactive</code> function replaced. Plus:
+a normal <code>/exit</code> session ends 0; <code>--replay</code> of a
+missing file exits 66 and does not print “no backend connected” (the
+ordering bug from the survey). Mutation check: swap the
+<code>--replay</code> file check and backend check back and the test
+fails.</p>
+<p><strong>Commit boundary:</strong> the library sites and
+<code>cmd/harvey/main.go</code>. This is the item that changes today’s 0
+to non-zero (five cases); the upgrade notes cover it.</p>
+<hr />
+<h2 id="h4-assay-inputs-availability-outputs-the-bulk-rule-done">H4 —
+<code>assay</code>: inputs, availability, outputs, the bulk rule
+(done)</h2>
+<p><strong>Done 2026-09-25.</strong> Ten exit codes changed in the probe
+matrix, old build against new, and nothing else did: corpus missing 1 to
+66, corpus malformed 1 to 65, Ollama unreachable 1 to 69, llama.cpp
+unreachable 1 to 69, <code>--llamafile</code> missing 1 to 66,
+<code>--guide-file</code> missing 1 to 66, <code>--output</code> under a
+missing directory 1 to 73, <code>--rag-db</code> in a directory the user
+may not create 1 to 77, and every call failing 0 to 69 (with
+<code>assay: 1 model call(s) failed</code>). Notes: a permission refusal
+keeps its own class (77), as <code>AsCreate</code> does in
+<code>kb</code>, so an <code>--output</code> or <code>--rag-db</code>
+denied by the operating system is 77 and only a path that cannot be made
+is 73. A model call that fails without classifying itself (an HTTP 500)
+is 69, since the service could not do the work. A corpus with no prompts
+is 65, decided in <code>loadCorpus</code>. A store bound to a different
+embedding model that arrives unclassified is 65. Mutation-checked: a
+failing check setting the exit, calls not being remembered, the last
+failure replacing the first, and the final exit being 0 each break a
+test. The fake model server (<code>fakeModelServer</code> in
+<code>cmd/assay/main_test.go</code>) speaks
+<code>/v1/chat/completions</code> streaming and not, and
+<code>/api/tags</code>.</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Site</th>
+<th scope="col">Class</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--corpus</code> missing / malformed / no prompts</td>
+<td>66 / 65 / 65</td>
+</tr>
+<tr>
+<td><code>--category</code> matching nothing</td>
+<td>1 (unchanged)</td>
+</tr>
+<tr>
+<td>Ollama or llama.cpp unreachable while listing models</td>
+<td>69</td>
+</tr>
+<tr>
+<td>Ollama up, no models</td>
+<td>1 (unchanged)</td>
+</tr>
+<tr>
+<td><code>--llamafile</code> missing / will not start</td>
+<td>66 / 69</td>
+</tr>
+<tr>
+<td><code>--rag-db</code> cannot be opened</td>
+<td>by cause: 66, 77, 74</td>
+</tr>
+<tr>
+<td><code>--guide-file</code> missing</td>
+<td>66</td>
+</tr>
+<tr>
+<td><code>--output</code> cannot be created; <code>extracted/</code>
+cannot be created</td>
+<td>73</td>
+</tr>
+<tr>
+<td><code>report.md</code> or <code>results.json</code> cannot be
+written</td>
+<td>74</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The bulk rule (Q2).</strong> The run does everything, then
+exits with the class of the <em>first</em> failure in a fixed order (in
+the order the failures occurred). A model call that errors is recorded
+as an <code>ERROR</code> result as it is now, and remembered; if the
+server was unreachable it is 69. A report that cannot be written is 74
+and does not stop the JSON attempt. Failing automatic checks are results
+and never change the exit code. The final line prints the count of
+failed calls, so an exit of 69 is explained.</p>
+<p><strong>Tests, first:</strong> in
+<code>cmd/assay/main_test.go</code>, against a fake model server (an
+<code>httptest</code> server speaking the endpoint <code>assay</code>
+uses): all calls fail, so the run completes, writes both files, and
+exits 69; some calls fail, so the class of the first one; a failing
+check with working calls exits 0 (mutation: make a failed check set the
+exit and the test fails); an unwritable output directory exits 73; a
+report that cannot be written exits 74 while the other file is still
+attempted.</p>
+<p><strong>Commit boundary:</strong> <code>cmd/assay/main.go</code> and
+its tests.</p>
+<hr />
+<h2 id="h5-enforcement-and-the-manuals-done">H5 — Enforcement, and the
+manuals (done)</h2>
+<p><strong>Done 2026-09-25.</strong> Both binaries now have one list of
+options in code (<code>flagSpecs</code> in <code>cmd/harvey</code>,
+<code>defineAssayFlags</code> in <code>cmd/assay</code>), and
+<code>flags_test.go</code> in each compares it with the OPTIONS section
+of the manual, then runs every option with a bogus flag before and
+after, without its value, and with a surplus argument, asserting 2 and
+nothing on stdout. <code>harvey</code> also runs every help topic and
+alias in <code>help topics</code> (exit 0). The comparison found two
+manual gaps at once (<code>--replay-continue</code> undocumented;
+<code>-m, --model</code> had its placeholder on the wrong line) and one
+ordering bug: <code>--llamafile MISSING --bogus</code> exited 66 because
+the file was checked as the flag parsed; it is now checked after the
+whole command line parses, so a usage mistake anywhere is 2.
+<code>EXIT STATUS</code> is in <code>HelpText</code> and
+<code>AssayHelpText</code> and in the regenerated
+<code>harvey.1.md</code> and <code>assay.1.md</code> (existing headers
+kept), with a test that each lists exactly the codes the tool can
+return. <code>CLAUDE.md</code> has an “Exit codes” section.
+Mutation-checked: an option missing from the manual (harvey and assay),
+a changed documented code, and a surplus argument being ignored each
+break a test.</p>
+<p><strong>Enforcement.</strong> Modelled on <code>kb</code>’s
+<code>verbcoverage_test.go</code>: derive the flag and subcommand list
+from the help text or the flag set, and run every path with a bogus
+flag, a missing argument and a surplus argument, asserting 2; assert
+that no probed invocation exits 70. For <code>harvey</code> the paths
+are its flags plus <code>init</code> and <code>help</code>; for
+<code>assay</code>, its flags. The test derives the list rather than
+restating it, so a new flag that skips classification fails it.</p>
+<p><strong>Manuals.</strong> An <code>EXIT STATUS</code> section in
+<code>HelpText</code> (<code>harvey(1)</code>) and
+<code>AssayHelpText</code> (<code>assay(1)</code>), in
+<code>helptext.go</code>, generated to <code>harvey.1.md</code> and
+<code>assay.1.md</code> the way the other pages are. Each documents the
+codes the tool can return, the non-interactive rule for
+<code>harvey</code>, and the bulk rule for <code>assay</code>. The
+existing <code>help_dispatch_test.go</code> pattern checks the section
+exists.</p>
+<p><strong>Docs.</strong> <code>harvey/CLAUDE.md</code> gets a short
+“Exit codes” paragraph pointing at the workspace convention and at
+<code>exitcode.go</code> as the worked example.</p>
+<p><strong>Commit boundary:</strong> the tests,
+<code>helptext.go</code>, the two generated man pages,
+<code>CLAUDE.md</code>.</p>
+<hr />
+<h2 id="h6-old-versus-new-and-the-decision-record-done-2026-09-27">H6 —
+Old versus new, and the decision record (done, 2026-09-27)</h2>
+<p><code>scripts/compare-exit-codes.py</code> +
+<code>scripts/README.md</code>, run against the v0.0.16 baseline
+(<code>df39cfe</code>) via a throwaway <code>git worktree</code>: 40
+commands, 32 changed exit code, every one matching this plan and the
+survey’s Convention column, no exit 70, no hang, no stray Ollama process
+(<code>pgrep -x ollama</code> unchanged).
+<code>harvey/decisions/0005-*.md</code> written and accepted.
+<code>CHANGES.md</code> <code>## Unreleased</code> carries the upgrade
+table. A handful of survey rows needing a live model response or a
+zero-model Ollama instance are listed in the script’s own “not covered”
+footer rather than faked.</p>
+<p><strong>Comparison.</strong> As in <code>kb</code>’s X5: build the
+v0.0.16 tree (<code>df39cfe</code>) as the baseline and the new tree,
+run the same commands against each in a fresh scratch workspace with an
+isolated <code>HOME</code>, stdin from <code>/dev/null</code> and Ollama
+on a closed port, and diff exit code, stdout and stderr. The survey’s 41
+rows are the seed set; add the enforcement test’s paths. Every changed
+exit code must be a row of this plan, and nothing may exit 70. The
+harness lives in a new <code>scripts/</code> directory this time (kb
+learned that the scratch copy is lost), with a README, and refuses to
+run from a directory not named as the workspace only if that turns out
+to matter here. One trap from <code>kb</code>: the harness must not
+start a real <code>ollama serve</code>; the closed-port setting and the
+fixed <code>askYesNo</code> keep it from doing so, and the run checks
+<code>pgrep ollama</code> before and after.</p>
+<p><strong>Record.</strong> <code>harvey/decisions/0005-…</code>: adopts
+workspace DR-0003 for both binaries, with the Q1 to Q3 choices and the
+non-interactive rule as its decisions; <code>proposed</code>, for you to
+accept. It cites the survey and this plan rather than restating
+them.</p>
+<p><strong>Upgrade notes</strong> in <code>CHANGES.md</code> under an
+<code>## Unreleased</code> heading, with the table of changed exit codes
+(the five 0-to-non-zero cases first). Version and dates are the
+release’s business, with the four codemeta fields.</p>
+<hr />
+<h2 id="order-and-risk">Order and risk</h2>
+<p>H1 → H2 → H3 → H4 → H5 → H6, with H3 and H4 independent of each other
+after H2.</p>
+<ul>
+<li><strong>H2 is the largest mechanical change</strong>:
+<code>harvey</code>’s argument loop and <code>assay</code>’s
+<code>main</code> both move into functions. It changes no behaviour
+except the usage exit code, and the tests written first are what say
+so.</li>
+<li><strong>H3 is the risk to users.</strong> Five cases that exit 0
+today stop doing so when non-interactive or when a named input is bad.
+Anyone wrapping <code>harvey</code> sees it.</li>
+<li><strong>Testing <code>Agent.Run</code> paths</strong> needs a
+backend-less agent and, for the <code>--llamafile</code> start failure,
+either a fake binary or a seam. If a seam is needed it is the smaller
+change: a function variable for the start call, as
+<code>listLocalModels</code> is for <code>/model use</code>.</li>
+<li><strong>Out of scope, and worth a later item:</strong> a status for
+scripted sessions (<code>echo /read x | harvey</code>), and a
+<code>--json</code> error mode. Both are in the survey’s “Not
+covered”.</li>
+<li><strong>The knowledge bump</strong> (v0.0.14) adds its markers to
+the classifier’s table; do it after H1 and before H3 if the tag exists
+by then, otherwise as a follow-up.</li>
+</ul>
+<p><strong>Update, 2026-09-27 (harvey DR-0006):</strong> both “later
+items” above are done. <code>--json</code>
+(<code>harvey.PrintJSONError</code>,
+<code>harvey.ExtractJSONFlag</code>) is on both binaries. A
+non-interactive <code>harvey</code> session now exits with the class of
+its first failed slash command or chat turn
+(<code>keepFirstFailure</code> in <code>terminal.go</code>) — the
+<code>echo /read x | harvey</code> case specifically now depends on that
+command itself returning a classified error, which not every handler
+does yet; <code>plan_cmd.go</code>’s were reclassified as the first
+case, the rest are a further follow-up.</p>
+</section>
+</body>
+</html>

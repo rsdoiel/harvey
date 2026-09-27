@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-assay-llama.cpp-backend-support-implementation-plan">Harvey
+Assay — llama.cpp Backend Support — Implementation Plan</h1>
+<p>See <a href="assay-llamacpp-design.html">assay-llamacpp-design.md</a>
+for full design rationale and decisions.</p>
+<p>All work is in <code>cmd/assay/main.go</code>. No other files require
+changes unless an export is missing from the harvey package (verified in
+W0).</p>
+<hr />
+<h2 id="w0-verify-harvey-package-exports-needed-by-assay">W0 — Verify
+harvey package exports needed by assay</h2>
+<p><strong>Before any code changes</strong>, confirm the following
+symbols are exported from the harvey package. If any are missing, export
+them in the appropriate file (no logic change, just rename/export).</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Symbol</th>
+<th scope="col">File</th>
+<th scope="col">Needed for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AnyLLMClient</code> / <code>NewAnyLLMClient</code>-style
+constructor</td>
+<td><code>anyllm_client.go</code></td>
+<td>Inference calls</td>
+</tr>
+<tr>
+<td><code>ChatStats</code></td>
+<td><code>anyllm_client.go</code></td>
+<td>Token stats</td>
+</tr>
+<tr>
+<td><code>newLlamafileLLMClient</code> or equivalent OpenAI-path
+constructor</td>
+<td><code>anyllm_client.go</code></td>
+<td>Creating client for each backend</td>
+</tr>
+<tr>
+<td><code>FindFreePort</code></td>
+<td><code>llamafile_service.go</code></td>
+<td>Already used by assay ✓</td>
+</tr>
+<tr>
+<td><code>StartLlamafileService</code></td>
+<td><code>llamafile_service.go</code></td>
+<td>Already used by assay ✓</td>
+</tr>
+<tr>
+<td><code>LlamafileModelNameFromPath</code></td>
+<td><code>llamafile.go</code></td>
+<td>Already used by assay ✓</td>
+</tr>
+<tr>
+<td><code>ProbeLlamafile</code></td>
+<td><code>llamafile_service.go</code></td>
+<td>Already used by assay ✓</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key question:</strong> What is the correct constructor to
+call to get a <code>harvey.LLMClient</code> for an OpenAI-compatible URL
++ model? In the harvey package this is done via
+<code>newLlamafileLLMClient(baseURL, modelName, timeout)</code> (in
+<code>anyllm_client.go</code>) — verify it is exported or can be
+exported without breaking callers.</p>
+<p>Acceptance: <code>go build ./...</code> passes with no new export
+errors.</p>
+<hr />
+<h2 id="w1-replace-callollama-with-harvey.llmclient">W1 — Replace
+<code>callOllama</code> with <code>harvey.LLMClient</code></h2>
+<p><strong>Goal:</strong> Eliminate the private Ollama-specific HTTP
+call; use <code>harvey.LLMClient.Chat</code> for all inference.</p>
+<h3 id="changes-to-cmdassaymain.go">Changes to
+<code>cmd/assay/main.go</code></h3>
+<p><strong>Remove</strong> the following private types and the
+<code>callOllama</code> function:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ollamaRequest  <span class="op">{</span> <span class="op">...</span> <span class="op">}</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ollamaMessage  <span class="op">{</span> <span class="op">...</span> <span class="op">}</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ollamaResponse <span class="op">{</span> <span class="op">...</span> <span class="op">}</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> callOllama<span class="op">(</span>baseURL<span class="op">,</span> model<span class="op">,</span> prompt <span class="dt">string</span><span class="op">)</span> <span class="op">(</span><span class="dt">string</span><span class="op">,</span> ollamaResponse<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p><strong>Add</strong> a helper that creates the right client given a
+base URL and model name:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> newAssayClient<span class="op">(</span>baseURL<span class="op">,</span> model <span class="dt">string</span><span class="op">)</span> harvey<span class="op">.</span>LLMClient <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> harvey<span class="op">.</span>NewLlamafileLLMClient<span class="op">(</span>baseURL<span class="op">+</span><span class="st">&quot;/v1&quot;</span><span class="op">,</span> model<span class="op">,</span> <span class="dv">120</span><span class="op">*</span>time<span class="op">.</span>Second<span class="op">)</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>(Exact constructor name TBD from W0 — adjust once exports are
+confirmed.)</p>
+<p><strong>Replace</strong> every
+<code>callOllama(llmURL, model, prompt)</code> call site with:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>client <span class="op">:=</span> newAssayClient<span class="op">(</span>llmURL<span class="op">,</span> model<span class="op">)</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> buf strings<span class="op">.</span>Builder</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>stats<span class="op">,</span> err <span class="op">:=</span> client<span class="op">.</span>Chat<span class="op">(</span>ctx<span class="op">,</span> <span class="op">[]</span>harvey<span class="op">.</span>Message<span class="op">{{</span>Role<span class="op">:</span> <span class="st">&quot;user&quot;</span><span class="op">,</span> Content<span class="op">:</span> prompt<span class="op">}},</span> <span class="op">&amp;</span>buf<span class="op">)</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>response <span class="op">:=</span> buf<span class="op">.</span>String<span class="op">()</span></span></code></pre></div>
+<p><strong>Update</strong> <code>PromptResult</code> token fields from
+<code>harvey.ChatStats</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Before (from ollamaResponse):</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>result<span class="op">.</span>TokensPerSec    <span class="op">=</span> or<span class="op">.</span>EvalCount <span class="op">/</span> <span class="op">(</span>or<span class="op">.</span>EvalDuration <span class="op">/</span> <span class="fl">1e9</span><span class="op">)</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>result<span class="op">.</span>PromptTokens    <span class="op">=</span> or<span class="op">.</span>PromptEvalCount</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>result<span class="op">.</span>CompletionTokens <span class="op">=</span> or<span class="op">.</span>EvalCount</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co">// After (from ChatStats):</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>result<span class="op">.</span>TokensPerSec     <span class="op">=</span> stats<span class="op">.</span>TokensPerSec</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>result<span class="op">.</span>PromptTokens     <span class="op">=</span> stats<span class="op">.</span>PromptTokens</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>result<span class="op">.</span>CompletionTokens <span class="op">=</span> stats<span class="op">.</span>ReplyTokens</span></code></pre></div>
+<p><strong>Update</strong> <code>listOllamaModels</code> to use the
+Ollama base URL unchanged (it calls <code>/api/tags</code> directly via
+<code>http.Get</code>, which is fine to keep as-is for the
+Ollama-specific model-list path).</p>
+<p><strong>Tests:</strong> Run the corpus against Ollama before and
+after; confirm pass/fail counts are identical.</p>
+<p>Acceptance: <code>go build ./...</code> passes;
+<code>go test ./...</code> passes; a real Ollama run produces the same
+report structure as before.</p>
+<hr />
+<h2 id="w2-add---llamacpp-url-flag-and-backend-selection">W2 — Add
+<code>--llamacpp URL</code> flag and backend selection</h2>
+<p><strong>Goal:</strong> Connect to a running <code>llama-server</code>
+via the new flag.</p>
+<h3 id="new-flag">New flag</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>llamacppURL <span class="op">:=</span> flag<span class="op">.</span>String<span class="op">(</span><span class="st">&quot;llamacpp&quot;</span><span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">,</span> <span class="st">&quot;base URL of a running llama-server (e.g. http://localhost:8081)&quot;</span><span class="op">)</span></span></code></pre></div>
+<h3 id="mutual-exclusion-guard">Mutual exclusion guard</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">*</span>llamafilePath <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> <span class="op">*</span>llamacppURL <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>os<span class="op">.</span>Stderr<span class="op">,</span> <span class="st">&quot;assay: --llamafile and --llamacpp are mutually exclusive&quot;</span><span class="op">)</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    os<span class="op">.</span>Exit<span class="op">(</span><span class="dv">1</span><span class="op">)</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3
+id="backend-selection-block-replaces-the-existing-llamafile-only-block">Backend
+selection block (replaces the existing llamafile-only block)</h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>llmURL  <span class="op">:=</span> <span class="op">*</span>ollamaURL   <span class="co">// default: Ollama base URL (without /v1)</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>backend <span class="op">:=</span> <span class="st">&quot;Ollama&quot;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">switch</span> <span class="op">{</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="op">*</span>llamafilePath <span class="op">!=</span> <span class="st">&quot;&quot;</span><span class="op">:</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ... existing llamafile lifecycle (unchanged) ...</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    backend <span class="op">=</span> <span class="st">&quot;Llamafile&quot;</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="op">*</span>llamacppURL <span class="op">!=</span> <span class="st">&quot;&quot;</span><span class="op">:</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">// RAG guard.</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">*</span>ragDB <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> <span class="op">!</span>harvey<span class="op">.</span>ProbeLlamafile<span class="op">(*</span>ollamaURL<span class="op">+</span><span class="st">&quot;/api/tags&quot;</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Fprintf<span class="op">(</span>os<span class="op">.</span>Stderr<span class="op">,</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;assay: RAG evaluation with --llamacpp requires Ollama for embeddings.</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">+</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;Start Ollama or use --ollama to specify a running instance.</span><span class="ch">\n</span><span class="st">Ollama URL: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>            <span class="op">*</span>ollamaURL<span class="op">)</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>        os<span class="op">.</span>Exit<span class="op">(</span><span class="dv">1</span><span class="op">)</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>    llmURL  <span class="op">=</span> <span class="op">*</span>llamacppURL</span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>    backend <span class="op">=</span> <span class="st">&quot;LlamaCpp&quot;</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="model-name-resolution-for-llama.cpp">Model name resolution for
+llama.cpp</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="op">*</span>llamacppURL <span class="op">!=</span> <span class="st">&quot;&quot;</span><span class="op">:</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">*</span>modelsFlag <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Use --models directly.</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> _<span class="op">,</span> m <span class="op">:=</span> <span class="kw">range</span> strings<span class="op">.</span>Split<span class="op">(*</span>modelsFlag<span class="op">,</span> <span class="st">&quot;,&quot;</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> m <span class="op">=</span> strings<span class="op">.</span>TrimSpace<span class="op">(</span>m<span class="op">);</span> m <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>                models <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>models<span class="op">,</span> m<span class="op">)</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Query /v1/models — returns the loaded model&#39;s id.</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>        m<span class="op">,</span> err <span class="op">:=</span> listOpenAIModels<span class="op">(*</span>llamacppURL<span class="op">)</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>            fmt<span class="op">.</span>Fprintf<span class="op">(</span>os<span class="op">.</span>Stderr<span class="op">,</span> <span class="st">&quot;assay: could not list llama.cpp models: %v</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">+</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;Use --models NAME to specify the model explicitly.</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>            os<span class="op">.</span>Exit<span class="op">(</span><span class="dv">1</span><span class="op">)</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>        models <span class="op">=</span> m</span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span></code></pre></div>
+<p>Add a small helper:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">// listOpenAIModels queries GET /v1/models and returns the model IDs.</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> listOpenAIModels<span class="op">(</span>baseURL <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    resp<span class="op">,</span> err <span class="op">:=</span> http<span class="op">.</span>Get<span class="op">(</span>baseURL <span class="op">+</span> <span class="st">&quot;/v1/models&quot;</span><span class="op">)</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">defer</span> resp<span class="op">.</span>Body<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> out <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>        Data <span class="op">[]</span><span class="kw">struct</span><span class="op">{</span> ID <span class="dt">string</span> <span class="st">`json:&quot;id&quot;`</span> <span class="op">}</span> <span class="st">`json:&quot;data&quot;`</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">:=</span> json<span class="op">.</span>NewDecoder<span class="op">(</span>resp<span class="op">.</span>Body<span class="op">).</span>Decode<span class="op">(&amp;</span>out<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> err</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>    ids <span class="op">:=</span> <span class="bu">make</span><span class="op">([]</span><span class="dt">string</span><span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="bu">len</span><span class="op">(</span>out<span class="op">.</span>Data<span class="op">))</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> d <span class="op">:=</span> <span class="kw">range</span> out<span class="op">.</span>Data <span class="op">{</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> d<span class="op">.</span>ID <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>            ids <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>ids<span class="op">,</span> d<span class="op">.</span>ID<span class="op">)</span></span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> ids<span class="op">,</span> <span class="ot">nil</span></span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="report-header">Report header</h3>
+<p>Extend <code>AssayResults</code> and <code>writeReport</code> to
+include the backend URL for Ollama and llama.cpp:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> AssayResults <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">...</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    Backend       <span class="dt">string</span> <span class="st">`json:&quot;backend&quot;`</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    LlamafilePath <span class="dt">string</span> <span class="st">`json:&quot;llamafile_path,omitempty&quot;`</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    BackendURL    <span class="dt">string</span> <span class="st">`json:&quot;backend_url,omitempty&quot;`</span>   <span class="co">// new</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">...</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>In <code>writeReport</code>:</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>fmt<span class="op">.</span>Fprintf<span class="op">(&amp;</span>sb<span class="op">,</span> <span class="st">&quot;Backend: %s  </span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> ar<span class="op">.</span>Backend<span class="op">)</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> ar<span class="op">.</span>LlamafilePath <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(&amp;</span>sb<span class="op">,</span> <span class="st">&quot;Binary: %s  </span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> ar<span class="op">.</span>LlamafilePath<span class="op">)</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="cf">if</span> ar<span class="op">.</span>BackendURL <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintf<span class="op">(&amp;</span>sb<span class="op">,</span> <span class="st">&quot;URL: %s  </span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> ar<span class="op">.</span>BackendURL<span class="op">)</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="update---help-text">Update <code>--help</code> text</h3>
+<p>Add to the flag description block:</p>
+<pre><code>  --llamacpp URL    evaluate against a running llama-server at URL
+                    (user is responsible for starting/stopping llama-server)
+                    mutually exclusive with --llamafile</code></pre>
+<p>Acceptance: <code>go build ./...</code> and
+<code>go test ./...</code> pass.
+<code>bin/assay --llamacpp http://localhost:8081 --models phi4-Q4_K_M</code>
+connects, runs the corpus, and writes a report with “LlamaCpp” in the
+header.</p>
+<hr />
+<h2 id="w3-update-helptext-and-decisions.md">W3 — Update helptext and
+DECISIONS.md</h2>
+<p><strong>Goal:</strong> Document the new flag in assay’s
+<code>--help</code> output and record the <code>callOllama</code> →
+<code>AnyLLMClient</code> architectural decision.</p>
+<ul>
+<li>Confirm <code>--help</code> output lists <code>--llamacpp</code>
+with a clear one-line description.</li>
+<li>Add entry to <code>DECISIONS.md</code> (done in parallel with this
+plan — see below).</li>
+<li>Mark TODO item as complete.</li>
+</ul>
+<p>Acceptance: <code>bin/assay --help</code> shows
+<code>--llamacpp</code>; DECISIONS.md entry exists.</p>
+<hr />
+<h2 id="dependency-graph">Dependency graph</h2>
+<pre><code>W0 (export check)
+  └── W1 (replace callOllama)
+        └── W2 (--llamacpp flag + backend selection)
+              └── W3 (help text + decisions)</code></pre>
+<p>W0 must complete before W1. W1 must complete before W2 (the new flag
+uses the new client). W3 can be done alongside W2.</p>
+<hr />
+<h2 id="risks">Risks</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Risk</th>
+<th scope="col">Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AnyLLMClient</code> constructor not exported</td>
+<td>W0 catches this; trivial to export</td>
+</tr>
+<tr>
+<td>Token stats differ from old Ollama path</td>
+<td>Compare report output before/after W1 on a real Ollama run</td>
+</tr>
+<tr>
+<td><code>/v1/models</code> unavailable on older llama-server</td>
+<td><code>--models</code> flag as fallback; documented in help text</td>
+</tr>
+<tr>
+<td>Streaming vs non-streaming differences</td>
+<td><code>AnyLLMClient.Chat</code> already handles streaming internally;
+assay reads the full buffer after return</td>
+</tr>
+</tbody>
+</table>
+</section>
+</body>
+</html>

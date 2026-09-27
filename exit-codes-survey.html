@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-and-assay-exit-codes-survey">Harvey and assay exit codes
+— survey</h1>
+<p>Phase 1 of adopting the workspace exit-code convention (workspace
+DR-0003; the <code>kb</code> implementation is knowledge DR-0047 to
+DR-0049) in <code>cmd/harvey</code> and <code>cmd/assay</code>. Nothing
+here is decided. It is the survey the plan will rest on, plus the
+questions that need an answer before the plan is written.</p>
+<p>Measured 2026-09-25 with the v0.0.16 tree
+(<code>harvey 0.0.16 df39cfe</code>), each command run in a scratch
+workspace with an isolated <code>HOME</code>, stdin from
+<code>/dev/null</code>, and Ollama pointed at a closed port. The probe
+script is in the session scratchpad (<code>hx/run.sh</code>), not in the
+repository.</p>
+<h2 id="what-exists-today">What exists today</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"><code>cmd/harvey</code></th>
+<th scope="col"><code>cmd/assay</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source</td>
+<td><code>cmd/harvey/main.go</code>, 187 lines</td>
+<td><code>cmd/assay/main.go</code>, 1150 lines</td>
+</tr>
+<tr>
+<td>Argument parsing</td>
+<td>hand-written loop in <code>main</code></td>
+<td>standard <code>flag</code> package, then
+<code>flag.Parse</code></td>
+</tr>
+<tr>
+<td><code>os.Exit</code> sites</td>
+<td>17 (12 <code>Exit(1)</code>, 5 <code>Exit(0)</code> for help,
+version, license and init)</td>
+<td>18 (16 <code>Exit(1)</code>, 2 <code>Exit(0)</code> for help and
+version)</td>
+</tr>
+<tr>
+<td>Exit codes possible</td>
+<td>0 and 1</td>
+<td>0, 1, and 2 (only from <code>flag</code> on an unknown flag)</td>
+</tr>
+<tr>
+<td>Testable</td>
+<td>no: everything is in <code>main</code></td>
+<td>no: same</td>
+</tr>
+<tr>
+<td><code>EXIT STATUS</code> in the manual</td>
+<td>none</td>
+<td>none</td>
+</tr>
+<tr>
+<td>Library (<code>package harvey</code>)</td>
+<td>436 <code>fmt.Errorf</code>/<code>errors.New</code>, 2 sentinels
+(<code>ErrAutoArchived</code>, <code>ErrToolLoopExceeded</code>), no
+exit calls</td>
+<td>shared</td>
+</tr>
+</tbody>
+</table>
+<p>Everything in the library returns a plain error to <code>main</code>,
+which prints it and exits 1. There is no classification anywhere. Both
+binaries print human text only; there is no <code>--json</code> mode, so
+the “class name beside the code” rule has nothing to attach to yet
+(<code>assay</code>’s <code>results.json</code> is a report, not an
+error channel).</p>
+<p><code>harvey</code> is an interactive REPL. Slash commands inside it
+(<code>/read</code>, <code>/model use</code>, …) have no exit status and
+are out of scope here. See “Not covered” below.</p>
+<h2 id="baseline-every-case-probed">Baseline: every case probed</h2>
+<p>“Now” is the measured exit code. “DR-0003” is the class the
+convention gives the condition as described. Where the convention leaves
+a real choice, the case is marked with the question number from the next
+section.</p>
+<h3 id="harvey"><code>harvey</code></h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Case</th>
+<th scope="col">Now</th>
+<th scope="col">Convention</th>
+<th scope="col">Note</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--version</code>, <code>--help</code>, <code>help</code>,
+<code>-l</code></td>
+<td>0</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>help nosuchtopic</code></td>
+<td>1</td>
+<td>2</td>
+<td>bad value on the command line</td>
+</tr>
+<tr>
+<td><code>--bogus</code></td>
+<td>1</td>
+<td>2</td>
+<td>usage</td>
+</tr>
+<tr>
+<td><code>-m</code> with no argument</td>
+<td>1</td>
+<td>2</td>
+<td>usage</td>
+</tr>
+<tr>
+<td><code>init</code> with no argument</td>
+<td>1</td>
+<td>2</td>
+<td>usage</td>
+</tr>
+<tr>
+<td><code>init /nonexistent</code></td>
+<td>1</td>
+<td>66</td>
+<td>named input missing</td>
+</tr>
+<tr>
+<td><code>init bad.yaml</code> (malformed)</td>
+<td>1</td>
+<td>65</td>
+<td>content the tool reads is wrong</td>
+</tr>
+<tr>
+<td><code>-w /nonexistent</code></td>
+<td>1</td>
+<td>66</td>
+<td>today the message is about the working directory, not the path</td>
+</tr>
+<tr>
+<td><code>-w DIR</code> where cwd is not inside DIR</td>
+<td>1</td>
+<td>2</td>
+<td>the workspace-boundary check; a bad <code>-w</code> value</td>
+</tr>
+<tr>
+<td><code>-w FILE</code> (a file, not a directory)</td>
+<td>1</td>
+<td>2 or 66</td>
+<td>same message as the two above</td>
+</tr>
+<tr>
+<td><code>--replay /nonexistent</code></td>
+<td>1</td>
+<td>66</td>
+<td>today: “replay: no backend connected”, the file is never
+checked</td>
+</tr>
+<tr>
+<td><code>--replay</code> a malformed file, no backend</td>
+<td>1</td>
+<td>65 or 69</td>
+<td>same message; the backend is checked first</td>
+</tr>
+<tr>
+<td><code>--continue /nonexistent</code></td>
+<td><strong>0</strong></td>
+<td>66</td>
+<td>prints a warning and starts the session (Q3)</td>
+</tr>
+<tr>
+<td><code>--llamafile /nonexistent</code></td>
+<td>1</td>
+<td>66</td>
+<td>today the shell’s error is embedded in “exited before server became
+ready”</td>
+</tr>
+<tr>
+<td><code>--record-file /proc/nope/x</code></td>
+<td><strong>0</strong></td>
+<td>73</td>
+<td>prints <code>✗ Auto-record failed: recorder: cannot create …</code>
+and carries on (Q3)</td>
+</tr>
+<tr>
+<td><code>harvey.yaml</code> malformed</td>
+<td><strong>0</strong></td>
+<td>78</td>
+<td>prints <code>✗ harvey.yaml: yaml: …</code> and carries on with
+defaults (Q3)</td>
+</tr>
+<tr>
+<td>No backend reachable, stdin closed</td>
+<td><strong>0</strong></td>
+<td>69</td>
+<td>Q3</td>
+</tr>
+<tr>
+<td><code>-m nosuch</code>, no server</td>
+<td><strong>0</strong></td>
+<td>69</td>
+<td>Q3</td>
+</tr>
+<tr>
+<td>Session ends normally (<code>/exit</code>, Ctrl-D)</td>
+<td>0</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td>A runtime error out of <code>Agent.Run</code></td>
+<td>1</td>
+<td>by cause</td>
+<td>see below</td>
+</tr>
+</tbody>
+</table>
+<p><code>Agent.Run</code> returns an error from seven places:
+<code>initWorkspace</code> (wraps a workspace error),
+<code>selectBackend</code>, <code>systemPromptExceedsContext</code>,
+<code>ReplayFromFountain</code> (twice) and the prompt reader. Those
+need classifying at the source (Go rule in the convention: sentinels or
+wrapped standard-library errors), not by matching text.</p>
+<h3 id="assay"><code>assay</code></h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Case</th>
+<th scope="col">Now</th>
+<th scope="col">Convention</th>
+<th scope="col">Note</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--version</code>, <code>--help</code></td>
+<td>0</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--bogus</code></td>
+<td>2</td>
+<td>2</td>
+<td>already right, by accident of <code>flag</code></td>
+</tr>
+<tr>
+<td><code>--rag-compare</code> without <code>--rag-db</code></td>
+<td>1</td>
+<td>2</td>
+<td>four flag-combination checks, all usage</td>
+</tr>
+<tr>
+<td><code>--guide-compare</code> without <code>--guide-file</code></td>
+<td>1</td>
+<td>2</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--guide-compare</code> with <code>--rag-compare</code></td>
+<td>1</td>
+<td>2</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--llamafile</code> with <code>--llamacpp</code></td>
+<td>1</td>
+<td>2</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--corpus</code> missing</td>
+<td>1</td>
+<td>66</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--corpus</code> malformed</td>
+<td>1</td>
+<td>65</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--corpus</code> with no prompts</td>
+<td>1</td>
+<td>1 or 65</td>
+<td>Q2</td>
+</tr>
+<tr>
+<td><code>--category</code> matching nothing</td>
+<td>1</td>
+<td>1</td>
+<td>a query that finds nothing; unchanged</td>
+</tr>
+<tr>
+<td>Ollama unreachable while listing models</td>
+<td>1</td>
+<td>69</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--llamacpp URL</code> unreachable</td>
+<td>1</td>
+<td>69</td>
+<td></td>
+</tr>
+<tr>
+<td>Ollama up but no models</td>
+<td>1</td>
+<td>1</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--llamafile</code> file missing</td>
+<td>1</td>
+<td>66</td>
+<td>the same shell-error message as <code>harvey</code></td>
+</tr>
+<tr>
+<td><code>--rag-db</code> cannot be opened</td>
+<td>1</td>
+<td>66, 77 or 74</td>
+<td>depends on the cause; the driver error carries it</td>
+</tr>
+<tr>
+<td><code>--guide-file</code> missing</td>
+<td>1</td>
+<td>66</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--output</code> cannot be created</td>
+<td>1</td>
+<td>73</td>
+<td><code>/proc/nope</code>, a file, and a read-only parent all give
+1</td>
+</tr>
+<tr>
+<td>Every model call fails (server down)</td>
+<td><strong>0</strong></td>
+<td>69</td>
+<td>each is recorded as an <code>ERROR</code> result; the run reports
+success (Q2)</td>
+</tr>
+<tr>
+<td>A prompt’s automatic checks fail</td>
+<td>0</td>
+<td>0 or 1</td>
+<td>Q2</td>
+</tr>
+<tr>
+<td><code>report.md</code> or <code>results.json</code> cannot be
+written</td>
+<td><strong>0</strong></td>
+<td>74</td>
+<td>the error is printed, then the run ends 0</td>
+</tr>
+<tr>
+<td><code>mkdir extracted</code> fails</td>
+<td><strong>0</strong></td>
+<td>73</td>
+<td>printed, ignored</td>
+</tr>
+</tbody>
+</table>
+<h2 id="findings-that-are-bugs-not-classification">Findings that are
+bugs, not classification</h2>
+<ol type="1">
+<li><strong>Closed stdin answers “yes”.</strong> <code>askYesNo</code>
+(<code>terminal.go</code>) ignores the read error, so end of input
+returns the default, and all five callers default to yes:
+<code>Start Ollama now?</code>, <code>Restart MODEL?</code>, and the
+three skill prompts <code>Compile now?</code>, <code>Run now?</code>,
+<code>Recompile?</code>. Observed live: with stdin closed, Harvey
+printed
+<code>Start Ollama now? [Y/n]  Starting Ollama...  ✓ Ollama started</code>.
+It is the same defect the <code>promptAction</code> fix of 2026-09-24
+closed for the write prompt, in a second function.
+<code>TestDispatchSkill_RunNowIsNotAnsweredYesByEndOfInput</code> showed
+the worst case: with the input ending after “Compile now?”, the freshly
+compiled script ran. <strong>Fixed 2026-09-25</strong> (Q4): end of
+input with no answer is now no, whatever the default;
+<code>ask_yes_no_test.go</code>, mutation-checked; the live closed-stdin
+run now declines to start Ollama.</li>
+<li><strong>“Ollama started” may be reported when nothing new
+started.</strong> The probe above used a closed port while an
+<code>ollama serve</code> was already running on the default port
+(started hours earlier, so not by the probe); Harvey still printed
+success. I did not trace why, only that the message does not tell you
+whether a server is now reachable at the URL you gave. Not an exit-code
+matter, but it is what a script would read.</li>
+<li><strong><code>--replay</code> checks the backend before the
+file</strong>, so a missing or malformed replay file is reported as “no
+backend connected”.</li>
+<li><strong><code>assay</code> reports success when every call
+failed</strong> and when its own report could not be written. Both
+violate “do not exit 0 with failures”.</li>
+</ol>
+<h2 id="not-covered">Not covered</h2>
+<ul>
+<li><strong>Slash commands.</strong>
+<code>echo '/read nosuchfile' | harvey</code> exits 0. A scripted
+session has no way to learn that a command failed. The convention is
+about the process’s exit code; giving a piped session a status is a
+design question of its own (an exit status for the last failed command?
+for any?), and I propose leaving it out of this work.</li>
+<li><strong>A session that ends because the user interrupted it</strong>
+(Ctrl-C at the prompt) exits 0 today. The convention has no
+“interrupted” class; 130 is the shell’s number for SIGINT and is above
+the range the convention allows tools to use. I propose leaving it
+0.</li>
+</ul>
+<h2 id="questions-to-settle-before-a-plan">Questions to settle before a
+plan</h2>
+<p><strong>Q1. Where does the classifier live?</strong> <code>kb</code>
+keeps it in <code>cmd/kb</code> because there is one binary. Harvey has
+two that share the library. Proposal: an <code>exitcode.go</code> in the
+root <code>harvey</code> package exporting the class type, one function
+mapping an error to its class and code, and the sentinels the library
+needs (<code>ErrInvalid</code>, <code>ErrNotFound</code> first; more
+only when a case demands one); each <code>main</code> only prints and
+exits. Alternative: two copies in <code>cmd/</code>, which is what “one
+small type per tool” in the convention’s Go paragraph reads as, at the
+cost of drift between two binaries in one repo.</p>
+<p><strong>Q2. What does <code>assay</code> count as failure?</strong>
+(a) A model call that errors is an operational failure; today it is
+recorded and the run exits 0. Proposal: finish the run, write the
+report, then exit with the class of the first failure (69 when the
+server was unreachable), per the bulk-command rule. (b) A prompt whose
+automatic checks fail is a <em>result</em>, and a corpus run with
+failing prompts is normal work. Proposal: exit 0, with a
+<code>--strict</code> flag later if wanted, not now. (c) A corpus with
+no prompts: 1 (nothing to run, like the category case) or 65 (a corpus
+that is empty is wrong content). Proposal: 65, since
+<code>--category</code> is the only thing that makes “matches nothing” a
+query.</p>
+<p><strong>Q3. Fail fast or warn and carry on, for inputs the
+interactive session can survive?</strong> Five cases today print a
+problem and start anyway: <code>--continue</code> missing,
+<code>--record-file</code> uncreatable, <code>harvey.yaml</code>
+malformed, no backend reachable, and <code>-m</code> naming a model that
+cannot be reached. In a terminal the user sees the warning and can fix
+it in-session, which is why the code was written that way. In a script
+the exit status is the only signal. Proposal: an input the user
+<em>named on the command line</em> (<code>--continue</code>,
+<code>--replay</code>, <code>--record-file</code>,
+<code>--llamafile</code>) fails fast with 66 or 73 before the session
+starts. A malformed <code>harvey.yaml</code> and an unreachable backend
+stay warnings in an interactive session, and become 78 and 69 when the
+session is not interactive (stdin is not a terminal, or
+<code>--replay</code> without <code>--replay-continue</code>). That
+keeps the tool usable at a terminal and honest in a pipeline, at the
+cost of a rule with a condition in it.</p>
+<p><strong>Q4. The <code>askYesNo</code> defect (finding 1): fix it
+first?</strong> It is a bug independent of exit codes and changes what a
+piped session can do. Proposal: fix it as its own first step, red first,
+the way <code>promptAction</code> was, before any exit-code work touches
+<code>terminal.go</code>.</p>
+<p><strong>Q5. Testability.</strong> Neither <code>main</code> can be
+tested. <code>kb</code> solved this with
+<code>mainRun(args, out, errOut) int</code>. Proposal: the same for
+both, so the enforcement test (every flag path with a bogus flag, a
+missing argument, a surplus argument, and each documented class, never
+70) can run in-process. <code>harvey</code>’s hand-written argument loop
+is the larger change; it should also start refusing a surplus positional
+argument, which it currently reports as “Unknown flag”.</p>
+<h2 id="decisions-rsdoiel-2026-09-25">Decisions (RSDOIEL,
+2026-09-25)</h2>
+<ul>
+<li><strong>Q1:</strong> the classifier lives in the library
+(<code>exitcode.go</code> in package <code>harvey</code>); both
+<code>main</code>s only print and exit.</li>
+<li><strong>Q2:</strong> <code>assay</code> finishes the run and writes
+the report, then exits with the class of the first failed model call (69
+when the server was unreachable). Failing automatic checks are results
+and exit 0; <code>--strict</code> is a later option, not part of this
+work. An empty corpus is 65; a <code>--category</code> matching nothing
+stays 1.</li>
+<li><strong>Q3:</strong> an input named on the command line
+(<code>--continue</code>, <code>--replay</code>,
+<code>--record-file</code>, <code>--llamafile</code>) fails fast with 66
+or 73 before the session starts. A malformed <code>harvey.yaml</code>
+and an unreachable backend stay warnings at a terminal and become 78 and
+69 when the session is not interactive (stdin not a terminal, or
+<code>--replay</code> without <code>--replay-continue</code>).</li>
+<li><strong>Q4:</strong> the <code>askYesNo</code> defect is fixed
+first, on its own (done).</li>
+<li><strong>Q5</strong> (not asked, taken as proposed unless you
+object): <code>mainRun(args, out, errOut) int</code> for both binaries,
+and a surplus positional argument to <code>harvey</code> becomes a usage
+error.</li>
+</ul>
+<h2 id="proposed-shape-of-the-plan">Proposed shape of the plan</h2>
+<p>Each item red first, one commit per item, made only on request:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Item</th>
+<th scope="col">What</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H0</td>
+<td><strong>Done.</strong> <code>askYesNo</code> treats end of input as
+no (Q4)</td>
+</tr>
+<tr>
+<td>H1</td>
+<td>Classifier and sentinels in the library (Q1); unclassified is
+70</td>
+</tr>
+<tr>
+<td>H2</td>
+<td><code>mainRun</code> for both binaries; <code>harvey</code> argument
+loop; usage sites</td>
+</tr>
+<tr>
+<td>H3</td>
+<td><code>harvey</code>: input sites (init, <code>-w</code>, replay,
+continue, record-file, llamafile), <code>Agent.Run</code> errors,
+Q3</td>
+</tr>
+<tr>
+<td>H4</td>
+<td><code>assay</code>: usage, corpus, availability, output, bulk exit
+(Q2)</td>
+</tr>
+<tr>
+<td>H5</td>
+<td>Enforcement test over every path; <code>EXIT STATUS</code> in both
+manuals; harvey <code>CLAUDE.md</code></td>
+</tr>
+<tr>
+<td>H6</td>
+<td>Old-versus-new run of both binaries on the v0.0.16 baseline (the
+<code>kb</code> harness is the model); harvey DR-0005 adopting workspace
+DR-0003, proposed</td>
+</tr>
+</tbody>
+</table>
+<p>Risk worth naming: H3 changes exit statuses that today are 0 (five
+cases above) and 1 (most of the rest). Anyone wrapping
+<code>harvey</code> in a script sees the change; the upgrade notes need
+the same table the <code>kb</code> release carried.</p>
+</section>
+</body>
+</html>

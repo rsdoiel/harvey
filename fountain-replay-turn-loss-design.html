@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-fountain-replaycontinue-turn-loss-bug-design-fix">Harvey
+— Fountain Replay/Continue Turn-Loss Bug — Design &amp; Fix</h1>
+<p><strong>Status (2026-07-03):</strong> Fixed. Test-first:
+<code>replay_test.go</code> added the regression test in red state first
+(confirmed via
+<code>go test -run TestParseFountainSession_TwoExchangesInOneScene</code>),
+then the fix below was applied to <code>parseFountainSession</code> in
+<code>replay.go</code> and confirmed green, alongside two guard tests
+for the cases that must keep working. Full suite
+(<code>go test ./...</code>, <code>go vet ./...</code>) clean except one
+unrelated pre-existing failure
+(<code>TestCmdModelList_ShowsLlamafileEntries</code>, confirmed to fail
+identically on <code>main</code> without this change).</p>
+<hr />
+<h2 id="background">Background</h2>
+<p>Discovered while live-testing <code>bonsai-8b</code> through Harvey’s
+<code>--replay</code> path. A hand-authored <code>.spmd</code> test file
+with two consecutive <code>RSDOIEL</code> dialogue blocks (no
+intervening reply) under one scene heading produced only 1 replayed turn
+instead of 2 — the model answered a follow-up question (“double that
+number”) with no context of what number that was.</p>
+<p>Initial read was “malformed test file, not a real bug” — but tracing
+<code>parseFountainSession</code> against an actual, already-committed
+session file showed the same data loss occurs in genuine Harvey-recorded
+sessions, not just hand-authored ones. See Evidence below.</p>
+<h2 id="the-bug">The bug</h2>
+<p><code>parseFountainSession</code> (<code>replay.go</code>) walks a
+Fountain document’s elements and accumulates one reused
+<code>PlaybackTurn</code> struct, <code>cur</code>, as it goes:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> fountain<span class="op">.</span>DialogueType<span class="op">:</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">...</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">switch</span> <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> lastChar <span class="op">==</span> userName<span class="op">:</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>        cur<span class="op">.</span>UserInput <span class="op">=</span> text</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> lastChar <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span> <span class="op">&amp;&amp;</span> strings<span class="op">.</span>HasPrefix<span class="op">(</span>text<span class="op">,</span> <span class="st">&quot;Forwarding to &quot;</span><span class="op">):</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>        <span class="op">...</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">case</span> lastChar <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> lastChar <span class="op">!=</span> <span class="st">&quot;HARVEY&quot;</span> <span class="op">&amp;&amp;</span> lastChar <span class="op">!=</span> userName<span class="op">:</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>        cur<span class="op">.</span>ModelReply <span class="op">=</span> text</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span></code></pre></div>
+<p><code>cur</code> is pushed onto the <code>turns</code> slice in
+exactly two places:</p>
+<ol type="1">
+<li>When a <strong>new scene heading</strong> matching
+<code>INT. HARVEY AND {USER} TALKING...</code> is encountered (the
+previous <code>cur</code> is pushed before starting a fresh one).</li>
+<li>At <strong>end of file</strong>.</li>
+</ol>
+<p>There is no push when a <em>second</em> <code>{USER}</code> dialogue
+block appears <strong>within the same scene</strong>, after a first
+exchange has already completed. Because <code>cur</code> is a single
+reused struct, the second exchange’s <code>UserInput</code> and
+<code>ModelReply</code> silently overwrite the first exchange’s — no
+warning, no error, just quiet data loss. Whatever was in
+<code>cur</code> right before the file ends (or the next scene heading
+starts) is the only turn <code>parseFountainSession</code> reports for
+that scene.</p>
+<p>This affects two callers:</p>
+<ul>
+<li><strong><code>ReplayFromFountain</code></strong> — turns before the
+last one in an affected scene are silently never resent.</li>
+<li><strong><code>ContinueFromFountain</code></strong> — turns before
+the last one in an affected scene are silently missing from the resumed
+conversation history.</li>
+</ul>
+<h2
+id="evidence-this-is-a-real-bug-not-a-malformed-input-artifact">Evidence
+this is a real bug, not a malformed-input artifact</h2>
+<p><code>harvey/agents/sessions/harvey-session-20260502-mozilla-ai-integration.spmd</code>,
+lines 191–210, is a genuine, already-recorded session with <strong>one
+scene heading followed by two complete exchanges</strong>:</p>
+<pre><code>191  INT. HARVEY AND RSDOIEL TALKING — 2026-05-02 19:15
+...
+195  RSDOIEL
+196  Let&#39;s do phase 2.
+198  CLAUDE
+199  Phase 2 scope confirmed. Will expand RouteKind to all any-llm-go providers,
+     ...
+203  RSDOIEL
+204  I am going to hit token limits. We&#39;ll continue phase 2 later. Please update
+     ...
+207  CLAUDE
+208  Knowledge base initialized and populated.
+     ...</code></pre>
+<p>Tracing the parser against this exact scene:
+<code>cur.UserInput</code> is set to “Let’s do phase 2.” then
+<code>cur.ModelReply</code> to “Phase 2 scope confirmed…”; then the
+second <code>RSDOIEL</code> block <strong>overwrites</strong>
+<code>cur.UserInput</code> with “I am going to hit token limits…” and
+the second <code>CLAUDE</code> block overwrites
+<code>cur.ModelReply</code> with “Knowledge base initialized…”. The
+first exchange — “Let’s do phase 2.” and its reply — is completely lost.
+<code>--continue</code> on this file today would silently resume history
+missing that exchange; <code>--replay</code> would silently skip
+resending it.</p>
+<h2 id="why-interactive-stdinstdout-mode-is-unaffected">Why interactive
+(stdin/stdout) mode is unaffected</h2>
+<p>Interactive REPL use never calls <code>parseFountainSession</code> at
+all. Each line read from stdin is immediately treated as one complete
+turn, sent straight to <code>a.Client.Chat()</code>, with the reply
+appended to history before the next input is read — the turn boundary is
+the read-eval-print cycle itself, not a document structure being
+reconstructed after the fact. This class of bug is structurally confined
+to <code>--replay</code> and <code>--continue</code>.</p>
+<h2 id="proposed-fix">Proposed fix</h2>
+<p>In the <code>lastChar == userName</code> branch, detect that the
+current turn is already complete
+(<code>cur.UserInput != "" &amp;&amp; cur.ModelReply != ""</code>)
+before assigning the new <code>UserInput</code>. If so, push the
+completed <code>cur</code> onto <code>turns</code> and start a fresh one
+— mirroring the exact push-on-boundary logic already used for
+scene-heading transitions, just adding a second boundary condition: “a
+new user line after a completed exchange, even within the same
+scene.”</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> lastChar <span class="op">==</span> userName<span class="op">:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> cur<span class="op">.</span>UserInput <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> cur<span class="op">.</span>ModelReply <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>        turns <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>turns<span class="op">,</span> cur<span class="op">)</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>        cur <span class="op">=</span> PlaybackTurn<span class="op">{}</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    cur<span class="op">.</span>UserInput <span class="op">=</span> text</span></code></pre></div>
+<p>This is a minimal, localized change — no format change, no new
+fields, no new caller-visible behavior beyond correctly recovering turns
+that were previously silently dropped.</p>
+<h2 id="test-plan-test-first">Test plan (test-first)</h2>
+<ol type="1">
+<li>Add <code>replay_test.go</code>. First test: a regression test built
+directly from the real mozilla-ai-integration scene structure (two
+exchanges, one scene heading) asserting
+<code>parseFountainSession</code> returns <strong>2</strong> turns with
+the correct, unmixed <code>UserInput</code>/<code>ModelReply</code>
+pairs. This must fail (red) against the current code — confirms the bug
+is real and the test actually exercises it.</li>
+<li>Apply the fix above.</li>
+<li>Re-run — test must pass (green). Also add a normal-case regression
+test (one scene heading, one exchange) to guard against the fix breaking
+the common case, and a multi-scene test (today’s already-working case)
+to guard the existing scene-heading-transition push path.</li>
+</ol>
+<h2 id="verified-live-2026-07-03-same-session">Verified live
+(2026-07-03, same session)</h2>
+<p>Beyond the unit tests, ran the fix through Harvey’s actual
+<code>--replay</code> path against the still-running
+<code>bonsai-8b</code> llamafile server. First re-ran the
+<em>original</em> broken test file (two bare <code>RSDOIEL</code> lines,
+no reply between them) — still showed “Replaying 1 turns”. This is
+expected and correct: that file has no <code>ModelReply</code> between
+the two user lines at all, which is a different, degenerate shape than
+the bug that was fixed (a second <em>complete</em> exchange overwriting
+the first). Harvey’s own recorder never produces bare consecutive user
+lines with nothing between them — every real turn gets a reply — so this
+shape doesn’t occur in genuine recordings, only in that one hand-typed
+test file.</p>
+<p>Built a properly-shaped two-<em>exchange</em> file instead (matching
+the real bug pattern: <code>RSDOIEL</code> / reply /
+<code>RSDOIEL</code> / reply, one scene heading) and reran:</p>
+<pre><code>Replaying 2 turns from bonsai-two-exchange-test.spmd
+[1/2] What is 2 plus 2? Answer with just the number.
+4                                                        11.102s
+[2/2] Now double that number. Answer with just the number.
+8                                                        11.69s</code></pre>
+<p>Both turns correctly parsed and resent, and the model reasoned
+correctly across them (4, doubled, is 8) — confirming it now receives
+real conversation history it was previously being silently denied. This
+also corrects a misattribution in
+<code>llamacpp-cpu-tuning-design.md</code>’s Bonsai-8B addendum: an
+earlier “confident-but-ungrounded output” quality caveat about Bonsai-8B
+was actually this parser bug, not a model defect — the model was never
+at fault; the harness was silently withholding its own history from it.
+See that document’s correction note.</p>
+</section>
+</body>
+</html>

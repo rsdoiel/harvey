@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-one-subagent-dispatch-primitive-direction-d-implementation-plan">Harvey
+— One Subagent-Dispatch Primitive (Direction D) — Implementation
+Plan</h1>
+<p>See <a
+href="subagent-dispatch-design.html">subagent-dispatch-design.md</a> for
+the full audit, the two confirmed bugs, and the 2026-07-13 decisions.
+See <a href="DECISIONS.html">DECISIONS.md</a> for the finalized decision
+entries as each phase lands.</p>
+<p>Resolved here, as implementation-level judgment calls rather than
+user-facing policy decisions:</p>
+<ul>
+<li><strong>Testability seam for the local-swap <code>Restore</code>
+path.</strong> <code>attemptModelSwitch</code> spawns a real OS process
+(<code>switchLlamafileModel</code> → <code>StartLlamafileService</code>)
+— confirmed by reading <code>model_switch_test.go</code>, whose existing
+tests simulate switches by directly setting
+<code>a.Config.Llamafile.Active</code>/<code>a.Backend</code> rather
+than invoking the real switch, precisely because it isn’t practical to
+exercise in a unit test.
+<code>TestCmdPlanNext_modelAnnotationSwitches</code>
+(<code>plan_test.go:211</code>) is the concrete proof this gap already
+causes real problems: it only asserts “doesn’t panic,” explicitly noting
+the switch is <em>expected</em> to fail since no server is running —
+meaning no existing test has ever verified restore behavior, which is
+exactly how Bug 2 went uncaught. Add
+<code>Agent.attemptModelSwitchOverride func(name string, out io.Writer) (bool, error)</code>
+(nil-checked, same pattern as the existing
+<code>Agent.toolsReliableOverride</code>, <code>harvey.go:179</code>) —
+<code>resolveDispatchTarget</code>’s local-swap branch calls it instead
+of <code>attemptModelSwitch</code> directly when non-nil, letting tests
+substitute a fast, no-process-spawn fake while still exercising the real
+capture-before/restore-after logic.</li>
+<li><strong>Restore’s Ollama-fallback path</strong> rebuilds the client
+exactly the way <code>attemptModelSwitch</code>’s own Ollama branch
+already does:
+<code>newOllamaLLMClient(a.Config.Ollama.URL, prevOllamaModel, a.Config.Ollama.Timeout)</code>
+— no new construction path invented.</li>
+<li><strong>Genuine no-op avoidance, added as part of the fix, not
+preserved from before</strong> — re-auditing <code>cmdPlanNext</code>
+found the original <code>defaultModel := activeModelLabel(a)</code>
+capture was <em>only</em> used to decide whether to attempt a restore,
+never to skip the initial switch when <code>step.Model</code> already
+matched the active model. There was no real no-op avoidance to preserve.
+<code>resolveDispatchTarget</code>’s local-swap branch adds a
+case-insensitive check against the current active name before switching
+at all — skips the swap (and therefore the later restore) entirely when
+the step’s declared model is already active.</li>
+<li><strong><code>runBoundedTurn</code>’s returned history is
+<code>nil</code> on the plain-chat path</strong> — matches the only
+caller that inspects it (<code>cmdPlanNext</code>’s
+<code>planStepHadErrors</code>), which already treats “no tool calls
+happened” as “nothing to check.”</li>
+<li><strong><code>RunChunkedAnalysis</code>’s signature is
+unchanged.</strong> It already takes a <code>client LLMClient</code>
+parameter directly (<code>chunk_analyzer.go:78</code>) — Bug 1’s fix is
+entirely at the two call sites (<code>cmdReadChunks</code>,
+<code>injectOrChunk</code>): resolve the target first, pass
+<code>target.Client</code> instead of always <code>a.Client</code>,
+<code>defer target.Restore()</code> around the whole map+reduce call
+(one swap for the whole operation, not per chunk — matches the
+exploration doc’s “only worth invoking for coarse-grained tasks”
+framing).</li>
+</ul>
+<hr />
+<h2
+id="phase-a-resolvedispatchtarget-fixes-bug-2-complete-2026-07-13">Phase
+A — <code>resolveDispatchTarget</code> (fixes Bug 2) ✅ Complete
+2026-07-13</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-13 entry) for the final shape
+and two findings made while implementing: a correct restore can’t be a
+cheap reference-swap (the pre-step process is already stopped by the
+time restore runs), and the original
+<code>TestCmdPlanNext_modelAnnotationSwitches</code> never actually
+exercised the switch path at all, for an unrelated reason (a plan-file
+serialization gap between <code>Model</code> and <code>Title</code>’s
+<code>[model: ...]</code> marker). The plan below is kept as-written for
+the historical record.</p>
+<p><strong>Goal.</strong> One correctly-restoring model-resolution
+primitive, wired into <code>/plan next</code> first since that’s where
+Bug 2 lives.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dispatch_target.go</code> (new)</td>
+<td><code>DispatchTarget{Client LLMClient, Restore func()}</code>;
+<code>resolveDispatchTarget(a *Agent, name string, out io.Writer) (target DispatchTarget, ok bool, err error)</code>
+— checks <code>a.Routes.Lookup(name)</code> first (route branch:
+<code>clientForEndpoint</code>, <code>Restore</code> is a no-op,
+<code>a.Client</code>/<code>a.Backend</code> untouched); else checks
+whether <code>name</code> already matches the active model (no-op case:
+<code>ok=true</code>, <code>target.Client = a.Client</code>,
+<code>Restore</code> no-op); else attempts a local switch via
+<code>a.attemptModelSwitchOverride</code> if set, else
+<code>attemptModelSwitch</code> — capturing
+<code>prevLlamafileActive := a.Config.Llamafile.Active</code> and
+<code>prevOllamaModel := a.Config.Ollama.Model</code>
+<strong>before</strong> switching, so <code>Restore</code> can relaunch
+the correct pre-step name afterward</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>Add
+<code>attemptModelSwitchOverride func(name string, out io.Writer) (bool, error)</code>
+field to <code>Agent</code> (nil by default), same pattern as
+<code>toolsReliableOverride</code></td>
+</tr>
+<tr>
+<td><code>dispatch_target_test.go</code> (new)</td>
+<td><code>TestResolveDispatchTarget_RouteEndpoint_NoAgentMutation</code>
+(route branch never touches
+<code>a.Client</code>/<code>a.Backend</code>);
+<code>TestResolveDispatchTarget_AlreadyActive_SkipsSwitch</code> (name
+matches current active model → no switch attempted, <code>Restore</code>
+is effectively a no-op);
+<code>TestResolveDispatchTarget_LocalSwitch_RestoreReturnsToOriginal</code>
+(using <code>attemptModelSwitchOverride</code> as the fast fake — switch
+to B, call <code>Restore()</code>, assert the override was called a
+second time with the <em>original</em> pre-switch name, not the
+post-switch one — this is the direct regression test for Bug 2’s exact
+failure mode);
+<code>TestResolveDispatchTarget_UnknownName_ReturnsNotFound</code></td>
+</tr>
+<tr>
+<td><code>plan_cmd.go</code></td>
+<td><code>cmdPlanNext</code>: replace the
+<code>attemptModelSwitch</code>/manual-restore block with
+<code>resolveDispatchTarget(a, step.Model, out)</code>; use
+<code>target.Client</code> for the step’s
+<code>Chat</code>/<code>RunToolLoop</code> call;
+<code>defer</code>-style call <code>target.Restore()</code> after the
+step completes (success or failure) instead of the current post-hoc
+<code>if step.Model != "" &amp;&amp; activeModelLabel(a) != defaultModel</code>
+check</td>
+</tr>
+<tr>
+<td><code>plan_test.go</code></td>
+<td>Replace <code>TestCmdPlanNext_modelAnnotationSwitches</code>
+(currently only asserts “doesn’t panic”) with a version using
+<code>a.attemptModelSwitchOverride</code> to make the switch actually
+succeed in-test, then assert the step ran against the switched client
+<strong>and</strong> that after the step,
+<code>a.attemptModelSwitchOverride</code> was invoked again to restore
+the <em>original</em> model — turning a previously-untestable path into
+a real regression test for Bug 2</td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach">Approach</h3>
+<ol type="1">
+<li>Write <code>dispatch_target_test.go</code> first (TDD), confirm red,
+implement <code>dispatch_target.go</code>, confirm green. The
+route-endpoint and already-active branches need no process-spawning seam
+at all; only the local-switch branch needs
+<code>attemptModelSwitchOverride</code>.</li>
+<li>Rewrite <code>TestCmdPlanNext_modelAnnotationSwitches</code> to
+actually exercise restore via the new override — confirm it fails
+against the <em>old</em> <code>cmdPlanNext</code> code first (proving it
+would have caught Bug 2), then wire <code>cmdPlanNext</code> to use
+<code>resolveDispatchTarget</code> and confirm green.</li>
+</ol>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code>
+green.</label></li>
+<li><label><input
+type="checkbox" /><code>TestResolveDispatchTarget_LocalSwitch_RestoreReturnsToOriginal</code>
+fails against the pre-Phase-A <code>cmdPlanNext</code> restore logic and
+passes after the fix (proves the fix, not just new code
+existing).</label></li>
+<li><label><input type="checkbox" />A route-registered endpoint used as
+a plan step’s model never mutates
+<code>a.Client</code>/<code>a.Backend</code> (falls out of the resolver
+design, not previously possible for <code>/plan next</code> at
+all).</label></li>
+</ul>
+<hr />
+<h2
+id="phase-b-wire-resolvedispatchtarget-into-read-chunks-and-injectorchunk-fixes-bug-1-complete-2026-07-13">Phase
+B — Wire <code>resolveDispatchTarget</code> into
+<code>/read-chunks</code> and <code>injectOrChunk</code> (fixes Bug 1)
+✅ Complete 2026-07-13</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-13 entry) for the final shape
+and one deviation from this plan: <code>injectOrChunk</code> calls
+<code>restore()</code> explicitly right after each loop iteration’s
+<code>RunChunkedAnalysis</code> call rather than using
+<code>defer</code> (considered, but <code>defer</code> inside a loop
+over potentially multiple mentioned files would queue every restore
+until the whole function returns, leaving an earlier iteration’s
+switched model active during later iterations). The plan below is kept
+as-written for the historical record.</p>
+<p><strong>Goal.</strong> <code>@model</code> in a chunk-analysis
+instruction actually dispatches to that model, matching the documented
+design intent from <code>chunked-analysis-design.md</code> /
+<code>DECISIONS.md</code> (2026-07-05).</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code> (<code>cmdReadChunks</code>)</td>
+<td>After <code>ParseAtMention(instruction)</code> resolves a
+<code>mentionName</code>: call
+<code>resolveDispatchTarget(a, mentionName, out)</code>; on
+<code>!ok</code>, print the existing “not found” warning and keep using
+<code>a.Client</code>; on success, use <code>target.Client</code> for
+the <code>RunChunkedAnalysis</code> call and
+<code>defer target.Restore()</code> around it</td>
+</tr>
+<tr>
+<td><code>file_inject.go</code> (<code>injectOrChunk</code>)</td>
+<td>Same change, mirrored — this is the auto-chunk (context-overflow)
+path, currently duplicating the identical cosmetic-only bug</td>
+</tr>
+<tr>
+<td><code>read_chunks_cmd_test.go</code></td>
+<td>New test: register a second route endpoint (or use
+<code>attemptModelSwitchOverride</code> for a local name), run
+<code>/read-chunks file.md @other summarize</code>, assert the
+<em>other</em> client actually received the chunk/synthesis calls (not
+<code>a.Client</code>) — this requires a test double that can
+distinguish “which client was called,” since the existing tests only
+check <code>a.Client</code>’s mock replies and would pass even under the
+old, broken behavior</td>
+</tr>
+<tr>
+<td><code>file_inject_test.go</code></td>
+<td>Same new-test treatment for <code>injectOrChunk</code>’s auto-chunk
+path</td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach-1">Approach</h3>
+<ol type="1">
+<li>Write the two new tests first using a client double that records
+which instance was invoked (e.g. two distinct <code>mockLLMClient</code>
+instances with different canned replies, asserting the <em>returned
+synthesis</em> came from the mentioned model’s reply, not the default
+client’s) — confirm red against current code (proving Bug 1 is real, not
+just theorized).</li>
+<li>Wire both call sites, confirm green.</li>
+<li>Manual check (per this repo’s <code>verify</code> practice): run
+<code>/read-chunks</code> on a real file with an
+<code>@registered-route</code> mention against a live Ollama instance
+and confirm the debug log / recording shows the request actually went to
+that endpoint’s URL, not the locally active model’s.</li>
+</ol>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code>
+green.</label></li>
+<li><label><input type="checkbox" />New tests fail against pre-Phase-B
+code and pass after — proves the fix.</label></li>
+<li><label><input type="checkbox" />An unrecognized <code>@name</code>
+in a chunk instruction falls back to the current active model with a
+visible warning, matching existing unknown-route/unknown-model warning
+conventions elsewhere in the codebase (not a silent
+fallback).</label></li>
+</ul>
+<hr />
+<h2
+id="phase-c-shared-tool-vs-plain-execution-helper-complete-2026-07-13">Phase
+C — Shared tool-vs-plain execution helper ✅ Complete 2026-07-13</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-13 entry) for the final shape.
+No deviations from this plan. The plan below is kept as-written for the
+historical record.</p>
+<p><strong>Goal.</strong> Remove the duplicated
+<code>if useTools { RunToolLoop } else { Chat }</code> branch between
+<code>cmdPlanNext</code> and <code>DispatchToEndpoint</code>.</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tool_executor.go</code> (or a new
+<code>bounded_turn.go</code>)</td>
+<td><code>runBoundedTurn(ctx context.Context, client LLMClient, registry *ToolRegistry, cfg *Config, useTools bool, messages []Message, dbg *DebugLog, w io.Writer) (updatedHistory []Message, stats ChatStats, err error)</code></td>
+</tr>
+<tr>
+<td><code>plan_cmd.go</code></td>
+<td><code>cmdPlanNext</code> calls <code>runBoundedTurn</code> instead
+of its own inline branch; keeps its own
+<code>planStepHadErrors(updatedHistory)</code> call using the returned
+history</td>
+</tr>
+<tr>
+<td><code>routing.go</code></td>
+<td><code>DispatchToEndpoint</code> calls <code>runBoundedTurn</code>
+instead of its own inline branch; discards the returned history
+(unchanged behavior)</td>
+</tr>
+<tr>
+<td>new/existing test files</td>
+<td><code>TestRunBoundedTurn_UsesToolLoopWhenEnabled</code>,
+<code>TestRunBoundedTurn_PlainChatWhenToolsDisabled</code>,
+<code>TestRunBoundedTurn_PlainChatReturnsNilHistory</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach-2">Approach</h3>
+<ol type="1">
+<li>TDD-first for <code>runBoundedTurn</code> in isolation.</li>
+<li>Swap both call sites one at a time, re-running each file’s existing
+test suite after each swap to confirm no behavior change (both callers
+already have test coverage for their tool/no-tool branches — those tests
+should pass unmodified, proving the extraction is
+behavior-preserving).</li>
+</ol>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code> green,
+including every pre-existing <code>/plan next</code> and
+<code>@mention</code> route-dispatch test, unmodified.</label></li>
+<li><label><input type="checkbox" /><code>chunk_analyzer.go</code> is
+untouched — chunk analysis stays deliberately tool-free, per the design
+doc’s scope decision.</label></li>
+</ul>
+<hr />
+<h2 id="phase-d-shared-fold-back-helper-complete-2026-07-13">Phase D —
+Shared fold-back helper ✅ Complete 2026-07-13</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-13 entry) for the final shape
+— a pure mechanical extraction, no deviations from this plan.
+<strong>This completes Direction D</strong> (all four phases). The plan
+below is kept as-written for the historical record.</p>
+<p><strong>Goal.</strong> Remove the duplicated two-call
+<code>a.AddMessage("user", ...); a.AddMessage("assistant", ...)</code>
+pattern between <code>/read-chunks</code> and <code>@mention</code>
+route dispatch.</p>
+<h3 id="files-to-modify-3">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey.go</code> (or alongside <code>AddMessage</code>)</td>
+<td><code>func (a *Agent) foldBackTurn(userContent, assistantContent string)</code>
+— two <code>AddMessage</code> calls</td>
+</tr>
+<tr>
+<td><code>commands.go</code> (<code>cmdReadChunks</code>)</td>
+<td>Replace its two <code>a.AddMessage</code> calls with
+<code>a.foldBackTurn(...)</code></td>
+</tr>
+<tr>
+<td><code>terminal.go</code> (<code>@mention</code> route-dispatch
+branch)</td>
+<td>Replace its two <code>a.AddMessage</code> calls with
+<code>a.foldBackTurn(...)</code></td>
+</tr>
+<tr>
+<td>existing tests</td>
+<td>No new tests needed — this is a pure refactor of already-tested call
+sites; existing <code>/read-chunks</code> and <code>@mention</code>
+tests that assert on <code>a.History</code> content after dispatch must
+continue passing unmodified</td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach-3">Approach</h3>
+<ol type="1">
+<li>Single mechanical extraction — write <code>foldBackTurn</code>, swap
+both call sites, confirm every existing test that inspects
+<code>a.History</code> after a <code>/read-chunks</code> or
+<code>@mention</code> dispatch still passes unmodified.</li>
+</ol>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code> green, no
+test changes required at either call site.</label></li>
+<li><label><input type="checkbox" /><code>/plan next</code> remains
+untouched — it deliberately does not fold back into
+history.</label></li>
+</ul>
+<hr />
+<h2 id="deferred-out-of-scope">Deferred / out of scope</h2>
+<ul>
+<li><strong><code>@mention</code>’s local-model-switch
+fallthrough</strong> (<code>terminal.go:853-869</code>) — a genuinely
+different mechanism (persistent switch, full history, no restore by
+design), not part of this consolidation; see design doc.</li>
+<li><strong>The Ollama-daemon-swap vs. llamafile-relaunch
+benchmark</strong> — not run by this plan; <code>Restore</code>’s cost
+is real either way and unaffected by making it correct.</li>
+<li><strong>Extending tool support to chunk analysis</strong> — chunk
+analysis stays deliberately tool-free; not a duplication-removal
+candidate.</li>
+</ul>
+</section>
+</body>
+</html>

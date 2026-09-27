@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-improved-provenance-for-rag-augmented-reasoning-proposal">Harvey
+— Improved Provenance for RAG-Augmented Reasoning — Proposal</h1>
+<p><strong>Status (2026-07-23):</strong> Proposed. Not yet implemented
+or scheduled.</p>
+<hr />
+<h2 id="background">Background</h2>
+<p>Andrew Potter, “When Search Becomes Inquiry: What the Palme
+Investigation Archive Reveals About the Future of Archival Access,”
+<em>Metaarchivist</em> (Substack), July 10, 2026, <a
+href="https://metaarchivist.substack.com/p/when-search-becomes-inquiry"
+class="uri">https://metaarchivist.substack.com/p/when-search-becomes-inquiry</a>.</p>
+<p>The article traces PalmeNet-Chat, a tool built to give journalists
+access to the ~35-year, 250-meter Palme assassination investigation
+archive, through two generations. The first (2024) solved an
+<em>availability</em> problem: making a huge, previously unsearchable
+archive queryable while keeping it on-premise. The second (2025) moved
+to cloud infrastructure and added agentic reasoning — the tool now
+generates its own follow-up questions and chains fragments of testimony
+and forensic reporting into structured lines of inquiry, returning
+reasoned conclusions rather than documents.</p>
+<p>Potter frames this as a shift from <strong>search</strong> (retrieval
+— find material, let a human decide what it means) to
+<strong>inquiry</strong> (synthesis — the system itself decides what’s
+relevant, chains it, and states a conclusion). He identifies three risks
+that come with that shift:</p>
+<ol type="1">
+<li><strong>Obscured reasoning</strong> — synthesized answers are
+“plausible in tone, coherent in structure,” which can mask omissions or
+weightings that would have been visible in a raw list of search
+results.</li>
+<li><strong>Incomplete coverage presented as comprehensive</strong> —
+PalmeNet-Chat reasons well but only reaches ~10% of the released
+archive; better reasoning over a fraction of the material creates an
+illusion of completeness it can’t back up.</li>
+<li><strong>Custody separation</strong> — moving the reasoning layer to
+cloud infrastructure separates analytical capability from the archive’s
+traditional custody model, which complicates who is accountable for a
+conclusion.</li>
+</ol>
+<p>Harvey has its own retrieval-augmented-generation layer
+(<code>rag_support.go</code>, <code>agents/rag/*.db</code>, documented
+in <code>harvey-rag.7.md</code>). It is currently a
+<strong>search</strong> tool, not an <strong>inquiry</strong> tool —
+<code>Agent.ragAugment()</code> does one embed-and-retrieve pass per
+turn and silently prepends matching chunks to the prompt; there is no
+RAG-callable tool the model can invoke repeatedly to chain follow-up
+queries the way PalmeNet-Chat’s agentic layer does. That means risk (2),
+incomplete-coverage-as-comprehensive, and a version of risk (1),
+obscured reasoning, already apply to Harvey <em>today</em>, before any
+move toward agentic multi-hop retrieval. Risk (3), custody separation,
+is mostly avoided by Harvey’s local-first design, with one caveat (see
+below).</p>
+<h2 id="problem">Problem</h2>
+<h3 id="grounding-checks-dont-see-rag-injected-content">1. Grounding
+checks don’t see RAG-injected content</h3>
+<p><code>grounding.go</code>’s <code>groundingCheck</code> is Harvey’s
+only defense against plausible-but-hallucinated answers. It compares
+quoted text in the model’s reply against content returned by “content
+tools” called during the turn:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// grounding.go:18</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> contentToolNames <span class="op">=</span> <span class="kw">map</span><span class="op">[</span><span class="dt">string</span><span class="op">]</span><span class="dt">bool</span><span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;read_file&quot;</span><span class="op">:</span> <span class="ot">true</span><span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>RAG retrieval never goes through a tool call. <code>ragAugment</code>
+(<code>rag_support.go:613</code>) prepends matching chunks directly into
+the <em>user</em> message before it reaches the model
+(<code>terminal.go:1108</code>), so the grounding check has no way to
+know those chunks exist. A reply built entirely from RAG-injected
+context — including a hallucinated misreading of that context — passes
+grounding silently, because grounding only ever looks at
+<code>read_file</code> output.</p>
+<p>This is Harvey’s version of Potter’s “plausible in tone, coherent in
+structure” risk: the one mechanism designed to catch ungrounded claims
+doesn’t cover the one retrieval path most likely to produce synthesized,
+confident-sounding answers.</p>
+<h3
+id="retrieval-confidence-isnt-visible-in-the-reply-the-user-reads">2.
+Retrieval confidence isn’t visible in the reply the user reads</h3>
+<p><code>ragAugment</code> returns a <code>RAGAugmentInfo</code>
+(<code>recorder.go:99</code>) with the sources and cosine-similarity
+scores of whatever it injected, stored on <code>Agent.LastRAGInfo</code>
+(<code>harvey.go:174</code>). Today that information is:</p>
+<ul>
+<li>written to the session recording (<code>RecordTurnWithStats</code>,
+for later forensic review), and</li>
+<li>surfaced interactively only if the user immediately runs
+<code>/kb add</code>, which offers to link
+<code>LastRAGInfo.Sources</code> into a knowledge-base observation
+(<code>commands_kb.go:241</code>).</li>
+</ul>
+<p>It is <strong>not</strong> shown alongside the reply itself. Harvey
+already prints an inline tier warning for context-window usage right
+after each reply (<code>terminal.go:1123-1128</code> —
+<code>contextWarn</code>/<code>contextFull</code>), but there is no
+equivalent for RAG confidence. A reply built from five chunks scoring
+0.8 and a reply where nothing cleared the 0.3 threshold
+(<code>ragMinScore</code>, sent to the model unmodified) render
+identically to the user. This is Potter’s “incomplete coverage read as
+comprehensive” risk, reproduced at the scale of a single chat turn
+instead of an archive: the user has no signal to distinguish a
+well-grounded answer from an ungrounded one without manually running
+<code>/rag query</code> themselves beforehand.</p>
+<h3 id="local-storage-is-not-the-same-as-local-custody">3. Local storage
+is not the same as local custody</h3>
+<p>Harvey’s RAG stores are local SQLite files bound to a local embedding
+model (<code>harvey-rag.7.md</code>), which sidesteps most of Potter’s
+custody-separation concern — there’s no cloud vendor sitting between the
+archive and the reasoning step by default. The caveat: Harvey’s backend
+is pluggable (<code>any-llm-go</code>, <code>backend_ollama.go</code>,
+<code>backend_llamafile.go</code>, <code>backend_llamacpp.go</code>), so
+if a user points the <em>generation</em> model at a cloud provider,
+RAG-retrieved chunks still leave the machine at that point, even though
+the store itself never does. This isn’t a bug, but it’s an invariant
+worth stating explicitly rather than leaving implicit: <strong>local
+storage guarantees nothing once a cloud generation backend is
+selected.</strong></p>
+<h2 id="candidate-approaches">Candidate approaches</h2>
+<p>These are options for a design phase to weigh, not a decision already
+made. Each names a leaning but lists the alternatives it passed over and
+why they weren’t obviously better, so the trade-off is visible rather
+than assumed.</p>
+<h3 id="a.-close-the-rag-blind-spot-in-grounding-checks">A. Close the
+RAG blind spot in grounding checks</h3>
+<p>The gap: <code>groundingCheck</code> only ever inspects
+<code>read_file</code> tool output (<code>contentToolNames</code>,
+<code>grounding.go:18</code>); RAG-injected chunks never pass through a
+tool call, so nothing checks a reply against them.</p>
+<ul>
+<li><strong>Leaning:</strong> extend <code>groundingCheck</code> to
+accept the RAG-injected block as an additional source alongside
+<code>read_file</code> output — pass the string <code>ragAugment</code>
+(<code>rag_support.go:613</code>) built for the prompt, or
+<code>RAGAugmentInfo.Sources</code> chunk contents, into the check at
+its <code>terminal.go:1254</code> call site. Additive: one new
+parameter, no change to the existing quoted-string-matching logic or to
+<code>contentToolNames</code>.</li>
+<li><strong>Alternative — route RAG through a synthetic tool
+call.</strong> Instead of <code>ragAugment</code> prepending text
+directly to the user message, model it as an internal
+<code>rag_search</code> tool call/result pair in history, so it falls
+under the <em>existing</em> <code>contentToolNames</code> mechanism with
+zero changes to <code>groundingCheck</code> itself. More architecturally
+consistent (RAG and <code>read_file</code> grounded the same way), but
+changes how RAG injection appears in history/session recordings, which
+other code may depend on (<code>recorder.go</code>’s
+<code>RAGAugmentInfo</code> handling, <code>/kb add</code>’s use of
+<code>LastRAGInfo</code>) — larger blast radius than it looks.</li>
+<li><strong>Alternative — separate RAG-specific grounding pass.</strong>
+A parallel function scoped only to RAG content, run independently of
+<code>groundingCheck</code>. Avoids touching the existing function at
+all, but means two grounding code paths to maintain and two warning
+styles for the user to learn.</li>
+</ul>
+<h3
+id="b.-surface-rag-confidence-to-the-user-not-just-to-the-session-log">B.
+Surface RAG confidence to the user, not just to the session log</h3>
+<p>The gap: <code>RAGAugmentInfo</code> (scores, sources) is computed
+every RAG turn but only reaches the user if they proactively run
+<code>/rag query</code> beforehand or <code>/kb add</code> immediately
+after (<code>commands_kb.go:241</code>); the reply itself gives no
+signal of retrieval confidence.</p>
+<ul>
+<li><strong>Leaning:</strong> an inline one-line note after the reply,
+reusing the warning-tier pattern already established for context-window
+usage (<code>terminal.go:1123-1128</code>) — e.g.
+<code>ℹ RAG: 3 chunks injected, avg score 0.62 (golang)</code> or
+<code>⚠ RAG: no chunks above threshold — answered without retrieval context</code>.
+Both branches are already computable from the existing
+<code>RAGAugmentInfo</code>; this is a display change at the
+<code>ragAugment</code> call site.</li>
+<li><strong>Alternative — status-line/prompt indicator instead of a
+printed line.</strong> Lower-friction (doesn’t add output the user has
+to read past each turn) but easy to miss, and Harvey doesn’t currently
+have a persistent status line to put it on — would require adding
+one.</li>
+<li><strong>Alternative — <code>/rag last</code> command instead of
+automatic display.</strong> Zero output-noise cost, consistent with how
+<code>LastRAGInfo</code> is already exposed on-demand via
+<code>/kb add</code>. Trade-off: purely opt-in, so it repeats the
+current failure mode (the user has to know to ask) rather than fixing it
+— this is the strongest argument against it as the primary fix, though
+it could still ship alongside whichever automatic option is chosen.</li>
+</ul>
+<h3 id="c.-document-the-local-storage-vs-custody-distinction">C.
+Document the local-storage-vs-custody distinction</h3>
+<p>The gap: RAG stores are local SQLite bound to a local embedding
+model, but nothing states that retrieved chunks still leave the machine
+once a cloud generation backend is configured via
+<code>any-llm-go</code>.</p>
+<ul>
+<li><strong>Leaning:</strong> a short paragraph in
+<code>harvey-rag.7.md</code>, either folded into “EMBEDDING MODEL
+CHOICE” or as a new “DATA CUSTODY” section. No code change — this is a
+documentation gap, not a behavioral one.</li>
+<li><strong>Alternative — put it in
+<code>SECURITY.md</code>/<code>SECURITY_REVIEW.md</code> instead (or as
+well).</strong> Those files already collect other data-handling
+invariants, so it may be a more discoverable home for security-focused
+readers than a man page someone consults for RAG usage syntax. Not
+mutually exclusive with the <code>harvey-rag.7.md</code> placement — a
+design decision just needs to pick where the canonical statement lives,
+if not both.</li>
+</ul>
+<h2 id="constraints-for-the-design-phase">Constraints for the design
+phase</h2>
+<p>Facts a chosen design must respect, so they don’t need
+rediscovering:</p>
+<ul>
+<li><code>ragMinScore = 0.3</code> is duplicated between
+<code>terminal.go</code> and <code>cmd/assay/main.go</code> (per
+<code>harvey/CLAUDE.md</code>’s “Key invariants to preserve”) — any
+design touching threshold behavior must keep both in sync, or centralize
+the constant.</li>
+<li><code>groundingCheck</code>’s existing quoted-string heuristic
+(<code>minQuotedLen = 20</code>, <code>grounding.go:14</code>) and its
+tool-based path for <code>read_file</code> must keep working unmodified
+— A is additive, not a rewrite.</li>
+<li>RAG stores are local-first by design (<code>harvey-rag.7.md</code>);
+any design for A or B should not assume or require network access, since
+Harvey is used fully offline with local Ollama/llamafile/llamacpp
+backends.</li>
+<li><code>RAGAugmentInfo</code> (<code>recorder.go:99</code>) and
+<code>Agent.LastRAGInfo</code> (<code>harvey.go:174</code>) already
+exist and are populated every RAG turn — B is a display problem, not a
+data-availability problem; no new retrieval-time computation should be
+needed.</li>
+<li>Session recordings (<code>.spmd</code> files via
+<code>Recorder.RecordTurnWithStats</code>) already capture
+<code>RAGAugmentInfo</code> — any design should preserve that forensic
+trail rather than duplicating or replacing it.</li>
+<li>Harvey has two independent RAG injection paths that can both fire
+for the same store: <code>ragAugment()</code> per-prompt
+(<code>rag_support.go:613</code>) and
+<code>UnifiedMemory.Recall()</code> at session start
+(<code>harvey.go:358</code>, <code>injectMemoryContext</code>). A
+per-store <code>per_prompt: false</code> opt-out
+(<code>SkipPerPrompt</code>, <code>config.go:68</code>, shipped
+2026-06-28) lets a user manually silence the per-prompt path, but
+nothing makes the two paths aware of each other automatically. A and B
+must be designed against <strong>both</strong> injection paths, not just
+<code>ragAugment</code>’s, or <code>Recall()</code>-injected chunks will
+stay ungrounded (A) and confidence-invisible (B) even after this
+proposal ships. See DECISIONS.md’s 2026-06-02 and 2026-07-25
+entries.</li>
+</ul>
+<h2 id="non-goals">Non-goals</h2>
+<p>This proposal does <strong>not</strong> recommend building
+PalmeNet-Chat-style agentic, multi-hop RAG (a model-callable
+<code>/rag query</code> tool that chains its own follow-up retrievals).
+That capability is a legitimate future direction for Harvey, but per
+Potter’s own framing it should not be added <em>before</em> A and B
+above are in place — chaining retrieval without grounding coverage or
+visible confidence would import Potter’s “obscured reasoning” risk in
+full, at exactly the point where Harvey starts resembling the tool the
+article is about.</p>
+<h2 id="open-questions">Open questions</h2>
+<ol type="1">
+<li>Should the RAG confidence line (B) be togglable independently of
+<code>/rag on|off</code> (e.g. a quiet mode for users who’ve already
+internalized the workflow), or always shown when RAG fires?</li>
+<li>Should (A)’s grounding check apply the same
+<code>minQuotedLen</code> threshold to RAG content, or does
+injected-chunk text warrant a different threshold given it’s typically
+denser/shorter than file content?</li>
+<li>Does (C) belong in <code>harvey-rag.7.md</code> alone, or also in
+<code>SECURITY.md</code> / <code>SECURITY_REVIEW.md</code> where other
+data-handling invariants live?</li>
+</ol>
+</section>
+</body>
+</html>

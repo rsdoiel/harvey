@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="agentic-memory-tools-implementation-plan">Agentic Memory Tools —
+Implementation Plan</h1>
+<h2 id="source-design">Source design</h2>
+<p>See <code>agentic-memory-design.md</code> and arXiv:2601.01885v2
+(<code>memory-models/2601.01885v2.pdf</code>).</p>
+<h2 id="work-items">Work items</h2>
+<h3 id="m0-proactive-stm-warning-threshold">M0 — Proactive STM warning
+threshold</h3>
+<p><strong>Effort:</strong> ~1 hour<br />
+<strong>Files:</strong> <code>terminal.go</code>,
+<code>config.go</code>, <code>config_yaml.go</code></p>
+<p>Add a check in <code>runChatTurn</code> (or immediately before the
+LLM call): if <code>remainingContext(a)</code> is below
+<code>cfg.Chunking.STMWarnPct</code> of the effective context limit,
+inject a brief <code>system</code> message into the turn prompt advising
+the model to call <code>summary_context</code> before proceeding.</p>
+<ul>
+<li>Add <code>STMWarnPct float64</code> to <code>ChunkConfig</code>
+(default 0.20).</li>
+<li>Add <code>stm_warn_pct</code> to <code>chunkingYAML</code>.</li>
+<li>No new tools required; works even when STM tools are not
+registered.</li>
+<li>Tests: inject a long history until threshold fires; verify system
+message appears.</li>
+</ul>
+<p><strong>Dependency:</strong> none.</p>
+<hr />
+<h3 id="m1-summary_context-tool">M1 — <code>summary_context</code>
+tool</h3>
+<p><strong>Effort:</strong> ~2 hours<br />
+<strong>Files:</strong> <code>builtin_tools.go</code>,
+<code>builtin_tools_test.go</code></p>
+<p>Register a new builtin tool
+<code>summary_context(span string)</code>.</p>
+<ul>
+<li><code>span</code>: <code>"all"</code> or an integer string
+<code>"N"</code> for the last N turns.</li>
+<li>Calls the existing summarisation logic (reuse the prompt from
+<code>cmdSummarize</code> / <code>rollingSummaryPrompt</code>). Sends
+the selected history slice to the active LLM client; replaces those
+messages in <code>a.History</code> with a single
+<code>{"role":"system","content":"[Summary] ..."}</code> entry.</li>
+<li>Returns a confirmation string:
+<code>"Summarised N turns into 1 entry (~K tokens saved)"</code>.</li>
+<li>Requires <code>a.Client != nil</code>; returns an error string if no
+client.</li>
+<li>Safe-mode guard: in safe mode, return a description of what would be
+summarised and ask for confirmation before modifying history.</li>
+<li>Recorder: <code>RecordAgentAction</code> with
+<code>[[summary_context: N turns compressed]]</code>.</li>
+<li>Tests: summary of 5 messages collapses to 1; “all” summarises
+everything except system messages; span &gt; history length summarises
+what’s available.</li>
+</ul>
+<p><strong>Dependency:</strong> M0 (optional — M1 is independently
+useful).</p>
+<hr />
+<h3 id="m2-filter_context-tool">M2 — <code>filter_context</code>
+tool</h3>
+<p><strong>Effort:</strong> ~3 hours<br />
+<strong>Files:</strong> <code>builtin_tools.go</code>,
+<code>builtin_tools_test.go</code></p>
+<p>Register a new builtin tool
+<code>filter_context(criteria string)</code>.</p>
+<ul>
+<li>Embeds <code>criteria</code> using <code>NewEmbedderForEntry</code>
+(active RAG store embedder) or the Ollama embedder at
+<code>cfg.OllamaURL</code>. Falls back to case-insensitive keyword
+matching in <code>criteria</code> against message content when no
+embedder is available.</li>
+<li>Scores each non-system <code>History</code> message using cosine
+similarity. Removes messages scoring <strong>above</strong> threshold
+θ_f = 0.6 (i.e. messages <em>similar</em> to the filter criteria are
+removed — this is the AgeMem FILTER semantics: “remove content matching
+the unwanted criterion”).</li>
+<li>Returns:
+<code>"Filtered N messages matching '&lt;criteria&gt;'"</code>.</li>
+<li>System messages are never filtered.</li>
+<li>Safe-mode guard: in safe mode, list what would be removed and
+require confirmation.</li>
+<li>Tests: filter removes messages containing the criteria keyword;
+system messages survive; empty history no-ops cleanly.</li>
+</ul>
+<p><strong>Dependency:</strong> M1 (establishes the pattern for
+history-mutating tools).</p>
+<hr />
+<h3 id="m3-retrieve_memory-tool">M3 — <code>retrieve_memory</code>
+tool</h3>
+<p><strong>Effort:</strong> ~1 hour<br />
+<strong>Files:</strong> <code>builtin_tools.go</code>,
+<code>builtin_tools_test.go</code></p>
+<p>Register a new builtin tool
+<code>retrieve_memory(query string, top_k int)</code>.</p>
+<ul>
+<li><code>top_k</code> defaults to 3 when 0 or omitted.</li>
+<li>Calls <code>a.Memory.Unified.Recall(query, embedder, budget)</code>
+where budget is <code>min(top_k * 256, 2048)</code> tokens.</li>
+<li>Prepends results as a <code>system</code> message in
+<code>a.History</code> so subsequent turns can reference them.</li>
+<li>Returns a summary:
+<code>"Retrieved N memory entries for query '&lt;query&gt;'"</code>.</li>
+<li>Requires
+<code>a.Memory != nil &amp;&amp; a.Memory.Unified != nil</code>; returns
+informative error string if unavailable.</li>
+<li>Tests: recall with real MemoryStore entries; graceful no-op when
+store is empty.</li>
+</ul>
+<p><strong>Dependency:</strong> none (wraps existing
+<code>UnifiedMemory.Recall</code>).</p>
+<hr />
+<h3 id="m4-add_memory-tool">M4 — <code>add_memory</code> tool</h3>
+<p><strong>Effort:</strong> ~2 hours<br />
+<strong>Files:</strong> <code>builtin_tools.go</code>,
+<code>builtin_tools_test.go</code></p>
+<p>Register a new builtin tool
+<code>add_memory(content string, memory_type string, tags []string)</code>.</p>
+<ul>
+<li>Validates <code>memory_type</code> against
+<code>ValidMemoryTypes</code>; returns error string on invalid
+type.</li>
+<li>Constructs a <code>MemoryDoc</code> via
+<code>NewMemoryDoc(autoID, MemoryType(memory_type), content, content, tags)</code>
+where <code>autoID</code> is generated from a short hash of content +
+timestamp.</li>
+<li>Calls <code>a.Memory.Store.Save(doc, nil)</code>.</li>
+<li>Returns: <code>"Memory saved: &lt;id&gt;"</code>.</li>
+<li>Requires <code>a.Memory.Store != nil</code> and safe-mode check
+(confirm before writing in safe mode).</li>
+<li>Recorder: <code>RecordAgentAction</code> with
+<code>[[add_memory: &lt;id&gt; — &lt;memory_type&gt;]]</code>.</li>
+<li>Tests: round-trip save + list; invalid type rejected; safe-mode
+prompts confirmation.</li>
+</ul>
+<p><strong>Dependency:</strong> M3 (the model typically
+retrieve-then-adds).</p>
+<hr />
+<h3 id="m5-update_memory-and-delete_memory-tools">M5 —
+<code>update_memory</code> and <code>delete_memory</code> tools</h3>
+<p><strong>Effort:</strong> ~2 hours<br />
+<strong>Files:</strong> <code>builtin_tools.go</code>,
+<code>builtin_tools_test.go</code></p>
+<p><strong><code>update_memory(id string, content string)</code></strong>
+- Loads existing <code>MemoryDoc</code> by ID from
+<code>a.Memory.Store</code>. Returns error string if not found. -
+Updates the Fountain body with new content and a new timestamp. -
+Re-saves via <code>a.Memory.Store.Save(doc, nil)</code>. - Returns:
+<code>"Memory updated: &lt;id&gt;"</code>.</p>
+<p><strong><code>delete_memory(id string)</code></strong> - Sets the
+memory’s confidence to 0.0 (archive), matching
+<code>/memory forget</code> semantics. - Returns:
+<code>"Memory archived: &lt;id&gt;"</code>. - Safe-mode guard: confirm
+before archiving.</p>
+<ul>
+<li>Tests: update changes content; delete reduces confidence to 0;
+unknown ID returns clear error.</li>
+</ul>
+<p><strong>Dependency:</strong> M4 (the model typically add-then-update
+in the same session).</p>
+<hr />
+<h3
+id="m6-dual-rag-audit-supersedes-the-deferred-item-in-decisions.md">M6 —
+Dual RAG audit (supersedes the deferred item in DECISIONS.md)</h3>
+<p><strong>Effort:</strong> ~2 hours<br />
+<strong>Files:</strong> <code>config.go</code>,
+<code>config_yaml.go</code>, <code>rag_support.go</code>,
+<code>terminal.go</code></p>
+<p>After M3 (<code>retrieve_memory</code>) is available, the per-prompt
+<code>ragAugment()</code> call is redundant when the model is capable of
+requesting retrieval itself.</p>
+<ul>
+<li>Add <code>PerPrompt bool</code> (default <code>true</code>) to
+<code>RagStoreEntry</code> and YAML (<code>per_prompt</code>).</li>
+<li>In <code>ragAugment()</code>: early-return when
+<code>!entry.PerPrompt</code>.</li>
+<li>Document in <code>CONFIGURATION.md</code>: for sessions with
+reliable tools + M3 registered, set <code>per_prompt: false</code> on
+the active store.</li>
+<li>Tests: per_prompt=false skips ragAugment; per_prompt=true (default)
+unchanged.</li>
+</ul>
+<p><strong>Dependency:</strong> M3.</p>
+<hr />
+<h2 id="ordering">Ordering</h2>
+<pre><code>M0 (threshold)          — independent, do first (low risk, immediate value)
+M3 (retrieve_memory)    — independent of M1/M2, wraps existing code
+M1 (summary_context)    — depends on nothing, establishes history-mutation pattern
+M2 (filter_context)     — after M1 (similar pattern, more complex)
+M4 (add_memory)         — after M3 (model uses retrieve before add)
+M5 (update+delete)      — after M4
+M6 (dual RAG audit)     — after M3 (per_prompt flag)</code></pre>
+<p>Session budget: M0+M3 in one session (~2h), M1+M2 in one session
+(~5h), M4+M5 in one session (~4h), M6 standalone (~2h).</p>
+<h2 id="testing-strategy">Testing strategy</h2>
+<p>Following project TDD convention: write <code>_test.go</code> stubs
+first, confirm red, then implement. All tools use the
+<code>newToolAgent</code> helper from
+<code>builtin_tools_test.go</code>. LTM tools require a real
+<code>MemorySystem</code> (call <code>OpenMemory</code> in test setup).
+STM tools use a <code>mockLLMClient</code> for the summarisation
+call.</p>
+<h2 id="non-goals-for-this-cycle">Non-goals for this cycle</h2>
+<ul>
+<li>GRPO / RL training loop</li>
+<li>Automatic θ_f threshold tuning for filter_context</li>
+<li>Embedding History messages at write time (filter uses on-the-fly
+embeddings)</li>
+<li>Changing the startup-time <code>UnifiedMemory.Recall()</code> call —
+it stays as-is</li>
+</ul>
+</section>
+</body>
+</html>

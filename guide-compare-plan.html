@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-testing-whether-guides-still-earn-their-tokens-direction-e-implementation-plan">Harvey
+— Testing Whether Guides Still Earn Their Tokens (Direction E) —
+Implementation Plan</h1>
+<p>See <a href="guide-compare-design.html">guide-compare-design.md</a>
+for the full audit and the 2026-07-13 confirmed decisions. See <a
+href="DECISIONS.html">DECISIONS.md</a> for the finalized decision entry
+as this lands.</p>
+<p>Resolved here, as implementation-level judgment calls rather than
+user-facing policy decisions (the design doc’s two “open
+questions”):</p>
+<ul>
+<li><strong><code>variant</code> struct gains a third bool
+field</strong>, not a new enum:
+<code>variant{name string, useRAG, useGuide bool}</code>. A small,
+additive change matching the existing struct’s own shape rather than
+introducing new vocabulary for what’s still just “which optional context
+gets added this call.”</li>
+<li><strong><code>writeReport</code>’s <code>GuideCompare</code> branch
+duplicates the <code>RagCompare</code> branch’s structure rather than
+sharing a helper.</strong> The two tables differ in header label (“RAG”
+vs “Guide”) and one row (RAG has “Chunks injected,” Guide has nothing
+analogous) — real but small differences. Extracting a shared helper now
+would mean parameterizing for a third-mode-that-doesn’t-exist-yet’s
+sake; per this repo’s own “don’t design for hypothetical future
+requirements” convention, duplicate now, reconsider only if a third
+compare axis is ever added.</li>
+<li><strong>Message construction is a new, directly-testable pure
+function</strong>,
+<code>buildGuideMessages(guideText, promptText string, useGuide bool) []harvey.Message</code>
+— mirrors the existing <code>buildRAGContext</code>’s pattern of
+extracting a pure, unit-testable helper out of the dispatch loop, rather
+than leaving the “does this variant get a system message” logic inline
+where only an integration test (needing a live model) could reach
+it.</li>
+<li><strong>Flag validation stays inline in <code>main()</code>,
+uncovered by a unit test</strong> — matching the existing precedent:
+<code>--rag-compare requires --rag-db</code>’s validation has no test
+today either. Not introducing a new testing standard for one flag pair
+when the established one (for the directly analogous existing flag)
+doesn’t have it.</li>
+</ul>
+<hr />
+<h2 id="phase-a---guide-compare---guide-file-complete-2026-07-13">Phase
+A — <code>--guide-compare</code> + <code>--guide-file</code> ✅ Complete
+2026-07-13</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-13 entry) for the final shape.
+No deviations from this plan. <strong>This completes Direction E’s
+scoped increment</strong> (the mechanism only — no real experiment run,
+per the confirmed decision). The plan below is kept as-written for the
+historical record.</p>
+<p><strong>Goal.</strong> A working, tested mechanism mirroring
+<code>--rag-compare</code>’s existing shape, report format, and
+validation style — no real “guide vs sensor” experiment run yet (per the
+design doc’s confirmed scope), just the tool.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td>New flags:
+<code>guideCompare := flag.Bool("guide-compare", false, ...)</code>,
+<code>guideFile := flag.String("guide-file", "", ...)</code>.
+Validation: <code>--guide-compare</code> requires
+<code>--guide-file</code>; mutually exclusive with
+<code>--rag-compare</code> (both checked immediately after
+<code>flag.Parse()</code>, alongside the existing
+<code>--rag-compare</code>/<code>--rag-db</code> and
+<code>--llamafile</code>/<code>--llamacpp</code> checks)</td>
+</tr>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td>New pure function
+<code>buildGuideMessages(guideText, promptText string, useGuide bool) []harvey.Message</code></td>
+</tr>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td><code>variant</code> struct gains <code>useGuide bool</code>; the
+<code>variants</code> switch (<code>main.go:894-902</code>) gains a
+<code>case *guideCompare: variants = []variant{{"base", false, false}, {"guide", false, true}}</code>
+branch</td>
+</tr>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td>Load <code>guideFile</code>’s content once before the model loop
+(<code>guideText, _ := os.ReadFile(*guideFile)</code> when
+<code>*guideFile != ""</code>, trimmed)</td>
+</tr>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td>Dispatch loop (<code>main.go:937-939</code>): replace the hardcoded
+<code>[]harvey.Message{{Role: "user", Content: promptText}}</code> with
+<code>buildGuideMessages(string(guideText), promptText, v.useGuide)</code></td>
+</tr>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td><code>AssayResults</code> gains <code>GuideCompare bool</code>,
+<code>GuideFile string</code> (populated alongside
+<code>RagCompare</code>/<code>RagDB</code> when constructing
+<code>ar</code>)</td>
+</tr>
+<tr>
+<td><code>cmd/assay/main.go</code></td>
+<td><code>writeReport</code>: extend the summary-table branch and
+per-prompt detail branch with a third case for
+<code>ar.GuideCompare</code>, mirroring the <code>ar.RagCompare</code>
+branches’ structure (<code>Base pass | Guide pass | Δ | Avg tok/s</code>
+summary; per-check delta table; collapsed base/guide response
+<code>&lt;details&gt;</code> blocks — no “chunks injected” row)</td>
+</tr>
+<tr>
+<td><code>cmd/assay/main_test.go</code></td>
+<td>New tests: <code>TestBuildGuideMessages_WithGuide</code> (system +
+user messages, system content matches guide text),
+<code>TestBuildGuideMessages_WithoutGuide</code> (single user message,
+no system message),
+<code>TestBuildGuideMessages_EmptyGuideTextFallsBackToPlain</code>
+(guide requested but text is empty → single user message, no empty
+system message sent)</td>
+</tr>
+<tr>
+<td><code>cmd/assay/main_test.go</code></td>
+<td>New test:
+<code>TestWriteReport_GuideCompare_RendersDeltaTable</code> — construct
+an <code>AssayResults{GuideCompare: true, Results: [...]}</code> with
+one prompt’s “base” and “guide” <code>PromptResult</code>s (differing
+<code>AutoPass</code>), a matching <code>Corpus</code>, call
+<code>writeReport</code> against a temp dir, read back
+<code>report.md</code>, and assert the summary table contains the
+expected pass counts and a
+<code>+1</code>/<code>-1</code>/<code>+0</code> delta — the first direct
+test of <code>writeReport</code>’s rendering logic at all (none exists
+today for <code>RagCompare</code> either, so this is new test
+infrastructure for the package, not just for this feature)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach">Approach</h3>
+<ol type="1">
+<li>Write <code>buildGuideMessages</code>’s three tests first (TDD),
+confirm red, implement, confirm green — this function has no dependency
+on flag parsing or the dispatch loop and can be fully verified in
+isolation.</li>
+<li>Write <code>TestWriteReport_GuideCompare_RendersDeltaTable</code>
+next, confirm red (the <code>GuideCompare</code> field/branch don’t
+exist yet), implement the <code>AssayResults</code> field additions and
+<code>writeReport</code>’s new branch, confirm green.</li>
+<li>Wire the flags, validation, <code>variant</code> struct change, and
+dispatch-loop call last, once both pieces independently work.
+<code>go build</code> confirms the wiring compiles; there is no unit
+test for the wiring itself (matching the existing
+<code>--rag-compare</code> precedent noted above).</li>
+<li>Manual check (per this repo’s <code>verify</code> practice,
+substituting for the live-model check this package’s existing tests
+can’t do): run
+<code>bin/assay --guide-compare --guide-file /tmp/test-guide.txt --models &lt;a real local model&gt; --category go</code>
+against a real Ollama/llamafile instance and confirm the produced
+<code>report.md</code> shows both variants’ full responses and a
+sensible delta — this is the closest this increment gets to the “does a
+real comparison actually work end-to-end” question, since no
+guide/sensor pair exists yet to make the <em>result</em>
+meaningful.</li>
+</ol>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code>
+(including <code>cmd/assay</code>) green.</label></li>
+<li><label><input type="checkbox" /><code>go vet ./...</code>
+clean.</label></li>
+<li><label><input type="checkbox" /><code>--guide-compare</code> without
+<code>--guide-file</code> exits with a clear error, matching the
+existing <code>--rag-compare</code>/<code>--rag-db</code> error’s
+wording style.</label></li>
+<li><label><input type="checkbox" /><code>--guide-compare</code>
+together with <code>--rag-compare</code> exits with a clear
+mutual-exclusivity error.</label></li>
+<li><label><input type="checkbox" />The “base” variant of a
+<code>--guide-compare</code> run produces byte-identical dispatch
+behavior to today’s default (non-compare) mode — proving the guide
+mechanism is purely additive, not a change to existing
+behavior.</label></li>
+<li><label><input type="checkbox" />The rendered report’s summary table
+and per-prompt detail section both distinguish base vs. guide results
+and compute a delta, matching <code>--rag-compare</code>’s existing
+report shape.</label></li>
+</ul>
+<hr />
+<h2 id="deferred-out-of-scope">Deferred / out of scope</h2>
+<ul>
+<li><strong>A real first “does removing this guide hurt”
+experiment</strong> — no guide/sensor pair exists yet in Harvey’s own
+<code>HARVEY.md</code>/skills catalog and Direction A’s shipped sensors
+to run one against meaningfully; see design doc. Not manufactured for
+this increment’s sake.</li>
+<li><strong>Combined <code>--guide-compare</code> +
+<code>--rag-compare</code></strong> (a 2×2 variant matrix) — mutually
+exclusive for now; a real feature, not scoped here.</li>
+<li><strong>Re-deriving the guide text from Harvey’s own system-prompt
+assembly</strong> (<code>HARVEY.md</code> + skills catalog +
+<code>agentPreamble</code>) inside assay — would cross
+<code>cmd/assay</code>’s established self-contained boundary; the guide
+stays an externally-supplied opaque file.</li>
+</ul>
+</section>
+</body>
+</html>

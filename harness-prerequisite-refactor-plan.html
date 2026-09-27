@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-pre-harness-engineering-refactor-implementation-plan">Harvey
+— Pre-Harness-Engineering Refactor — Implementation Plan</h1>
+<p>See <a
+href="harness-prerequisite-refactor-design.html">harness-prerequisite-refactor-design.md</a>
+for the full design rationale and scoping decisions. See <a
+href="DECISIONS.html">DECISIONS.md</a> for the finalized decision
+entries as each phase lands.</p>
+<p>Phases below map 1:1 to the design doc’s four items, in the
+recommended order (Item 2 → Item 1 → Item 3; Item 4 deferred to <a
+href="small-model-budget-design.html">small-model-budget-design.md</a>,
+which owns its own plan). <code>commands.go</code> restructuring is
+explicitly out of scope for this plan — see the design doc’s scoping
+decision.</p>
+<hr />
+<h2
+id="phase-a-unify-tool-call-dispatch-and-report-item-2-complete-2026-07-12">Phase
+A — Unify tool-call dispatch-and-report (Item 2) ✅ Complete
+2026-07-12</h2>
+<p><strong>Goal.</strong> Replace
+<code>tryExecuteApertusToolCalls</code> and
+<code>tryExecuteProseToolCalls</code> — near-duplicate
+execute-and-report loops differing only in their parser — with one
+shared function, and resolve the discovered “Unknown tool(s)” warning
+asymmetry between the two paths.</p>
+<h3 id="files-modified">Files modified</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tool_executor.go</code></td>
+<td>Added
+<code>executeAndReportToolCalls(a, calls, out) (dispatched, unknownNames)</code>
+and <code>availableToolNames(a) []string</code>; both
+<code>tryExecuteApertusToolCalls</code>/<code>tryExecuteProseToolCalls</code>
+reduced to parse-then-delegate</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>History-injection correction message (<code>~line 1367</code>) now
+calls <code>availableToolNames(a)</code> instead of its own inline
+loop</td>
+</tr>
+<tr>
+<td><code>tool_executor_test.go</code></td>
+<td>Added
+<code>TestExecuteAndReportToolCalls_dispatchesKnownTool</code>,
+<code>TestExecuteAndReportToolCalls_unknownToolWarnsWithAvailableList</code>,
+<code>TestTryExecuteProseToolCalls_toolsDisabled</code>,
+<code>TestTryExecuteProseToolCalls_unknownToolWarns</code>,
+<code>TestTryExecuteApertusToolCalls_dispatchesKnownTool</code>,
+<code>TestTryExecuteApertusToolCalls_unknownToolWarns</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="sequencing-actually-followed">Sequencing actually followed</h3>
+<ol type="1">
+<li>Read both functions and their two call sites in
+<code>terminal.go</code> to confirm the exact contract
+(<code>(dispatched bool, unknownNames []string)</code>) and find the
+behavioral asymmetry (Apertus path silently omitted the terminal warning
+the prose path printed).</li>
+<li>Confirmed neither function had direct test coverage — only their
+parsers did (<code>codeblock_test.go</code>).</li>
+<li>Asked the user whether to fix the asymmetry (print the warning for
+both) or preserve it behind a flag — decided: fix it, both print.</li>
+<li>Wrote characterization/new-behavior tests against the
+<em>decided</em> target behavior, confirmed red
+(<code>executeAndReportToolCalls</code> undefined; compile
+failure).</li>
+<li>Implemented the shared function and thin wrappers; confirmed
+green.</li>
+<li>Ran full package test suite; one unrelated pre-existing failure
+noted (<code>TestCmdModelList_ShowsLlamafileEntries</code>, tied to
+already-uncommitted llamafile-discovery WIP predating this session) and
+explicitly not touched.</li>
+<li>Logged the decision in <code>DECISIONS.md</code> (2026-07-12
+entry).</li>
+</ol>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox"
+checked="" /><code>go test ./...</code> green except the pre-existing,
+unrelated failure.</label></li>
+<li><label><input type="checkbox" checked="" />Both Apertus and prose
+unknown-tool-call paths print the same “Unknown tool(s): … Available
+tools: …” warning.</label></li>
+<li><label><input type="checkbox"
+checked="" /><code>availableToolNames</code> has exactly one
+implementation, used by both the terminal warning and the
+history-injection correction message.</label></li>
+<li><label><input type="checkbox" checked="" />Decision logged in
+<code>DECISIONS.md</code>.</label></li>
+</ul>
+<hr />
+<h2
+id="phase-b-unify-token-budgetcontext-percentage-reporting-item-1-complete-2026-07-12">Phase
+B — Unify token-budget/context-percentage reporting (Item 1) ✅ Complete
+2026-07-12</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-12 entry) for the three
+discrepancies found and resolved, and the final test list. The plan
+below is kept as-written for the historical record.</p>
+<p><strong>Goal.</strong> Replace three independent copies of “estimate
+tokens used, compute %, pick a warning tier” with one accessor and one
+formatter.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>context_estimator.go</code></td>
+<td>Add <code>Agent.contextUsage() (used, limit int, exact bool)</code>
+— wraps the existing Ollama-exact-count vs. estimated-count branching
+currently duplicated in <code>terminal.go</code></td>
+</tr>
+<tr>
+<td><code>context_estimator.go</code></td>
+<td>Add a formatter,
+e.g. <code>formatContextUsage(used, limit int, exact bool) (line string, tier WarningTier)</code>,
+producing the <code>%</code>/qualifier text and a tier
+(<code>ok</code>/<code>warn80</code>/<code>full100</code>) so callers
+decide independently whether/how to print</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Replace the two inline blocks (<code>~1112-1129</code> Ollama,
+<code>~1130-1143</code> llamafile/llama.cpp) with a single call to
+<code>contextUsage()</code> + <code>formatContextUsage()</code>, gated
+on tier as today (only print at ≥80%)</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td><code>cmdStatus</code> (<code>~640-664</code>) calls the same two
+functions instead of its own third copy; <code>/status</code> always
+prints the line regardless of tier</td>
+</tr>
+<tr>
+<td><code>context_estimator_test.go</code></td>
+<td>New table-driven tests for <code>contextUsage()</code> and
+<code>formatContextUsage()</code> directly — this logic currently has no
+direct unit tests, only indirect coverage through whatever exercises
+<code>runChatTurn</code>/<code>cmdStatus</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach">Approach</h3>
+<ol type="1">
+<li>Write characterization tests first: capture today’s exact output
+strings for representative cases (Ollama exact count at 50%/80%/100%+,
+llamafile estimated count at the same tiers) by calling the
+<em>existing</em> inline logic indirectly (via
+<code>runChatTurn</code>/<code>cmdStatus</code> if that’s the only
+current entry point) — confirms a known-good baseline before
+refactoring.</li>
+<li>Extract
+<code>contextUsage()</code>/<code>formatContextUsage()</code>, write
+direct unit tests against them, confirm they reproduce the same strings
+as step 1’s baseline.</li>
+<li>Swap all three call sites to the shared functions.</li>
+<li>Re-run the characterization tests from step 1 — output must be
+byte-identical (pure Extract Method refactor, no behavior change).</li>
+</ol>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code>
+green.</label></li>
+<li><label><input type="checkbox" />Ollama and llamafile/llama.cpp
+turn-warning output unchanged byte-for-byte for the same
+inputs.</label></li>
+<li><label><input type="checkbox" /><code>/status</code> output
+unchanged byte-for-byte.</label></li>
+<li><label><input
+type="checkbox" /><code>contextUsage()</code>/<code>formatContextUsage()</code>
+have direct unit tests covering both providers and all three warning
+tiers.</label></li>
+</ul>
+<hr />
+<h2
+id="phase-c-unify-sensorstatus-reporting-item-3-complete-2026-07-12">Phase
+C — Unify sensor/status reporting (Item 3) ✅ Complete 2026-07-12</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-12 entry, third of that date)
+for the final shape (<code>SensorEvent</code>/<code>SensorClass</code>
+in <code>sensor_event.go</code>, <code>ReportSensor</code> on
+<code>StatusReporter</code>/<code>*Spinner</code>) and an honest note on
+one byte-level (not visual) formatting discrepancy between the two
+terminal.go call sites that couldn’t both be preserved exactly by a
+single shared formatter. This completes all three items of this refactor
+cycle. The plan below is kept as-written for the historical record.</p>
+<p><strong>Goal.</strong> Introduce <code>SensorEvent</code> plumbing
+(design sketched in <a
+href="harness-engineering-exploration.html">harness-engineering-exploration.md</a>
+Direction C) as pure routing — reroute the three existing signals
+through one shape and one destination, with no UI redesign yet.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spinner.go</code></td>
+<td>Extend <code>StatusReporter</code> interface (or add a sibling
+method) to accept a <code>SensorEvent{Kind, Message, Class}</code>
+rather than only a bare string; existing
+<code>UpdateStatus(string)</code> can remain as a convenience wrapper
+that constructs a default-<code>Class</code> event, so
+<code>tool_executor.go</code>’s existing calls don’t all need to change
+in this phase</td>
+</tr>
+<tr>
+<td><code>grounding.go</code> / <code>terminal.go</code>
+(<code>~1265</code>)</td>
+<td><code>groundingCheck</code>’s result routes through the same
+reporting call instead of a direct <code>fmt.Fprintln</code></td>
+</tr>
+<tr>
+<td><code>terminal.go</code> (<code>~1298</code>)</td>
+<td>The “only tool-call syntax” prose warning routes through the same
+call</td>
+</tr>
+<tr>
+<td><code>tool_executor_test.go</code>,
+<code>grounding_test.go</code></td>
+<td>Tests asserting on exact printed text for either warning will need
+updating to match the new routing — expected to be equivalent output,
+not a behavior change, but needs explicit before/after comparison since
+this is user-visible text</td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach-1">Approach</h3>
+<ol type="1">
+<li>Define <code>SensorEvent</code> and <code>SensorClass</code>
+(<code>Computational</code>/<code>Inferential</code>) as a new, minimal
+type — no behavior yet, just the shape.</li>
+<li>Add the routing method to <code>Spinner</code> (or wherever
+<code>StatusReporter</code> is satisfied), defaulting its rendering to
+today’s exact behavior (no visible change) so this phase is additive
+plumbing, not a UI change.</li>
+<li>Reroute <code>groundingCheck</code> and the prose “only tool-call
+syntax” warning through it one at a time, confirming output is unchanged
+after each.</li>
+<li>This phase deliberately stops here — the two-view sensor-sidecar
+pattern (human dashboard vs. agent-only-failures query) from the
+exploration doc’s Direction C is follow-on design work, not part of this
+plan.</li>
+</ol>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code>
+green.</label></li>
+<li><label><input type="checkbox" /><code>groundingCheck</code> and
+prose-tool-call warning output unchanged byte-for-byte.</label></li>
+<li><label><input type="checkbox" />All three signals (tool status,
+grounding, prose-tool-call) construct a <code>SensorEvent</code>, even
+if rendering hasn’t changed yet.</label></li>
+</ul>
+<hr />
+<h2 id="deferred-item-4-feedforward-budget-gating">Deferred — Item 4
+(feedforward budget-gating)</h2>
+<p>Not planned here. Owned entirely by <a
+href="small-model-budget-design.html">small-model-budget-design.md</a> —
+its own “Immediate Actions” section is the operative plan for this
+item.</p>
+</section>
+</body>
+</html>

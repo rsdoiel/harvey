@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-testing-whether-guides-still-earn-their-tokens-direction-e-design">Harvey
+— Testing Whether Guides Still Earn Their Tokens (Direction E) —
+Design</h1>
+<p><strong>Date</strong>: 2026-07-13 <strong>Status</strong>: ✅
+Implemented 2026-07-13 — see <code>DECISIONS.md</code> and <a
+href="guide-compare-plan.html">guide-compare-plan.md</a>
+<strong>Related</strong>: <a
+href="harness-engineering-exploration.html">harness-engineering-exploration.md</a>
+Direction E, <code>cmd/assay/main.go</code> (existing
+<code>--rag-compare</code> mechanism this mirrors),
+<code>computational-sensors-design.md</code> (Direction A, whose two
+shipped sensors this direction checked against), <code>CLAUDE.md</code>
+(<code>cmd/assay/main.go</code> “is otherwise self-contained” — a
+constraint this design respects)</p>
+<hr />
+<h2 id="whats-already-there-found-during-scoping-not-assumed">What’s
+already there (found during scoping, not assumed)</h2>
+<h3
+id="rag-compares-existing-shape-the-mechanism-to-mirror"><code>--rag-compare</code>’s
+existing shape (the mechanism to mirror)</h3>
+<p><code>cmd/assay/main.go</code> already runs a full A/B comparison for
+RAG: <code>--rag-compare</code> (requires <code>--rag-db</code>) runs
+each prompt twice — <code>variant{"base", false}</code> and
+<code>variant{"rag", true}</code> — records both as
+<code>PromptResult{Variant: "base"|"rag"}</code>, and
+<code>writeReport</code> renders a summary table
+(<code>Base pass | RAG pass | Δ | Avg tok/s</code>) plus a per-prompt,
+per-check delta table with collapsed base/RAG response
+<code>&lt;details&gt;</code> blocks. This is a complete, working
+template — Direction E’s own open question (“what’s the smallest assay
+change…”) is best answered by mirroring this shape as closely as
+possible, not inventing a new one.</p>
+<h3
+id="two-gaps-found-that-change-the-scope-not-assumed-from-the-exploration-docs-phrasing">Two
+gaps found that change the scope, not assumed from the exploration doc’s
+phrasing</h3>
+<ol type="1">
+<li><strong>Assay sends no system prompt at all, today.</strong> Every
+call is
+<code>client.Chat(ctx, []harvey.Message{{Role: "user", Content: promptText}}, &amp;buf)</code>
+(<code>main.go:939</code>) — no <code>HARVEY.md</code>, no skills
+catalog, no system message of any kind. The exploration doc’s Direction
+E framing (“once with a guide’s prose included in the system prompt and
+once with it stripped”) assumes a system-prompt path already exists in
+assay to toggle. It doesn’t. This is genuinely new plumbing, not a flag
+flip — but a narrow one: see “Proposed shape” below.</li>
+<li><strong>No guide/sensor pair currently exists in Harvey to actually
+test.</strong> Checked <code>HARVEY.md</code>’s guide sections against
+Direction A’s two shipped sensors (<code>gofmt</code>
+<code>Check()</code>, <code>go vet</code>): neither corresponds.
+Harvey’s formatting is silent and automatic
+(<code>applyAutoFormat</code> runs on every <code>write_file</code>;
+<code>HARVEY.md</code> never tells the model to format manually, so
+there’s no “format your code” prose to test removing), and nothing in
+<code>HARVEY.md</code> addresses <code>go vet</code>-style correctness
+bugs (unreachable code, format-string mismatches) either. The closest
+candidate — “Documentation conventions” (every exported symbol needs a
+<code>/** ... */</code> block) — has no sensor counterpart at all;
+nothing in Harvey checks doc-comment presence. <strong>Confirmed with
+the user (2026-07-13): this increment builds the mechanism
+only.</strong> No real “does removing this guide hurt” experiment is
+runnable today, and manufacturing one (writing new guide text to match
+an existing sensor, or a new sensor to match existing guide text purely
+to have a subject) would defeat the point — the experiment is only
+meaningful when both already exist independently of this exercise.</li>
+</ol>
+<h3 id="the-self-contained-boundary-respected-not-crossed">The
+self-contained boundary (respected, not crossed)</h3>
+<p><code>CLAUDE.md</code>: <em>“<code>cmd/assay/main.go</code> imports
+the root <code>harvey</code> package for <code>RagStore</code> and
+<code>OllamaEmbedder</code>. It is otherwise self-contained.”</em>
+Building Harvey’s own system-prompt assembly (<code>HARVEY.md</code> +
+skills catalog + <code>agentPreamble</code>, per
+<code>terminal.go</code>’s startup sequence) into assay would cross that
+boundary — assay would need to re-derive workspace/skill discovery logic
+it currently has no reason to know about. Instead: the “guide” is an
+<strong>opaque, externally-supplied string</strong> (loaded from a plain
+text file), the same way a user would extract the specific prose
+fragment they want to test removing into its own file before running the
+comparison. This keeps assay’s system-prompt input as data, not derived
+logic.</p>
+<hr />
+<h2 id="scope-for-this-increment">Scope for this increment</h2>
+<p>Mirror <code>--rag-compare</code> as closely as possible:</p>
+<ul>
+<li><code>--guide-compare</code> (bool) — run each prompt twice: once
+with the guide file’s content as a system message, once without
+(identical to today’s existing bare-prompt behavior — the “base” variant
+of guide-compare is literally unchanged current behavior).</li>
+<li><code>--guide-file PATH</code> (string) — required when
+<code>--guide-compare</code> is set, mirroring
+<code>--rag-compare requires --rag-db</code>’s existing validation
+pattern. Plain text, no parsing — its full content becomes the system
+message for the “guide” variant.</li>
+<li><strong>Mutually exclusive with <code>--rag-compare</code></strong>
+for this increment, mirroring the existing
+<code>--llamafile</code>/<code>--llamacpp</code> mutual-exclusivity
+pattern. Combining both would need a 2×2 variant matrix (guide × RAG)
+the report format isn’t shaped for yet — a real feature, but not this
+increment’s.</li>
+<li><strong>No corpus-format changes.</strong> The guide is a whole-run,
+system-prompt-level concern, not a per-prompt one —
+<code>Prompt</code>/<code>Checks</code> structs are untouched. This
+directly answers the exploration doc’s own open question: the smallest
+change needs zero corpus rework, only new top-level flags plus new
+<code>PromptResult</code>/<code>AssayResults</code> fields, exactly
+mirroring how <code>RagCompare</code>/<code>RagChunks</code> were added
+alongside the corpus format, not inside it.</li>
+</ul>
+<h2 id="proposed-shape">Proposed shape</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// New flags, alongside the existing rag-* ones.</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>guideCompare <span class="op">:=</span> flag<span class="op">.</span>Bool<span class="op">(</span><span class="st">&quot;guide-compare&quot;</span><span class="op">,</span> <span class="ot">false</span><span class="op">,</span> <span class="st">&quot;run each prompt twice (no-guide + guide) and show delta; requires --guide-file&quot;</span><span class="op">)</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>guideFile    <span class="op">:=</span> flag<span class="op">.</span>String<span class="op">(</span><span class="st">&quot;guide-file&quot;</span><span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">,</span> <span class="st">&quot;path to a text file whose content becomes the system message for the &#39;guide&#39; variant&quot;</span><span class="op">)</span></span></code></pre></div>
+<p>Validation (mirroring the existing <code>--rag-compare</code>
+requires <code>--rag-db</code> check):</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">*</span>guideCompare <span class="op">&amp;&amp;</span> <span class="op">*</span>guideFile <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>os<span class="op">.</span>Stderr<span class="op">,</span> <span class="st">&quot;assay: --guide-compare requires --guide-file&quot;</span><span class="op">)</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    os<span class="op">.</span>Exit<span class="op">(</span><span class="dv">1</span><span class="op">)</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">*</span>guideCompare <span class="op">&amp;&amp;</span> <span class="op">*</span>ragCompare <span class="op">{</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Fprintln<span class="op">(</span>os<span class="op">.</span>Stderr<span class="op">,</span> <span class="st">&quot;assay: --guide-compare and --rag-compare are mutually exclusive&quot;</span><span class="op">)</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    os<span class="op">.</span>Exit<span class="op">(</span><span class="dv">1</span><span class="op">)</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Variant construction (mirroring the existing <code>variants</code>
+switch exactly, <code>main.go:894-902</code>):</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">case</span> <span class="op">*</span>guideCompare<span class="op">:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    variants <span class="op">=</span> <span class="op">[]</span>variant<span class="op">{{</span><span class="st">&quot;base&quot;</span><span class="op">,</span> <span class="ot">false</span><span class="op">},</span> <span class="op">{</span><span class="st">&quot;guide&quot;</span><span class="op">,</span> <span class="ot">false</span><span class="op">}}</span></span></code></pre></div>
+<p>(Reusing the existing <code>variant{name string, useRAG bool}</code>
+struct’s <code>useRAG</code> field for RAG only — guide dispatch needs
+its own signal, since a prompt’s message list now depends on which
+variant is running. See plan for the exact struct shape.)</p>
+<p>Message construction — the one behavioral change to the actual
+dispatch call: when the current variant is <code>"guide"</code>, prepend
+a system message built from the loaded guide file content; every other
+variant (including <code>--rag-compare</code>’s existing “base”/“rag”)
+sends exactly what it sends today.</p>
+<p><code>PromptResult</code>/<code>AssayResults</code> gain
+<code>GuideCompare bool</code>, <code>GuideFile string</code> (mirroring
+<code>RagCompare</code>/<code>RagDB</code>) — no new per-result field is
+needed beyond the existing <code>Variant string</code>, since there’s no
+“chunks injected” analog for a guide.</p>
+<p><code>writeReport</code>’s existing
+<code>if ar.RagCompare { ... } else { ... }</code> two-way branch
+becomes a three-way switch (RagCompare / GuideCompare / plain), with the
+GuideCompare branch’s table headed
+<code>Base pass | Guide pass | Δ | Avg tok/s</code> — otherwise
+identical in structure to the RAG-compare table (no “chunks injected”
+row, since there’s nothing analogous to report).</p>
+<hr />
+<h2 id="decisions-confirmed-2026-07-13">Decisions confirmed
+(2026-07-13)</h2>
+<ol type="1">
+<li><strong>This increment builds the mechanism only</strong> —
+<code>--guide-compare</code> + <code>--guide-file</code>, mirroring
+<code>--rag-compare</code>’s existing shape, report format, and
+validation style. No new sensor, no new guide prose written to
+manufacture a demonstration case.</li>
+<li><strong>Mutually exclusive with <code>--rag-compare</code></strong>
+for this increment — a combined guide×RAG comparison is a real future
+feature, not scoped here.</li>
+<li><strong>The guide is an opaque file</strong>, not derived from
+Harvey’s own <code>HARVEY.md</code>/skills assembly — respects
+<code>cmd/assay</code>’s established self-contained boundary.</li>
+</ol>
+<h2 id="open-questions-for-the-plan">Open questions for the plan</h2>
+<ul>
+<li>Exact <code>variant</code> struct shape — extend the existing
+<code>{name string, useRAG bool}</code> with a third field
+(<code>useGuide bool</code>), or introduce a small enum? Small
+implementation-level call, not a policy decision.</li>
+<li>Whether <code>writeReport</code>’s RAG-compare and guide-compare
+branches should share a helper (they’re structurally near-identical,
+differing only in column headers and the “chunks injected” row) — worth
+checking during implementation whether extracting one is a net
+simplification or just adds a parameter list for two call sites.</li>
+<li>Noted, not decided: the most plausible <strong>future</strong>
+subject for a real first experiment, once one exists, is
+<code>HARVEY.md</code>’s “Documentation conventions” section
+(doc-comment presence) paired with a new doc-comment-presence sensor —
+neither exists yet, and building either purely to justify running this
+mechanism was explicitly rejected above. This is left as a pointer for
+whoever picks up that thread later, not a commitment.</li>
+</ul>
+</section>
+</body>
+</html>

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-chunked-document-analysis-design">Harvey Chunked Document
+Analysis — Design</h1>
+<p><strong>Status (2026-06-27):</strong> Design draft. Target version
+TBD (after v0.0.15 audit trail work). See <a
+href="chunked-analysis-plan.html">chunked-analysis-plan.md</a>
+(forthcoming) for the phased implementation plan.</p>
+<p><strong>References:</strong></p>
+<ul>
+<li><p>AutoChunker: Structured Text Chunking and its Evaluation (Jain,
+Aggarwal, Saladi — Amazon; ACL 2025 Industry Track). Bottom-up
+structure-aware chunking with tree-based hierarchy; evaluated on noise
+reduction, completeness, context coherence, task relevance, and
+retrieval performance.</p></li>
+<li><p>Comparative Evaluation of Advanced Chunking for RAG in LLMs for
+Clinical Decision Support (Gomez-Cabello et al., Bioengineering 2025,
+doi: 10.3390/bioengineering12111194). Adaptive boundary chunking
+achieves 87% accuracy vs 50% for fixed-size; aligning chunks to logical
+topic boundaries is the decisive factor.</p></li>
+<li><p>DocETL: Agentic Query Rewriting and Evaluation for Complex
+Document Processing (Shankar et al., UC Berkeley; arXiv:2410.12189).
+Map→reduce decomposition of LLM document operations improves accuracy
+21–80% over single-pass approaches; user-defined operations must be
+decomposed to be accurate.</p></li>
+<li><p>Query-Adaptive Semantic Chunking for RAG: A Dynamic Strategy with
+Contextual Window Expansion (Rastogi; arXiv:2605.22834). Making the user
+query a first-class input to segmentation improves relevance 18–27% over
+fixed chunking baselines; same document chunked differently depending on
+what the user is seeking.</p></li>
+<li><p>NexusSum: Hierarchical LLM Agents for Long-Form Narrative
+Summarization (Kim &amp; Kim, CJ Corporation; ACL 2025 Long Papers).
+Hierarchical multi-LLM pipeline with controlled per-chunk output
+achieves 30% improvement in BERTScore F1; validates multi-model routing
+across chunk and synthesis steps.</p></li>
+<li><p>ContextWeaver: Selective and Dependency-Structured Memory
+Construction for LLM Agents (Wu et al., UT Austin / AWS;
+arXiv:2604.23069). Context overflow in LLM agents is driven by
+accumulated conversation dependency structure, not raw token count
+alone; sliding window and prompt compression fail by losing causal links
+between reasoning steps.</p></li>
+<li><p>Chunking Methods on RAG — Effectiveness Evaluation Against
+Computational Cost and Limitations (Śmigielski et al., Wrocław
+University; KES 2026, arXiv:2606.00881). First systematic cross-method
+comparison; structure-aware chunking consistently outperforms fixed-size
+across diverse scenarios.</p></li>
+<li><p>Evaluating Chunking Strategies for RAG in Oil and Gas Enterprise
+Documents (Taiwo &amp; Yusoff, Nigeria LNG; 2026,
+doi:10.5121/csit.2026.160507). Structure-aware chunking yields highest
+retrieval effectiveness (top-K metrics); semantic chunking incurs higher
+cost without proportionate gain.</p></li>
+</ul>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>Harvey’s <code>read_file</code> tool reads the full content of a file
+and injects it into the conversation history before sending to the
+model. This works when file content fits comfortably within the model’s
+remaining context budget. It fails in two related but distinct ways.</p>
+<p><strong>The accounting bug.</strong> Harvey compares estimated file
+size against the model’s raw context window, not the context that
+<em>remains</em> after existing history, system prompt, injected
+memories, and RAG chunks are accounted for. A 30,000-token model that
+already carries 25,000 tokens of history has only 5,000 tokens of usable
+space — but Harvey may attempt to read a 10,000-token file because it
+appears to fit within the raw window. The ContextWeaver paper (Wu et
+al., 2026) identifies this pattern precisely: context overflow in
+agentic systems is driven by accumulated interaction history, not raw
+input size. Sliding-window and simple compression approaches fail
+because they discard the causal links between earlier reasoning
+steps.</p>
+<p><strong>The genuine overflow case.</strong> Some documents are simply
+too large for any reasonable context budget regardless of how carefully
+history is managed: research papers, codebases, log files, long
+manuscripts. No accounting correction will make a 200,000-token document
+fit in a 32,000-token context. These require a fundamentally different
+strategy.</p>
+<p>This design addresses both problems. The accounting fix is a
+prerequisite; the chunked analysis feature builds on top of it.</p>
+<hr />
+<h2 id="core-design-decisions">Core design decisions</h2>
+<p>These decisions were settled in discussion before the design was
+written. They are recorded here so the plan phase has a stable
+foundation.</p>
+<p><strong>D1 — User-directed, not automatic.</strong> When overflow is
+detected, Harvey pauses and alerts the user rather than silently
+chunking the document. The user writes the chunk processing instruction,
+optionally including an <code>@model</code> routing directive. QASC
+(Rastogi, 2605.22834) validates this choice: treating the user query as
+a first-class input to segmentation improves relevance 18–27% over fixed
+or automatic chunking. The user owns the question; only the user knows
+what they want from each chunk.</p>
+<p><strong>D2 — Two-signal trigger.</strong> Harvey uses
+<code>os.Stat</code> to estimate file size <em>before</em> reading, then
+compares against estimated <em>remaining</em> context (not raw window
+size). If the pre-read estimate exceeds a configurable threshold
+(default 80% of remaining context), the alert fires before any file
+content is sent to the model.</p>
+<p><strong>D3 — Paragraph boundaries by default; code-block boundaries
+for source.</strong> The literature consistently shows structure-aware
+chunking at logical topic boundaries outperforms fixed-size. The
+Bioengineering paper found adaptive boundary chunking at 87% vs 50%
+accuracy for fixed-size. AutoChunker demonstrates tree-based structure
+awareness reduces noise and improves coherence. For prose documents,
+double-newline paragraph boundaries are the first-pass split; for source
+code (detected by file extension), function and block boundaries are
+used. Overlap defaults to one paragraph.</p>
+<p><strong>D4 — Synthesis is automatic.</strong> After chunk results are
+collected, Harvey synthesizes them in a single pass without prompting
+the user again. The synthesis prompt is derived from the original chunk
+instruction. This keeps the UX simple for the initial
+implementation.</p>
+<p><strong>D5 — Chunk sub-conversation recorded as a Fountain
+scene.</strong> The chunk processing workflow is recorded as a new
+<code>INT. CHUNK ANALYSIS</code> scene in the session <code>.spmd</code>
+file. This makes the chunk prompt and its results available to
+<code>/memory mine</code> for extraction as reusable patterns — the
+primary persistence path for chunk instructions.</p>
+<hr />
+<h2 id="context-estimation">Context estimation</h2>
+<p>Before reading any file, Harvey estimates whether the file content
+will overflow available context using two checks in sequence.</p>
+<p><strong>Check 1 — Pre-read byte estimate.</strong>
+<code>os.Stat(path).Size()</code> returns the file size in bytes. Harvey
+uses <code>bytes / 4</code> as a conservative token estimate (a
+well-established heuristic for English prose; source code is denser and
+may require a lower divisor). If this estimate exceeds the remaining
+context budget, the alert fires without reading the file.</p>
+<p><strong>Check 2 — Remaining context budget.</strong> Remaining
+context is estimated as:</p>
+<pre><code>remaining = model.ContextWindow
+           − estimateTokens(serializedHistory)
+           − estimateTokens(systemPrompt)
+           − estimatedMemoryOverhead
+           − safetyMargin</code></pre>
+<p>The model’s context window is available from
+<code>ModelCapabilities</code> in <code>model_cache.go</code>.
+<code>estimateTokens</code> applies the same bytes/4 heuristic to
+serialized content. <code>safetyMargin</code> defaults to 10% of the raw
+window (space for the model’s response and any tool calls it may
+make).</p>
+<p>The Ollama API returns <code>prompt_eval_count</code> in chat
+responses; these counts could calibrate the heuristic over time.
+Calibration is deferred — the byte heuristic is sufficient for a first
+implementation.</p>
+<hr />
+<h2 id="chunking-strategy">Chunking strategy</h2>
+<p>Harvey splits a document into chunks before the map phase. The
+algorithm is:</p>
+<ol type="1">
+<li><p><strong>Detect document type</strong> from file extension. Prose
+extensions (<code>.md</code>, <code>.txt</code>, <code>.rst</code>,
+<code>.tex</code>, <code>.html</code>) use paragraph splitting. Source
+extensions (<code>.go</code>, <code>.ts</code>, <code>.py</code>,
+<code>.js</code>, <code>.c</code>, <code>.h</code>, and others) use
+block splitting. Unknown extensions default to paragraph.</p></li>
+<li><p><strong>Paragraph split (prose).</strong> Split on double newline
+(<code>\n\n</code>). Recombine adjacent short paragraphs until the chunk
+reaches approximately 75% of the target chunk size. This prevents
+isolated single-sentence paragraphs from becoming their own
+chunks.</p></li>
+<li><p><strong>Block split (source).</strong> Split on function and
+method boundaries detected by a blank-line-then-signature heuristic — no
+language parser is required. This is intentionally simple; a
+language-aware parser is deferred.</p></li>
+<li><p><strong>Overlap.</strong> Each chunk includes the last paragraph
+(or last function signature comment) of the preceding chunk. This
+preserves local coherence across boundaries. AutoChunker (Jain et al.)
+demonstrates that preserving document hierarchy at boundaries
+significantly improves chunk stickiness and retrieval
+coherence.</p></li>
+<li><p><strong>Target chunk size.</strong> Default 1,500 tokens (~6,000
+bytes). Configurable in <code>harvey.yaml</code>.</p></li>
+<li><p><strong>Maximum chunks.</strong> Default 20. If the document
+would produce more chunks than the maximum, Harvey warns the user and
+asks for confirmation before proceeding. Processing 20 chunks of a
+100-chunk document will miss material; the user should know.</p></li>
+</ol>
+<p>The QASC paper (Rastogi, 2605.22834) found that fixed-size chunking
+produces inconsistent outcomes across document types, with 20% of
+technical documents yielding different retrieval results for identical
+queries depending on chunk size. Paragraph-boundary chunking mitigates
+this by preserving complete arguments within each chunk.</p>
+<hr />
+<h2 id="alert-ux-and-chunk-prompt">Alert UX and chunk prompt</h2>
+<p>When the overflow threshold is crossed, Harvey pauses before reading
+the file and displays an alert in the terminal. The alert includes:</p>
+<ul>
+<li>The file name and estimated token size</li>
+<li>The estimated tokens remaining in the current context</li>
+<li>A suggested chunk prompt pre-filled from the user’s most recent
+message</li>
+<li>The instruction: <em>Enter instructions to process each chunk in
+turn, or “no” to return to the conversation.</em></li>
+</ul>
+<p>The user may:</p>
+<ul>
+<li><strong>Edit</strong> the suggested prompt — for example, to focus
+it (“extract only the methodology”) or add an <code>@model</code>
+directive to route chunk analysis to a specific model</li>
+<li><strong>Accept</strong> the pre-fill as-is by pressing enter</li>
+<li><strong>Type “no”</strong> to cancel and return to the conversation
+without reading the file</li>
+</ul>
+<p>If the user includes <code>@model</code> in the chunk prompt,
+Harvey’s existing <code>@mention</code> routing infrastructure routes
+each chunk analysis call to the named model. The synthesis step uses the
+same model unless the chunk prompt specifies otherwise.</p>
+<hr />
+<h2 id="map-reduce-workflow">Map-reduce workflow</h2>
+<p>The chunked analysis follows a two-phase map-reduce pattern. DocETL
+(Shankar et al., 2410.12189) showed that decomposing single-pass LLM
+document operations into map→reduce sequences improved accuracy 21–80%
+across complex document tasks. NexusSum (Kim &amp; Kim, ACL 2025)
+demonstrated a 30% gain in summarization quality using a hierarchical
+multi-LLM pipeline with controlled per-chunk output — the same pattern
+Harvey adopts here.</p>
+<p><strong>Map phase.</strong> For each chunk <em>i</em> of
+<em>N</em>:</p>
+<ol type="1">
+<li>Construct a prompt:
+<code>[chunk_instruction]\n\n---\nChunk [i] of [N]:\n[chunk_content]</code></li>
+<li>Send to the selected model (current session model, or the
+<code>@mention</code> model if specified in the chunk prompt)</li>
+<li>Collect the result as a partial answer</li>
+<li>Record a <code>[[chunk-result: i/N — ok|error]]</code> note in the
+Fountain scene</li>
+<li>Display progress to the user:
+<code>Processing chunk 3/12…</code></li>
+</ol>
+<p><strong>Reduce (synthesis) phase.</strong> After all chunks
+complete:</p>
+<ol type="1">
+<li>Construct a synthesis prompt from the original chunk instruction
+plus all partial answers, labelled by chunk number</li>
+<li>Send to the synthesis model (same as map model by default)</li>
+<li>Inject the synthesized result into the main conversation history as
+the assistant’s response to the original user message</li>
+<li>The main conversation continues from this point</li>
+</ol>
+<hr />
+<h2 id="fountain-scene-model">Fountain scene model</h2>
+<p>Chunk processing is recorded as a new
+<code>INT. CHUNK ANALYSIS</code> scene inserted into the session file
+between the turn that triggered the overflow and the turn that receives
+the synthesized result. This fits the theatrical metaphor as a
+structured aside — a sub-conversation between characters that resolves
+before the main scene resumes.</p>
+<pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-06-27 10:04:00
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+RSDOIEL
+Read document.md and summarize the methodology section.
+
+HARVEY
+Context overflow: document.md is approximately 68,000 tokens;
+12,000 tokens remain in current context.
+Enter instructions to process each chunk in turn, or &quot;no&quot; to
+return to the conversation.
+
+
+INT. CHUNK ANALYSIS — document.md 2026-06-27 10:04:08
+
+[[chunk: file=document.md, chunks=12, model=LLAMA3,
+         boundary=paragraph, chunk-size=1500]]
+
+RSDOIEL
+Summarize the methodology and findings of each section. @llama3
+
+[[chunk-result: 1/12 — ok]]
+[[chunk-result: 2/12 — ok]]
+[[chunk-result: 3/12 — ok]]
+[[chunk-result: 4/12 — ok]]
+[[chunk-result: 5/12 — ok]]
+[[chunk-result: 6/12 — ok]]
+[[chunk-result: 7/12 — ok]]
+[[chunk-result: 8/12 — ok]]
+[[chunk-result: 9/12 — ok]]
+[[chunk-result: 10/12 — ok]]
+[[chunk-result: 11/12 — ok]]
+[[chunk-result: 12/12 — ok]]
+[[synthesis: model=LLAMA3 — ok]]
+
+HARVEY
+Chunk analysis complete. Synthesized result injected into conversation.
+
+
+INT. HARVEY AND RSDOIEL TALKING 2026-06-27 10:07:45
+
+Harvey and RSDOIEL are in chat mode. Model: LLAMA3. Workspace: &lt;workspace&gt;.
+
+LLAMA3
+The methodology section describes a three-phase experiment…</code></pre>
+<p>The <code>INT. CHUNK ANALYSIS</code> scene name includes the file
+being processed for easy identification in session browsing. The
+<code>[[chunk:]]</code> header note records parameters for
+reproducibility and memory mining. Individual chunk results are
+status-only notes — no chunk content is written to the session file —
+keeping <code>.spmd</code> files manageable and memory-miner output
+clean. The synthesized result lands in the next normal turn so it
+appears naturally in the conversation flow.</p>
+<p>The RSDOIEL line in <code>INT. CHUNK ANALYSIS</code> (the user’s
+chunk instruction) is automatically available to
+<code>/memory mine</code> and can be extracted as a reusable workflow
+pattern for similar document types.</p>
+<hr />
+<h2 id="harvey.yaml-configuration">harvey.yaml configuration</h2>
+<p>A new <code>chunking:</code> stanza in <code>harvey.yaml</code>
+controls defaults:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">chunking</span><span class="kw">:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">threshold</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span><span class="co">          # alert at 80% of remaining context</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">chunk_size_tokens</span><span class="kw">:</span><span class="at"> </span><span class="dv">1500</span><span class="co">  # target tokens per chunk</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_chunks</span><span class="kw">:</span><span class="at"> </span><span class="dv">20</span><span class="co">           # warn if document would exceed this</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">overlap</span><span class="kw">:</span><span class="at"> paragraph</span><span class="co">       # &quot;paragraph&quot;, &quot;sentence&quot;, or &quot;none&quot;</span></span></code></pre></div>
+<p>All fields are optional; Harvey uses the defaults above when the
+stanza is absent. <code>enabled: false</code> disables the feature
+entirely — file reads behave as they do today, context overflow or
+not.</p>
+<hr />
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<p><strong>Silent automatic chunking.</strong> Harvey could chunk
+automatically without user input, deriving the chunk prompt from the
+original user message. Rejected because: (1) QASC shows chunking quality
+is directly tied to query specificity — a generic “read this file”
+prompt produces poor chunk results; (2) silent automatic behavior
+obscures what Harvey is doing, counter to Harvey’s transparency
+philosophy; (3) a user who realizes the file is irrelevant to their
+question should be able to cancel before 20+ LLM calls are made.</p>
+<p><strong>Ephemeral RAG.</strong> Large files could be ingested into a
+temporary RAG store and queried via the existing <code>ragAugment</code>
+pipeline. This reuses existing infrastructure but requires an active
+embedding model, adds indexing latency, and suits <em>retrieval</em> use
+cases (find relevant chunks) rather than <em>analysis</em> use cases
+(process every chunk). Deferred as a future option for very large
+corpora where the user wants to query rather than analyze.</p>
+<p><strong>Sliding-window summarization.</strong> Process chunks
+sequentially, passing a rolling summary into each subsequent chunk
+prompt. Rejected because information loss compounds at each step — for a
+20-chunk document, the summary entering chunk 20 is a distillation of
+nineteen distillations. Map-reduce avoids this by treating all chunks
+independently and synthesizing once. The ContextWeaver paper (Wu et al.,
+2026) confirms that approaches that discard earlier reasoning context
+degrade multi-step performance.</p>
+<p><strong>Per-chunk user confirmation.</strong> Pause after each chunk
+result for user review before proceeding to the next. Adds control at
+the cost of requiring the user to attend to 20+ interruptions for a
+single document. The initial implementation runs the map phase
+unattended; progress is displayed in the terminal but no confirmation is
+required per chunk.</p>
+<p><strong>Fixed-size token chunking as default.</strong> Fixed-size
+chunks are the simplest to implement but the literature consistently
+shows they underperform structure-aware alternatives. The Bioengineering
+paper (87% vs 50% accuracy) and the Śmigielski et al. KES 2026
+comparison both show structure-aware outperforms fixed-size at
+comparable computational cost. Paragraph boundaries are nearly as simple
+to implement and significantly better in practice.</p>
+<p><strong>Language-aware parser for source code.</strong> Using
+<code>go/parser</code>, <code>tree-sitter</code>, or similar to detect
+function boundaries precisely. Deferred: a blank-line- then-signature
+heuristic correctly identifies boundaries for well-formatted Go and
+TypeScript source without any dependency, which is sufficient for the
+initial implementation.</p>
+</section>
+</body>
+</html>

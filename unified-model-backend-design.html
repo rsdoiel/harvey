@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-unified-model-backend-design">Harvey Unified Model
+Backend Design</h1>
+<p><strong>Date</strong>: 2026-06-28<br />
+<strong>Status</strong>: Design exploration — not yet approved<br />
+<strong>Related</strong>: DECISIONS.md (2026-06-28 — Local model backend
+design deferred)<br />
+<strong>Supersedes</strong>: <a
+href="llamacpp-support.design.html">llamacpp-support.design.md</a> (as a
+direction, not a spec)</p>
+<hr />
+<h2 id="problem">Problem</h2>
+<p>Harvey currently supports three local inference backends. Each is
+implemented independently, with different data structures, different
+command vocabularies, and different process-tracking approaches:</p>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 34%" />
+<col style="width: 28%" />
+<col style="width: 18%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Backend</th>
+<th scope="col">Process tracking</th>
+<th scope="col">Config field</th>
+<th scope="col">Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ollama</td>
+<td><code>OllamaStartedByHarvey bool</code></td>
+<td><code>OllamaURL</code></td>
+<td><code>/ollama</code></td>
+</tr>
+<tr>
+<td>Llamafile</td>
+<td><code>llamafileProc *os.Process</code></td>
+<td><code>LlamafileActive</code>, <code>LlamafileEntries</code></td>
+<td><code>/llamafile</code></td>
+</tr>
+<tr>
+<td>llama.cpp</td>
+<td>(not implemented)</td>
+<td>(none)</td>
+<td>(proposed <code>/llamacpp</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>User-reported symptoms of the inconsistency: - Ollama model list in
+<code>harvey.yaml</code> grows stale as models are added and removed
+outside Harvey. - Llamafile lifecycle (“feels broken at times”) —
+adoption of external servers, start/stop sequencing, and client wiring
+after switching models all have independent code paths that share no
+logic. - Adding llama.cpp as a third independent backend would embed the
+same inconsistency a third time.</p>
+<p>The goal is a unified <code>ManagedBackend</code> abstraction that
+all three backends implement, so lifecycle management, client wiring,
+and command dispatch share one path regardless of which backend is
+active.</p>
+<hr />
+<h2 id="what-the-backends-share">What the Backends Share</h2>
+<p>All three backends are HTTP servers that accept chat requests. The
+differences are in how Harvey finds, starts, and manages them.</p>
+<h3 id="common-lifecycle-operations">Common lifecycle operations</h3>
+<table>
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 19%" />
+<col style="width: 26%" />
+<col style="width: 26%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Operation</th>
+<th scope="col">Ollama</th>
+<th scope="col">Llamafile</th>
+<th scope="col">llama.cpp</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Detect if running</td>
+<td><code>GET /api/tags</code></td>
+<td><code>GET /v1/models</code></td>
+<td><code>GET /v1/models</code></td>
+</tr>
+<tr>
+<td>Start</td>
+<td><code>ollama serve</code> subprocess</td>
+<td><code>.llamafile</code> executable subprocess</td>
+<td><code>llama-server --model</code> subprocess</td>
+</tr>
+<tr>
+<td>Stop</td>
+<td>kill subprocess (if Harvey started it)</td>
+<td><code>SIGINT</code> to <code>llamafileProc</code></td>
+<td><code>SIGTERM</code> to subprocess</td>
+</tr>
+<tr>
+<td>List models</td>
+<td><code>GET /api/tags</code></td>
+<td>scan <code>~/Models/*.llamafile</code></td>
+<td>scan <code>~/Models/*.gguf</code></td>
+</tr>
+<tr>
+<td>Switch model</td>
+<td><code>POST /api/generate</code> with new model name</td>
+<td>stop + start new llamafile</td>
+<td>stop + start with new <code>--model</code></td>
+</tr>
+<tr>
+<td>Adopt external</td>
+<td>not implemented</td>
+<td><code>adoptExternalServer</code></td>
+<td>not implemented</td>
+</tr>
+<tr>
+<td>Pull/download</td>
+<td><code>ollama pull MODEL</code></td>
+<td>external download (no Harvey support)</td>
+<td><code>huggingface-cli</code> or <code>wget</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="common-data-a-backend-must-expose">Common data a backend must
+expose</h3>
+<pre><code>BaseURL()      string        — e.g., &quot;http://127.0.0.1:11434&quot;
+ActiveModel()  string        — currently loaded model name
+IsRunning()    bool          — true when server is reachable
+Name()         string        — &quot;ollama&quot;, &quot;llamafile&quot;, &quot;llamacpp&quot;</code></pre>
+<h3 id="common-operations-a-backend-must-support">Common operations a
+backend must support</h3>
+<pre><code>Detect()                    — probe the server URL; return IsRunning()
+Start(model string) error   — start the server subprocess with the given model
+Stop() error                — stop the subprocess Harvey started
+ListModels() []ModelSummary — enumerate available models
+NewClient() LLMClient       — return a wired LLMClient for the active model</code></pre>
+<hr />
+<h2 id="proposed-interface">Proposed Interface</h2>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ManagedBackend represents a local inference backend that Harvey can</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">// start, stop, and query. It is implemented by OllamaBackend,</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co">// LlamafileBackend, and LlamaCppBackend.</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ManagedBackend <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Name returns the backend identifier: &quot;ollama&quot;, &quot;llamafile&quot;, or &quot;llamacpp&quot;.</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    Name<span class="op">()</span> <span class="dt">string</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">// BaseURL returns the HTTP base URL of the server.</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    BaseURL<span class="op">()</span> <span class="dt">string</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ActiveModel returns the name of the currently loaded model, or &quot;&quot;.</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    ActiveModel<span class="op">()</span> <span class="dt">string</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    <span class="co">// IsRunning reports whether the server is reachable.</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    IsRunning<span class="op">()</span> <span class="dt">bool</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Detect probes the server and returns true if reachable.</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>    Detect<span class="op">()</span> <span class="dt">bool</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Start launches the server with the given model.</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>    <span class="co">// If the server is already running with a different model, it must be</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>    <span class="co">// stopped first. Calling Start when already running with the same model</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>    <span class="co">// is a no-op.</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>    Start<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> model <span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Stop stops the server process Harvey started.</span></span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Safe to call when not running or when Harvey did not start the server.</span></span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a>    Stop<span class="op">()</span> <span class="dt">error</span></span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ListModels returns the set of locally available models.</span></span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a>    ListModels<span class="op">()</span> <span class="op">([]</span>ModelSummary<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-33"><a href="#cb3-33" aria-hidden="true" tabindex="-1"></a>    <span class="co">// NewClient returns a wired LLMClient pointing at the running server.</span></span>
+<span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Returns an error if the server is not running.</span></span>
+<span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a>    NewClient<span class="op">()</span> <span class="op">(</span>LLMClient<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a>    <span class="co">// StartedByHarvey reports whether this session&#39;s Harvey process started</span></span>
+<span id="cb3-38"><a href="#cb3-38" aria-hidden="true" tabindex="-1"></a>    <span class="co">// the currently running server (as opposed to adopting an external one).</span></span>
+<span id="cb3-39"><a href="#cb3-39" aria-hidden="true" tabindex="-1"></a>    StartedByHarvey<span class="op">()</span> <span class="dt">bool</span></span>
+<span id="cb3-40"><a href="#cb3-40" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-41"><a href="#cb3-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-42"><a href="#cb3-42" aria-hidden="true" tabindex="-1"></a><span class="co">// ModelSummary is a backend-neutral description of an available model.</span></span>
+<span id="cb3-43"><a href="#cb3-43" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ModelSummary <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-44"><a href="#cb3-44" aria-hidden="true" tabindex="-1"></a>    Name     <span class="dt">string</span>    <span class="co">// display name</span></span>
+<span id="cb3-45"><a href="#cb3-45" aria-hidden="true" tabindex="-1"></a>    Path     <span class="dt">string</span>    <span class="co">// filesystem path (empty for Ollama)</span></span>
+<span id="cb3-46"><a href="#cb3-46" aria-hidden="true" tabindex="-1"></a>    SizeBytes <span class="dt">int64</span>    <span class="co">// model weight size; 0 if unknown</span></span>
+<span id="cb3-47"><a href="#cb3-47" aria-hidden="true" tabindex="-1"></a>    Modified time<span class="op">.</span>Time <span class="co">// last modified; zero if unknown</span></span>
+<span id="cb3-48"><a href="#cb3-48" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<hr />
+<h2 id="agent-integration">Agent Integration</h2>
+<p>Replace the current ad-hoc fields with a single
+<code>ManagedBackend</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Current (scattered):</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>OllamaStartedByHarvey <span class="dt">bool</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>llamafileProc         <span class="op">*</span>os<span class="op">.</span>Process</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co">// Proposed:</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>Backend ManagedBackend <span class="co">// nil when no backend is active</span></span></code></pre></div>
+<p>When <code>Backend</code> is set, <code>a.Client</code> is always
+obtained via <code>Backend.NewClient()</code>. When the backend is
+stopped or switched, <code>a.Client</code> is replaced atomically. This
+eliminates the current inconsistency where <code>a.Client</code> can
+diverge from the backend state (e.g., after <code>/llamafile use</code>
+if the wiring code has a bug).</p>
+<hr />
+<h2 id="command-surface">Command Surface</h2>
+<p><strong>Decision (2026-06-29):</strong> Option D — extend
+<code>/model</code> directly; no “backend” namespace; engine-specific
+operations stay in their own namespaces.</p>
+<p><code>/model</code> is already the cross-backend entry point
+(<code>list</code>, <code>use</code>, <code>status</code>,
+<code>mode</code> all exist). The unified design extends it with
+<code>stop</code> and promotes <code>alias</code> from
+<code>/ollama alias</code> to <code>/model alias</code>. The word
+“backend” never appears in the user-facing command surface.</p>
+<h3 id="model-unified-command-surface"><code>/model</code> — unified
+command surface</h3>
+<pre><code>/model                              — show active model and engine (existing)
+/model use [NAME|ALIAS]             — primary command: see picker design below
+/model stop                         — stop server Harvey started; delete PID file
+/model status                       — probe all three engines; show active + status
+/model list                         — list all models across all sources with engine
+/model alias set NAME ID [--tags T] — register alias with optional purpose tags
+/model alias tags NAME TAG [TAG...] — add tags to existing alias
+/model alias list                   — list all aliases with engine + tags columns
+/model alias remove NAME            — unregister alias
+/model mode [MODEL] [MODE]          — set tool mode (existing, unchanged)</code></pre>
+<p><code>use</code> and <code>start</code> are combined into
+<code>/model use</code>. Starting the server is a side effect of using a
+file-based model, not a separate gesture.</p>
+<h3 id="unified-picker-model-use-with-no-argument">Unified picker —
+<code>/model use</code> with no argument</h3>
+<p>When called without a name, <code>/model use</code> builds a combined
+list from all available sources and presents a single picker:</p>
+<ol type="1">
+<li>Scan <code>~/Models</code> for <code>.llamafile</code> files →
+engine: llamafile</li>
+<li>Scan <code>~/Models</code> for <code>.gguf</code> files → engine:
+llama-server</li>
+<li>Query Ollama <code>/api/tags</code> if Ollama is reachable → engine:
+ollama (silently omitted if Ollama is not installed or not running)</li>
+<li>Present combined picker with a source/engine column</li>
+<li>If the selection has no alias → prompt for short name + optional
+tags → save to <code>harvey.yaml</code> (lazy registration)</li>
+<li>Start server if needed (file-based models); for Ollama, ensure the
+daemon is reachable</li>
+<li>Wire <code>a.Client</code>; print confirmation</li>
+</ol>
+<p>Lazy registration applies to all sources — a raw <code>.gguf</code>
+file, a <code>.llamafile</code> binary, and an Ollama model all go
+through the same name + tags prompt if they have no alias yet. This
+replaces the separate <code>/llamafile add</code> and
+<code>/llamacpp add</code> commands; registration happens at first
+use.</p>
+<h3 id="engine-specific-commands">Engine-specific commands</h3>
+<p>Operations with no cross-engine equivalent remain in their own
+namespaces:</p>
+<pre><code>/ollama pull MODEL      — pull a new model from the Ollama registry
+/ollama rm MODEL        — remove an Ollama model from the daemon
+/ollama probe           — health-check the Ollama server
+/ollama clean           — prune stale aliases/config references
+
+/llamafile drop NAME    — unregister a llamafile (does not delete the file)
+/llamafile status       — engine-specific diagnostics
+
+/llamacpp drop NAME     — unregister a GGUF model
+/llamacpp status        — engine-specific diagnostics</code></pre>
+<p><code>/llamafile add</code> and <code>/llamacpp add</code> are
+removed as primary commands; the unified picker in
+<code>/model use</code> replaces them. <code>/ollama alias</code> is
+removed; <code>/model alias</code> is the canonical alias management
+command.</p>
+<hr />
+<h2 id="process-persistence-across-sessions">Process Persistence Across
+Sessions</h2>
+<p><code>llamafileProc *os.Process</code> is nil when Harvey restarts,
+even if the server Harvey started in the prior session is still running.
+<code>OllamaStartedByHarvey</code> is always false on restart.</p>
+<p>Neither backend has a reliable mechanism for Harvey to know on
+startup “I started this server, so I should stop it on exit.”</p>
+<p>Proposed: write a small PID file to the workspace when Harvey starts
+a backend process. On startup, read the PID file if present and probe
+the PID (via <code>/proc/&lt;PID&gt;/cmdline</code> on Linux or
+<code>os.FindProcess</code>) to determine if the process is still
+Harvey’s server.</p>
+<pre><code>agents/.harvey-backend.pid      — JSON: {&quot;backend&quot;:&quot;llamafile&quot;,&quot;pid&quot;:12345,&quot;model&quot;:&quot;Qwen3.5-4B&quot;,&quot;url&quot;:&quot;http://127.0.0.1:8080&quot;}</code></pre>
+<p>On clean exit: delete the PID file.<br />
+On next startup: read PID file, probe the process, offer to adopt if
+alive or clean up if dead.</p>
+<p>This replaces <code>OllamaStartedByHarvey bool</code> and
+<code>llamafileProc *os.Process</code> with a persistent,
+session-crossing record.</p>
+<hr />
+<h2 id="known-backend-specific-issues-to-resolve">Known Backend-Specific
+Issues to Resolve</h2>
+<h3 id="ollama">Ollama</h3>
+<ul>
+<li>Model list in <code>harvey.yaml</code> becomes stale as the user
+adds/removes models via <code>ollama pull</code>/<code>ollama rm</code>
+outside Harvey. Fix: <code>/ollama list</code> should always query the
+live Ollama API (<code>/api/tags</code>), not a cached YAML list. The
+YAML stanza for Ollama should contain only configuration (URL, timeout),
+not a model inventory.</li>
+<li><code>OllamaStartedByHarvey</code> is a boolean; there is no
+<code>*os.Process</code> to stop on exit. If Harvey called
+<code>ollama serve</code>, it cannot kill that process reliably. Use the
+PID file approach above.</li>
+</ul>
+<h3 id="llamafile">Llamafile</h3>
+<ul>
+<li><code>adoptExternalServer</code> is the only backend with this
+logic. All three backends should adopt an already-running server that
+Harvey did not start.</li>
+<li><code>/llamafile download</code> points to
+<code>docs.mozilla.ai</code> but that URL and the available models have
+changed since the feature was written (see <code>henry</code> project
+notes). The download helper needs a refresh or removal.</li>
+<li>Llamafile binaries embed both model weights and server code. There
+is no separate “start server” and “load model” step — the executable IS
+the server for one model. The <code>ManagedBackend</code> abstraction
+must account for this: for Llamafile, <code>Start(model)</code> means
+“launch <code>&lt;model&gt;.llamafile</code>” rather than “launch a
+generic server and tell it to load model.”</li>
+</ul>
+<h3 id="llama.cpp">llama.cpp</h3>
+<ul>
+<li><code>llama-server</code> binary name varies by distro.
+<code>LlamaCppConfig.ServerPath</code> must be configurable (default:
+<code>llama-server</code> on PATH).</li>
+<li>Cold startup on Pi can exceed 60 seconds for 7B+ models. Default
+startup probe timeout should be 120 seconds, configurable.</li>
+<li>Critical performance flags (<code>--ctx-size</code>,
+<code>--threads</code>, <code>--n-gpu-layers</code>) are absent from the
+current design. These are required fields for Pi, not optional.</li>
+<li><code>/llamacpp pull</code> from HuggingFace requires auth
+(<code>HF_TOKEN</code>) for many models and must support range-request
+resumption for large files on unreliable networks. This is a non-trivial
+implementation. Defer to Phase 2.</li>
+</ul>
+<hr />
+<h2 id="proposed-file-layout">Proposed File Layout</h2>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend.go</code></td>
+<td><code>ManagedBackend</code> interface, <code>ModelSummary</code>,
+<code>BackendStatus</code> types</td>
+</tr>
+<tr>
+<td><code>backend_ollama.go</code></td>
+<td><code>OllamaBackend</code> implementing
+<code>ManagedBackend</code></td>
+</tr>
+<tr>
+<td><code>backend_llamafile.go</code></td>
+<td><code>LlamafileBackend</code> implementing
+<code>ManagedBackend</code>; absorbs core of
+<code>llamafile.go</code></td>
+</tr>
+<tr>
+<td><code>backend_llamacpp.go</code></td>
+<td><code>LlamaCppBackend</code> implementing
+<code>ManagedBackend</code></td>
+</tr>
+<tr>
+<td><code>llamafile.go</code></td>
+<td>Retain backend-specific helpers; delegate lifecycle to
+<code>backend_llamafile.go</code></td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>Replace <code>OllamaStartedByHarvey bool</code> +
+<code>llamafileProc *os.Process</code> with
+<code>Backend ManagedBackend</code></td>
+</tr>
+<tr>
+<td><code>config.go</code></td>
+<td>Add <code>LlamaCppConfig</code>; clean Ollama stanza to config-only
+(no model inventory)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="decisions-2026-06-29">Decisions (2026-06-29)</h2>
+<p>All open questions from the original draft were resolved in a design
+session.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">#</th>
+<th scope="col">Question</th>
+<th scope="col">Decision</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Command surface</td>
+<td>Option D: extend <code>/model</code> directly; no “backend”
+namespace; <code>use</code> and <code>start</code> combined into
+<code>/model use</code>; engine-specific ops stay in
+<code>/ollama</code>, <code>/llamafile</code>,
+<code>/llamacpp</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>Auto-stop on exit</td>
+<td>Stop on clean exit for all three backends (consistent with current
+llamafile behavior). PID file written when Harvey starts a server;
+re-adoption offered on next startup if process still alive</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Concurrent backends</td>
+<td>Warn and auto-switch: Harvey prints what it is leaving and what it
+is switching to, then switches <code>a.Client</code> immediately.
+Servers Harvey owns (per PID file) are stopped on switch; servers Harvey
+did not start are left running</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Backend-specific subcommands</td>
+<td>Structural separation — per-engine namespaces (<code>/ollama</code>,
+<code>/llamafile</code>, <code>/llamacpp</code>) are the escape hatch;
+no dispatcher escape hatch needed in <code>ManagedBackend</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>/llamafile add</code> / <code>/llamacpp add</code></td>
+<td>Removed as primary commands; replaced by the unified picker in
+<code>/model use</code> with lazy registration</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>/ollama alias</code></td>
+<td>Moved to <code>/model alias</code>; aliases are engine-agnostic and
+belong at the <code>/model</code> level</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Lazy registration scope</td>
+<td>Applies to all sources — <code>.llamafile</code> files,
+<code>.gguf</code> files, and Ollama models all receive the same name +
+tags prompt on first use</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="next-steps">Next Steps</h2>
+<ol type="1">
+<li>Draft <code>backend.go</code>: <code>ManagedBackend</code>
+interface, <code>ModelSummary</code>, <code>BackendStatus</code> types.
+Review before writing implementations.</li>
+<li>Implement <code>OllamaBackend</code> and
+<code>LlamafileBackend</code> (existing backends, lower regression
+risk). Run full test suite.</li>
+<li>Add <code>LlamaCppBackend</code> once the interface is stable.</li>
+<li>Update <code>harvey.go</code> and <code>config.go</code> last:
+replace <code>OllamaStartedByHarvey</code> and
+<code>llamafileProc</code> with <code>Backend ManagedBackend</code>;
+move <code>ModelAliases</code> to <code>map[string]ModelAlias</code>
+(U2); add PID file read/write.</li>
+<li>Implement <code>/model use</code> unified picker with lazy
+registration.</li>
+<li>Implement <code>/model alias</code> (absorbing
+<code>/ollama alias</code>).</li>
+<li>Extend <code>/model status</code> and <code>/model list</code> to
+cover all three engines.</li>
+</ol>
+</section>
+</body>
+</html>

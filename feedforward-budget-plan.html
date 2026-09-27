@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-linting-the-feedforward-side-direction-b-implementation-plan">Harvey
+— Linting the Feedforward Side (Direction B) — Implementation Plan</h1>
+<p>See <a
+href="feedforward-budget-design.html">feedforward-budget-design.md</a>
+for the full rationale and the 2026-07-13 confirmed decisions. See <a
+href="DECISIONS.html">DECISIONS.md</a> for the finalized decision
+entries as each phase lands.</p>
+<p>Resolved here, as implementation-level judgment calls rather than
+user-facing policy decisions:</p>
+<ul>
+<li><strong><code>BudgetTracker</code> treats a <code>nil</code>
+receiver-target as “unconstrained.”</strong> Concretely:
+<code>ragAugment</code> and <code>injectOrChunk</code> both accept
+<code>*BudgetTracker</code> and must treat <code>nil</code> as “no
+budget check, behave exactly as today.” This keeps every existing call
+site and test that doesn’t care about budget cutoff behavior
+(e.g. <code>TestRAGAugment_RagOff</code>,
+<code>TestInjectFileContext_*</code>) unchanged, and isolates the new
+cutoff behavior to tests that deliberately construct a small
+<code>BudgetTracker</code>.</li>
+<li><strong>Token estimate for <code>Reserve</code> calls is the content
+alone</strong> (<code>estimateTokens(chunk.Content)</code> /
+<code>estimateTokens(fileContent)</code>), not content-plus-header. The
+header/formatting overhead (<code>[%d] (source: %s)\n...\n\n</code> /
+<code>### File: %s\n\n...\n\n---\n\n</code>) is a handful of tokens per
+item — immaterial next to the content itself, and keeping the estimate
+to “the thing the caller actually decided to include or not” is simpler
+to test and reason about than also modeling formatting overhead.</li>
+<li><strong><code>BudgetTracker</code> is constructed once per turn in
+<code>runChatTurn</code></strong>, before the <code>ragAugment</code>
+call, and the <em>same instance</em> is threaded through to
+<code>injectOrChunk</code> — this is what makes it a shared pool rather
+than two independent trackers. <code>runChatTurn</code> is the only
+production call site that constructs a real (non-nil) tracker; both
+consumer functions must accept one built anywhere (tests build their own
+with a small <code>Total</code> to exercise the cutoff path).</li>
+</ul>
+<hr />
+<h2
+id="phase-a-budgettracker-wire-into-ragaugment-and-injectorchunk-complete-2026-07-13">Phase
+A — <code>BudgetTracker</code> + wire into <code>ragAugment</code> and
+<code>injectOrChunk</code> ✅ Complete 2026-07-13</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-13 entry) for the final shape
+and one real regression found and fixed during verification (an
+unknown-context-limit case that would have silently zeroed the whole
+turn budget). The plan below is kept as-written for the historical
+record.</p>
+<p><strong>Goal.</strong> One shared, per-turn token pool that
+<code>ragAugment</code> and <code>injectOrChunk</code>’s two
+direct-inject branches consume from, so a prompt with both RAG chunks
+and multiple file mentions can no longer silently exceed
+<code>remainingContext(a)</code> the way three independent,
+uncoordinated checks allow today.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>budget_tracker.go</code> (new)</td>
+<td><code>BudgetTracker{Total, Used int}</code>,
+<code>NewBudgetTracker(total int) *BudgetTracker</code>,
+<code>(*BudgetTracker) Reserve(tokens int) bool</code>,
+<code>(*BudgetTracker) Remaining() int</code></td>
+</tr>
+<tr>
+<td><code>budget_tracker_test.go</code> (new)</td>
+<td><code>TestBudgetTracker_ReserveFitsWithinTotal</code>,
+<code>TestBudgetTracker_ReserveRejectsWhenExceeded</code>,
+<code>TestBudgetTracker_ReserveExactlyAtTotal</code> (boundary:
+reserving exactly <code>Remaining()</code> succeeds),
+<code>TestBudgetTracker_RemainingReflectsUsed</code></td>
+</tr>
+<tr>
+<td><code>rag_support.go</code></td>
+<td><code>ragAugment(prompt string, tracker *BudgetTracker) (string, *RAGAugmentInfo)</code>
+— new second parameter. Iterate <code>relevant</code> chunks (already
+score-descending); for each, if
+<code>tracker != nil &amp;&amp; !tracker.Reserve(estimateTokens(c.Content))</code>,
+stop the loop (later chunks are lower-scored — this is “keep the best
+chunks that fit”), and record how many were omitted. When ≥1 chunk was
+omitted this way, append
+<code>"\n[Note: %d lower-relevance chunk(s) omitted — context budget]\n"</code>
+to the context block before the <code>"---\n\n"</code> separator</td>
+</tr>
+<tr>
+<td><code>file_inject.go</code></td>
+<td><code>injectOrChunk(ctx context.Context, prompt string, out io.Writer, tracker *BudgetTracker) string</code>
+— new fourth parameter. In the size-≤-cap branch and the
+oversized-but-fits-<code>remainingContext</code> branch: before
+appending to <code>header</code>, if
+<code>tracker != nil &amp;&amp; !tracker.Reserve(estimateTokens(content))</code>,
+skip this file — print the existing dim-style human note
+(<code>"  (skipping "+tok+" — context budget)\n"</code>) to
+<code>out</code>, and track the skipped filename. After the loop, if any
+files were skipped this way, append
+<code>"[Note: N file(s) exceeded context budget and were not injected: a.go, b.go]\n\n"</code>
+to <code>header</code> before returning</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td><code>runChatTurn</code>: construct
+<code>tracker := NewBudgetTracker(remainingContext(a))</code> once,
+before the <code>ragAugment</code> call; pass it to both
+<code>a.ragAugment(input, tracker)</code> and
+<code>a.injectOrChunk(ctx, augmented, out, tracker)</code></td>
+</tr>
+<tr>
+<td><code>terminal_test.go</code></td>
+<td>Update all 5 existing <code>ragAugment(...)</code> call sites
+(<code>TestRAGAugment_RagOff</code>,
+<code>TestRAGAugment_NilStore</code>,
+<code>TestRAGAugment_ReturnsInfo</code>,
+<code>TestRAGAugment_SkipPerPrompt</code>, plus the one more at line
+811) to pass <code>nil</code> for <code>tracker</code> (per the resolved
+judgment call above — unconstrained, unchanged behavior)</td>
+</tr>
+<tr>
+<td><code>terminal_test.go</code> (new tests)</td>
+<td><code>TestRAGAugment_BudgetTracker_TrimsLowerScoredChunks</code> —
+ingest ≥2 chunks with distinguishable scores, construct a
+<code>BudgetTracker</code> whose <code>Total</code> fits only the top
+chunk, assert the augmented output contains the top chunk’s content,
+omits the lower one, and contains the omission note</td>
+</tr>
+<tr>
+<td><code>file_inject_test.go</code> (existing call sites)</td>
+<td>Update all <code>injectOrChunk(...)</code> call sites
+(<code>TestInjectOrChunk_SmallFile</code>,
+<code>TestInjectOrChunk_LargeFileChunkingDisabled</code>,
+<code>TestInjectOrChunk_LargeFileUserCancels</code>,
+<code>TestInjectOrChunk_LargeFileRunsChunking</code>,
+<code>TestInjectOrChunk_LargeFileFitsInBudget</code>) to pass
+<code>nil</code> for <code>tracker</code></td>
+</tr>
+<tr>
+<td><code>file_inject_test.go</code> (new tests)</td>
+<td><code>TestInjectOrChunk_BudgetTracker_SkipsFileThatDoesNotFit</code>
+— two small files mentioned in one prompt, a <code>BudgetTracker</code>
+sized to fit only the first; assert the first is injected, the second is
+skipped, the omission note names the second file, and a dim skip line is
+written to <code>out</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach">Approach</h3>
+<ol type="1">
+<li>Write <code>budget_tracker_test.go</code> first (TDD), confirm red
+(package doesn’t exist), implement <code>budget_tracker.go</code>,
+confirm green. This part has no dependency on the other two files and
+can be fully done in isolation.</li>
+<li>Update <code>ragAugment</code>’s signature and the 5 existing test
+call sites <em>before</em> adding the new trimming logic, so the
+signature-change commit and the behavior-change commit are separable in
+review even if landed together — confirm the updated-signature-only
+state still passes with <code>nil</code> tracker (behavior unchanged),
+then add the trimming test and implementation.</li>
+<li>Same two-step approach for <code>injectOrChunk</code>.</li>
+<li>Wire <code>runChatTurn</code> last, once both consumer functions
+independently work with a real tracker.</li>
+<li>Manual check (not just unit tests, per this repo’s
+<code>verify</code> practice): start a session with a small-context
+model, ingest enough RAG content to retrieve multiple chunks, and
+reference 2+ small files in one prompt — confirm the omission note(s)
+appear in what’s sent to the model (visible via
+<code>--debug</code>/<code>DebugLog.LogRAGInject</code> or a temporary
+print) when the combined content is deliberately made to exceed a tight
+<code>remainingContext</code>.</li>
+</ol>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code>
+green.</label></li>
+<li><label><input type="checkbox" /><code>go vet ./...</code> clean
+(dogfooding Direction A’s own sensor on this change).</label></li>
+<li><label><input type="checkbox" />A prompt with more relevant RAG
+chunks than fit in the shared budget keeps the highest-scored chunks and
+adds a model-visible omission note — never silently drops content
+without saying so.</label></li>
+<li><label><input type="checkbox" />A prompt mentioning multiple small
+files where not all fit in the shared budget injects as many as fit
+(highest-priority / first-seen first) and adds a model-visible omission
+note naming what didn’t fit.</label></li>
+<li><label><input type="checkbox" />RAG consuming most of the shared
+budget measurably reduces how much file content
+<code>injectOrChunk</code> can fit afterward in the same turn (proves
+the pool is actually shared, not two independent budgets).</label></li>
+<li><label><input type="checkbox" />Every existing
+<code>ragAugment</code>/<code>injectOrChunk</code> test continues to
+pass unmodified in behavior (only the call-site signature changes,
+passing <code>nil</code>).</label></li>
+</ul>
+<hr />
+<h2 id="phase-b-sharpen-gofmt-checks-message-complete-2026-07-13">Phase
+B — Sharpen <code>gofmt</code> <code>Check()</code>’s message ✅
+Complete 2026-07-13</h2>
+<p>See <code>DECISIONS.md</code> (2026-07-13 entry) for the final shape
+and a real correction found before implementing: the message is
+cause-neutral, not “likely a syntax error” as originally proposed below
+— two existing tests proved that wording would be wrong whenever
+<code>Config.AutoFormat = false</code>. The plan below is kept
+as-written for the historical record.</p>
+<p><strong>Goal.</strong> Replace the one hardcoded, generic
+<code>FormatIssue.Message</code> in
+<code>PipeExternalFormatter.Check</code> with one that names the
+realistic cause, since this finding only fires
+post-<code>applyAutoFormat</code> (per
+<code>computational-sensors-design.md</code>’s own reasoning about when
+<code>Check()</code> can still find something after
+<code>Format()</code> already ran).</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>code_formatters.go</code></td>
+<td><code>PipeExternalFormatter.Check</code> (line 152): change the
+<code>FormatIssue.Message</code> string from
+<code>"content differs from formatted output"</code> to name the likely
+cause (unparseable syntax) — see design doc for exact proposed
+wording</td>
+</tr>
+<tr>
+<td><code>code_formatters_test.go</code></td>
+<td>Update whatever test currently asserts the old literal message
+string (grep for <code>"content differs from formatted output"</code>
+before editing) to assert the new wording instead</td>
+</tr>
+<tr>
+<td><code>builtin_tools_test.go</code></td>
+<td>If any Direction-A test
+(<code>TestWriteFile_FormatCheckSensor_*</code>) asserts the old literal
+string in a <code>SensorEvent.Message</code>, update it too</td>
+</tr>
+</tbody>
+</table>
+<h3 id="approach-1">Approach</h3>
+<ol type="1">
+<li>Grep every <code>.go</code> file (not just
+<code>code_formatters_test.go</code>) for the exact old string first, so
+every assertion that depends on it is found before editing.
+<strong>Correction found doing exactly this</strong>:
+<code>code_formatters_test.go</code> has no assertion on the literal
+message at all — the two call sites that actually pin it are
+<code>TestWriteFile_FormatCheckSensor_reportsWhenAutoFormatOff</code>
+and <code>TestWriteFile_FormatCheckSensor_injectsWhenConfigured</code>
+(<code>builtin_tools_test.go:299</code>, <code>:321</code>), both
+asserting on the substring <code>"differs from formatted"</code>. Those
+two tests also revealed the cause-neutral wording requirement (see
+design doc correction, 2026-07-13): they deliberately set
+<code>Config.AutoFormat = false</code> and write valid-but-unformatted
+Go, a real case where the finding is <strong>not</strong> a syntax
+error.</li>
+<li>Change the message to the cause-neutral wording confirmed in the
+design doc; update both <code>builtin_tools_test.go</code> substring
+assertions to match (e.g. <code>"not in canonical format"</code> or
+whatever substring the final wording settles on); confirm green.</li>
+<li><code>FileExternalFormatter</code>/<code>BuiltinFormatter</code> are
+explicitly <strong>not</strong> touched — neither is reachable from
+<code>runPostWriteSensors</code> today (Go-only scope, per
+<code>computational-sensors-design.md</code>), so rewriting their text
+would be speculative per this repo’s own “don’t design for hypothetical
+future requirements” convention.</li>
+</ol>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" /><code>go test ./...</code>
+green.</label></li>
+<li><label><input type="checkbox" />The new message is cause-neutral: it
+doesn’t assert “syntax error” as the cause when
+<code>Config.AutoFormat = false</code> is just as likely a cause, but
+still gives actionable guidance for both cases.</label></li>
+<li><label><input
+type="checkbox" /><code>FileExternalFormatter</code>/<code>BuiltinFormatter</code>
+messages are byte-identical to before this change.</label></li>
+</ul>
+<hr />
+<h2 id="deferred-out-of-scope">Deferred / out of scope</h2>
+<ul>
+<li><strong>Item 1 (content-aware guide selection)</strong> — no
+path-scoped skill exists in Harvey’s own catalog to gate yet; see design
+doc audit. Revisit if one is added.</li>
+<li><strong>Response-headroom reservation</strong> (a dedicated constant
+subtracted from <code>remainingContext(a)</code> before it becomes
+<code>BudgetTracker.Total</code>) — confirmed out of scope for this
+increment; <code>small-model-budget-design.md</code>’s priority-table
+gap remains, tracked there, not solved here.</li>
+<li><strong>Session-start memory injection
+(<code>injectMemoryContext</code>) joining the same shared
+tracker</strong> — it fires once per session, not per turn, so it isn’t
+part of the same per-turn coordination gap Phase A closes. Revisit only
+if session-start memory budget and per-turn RAG/file budget are found to
+actually collide in practice.</li>
+<li><strong>The oversized-file interactive chunking branch of
+<code>injectOrChunk</code></strong> — already budget-aware via its own
+<code>remainingContext(a)</code> call and interactive/self-limiting; not
+wired into the shared tracker in this increment.</li>
+<li><strong><code>go vet</code> message wording</strong> — audited,
+already concrete and actionable; no change proposed (see design
+doc).</li>
+</ul>
+</section>
+</body>
+</html>

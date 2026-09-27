@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-chunked-document-analysis-implementation-plan">Harvey
+Chunked Document Analysis — Implementation Plan</h1>
+<p>See <a
+href="chunked-analysis-design.html">chunked-analysis-design.md</a> for
+the full design rationale, Fountain scene model, and alternatives
+considered. See <a href="DECISIONS.html">DECISIONS.md</a> (2026-06-27
+entries) for the three architectural decisions this plan implements.</p>
+<p>Target version: <strong>v0.0.16</strong></p>
+<p>Work items are ordered W0 → W5. W0 is documentation-only. W1 is the
+standalone accounting bug fix and can ship before the rest. W2 and W3
+are independent of each other and can be done in parallel. W4 depends on
+W2. W5 wires everything together and requires W1–W4.</p>
+<p><strong>Key invariant:</strong> <code>chunking.enabled: false</code>
+in <code>harvey.yaml</code> must restore exact pre-feature behavior —
+the <code>read_file</code> tool reads files unconditionally, no size
+check, no alert.</p>
+<hr />
+<h2 id="w0-update-fountain_format.md-to-v1.3">W0 — Update
+<code>FOUNTAIN_FORMAT.md</code> to v1.3</h2>
+<p><strong>Goal:</strong> Document the new
+<code>INT. CHUNK ANALYSIS</code> scene type and the three new note types
+before any code changes. This gives the recorder implementation (W3) a
+clear spec to target. No Go files change.</p>
+<h3 id="changes-to-fountain_format.md">Changes to
+<code>FOUNTAIN_FORMAT.md</code></h3>
+<table>
+<colgroup>
+<col style="width: 52%" />
+<col style="width: 47%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Section</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scene Types — reference table</td>
+<td>Add <code>INT. CHUNK ANALYSIS — FILENAME TIMESTAMP</code> row</td>
+</tr>
+<tr>
+<td>Special Syntax — note types</td>
+<td>Add <code>[[chunk:]]</code>, <code>[[chunk-result:]]</code>,
+<code>[[synthesis:]]</code> entries</td>
+</tr>
+<tr>
+<td>Scenarios</td>
+<td>Add Scenario N: chunked document analysis, showing the full scene
+sequence</td>
+</tr>
+<tr>
+<td>Changelog</td>
+<td>Add v1.3 entry</td>
+</tr>
+</tbody>
+</table>
+<h3 id="new-note-syntax">New note syntax</h3>
+<pre><code>[[chunk: file=NAME, chunks=N, model=MODEL, boundary=TYPE, chunk-size=N]]
+[[chunk-result: i/N — ok|error: &lt;reason&gt;]]
+[[synthesis: model=MODEL — ok|error: &lt;reason&gt;]]</code></pre>
+<p>The <code>[[chunk:]]</code> note is the first element inside the
+scene, before the RSDOIEL dialogue. <code>[[chunk-result:]]</code> notes
+follow in order. The <code>[[synthesis:]]</code> note is last, before
+HARVEY’s closing line.</p>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>FOUNTAIN_FORMAT.md</code> version is 1.3 in the
+Changelog.</li>
+<li><code>INT. CHUNK ANALYSIS</code> appears in the Scene Types
+reference table.</li>
+<li>All three new note types appear in the Special Syntax section with
+example values.</li>
+</ul>
+<hr />
+<h2 id="w1-context-estimator-and-pre-read-guard-accounting-bug-fix">W1 —
+Context estimator and pre-read guard (accounting bug fix)</h2>
+<p><strong>Goal:</strong> Fix the bug where Harvey compares file size
+against the raw model context window rather than the context that
+remains after current history, system prompt, and injected memories are
+accounted for. This work item is the prerequisite for the alert trigger
+(W5) and ships independently as a bug fix.</p>
+<h3 id="new-file-context_estimator.go">New file:
+<code>context_estimator.go</code></h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">// estimateTokens returns a conservative token count for s using the</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co">// bytes/4 heuristic (well-established for English prose; source code</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">// will be slightly over-estimated, which is the safe direction).</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> estimateTokens<span class="op">(</span>s <span class="dt">string</span><span class="op">)</span> <span class="dt">int</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">// remainingContext returns the estimated number of tokens available for</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co">// new content, given the agent&#39;s current state. It subtracts serialized</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co">// history, the system prompt, and a safety margin (10% of the window)</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co">// from the model&#39;s declared context window.</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> remainingContext<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="dt">int</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co">// fileExceedsBudget returns true if the file at path would, by byte</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co">// estimate alone, exceed the given token budget. Uses os.Stat; does</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="co">// not read the file.</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> fileExceedsBudget<span class="op">(</span>path <span class="dt">string</span><span class="op">,</span> budget <span class="dt">int</span><span class="op">)</span> <span class="op">(</span><span class="dt">bool</span><span class="op">,</span> <span class="dt">int64</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p><code>remainingContext</code> derives the model context window from
+<code>a.ModelCaps.ContextWindow</code> (already available via
+<code>model_cache.go</code>). It serializes history by joining all
+message Content fields and applying <code>estimateTokens</code>. Safety
+margin = <code>a.ModelCaps.ContextWindow / 10</code>.</p>
+<p><code>fileExceedsBudget</code> calls
+<code>os.Stat(path).Size()</code> and compares <code>int(size/4)</code>
+against <code>budget</code>. It returns the raw byte size for use in the
+alert message.</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>context_estimator.go</code></td>
+<td>New file (three functions above)</td>
+</tr>
+<tr>
+<td><code>context_estimator_test.go</code></td>
+<td>New file (tests below)</td>
+</tr>
+</tbody>
+</table>
+<p>No changes to <code>terminal.go</code> in this work item — the
+pre-read guard hook is added in W5 when the alert UX is ready.</p>
+<h3 id="tests">Tests</h3>
+<ul>
+<li><code>TestEstimateTokens_Empty</code> — empty string returns 0</li>
+<li><code>TestEstimateTokens_KnownLength</code> — 400-byte string
+returns ~100</li>
+<li><code>TestFileExceedsBudget_SmallFile</code> — file smaller than
+budget returns false</li>
+<li><code>TestFileExceedsBudget_LargeFile</code> — file larger than
+budget returns true</li>
+<li><code>TestFileExceedsBudget_Missing</code> — non-existent path
+returns error</li>
+<li><code>TestRemainingContext_SubtractsHistory</code> — agent with long
+history has smaller remaining context than agent with empty history</li>
+</ul>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li><code>remainingContext</code> returns a value strictly less than
+<code>ModelCaps.ContextWindow</code> when history is non-empty.</li>
+<li><code>fileExceedsBudget</code> never reads file content; it calls
+only <code>os.Stat</code>.</li>
+</ul>
+<hr />
+<h2 id="w2-document-chunker">W2 — Document chunker</h2>
+<p><strong>Goal:</strong> Implement structure-aware document splitting
+into paragraph- or block-bounded chunks with one-unit overlap. This is a
+pure data transformation with no LLM calls or I/O side effects.</p>
+<h3 id="new-file-chunker.go">New file: <code>chunker.go</code></h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// DocType classifies a file for chunking strategy selection.</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> DocType <span class="dt">int</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> <span class="op">(</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    DocTypeProse  DocType <span class="op">=</span> <span class="ot">iota</span> <span class="co">// .md, .txt, .rst, .tex, .html</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    DocTypeSource                <span class="co">// .go, .ts, .py, .js, .c, .h, ...</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="op">)</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">// ChunkConfig holds tuneable chunking parameters, mirroring the</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co">// harvey.yaml chunking: stanza.</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ChunkConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    Enabled        <span class="dt">bool</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    Threshold      <span class="dt">float64</span> <span class="co">// fraction of remaining context; default 0.80</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    ChunkSizeBytes <span class="dt">int</span>     <span class="co">// target chunk size in bytes; default 6000</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    MaxChunks      <span class="dt">int</span>     <span class="co">// warn threshold; default 20</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    Overlap        <span class="dt">string</span>  <span class="co">// &quot;paragraph&quot;, &quot;sentence&quot;, or &quot;none&quot;</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="co">// DefaultChunkConfig returns the default ChunkConfig used when no</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a><span class="co">// chunking: stanza is present in harvey.yaml.</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> DefaultChunkConfig<span class="op">()</span> ChunkConfig</span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="co">// DetectDocType returns the DocType for the given file path based on</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a><span class="co">// its extension. Unknown extensions return DocTypeProse.</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> DetectDocType<span class="op">(</span>path <span class="dt">string</span><span class="op">)</span> DocType</span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a><span class="co">// ChunkDocument splits content into chunks according to cfg and</span></span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a><span class="co">// docType. Returns at least one chunk. Chunks include overlap from</span></span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a><span class="co">// the preceding chunk as specified by cfg.Overlap.</span></span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> ChunkDocument<span class="op">(</span>content <span class="dt">string</span><span class="op">,</span> cfg ChunkConfig<span class="op">,</span> docType DocType<span class="op">)</span> <span class="op">[]</span><span class="dt">string</span></span></code></pre></div>
+<h3 id="chunkdocument-algorithm"><code>ChunkDocument</code>
+algorithm</h3>
+<p><strong>Prose path</strong> (<code>DocTypeProse</code>): Split
+<code>content</code> on <code>\n\n</code>. Walk paragraphs, accumulating
+a current chunk until
+<code>len(chunk) &gt;= cfg.ChunkSizeBytes * 0.75</code>. When the
+threshold is reached, save the chunk and start the next with the last
+paragraph as overlap (when <code>cfg.Overlap == "paragraph"</code>).</p>
+<p><strong>Source path</strong> (<code>DocTypeSource</code>): Split on
+the pattern <code>\n\n</code> followed by a non-whitespace character
+that is not <code>}</code> or <code>)</code> — a heuristic for
+blank-line-then-signature. Same accumulation and overlap logic as
+prose.</p>
+<p><strong>Overlap <code>"none"</code></strong>: Next chunk starts
+immediately after the last paragraph/block of the previous chunk, with
+no repeated content.</p>
+<p><strong>Minimum chunk count</strong>: Always at least 1 (the full
+document is one chunk if it fits within
+<code>ChunkSizeBytes</code>).</p>
+<h3 id="new-file-chunker_test.go">New file:
+<code>chunker_test.go</code></h3>
+<ul>
+<li><code>TestDetectDocType</code> — table-driven:
+<code>.md</code>→Prose, <code>.go</code>→Source,
+<code>.unknown</code>→Prose</li>
+<li><code>TestChunkDocument_SingleChunk</code> — content smaller than
+ChunkSizeBytes returns one chunk equal to content</li>
+<li><code>TestChunkDocument_ParagraphSplit</code> — multi-paragraph
+prose splits at correct boundaries</li>
+<li><code>TestChunkDocument_SourceSplit</code> — Go source with multiple
+functions splits at function boundaries</li>
+<li><code>TestChunkDocument_Overlap</code> — second chunk begins with
+last paragraph of first chunk when
+<code>Overlap == "paragraph"</code></li>
+<li><code>TestChunkDocument_NoOverlap</code> —
+<code>Overlap == "none"</code> produces no repeated content between
+chunks</li>
+<li><code>TestChunkDocument_MaxChunks</code> — document producing &gt;
+MaxChunks chunks still returns all chunks (the guard warning is the
+caller’s concern)</li>
+</ul>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes including new chunker tests.</li>
+<li><code>ChunkDocument</code> never returns an empty slice.</li>
+<li>Overlap content from chunk N appears as the first bytes of chunk N+1
+when <code>cfg.Overlap == "paragraph"</code>.</li>
+<li>Source and prose splitting produce different chunk boundaries on a
+mixed-content file.</li>
+</ul>
+<hr />
+<h2 id="w3-recorder-int.-chunk-analysis-scene">W3 — Recorder:
+<code>INT. CHUNK ANALYSIS</code> scene</h2>
+<p><strong>Goal:</strong> Add three new methods to <code>Recorder</code>
+that write the chunk analysis scene and its notes. These are called by
+the map-reduce engine (W4) and the wiring layer (W5); the recorder
+itself has no LLM dependency.</p>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>recorder.go</code></td>
+<td>Add <code>RecordChunkAnalysisStart</code>,
+<code>RecordChunkResult</code>, <code>RecordChunkSynthesis</code>
+methods (signatures below)</td>
+</tr>
+<tr>
+<td><code>recorder_test.go</code></td>
+<td>Add tests for new methods</td>
+</tr>
+<tr>
+<td><code>FOUNTAIN_FORMAT.md</code></td>
+<td>(Already updated in W0)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="new-methods-on-recorder">New methods on
+<code>Recorder</code></h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// RecordChunkAnalysisStart opens an INT. CHUNK ANALYSIS scene and</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co">// writes the [[chunk:]] header note. Call once before the map phase.</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Parameters:</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co">//   filename (string) — base name of the file being analyzed</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co">//   totalChunks (int) — total number of chunks</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co">//   model (string) — model name used for chunk processing</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co">//   boundary (string) — &quot;paragraph&quot; or &quot;source&quot;</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co">//   chunkSizeBytes (int) — target chunk size</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co">//   userInstruction (string) — the chunk prompt the user entered</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co">// Returns:</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="co">//   error — write error, or nil</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="co">// Example:</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="co">//   r.RecordChunkAnalysisStart(&quot;doc.md&quot;, 12, &quot;LLAMA3&quot;, &quot;paragraph&quot;, 6000,</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="co">//       &quot;Summarize each section.&quot;)</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>Recorder<span class="op">)</span> RecordChunkAnalysisStart<span class="op">(</span>filename <span class="dt">string</span><span class="op">,</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    totalChunks <span class="dt">int</span><span class="op">,</span> model<span class="op">,</span> boundary <span class="dt">string</span><span class="op">,</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>    chunkSizeBytes <span class="dt">int</span><span class="op">,</span> userInstruction <span class="dt">string</span><span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a><span class="co">// RecordChunkResult writes a [[chunk-result:]] note for chunk i of n.</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a><span class="co">// status is &quot;ok&quot; or &quot;error: &lt;reason&gt;&quot;.</span></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a><span class="co">// Parameters:</span></span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a><span class="co">//   i (int) — 1-based chunk index</span></span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a><span class="co">//   n (int) — total chunks</span></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a><span class="co">//   status (string) — &quot;ok&quot; or &quot;error: &lt;first line of error&gt;&quot;</span></span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a><span class="co">// Returns:</span></span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a><span class="co">//   error — write error, or nil</span></span>
+<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a><span class="co">// Example:</span></span>
+<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a><span class="co">//   r.RecordChunkResult(3, 12, &quot;ok&quot;)</span></span>
+<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>Recorder<span class="op">)</span> RecordChunkResult<span class="op">(</span>i<span class="op">,</span> n <span class="dt">int</span><span class="op">,</span> status <span class="dt">string</span><span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a><span class="co">// RecordChunkSynthesis writes the [[synthesis:]] note and HARVEY&#39;s</span></span>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a><span class="co">// closing line, then closes the INT. CHUNK ANALYSIS scene.</span></span>
+<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a><span class="co">// Parameters:</span></span>
+<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a><span class="co">//   model (string) — model name used for synthesis</span></span>
+<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a><span class="co">//   status (string) — &quot;ok&quot; or &quot;error: &lt;reason&gt;&quot;</span></span>
+<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a><span class="co">// Returns:</span></span>
+<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a><span class="co">//   error — write error, or nil</span></span>
+<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a><span class="co">// Example:</span></span>
+<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a><span class="co">//   r.RecordChunkSynthesis(&quot;LLAMA3&quot;, &quot;ok&quot;)</span></span>
+<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>r <span class="op">*</span>Recorder<span class="op">)</span> RecordChunkSynthesis<span class="op">(</span>model<span class="op">,</span> status <span class="dt">string</span><span class="op">)</span> <span class="dt">error</span></span></code></pre></div>
+<h3
+id="expected-scene-output-from-recordchunkanalysisstart-two">Expected
+scene output (from <code>RecordChunkAnalysisStart</code> + two</h3>
+<p><code>RecordChunkResult</code> calls +
+<code>RecordChunkSynthesis</code>)</p>
+<pre><code>INT. CHUNK ANALYSIS — doc.md 2026-06-27 10:04:08
+
+[[chunk: file=doc.md, chunks=2, model=LLAMA3, boundary=paragraph, chunk-size=6000]]
+
+RSDOIEL
+Summarize each section.
+
+[[chunk-result: 1/2 — ok]]
+[[chunk-result: 2/2 — ok]]
+[[synthesis: model=LLAMA3 — ok]]
+
+HARVEY
+Chunk analysis complete. Synthesized result injected into conversation.</code></pre>
+<h3 id="tests-to-add-in-recorder_test.go">Tests to add in
+<code>recorder_test.go</code></h3>
+<ul>
+<li><code>TestRecordChunkAnalysisStart</code> — verify scene heading
+contains filename and timestamp; verify <code>[[chunk:]]</code> note
+contains all parameters; verify RSDOIEL dialogue contains
+userInstruction</li>
+<li><code>TestRecordChunkResult_Ok</code> — verify
+<code>[[chunk-result: 3/12 — ok]]</code></li>
+<li><code>TestRecordChunkResult_Error</code> — verify
+<code>[[chunk-result: 2/12 — error: context exceeded]]</code></li>
+<li><code>TestRecordChunkSynthesis_Ok</code> — verify
+<code>[[synthesis: model=LLAMA3 — ok]]</code> and HARVEY closing
+line</li>
+<li><code>TestRecordChunkSynthesis_Error</code> — error status recorded
+in note; HARVEY closing line still written</li>
+</ul>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes including new recorder tests.</li>
+<li>A call sequence of <code>RecordChunkAnalysisStart</code> → N ×
+<code>RecordChunkResult</code> → <code>RecordChunkSynthesis</code>
+produces a well-formed Fountain scene matching the format in W0.</li>
+<li><code>RecordChunkResult</code> with <code>i &gt; n</code> does not
+panic; it writes the note with the given values.</li>
+</ul>
+<hr />
+<h2 id="w4-map-reduce-engine">W4 — Map-reduce engine</h2>
+<p><strong>Goal:</strong> Implement <code>RunChunkedAnalysis</code>, the
+function that drives the map and reduce phases, manages LLM calls per
+chunk, aggregates results, runs synthesis, and returns the final answer.
+This function calls no I/O other than the LLM client and the recorder;
+it does not touch <code>terminal.go</code> internals.</p>
+<h3 id="new-file-chunk_analyzer.go">New file:
+<code>chunk_analyzer.go</code></h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ChunkAnalysisParams bundles the inputs to RunChunkedAnalysis.</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ChunkAnalysisParams <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    Filename    <span class="dt">string</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    Chunks      <span class="op">[]</span><span class="dt">string</span> <span class="co">// from ChunkDocument (W2)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    Instruction <span class="dt">string</span>   <span class="co">// the user&#39;s chunk prompt (may contain @mention)</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    Model       <span class="dt">string</span>   <span class="co">// resolved model name (@mention already parsed)</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    Boundary    <span class="dt">string</span>   <span class="co">// &quot;paragraph&quot; or &quot;source&quot; (for recording)</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    Config      ChunkConfig</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co">// RunChunkedAnalysis runs the map-reduce workflow described in the</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="co">// chunked-analysis design. It calls the LLM once per chunk (map phase)</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="co">// and once for synthesis (reduce phase), recording progress to the</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="co">// Recorder after each call. Progress is also printed to w.</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a><span class="co">// Parameters:</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="co">//   ctx (context.Context) — cancellation context</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="co">//   client (LLMClient) — the LLM client to use for map and reduce calls</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a><span class="co">//   rec (*Recorder) — session recorder; may be nil (recording skipped)</span></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="co">//   params (ChunkAnalysisParams) — all inputs bundled</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a><span class="co">//   w (io.Writer) — progress output (usually os.Stdout)</span></span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a><span class="co">// Returns:</span></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a><span class="co">//   string — the synthesized final answer</span></span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a><span class="co">//   error  — first unrecoverable error, or nil</span></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a><span class="co">//</span></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a><span class="co">// Example:</span></span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a><span class="co">//   result, err := RunChunkedAnalysis(ctx, client, rec, params, os.Stdout)</span></span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> RunChunkedAnalysis<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> client LLMClient<span class="op">,</span></span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>    rec <span class="op">*</span>Recorder<span class="op">,</span> params ChunkAnalysisParams<span class="op">,</span> w io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span><span class="dt">string</span><span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<h3 id="map-phase-detail">Map phase detail</h3>
+<p>For chunk <code>i</code> (1-based) of <code>n</code>:</p>
+<pre><code>prompt = params.Instruction + &quot;\n\n---\nChunk &quot; + i + &quot; of &quot; + n + &quot;:\n&quot; + chunk</code></pre>
+<p>Send to <code>client.Chat</code> with the model from
+<code>params.Model</code>. On success, append result to
+<code>partialResults</code>. On error, append
+<code>"[chunk N failed: &lt;err&gt;]"</code> to
+<code>partialResults</code> and record <code>error: &lt;err&gt;</code>
+in the recorder. Print <code>Processing chunk i/n…</code> to
+<code>w</code> before each call.</p>
+<h3 id="reduce-phase-detail">Reduce phase detail</h3>
+<p>Construct synthesis prompt:</p>
+<pre><code>params.Instruction + &quot;\n\n---\nCombine the following &quot; + n +
+&quot; section summaries into a single coherent response:\n\n&quot; +
+join(partialResults, &quot;\n\n---\n&quot;)</code></pre>
+<p>Send to <code>client.Chat</code>. On success, record synthesis ok and
+return result. On error, return an error wrapping the synthesis
+failure.</p>
+<h3 id="new-file-chunk_analyzer_test.go">New file:
+<code>chunk_analyzer_test.go</code></h3>
+<p>Uses <code>mockLLMClient</code> from <code>tier3_test.go</code> (the
+canonical test double).</p>
+<ul>
+<li><code>TestRunChunkedAnalysis_TwoChunks</code> — two chunks, mock
+returns “result1” and “result2”; synthesis mock returns “final”; verify
+return value is “final” and no error</li>
+<li><code>TestRunChunkedAnalysis_ChunkError</code> — mock fails on chunk
+2 of 3; verify function continues, partial result contains failure note,
+synthesis still runs over remaining results</li>
+<li><code>TestRunChunkedAnalysis_SynthesisError</code> — all chunks
+succeed, synthesis mock returns error; verify error propagated</li>
+<li><code>TestRunChunkedAnalysis_NilRecorder</code> — rec=nil; verify no
+panic, function still returns synthesis result</li>
+<li><code>TestRunChunkedAnalysis_Progress</code> — capture w output;
+verify “Processing chunk 1/2…” and “Processing chunk 2/2…” appear</li>
+</ul>
+<h3 id="acceptance-criteria-4">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes including new chunk analyzer
+tests.</li>
+<li>A chunk failure does not stop the map phase; synthesis receives all
+available partial results including the failure note.</li>
+<li><code>RunChunkedAnalysis</code> with a nil recorder does not
+panic.</li>
+<li>Progress lines appear on <code>w</code> in chunk order before
+synthesis begins.</li>
+</ul>
+<hr />
+<h2 id="w5-alert-ux-harvey.yaml-stanza-and-wiring">W5 — Alert UX,
+harvey.yaml stanza, and wiring</h2>
+<p><strong>Goal:</strong> Wire W1–W4 into <code>terminal.go</code> and
+the config loader. After this work item, the full feature is live: a
+file read that would overflow context triggers the alert, the user
+provides a chunk instruction, the map-reduce engine runs, and the
+synthesized result is injected into the main conversation.</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Pre-read guard in <code>read_file</code> handler;
+<code>promptChunkInstruction</code> function; wiring to
+<code>RunChunkedAnalysis</code>; inject synthesis result into
+history</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>Add <code>Chunking ChunkConfig</code> field to
+<code>HarveyConfig</code>; populate defaults in
+<code>LoadHarveyYAML</code></td>
+</tr>
+<tr>
+<td><code>CONFIGURATION.md</code></td>
+<td>Document the <code>chunking:</code> stanza</td>
+</tr>
+</tbody>
+</table>
+<h3
+id="promptchunkinstruction-in-terminal.go"><code>promptChunkInstruction</code>
+in <code>terminal.go</code></h3>
+<div class="sourceCode" id="cb9"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">// promptChunkInstruction displays the overflow alert and reads the</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co">// user&#39;s chunk instruction from stdin. Returns the instruction and</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co">// false, or (&quot;&quot;, true) if the user typed &quot;no&quot;.</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> promptChunkInstruction<span class="op">(</span>filename <span class="dt">string</span><span class="op">,</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    estimatedTokens<span class="op">,</span> remaining <span class="dt">int</span><span class="op">,</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    lastUserMessage <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>instruction <span class="dt">string</span><span class="op">,</span> cancelled <span class="dt">bool</span><span class="op">)</span></span></code></pre></div>
+<p>The alert format:</p>
+<pre><code>Context overflow: &lt;filename&gt; is approximately &lt;N&gt; tokens;
+&lt;M&gt; tokens remain in current context.
+Enter instructions to process each chunk in turn, or &quot;no&quot; to return.
+[&lt;lastUserMessage&gt;]</code></pre>
+<p>The pre-filled suggestion is printed inside <code>[…]</code>
+brackets. The user’s input replaces it if they type anything; pressing
+enter with no input accepts the suggestion.</p>
+<h3 id="pre-read-guard-in-read_file-handler">Pre-read guard in
+<code>read_file</code> handler</h3>
+<pre><code>1. Call fileExceedsBudget(path, int(float64(remaining)*cfg.Threshold))
+2. If not exceeded, proceed with existing read_file logic (no change).
+3. If exceeded and cfg.Enabled == false, proceed anyway (compatibility).
+4. If exceeded and cfg.Enabled == true:
+   a. Call promptChunkInstruction → (instruction, cancelled)
+   b. If cancelled, return a tool result: &quot;File read cancelled by user.&quot;
+   c. Detect doc type, call ChunkDocument
+   d. If len(chunks) &gt; cfg.MaxChunks, warn the user and ask to confirm
+   e. Parse @mention from instruction → resolve model name
+   f. Call RunChunkedAnalysis → (synthesis, err)
+   g. If err, return tool result with error message
+   h. Return synthesis as the tool result
+   i. Inject HARVEY&#39;s overflow alert dialogue into the open Fountain
+      scene via recorder before starting the CHUNK ANALYSIS scene</code></pre>
+<h3 id="mention-parsing-from-chunk-instruction"><code>@mention</code>
+parsing from chunk instruction</h3>
+<p>The existing <code>parseMention(s string) (model, rest string)</code>
+pattern in <code>terminal.go</code> handles <code>@model</code>
+extraction. Apply the same logic to <code>instruction</code>: if a
+<code>@mention</code> is found, <code>model = resolved endpoint</code>;
+otherwise <code>model = a.currentModel</code>.</p>
+<h3 id="harvey.yaml-loading">harvey.yaml loading</h3>
+<p>Add to <code>HarveyConfig</code> in <code>harvey.go</code>:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>Chunking ChunkConfig <span class="st">`yaml:&quot;chunking&quot;`</span></span></code></pre></div>
+<p>In <code>LoadHarveyYAML</code>, after unmarshalling, apply defaults
+for any zero fields in <code>Chunking</code>:</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> cfg<span class="op">.</span>Chunking<span class="op">.</span>ChunkSizeBytes <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">.</span>Chunking <span class="op">=</span> DefaultChunkConfig<span class="op">()</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> cfg<span class="op">.</span>Chunking<span class="op">.</span>Threshold <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>        cfg<span class="op">.</span>Chunking<span class="op">.</span>Threshold <span class="op">=</span> <span class="fl">0.80</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> cfg<span class="op">.</span>Chunking<span class="op">.</span>MaxChunks <span class="op">==</span> <span class="dv">0</span> <span class="op">{</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>        cfg<span class="op">.</span>Chunking<span class="op">.</span>MaxChunks <span class="op">=</span> <span class="dv">20</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> cfg<span class="op">.</span>Chunking<span class="op">.</span>Overlap <span class="op">==</span> <span class="st">&quot;&quot;</span> <span class="op">{</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>        cfg<span class="op">.</span>Chunking<span class="op">.</span>Overlap <span class="op">=</span> <span class="st">&quot;paragraph&quot;</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="configuration.md-addition">CONFIGURATION.md addition</h3>
+<p>Document the <code>chunking:</code> stanza with the four fields,
+their types, defaults, and valid values for <code>overlap</code>.</p>
+<h3 id="tests-to-add-in-terminal_test.go">Tests to add in
+<code>terminal_test.go</code></h3>
+<ul>
+<li><code>TestReadFile_UnderBudget</code> — file smaller than threshold
+proceeds normally, no alert fired</li>
+<li><code>TestReadFile_OverBudget_Cancelled</code> — file over
+threshold, user input “no”; verify return value is “File read cancelled
+by user.”</li>
+<li><code>TestReadFile_OverBudget_ChunkingDisabled</code> —
+<code>cfg.Enabled = false</code>, file over threshold; verify file is
+read normally, no alert</li>
+</ul>
+<p>Full integration of the chunked analysis path (map-reduce with real
+chunks) is validated by the smoke test below rather than unit tests,
+because it requires a live LLM client.</p>
+<h3 id="acceptance-criteria-5">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> and <code>go test -race</code> pass.</li>
+<li>With <code>chunking.enabled: false</code>, reading a large file
+behaves exactly as it did before this feature.</li>
+<li>With <code>chunking.enabled: true</code> and a file that exceeds the
+threshold, the alert message appears in the terminal, the pre-fill is
+shown, and typing “no” returns without reading the file.</li>
+<li>After a completed chunk analysis, the next
+<code>INT. HARVEY AND … TALKING</code> scene contains the synthesized
+result as the model’s reply.</li>
+<li>The <code>INT. CHUNK ANALYSIS</code> scene appears in the
+<code>.spmd</code> session file between the overflow turn and the
+synthesis turn.</li>
+</ul>
+<hr />
+<h2 id="fountain-format-changelog-entry">Fountain format changelog
+entry</h2>
+<p>Add to <code>FOUNTAIN_FORMAT.md</code> Changelog table in W0:</p>
+<pre><code>| 1.3 | 2026-06-27 | INT. CHUNK ANALYSIS scene; [[chunk:]], [[chunk-result:]], [[synthesis:]] notes |</code></pre>
+<hr />
+<h2 id="full-test-run-after-all-work-items">Full test run (after all
+work items)</h2>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> harvey</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build <span class="at">-o</span> bin/harvey cmd/harvey/<span class="pp">*</span>.go</span></code></pre></div>
+<h3 id="manual-smoke-test">Manual smoke test</h3>
+<p>Start Harvey with a model whose context window is small enough to
+trigger overflow on a known file (or temporarily lower
+<code>chunking.threshold</code> to 0.01 to force triggering on any
+read). Run:</p>
+<pre><code>&gt; read document.md and extract all section headings</code></pre>
+<p>Confirm: - Alert message appears with file name, estimated tokens,
+remaining tokens - Pre-filled suggestion matches the original user
+message - Editing the suggestion and pressing enter runs the chunk
+analysis - Progress lines <code>Processing chunk i/N…</code> appear for
+each chunk - A synthesized result appears as the model’s reply - The
+<code>.spmd</code> session file contains an
+<code>INT. CHUNK ANALYSIS</code> scene with <code>[[chunk:]]</code>, N ×
+<code>[[chunk-result:]]</code>, and <code>[[synthesis:]]</code> notes -
+The <code>INT. CHUNK ANALYSIS</code> scene falls between the overflow
+turn and the turn containing the synthesized result - Typing “no” at the
+alert returns to the conversation without reading the file</p>
+</section>
+</body>
+</html>

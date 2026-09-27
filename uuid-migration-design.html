@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="knowledge.db-uuid-migration-design">knowledge.db UUID Migration
+— Design</h1>
+<p><strong>Status (2026-07-26):</strong> Design confirmed, ready for TDD
+implementation. See <a
+href="uuid-migration-plan.html">uuid-migration-plan.md</a> for the
+phased (W1–W6) implementation plan.</p>
+<p><strong>References:</strong> -
+<code>../knowledge_db_merge_design.md</code> — the umbrella design for
+cross-machine <code>knowledge.db</code> sync (this document’s parent).
+Covers the full sequencing: UUID migration (this doc) → SQL/ATTACH merge
+→ knowledge-base module extraction → JSON-L export (deferred). -
+<code>../knowledge_db_jsonl_export_design.md</code> — deferred sibling,
+not in scope here.</p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p><code>agents/knowledge.db</code> exists independently on at least two
+machines (<code>macmini-rd.local</code>, <code>wren.local</code>) and is
+not checked into git. Every table (<code>projects</code>,
+<code>observations</code>, <code>concepts</code>, <code>sources</code>)
+uses a plain autoincrement integer primary key with no cross-machine
+identity, so the two databases drift with no way to reconcile them:
+<code>.dump</code>-and-load either collides on ids or silently
+cross-wires foreign keys in the join tables, since the same integer id
+means a different row on each machine.</p>
+<p>This document scopes the fix that unblocks everything downstream of
+it: give every row a stable, globally-unique identifier at creation
+time, so a future merge becomes an idempotent set-union
+(<code>INSERT OR IGNORE</code> keyed on <code>uuid</code>) instead of
+best-effort content matching.</p>
+<h2 id="scope">Scope</h2>
+<p>In scope: <code>harvey/knowledge.go</code> only — schema, backfill,
+and the four insert paths (<code>AddProject</code>,
+<code>AddObservationWithSource</code>,
+<code>AddConceptWithIdentifier</code>, <code>AddSource</code>).</p>
+<p>Out of scope (deferred to later design/plan documents per the
+sequencing in <code>../knowledge_db_merge_design.md</code>): - The
+SQL/<code>ATTACH DATABASE</code> merge tool itself. - Extracting
+<code>knowledge.go</code> into its own standalone Go module. - JSON-L
+export/import.</p>
+<h2 id="current-schema-verified-2026-07-26">Current schema (verified
+2026-07-26)</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Table</th>
+<th scope="col">PK</th>
+<th scope="col">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>projects</code></td>
+<td><code>id INTEGER PRIMARY KEY AUTOINCREMENT</code></td>
+<td><code>name TEXT NOT NULL UNIQUE</code></td>
+</tr>
+<tr>
+<td><code>observations</code></td>
+<td><code>id INTEGER PRIMARY KEY AUTOINCREMENT</code></td>
+<td>FK <code>project_id → projects(id)</code></td>
+</tr>
+<tr>
+<td><code>concepts</code></td>
+<td><code>id INTEGER PRIMARY KEY AUTOINCREMENT</code></td>
+<td><code>name TEXT NOT NULL UNIQUE</code></td>
+</tr>
+<tr>
+<td><code>sources</code></td>
+<td><code>id INTEGER PRIMARY KEY AUTOINCREMENT</code></td>
+<td>partial unique index on
+<code>(identifier_type, identifier_value)</code></td>
+</tr>
+<tr>
+<td><code>observation_concepts</code>, <code>project_concepts</code>,
+<code>observation_sources</code></td>
+<td>composite PK of two FK ids</td>
+<td>pure join tables — no identity of their own needed</td>
+</tr>
+</tbody>
+</table>
+<p><code>concepts.name</code> and <code>projects.name</code> already
+have real uniqueness constraints; <code>observations</code> and
+<code>sources</code> (without an identifier) do not — nothing in the
+schema reliably identifies “the same row created independently on two
+machines.”</p>
+<h2 id="decisions">Decisions</h2>
+<ol type="1">
+<li><strong><code>uuid TEXT NOT NULL DEFAULT ''</code></strong> added to
+<code>projects</code>, <code>observations</code>, <code>concepts</code>,
+<code>sources</code> — not the join tables, which don’t need their own
+identity (a future merge translates their FKs through the parent rows’
+<code>uuid</code>s directly in SQL).</li>
+<li><strong>UUID version 7</strong> uniformly across all four tables.
+<code>github.com/google/uuid</code> v1.6.0 is already a
+<code>go.mod</code> dependency (currently marked
+<code>// indirect</code>) and supports <code>uuid.NewV7()</code>.
+Time-ordered ids are a free bonus; no downside for internal ids.</li>
+<li><strong>Backfill in Go, not SQL</strong> — SQLite has no built-in
+UUID generator. Mirrors the existing one-time
+<code>source_doi → sources</code> backfill already in
+<code>OpenKnowledgeBase</code>: naturally idempotent via a
+<code>WHERE uuid = ''</code> guard, so every subsequent open is a
+no-op.</li>
+<li><strong>Unique index only after backfill</strong> —
+<code>ADD COLUMN</code> sets every existing row to the same
+<code>''</code> default at once; an index created before backfill
+completes would fail immediately on the first duplicate.</li>
+<li><strong><code>origin_host TEXT NOT NULL DEFAULT ''</code></strong>,
+added the same way, for provenance/debugging. Existing rows backfill to
+an explicit <code>"unknown"</code> sentinel — never the current
+machine’s <code>os.Hostname()</code>, which would misattribute every
+pre-migration row (including ones actually created on the other machine)
+to whoever runs the migration first. Only new rows going forward stamp
+the real hostname, at insert time.</li>
+<li><strong>Insert-path changes preserve first-write-wins on
+conflict</strong> — <code>AddProject</code>’s existing
+<code>ON CONFLICT(name) DO UPDATE</code> path does not touch
+<code>uuid</code>/<code>origin_host</code> on conflict, so a project’s
+identity is fixed at its first creation, consistent with how the merge
+design already treats <code>concepts.description</code> conflicts
+(silently keeps the first-inserted value).</li>
+</ol>
+<h2 id="testing">Testing</h2>
+<p>Per this workspace’s TDD-first convention: write the backfill and
+idempotency tests before touching <code>OpenKnowledgeBase</code> or any
+<code>Add*</code> function. See <code>uuid-migration-plan.md</code> W1
+for the specific test list. Confirm red, then implement W2–W5 in order,
+confirm green in W6.</p>
+<h2 id="known-edge-case-downstream-noted-here-for-continuity">Known edge
+case (downstream, noted here for continuity)</h2>
+<p>Not fixed by this migration, but relevant to why it’s shaped this
+way: the <code>harvey</code> project row (and likely others) was created
+independently on both machines <em>before</em> any of this existed, so
+it already has two different values for what’s logically “the same” row.
+The eventual merge tool needs a pre-merge collision report for
+<code>projects.name</code> / <code>concepts.name</code> rather than
+silently trusting <code>INSERT OR IGNORE</code> to pick the “right” one
+— full detail in <code>../knowledge_db_merge_design.md</code>.</p>
+</section>
+</body>
+</html>

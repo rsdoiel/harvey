@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="knowledge.db-uuid-migration-implementation-plan">knowledge.db
+UUID Migration — Implementation Plan</h1>
+<p>See <a href="uuid-migration-design.html">uuid-migration-design.md</a>
+for the full design rationale and decisions, and
+<code>../knowledge_db_merge_design.md</code> for how this fits the
+larger cross-machine-sync sequencing (UUID migration → SQL/ATTACH merge
+→ module split → JSON-L export, in that order). This document covers
+only step 1: the UUID migration inside this repo’s
+<code>knowledge.go</code>.</p>
+<p>Verified against the live code on 2026-07-26: no <code>uuid</code>
+column exists on any table yet,
+<code>github.com/google/uuid v1.6.0</code> is present in
+<code>go.mod</code> but marked <code>// indirect</code> (line 50), and
+there is no UUID test coverage yet in
+<code>knowledge_test.go</code>.</p>
+<p>Work items are ordered W1 → W6. Per this workspace’s TDD-first
+convention, W1 (the test) is written and confirmed <strong>red</strong>
+before any of W2–W5 are implemented.</p>
+<hr />
+<h2 id="w1-backfillidempotency-test-red">W1 — Backfill/idempotency test
+(red)</h2>
+<p><strong>Goal:</strong> Lock in the migration’s observable contract
+before writing it.</p>
+<h3 id="file-to-modify">File to modify</h3>
+<p><code>knowledge_test.go</code> (new test function(s), reusing the
+existing <code>OpenKnowledgeBase</code>-against-a-temp-file pattern
+already used elsewhere in that file).</p>
+<h3 id="tests-to-add">Tests to add</h3>
+<ul>
+<li><code>TestUUIDBackfill_AssignsDistinctUUIDs</code> — seed a
+<code>KnowledgeBase</code> at the pre-migration schema (insert rows into
+<code>projects</code>, <code>observations</code>, <code>concepts</code>,
+<code>sources</code> directly via <code>kb.db.Exec</code>, bypassing the
+<code>Add*</code> helpers so the row starts with no <code>uuid</code>),
+call <code>OpenKnowledgeBase</code> again (or just query after the
+seeding open, since the migration runs on every open), and assert every
+row in all four tables has a non-empty <code>uuid</code> and that
+they’re pairwise distinct.</li>
+<li><code>TestUUIDBackfill_Idempotent</code> — after the first backfill,
+capture every row’s <code>uuid</code>, close and reopen the
+<code>KnowledgeBase</code> against the same file, and assert the values
+are byte-for-byte unchanged (guards the <code>WHERE uuid = ''</code>
+idempotency guarantee from the design doc).</li>
+<li><code>TestUUIDBackfill_PreservesExistingIDsAndFKs</code> — seed a
+project + observation + concept + an <code>observation_concepts</code>
+link before migration; after backfill, assert the integer
+<code>id</code> values and the join row are untouched (only
+<code>uuid</code>/<code>origin_host</code> columns changed).</li>
+<li><code>TestUUIDBackfill_OriginHostSentinel</code> — assert
+pre-existing rows get <code>origin_host = "unknown"</code>, never the
+current machine’s <code>os.Hostname()</code>.</li>
+</ul>
+<p>Confirm all four fail to compile or fail assertions (the
+<code>uuid</code> column doesn’t exist yet) before starting W2.</p>
+<hr />
+<h2 id="w2-schema-add-uuid-and-origin_host-columns">W2 — Schema: add
+<code>uuid</code> and <code>origin_host</code> columns</h2>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>knowledge.go:200-204</code> (<code>kbAlterStmts</code>)</td>
+<td>Add four <code>ALTER TABLE</code> statements for
+<code>projects</code>, <code>observations</code>, <code>concepts</code>
+(uuid + origin_host each)</td>
+</tr>
+<tr>
+<td><code>knowledge.go:258</code> area (<code>sourcesSchema</code>
+application)</td>
+<td>Add a separate two-statement alter for <code>sources</code>, run
+immediately after <code>db.Exec(sourcesSchema)</code> succeeds —
+<code>sources</code> doesn’t exist yet when the main
+<code>kbAlterStmts</code> batch runs at line 255</td>
+</tr>
+</tbody>
+</table>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> kbAlterStmts <span class="op">=</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE observations ADD COLUMN source_doi TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE concepts ADD COLUMN identifier_type TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE concepts ADD COLUMN identifier_value TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE projects ADD COLUMN uuid TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE projects ADD COLUMN origin_host TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE observations ADD COLUMN uuid TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE observations ADD COLUMN origin_host TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE concepts ADD COLUMN uuid TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE concepts ADD COLUMN origin_host TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="kw">var</span> kbSourcesAlterStmts <span class="op">=</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE sources ADD COLUMN uuid TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">`ALTER TABLE sources ADD COLUMN origin_host TEXT NOT NULL DEFAULT &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>In <code>OpenKnowledgeBase</code>, right after the existing
+<code>db.Exec(sourcesSchema)</code> block (line ~261):</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> stmt <span class="op">:=</span> <span class="kw">range</span> kbSourcesAlterStmts <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    _<span class="op">,</span> _ <span class="op">=</span> db<span class="op">.</span>Exec<span class="op">(</span>stmt<span class="op">)</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>No index yet — that’s W4, deliberately after backfill (W3).</p>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go build ./...</code> succeeds.</li>
+<li>Opening an existing pre-migration <code>knowledge.db</code> doesn’t
+error (SQLite “duplicate column” errors from <code>ADD COLUMN</code> are
+already swallowed via <code>_, _ = db.Exec(...)</code>, matching the
+existing idiom).</li>
+</ul>
+<hr />
+<h2 id="w3-go-side-backfill">W3 — Go-side backfill</h2>
+<h3 id="file-to-modify-1">File to modify</h3>
+<p><code>knowledge.go</code>, new unexported helper called from
+<code>OpenKnowledgeBase</code> after both alter-statement blocks (W2)
+have run and before the FTS block at line 274.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> backfillUUIDs<span class="op">(</span>db <span class="op">*</span>sql<span class="op">.</span>DB<span class="op">,</span> table <span class="dt">string</span><span class="op">)</span> <span class="dt">error</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    rows<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Query<span class="op">(</span><span class="st">`SELECT id FROM `</span> <span class="op">+</span> table <span class="op">+</span> <span class="st">` WHERE uuid = &#39;&#39;`</span><span class="op">)</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> err</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">var</span> ids <span class="op">[]</span><span class="dt">int64</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> rows<span class="op">.</span>Next<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>        <span class="kw">var</span> id <span class="dt">int64</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">:=</span> rows<span class="op">.</span>Scan<span class="op">(&amp;</span>id<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>            rows<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> err</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>        ids <span class="op">=</span> <span class="bu">append</span><span class="op">(</span>ids<span class="op">,</span> id<span class="op">)</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    rows<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _<span class="op">,</span> id <span class="op">:=</span> <span class="kw">range</span> ids <span class="op">{</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>        u<span class="op">,</span> err <span class="op">:=</span> uuid<span class="op">.</span>NewV7<span class="op">()</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> err</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> db<span class="op">.</span>Exec<span class="op">(</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>            <span class="st">`UPDATE `</span><span class="op">+</span>table<span class="op">+</span><span class="st">` SET uuid = ?, origin_host = &#39;unknown&#39; WHERE id = ? AND uuid = &#39;&#39;`</span><span class="op">,</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>            u<span class="op">.</span>String<span class="op">(),</span> id<span class="op">,</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>        <span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> err</span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ot">nil</span></span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Call for all four tables in <code>OpenKnowledgeBase</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> t <span class="op">:=</span> <span class="kw">range</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;projects&quot;</span><span class="op">,</span> <span class="st">&quot;observations&quot;</span><span class="op">,</span> <span class="st">&quot;concepts&quot;</span><span class="op">,</span> <span class="st">&quot;sources&quot;</span><span class="op">}</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">:=</span> backfillUUIDs<span class="op">(</span>db<span class="op">,</span> t<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        db<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="ot">nil</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: backfill uuid on %s: %w&quot;</span><span class="op">,</span> t<span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>table</code> is always one of the four hardcoded literals above
+— never user input — so string-concatenating it into the query is
+safe.</p>
+<p>The <code>AND uuid = ''</code> in the <code>UPDATE</code> (redundant
+with the <code>SELECT</code> filter under
+<code>SetMaxOpenConns(1)</code>, but cheap insurance) is what makes a
+second open a no-op: every row already has a non-empty
+<code>uuid</code>, so the initial <code>SELECT</code> returns nothing
+and the loop body never runs.</p>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li>W1’s <code>TestUUIDBackfill_AssignsDistinctUUIDs</code> and
+<code>TestUUIDBackfill_Idempotent</code> pass.</li>
+<li><code>TestUUIDBackfill_OriginHostSentinel</code> passes (sentinel,
+not <code>os.Hostname()</code>, at backfill time).</li>
+</ul>
+<hr />
+<h2 id="w4-unique-indexes">W4 — Unique indexes</h2>
+<h3 id="file-to-modify-2">File to modify</h3>
+<p><code>knowledge.go</code>, immediately after the W3 backfill loop in
+<code>OpenKnowledgeBase</code>.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> t <span class="op">:=</span> <span class="kw">range</span> <span class="op">[]</span><span class="dt">string</span><span class="op">{</span><span class="st">&quot;projects&quot;</span><span class="op">,</span> <span class="st">&quot;observations&quot;</span><span class="op">,</span> <span class="st">&quot;concepts&quot;</span><span class="op">,</span> <span class="st">&quot;sources&quot;</span><span class="op">}</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    _<span class="op">,</span> _ <span class="op">=</span> db<span class="op">.</span>Exec<span class="op">(</span><span class="st">`CREATE UNIQUE INDEX IF NOT EXISTS idx_`</span> <span class="op">+</span> t <span class="op">+</span> <span class="st">`_uuid ON `</span> <span class="op">+</span> t <span class="op">+</span> <span class="st">`(uuid)`</span><span class="op">)</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Placed after backfill completes without error, so the index build
+never sees duplicate <code>''</code> values.</p>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>TestUUIDBackfill_PreservesExistingIDsAndFKs</code> still
+passes (index creation doesn’t touch existing rows).</li>
+<li>Manually confirm via
+<code>sqlite3 agents/knowledge.db ".schema projects"</code> that
+<code>idx_projects_uuid</code> etc. exist after a real
+<code>harvey</code> run.</li>
+</ul>
+<hr />
+<h2 id="w5-insert-path-updates">W5 — Insert-path updates</h2>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Function</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>knowledge.go:311</code></td>
+<td><code>AddProject</code></td>
+<td>Generate <code>uuid.NewV7()</code> + <code>os.Hostname()</code>, add
+to <code>INSERT</code>/<code>RETURNING</code></td>
+</tr>
+<tr>
+<td><code>knowledge.go:411</code></td>
+<td><code>AddObservationWithSource</code></td>
+<td>Same, add to <code>INSERT</code></td>
+</tr>
+<tr>
+<td><code>knowledge.go:522</code></td>
+<td><code>AddConceptWithIdentifier</code></td>
+<td>Same, add to <code>INSERT ... ON CONFLICT</code></td>
+</tr>
+<tr>
+<td><code>knowledge.go:1058</code></td>
+<td><code>AddSource</code></td>
+<td>Same, add to <code>INSERT</code> (the early-return existing-row path
+at line 1059-1067 keeps that row’s original
+<code>uuid</code>/<code>origin_host</code>, unchanged — same “silently
+keeps first” precedent the design doc already accepts)</td>
+</tr>
+<tr>
+<td><code>knowledge.go:1-12</code> (imports)</td>
+<td>Add <code>"os"</code> and <code>"github.com/google/uuid"</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>go.mod:50</code></td>
+<td>Drop the <code>// indirect</code> marker on
+<code>github.com/google/uuid</code> (run <code>go mod tidy</code> after
+the code change rather than hand-editing)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><code>AddProject</code>’s existing
+<code>ON CONFLICT(name) DO UPDATE</code> path (line 314-317)
+intentionally does <strong>not</strong> touch
+<code>uuid</code>/<code>origin_host</code> on conflict — an existing
+project keeps its original identity, matching the “first row wins” merge
+semantics already decided for name collisions.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>u<span class="op">,</span> err <span class="op">:=</span> uuid<span class="op">.</span>NewV7<span class="op">()</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="dv">0</span><span class="op">,</span> fmt<span class="op">.</span>Errorf<span class="op">(</span><span class="st">&quot;knowledge: generate uuid: %w&quot;</span><span class="op">,</span> err<span class="op">)</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>host<span class="op">,</span> _ <span class="op">:=</span> os<span class="op">.</span>Hostname<span class="op">()</span></span></code></pre></div>
+<p><code>os.Hostname()</code>’s error is deliberately ignored (falls
+back to <code>""</code>) — matches the design doc’s framing of
+<code>origin_host</code> as provenance/debugging metadata, not a value
+anything depends on for correctness.</p>
+<h3 id="tests-to-add-1">Tests to add</h3>
+<ul>
+<li><code>TestAddProject_SetsUUIDAndOriginHost</code></li>
+<li><code>TestAddObservationWithSource_SetsUUIDAndOriginHost</code></li>
+<li><code>TestAddConceptWithIdentifier_SetsUUIDAndOriginHost</code></li>
+<li><code>TestAddSource_SetsUUIDAndOriginHost</code></li>
+<li><code>TestAddProject_ConflictPreservesOriginalUUID</code> — call
+<code>AddProject</code> twice with the same name; assert the
+<code>uuid</code> returned/stored is from the <em>first</em> call.</li>
+</ul>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li>All new tests pass.</li>
+<li><code>go vet ./...</code> clean (no unused
+<code>os</code>/<code>uuid</code> import warnings on any path).</li>
+</ul>
+<hr />
+<h2 id="w6-verify-green">W6 — Verify green</h2>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test ./...</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> test <span class="at">-race</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> build <span class="at">-o</span> bin/harvey cmd/harvey/<span class="pp">*</span>.go</span></code></pre></div>
+<p>Manual sanity check against the real workspace database (back it up
+first):</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> agents/knowledge.db /tmp/knowledge.db.bak</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">./bin/harvey</span>   <span class="co"># or any command path that calls OpenKnowledgeBase</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/knowledge.db <span class="st">&quot;SELECT count(*) FROM projects WHERE uuid = &#39;&#39;;&quot;</span>   <span class="co"># expect 0</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/knowledge.db <span class="st">&quot;SELECT count(*) FROM observations WHERE uuid = &#39;&#39;;&quot;</span> <span class="co"># expect 0</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/knowledge.db <span class="st">&quot;SELECT origin_host, count(*) FROM projects GROUP BY origin_host;&quot;</span></span></code></pre></div>
+<h3 id="acceptance-criteria-4">Acceptance criteria</h3>
+<ul>
+<li><code>go test -race</code> passes.</li>
+<li>Every row in <code>agents/knowledge.db</code> on this machine has a
+non-empty <code>uuid</code> after one real run.</li>
+<li>Pre-existing rows show <code>origin_host = 'unknown'</code>; nothing
+shows the current machine’s real hostname except rows inserted after
+this change.</li>
+</ul>
+<hr />
+<h2 id="out-of-scope-here">Out of scope here</h2>
+<p>The SQL/<code>ATTACH DATABASE</code> merge tool, the knowledge-base
+module extraction, and JSON-L export are all deferred to later
+design/plan documents per the sequencing in
+<code>../knowledge_db_merge_design.md</code> — not part of this
+plan.</p>
+</section>
+</body>
+</html>

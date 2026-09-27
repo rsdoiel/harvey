@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="repl-line-editor-migration-termlib-charm-design-brief">REPL
+line-editor migration: termlib → Charm — Design Brief</h1>
+<blockquote>
+<p><strong>Correction 2026-09-24:</strong> the problem statement below
+says the user “has decided” to drop termlib for Charm. That overstated
+it: <code>TODO.md</code> frames the gate as an <em>evaluation</em>. See
+<code>termlib-evaluation.md</code>.</p>
+<p>Phase 1 (Discussion/Design) of
+<code>DISCUSS_REVIEW_PLAN_IMPLEMENT.md</code>. Nothing is agreed by this
+document; it exists to be reviewed and turned into decision records in
+<code>harvey/decisions/</code> (new — see the “Decisions realignment”
+thread in <code>TODO.md</code> and
+<code>knowledge-learning-mode-feature-request.md</code> item 6).</p>
+</blockquote>
+<h2 id="problem-statement">Problem statement</h2>
+<p><code>harvey</code>’s next release drops the
+<code>github.com/rsdoiel/termlib</code> dependency (user request
+2026-09-15, gating <code>make release</code>). The user has decided the
+replacement should adopt the Charm ecosystem
+(<code>bubbletea</code>/<code>bubbles</code>), which
+<code>knowledge</code>’s <code>cmd/kb</code> already uses (the only
+Charm dependency anywhere in the Laboratory so far). This document
+scopes <em>how much</em> of harvey adopts Charm, since “migrate to
+Charm” could mean anything from swapping one component to rearchitecting
+the whole REPL.</p>
+<h2 id="what-termlib-actually-provides-today">What termlib actually
+provides today</h2>
+<p><code>terminal.go</code> uses exactly this surface (confirmed by
+grep, not recall): <code>termlib.NewLineEditor</code>,
+<code>.Completer</code> field,
+<code>.Prompt(prompt string) (string, error)</code>,
+<code>.AppendHistory</code>,
+<code>.SetHistory</code>/<code>.History</code>,
+<code>termlib.ErrInterrupted</code>. <code>lineeditor.go</code> (661
+lines) implements, per its own doc comment:</p>
+<ul>
+<li>Left/Right/Home/End cursor movement, Backspace</li>
+<li>Up/Down arrow history navigation (single-line only)</li>
+<li>Tab word-completion via
+<code>Completer func(line string) []string</code> — first Tab lists
+matches + fills longest common prefix, subsequent Tabs cycle</li>
+<li>Ctrl+A/E/J/K, Ctrl+C → <code>ErrInterrupted</code>, Ctrl+D →
+EOF-or-delete</li>
+<li>Multi-line input (Ctrl+J inserts a newline, Enter submits the whole
+buffer; history disabled once a newline is present)</li>
+<li>Ctrl+X Ctrl+E → shells out to
+<code>$EDITOR</code>/<code>$VISUAL</code>/vi to compose the line</li>
+<li>Raw-mode via <code>golang.org/x/term</code>, with a plain-line
+fallback when stdin isn’t a TTY (tests, piped input)</li>
+</ul>
+<p><code>terminal.go</code>’s <code>Run()</code> loop calls
+<code>le.Prompt(a.prompt())</code> <strong>once per top-level
+turn</strong>, blocking, inside a large ordinary <code>for {}</code>
+loop that then synchronously does everything else — <code>/</code>
+command dispatch (which itself does further prompting,
+e.g. <code>promptAction</code>’s Y/n boxes and <code>ui.go</code>’s
+<code>SelectFrom</code>/<code>SelectItem</code> pickers), <code>!</code>
+shell commands with live streamed output, <code>@mention</code> model
+switching, and the LLM chat/tool-call turn itself. None of that
+surrounding logic is event-driven today.</p>
+<h2
+id="what-charm-actually-offers-verified-against-the-locally-cached-modules">What
+Charm actually offers (verified against the locally cached modules,</h2>
+<p><code>bubbles@v1.0.0</code>, <code>bubbletea@v1.3.10</code> — not
+assumed)</p>
+<ul>
+<li><code>bubbletea.NewProgram</code> runs inline by default;
+<code>tea.WithAltScreen()</code> is opt-in (<code>options.go</code>). A
+Bubble Tea program does <strong>not</strong> have to take over the whole
+screen — it can behave like termlib does today, printing into the normal
+scrollback.</li>
+<li><code>bubbles/textinput</code> has built-in suggestion/autocomplete
+support (<code>SetSuggestions</code>, Tab-accept, Up/Down or
+Ctrl+N/Ctrl+P to cycle matches) — close to termlib’s Tab-completion, but
+suggestions match against the <em>whole current value</em>, not
+termlib’s “complete the current word up to the cursor” semantics;
+harvey’s <code>Completer</code> (slash-command args) would need
+adapting, and Up/Down’s default suggestion-cycling binding collides with
+termlib’s Up/Down-for-history — the keymap needs deliberate
+remapping.</li>
+<li><code>bubbles/textinput</code> has <strong>no built-in
+history</strong> — would need the same kind of manual slice-and-swap
+termlib implements by hand.</li>
+<li><code>bubbles/textarea</code> handles multi-line editing;
+<code>bubbles/textinput</code> does not. Termlib’s single widget does
+both (mode-switches on Ctrl+J) — a Charm version needs either two
+components with an explicit switch, or building multi-line on
+<code>textarea</code> alone and dropping <code>textinput</code>.</li>
+<li><code>tea.ExecProcess</code> (<code>exec.go</code>) exists
+specifically to suspend a running Bubble Tea program, run an external
+command (raw terminal access), and resume on return — the correct
+primitive for <code>$EDITOR</code> handoff, and already the idiom other
+Charm-based tools use for this.</li>
+<li>There is no Charm equivalent of a single blocking
+<code>Prompt() (string, error)</code> call — Bubble Tea’s unit of work
+is a <code>Model</code>/<code>Update</code>/<code>View</code> program
+that runs until it quits. Adopting it means <em>some</em> code has to
+become event-driven; the open question is how much.</li>
+</ul>
+<h2 id="scope-options">Scope options</h2>
+<p><strong>A. Widget-level swap (recommended for this release).</strong>
+Keep <code>terminal.go</code>’s outer loop exactly as it is. Replace
+<code>termlib.LineEditor</code> with a small package
+(<code>replinput.go</code> or similar) that wraps a
+<code>bubbletea.NewProgram</code> (no alt-screen) around
+<code>textinput</code>+<code>textarea</code> internally, exposing the
+<em>same</em> narrow surface <code>terminal.go</code> already calls:
+<code>Prompt(prompt string) (string, error)</code>,
+<code>AppendHistory</code>, <code>SetHistory</code>/
+<code>History</code>, and a sentinel <code>ErrInterrupted</code>. Each
+call to <code>Prompt</code> starts, runs, and quits its own Bubble Tea
+program synchronously, returning the final line the same way termlib
+does today. History, Tab-completion adapted to word-boundary matching,
+multi-line mode-switching, and <code>$EDITOR</code> handoff (via
+<code>tea.ExecProcess</code>) all get reimplemented inside this wrapper
+— genuinely equivalent behavior, Charm underneath, zero change to the
+rest of <code>terminal.go</code>, <code>commands.go</code>,
+<code>ui.go</code>, or the tool-call paths.</p>
+<p><strong>B. Full REPL rearchitecture.</strong> Turn
+<code>terminal.go</code>’s <code>Run()</code> loop itself into a single
+long-running Bubble Tea program — <code>/</code> dispatch,
+<code>!</code> shell streaming, <code>@mention</code> switching, LLM
+streaming output, <code>promptAction</code> Y/n boxes, and
+<code>ui.go</code>’s pickers all become
+<code>Update</code>/<code>View</code>/<code>Cmd</code> states instead of
+synchronous function calls. This is the “real” Charm-native harvey, and
+would let <code>ui.go</code>’s
+<code>SelectFrom</code>/<code>SelectItem</code> (already flagged in
+<code>DECISIONS.md</code> as “promotion to termlib deferred until a
+clean generalisation is proven”) become genuine Bubble Tea components
+instead of hand-rolled pickers. It is also a rewrite of most of the
+interactive surface of a working tool, touching streaming output,
+session recording hooks (<code>RecordTurnWithStats</code>,
+<code>RecordShellCommand</code>), and every place that currently assumes
+synchronous, blocking I/O.</p>
+<p><strong>Recommendation:</strong> Option A for this release. It
+satisfies the actual ask (drop <code>termlib</code>, land on Charm,
+matching <code>knowledge</code>’s precedent) without combining a REPL
+rearchitecture with the other two release workstreams (bug fixes,
+knowledge integration). Option B is real and worth naming as a
+deliberate non-goal now rather than an oversight — revisit it as its own
+effort once Option A has been live for a while.</p>
+<h2 id="constraints">Constraints</h2>
+<ul>
+<li>No local <code>replace</code> directive should be introduced for any
+<code>charmbracelet/*</code> module — same lesson as the stale
+<code>termlib</code> replace found 2026-09-15.</li>
+<li><code>bubbles</code>/<code>bubbletea</code>/<code>lipgloss</code>
+versions should match what <code>knowledge</code> already pins
+(<code>bubbles v1.0.0</code>, <code>bubbletea v1.3.10</code>,
+<code>lipgloss v1.1.0</code>) unless a reason to diverge turns up — one
+Charm version across the workspace, not two.</li>
+<li>TDD per this repo’s convention: <code>terminal_test.go</code>/a new
+<code>replinput_test.go</code> gets the failing tests first. Bubble Tea
+programs are normally tested via <code>teatest</code>
+(<code>github.com/charmbracelet/x/exp/teatest</code>) or by driving
+<code>Update</code> directly with synthetic <code>tea.KeyMsg</code>s —
+needs a quick spike to confirm which fits harvey’s non-TTY test fallback
+path (termlib’s own “stdin not a TTY → plain line reading” behavior,
+which harvey’s tests currently rely on, needs an equivalent in the
+wrapper).</li>
+<li>Every exported symbol needs the <code>/** ... */</code> doc
+convention per <code>CLAUDE.md</code>.</li>
+</ul>
+<h2 id="open-questions-for-review">Open questions for Review</h2>
+<ol type="1">
+<li>Confirm Option A (widget-level swap) as the release scope; Option B
+deferred explicitly, not silently dropped.</li>
+<li>Package boundary: new file in the <code>harvey</code> package
+(matching how <code>ui.go</code>’s <code>SelectFrom</code> lives there
+today), or a small internal sub-package? <code>DECISIONS.md</code>’s
+prior note (“promotion to termlib is deferred until a clean
+generalisation is proven”) argued against over-abstracting early — same
+logic likely applies here: keep it in <code>harvey</code> for now, no
+separate module.</li>
+<li>Tab-completion semantics: reimplement termlib’s word-boundary
+<code>Completer</code> behavior on top of <code>textinput</code>’s
+whole-value <code>SetSuggestions</code>, or accept a behavior change
+(completing the whole line instead of the current word)? The current
+<code>Completer</code> signature
+(<code>func(line string) []string</code>) is word-boundary-aware;
+preserving it means computing suggestions from the substring up to the
+cursor and only inserting the completed word, not calling
+<code>SetSuggestions</code> naively.</li>
+<li>Does the multi-line mode-switch (Ctrl+J) live inside one wrapper
+<code>Model</code> that swaps between an internal
+<code>textinput</code>/<code>textarea</code>, or does
+<code>Prompt</code> itself dispatch to two different sub-programs
+depending on whether the buffer has gained a newline? The former keeps a
+single Bubble Tea program alive per call (matches termlib’s
+continuous-editing feel); the latter is simpler but would lose in-place
+mode switching.</li>
+</ol>
+</section>
+</body>
+</html>

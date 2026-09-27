@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-computational-guidesensor-tools-direction-a-design">Harvey —
+Computational Guide/Sensor Tools (Direction A) — Design</h1>
+<p><strong>Date</strong>: 2026-07-12 <strong>Status</strong>: ✅ Both
+phases implemented 2026-07-12 — see <code>DECISIONS.md</code> and <a
+href="computational-sensors-plan.html">computational-sensors-plan.md</a>
+<strong>Related</strong>: <a
+href="harness-engineering-exploration.html">harness-engineering-exploration.md</a>
+Direction A, <a href="DECISIONS.html">DECISIONS.md</a> (2026-07-12
+sensor-unification entries this builds on)</p>
+<hr />
+<h2 id="whats-already-there-found-during-scoping-not-assumed">What’s
+already there (found during scoping, not assumed)</h2>
+<p>Before designing anything new, checked what Harvey already has, since
+the exploration doc’s Direction A was written as an outside audit, not
+an implementation plan:</p>
+<ul>
+<li><strong><code>CodeFormatter.Check(content, filePath) (bool, []FormatIssue)</code></strong>
+(<code>language_registry.go:243</code>) already exists, is implemented
+for Go via <code>gofmt</code> (<code>PipeExternalFormatter</code>,
+<code>code_formatters.go</code>), and is unit-tested
+(<code>code_formatters_test.go</code>). It is <strong>dormant</strong> —
+grepped every non-test call site; nothing calls <code>.Check()</code>
+outside its own tests. Neither <code>/format</code>
+(<code>commands.go:3733</code>) nor the auto-write path calls it; both
+only call <code>.Format()</code>.</li>
+<li><strong>The “computational guide” half of Direction A already
+exists</strong>: <code>applyAutoFormat</code>
+(<code>builtin_tools.go:1307</code>) runs the registered formatter
+automatically after every <code>write_file</code>, gated by
+<code>a.Config.AutoFormat</code> (default <code>true</code>). Its result
+note (<code>"formatted"</code> / <code>"already formatted"</code>) is
+appended directly into the tool’s own returned string
+(<code>builtin_tools.go:246-253</code>:
+<code>msg += " (" + note + ")"</code>), so the <strong>model</strong>
+sees it as part of the tool-result content, not the human via any
+<code>SensorEvent</code>. (Correction: an earlier draft of this document
+assumed a separate <code>edit_file</code> tool existed and described a
+gap where <code>applyAutoFormat</code> wasn’t wired to it. Checked —
+Harvey has no <code>edit_file</code> tool at all, only whole-file
+<code>write_file</code>. There is no second call site to wire; that
+“gap” doesn’t exist.)</li>
+</ul>
+<p>So the real gap for Direction A is narrower than “build sensor
+infrastructure from scratch”: (1) wire the already-built
+<code>Check()</code> into the same automatic post-write path, and (2)
+add sensors for what formatting can’t catch — correctness, not
+style.</p>
+<h2 id="scope-for-this-increment">Scope for this increment</h2>
+<p>Per the exploration doc’s own Risks and Limits section (“activating
+several rules at once surfaces a wave of findings at once… rules should
+likely be introduced incrementally, not as a bulk ruleset dump”), this
+design covers exactly two sensors, not the full candidate list from the
+exploration doc:</p>
+<ol type="1">
+<li><strong><code>Check()</code> wiring</strong> — surface the dormant
+<code>gofmt</code> <code>Check()</code> result after
+<code>write_file</code>, reusing existing, tested infrastructure.</li>
+<li><strong><code>go vet</code></strong> — the first genuinely new
+sensor. Chosen over
+<code>staticcheck</code>/<code>gocyclo</code>/unused-param/hunspell
+because <code>go vet</code> only reports near-certain bugs (unreachable
+code, format-string mismatches, suspicious struct tags, etc.) by design
+— it has no style-nit noise floor to tune, unlike a general linter.
+Lower risk to introduce first; the rest stay candidates for a follow-on
+increment once this one’s real behavior is observed.</li>
+</ol>
+<p>Both are <strong>Computational</strong> in the
+<code>SensorEvent</code>/<code>SensorClass</code> sense
+(<code>sensor_event.go</code>) — deterministic, CPU-run, no LLM
+judgment.</p>
+<h2 id="visibility-decision-2026-07-12">Visibility decision
+(2026-07-12)</h2>
+<p>Confirmed with the user before designing further: findings are
+<strong>human-visible by default</strong> (always emit a
+<code>SensorEvent</code> — free, no token cost, matches this session’s
+overall emphasis on protecting the Pi’s tight context budget) and
+<strong>model-visible (appended to the tool-result string, costing
+tokens) only when the finding is severe enough to warrant it, or behind
+a config flag for users who want stronger self-correction at the cost of
+tokens.</strong></p>
+<p>Applying that split concretely to the two sensors in scope:</p>
+<ul>
+<li><strong><code>go vet</code> findings are always also appended to the
+tool-result string.</strong> <code>go vet</code>’s own design philosophy
+is to only report near-certain bugs, not style preferences — there is no
+low-severity tier to gate on, so treating every finding as “severe
+enough” is the honest reading of the decision above, not a loophole
+around it.</li>
+<li><strong><code>Check()</code>/<code>gofmt</code> findings are
+<code>SensorEvent</code>-only, never appended to the tool-result
+string</strong>, gated behind a config flag
+(<code>Config.SensorInjectFormatFindings</code>, default
+<code>false</code>) for a user who wants it anyway. Rationale:
+<code>applyAutoFormat</code> already runs <code>Format()</code> first
+and rewrites the file — for Go specifically, <code>Check()</code> should
+almost never find anything left to report after a successful
+auto-format; the residual case (a syntax error <code>gofmt</code> can’t
+parse, so <code>Format()</code> silently no-ops per
+<code>applyAutoFormat</code>’s existing “errors are silently suppressed”
+comment) is rare enough that spending tokens on it by default isn’t
+warranted, but visibility to a human debugging that rare case is still
+cheap and useful.</li>
+</ul>
+<h2 id="proposed-shape">Proposed shape</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// runPostWriteSensors runs the currently-enabled computational sensors for a</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">// just-written file and returns (sensorEvents, toolResultAppendix).</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co">// sensorEvents are always reported via the agent&#39;s Status (when non-nil);</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co">// toolResultAppendix is empty unless a finding warrants spending tokens on</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co">// model-visibility (see computational-sensors-design.md).</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> runPostWriteSensors<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> relPath<span class="op">,</span> absPath<span class="op">,</span> content <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>events <span class="op">[]</span>SensorEvent<span class="op">,</span> toolResultAppendix <span class="dt">string</span><span class="op">)</span></span></code></pre></div>
+<p>Called from the <code>write_file</code> handler
+(<code>builtin_tools.go</code>), after <code>applyAutoFormat</code> —
+Harvey has no separate <code>edit_file</code> tool to also wire.</p>
+<p><code>go vet</code> invocation:
+<code>go vet &lt;package-dir&gt;</code> via <code>os/exec</code>, scoped
+to the package containing the written file — not the whole module — to
+keep it fast enough to run synchronously in the write path on Pi-class
+CPU. Output parsed line-by-line (<code>go vet</code>’s output format is
+stable: <code>file:line:col: message</code>) into
+<code>[]SensorEvent{Kind: "go_vet", Class: Computational}</code>.</p>
+<p><code>Check()</code> invocation: call the already-existing
+<code>f.Check(content, absPath)</code> directly — no new parsing needed,
+<code>FormatIssue</code> already has the right shape.</p>
+<h2 id="open-questions-for-the-plan">Open questions for the plan</h2>
+<ul>
+<li>Should <code>go vet</code> run on every <code>write_file</code>
+call, or only for <code>.go</code> files (obviously only Go, but: only
+when <code>go.mod</code> exists in the workspace, to avoid a confusing
+“go vet failed” note in a non-Go project containing incidental
+<code>.go</code> fixture files)?</li>
+<li>Timeout/failure handling: <code>go vet</code> requires a compilable
+package. A work-in-progress file that doesn’t compile yet will make
+<code>go vet</code> itself fail (not “found issues” — outright error).
+This must not be surfaced as a false sensor finding indistinguishable
+from a real <code>go vet</code> warning, and must never block the write
+itself (matching <code>applyAutoFormat</code>’s existing “errors are
+silently suppressed” policy) — needs explicit handling in the plan, not
+left implicit.</li>
+</ul>
+</section>
+</body>
+</html>

@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-unified-model-support-implementation-plan">Harvey Unified
+Model Support — Implementation Plan</h1>
+<p>See <a href="unified-models-design.html">unified-models-design.md</a>
+for UX design rationale and <a
+href="unified-model-backend-design.html">unified-model-backend-design.md</a>
+for the <code>ManagedBackend</code> architecture and all resolved design
+decisions.</p>
+<p>Work items are labeled B0–B4 (backend abstraction) and U1–U5 (UX
+layer). B0–B4 must precede U1. U2 must precede U3. U5 is deferred.</p>
+<hr />
+<h2 id="b0-managedbackend-interface">B0 — <code>ManagedBackend</code>
+interface</h2>
+<p><strong>Goal:</strong> Define the shared interface and supporting
+types in <code>backend.go</code>. This is reviewed before any
+implementation is written.</p>
+<p><strong>Effort:</strong> ~2h.</p>
+<h3 id="files-to-create">Files to create</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend.go</code> (new)</td>
+<td><code>ManagedBackend</code> interface, <code>ModelSummary</code>,
+<code>BackendStatus</code>, <code>BackendPID</code> types, PID file
+helpers</td>
+</tr>
+</tbody>
+</table>
+<h3 id="types">Types</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ManagedBackend represents a local inference backend Harvey can start,</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">// stop, and query. Implemented by OllamaBackend, LlamafileBackend,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co">// and LlamaCppBackend.</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ManagedBackend <span class="kw">interface</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    Name<span class="op">()</span>            <span class="dt">string</span>       <span class="co">// &quot;ollama&quot;, &quot;llamafile&quot;, &quot;llamacpp&quot;</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    BaseURL<span class="op">()</span>         <span class="dt">string</span>       <span class="co">// e.g. &quot;http://127.0.0.1:11434&quot;</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    ActiveModel<span class="op">()</span>     <span class="dt">string</span>       <span class="co">// currently loaded model name, or &quot;&quot;</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    IsRunning<span class="op">()</span>       <span class="dt">bool</span>         <span class="co">// true when server is reachable</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    Detect<span class="op">()</span>          <span class="dt">bool</span>         <span class="co">// probe server; return IsRunning()</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    Start<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> model <span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    Stop<span class="op">()</span> <span class="dt">error</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    ListModels<span class="op">()</span>      <span class="op">([]</span>ModelSummary<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    NewClient<span class="op">()</span>       <span class="op">(</span>LLMClient<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    StartedByHarvey<span class="op">()</span> <span class="dt">bool</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="co">// ModelSummary is a backend-neutral model description.</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ModelSummary <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    Name      <span class="dt">string</span>    <span class="co">// display / alias name</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    Path      <span class="dt">string</span>    <span class="co">// filesystem path; empty for Ollama</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    Engine    <span class="dt">string</span>    <span class="co">// &quot;ollama&quot;, &quot;llamafile&quot;, &quot;llamacpp&quot;</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    SizeBytes <span class="dt">int64</span>     <span class="co">// 0 if unknown</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    Modified  time<span class="op">.</span>Time <span class="co">// zero if unknown</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a><span class="co">// BackendPID is the JSON payload written to agents/.harvey-backend.pid.</span></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> BackendPID <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    Backend <span class="dt">string</span> <span class="st">`json:&quot;backend&quot;`</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    PID     <span class="dt">int</span>    <span class="st">`json:&quot;pid&quot;`</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    Model   <span class="dt">string</span> <span class="st">`json:&quot;model&quot;`</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    URL     <span class="dt">string</span> <span class="st">`json:&quot;url&quot;`</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="pid-file-helpers-also-in-backend.go">PID file helpers (also in
+<code>backend.go</code>)</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> writePIDFile<span class="op">(</span>dir <span class="dt">string</span><span class="op">,</span> p BackendPID<span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> readPIDFile<span class="op">(</span>dir <span class="dt">string</span><span class="op">)</span> <span class="op">(</span>BackendPID<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> deletePIDFile<span class="op">(</span>dir <span class="dt">string</span><span class="op">)</span> <span class="dt">error</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co">// probeOwnedProcess returns true if the PID in the file is still alive.</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> probeOwnedProcess<span class="op">(</span>p BackendPID<span class="op">)</span> <span class="dt">bool</span></span></code></pre></div>
+<h3 id="acceptance-criteria">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes (interface only, no
+implementations yet).</li>
+<li><code>BackendPID</code> round-trips through JSON cleanly.</li>
+</ul>
+<hr />
+<h2 id="b1-ollamabackend">B1 — <code>OllamaBackend</code></h2>
+<p><strong>Goal:</strong> Wrap existing Ollama connectivity in
+<code>ManagedBackend</code>. Absorbs the current scattered
+<code>OllamaStartedByHarvey bool</code> logic.</p>
+<p><strong>Effort:</strong> ~3h. Depends on B0.</p>
+<h3 id="files-to-create-modify">Files to create / modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend_ollama.go</code> (new)</td>
+<td><code>OllamaBackend</code> struct implementing
+<code>ManagedBackend</code>. <code>Detect</code> calls
+<code>/api/tags</code>. <code>Start</code> runs
+<code>ollama serve</code> and writes PID file. <code>Stop</code> kills
+owned process via PID file. <code>ListModels</code> queries
+<code>/api/tags</code>. <code>NewClient</code> returns the existing
+Ollama-wired <code>LLMClient</code>.</td>
+</tr>
+<tr>
+<td><code>backend_ollama_test.go</code> (new)</td>
+<td>Tests for <code>Detect</code> (mock HTTP), <code>ListModels</code>,
+config round-trip.</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>Replace <code>OllamaStartedByHarvey bool</code> with
+<code>Backend ManagedBackend</code>.</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Replace direct ollama probe + startup with
+<code>OllamaBackend.Detect()</code> / <code>Start()</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-1">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li><code>OllamaBackend.Detect()</code> returns true when Ollama is
+running.</li>
+<li><code>OllamaBackend.ListModels()</code> returns the live model list
+from <code>/api/tags</code>.</li>
+<li><code>OllamaBackend.StartedByHarvey()</code> reads from the PID
+file, not a session-local boolean.</li>
+</ul>
+<hr />
+<h2 id="b2-llamafilebackend">B2 — <code>LlamafileBackend</code></h2>
+<p><strong>Goal:</strong> Wrap existing llamafile process management in
+<code>ManagedBackend</code>. Absorbs
+<code>llamafileProc *os.Process</code> and the startup/stop logic
+scattered across <code>llamafile.go</code> and
+<code>terminal.go</code>.</p>
+<p><strong>Effort:</strong> ~3h. Depends on B0.</p>
+<h3 id="files-to-create-modify-1">Files to create / modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend_llamafile.go</code> (new)</td>
+<td><code>LlamafileBackend</code> struct implementing
+<code>ManagedBackend</code>. <code>Start</code> launches the
+<code>.llamafile</code> binary, writes PID file. <code>Stop</code> kills
+owned process, deletes PID file. <code>Detect</code> calls
+<code>GET /v1/models</code>. <code>ListModels</code> scans
+<code>~/Models</code> for <code>*.llamafile</code>.
+<code>adoptExternal</code> migrates logic from current
+<code>adoptExternalServer</code>.</td>
+</tr>
+<tr>
+<td><code>backend_llamafile_test.go</code> (new)</td>
+<td>Tests for <code>ListModels</code> (scan), <code>Detect</code> (mock
+HTTP).</td>
+</tr>
+<tr>
+<td><code>llamafile.go</code></td>
+<td>Retain backend-specific helpers (path resolution, port management).
+Remove lifecycle code; delegate to
+<code>backend_llamafile.go</code>.</td>
+</tr>
+<tr>
+<td><code>harvey.go</code></td>
+<td>Replace <code>llamafileProc *os.Process</code> (already removed with
+B1 change to <code>Backend ManagedBackend</code>).</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Replace <code>stopLlamafileProc</code> call with
+<code>a.Backend.Stop()</code> on clean exit.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-2">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li><code>LlamafileBackend.ListModels()</code> finds
+<code>*.llamafile</code> files in <code>~/Models</code>.</li>
+<li><code>LlamafileBackend.StartedByHarvey()</code> reads from the PID
+file.</li>
+<li>Clean session exit stops the server if Harvey started it.</li>
+<li>Next startup reads PID file and adopts or cleans up.</li>
+</ul>
+<hr />
+<h2 id="b3-llamacppbackend">B3 — <code>LlamaCppBackend</code></h2>
+<p><strong>Goal:</strong> Add llama-server (llama.cpp) as a third
+<code>ManagedBackend</code> implementation. Replaces the original U4
+design; the backend abstraction is built first rather than adding
+another ad-hoc implementation.</p>
+<p><strong>Effort:</strong> ~4h. Depends on B0. Independent of B1 and B2
+once B0 is stable.</p>
+<h3 id="new-config-type">New config type</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// LlamaCppConfig holds workspace-level llama.cpp settings.</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> LlamaCppConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    ServerBin  <span class="dt">string</span> <span class="co">// path to llama-server binary; default &quot;llama-server&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    ModelsDir  <span class="dt">string</span> <span class="co">// default ~/Models</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    URL        <span class="dt">string</span> <span class="co">// default http://127.0.0.1:8081</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    CtxSize    <span class="dt">int</span>    <span class="co">// --ctx-size; 0 = server default</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    Threads    <span class="dt">int</span>    <span class="co">// --threads; 0 = server default</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    GPULayers  <span class="dt">int</span>    <span class="co">// --n-gpu-layers; 0 = CPU-only</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>CtxSize</code>, <code>Threads</code>, and
+<code>GPULayers</code> are required fields for Raspberry Pi deployments;
+they default to zero (server chooses) but must be configurable. Cold
+startup timeout defaults to 120s (configurable via
+<code>LlamaCppConfig.StartTimeout</code>).</p>
+<h3 id="files-to-create-modify-2">Files to create / modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend_llamacpp.go</code> (new)</td>
+<td><code>LlamaCppBackend</code> implementing
+<code>ManagedBackend</code>. <code>Start</code> runs
+<code>llama-server --model PATH --port PORT [--ctx-size N] [--threads N]</code>.
+<code>ListModels</code> scans <code>~/Models</code> for
+<code>*.gguf</code>.</td>
+</tr>
+<tr>
+<td><code>backend_llamacpp_test.go</code> (new)</td>
+<td>Tests for <code>ListModels</code> (scan), config round-trip.</td>
+</tr>
+<tr>
+<td><code>config.go</code></td>
+<td>Add <code>LlamaCppConfig</code> struct; add
+<code>LlamaCpp LlamaCppConfig</code> field to <code>Config</code>.</td>
+</tr>
+<tr>
+<td><code>config_yaml.go</code></td>
+<td>Add <code>llamacppYAML</code> stanza under
+<code>harveyYAML</code>.</td>
+</tr>
+<tr>
+<td><code>terminal.go</code></td>
+<td>Add <code>LlamaCppBackend</code> to backend selection in startup
+sequence.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="acceptance-criteria-3">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li><code>LlamaCppBackend.ListModels()</code> finds <code>*.gguf</code>
+files in <code>~/Models</code>.</li>
+<li><code>LlamaCppBackend.Start()</code> launches
+<code>llama-server --model PATH</code>.</li>
+<li>Chat turns route to the llama.cpp backend when it is active.</li>
+<li><code>/llamacpp status</code> reports running/stopped and active
+model name.</li>
+<li><code>/llamacpp drop NAME</code> unregisters a model (does not
+delete the file).</li>
+</ul>
+<hr />
+<h2 id="b4-pid-file-persistence-across-sessions">B4 — PID file
+persistence across sessions</h2>
+<p><strong>Goal:</strong> All three backends write a PID file on start
+and read it on startup to re-adopt or clean up a server from a prior
+session.</p>
+<p><strong>Effort:</strong> ~2h. Depends on B1 and B2 (B3 inherits the
+same pattern).</p>
+<h3 id="pid-file-location-and-format">PID file location and format</h3>
+<pre><code>agents/.harvey-backend.pid</code></pre>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;backend&quot;</span><span class="fu">:</span><span class="st">&quot;llamafile&quot;</span><span class="fu">,</span><span class="dt">&quot;pid&quot;</span><span class="fu">:</span><span class="dv">12345</span><span class="fu">,</span><span class="dt">&quot;model&quot;</span><span class="fu">:</span><span class="st">&quot;phi4-Q4_K_M&quot;</span><span class="fu">,</span><span class="dt">&quot;url&quot;</span><span class="fu">:</span><span class="st">&quot;http://127.0.0.1:8080&quot;</span><span class="fu">}</span></span></code></pre></div>
+<h3 id="startup-sequence-addition-terminal.go">Startup sequence addition
+(<code>terminal.go</code>)</h3>
+<pre><code>1. Read PID file if present.
+2. probeOwnedProcess(pid) — is the process still alive?
+   Yes → Detect() the URL → if reachable, adopt (set a.Backend, skip start).
+         if not reachable, log &quot;prior server (PID N) died; cleaning up&quot; and
+         delete PID file.
+   No  → delete stale PID file; proceed with normal backend selection.</code></pre>
+<h3 id="clean-exit-addition-terminal.go">Clean-exit addition
+(<code>terminal.go</code>)</h3>
+<pre><code>On clean exit: if a.Backend.StartedByHarvey() → a.Backend.Stop() →
+               deletePIDFile(workspaceDir).</code></pre>
+<h3 id="acceptance-criteria-4">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>Starting a llamafile writes the PID file.</li>
+<li>Clean exit deletes the PID file and stops the server.</li>
+<li>Restarting Harvey with a live PID file re-adopts the server without
+starting a new process.</li>
+<li>Restarting Harvey with a stale PID file (process dead) cleans up and
+proceeds normally.</li>
+</ul>
+<hr />
+<h2 id="u1-model-use-unified-picker-with-lazy-registration">U1 —
+<code>/model use</code> unified picker with lazy registration</h2>
+<p><strong>Goal:</strong> Replace <code>/llamafile add</code>,
+<code>/llamacpp add</code>, and the post-<code>/ollama use</code> alias
+prompt with a single gesture: <code>/model use</code> with no argument
+shows a combined picker of all locally available models, prompts for an
+alias and optional tags on first use, then starts the server and wires
+<code>a.Client</code>.</p>
+<p><strong>Effort:</strong> ~4h. Depends on B1 and B2 (needs
+<code>ListModels()</code> on both backends).</p>
+<h3 id="files-to-modify">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands.go</code></td>
+<td>Rewrite <code>cmdModel</code> <code>case "use":</code> to call
+<code>pickAndUseModel</code> when no name supplied. Add
+<code>pickAndUseModel</code>, <code>aggregateModels</code>,
+<code>promptLazyRegister</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="key-functions">Key functions</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co">// aggregateModels returns all locally available models across all sources.</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co">// Ollama is queried only if reachable; absent silently.</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> aggregateModels<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> <span class="op">([]</span>ModelSummary<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="co">// promptLazyRegister checks whether item already has an alias; if not,</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="co">// prompts for a short name and optional comma-separated tags, then saves</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="co">// to a.Config.ModelAliases.</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> promptLazyRegister<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> item ModelSummary<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span>alias <span class="dt">string</span><span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="co">// pickAndUseModel presents the combined picker, handles lazy registration,</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="co">// starts the backend, and wires a.Client.</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> pickAndUseModel<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="dt">error</span></span></code></pre></div>
+<h3 id="picker-display-format">Picker display format</h3>
+<pre><code>  Select model:
+    1.  phi4-Q4_K_M          ~/Models/phi4-Q4_K_M.llamafile      [llamafile]
+    2.  qwen2.5-7b            ~/Models/qwen2.5-7b-Q4_K_M.gguf    [llama-server]
+    3.  granite3.3:8b         (ollama)                            [ollama]
+    4.  qwen3:8b              (ollama)                            [ollama]</code></pre>
+<p>Items already aliased show their alias name. Unaliased items show the
+stem of the filename or Ollama model name as the display label.</p>
+<h3 id="warn-and-switch-behavior">Warn-and-switch behavior</h3>
+<p>When a model is selected and a different backend is currently active,
+Harvey prints:</p>
+<pre><code>  Switching from ollama (granite3.3:8b) → llamafile (phi4-Q4_K_M)</code></pre>
+<p>If Harvey owns the outgoing server (per PID file), it is stopped
+first. Servers Harvey did not start are left running.</p>
+<h3 id="acceptance-criteria-5">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li><code>/model use</code> with no args shows picker combining
+<code>~/Models</code> files and Ollama models (if reachable).</li>
+<li>Ollama section is absent and no error is shown when Ollama is not
+running.</li>
+<li>Picking an unaliased model prompts for name + tags; alias is
+saved.</li>
+<li>Picking an already-aliased model skips the registration prompt.</li>
+<li>Active backend switches with warn message when engines differ.</li>
+<li><code>/model use granite</code> (known alias) switches without
+showing picker.</li>
+</ul>
+<hr />
+<h2 id="u2-purpose-tags-and-model-alias">U2 — Purpose tags and
+<code>/model alias</code></h2>
+<p><strong>Goal:</strong> Extend <code>ModelAliases</code> from
+<code>map[string]string</code> to <code>map[string]ModelAlias</code> so
+each alias carries a <code>Tags []string</code>. Move alias management
+from <code>/ollama alias</code> to <code>/model alias</code>.</p>
+<p><strong>Effort:</strong> ~3h. Depends on B0 (interface stable);
+independent of B1–B4.</p>
+<h3 id="new-type">New type</h3>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co">// ModelAlias maps a short alias name to a model and optional purpose tags.</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ModelAlias <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    Model <span class="dt">string</span>   <span class="co">// full model name / path passed to the backend</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    Tags  <span class="op">[]</span><span class="dt">string</span> <span class="co">// e.g. [&quot;code&quot;, &quot;instruct&quot;]</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="files-to-modify-1">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.go</code></td>
+<td>Replace <code>ModelAliases map[string]string</code> with
+<code>map[string]ModelAlias</code>. Update <code>ResolveAlias</code> to
+read <code>.Model</code>. Add
+<code>AliasesByTag(tag string) []string</code>.</td>
+</tr>
+<tr>
+<td><code>config_yaml.go</code></td>
+<td>Add <code>modelAliasYAML</code> union type (accepts string or
+struct). Update <code>harveyYAML.ModelAliases</code>.</td>
+</tr>
+<tr>
+<td><code>config.go</code> <code>LoadHarveyYAML</code></td>
+<td>Decode <code>modelAliasYAML</code> → <code>ModelAlias</code>; string
+form sets <code>Tags: nil</code>.</td>
+</tr>
+<tr>
+<td><code>config.go</code> <code>SaveModelAliases</code></td>
+<td>Emit string form when <code>Tags</code> is empty; struct form
+otherwise.</td>
+</tr>
+<tr>
+<td><code>commands.go</code> <code>cmdModel</code></td>
+<td>Add <code>alias</code> subcommand dispatching
+<code>cmdModelAlias</code>.</td>
+</tr>
+<tr>
+<td><code>commands.go</code> <code>cmdModelAlias</code> (new)</td>
+<td><code>set NAME ID [--tags T,T]</code>,
+<code>tags NAME TAG [TAG...]</code>, <code>list</code>,
+<code>remove NAME</code>. Replaces <code>cmdOllamaAlias</code>.</td>
+</tr>
+<tr>
+<td>All callers of <code>cfg.ModelAliases[k]</code></td>
+<td>Update to <code>cfg.ModelAliases[k].Model</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="backward-compatible-yaml">Backward-compatible YAML</h3>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Old form — still accepted:</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="fu">model_aliases</span><span class="kw">:</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">granite</span><span class="kw">:</span><span class="at"> granite3.3:8b</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="co"># New form:</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="fu">model_aliases</span><span class="kw">:</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">granite</span><span class="kw">:</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">model</span><span class="kw">:</span><span class="at"> granite3.3:8b</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">tags</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">code</span><span class="kw">,</span><span class="at"> instruct</span><span class="kw">]</span></span></code></pre></div>
+<h3 id="acceptance-criteria-6">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes; existing YAML with string aliases
+loads without error.</li>
+<li><code>/model alias set granite granite3.3:8b --tags code,instruct</code>
+saves tags.</li>
+<li><code>/model alias tags granite reasoning</code> appends a tag.</li>
+<li><code>/model alias list</code> shows engine + tags columns.</li>
+<li><code>/model alias remove granite</code> removes the alias.</li>
+<li><code>Config.AliasesByTag("code")</code> returns
+<code>["granite"]</code>.</li>
+<li><code>/ollama alias</code> remains as a deprecated alias routing to
+<code>cmdModelAlias</code> (removed in a later cleanup pass).</li>
+</ul>
+<hr />
+<h2 id="u3-mention-routing-by-purpose-tag">U3 — <code>@mention</code>
+routing by purpose tag</h2>
+<p><strong>Goal:</strong> <code>@code</code> resolves to the best-scored
+alias tagged <code>code</code> when no alias named <code>code</code>
+exists.</p>
+<p><strong>Effort:</strong> ~2h. Depends on U2.</p>
+<h3 id="files-to-modify-2">Files to modify</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>routing.go</code></td>
+<td>Extend <code>resolveAtMention</code>: after exact alias lookup
+fails, call <code>cfg.AliasesByTag(mention)</code>. One result → use it.
+Multiple → pick highest <code>CapabilityStatus.Score</code> from
+<code>model_cache.db</code>; tie-break by first listed.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="routing-resolution-order">Routing resolution order</h3>
+<ol type="1">
+<li>Exact alias name match → <code>ModelAlias.Model</code>.</li>
+<li>Backend-native name (Ollama model list, registered llamafile/GGUF
+name).</li>
+<li>Tag match via <code>AliasesByTag</code> → highest-scored alias.</li>
+<li>No match → existing error / fall-through behaviour.</li>
+</ol>
+<h3 id="acceptance-criteria-7">Acceptance criteria</h3>
+<ul>
+<li><code>go test ./...</code> passes.</li>
+<li>With <code>granite</code> tagged <code>[code, instruct]</code> and
+<code>qwen</code> tagged <code>[reasoning]</code>, <code>@code</code>
+resolves to <code>granite3.3:8b</code>.</li>
+<li><code>@code</code> when no alias carries the <code>code</code> tag →
+existing no-match behaviour.</li>
+<li><code>@granite</code> still resolves to <code>granite3.3:8b</code>
+(exact alias wins).</li>
+</ul>
+<hr />
+<h2 id="u5-cross-workspace-model-registry-deferred">U5 — Cross-workspace
+model registry (deferred)</h2>
+<p><strong>Goal:</strong> Single global alias + tag registry inherited
+by all workspaces, with per-workspace overrides.</p>
+<p><strong>Deferred until:</strong> U1–U3 are stable and the
+per-workspace alias UX is validated in practice.</p>
+<p><strong>Likely approach:</strong>
+<code>$HOME/.config/harvey/harvey.yaml</code> as a global layer loaded
+before the workspace <code>agents/harvey.yaml</code>. Workspace values
+override global values. The config loader merges the two alias maps.</p>
+<hr />
+<h2 id="dependency-graph">Dependency graph</h2>
+<pre><code>B0 (ManagedBackend interface)
+  ├── B1 (OllamaBackend)   ─┐
+  ├── B2 (LlamafileBackend) ├── B4 (PID file persistence)
+  └── B3 (LlamaCppBackend) ─┘
+        │
+        └── U1 (unified picker + lazy registration)  ← needs B1 + B2
+
+B0 ──────────────────────────────── U2 (purpose tags + /model alias)
+                                          │
+                                          └── U3 (@mention tag routing)
+
+U2 ─── R7-B (Config field grouping — unblocked once B0 interface is stable)
+
+U5 (cross-workspace registry) — depends on U2; deferred</code></pre>
+<p>Recommended order: B0 → B1 + B2 (parallel) → B3 + B4 (parallel) → U1
+→ U2 → U3 → R7-B → U5 (when warranted).</p>
+</section>
+</body>
+</html>

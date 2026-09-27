@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="workspace-init-and-profile-separation-design">Workspace Init and
+Profile Separation — Design</h1>
+<h2 id="context">Context</h2>
+<p>This document covers two related design decisions made after
+completing the U1–U3 unified model backend work:</p>
+<ol type="1">
+<li><strong>U5-revised</strong> — alias seeding between workspaces via
+<code>harvey init &lt;path&gt;</code></li>
+<li><strong>P1</strong> — workspace profile injection off by
+default</li>
+</ol>
+<hr />
+<h2 id="u5-revised-alias-seeding-harvey-init-workspace-init">U5-revised
+— Alias seeding (<code>harvey init</code> /
+<code>/workspace init</code>)</h2>
+<h3 id="problem">Problem</h3>
+<p>The original U5 design proposed a global
+<code>~/.config/harvey/harvey.yaml</code> loaded at runtime as a base
+layer, with per-workspace YAML overlaying it. This introduces:</p>
+<ul>
+<li><strong>Spooky action at a distance</strong>: a globally-defined
+alias silently affects workspace <code>@mention</code> routing with no
+trace in the workspace’s own files.</li>
+<li><strong>Machine-local coupling</strong>: the global file travels
+with the machine, not the work. Workspaces handed off or shared become
+unpredictable.</li>
+<li><strong>No audit trail</strong>: nothing in
+<code>agents/harvey.yaml</code> tells you where an alias came from.</li>
+</ul>
+<h3 id="decision">Decision</h3>
+<p>Strict workspace separation. No global config is loaded at runtime.
+Aliases are seeded explicitly and become owned by the destination
+workspace.</p>
+<p>The mechanism is a one-time import operation with two entry
+points:</p>
+<p><strong>CLI (before REPL starts):</strong></p>
+<pre><code>harvey init &lt;source&gt;</code></pre>
+<p><code>&lt;source&gt;</code> is either a workspace directory (reads
+<code>agents/harvey.yaml</code>) or a standalone <code>.yaml</code> /
+<code>.yml</code> file with a <code>model_aliases:</code> map. After the
+import, Harvey exits — it does not start a session.</p>
+<p><strong>REPL (mid-session):</strong></p>
+<pre><code>/workspace init [&lt;source&gt;]</code></pre>
+<p>With no source, prints workspace info and a tip. With a source path,
+imports aliases and saves immediately.</p>
+<h3 id="source-resolution">Source resolution</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Source type</th>
+<th scope="col">What is read</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Directory</td>
+<td><code>&lt;dir&gt;/agents/harvey.yaml</code></td>
+</tr>
+<tr>
+<td><code>.yaml</code>/<code>.yml</code> file</td>
+<td>The file itself, <code>model_aliases:</code> key only</td>
+</tr>
+</tbody>
+</table>
+<h3 id="merge-strategy">Merge strategy</h3>
+<ul>
+<li>Source aliases fill <strong>gaps only</strong> — existing aliases
+are never overwritten.</li>
+<li>After merge, <code>SaveModelAliases</code> is called to
+persist.</li>
+<li>Output:
+<code>Imported N aliases (M skipped — already defined)</code>.</li>
+</ul>
+<h3 id="what-is-not-imported">What is NOT imported</h3>
+<p>Only <code>model_aliases</code> is imported. Purpose tags,
+LlamafileModels registry, llamacpp config, security config, session
+config — none of these cross workspace boundaries. Aliases were chosen
+because they are lightweight name→model mappings with purpose tags, and
+they are the primary cross-workspace concern.</p>
+<h3 id="cli-harvey-init-vs-harvey---init-from">CLI:
+<code>harvey init</code> vs <code>harvey --init-from</code></h3>
+<p><code>harvey init &lt;path&gt;</code> is the preferred form (matches
+<code>git init</code> convention). The <code>--init-from</code> flag
+approach couples alias seeding to a normal session startup, which is
+surprising. The <code>init</code> subcommand exits after import with no
+REPL.</p>
+<h3 id="implementation">Implementation</h3>
+<p><code>case "init":</code> branch in the <code>os.Args</code> switch
+in <code>cmd/harvey/main.go</code>. Called after
+<code>NewWorkspace</code> + <code>LoadHarveyYAML</code> so existing
+aliases are loaded before the merge, then <code>ImportAliasesFrom</code>
+is called, then <code>os.Exit(0)</code>.</p>
+<hr />
+<h2 id="p1-workspace-profile-injection-off-by-default">P1 — Workspace
+profile injection off by default</h2>
+<h3 id="problem-1">Problem</h3>
+<p><code>Memory.InjectOnStart</code> currently defaults to
+<code>true</code>, meaning the workspace profile (a block of text
+describing the workspace) is automatically injected into every session’s
+system context. For small models (≤ 8B parameters), this consumes
+precious context tokens that are better used for actual work.</p>
+<h3 id="decision-1">Decision</h3>
+<p>Change the default to <code>false</code>. The workspace profile is
+still available: - <code>/memory profile show</code> displays it. -
+<code>memory.inject_on_start: true</code> in <code>harvey.yaml</code>
+re-enables injection for workspaces where the context cost is
+acceptable. - <code>/workspace status</code> shows whether a profile
+exists and whether injection is on, giving the user visibility without
+injecting anything.</p>
+<h3 id="workspace-command-scope"><code>/workspace</code> command
+scope</h3>
+<p><code>/workspace</code> is about workspace identity and
+initialization — not about filling the system prompt. The commands
+are:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/workspace status</code></td>
+<td>Root, alias count, profile name (if any), injection status</td>
+</tr>
+<tr>
+<td><code>/workspace init [&lt;path&gt;]</code></td>
+<td>Seed aliases from source; print tip when no path given</td>
+</tr>
+</tbody>
+</table>
+<p><code>/memory profile</code> remains the management surface for
+creating, editing, and using profiles. The two commands do not
+overlap.</p>
+<h3 id="workspace-status-output-format"><code>/workspace status</code>
+output format</h3>
+<pre><code>  Root:      /Users/rsdoiel/myproject
+  Aliases:   5 defined
+  Profile:   &quot;myproject&quot; (injection off — enable with: memory.inject_on_start: true)</code></pre>
+<p>When no profile exists:</p>
+<pre><code>  Root:      /Users/rsdoiel/myproject
+  Aliases:   0 defined
+  Profile:   none  (create one with /memory profile new)</code></pre>
+<hr />
+<h2 id="files-to-change">Files to change</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.go</code></td>
+<td><code>InjectOnStart: false</code> in
+<code>DefaultConfig()</code></td>
+</tr>
+<tr>
+<td><code>cmd/harvey/main.go</code></td>
+<td>Replace <code>--init-from</code> flag with <code>case "init":</code>
+subcommand</td>
+</tr>
+<tr>
+<td><code>workspace_init.go</code></td>
+<td><code>ImportAliasesFrom</code> (already drafted)</td>
+</tr>
+<tr>
+<td><code>commands.go</code></td>
+<td><code>/workspace</code> command: <code>init</code> +
+<code>status</code> subcommands; status shows profile info</td>
+</tr>
+<tr>
+<td><code>commands_test.go</code> or
+<code>workspace_init_test.go</code></td>
+<td>Tests for alias import (no-op when empty, gap-fill, skip
+existing)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="acceptance-criteria">Acceptance criteria</h2>
+<ul>
+<li><code>harvey init /other/workspace</code> imports aliases and exits
+without starting REPL.</li>
+<li><code>harvey init ~/aliases.yaml</code> imports from a standalone
+file and exits.</li>
+<li><code>harvey init /nonexistent</code> prints an error and exits
+non-zero.</li>
+<li><code>/workspace init /other/workspace</code> imports aliases
+mid-session and saves.</li>
+<li><code>/workspace init</code> (no path) prints info and a tip.</li>
+<li><code>/workspace status</code> shows root, alias count, profile name
+and injection status.</li>
+<li><code>go test ./...</code> passes.</li>
+<li><code>DefaultConfig().Memory.InjectOnStart == false</code>.</li>
+</ul>
+</section>
+</body>
+</html>

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="agentic-memory-tools-design">Agentic Memory Tools — Design</h1>
+<h2 id="source">Source</h2>
+<blockquote>
+<p>Yi Yu, Liuyi Yao, Yuexiang Xie, Qingquan Tan, Jiaqi Feng, Yaliang Li,
+and Libing Wu. <strong>Agentic Memory: Learning Unified Long-Term and
+Short-Term Memory Management for Large Language Model Agents.</strong>
+arXiv:2601.01885v2 [cs.CL], 30 Apr 2026. Wuhan University / Alibaba
+Group. Local copy: <code>memory-models/2601.01885v2.pdf</code></p>
+</blockquote>
+<p>Key sections referenced in this design: - §3.2 Memory Management via
+Tool Interface (the six tools, Table 1) - §3.3 Three-Stage Progressive
+RL Strategy (not adopted — see §“What we are NOT doing”) - §4.2 Main
+Results (Table 2, Figure 3 — STM tools outperform static RAG) - §A.1
+Memory Management Tools (precise tool definitions, Figures 6–7) - §A.2
+Reward Function Design (not adopted)</p>
+<h2 id="motivation">Motivation</h2>
+<p>Harvey’s current memory architecture is a heuristic pipeline: RAG
+chunks are injected per-prompt, memory-store recall happens once at
+session start, and the model has no agency over any of it. The AgeMem
+paper demonstrates that exposing memory operations as <strong>tool calls
+the LLM can invoke autonomously</strong> outperforms static injection
+pipelines across five long-horizon benchmarks. The improvement comes
+from the model learning when and what to store, retrieve, summarise, and
+discard — decisions that heuristics handle poorly.</p>
+<p>Harvey cannot adopt AgeMem’s three-stage GRPO reinforcement-learning
+training (no training infrastructure). However, the tool interface
+itself is separable from the training procedure. Models with reliable
+structured-tool support (granite4.1, Qwen2.5) benefit from having these
+tools available even when they invoke them on instinct rather than
+trained policy.</p>
+<h2 id="harveys-current-memory-state">Harvey’s current memory state</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Silo</th>
+<th scope="col">Files</th>
+<th scope="col">Injection point</th>
+<th scope="col">Model agency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAG store</td>
+<td><code>rag_support.go</code>, <code>agents/rag/*.db</code></td>
+<td>Per-prompt via <code>ragAugment()</code></td>
+<td>None</td>
+</tr>
+<tr>
+<td>Memory store</td>
+<td><code>memory_store.go</code>, <code>agents/memories/</code></td>
+<td>Session start via <code>UnifiedMemory.Recall()</code></td>
+<td>None</td>
+</tr>
+<tr>
+<td>Knowledge base</td>
+<td><code>knowledge.go</code>, <code>agents/knowledge.db</code></td>
+<td>Optional, also via <code>UnifiedMemory</code></td>
+<td>None</td>
+</tr>
+<tr>
+<td>Session context (STM)</td>
+<td><code>harvey.go</code> <code>History []Message</code></td>
+<td>Always present</td>
+<td>None mid-session</td>
+</tr>
+</tbody>
+</table>
+<p>All four silos are written and read by Harvey’s infrastructure, not
+by the model. The model cannot save a new memory, update a stale one,
+retrieve mid-session, summarise history, or filter distracting
+messages.</p>
+<h2 id="problem-statement">Problem statement</h2>
+<ol type="1">
+<li><p><strong>STM grows unbounded.</strong> <code>History</code> is
+never pruned mid-session except when the user runs
+<code>/summarize</code>. Context overflow is handled reactively (after
+the fact) rather than proactively.</p></li>
+<li><p><strong>LTM is write-only from the model’s perspective.</strong>
+The model can observe memory injected at session start but cannot add,
+update, or delete entries during a session.</p></li>
+<li><p><strong>No mid-session LTM retrieval.</strong> If a user asks
+about something not recalled at startup, it stays in the dark for that
+session.</p></li>
+<li><p><strong>Dual injection redundancy.</strong> With both
+<code>memory.enabled</code> and <code>rag.enabled</code>, RAG chunks are
+injected per-prompt <em>and</em> the memory store recalls at session
+start, potentially injecting overlapping content twice (see also: dual
+RAG audit in <code>DECISIONS.md</code>).</p></li>
+</ol>
+<h2 id="proposed-tools">Proposed tools</h2>
+<p>Six tools mirroring AgeMem’s interface (Table 1 of the paper). Each
+maps to existing Harvey code so implementation is wrapping, not new
+infrastructure.</p>
+<h3 id="stm-tools">STM tools</h3>
+<p><strong><code>summary_context</code></strong> Compresses a span of
+conversation history into a concise summary, replacing the original
+messages with a single summary entry. Reduces context size while
+preserving essential information. The model should invoke this
+proactively when context is filling.</p>
+<ul>
+<li><code>span</code> (string): <code>"all"</code> for entire non-system
+history, or an integer N for the last N turns.</li>
+<li>Implementation: reuses the LLM-based summary logic already in
+<code>cmdSummarize</code> / <code>rollingSummaryPrompt</code>. The
+resulting summary replaces the covered messages in
+<code>a.History</code>.</li>
+<li>Recorder: <code>RecordAgentAction</code> with
+<code>[[summary: N turns → compressed]]</code>.</li>
+</ul>
+<p><strong><code>filter_context</code></strong> Removes messages from
+the active context whose content is irrelevant to a given criterion.
+Suppresses noise and distractors. Particularly useful when a prior topic
+dominates the context but is no longer relevant.</p>
+<ul>
+<li><code>criteria</code> (string): natural-language description of what
+to remove (e.g. “questions about Python installation”).</li>
+<li>Implementation: embed <code>criteria</code> using the active
+embedder; cosine-score each <code>History</code> message; remove those
+scoring above threshold θ_f (default 0.6, matching AgeMem §A.1).
+Messages with role <code>system</code> are never removed.</li>
+<li>Requires an embedder. Falls back to keyword matching if none is
+configured.</li>
+</ul>
+<p><strong><code>retrieve_memory</code></strong> Semantic search across
+all three LTM silos (memory store, RAG store, knowledge base), returning
+the top-k most relevant entries and injecting them as a system message
+into the current context.</p>
+<ul>
+<li><code>query</code> (string): retrieval query.</li>
+<li><code>top_k</code> (int, default 3): maximum results.</li>
+<li>Implementation: wraps
+<code>UnifiedMemory.Recall(query, embedder, budget)</code>. Result is
+prepended as a <code>system</code> message so subsequent turns can
+reference it.</li>
+<li>This provides <em>on-demand</em> mid-session recall as a complement
+to the startup-time batch recall already in place.</li>
+</ul>
+<h3 id="ltm-tools">LTM tools</h3>
+<p><strong><code>add_memory</code></strong> Saves a new entry to the
+memory store for future sessions. The model uses this when it identifies
+information worth preserving across sessions: user preferences, project
+decisions, tool-use patterns.</p>
+<ul>
+<li><code>content</code> (string): the memory body.</li>
+<li><code>memory_type</code> (string): one of the valid
+<code>MemoryType</code> constants (<code>tool_use</code>,
+<code>workflow</code>, <code>user_preference</code>,
+<code>workspace_profile</code>, <code>project_fact</code>).</li>
+<li><code>tags</code> ([]string, optional): concept tags.</li>
+<li>Implementation: constructs a <code>MemoryDoc</code> with
+auto-generated ID and calls <code>MemoryStore.Save()</code>. Requires
+<code>a.Memory.Store != nil</code>.</li>
+<li>Recorder: <code>RecordAgentAction</code> with
+<code>[[memory: saved &lt;ID&gt;]]</code>.</li>
+</ul>
+<p><strong><code>update_memory</code></strong> Modifies the content of
+an existing memory entry identified by ID. Use when new information
+supersedes or corrects a previously stored fact.</p>
+<ul>
+<li><code>id</code> (string): memory ID from a prior
+<code>retrieve_memory</code> result.</li>
+<li><code>content</code> (string): replacement content.</li>
+<li>Implementation: loads existing <code>MemoryDoc</code> by ID, updates
+the body text and modification timestamp, re-saves.</li>
+</ul>
+<p><strong><code>delete_memory</code></strong> Archives (soft-deletes) a
+memory entry by setting its confidence to 0.0, matching the existing
+<code>/memory forget</code> behaviour. The entry is excluded from future
+recall but preserved in the store for audit purposes.</p>
+<ul>
+<li><code>id</code> (string): memory ID.</li>
+<li>Implementation: wraps the existing confidence-zeroing path in
+<code>MemoryStore</code>.</li>
+</ul>
+<h2 id="proactive-context-threshold">Proactive context threshold</h2>
+<p>Without RL training, the model will not call
+<code>summary_context</code> unless prompted. A lightweight heuristic
+guard in <code>runChatTurn</code>: if <code>remainingContext(a)</code>
+falls below a configured fraction of the total context limit (default
+20%), inject a brief <code>system</code> message nudging the model to
+invoke <code>summary_context</code> before the next turn consumes the
+remaining budget. This captures most of AgeMem’s “preventive management”
+benefit without training.</p>
+<p>Config key: <code>chunking.stm_warn_pct</code> (float, default 0.20).
+Disable by setting to 0.</p>
+<h2 id="relationship-to-the-dual-rag-audit">Relationship to the dual RAG
+audit</h2>
+<p>After <code>retrieve_memory</code> is available as a tool, the
+per-prompt <code>ragAugment()</code> call becomes redundant for sessions
+where the model is reliably calling <code>retrieve_memory</code> itself.
+The dual RAG audit (deferred in <code>DECISIONS.md</code>) can then
+become a simple config switch: <code>rag.per_prompt: bool</code>
+(default <code>true</code> for backward compatibility). For sessions
+with a capable model and STM tools registered, recommend
+<code>rag.per_prompt: false</code> and let the model drive
+retrieval.</p>
+<h2 id="what-we-are-not-doing">What we are NOT doing</h2>
+<ul>
+<li>Three-stage GRPO training or any reward-function infrastructure —
+Harvey is an inference-time agent with no training loop.</li>
+<li>Automatic FILTER threshold tuning — θ_f = 0.6 is fixed (AgeMem Table
+5 shows stability across 0.4–0.8).</li>
+<li>Storing embeddings for History messages at write time — filter will
+use on-the-fly embedding of each message when
+<code>filter_context</code> is called.</li>
+<li>Changing the existing startup-time
+<code>UnifiedMemory.Recall()</code> — it stays.
+<code>retrieve_memory</code> is additive.</li>
+</ul>
+<h2 id="implementation-notes">Implementation notes</h2>
+<p>All six tools register via <code>RegisterBuiltinTools</code> in
+<code>builtin_tools.go</code>. They require
+<code>a.Memory.Store != nil</code> (LTM tools) or
+<code>a.Client != nil</code> (STM tools that call the LLM for
+summarisation). The tools should check prerequisites and return a clear
+error string (not a Go error) when they are unavailable, so the model
+can reason about the failure.</p>
+<p>Permission model: <code>add_memory</code>,
+<code>update_memory</code>, <code>delete_memory</code> should respect
+<code>safe_mode</code>. In safe mode, confirm before writing.
+<code>filter_context</code> is destructive to the session context and
+should also check <code>safe_mode</code>.</p>
+</section>
+</body>
+</html>

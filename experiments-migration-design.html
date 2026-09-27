@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="experiments-projects-data-migration-design"><code>experiments</code>
+→ <code>projects</code> Data Migration — Design</h1>
+<p><strong>Status (2026-07-27):</strong> Decisions confirmed. See <a
+href="experiments-migration-plan.html">experiments-migration-plan.md</a>
+for the phased (W1–W6) implementation plan.</p>
+<p><strong>References:</strong> -
+<code>../knowledge_db_merge_design.md</code> — umbrella cross-machine
+sync design. This document is a newly-discovered prerequisite for that
+sequencing’s step 2 (SQL/ATTACH merge), found while running a real
+<code>bin/kbmerge</code> against macmini-rd.local’s actual
+<code>knowledge.db</code>. - <code>DECISIONS.md</code>, 2026-07-27
+entries — the audit trail that led here (UUID migration correction,
+<code>concepts.created_at</code> fix, this finding).</p>
+<hr />
+<h2 id="motivation-corrected">Motivation, corrected</h2>
+<p>The original framing (in <code>TODO.md</code> and the first draft of
+this thread) was “harvey renamed <code>experiments</code> to
+<code>projects</code> at some point and never migrated existing
+databases.” <strong>That’s wrong — worth stating plainly since it
+changes the right fix.</strong> Checked directly:</p>
+<pre><code>git log --diff-filter=A --oneline --all -- knowledge.go   →  5b1d802 (3rd commit in harvey&#39;s whole history)
+git log --all -p -- knowledge.go | grep -c experiment      →  0</code></pre>
+<p><code>harvey/knowledge.go</code> has used
+<code>projects</code>/<code>project_id</code> since its very first
+commit. It has never contained the word “experiment.” The
+<code>experiments</code> schema exists only in root
+<code>CLAUDE.md</code>’s Knowledge Base section (which documents
+<code>experiments</code>/<code>experiment_concepts</code>/<code>experiment_summary</code>
+and gives example <code>sqlite3</code> commands using
+<code>experiment_id</code>) — a description of an <em>earlier,
+hand-run</em> convention for <code>agents/knowledge.db</code>, predating
+<code>harvey</code>’s SQL-backed implementation, never updated after
+<code>harvey</code> took over as the tool that actually reads and writes
+the file. This matches an existing memory
+(<code>knowledge_db_schema_stale.md</code>, filed 2026-07-05) that
+already flagged the docs as stale — this audit shows it’s not just docs:
+one real database is still living proof of the older convention.</p>
+<p><strong>Confirmed scope:</strong> checked every
+<code>knowledge.db</code> reachable from this machine. Only
+<strong>macmini-rd.local’s</strong> has <code>experiments</code>
+tables:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Database</th>
+<th scope="col"><code>experiments</code> tables present?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>~/Laboratory/agents/knowledge.db</code> (wren, live)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>harvey/agents/knowledge.db</code> (wren)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>harvey/.harvey/knowledge.db</code> (wren)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>macmini-rd.local-agents/knowledge.db</code> (copy of macmini’s
+live db)</td>
+<td><strong>Yes</strong></td>
+</tr>
+</tbody>
+</table>
+<p>So this is not a general harvey defect that will recur on every new
+workspace — it’s a one-time bridge needed for whichever machine(s) still
+carry the pre-<code>harvey</code> hand-authored schema. Worth writing
+generally (detect-and-migrate, no-op if absent) rather than a one-off
+script, in case another machine (or a future one) turns out to have the
+same shape — but the blast radius today is exactly one file.</p>
+<h2 id="current-schema-macmini-rd.local-verified-2026-07-27">Current
+schema (macmini-rd.local, verified 2026-07-27)</h2>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> experiments (</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>       <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span> AUTOINCREMENT,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    name     TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    status   TEXT <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;concept&#39;</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    language TEXT,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    repo_url TEXT</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> observations (</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>            <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span> AUTOINCREMENT,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    experiment_id <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">REFERENCES</span> experiments(<span class="kw">id</span>),</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    kind          TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">body</span>          TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    created_at    <span class="dt">TIMESTAMP</span> <span class="kw">DEFAULT</span> <span class="fu">CURRENT_TIMESTAMP</span>,</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    source_doi TEXT <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>, uuid TEXT <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>, origin_host TEXT <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> experiment_concepts (</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    experiment_id <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">REFERENCES</span> experiments(<span class="kw">id</span>),</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    concept_id    <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">REFERENCES</span> concepts(<span class="kw">id</span>),</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (experiment_id, concept_id)</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="co">-- plus experiment_summary, a VIEW joining the three above</span></span></code></pre></div>
+<p><code>observations</code> here has <strong>no <code>project_id</code>
+column at all</strong> — not “empty”, genuinely absent, because
+<code>CREATE TABLE IF NOT EXISTS</code> (in
+<code>harvey/knowledge.go</code>’s <code>schema</code> const) is a no-op
+against a table that already exists under any shape. This is why
+<code>bin/kbmerge</code> fails with
+<code>no such column: o.project_id</code> rather than a join producing
+zero rows.</p>
+<p><code>projects</code> on macmini today has exactly
+<strong>one</strong> row (<code>henry</code>, inserted at some point
+after <code>harvey</code> started being used there — 0 observations
+attached). <code>experiments</code> holds the real historical
+content:</p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">id</th>
+<th scope="col">name</th>
+<th scope="col">status</th>
+<th scope="col">language</th>
+<th scope="col">repo_url</th>
+<th scope="col">observations (real count)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>harvey</td>
+<td>active</td>
+<td>Go</td>
+<td><code>https://github.com/rsdoiel/Laboratory</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>2</td>
+<td>sparqlset</td>
+<td>active</td>
+<td>Go</td>
+<td><code>github.com/rsdoiel/sparqlset</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>3</td>
+<td>henry</td>
+<td>active</td>
+<td>bash, make</td>
+<td>(empty)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>4</td>
+<td>audiobox</td>
+<td>active</td>
+<td>Go, TypeScript</td>
+<td><code>git@github.com:rsdoiel/audiobox.git</code></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>(93 observations and 35 concepts total across these four, per the
+2026-07-27 audit; exact per-experiment split not yet queried.)</p>
+<p><strong>The name collision:</strong> <code>henry</code> exists in
+<em>both</em> <code>experiments</code> (id=3, real data) and
+<code>projects</code> (id=1, empty stub) on the same database. This is
+the central case the migration must get right — the two decisions below
+follow directly from it.</p>
+<h2 id="decisions-draft-need-your-confirmation">Decisions (draft — need
+your confirmation)</h2>
+<ol type="1">
+<li><p><strong>Detect, don’t assume.</strong> Guard the whole migration
+on
+<code>SELECT name FROM sqlite_master WHERE type='table' AND name='experiments'</code>.
+If absent, the migration step is a complete no-op — every database that
+only ever went through <code>harvey</code>’s
+<code>OpenKnowledgeBase</code> (i.e. everything except macmini’s) is
+unaffected, with zero risk of the migration path ever running against
+data it wasn’t designed for.</p></li>
+<li><p><strong><code>observations.project_id</code> needs an
+<code>ALTER</code>, unconditionally.</strong> Add
+<code>ALTER TABLE observations ADD COLUMN project_id INTEGER REFERENCES projects(id)</code>
+to <code>kbAlterStmts</code> (no default needed — it’s nullable, no
+non-empty-table restriction applies to a plain nullable column add).
+This is safe to run on every database unconditionally, same as every
+other <code>kbAlterStmts</code> entry: on databases that already have
+<code>project_id</code> (i.e. all of them except macmini’s), SQLite
+returns “duplicate column name”, already silently ignored by the
+existing <code>_, _ = db.Exec(stmt)</code> pattern.</p></li>
+<li><p><strong>Match <code>experiments.name</code> to an existing
+<code>projects.name</code> row; create one only if no match
+exists.</strong> This is what correctly resolves the <code>henry</code>
+collision: macmini’s real <code>henry</code> observations end up
+attached to the <em>existing</em> <code>henry</code> projects row (id=1)
+rather than creating a second, duplicate “henry” project. For
+<code>harvey</code>, <code>sparqlset</code>, <code>audiobox</code> — no
+existing <code>projects</code> row shares that name on macmini today — a
+new <code>projects</code> row is created for each, via the existing
+<code>AddProject</code> codepath (so it gets a real
+<code>uuid</code>/<code>origin_host</code> like any other
+project).</p></li>
+<li><p><strong>Translate <code>observations.experiment_id</code> →
+<code>project_id</code> via the name mapping from (3), for every row
+where <code>project_id IS NULL</code>.</strong> Idempotent by
+construction: a second run finds no rows left to update. Symmetric step
+for <code>experiment_concepts</code> → <code>project_concepts</code>,
+via <code>INSERT OR IGNORE</code> (the composite primary key already
+dedups a second run).</p></li>
+<li><p><strong>Leave
+<code>experiments</code>/<code>experiment_concepts</code>/<code>experiment_summary</code>
+in place, permanently, never dropped.</strong> They become inert once
+(4) has run — nothing in <code>harvey</code> reads them today, and
+nothing will start doing so after this migration. Rejected:
+<code>DROP TABLE</code> — no correctness reason to remove them (they
+cost nothing sitting unused), and dropping is one-way while every other
+choice here is reversible by re-running the migration logic or, worst
+case, restoring from a backup. This also sidesteps
+<code>observations.experiment_id</code>’s
+<code>NOT NULL REFERENCES experiments(id)</code> constraint entirely —
+no <code>ALTER</code>/<code>DROP COLUMN</code> dance needed on a column
+nothing will read again.</p></li>
+<li><p><strong><code>experiments.language</code>/<code>experiments.repo_url</code>
+fold into the new project’s <code>description</code>.</strong>
+<code>projects</code> has no equivalent columns (only
+<code>name</code>/<code>description</code>/<code>status</code>), so for
+each <em>newly-created</em> project only (<code>harvey</code>,
+<code>sparqlset</code>, <code>audiobox</code> — <code>henry</code>
+already exists as a <code>projects</code> row and keeps its own
+<code>description</code>, untouched), format as
+<code>"&lt;language&gt; — &lt;repo_url&gt;"</code> (omit either side if
+empty; if both are empty, <code>description</code> stays
+<code>""</code>) and pass it as <code>AddProject</code>’s
+<code>description</code> argument. This preserves the information rather
+than silently dropping it, without inventing a new schema column for
+data that only exists on one legacy database.</p></li>
+</ol>
+<h2 id="testing-per-this-workspaces-tdd-first-convention">Testing (per
+this workspace’s TDD-first convention)</h2>
+<p>Mirrors
+<code>TestOpenKnowledgeBase_BackfillsLegacyConceptsCreatedAt</code>‘s
+approach: build a raw legacy-shape database in a test (the exact DDL
+above), seed it with a case that exercises the collision
+(<code>henry</code> present in both <code>experiments</code> and
+<code>projects</code>) and a case that doesn’t (<code>harvey</code>,
+present only in <code>experiments</code>), then open it via
+<code>OpenKnowledgeBase</code> and assert: - Exactly one
+<code>henry</code> row remains in <code>projects</code> (no duplicate
+created), and the migrated <code>henry</code> observations’
+<code>project_id</code> points at it. - A new <code>harvey</code> row is
+created in <code>projects</code>, and its migrated observations’
+<code>project_id</code> points at the new row. - Every
+<code>observations</code> row that had a non-null
+<code>experiment_id</code> now also has a non-null
+<code>project_id</code>. - Idempotent: re-running
+<code>OpenKnowledgeBase</code> a second time changes nothing (no
+duplicate projects, no duplicate <code>project_concepts</code> rows,
+same <code>project_id</code> values). -
+<code>experiments</code>/<code>experiment_concepts</code> tables still
+exist and are unchanged (decision 5) — migration only adds rows
+elsewhere, never touches or drops the legacy tables.</p>
+<h2 id="known-edge-case-for-continuity">Known edge case for
+continuity</h2>
+<p>Only after this migration completes on macmini (and gets applied to
+its real live <code>agents/knowledge.db</code>, not just the copy on
+<code>wren</code>) does a real
+<code>bin/kbmerge -a &lt;wren&gt; -b &lt;macmini&gt;</code> run become
+possible without hitting <code>no such column: o.project_id</code>. That
+was the original trigger for this whole design (see
+<code>DECISIONS.md</code>, 2026-07-27, “concepts.created_at” entry).</p>
+</section>
+</body>
+</html>

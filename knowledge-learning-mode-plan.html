@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="knowledge-base-learning-mode-implementation-plan">Knowledge-Base
+Learning Mode — Implementation Plan</h1>
+<p>See <a
+href="knowledge-learning-mode-design.html">knowledge-learning-mode-design.md</a>
+for rationale and decisions (DR-0001, DR-0002 in
+<code>decisions/</code>, both <code>proposed</code>). TDD-first:
+<code>_test.go</code> written and confirmed red before each
+implementation file. Commit only when RSDOIEL asks.</p>
+<p>Two tracks, <strong>both in v0.0.16</strong> (decided 2026-09-24).
+<strong>Track A</strong> has no dependency. <strong>Track B</strong> was
+gated on <code>knowledge</code> v0.0.12 (see
+<code>../knowledge/library-lift-plan.md</code>, L1–L4).</p>
+<hr />
+<h2 id="track-a">Track A</h2>
+<h3 id="h0-bump-knowledge-to-v0.0.11">H0 — Bump <code>knowledge</code>
+to v0.0.11</h3>
+<p><code>go.mod</code> v0.0.9 → v0.0.11; <code>go build ./...</code>,
+<code>go test ./...</code>. No consumer-facing API in v0.0.10/v0.0.11 is
+used by harvey today, so this should be mechanical.
+<code>go test -race</code> does not run on this Pi (ThreadSanitizer VMA
+limit); say so rather than claim it. Update <code>TODO.md</code>.</p>
+<h3 id="h1-decisions-cutover-dr-0002">H1 — Decisions cutover
+(DR-0002)</h3>
+<ul>
+<li><code>decisions/</code> already exists with DR-0001 and DR-0002
+(<code>proposed</code>).</li>
+<li>Add a pointer at the top of <code>DECISIONS.md</code>: frozen as of
+this date, new decisions in <code>decisions/</code>.</li>
+<li><code>kb ingest harvey/decisions</code> and
+<code>kb index harvey/decisions</code>; confirm with
+<code>kb search "learning mode"</code>.</li>
+<li>Update <code>CLAUDE.md</code>’s decision-log guidance in
+<code>harvey/CLAUDE.md</code> if it points only at
+<code>DECISIONS.md</code>.</li>
+</ul>
+<h3 id="h2-skill-updates">H2 — Skill updates</h3>
+<p><strong>DONE 2026-09-23.</strong> Correction to this plan’s original
+premise: the canonical <code>agents/skills/</code> copies already had
+<code>record</code>/<code>document</code> actions and the v0.0.10 verbs
+(the feature request’s claim that they lacked them was stale). The real
+gap was v0.0.11 only. Both skills are now 0.6.0 /
+<code>kb_version</code> 0.0.11: <code>update-knowledge-base</code>
+gained <code>document-fuzzy-tag</code> and
+<code>document-frontmatter</code> plus the <code>concept suggest</code>
+variants/near-existing/JSON shape change;
+<code>review-knowledge-base</code> gained the near-existing block and a
+review-queue breakdown. Commands were verified against the real
+<code>kb</code> 0.0.11 (read-only/<code>--dry-run</code>, or on a
+scratch file). The <code>harvey/agents/skills/</code> copies were left
+stale, as recommended.</p>
+<hr />
+<h2
+id="track-b-was-gated-on-knowledge-v0.0.12-which-shipped-2026-09-24-in-v0.0.16">Track
+B (was gated on <code>knowledge</code> v0.0.12, which shipped
+2026-09-24; in v0.0.16)</h2>
+<h3 id="h3-bump-to-v0.0.12-and-extract-edittextineditor">H3 — Bump to
+v0.0.12 and extract <code>editTextInEditor</code></h3>
+<p><strong>DONE 2026-09-24</strong> (uncommitted). <code>go.mod</code>
+was already at <code>knowledge</code> v0.0.12 (tag published 2026-09-24,
+on the module proxy); <code>go build</code>, <code>go vet</code> and
+<code>go test ./...</code> pass against it. <code>editor.go</code> holds
+<code>editTextInEditor(text, ext string) (string, error)</code> and
+<code>findEditor</code> (moved beside it); <code>editInEditor</code> in
+<code>memory_miner.go</code> is now <code>doc.Bytes()</code>, then
+<code>editTextInEditor(..., ".fountain")</code>, then
+<code>ParseMemoryDoc</code>. <strong>Signature change from the
+plan:</strong> an <code>ext</code> parameter, so a Markdown summary and
+a Fountain memory each get the right syntax highlighting. 8 new tests in
+<code>editor_test.go</code>, written red first against a do-nothing stub
+(5 failed on behavior; the two <code>editInEditor</code> guards passed
+against the old code, so they are valid regression checks). A fake
+<code>$EDITOR</code> shell script rewrites the file, records what it was
+given, or fails. <strong>Found, then fixed (next paragraph):</strong>
+<code>findEditor</code> returns the whole <code>$EDITOR</code> string
+and <code>exec.Command</code> takes it as one program name, so
+<code>EDITOR="code --wait"</code> (or <code>emacsclient -t</code>,
+<code>subl -w</code>) fails with <code>executable file not found</code>
+(verified). It predates this change and also affects the other
+<code>findEditor</code> caller, <code>memory_onboarding.go</code>.
+Learning mode’s whole editing flow rests on <code>$EDITOR</code>, so it
+is worth fixing before H5; the approach (split with
+<code>strings.Fields</code>, or run through the shell as git does) is a
+small design choice.</p>
+<p><strong><code>$EDITOR</code> arguments FIXED 2026-09-24</strong>
+(RSDOIEL chose <code>strings.Fields</code>).
+<code>editorCommand(editor, path)</code> in <code>editor.go</code>
+splits the string on whitespace: first field is the program, the rest
+come before the file. Both launch sites use it
+(<code>editTextInEditor</code> and <code>editTemplateRaw</code> in
+<code>memory_onboarding.go</code>, which had its own copy of the launch
+code). A blank <code>$EDITOR</code> now falls back to micro/nano/vi
+instead of being used as-is. Documented limitation: no quote handling,
+so a program path or argument that contains a space is not supported. 5
+new tests written red first against a behavior-preserving stub (4 failed
+on behavior); verified live with a real program,
+<code>EDITOR="sed -i -e s/original/changed/"</code>. Left alone:
+<code>editTemplateRaw</code> still duplicates the temp-file round trip
+and could call <code>editTextInEditor</code>; a follow-up, not needed
+for learning mode.</p>
+<p><code>go.mod</code> bump. Extract
+<code>editTextInEditor(text string) (string, error)</code> from
+<code>editInEditor</code> (<code>memory_miner.go:498</code>);
+<code>editInEditor</code> becomes a thin caller. <strong>Red test
+first:</strong> round-trips text through a fake <code>$EDITOR</code>
+script; existing miner tests pass unchanged.</p>
+<h3 id="h4-session-to-document-candidates">H4 — Session-to-document
+candidates</h3>
+<p><strong>DONE 2026-09-24</strong> (uncommitted).
+<code>learn_ingest.go</code>: <code>LearnCandidate</code>,
+<code>learnCandidates</code>, <code>parseSelection</code>, and
+<code>/kb learn ingest [--min-words N] [--all] [--dry-run]</code>
+(<code>kbLearn</code>), routed from <code>cmdKB</code>, with a help
+line. 22 tests in <code>learn_ingest_test.go</code>, written red first
+against a stub (19 failed on behavior; 3 passed vacuously against the
+stub and became real guards). <strong>Design changed by real data
+(RSDOIEL chose, 2026-09-24):</strong> the plan’s “mirror the miner’s
+10-turn gate” does not survive contact with the corpus. That gate is a
+live in-memory counter, not derivable from a stored file; and on disk 31
+of 34 sessions are under 200 words (median 24), none reaches 10 chat
+turns (the busiest has 5), while all 32 hand-offs are substantial (540
+to 2,039 words). So: <strong>hand-offs are always offered; a session is
+offered if it has at least 200 words</strong> (<code>--min-words</code>
+overrides; 0 offers all). On the real files that is 3 sessions plus 32
+hand-offs. Turn counts are shown for information only (a chat turn is
+the <code>INT. HARVEY AND &lt;USER&gt; TALKING</code> scene heading).
+<strong>Path contract:</strong> the stored path is relative to the
+working directory with forward slashes, exactly what
+<code>kb document ingest FILE</code> stores from there; a file already
+stored under its absolute path is also recognised, so another tool
+cannot cause a duplicate. Harvey never chdirs and its workspace root
+comes from <code>Config.WorkDir</code>, so relative-to-cwd (not
+relative-to-root) is the form that always matches what <code>kb</code>
+does. <strong>Verified with the real binary, not just unit
+tests:</strong> copied the real hand-offs and sessions to a scratch
+workspace, ingested all 35 through <code>kbLearn</code>, then
+re-ingested three of them with the release <code>kb</code> 0.0.12 from
+the same directory: all <code>skipped</code>, the document count
+unchanged. One bad file does not stop the rest (reported as
+<code>failed</code>). <strong>Scale finding for H5:</strong> ingesting
+all 35 queues <strong>539 unsummarized sections</strong> (5 to 25 per
+document). Reviewing that by hand is not realistic, so batch drafting
+(<code>/kb learn draft</code>) is the point of H5, and
+<code>/kb learn ingest</code> deliberately asks before ingesting and has
+no default-all.</p>
+<p>New <code>learn_ingest.go</code>: list candidate <code>.spmd</code>
+files (sessions meeting the turn gate, plus hand-offs) not yet found by
+<code>DocumentByPath</code>, and ingest confirmed ones via
+<code>IngestDocument</code>. <strong>Red tests first:</strong> gate
+boundary at 9/10 turns; an already-ingested file is excluded; the stored
+path form matches what <code>kb document ingest</code> would store
+(verify against the real <code>kb</code> binary, not just the unit
+test). Command: <code>/kb learn ingest</code>.</p>
+<h3 id="h5-draft-and-review-primitives">H5 — Draft and review
+primitives</h3>
+<p><strong>DONE 2026-09-24</strong> (uncommitted). <code>learn.go</code>
+(terminal-free <code>LearnSession</code>, <code>Drafter</code>,
+<code>llmDrafter</code>, <code>learnConfidence</code>),
+<code>learn_cmd.go</code> (<code>/kb learn draft</code>,
+<code>/kb learn review</code>, bare <code>/kb learn</code>), and
+<code>learn_model</code> in <code>harvey.yaml</code> (RSDOIEL chose the
+config key). 54 new tests: 30 core, 21 commands, 3 config, all written
+red first (the core against a stub: 20 red on behavior, 5 vacuous
+guards). <code>PromoteDocumentSummary</code> has exactly one call site,
+in <code>LearnSession.Accept</code>, and a test scans the source to keep
+it that way. Nothing else promotes: a blank line, a bad key,
+<code>s</code>, <code>q</code> and end of input never do. <strong>Model
+resolution:</strong> <code>@name</code> on the command, else
+<code>learn_model</code>, else the active model, through
+<code>resolveDispatchTarget</code> (not <code>DispatchToEndpoint</code>
+as the plan wrote; it is the one that also handles a local model switch
+and gives a <code>Restore</code>). <strong>Deviations from the plan,
+each forced by evidence:</strong> 1. <strong>Empty sections.</strong> A
+Markdown H1 becomes a section with an empty body. The first draft of the
+code asked the model to summarize nothing (which invites an invented
+summary) and burned the <code>--limit</code>; such a section can also
+never have a summary, so it would have blocked its document’s gist
+forever. Now skipped, not counted toward the limit, and ignored when
+deciding a gist is ready. 2. <strong>Gist.</strong> A gist has no source
+text, so it is drafted from the section summaries, once every non-empty
+section has one. Reviewed last, so a human who edited a section can
+redraft the gist. 3. <strong><code>reject</code> dropped.</strong>
+<code>knowledge</code> has no operation that un-drafts a summary, so
+there is nothing for it to call; skip covers it. Add one to
+<code>knowledge</code> (v0.0.13) if a real reject is wanted. 4.
+<strong>Confidence basis changed on real data.</strong> The plan’s
+formula (fraction of the section’s <em>linked</em> tags that the draft
+names) is nil almost everywhere: 9 of 12 real sections had no linked
+tag, because a link needs a wikilink or more than one mention. It is now
+the fraction of the known concepts <em>mentioned in the source</em>
+(what tag_density counts) that the draft names; nil when the source
+mentions none. Because those concepts are also given to the model as
+hints, it measures <strong>concept coverage, not faithfulness</strong>;
+on real runs it reads 1.00 where concepts are present and “unknown”
+where none are. <strong>Verified with a real model, not just
+fakes:</strong> <code>olmo-3:7b-instruct</code> on Ollama, real
+hand-offs in a scratch workspace (one run on a fresh KB, two on a copy
+of the real vocabulary): ingest, draft (about 55 s per item on this Pi),
+review, accept; the accepted summary was then found by the release
+<code>kb search</code>, and a draft left unaccepted was not. Draft
+quality is plausible: two clearly faithful, one weak (a
+conversation-header section), one altered a name (“RSDoiel”); exactly
+what the human step is for. Scale: 25 items is about 23 minutes, so all
+539 queued sections would be about 8 hours; hence the default limit of
+25. <strong>Found, not fixed:</strong> <code>kb search</code> fails on
+any hyphenated term (<code>map-reduce</code>,
+<code>records-portability</code>); see
+<code>../knowledge/TODO.md</code>. It also affects
+<code>/kb search</code>.</p>
+<p>New <code>learn.go</code> with a terminal-free
+<code>LearnSession</code>: - Draft: dispatch through
+<code>DispatchToEndpoint</code>, then <code>DraftDocumentSummary</code>
+with <code>generatedBy</code> set to the model name and a heuristic
+confidence. - Review: accept → <code>PromoteDocumentSummary</code>; edit
+→ <code>editTextInEditor</code> then redraft as <code>"human"</code>;
+skip; reject. - <strong>Red tests first:</strong> a fake endpoint;
+assert <code>PromoteDocumentSummary</code> is reachable from the accept
+path only (no draft path promotes). - <strong>Confidence
+formula:</strong> hand-compute the worked example on paper
+<em>before</em> writing the test; do not trust the design’s prose (the
+v0.0.11 lesson).</p>
+<p>Commands: <code>/kb learn draft [--limit N] [@model]</code>,
+<code>/kb learn review</code>, bare <code>/kb learn</code>. Config:
+<code>learn_model:</code> in <code>harvey.yaml</code> if approved (Open
+question 2).</p>
+<h3 id="h6-concept-curation-pass">H6 — Concept curation pass</h3>
+<p><strong>DONE 2026-09-24</strong> (uncommitted).
+<code>learn_concepts.go</code>
+(<code>/kb learn concepts [--limit N]</code>), 27 tests in
+<code>learn_concepts_test.go</code>, written red first against a stub
+(19 red on behavior, the rest guards). Three mutations (no Fountain
+skip, no write-permission check, no restore after a failed re-ingest)
+each turn the intended tests red, and a 500-case property test checks
+that applying <code>lineDiff</code>’s edits reproduces the target
+text.</p>
+<p>Flow: <code>SuggestConcepts</code> lists candidates (default 20) with
+mentions and spelling variants; the human picks by number, range,
+<code>all</code> or <code>none</code>; each pick becomes a concept
+(<code>AddConcept</code>, no description); then for each project
+document, <code>planConceptTagging</code>
+(<code>EligibleTagConcepts</code> + <code>TagDocumentText</code>, then
+<code>FuzzyMatchConceptNames</code> + <code>FuzzyEligible</code> +
+<code>FuzzyTagDocumentText</code>, both restricted to the picked
+concepts) produces the new text, <code>lineDiff</code> shows only the
+changed lines, and <code>promptAction</code> asks. A yes goes through
+<code>applyConceptTagWrite</code>: <code>CheckWritePermission</code>,
+<code>Workspace.WriteFile</code>, <code>IngestDocument</code> on the
+stored path, audit log and session record; if the re-ingest fails the
+original bytes are put back.</p>
+<p><strong>Correction to the plan.</strong> It asked for a red test
+“with <code>safe_mode</code> on”. <code>safe_mode</code> limits which
+commands <code>!</code> and <code>/run</code> may execute and does not
+gate file writes; the gate is the <code>permissions:</code> table
+(<code>Agent.CheckWritePermission</code>). The denial tests use that.
+The two stay separate; if <code>safe_mode</code> should also block
+curation writes, it is one extra check in <code>checkTagWritable</code>.
+<strong>Resolved 2026-09-24: keep them separate.</strong></p>
+<p>Decisions taken while building it. <strong>All confirmed by RSDOIEL
+2026-09-24</strong>, plus <code>safe_mode</code> stays separate from the
+permissions table (no <code>safe_mode</code> check on curation writes):
+- <strong>Accepting a candidate creates the concept
+immediately</strong>, before any file is shown. Declining every preview
+leaves the concepts and leaves every file and document row alone. This
+matches <code>kb concept add</code> and keeps “accept” meaning one
+thing; the alternative (create only when a file is written) would lose a
+concept the human explicitly chose. - <strong>Fountain documents are
+never rewritten.</strong> Sessions are records of what happened, and
+harvey’s replay and miner read <code>[[...]]</code> in Fountain as notes
+and file events. This excludes the whole <code>learn ingest</code>
+corpus, so today curation tags only Markdown documents; the concepts it
+creates still count in tag density for the Fountain ones. Reported as
+“Skipped N Fountain document(s)”. - <strong>A path harvey may not write
+is refused before the prompt</strong>, not after a yes. -
+<strong>Tagging changes source text</strong>, so summaries of changed
+sections go stale on the re-ingest; the closing line reports how many. -
+Only the picked concepts are linked or footnoted, not every known
+concept (<code>kb document tag</code> with no <code>--concept</code>
+links all of them). - No <code>--dry-run</code>: each file’s preview is
+the dry run, and nothing is written without a yes.</p>
+<h3 id="h7-live-verification">H7 — Live verification</h3>
+<p><strong>DONE 2026-09-24</strong> (uncommitted). Run with the built
+binary on a scratch workspace holding a <strong>copy</strong> of
+<code>agents/knowledge.db</code> (documents rows removed), copies of
+three real Markdown files from <code>harvey/</code>
+(<code>DECISIONS.md</code>, <code>developer_guide.md</code>, the design
+doc), two real hand-offs, and the sessions the run itself recorded. The
+real database and real files were not touched.</p>
+<p>What was checked, and what it agreed with: - <strong>Curation
+write.</strong> Picked three real candidates (llamafile, ollama,
+sensor), wrote one file, declined one. <code>DECISIONS.md</code> written
+by Harvey is <strong>byte-identical</strong> to what release
+<code>kb document tag --concept   llamafile,ollama,sensor</code> writes;
+the declined file is byte-identical to the original; disk sha256 equals
+the stored <code>documents.checksum</code> for all three documents. -
+<strong>Permission denial.</strong> After
+<code>/permissions set notes/ read</code>, all three documents were
+refused before any prompt (“write permission denied; not touched”),
+files unchanged. Seven Fountain documents reported as skipped. -
+<strong>Ingest.</strong> <code>/kb learn ingest</code> added 7 real
+Fountain files (5 sessions, 2 hand-offs). - <strong>Draft, accept,
+edit.</strong> With olmo-3:7b-instruct,
+<code>/kb learn draft --limit 2</code> drafted two items; review
+accepted one and edited the other through <code>$EDITOR</code>. Release
+<code>kb document review list</code> shows both as
+<code>reviewed</code>; the edited one is recorded
+<code>generated_by = human</code>; the fixed <code>kb search</code>
+finds the accepted edited summary by a hyphenated term
+(<code>HUMAN-EDITED</code>), so the knowledge hyphen fix works through
+the real data path too.</p>
+<p>Found and fixed during H7 (each red first): <strong>end of input was
+read as “yes”</strong> at the write prompt (<code>promptAction</code>
+cannot tell Enter from Ctrl-D; <code>promptActionEOF</code> added,
+<code>/kb learn concepts</code> treats it as quit; two older callers
+filed in <code>TODO.md</code>); <strong>long changed lines hid the
+change</strong> (real <code>DECISIONS.md</code> paragraphs are ~1000
+characters, so <code>lineDiff</code> now shows an excerpt around the
+change, both sides in the same window).</p>
+<p>Not a bug, but worth knowing: a <code>DECISIONS.md</code> section is
+4-5k characters and one draft on this CPU-only Pi took minutes, not the
+~55 s the H5 run saw on hand-off sections. <code>--limit</code> and the
+ordering matter more than they looked. Two harness slips of mine, not
+product bugs: restoring a database copy without deleting its
+<code>-wal</code> file replays the earlier run’s inserts, and piping
+several lines into Harvey lets a prompt’s buffered reader swallow the
+lines after it (a terminal delivers one line at a time).</p>
+<p>Docs: <code>harvey.1.md</code> regenerated from the binary (as
+<code>make build</code> does, so its header moves from 0.0.15a to
+0.0.16); <code>helptext.go</code>’s <code>/kb learn</code> lines and a
+new LEARNING MODE section in <code>KBHelpText</code>, with
+<code>harvey-kb.7.md</code> regenerated from it;
+<code>CONFIGURATION.md</code> already documented
+<code>learn_model</code>. README not regenerated.</p>
+<hr />
+<h2 id="not-in-this-plan">Not in this plan</h2>
+<p>The bubbletea menu, PDF ingestion, unattended scheduling, and
+unifying with the memory miner (see the design’s Deferred section).</p>
+</section>
+</body>
+</html>

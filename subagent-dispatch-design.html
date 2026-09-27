@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-one-subagent-dispatch-primitive-direction-d-design">Harvey —
+One Subagent-Dispatch Primitive (Direction D) — Design</h1>
+<p><strong>Date</strong>: 2026-07-13 <strong>Status</strong>: ✅ All
+four phases implemented 2026-07-13 — see <code>DECISIONS.md</code> and
+<a href="subagent-dispatch-plan.html">subagent-dispatch-plan.md</a>
+<strong>Related</strong>: <a
+href="harness-engineering-exploration.html">harness-engineering-exploration.md</a>
+Direction D, <a
+href="chunked-analysis-design.html">chunked-analysis-design.md</a>,
+<code>DECISIONS.md</code> (2026-07-05 <code>/read-chunks</code> entry,
+2026-07-12 prerequisite- refactor entries this follows the same audit
+discipline as)</p>
+<hr />
+<h2 id="whats-already-there-found-during-scoping-not-assumed">What’s
+already there (found during scoping, not assumed)</h2>
+<p>Three call sites build a bounded context, run it against a model, and
+(mostly) fold the result back as a summary rather than a full
+transcript. Read all three in full before proposing anything.</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"><code>/plan next</code>
+(<code>plan_cmd.go:114</code>)</th>
+<th scope="col"><code>/read-chunks</code> / <code>injectOrChunk</code>’s
+auto-chunk path (<code>commands.go:1957</code>,
+<code>file_inject.go:117</code>, <code>chunk_analyzer.go:78</code>)</th>
+<th scope="col"><code>@mention</code> registry dispatch
+(<code>terminal.go:796</code>, <code>routing.go:174</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Context built</strong></td>
+<td>Fresh, empty history: system prompt + plan state + step instruction.
+No prior conversation at all.</td>
+<td>Per chunk: <code>chunkSystemPrompt</code> (hardcoded, not
+<code>a.Config.SystemPrompt</code>) + chunk content + instruction.
+Repeated N times (map), then once more over the partial results
+(reduce).</td>
+<td><code>recentHistory(history, 10)</code> (last 10 non-system
+messages) + prompt.</td>
+</tr>
+<tr>
+<td><strong>Model resolution</strong></td>
+<td><code>step.Model</code> annotation → <code>attemptModelSwitch</code>
+— a <strong>real, persistent swap</strong> of
+<code>a.Client</code>/<code>a.Backend</code> (kills/relaunches a
+llamafile server for local models).</td>
+<td><code>@mention</code> parsed out of the instruction string, but
+<strong>only used to label
+<code>ChunkAnalysisParams.Model</code></strong> (recording only, per
+that field’s own doc comment) — the actual call always uses
+<code>a.Client</code>, whatever’s currently active.</td>
+<td><code>a.Routes.Lookup(name)</code> → <code>clientForEndpoint</code>
+builds an <strong>independent <code>LLMClient</code></strong>, never
+touching <code>a.Client</code> — or, if not a registered route, falls
+through to <code>attemptModelSwitch</code> (same persistent swap as
+<code>/plan next</code>).</td>
+</tr>
+<tr>
+<td><strong>Tool support</strong></td>
+<td>Yes — <code>ToolExecutor.RunToolLoop</code> when tools enabled, else
+plain <code>client.Chat</code>.</td>
+<td>None at all — always plain <code>client.Chat</code>, both map and
+reduce.</td>
+<td>Yes, when <code>ep.Tools</code> — same
+<code>RunToolLoop</code>/<code>client.Chat</code> branch as
+<code>/plan next</code>, duplicated.</td>
+</tr>
+<tr>
+<td><strong>Fold-back into <code>a.History</code></strong></td>
+<td><strong>None.</strong> The step’s reply is only printed to
+<code>out</code>; nothing is added to history.</td>
+<td><code>a.AddMessage("user", "[/read-chunks ...]"); a.AddMessage("assistant", synthesis)</code>.</td>
+<td><code>a.AddMessage("user", input); a.AddMessage("assistant", reply)</code>.</td>
+</tr>
+<tr>
+<td><strong>Restore after dispatch</strong></td>
+<td>Attempts to restore the pre-step model — <strong>see Bug 2 below,
+this is broken.</strong></td>
+<td>N/A (never actually switches).</td>
+<td>N/A for route dispatch (independent client, nothing to restore); N/A
+for local-switch fallthrough (intentionally persistent, not restored —
+see “Not actually part of this pattern” below).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="two-real-bugs-found-while-reading-the-code-not-hypothetical">Two
+real bugs found while reading the code (not hypothetical)</h3>
+<p><strong>Bug 1 — <code>@model</code> in a chunk-analysis instruction
+is silently non-functional.</strong>
+<code>chunked-analysis-design.md</code> and <code>DECISIONS.md</code>
+(2026-07-05) both state the design intent explicitly: <em>“If the user
+includes <code>@model</code> in the chunk prompt, Harvey’s existing
+<code>@mention</code> routing infrastructure routes each chunk analysis
+call to the named model.”</em> The shipped code does not do this.
+<code>cmdReadChunks</code> (<code>commands.go:2063</code>) and
+<code>injectOrChunk</code> (<code>file_inject.go:229</code>) both parse
+the mention and reassign a local <code>model</code> string, but that
+string only flows into <code>ChunkAnalysisParams.Model</code> — consumed
+solely for <code>Recorder</code>/<code>DebugLog</code> labeling.
+<code>RunChunkedAnalysis</code> (<code>chunk_analyzer.go:78</code>)
+always executes against whatever <code>client</code> its caller passed
+in, which both callers hard-code as <code>a.Client</code>. Writing
+<code>@granite summarize this</code> in a <code>/read-chunks</code>
+instruction never dispatches to granite — it only mislabels the session
+recording as if it had. No test exercises the actual dispatched-model
+behavior (only <code>ParseAtMention</code>’s own parsing is tested),
+which is presumably how this went unnoticed.</p>
+<p><strong>Bug 2 — <code>/plan next</code>’s post-step model restore
+reads a field the switch already clobbered.</strong>
+<code>cmdPlanNext</code> (<code>plan_cmd.go:138,189-192</code>):</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>defaultModel <span class="op">:=</span> activeModelLabel<span class="op">(</span>a<span class="op">)</span> <span class="co">// label to restore after the step</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">...</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> step<span class="op">.</span>Model <span class="op">!=</span> <span class="st">&quot;&quot;</span> <span class="op">&amp;&amp;</span> activeModelLabel<span class="op">(</span>a<span class="op">)</span> <span class="op">!=</span> defaultModel <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _<span class="op">,</span> err <span class="op">:=</span> attemptModelSwitch<span class="op">(</span>a<span class="op">,</span> a<span class="op">.</span>Config<span class="op">.</span>Llamafile<span class="op">.</span>Active<span class="op">,</span> out<span class="op">);</span> err <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span></code></pre></div>
+<p><code>defaultModel</code> is captured but never used for restoration
+— only for the <code>!=</code> comparison. The restore instead reads
+<code>a.Config.Llamafile.Active</code> live, at restore time. But
+<code>switchLlamafileModel</code> (<code>llamafile.go:220</code>, called
+from <code>attemptModelSwitch</code>’s llamafile-registry branch)
+<strong>sets</strong> <code>a.Config.Llamafile.Active = name</code> as
+part of <em>performing</em> the step’s switch. So by the time restore
+runs, that field has already been overwritten to the step’s own model
+name — restore effectively tries to “switch to” the model that’s already
+active, not the one that was active before the step. Confirmed by
+tracing the exact mutation, not inferred. Two further problems layered
+on top: <code>activeModelLabel</code>’s return value
+(<code>"name (backend)"</code>) isn’t a valid
+<code>attemptModelSwitch</code> lookup key even if it were passed
+through; and the restore assumes the pre-step model was itself a
+llamafile registry entry, silently wrong whenever the user was on an
+Ollama model or a non-llamafile alias when the step started.</p>
+<p><strong>Confirmed with the user (2026-07-13): both are in scope to
+fix as part of Direction D</strong>, rather than filed as separate,
+unrelated bugfixes — both live in exactly the model-dispatch-resolution
+code this direction is already consolidating, and a single correct
+resolver used consistently by all three call sites fixes both without
+writing either fix twice.</p>
+<h3 id="not-actually-part-of-this-pattern">Not actually part of this
+pattern</h3>
+<p><code>@mention</code>’s <strong>local-model-switch</strong>
+fallthrough (<code>terminal.go:853-869</code>, when the name doesn’t
+match a registered route but does match a llamafile entry/alias) is a
+<em>different</em> mechanism from the other three: it mutates
+<code>a.Client</code> <strong>persistently</strong> (no restore — that’s
+the point, the user is deliberately changing their active model for the
+rest of the session) and, when there’s a trailing prompt, falls through
+to the <strong>normal chat path with full history</strong>, not a
+bounded context. It only shares surface syntax (<code>@name</code>) with
+the dispatch pattern, not its shape. <strong>Out of scope</strong> —
+left exactly as it is.</p>
+<hr />
+<h2 id="scope-for-this-increment">Scope for this increment</h2>
+<p>Per the audit above, forcing all three into one universal
+“build-context-and-dispatch-and-fold-back” function would be wrong: each
+caller’s context construction is genuinely different for good reason (a
+plan step needs zero prior history; a chunk needs exactly its own
+content; a route dispatch needs recent conversational continuity).
+Unifying that part would either lose a real distinction or produce a
+function with three near-mutually-exclusive modes — not a
+simplification.</p>
+<p>What <em>is</em> genuinely duplicated (or, in the chunk-analysis
+case, silently broken) is narrower, and that’s what this increment
+targets:</p>
+<ol type="1">
+<li><strong><code>resolveDispatchTarget</code></strong> — one function
+that, given a name, returns a client to dispatch to and a
+<code>restore</code> function, correctly branching on whether the target
+is a registered route (independent client, no <code>a.Client</code>
+mutation, trivial restore) or a local llamafile/alias (real persistent
+swap, restore must reconstruct the actual pre-switch state, not
+round-trip through a display label). Fixes Bug 2 by construction — there
+is no longer a code path that reads a post-switch field expecting a
+pre-switch value. Used by <code>/plan next</code> (replacing its broken
+restore), and by <code>/read-chunks</code>/<code>injectOrChunk</code>
+(fixing Bug 1 — the resolved client is what actually gets passed to
+<code>RunChunkedAnalysis</code>, not always <code>a.Client</code>).</li>
+<li><strong>A shared tools-vs-plain-chat execution helper</strong> —
+<code>/plan next</code> and <code>@mention</code> registry dispatch
+duplicate the same
+<code>if toolsEnabled { RunToolLoop } else { Chat }</code> branch. Chunk
+analysis is <strong>deliberately</strong> tool-free (each chunk is
+read-only text synthesis; giving it side-effecting tools would be a
+scope expansion, not a duplication fix) — not part of this helper.</li>
+<li><strong>A shared fold-back-as-summary helper</strong> —
+<code>/read-chunks</code> and <code>@mention</code> registry dispatch
+both do the same two-call
+<code>a.AddMessage("user", ...); a.AddMessage("assistant", ...)</code>
+pattern. <code>/plan next</code> deliberately does <strong>not</strong>
+fold back into history (a plan step is a side-effecting action, not a
+chat turn) — not touched.</li>
+</ol>
+<p>Confirmed with the user (2026-07-13): all three sub-primitives, not
+just the model-resolution one.</p>
+<hr />
+<h2 id="proposed-shapes">Proposed shapes</h2>
+<h3 id="resolvedispatchtarget">1.
+<code>resolveDispatchTarget</code></h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">// DispatchTarget is a resolved model to run one bounded turn against, plus</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co">// however this Agent needs to clean up afterward.</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> DispatchTarget <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    Client  LLMClient</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    Restore <span class="kw">func</span><span class="op">()</span> <span class="co">// no-op for independent (route) clients; real swap-back for local</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co">// resolveDispatchTarget resolves name (an @mention-style identifier) to a</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co">// dispatch target. Checks the route registry first (independent client, no</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co">// Agent mutation), then the llamafile registry / model aliases (a real,</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="co">// persistent swap of a.Client/a.Backend — costs minutes on Pi-class</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co">// hardware per the Hardware Reality Check in harness-engineering-</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co">// exploration.md). Returns ok=false when name matches neither.</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> resolveDispatchTarget<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> name <span class="dt">string</span><span class="op">,</span> out io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span>target DispatchTarget<span class="op">,</span> ok <span class="dt">bool</span><span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p>For the local-swap branch, <code>Restore</code> cannot be a cheap
+reference-swap back to the previous
+<code>a.Backend</code>/<code>a.Client</code> — traced
+<code>switchLlamafileModel</code> (<code>llamafile.go:207-210</code>):
+it <strong>stops</strong> the previous backend process before starting
+the new one
+(<code>if a.Backend != nil &amp;&amp; a.Backend.StartedByHarvey() { ...; a.Backend.Stop() }</code>).
+By the time a step finishes, the pre-step process is already dead;
+reassigning the old <code>a.Backend</code> reference would hand back a
+handle to a killed process. Restore must instead <strong>capture the
+pre-step identifying name(s) before switching</strong>, then genuinely
+relaunch through the same mechanism — paying a second real cold-start
+cost, not a cheap swap:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>prevLlamafileActive <span class="op">:=</span> a<span class="op">.</span>Config<span class="op">.</span>Llamafile<span class="op">.</span>Active <span class="co">// captured BEFORE the step&#39;s switch</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>prevOllamaModel <span class="op">:=</span> a<span class="op">.</span>Config<span class="op">.</span>Ollama<span class="op">.</span>Model</span></code></pre></div>
+<p><code>Restore</code> then: if <code>prevLlamafileActive != ""</code>,
+call <code>attemptModelSwitch(a, prevLlamafileActive, out)</code> to
+relaunch that exact entry; otherwise (the pre-step model was plain
+Ollama, not a llamafile registry entry) stop any backend the step
+started and rebuild the Ollama client from <code>prevOllamaModel</code>
+directly. This is strictly more expensive than today’s (broken) restore
+attempt, but it’s the honest cost of a correct one — consistent with the
+Hardware Reality Check’s framing that a model swap costs minutes each
+way, not something this design can make cheaper, only correct.</p>
+<h3 id="shared-tool-vs-plain-execution-helper">2. Shared tool-vs-plain
+execution helper</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// runBoundedTurn runs messages against client — through registry&#39;s</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co">// ToolExecutor when useTools is true and registry is non-nil, otherwise a</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co">// plain client.Chat — streaming to w. Returns the (possibly tool-extended)</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co">// history when tools ran, or nil when the plain-chat path was taken (no</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co">// history to inspect for the plan-step &quot;did a tool error?&quot; check).</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> runBoundedTurn<span class="op">(</span>ctx context<span class="op">.</span>Context<span class="op">,</span> client LLMClient<span class="op">,</span> registry <span class="op">*</span>ToolRegistry<span class="op">,</span> cfg <span class="op">*</span>Config<span class="op">,</span> useTools <span class="dt">bool</span><span class="op">,</span> messages <span class="op">[]</span>Message<span class="op">,</span> dbg <span class="op">*</span>DebugLog<span class="op">,</span> w io<span class="op">.</span>Writer<span class="op">)</span> <span class="op">(</span>updatedHistory <span class="op">[]</span>Message<span class="op">,</span> stats ChatStats<span class="op">,</span> err <span class="dt">error</span><span class="op">)</span></span></code></pre></div>
+<p><code>cmdPlanNext</code> keeps its own
+<code>planStepHadErrors(updatedHistory)</code> call using the returned
+history; <code>DispatchToEndpoint</code> just discards it. Both stop
+duplicating the <code>NewToolExecutor(...)</code> /
+<code>RunToolLoop</code> vs. <code>Chat</code> branch itself.</p>
+<h3 id="shared-fold-back-helper">3. Shared fold-back helper</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">// foldBackTurn appends a user/assistant turn to a.History, the shared</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="co">// pattern behind /read-chunks and @mention registry dispatch summarizing a</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co">// bounded sub-dispatch back into the main conversation.</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> foldBackTurn<span class="op">(</span>a <span class="op">*</span>Agent<span class="op">,</span> userContent<span class="op">,</span> assistantContent <span class="dt">string</span><span class="op">)</span></span></code></pre></div>
+<p>Trivial — two <code>a.AddMessage</code> calls — but removes the
+duplication and gives future callers (e.g. a future
+<code>/plan next</code> mode that <em>does</em> want fold-back) one
+place to change if the pattern ever needs to grow (timestamps, a
+distinguishing marker, etc.).</p>
+<hr />
+<h2 id="decisions-confirmed-2026-07-13">Decisions confirmed
+(2026-07-13)</h2>
+<ol type="1">
+<li><strong>Both bugs are in scope</strong>, fixed as a natural
+consequence of the consolidation rather than filed separately.</li>
+<li><strong>All three sub-primitives</strong>
+(<code>resolveDispatchTarget</code>, the tool-vs-plain helper, the
+fold-back helper) are in scope for this increment — not just the
+model-resolution one.</li>
+<li><strong>No universal single “dispatch primitive” function</strong> —
+the audit shows that would force together three genuinely different
+context-construction strategies. The three sub-primitives above are the
+actual, honest scope of “consolidation” here.</li>
+</ol>
+<h2 id="open-questions-for-the-plan">Open questions for the plan</h2>
+<ul>
+<li>Should <code>/plan next</code> adopt
+<code>resolveDispatchTarget</code> even for the case where
+<code>step.Model</code> names something already active (no-op switch
+avoided today via the <code>activeModelLabel(a) != defaultModel</code>
+check) — worth confirming the no-op-avoidance behavior is preserved, not
+just the restore-correctness.</li>
+<li>Test strategy for Bug 1’s fix: the existing
+<code>/read-chunks</code>/<code>injectOrChunk</code> tests never assert
+on which model actually ran a chunk (only <code>a.Client</code>’s mock
+replies are checked) — the plan needs a test double capable of
+distinguishing “route A’s client was called” from “route B’s client was
+called” to prove the fix, not just that parsing succeeded.</li>
+<li>The Ollama-daemon-swap vs. llamafile-relaunch benchmark
+(<code>harness-engineering-exploration.md</code>’s Hardware Reality
+Check, “not yet run”) remains open and is not resolved by this design —
+<code>Restore</code>’s cost is real either way; this document doesn’t
+change that cost, only fixes correctness of the restore itself.</li>
+</ul>
+</section>
+</body>
+</html>

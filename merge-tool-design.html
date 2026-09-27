@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="knowledge.db-cross-machine-merge-tool-design">knowledge.db
+Cross-Machine Merge Tool — Design</h1>
+<p><strong>Status (2026-07-26):</strong> Design confirmed, ready for TDD
+implementation. See <a
+href="merge-tool-plan.html">merge-tool-plan.md</a> for the phased
+implementation plan. Depends on <a
+href="uuid-migration-design.html">uuid-migration-design.md</a>, already
+shipped (<code>harvey/DECISIONS.md</code>, 2026-07-26 entry).</p>
+<p><strong>References:</strong> -
+<code>../knowledge_db_merge_design.md</code> — umbrella design; “Merge
+script design” section is this document’s source, corrected in place on
+2026-07-26 (see that document’s step 4 for the correction this design
+applies).</p>
+<hr />
+<h2 id="motivation">Motivation</h2>
+<p>Step 1 (UUID migration) gives every row in <code>projects</code>,
+<code>observations</code>, <code>concepts</code>, <code>sources</code> a
+stable <code>uuid</code>. That unblocks step 2: an actual tool to
+reconcile <code>agents/knowledge.db</code> after it has drifted
+independently on <code>macmini-rd.local</code> and
+<code>wren.local</code>. Manual/on-demand cadence — nothing here needs
+to be scheduled.</p>
+<h2 id="scope">Scope</h2>
+<p>In scope: a new <code>knowledge_merge.go</code> in this package, plus
+a thin <code>cmd/kbmerge</code> binary, following the same relationship
+<code>cmd/assay</code> has to the root <code>harvey</code> package
+(<code>../HARVEY.md</code>/<code>CLAUDE.md</code>’s existing
+two-executable convention) — core merge logic is a tested, importable
+function; the binary is orchestration only (checkpoint, file copy,
+backup, printing the summary).</p>
+<p>Out of scope: the knowledge-base module extraction and JSON-L
+export/import, both still deferred per
+<code>../knowledge_db_merge_design.md</code>.</p>
+<h2 id="design">Design</h2>
+<h3 id="why-sqlattach-database-not-json-l">Why
+SQL/<code>ATTACH DATABASE</code>, not JSON-L</h3>
+<p>Already decided in the umbrella document: once every table carries a
+<code>uuid</code>, join-table id translation is a plain SQL join, so a
+generalized dump/load format buys nothing here.</p>
+<h3
+id="library-function-surface-knowledge_merge.go-package-harvey">Library
+function surface (<code>knowledge_merge.go</code>, package
+<code>harvey</code>)</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// NameCollision is a projects.name or concepts.name value that exists</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">// independently in both source databases under two different uuids —</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co">// almost certainly the same real-world entity, created before the UUID</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co">// migration, now indistinguishable by name alone.</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> NameCollision <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    Table <span class="dt">string</span> <span class="co">// &quot;projects&quot; or &quot;concepts&quot;</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    Name  <span class="dt">string</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    UUIDA <span class="dt">string</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    UUIDB <span class="dt">string</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="co">// CollisionReport opens aPath and bPath read-only and reports every</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="co">// projects/concepts name that exists in both under different uuids.</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="co">// Callers should review (and resolve, out of band) any collisions</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="co">// before calling MergeKnowledgeBases — a collision is silently resolved</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="co">// &quot;first insert wins&quot; by MergeKnowledgeBases&#39;s INSERT OR IGNORE, which</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="co">// may not be the row the caller wants to keep.</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> CollisionReport<span class="op">(</span>aPath<span class="op">,</span> bPath <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span>NameCollision<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="co">// MergeTableSummary reports, per table, how many rows came from each</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="co">// source and how many rows the merged table ended up with (less than</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="co">// FromA+FromB when uuid or name collisions caused an intentional drop).</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> MergeTableSummary <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    Table  <span class="dt">string</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    FromA  <span class="dt">int</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    FromB  <span class="dt">int</span></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    Merged <span class="dt">int</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a><span class="co">// MergeKnowledgeBases creates a fresh knowledge base at mergedPath (must</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a><span class="co">// not already exist) containing the set union of aPath and bPath, deduped</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a><span class="co">// by uuid (and, for projects/concepts, by the pre-existing name UNIQUE</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a><span class="co">// constraint). aPath and bPath are opened read-only via ATTACH; neither</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a><span class="co">// is modified.</span></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> MergeKnowledgeBases<span class="op">(</span>aPath<span class="op">,</span> bPath<span class="op">,</span> mergedPath <span class="dt">string</span><span class="op">)</span> <span class="op">([]</span>MergeTableSummary<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a><span class="co">// ReconcileCollisions rewrites, in bPath, the uuid of every row named in</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a><span class="co">// collisions to match its counterpart&#39;s uuid (&quot;a&quot; wins) — see &quot;Collision</span></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a><span class="co">// handling&quot; below for why this must run before MergeKnowledgeBases, not</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a><span class="co">// be skipped in favor of just letting INSERT OR IGNORE resolve it.</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> ReconcileCollisions<span class="op">(</span>bPath <span class="dt">string</span><span class="op">,</span> collisions <span class="op">[]</span>NameCollision<span class="op">)</span> <span class="dt">error</span></span></code></pre></div>
+<h3
+id="collision-handling-corrected-2026-07-26-caught-during-manual-smoke-testing">Collision
+handling (corrected 2026-07-26, caught during manual smoke-testing)</h3>
+<p>The original design assumed an unresolved collision was low-stakes:
+<code>INSERT OR IGNORE</code> would keep whichever row it saw first and
+drop the duplicate, same trade-off already accepted for conflicting
+<code>concepts.description</code> values elsewhere. <strong>That was
+wrong.</strong> A dropped <code>projects</code>/<code>concepts</code>
+row isn’t just a dropped metadata duplicate — every child row
+(observations via <code>project_id</code>, links via the join tables)
+that references it through a <code>uuid</code> join has no merged parent
+to attach to once the losing row is gone, and is <em>itself</em>
+silently dropped by the same <code>INSERT OR IGNORE</code> mechanism (no
+matching <code>JOIN</code> row = nothing to insert). Verified with a
+real smoke test through <code>cmd/kbmerge</code>: two databases each
+independently had a <code>"smoketest"</code> project with one
+observation; a same-name collision resolved via “first wins” produced a
+merge with only 1 of the 2 observations — the second machine’s real
+content silently gone, not just its duplicate project row.</p>
+<p><strong>Fix:</strong> <code>ReconcileCollisions</code> runs (when
+<code>-force</code> is passed to <code>cmd/kbmerge</code>)
+<em>before</em> <code>MergeKnowledgeBases</code>, rewriting
+<code>b</code>‘s row to share <code>a</code>’s <code>uuid</code>. Both
+sides’ observations/links then correctly translate through the same
+<code>uuid</code> in <code>MergeKnowledgeBases</code>’s existing
+join-based copy logic — no special-casing needed there at all. Without
+<code>-force</code>, <code>cmd/kbmerge</code> still aborts on any
+collision and prints the report, same as before.</p>
+<h3 id="mergeknowledgebases-steps"><code>MergeKnowledgeBases</code>
+steps</h3>
+<ol type="1">
+<li><p>Reject if <code>mergedPath</code> already exists — merging into a
+live or previously-populated database is out of scope; the caller is
+responsible for choosing a fresh scratch path (the
+<code>cmd/kbmerge</code> binary handles checkpoint/copy/backup around
+this call — see below).</p></li>
+<li><p><code>OpenKnowledgeBase(ws, mergedPath)</code> then immediately
+<code>Close()</code> — reuses the real
+<code>schema</code>/<code>sourcesSchema</code>/<code>kbAlterStmts</code>/<code>kbSourcesAlterStmts</code>
+constants instead of duplicating <code>CREATE TABLE</code> statements,
+and leaves <code>mergedPath</code> as a fully-migrated, empty knowledge
+base (<code>kb_fts</code> empty too, which matters for step 6).</p></li>
+<li><p>Open a second, raw <code>*sql.DB</code> against
+<code>mergedPath</code>. <code>ATTACH DATABASE ? AS a</code> /
+<code>... AS b</code> with <code>aPath</code>/<code>bPath</code> bound
+as parameters — avoids shell-style quoting fragility for paths
+containing spaces.</p></li>
+<li><p>Parent tables (<code>projects</code>, <code>concepts</code>,
+<code>sources</code>, order doesn’t matter): explicit column list
+<strong>excluding <code>id</code></strong> (see the correction in
+<code>../knowledge_db_merge_design.md</code> step 4) —</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">INSERT</span> <span class="kw">OR</span> IGNORE <span class="kw">INTO</span> projects (name, description, status, created_at, updated_at, uuid, origin_host)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> name, description, status, created_at, updated_at, uuid, origin_host <span class="kw">FROM</span> a.projects;</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">-- repeat against b.projects, then the analogous pair for concepts and sources</span></span></code></pre></div>
+<p>Dedup is automatic via the <code>uuid</code> UNIQUE index (added in
+the UUID migration) and, for
+<code>projects</code>/<code>concepts</code>, the pre-existing
+<code>name</code> UNIQUE — which is exactly how the known pre-migration
+name-collision edge case gets caught (silently drops the second row;
+<code>CollisionReport</code> is the caller’s chance to know about it
+beforehand).</p></li>
+<li><p><code>observations</code>, translating <code>project_id</code>
+through a <code>uuid</code> join instead of copying the raw id (already
+correct in the umbrella doc — no correction needed here):</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">INSERT</span> <span class="kw">OR</span> IGNORE <span class="kw">INTO</span> observations (project_id, kind, <span class="kw">body</span>, created_at, source_doi, uuid, origin_host)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> mp.<span class="kw">id</span>, ao.kind, ao.<span class="kw">body</span>, ao.created_at, ao.source_doi, ao.uuid, ao.origin_host</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> a.observations ao</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="kw">JOIN</span> a.projects ap <span class="kw">ON</span> ap.<span class="kw">id</span> <span class="op">=</span> ao.project_id</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="kw">JOIN</span> projects mp <span class="kw">ON</span> mp.uuid <span class="op">=</span> ap.uuid;</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- mirror for b</span></span></code></pre></div></li>
+<li><p>Join tables (<code>observation_concepts</code>,
+<code>project_concepts</code>, <code>observation_sources</code>),
+joining through <code>uuid</code> on <strong>both</strong> sides in one
+<code>INSERT ... SELECT</code>, mirrored for <code>a</code> and
+<code>b</code> — six statements total, full SQL in
+<code>merge-tool-plan.md</code>.</p></li>
+<li><p>Collect <code>MergeTableSummary</code> per table via
+<code>SELECT COUNT(*)</code> against <code>a.&lt;table&gt;</code>,
+<code>b.&lt;table&gt;</code>, and the merged table, while still
+attached.</p></li>
+<li><p><code>DETACH DATABASE a; DETACH DATABASE b</code>, close the raw
+connection.</p></li>
+<li><p><code>OpenKnowledgeBase(ws, mergedPath)</code>
+<strong>again</strong> — <code>rebuildFTSIfNeeded</code>
+(<code>knowledge.go:811</code>) only rebuilds when <code>kb_fts</code>
+is empty, which it still is (the raw-<code>*sql.DB</code> merge inserts
+never touch <code>kb_fts</code> — only the <code>Add*</code> methods
+populate it, and none were called), so this reopen is what actually
+builds the merged FTS index. Also a free no-op re-run of the backfill
+loop, confirming every merged row already has a <code>uuid</code>.
+Close.</p></li>
+</ol>
+<h3 id="cmdkbmerge-binary-orchestration-only"><code>cmd/kbmerge</code>
+binary — orchestration only</h3>
+<p>Not covered by unit tests (touches real files); covered by the manual
+sanity-check step in <code>merge-tool-plan.md</code> instead.</p>
+<ol type="1">
+<li><code>PRAGMA wal_checkpoint(FULL)</code> against each source
+<code>knowledge.db</code> (or confirm Harvey isn’t running against it),
+copy the <code>.db</code> file plus any
+<code>-wal</code>/<code>-shm</code> sidecars to a scratch
+directory.</li>
+<li>Run <code>CollisionReport</code>; print any hits. Without
+<code>-force</code>, abort. With <code>-force</code>, call
+<code>ReconcileCollisions</code> against the scratch copy of
+<code>b</code> first (see “Collision handling” above), then
+proceed.</li>
+<li>Run <code>MergeKnowledgeBases</code> against a scratch
+<code>merged.db</code> path; print the <code>[]MergeTableSummary</code>
+table.</li>
+<li>Back up each machine’s live <code>knowledge.db</code> (timestamped
+copy), then replace it with <code>merged.db</code>. This step is the
+only genuinely destructive one — flagged for explicit user confirmation
+before running against real data, same as any other
+risky/hard-to-reverse action.</li>
+</ol>
+<h2 id="testing">Testing</h2>
+<p>TDD-first, per this workspace’s convention.
+<code>knowledge_merge_test.go</code> builds each source knowledge base
+via two real <code>KnowledgeBase</code> handles
+(<code>openTestKB</code>-style, at distinct temp paths) so every row
+already has a real <code>uuid</code>/<code>origin_host</code> from the
+<code>Add*</code> insert paths (W5 of the UUID migration) — no need to
+hand-seed pre-migration rows the way <code>knowledge_test.go</code>’s
+backfill tests do. See <code>merge-tool-plan.md</code> for the specific
+test list per work item.</p>
+<h2 id="known-edge-case-carried-over-now-concretely-testable">Known edge
+case (carried over, now concretely testable)</h2>
+<p>The <code>harvey</code> project row exists independently on both
+machines today, predating the UUID migration, so it already has two
+different <code>uuid</code> values for what’s logically one project.
+<code>CollisionReport</code> is exactly the mechanism designed to catch
+this before a real merge runs — a dedicated test
+(<code>TestCollisionReport_DetectsNameUUIDMismatch</code>) proves it
+fires, using two synthetic databases with a same-name/different-uuid
+project row.</p>
+</section>
+</body>
+</html>

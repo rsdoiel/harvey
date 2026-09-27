@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1
+id="harvey-cold-start-latency-findings-input-to-design-session">Harvey —
+Cold-Start Latency Findings (input to design session)</h1>
+<p><strong>Status (2026-07-04):</strong> Design/decision session held.
+Two items decided and implemented; two more decided but not yet
+implemented (see “Decisions and implementation” below).</p>
+<hr />
+<h2 id="background">Background</h2>
+<p><code>TODO.md</code> had an open research question: “How to improve
+cold starts with models (reference Bonsia model slow warmup processing
+system prompt).” That question grew out of live-testing
+<code>bonsai-8b</code> (see <code>llamacpp-cpu-tuning-design.md</code>,
+Addendum 2), where a single cold-start turn took 16m4.277s. The initial
+read was that this was a Q1_0-specific problem (Bonsai’s 1-bit kernel is
+unusually slow at prompt processing). The user pushed back: is this only
+Q1_0, or does it happen with other models too? If it’s general, it needs
+fixing, not just documenting. This document reports the test that
+answers that question.</p>
+<h2 id="method">Method</h2>
+<p>Built one <code>.spmd</code> replay file with a single short turn
+(“Tell me in one sentence what model you are and what base model you
+were built from. Then compute 12 times 7 and show your work briefly.”).
+Ran it live through <code>harvey --replay</code> (not raw
+<code>llama-bench</code> — the real system prompt, the real
+<code>--replay</code> code path) against four different llamafiles, each
+from a genuinely cold server (no prior warm process on the port —
+confirmed by process inspection each time, after one run was
+accidentally contaminated by a leftover warm server from a previous test
+and had to be redone). Same hardware throughout: the Raspberry Pi 500
+(BCM2712, 4x Cortex-A76, 16GB) used for all of today’s benchmarking.</p>
+<h2 id="results">Results</h2>
+<table>
+<thead>
+<tr>
+<th scope="col">Model</th>
+<th scope="col">Params</th>
+<th scope="col">Quantization</th>
+<th scope="col">Cold-start (single turn)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bonsai-8B</td>
+<td>8B</td>
+<td>Q1_0 (1-bit)</td>
+<td>16m4.277s</td>
+</tr>
+<tr>
+<td>Apertus-8B-Instruct-2509</td>
+<td>8B</td>
+<td>standard (not Q1_0)</td>
+<td>9m34.05s</td>
+</tr>
+<tr>
+<td>Qwen3.5-4B-Q5_K_S</td>
+<td>4B</td>
+<td>Q5_K_S</td>
+<td>6m25.229s</td>
+</tr>
+<tr>
+<td>OpenELM-3B-Instruct</td>
+<td>3B</td>
+<td>Q4_K_M</td>
+<td><strong>failed</strong> — context overflow</td>
+</tr>
+</tbody>
+</table>
+<p>The OpenELM failure:
+<code>request (3372 tokens) exceeds the available context size (2048 tokens)</code>.
+OpenELM’s native context (2048, an architecture limit, not a config
+choice — see <code>henry/models/openelm-3b-instruct.yaml</code>) is
+smaller than Harvey’s own system prompt plus a single question. It never
+got the chance to be slow; it couldn’t run at all.</p>
+<h2 id="findings">Findings</h2>
+<ol type="1">
+<li><p><strong>Not Q1_0-specific.</strong> Cold-start time scales with
+parameter count across every model class tested (8B/8B/4B →
+16m/9.5m/6.5m), consistent with Q1_0 just being unusually slow <em>on
+top of</em> a problem that exists regardless of quantization. Even the
+smallest model that could actually complete the test — Qwen3.5-4B, half
+the size of the two 8B models — still took 6.5 minutes. That is not an
+edge case confined to one exotic quantization; it’s every size class
+tested being impractically slow on a first turn.</p></li>
+<li><p><strong>The system prompt is 3372 tokens</strong>
+(<code>agentPreamble</code> in <code>config.go</code> plus
+<code>HARVEY.md</code>), larger than an earlier rough estimate of
+~1500-2000 tokens made from a chars/4 approximation. This is a second,
+independent problem layered on top of the speed one: any model with a
+native context at or below ~3372 tokens cannot run Harvey <strong>at
+all</strong>, regardless of how fast it is. OpenELM-3B (2048 ctx) is a
+concrete example already in this workspace’s model library, not a
+hypothetical.</p></li>
+<li><p><strong>This is strictly a cold-start cost, not a per-turn
+one</strong> — already established in
+<code>llamacpp-cpu-tuning-design.md</code> Addendum 2 and reconfirmed
+today: llama-server’s slot-based prompt cache persists the processed
+system-prompt prefix across separate Harvey invocations as long as the
+underlying server process stays warm. The numbers above are worst-case
+“first thing after selecting a model” costs, not a tax paid on every
+message.</p></li>
+<li><p><strong>Secondary, non-speed observation:</strong> of the three
+models that could complete the test, Qwen3.5-4B gave the most coherent
+self-identification answer (“I’m Harvey… not an AI language model built
+from any base model” — correctly playing the assigned role) versus
+Bonsai-8B and Apertus-8B both hallucinating specific wrong lineages
+(“built from the Ollama model”, “built from a base model like Llama2”).
+Not central to the cold-start question, but worth keeping in view — it
+suggests this isn’t a universal small/local-model failure mode, some
+models handle the system-prompt framing better than others.</p></li>
+</ol>
+<h2
+id="candidate-directions-not-decided-for-the-design-session">Candidate
+directions (not decided — for the design session)</h2>
+<p>None of these are committed; they’re the shape of the solution space
+as of this write-up.</p>
+<ol type="1">
+<li><p><strong>Trim the system prompt</strong>
+(<code>agentPreamble</code> + review of <code>HARVEY.md</code> length).
+Addresses both the cold-start cost <em>and</em> the small-context
+compatibility wall (finding 2) in one move. Tradeoff:
+<code>agentPreamble</code>’s repetition of the auto-write-file rule
+(stated three times) may be deliberate reinforcement for weak models —
+trimming needs to preserve whatever compliance benefit that repetition
+buys, not just shrink token count blindly.</p></li>
+<li><p><strong>Background pre-warm.</strong> Fire a lightweight priming
+request to the backend immediately after model selection/connection,
+before the user finishes typing their first real message, so the
+system-prompt processing happens during idle “thinking” time instead of
+blocking the first real turn. Relies on finding 3 (cache persistence)
+already being true. Doesn’t help the OpenELM-class compatibility wall at
+all — a model that can’t hold the prompt still can’t hold it, warm or
+cold.</p></li>
+<li><p><strong>Investigate prompt-processing-specific performance
+knobs</strong>, separate from the decode/generation tuning already
+shipped today (thread count, <code>PinCPU</code>, BLAS backend choice —
+all <code>tg</code>-focused). <code>pp</code> (prompt processing) is the
+actual bottleneck for cold start, and it wasn’t the target of any tuning
+done so far this session. Candidates: batch size
+(<code>--batch-size</code>, default 2048), <code>ubatch</code> size,
+whether <code>-c</code> (context ceiling) itself adds
+allocation/bookkeeping overhead independent of actual prompt token
+count.</p></li>
+</ol>
+<h2 id="open-questions-for-the-design-session">Open questions for the
+design session</h2>
+<ul>
+<li>What’s an acceptable target cold-start time for Harvey on this class
+of hardware (Pi 500 / similar 4-core ARM boards)? Without a target,
+“trim the preamble” has no stopping point.</li>
+<li>Should Harvey detect up front that a model’s native context can’t
+hold the system prompt, and fail with a clear message before attempting
+the request — rather than the current raw
+<code>400 exceed_context_size_error</code> surfaced straight from
+<code>llama-server</code>?</li>
+<li>Is there a way to separate “pure model/weights loading time” from
+“system prompt processing time” in these numbers? All four measurements
+above bundle both; knowing the split would sharpen which candidate
+direction matters most.</li>
+<li>Does trimming <code>agentPreamble</code> risk regressing tool-call
+compliance on the weak/small models it was seemingly written for? Needs
+a compliance check, not just a token-count check, before cutting
+content.</li>
+</ul>
+<h2 id="addendum-2026-07-04-system-prompt-composition-audit">Addendum
+(2026-07-04): system-prompt composition audit</h2>
+<p>Follow-up analysis, done before the design session, to find out
+exactly what the ~3372 measured tokens are made of — not just estimate
+it. Read the actual code paths rather than assuming.</p>
+<h3 id="composition">Composition</h3>
+<p>The system prompt is built from three pieces, concatenated in this
+order:</p>
+<ol type="1">
+<li><strong><code>agentPreamble</code></strong> (const in
+<code>config.go</code>) — 1087 chars.</li>
+<li><strong><code>HARVEY.md</code></strong> — loaded by
+<code>LoadHarveyMD()</code> in <code>config.go</code>, which does a bare
+<code>os.ReadFile("HARVEY.md")</code>. Size depends on which file is
+found (see below): the workspace-root <code>HARVEY.md</code> is 4005
+chars; <code>harvey/HARVEY.md</code> is 1899 chars.</li>
+<li><strong>Skills catalog</strong>
+(<code>CatalogSystemPromptBlock</code> in <code>skills.go</code>,
+appended in <code>terminal.go</code> after <code>LoadHarveyMD()</code>)
+— scans <code>agents/skills/*/SKILL.md</code> and inlines every skill’s
+full frontmatter <code>description:</code> plus its absolute filesystem
+path as XML. Currently 11 skills, 6212 chars — <strong>the single
+largest of the three</strong>, bigger than <code>agentPreamble</code> +
+<code>HARVEY.md</code> combined.</li>
+</ol>
+<p>Chars/4 across all three (11304 chars) gives ~2826 tokens,
+undercounting the measured 3372 — Harvey’s own chars/4 heuristic (used
+elsewhere for the <code>[ctx: %]</code> hint) is optimistic for this
+kind of dense, hyphenated/XML-tagged technical text. At a more realistic
+~3.3 chars/token, 11304/3.3 ≈ 3425, consistent with the measured value.
+No unaccounted remainder.</p>
+<p><strong>Ruled out:</strong> the memory silo’s always-injected
+<code>workspace_profile</code>/ <code>project_fact</code> records do not
+contribute — <code>memory.enabled</code> is not set in
+<code>agents/harvey.yaml</code>, so <code>injectMemoryContext</code>
+(<code>harvey.go</code>) returns early before ever calling
+<code>UnifiedMemory.Recall</code>.</p>
+<h3
+id="bug-harvey.md-loading-bypasses-the-workspace-boundary-entirely">Bug:
+<code>HARVEY.md</code> loading bypasses the workspace boundary
+entirely</h3>
+<p><code>cmd/harvey/main.go</code> calls
+<code>cfg.SystemPrompt = harvey.LoadHarveyMD()</code> at line 144,
+<strong>before</strong> <code>harvey.NewWorkspace(cfg.WorkDir)</code>
+runs at line 145. <code>LoadHarveyMD()</code> never consults
+<code>cfg.WorkDir</code>/<code>-w</code> — it reads
+<code>"HARVEY.md"</code> relative to the process’s raw cwd, with no
+containment check, before the <code>Workspace</code> struct (which is
+where Harvey’s actual “operations stay inside the root” security
+invariant lives, per its own doc comment) has even been constructed.</p>
+<p>Confirmed with the user this is <em>not</em> simply “should default
+to cwd” — that part is correct and intentional (launching in
+<code>~/Laboratory</code> should load its <code>HARVEY.md</code>;
+launching inside <code>~/Laboratory/henry</code> without <code>-w</code>
+should not). The actual gap is narrower and more concrete:</p>
+<ul>
+<li>When <code>-w</code> is passed explicitly, there is currently
+<strong>no check</strong> that the process’s cwd is contained within the
+given root. Passing <code>-w ~/Laboratory</code> while standing in an
+unrelated tree (e.g. <code>~/WorkLab/henry</code>) should fail fast with
+a clear error — it currently doesn’t; <code>NewWorkspace</code> will
+happily set <code>Root</code> to whatever path it’s given.</li>
+<li>Independent of that check, <code>LoadHarveyMD()</code> doesn’t use
+<code>ws</code> at all, so even when <code>-w</code> <em>is</em> valid
+and honored for everything else (<code>agents/</code>, sessions,
+config), it has zero effect on which <code>HARVEY.md</code> loads.
+That’s inconsistent with the rest of the workspace model.</li>
+</ul>
+<p><strong>Consequence for this document’s own numbers:</strong> the
+“Method” section above assumed the workspace-root <code>HARVEY.md</code>
+(4005 chars) was the one loaded during the four cold-start test runs
+(<code>harvey -w /home/rsdoiel/Laboratory --llamafile ...</code>). That
+was an assumption, not a verified fact — the actual file loaded depends
+on the shell’s cwd at invocation time, which was not recorded. If cwd
+was <code>harvey/</code> (plausible; that’s where the binary lives),
+<code>harvey/HARVEY.md</code> (1899 chars) loaded instead. This is
+itself evidence of the bug: the same command line can silently load
+different guidance depending on invocation directory.</p>
+<h3
+id="skills-catalog-breadth-is-deliberate-per-entry-cost-is-not">Skills
+catalog: breadth is deliberate, per-entry cost is not</h3>
+<p>Raised the question directly with the user: given small-model context
+constraints, should Harvey load fewer skills into the prompt? Answer: no
+— <code>agents/</code> (skills, <code>knowledge.db</code>, memories) is
+deliberately designed to be a shared, filesystem-legible substrate so
+<em>other</em> model/tooling systems can also discover project skills
+and knowledge, not just whichever model Harvey is currently running.
+Reducing which skills appear would work against that goal, and the
+filesystem itself (any tool can read
+<code>agents/skills/*/SKILL.md</code> directly) already satisfies
+cross-system discoverability without needing full injection into any one
+session’s live prompt.</p>
+<p>The waste is representational, not coverage: each catalog entry
+inlines a multi-sentence description <strong>and</strong> a full
+absolute path
+(<code>/home/rsdoiel/Laboratory/agents/skills/&lt;name&gt;/SKILL.md</code>)
+that the LLM has no use for — it only ever needs to type
+<code>`/skill load &lt;name&gt;`</code>. A shorter per-entry form (name
++ one-line purpose, no path) would cut this block substantially while
+still surfacing all 11 skills every session.</p>
+<p><strong>Revised implication for the design session:</strong> trimming
+<code>agentPreamble</code> alone (candidate direction #1) only touches
+~10% of the total. The higher-leverage, and only currently
+<em>growing</em>, target is the skills catalog — fix its representation
+(shorter entries, drop the path), not its breadth.</p>
+<h2
+id="decisions-and-implementation-2026-07-04-design-session">Decisions
+and implementation (2026-07-04 design session)</h2>
+<ol type="1">
+<li><p><strong>Workspace-boundary fix — decided and
+implemented.</strong> Confirmed with the user that
+cwd-as-default-workspace is intentional; the actual gap was
+<code>-w</code>/<code>--workdir</code> having no containment check and
+<code>HARVEY.md</code> loading bypassing the <code>Workspace</code>
+boundary entirely (see Addendum above). Implemented:
+<code>Workspace.LoadHarveyMD()</code> (replaces the old package-level
+<code>LoadHarveyMD()</code>, now anchored to <code>ws.Root</code> via
+<code>ws.ReadFile</code>) and <code>RequireCWDInRoot(cwd, root)</code>,
+wired into <code>cmd/harvey/main.go</code> via
+<code>checkWorkDir()</code> — exits with a clear error when
+<code>-w</code> is passed explicitly and cwd isn’t inside the declared
+root. <code>main()</code> reordered so the workspace is constructed
+before the system prompt loads. TDD-first;
+<code>TestWorkspaceLoadHarveyMD_*</code> and
+<code>TestRequireCWDInRoot_*</code> in
+<code>workspace_test.go</code>.</p></li>
+<li><p><strong>Preflight context-size check — decided and
+implemented.</strong> Detects when the system prompt alone leaves no
+room in the active model’s context (the OpenELM-3B failure mode) and
+fails with an actionable message instead of the raw
+<code>400 exceed_context_size_error</code>. Implemented as
+<code>systemPromptTokenEstimate()</code> (pads the chars/4 heuristic
+20%, per the composition-audit finding above that it undercounts this
+kind of text) and <code>systemPromptExceedsContext()</code> (pure
+decision function) in <code>context_estimator.go</code>, wired into
+<code>terminal.go</code>’s <code>Run()</code> right after backend
+selection. Tests: <code>TestSystemPromptTokenEstimate_*</code>,
+<code>TestSystemPromptExceedsContext_*</code>.</p></li>
+<li><p><strong>Skills catalog format — decided and implemented.</strong>
+Auto-truncate each entry’s frontmatter <code>description:</code> to its
+first sentence (or ~80 chars) for the injected catalog block, and drop
+the absolute path entirely — the LLM only needs
+<code>`/skill load &lt;name&gt;`</code>. No <code>SKILL.md</code> edits
+required; breadth (all skills, every session) is preserved deliberately
+for cross-model/tooling discoverability via the filesystem. Implemented
+as <code>summarizeSkillDescription()</code> in <code>skills.go</code>,
+used by <code>CatalogSystemPromptBlock</code> in place of the raw
+description, with the <code>&lt;location&gt;</code> line removed.
+TDD-first; <code>TestSummarizeSkillDescription_*</code> and
+<code>TestCatalogSystemPromptBlock_noLocation</code> /
+<code>_truncatesLongDescription</code> in <code>skills_test.go</code>.
+Measured effect on the real 11-skill catalog: 6212 → 2024 chars (~1882 →
+~613 estimated tokens at ~3.3 chars/token) — a ~1270-token cut while
+still listing all 11 skills every session.</p></li>
+<li><p><strong>agentPreamble / HARVEY.md trim — decided and
+implemented.</strong> Full rewrite for density (not just deduping the
+repeated auto-write rule). <code>agentPreamble</code>
+(<code>config.go</code>) folded its ~4 repeated mentions of the
+tag-to-write rule down to one mechanism sentence + one rules-list
+reminder; all five pre-existing <code>TestAgentPreamble_*</code>
+invariant tests (non-empty, no-fake-output phrasing, slash-command
+mentions, auto/tagged mentions, fence example) still pass unmodified
+against the new text — confirming the rewrite preserved every
+compliance-critical rule the tests guard. Both <code>HARVEY.md</code>
+files were rewritten the same way, dropping content that only duplicated
+<code>agentPreamble</code> (the tagged-block mechanism was fully
+re-explained in both, with two extra example fence blocks in the
+<code>harvey/</code> one) while keeping everything workspace-specific
+(PDF/image reading, <code>/kb</code> workflow, Fountain conventions,
+build/test commands).</p>
+<p><strong>Correction (2026-07-04):</strong> the Addendum above states
+<code>harvey/HARVEY.md</code> was 1899 chars — that number was never
+actually measured, just estimated by eye, and was wrong. The real
+pre-rewrite size (<code>git show HEAD:HARVEY.md | wc -c</code>) was
+<strong>4927 chars</strong>, not 1899. Measured before/after for all
+three pieces:</p>
+<table>
+<thead>
+<tr>
+<th scope="col">File</th>
+<th scope="col">Before</th>
+<th scope="col">After</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agentPreamble</code> (<code>config.go</code>)</td>
+<td>1087</td>
+<td>1050</td>
+<td>−37 chars (−3%)</td>
+</tr>
+<tr>
+<td><code>HARVEY.md</code> (Laboratory root)</td>
+<td>4033</td>
+<td>2816</td>
+<td>−1217 chars (−30%)</td>
+</tr>
+<tr>
+<td><code>HARVEY.md</code> (<code>harvey/</code>)</td>
+<td>4927</td>
+<td>2069</td>
+<td>−2858 chars (−58%)</td>
+</tr>
+</tbody>
+</table>
+<p><code>agentPreamble</code>’s small delta confirms it was already
+fairly tight — most of its content is compliance-critical rules, not
+filler; the real density win was in the two <code>HARVEY.md</code>
+files, which had accumulated a full duplicate explanation of
+<code>agentPreamble</code>’s own mechanism.</p></li>
+</ol>
+<p>All four items from the 2026-07-04 design session are now decided and
+implemented.</p>
+<h2 id="re-run-with-the-trimmed-prompt-2026-07-04">Re-run with the
+trimmed prompt (2026-07-04)</h2>
+<p>Re-ran the same single-turn cold-start test (see Reproduction below)
+against all four models, using the rebuilt <code>bin/harvey</code> with
+all four fixes above applied, to confirm the trim actually helped rather
+than assuming it from the composition audit alone.</p>
+<p><strong>Confirm no leftover server before every run.</strong> Two of
+six runs in this sweep were contaminated by a still-running llamafile
+server from the immediately-prior test (same class of bug noted in the
+original Method section) and had to be discarded and rerun:</p>
+<ul>
+<li>Qwen3.5-4B’s first attempt actually ran on a leftover warm
+OpenELM-3B server
+(<code>"Server at http://localhost:8080 is serving 'openelm-3b-instruct-Q4_K_M' (configured: 'Qwen3.5-4B-Q5_K_S') — adopting detected model"</code>)
+— caught from the log line, discarded, OpenELM process killed, Qwen
+rerun clean.</li>
+<li>Bonsai-8B’s first attempt likewise ran on a leftover warm Apertus-8B
+server — same pattern, same fix.</li>
+</ul>
+<p><strong>First clean Qwen3.5-4B result was itself an anomaly.</strong>
+That rerun came back at 14m28.434s — slower than yesterday’s
+<em>pre-trim</em> 6m25.229s, which doesn’t fit: a smaller prompt cannot
+increase prompt-processing cost by any mechanism Harvey controls.
+Checked for causes before drawing any conclusion — no swap in use, no
+competing processes, temperature normal (46°C) — found nothing
+conclusive. Re-ran a second time from a fully clean state (no processes,
+load average settling) and got 4m33.972s, in line with the other three
+models. Treating the 14m28s run as an unexplained one-off (candidate
+causes: cold filesystem page-cache for the ~3GB model file, general Pi
+run-to-run variance) rather than a real effect — flagging it here
+instead of silently dropping it, per this doc’s own no-silent-rewrite
+convention.</p>
+<p><strong>Final clean results:</strong></p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Model</th>
+<th scope="col">Before (2026-07-03)</th>
+<th scope="col">After (2026-07-04, trimmed)</th>
+<th scope="col">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bonsai-8B (Q1_0)</td>
+<td>16m4.277s</td>
+<td>8m5.715s</td>
+<td>−50%</td>
+</tr>
+<tr>
+<td>Apertus-8B</td>
+<td>9m34.05s</td>
+<td>5m6.256s</td>
+<td>−47%</td>
+</tr>
+<tr>
+<td>Qwen3.5-4B</td>
+<td>6m25.229s</td>
+<td>4m33.972s</td>
+<td>−29%</td>
+</tr>
+<tr>
+<td>OpenELM-3B-Instruct</td>
+<td>failed — context overflow, couldn’t start</td>
+<td>3m20.517s, completes</td>
+<td>now runs at all</td>
+</tr>
+</tbody>
+</table>
+<p>All four models improved. The three that could already run before are
+all roughly 30-50% faster, consistent with the smaller prompt needing
+less prefill/prompt-processing work. OpenELM-3B is the clearest single
+result: it could not run <em>at all</em> before (3372 tokens &gt; its
+2048 native context), and now completes, because the trimmed prompt
+(agentPreamble + skills catalog cuts) brought total tokens under its
+limit. Its actual reply is incoherent (garbled HTML-ish text) — a
+separate, pre-existing model-quality issue for this weak/small model
+under Harvey’s system-prompt framing, not a sizing problem; noted here
+for completeness, not investigated further.</p>
+<p>This closes the loop opened by finding 1 in “Findings” above
+(cold-start time scales with parameter count, not just Q1_0/Bonsai) —
+the fix (prompt trim) reduced that cost for every model class tested,
+and separately fixed the compatibility wall from finding 2 for at least
+one real model in this workspace’s library.</p>
+<h3 id="assay-as-a-future-reference-point-deferred">Assay as a future
+reference point (deferred)</h3>
+<p>Considered using <code>assay</code> (<code>cmd/assay/</code>) to
+A/B-test system-prompt variants (full vs. trimmed) for
+tool-call/convention compliance before making changes. Found it
+currently has no system-prompt injection at all — it sends raw corpus
+prompts with no system message, so it can’t yet answer that question.
+Decided to <strong>defer</strong> building this out: trim the prompt
+first, let real usage surface which compliance failures actually happen,
+and let those concrete failure modes drive what <code>assay</code> needs
+(a <code>--system-prompt</code> flag, a
+<code>harvey-conventions.yaml</code> corpus, a
+<code>--system-compare</code> delta report) rather than guessing at
+checks upfront. Revisit once the trimming work has produced real failure
+examples to design against.</p>
+<h2 id="reproduction">Reproduction</h2>
+<p>Test turn used for all four runs:</p>
+<pre><code>Tell me in one sentence what model you are and what base model you were
+built from. Then compute 12 times 7 and show your work briefly.</code></pre>
+<p>Commands (per model):</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">-w</span> /home/rsdoiel/Laboratory <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--llamafile</span> <span class="op">&lt;</span>path-to-llamafile<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--replay</span> <span class="op">&lt;</span>turn-file.spmd<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--replay-output</span> <span class="op">&lt;</span>out.spmd<span class="op">&gt;</span></span></code></pre></div>
+<p>Confirm no leftover warm server before each cold-start run —
+<code>ps aux | grep llamafile</code>; a stale server on the configured
+URL gets silently adopted instead of a fresh one starting, which
+happened once during this investigation and had to be redone.</p>
+</section>
+</body>
+</html>

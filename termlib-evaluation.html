@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="termlib-evaluation-gate-on-tagging-v0.0.16">termlib evaluation
+(gate on tagging v0.0.16)</h1>
+<p>Written 2026-09-24. <code>TODO.md</code> asks for an
+<em>evaluation</em> of whether <code>github.com/rsdoiel/termlib</code>
+should be replaced or kept, before v0.0.16 is tagged. This records the
+facts and the options. It does not decide.</p>
+<p><strong>A correction to
+<code>repl-charm-migration-design.md</code>.</strong> That brief says
+the user “has decided” that v0.0.16 drops termlib for Charm.
+<code>TODO.md</code> says the opposite question is open (“determine
+whether termlib’s surface can be replaced … or should stay”). The brief
+overstated it, and its Option A was written as a recommendation to
+review, not an agreed scope.</p>
+<h2 id="facts-each-checked-in-the-code-or-module-2026-09-24">Facts (each
+checked in the code or module, 2026-09-24)</h2>
+<ul>
+<li><strong>Harvey’s whole use of termlib is 6 lines in
+<code>terminal.go</code></strong>:
+<code>NewLineEditor(os.Stdin, out)</code>,
+<code>le.Prompt(a.prompt())</code> once per turn,
+<code>ErrInterrupted</code>, <code>Completer</code>, and
+<code>AppendHistory</code>/<code>SetHistory</code>/<code>History</code>
+in <code>loadCmdHistory</code>/<code>saveCmdHistory</code>. Nothing else
+imports it.</li>
+<li><strong>termlib is the author’s own module</strong>,
+<code>~/Laboratory/termlib</code>, ~2650 lines including tests, one
+dependency (<code>golang.org/x/term</code>). Harvey is its only consumer
+anywhere in the Laboratory.</li>
+<li><strong>Tagged <code>v0.0.9</code>; <code>main</code> is one commit
+ahead</strong> (<code>354195d</code>, “fix prompt and input bug”: a
+prompt wider than the terminal, or containing a newline, corrupted the
+redraw). Harvey’s prompt is one short row
+(<code>harvey [unsafe] &gt;</code>), so this fix does not affect it
+today.</li>
+<li><strong>The trigger was not a functional problem.</strong> The
+2026-09-15 request followed the discovery of a stale
+<code>replace github.com/rsdoiel/termlib =&gt; ../termlib</code> in
+<code>go.mod</code>. That is fixed (<code>go.mod</code> requires
+<code>v0.0.9</code> cleanly, the build passes).</li>
+<li><strong>Charm is not in Harvey’s build today.</strong> Harvey’s
+binary imports <code>x/term</code> only. Adopting
+<code>bubbletea</code>/<code>bubbles</code>/<code>lipgloss</code> adds
+about <strong>30 third-party packages</strong> (measured as the packages
+<code>knowledge</code>’s <code>kb</code> imports that Harvey does not:
+<code>charmbracelet/{bubbles,x}</code>,
+<code>muesli/{ansi,termenv, cancelreader}</code>,
+<code>mattn/go-runewidth</code>, <code>rivo/uniseg</code>,
+<code>sahilm/fuzzy</code>, <code>xo/terminfo</code>). <code>kb</code>
+already takes that cost, so it is a precedent, not a new kind of
+dependency for the Laboratory.</li>
+<li><strong>Charm has no equivalent of a blocking
+<code>Prompt() (string, error)</code>.</strong> History, word-boundary
+Tab completion, Ctrl+J multi-line and the <code>$EDITOR</code> handoff
+would be rebuilt inside a wrapper
+(<code>repl-charm-migration-design.md</code>, Option A). Harvey’s tests
+rely on termlib’s non-TTY fallback (plain line reading); the wrapper
+would need its own.</li>
+<li><strong>Not measured:</strong> how the two feel to use. No behavior
+comparison was run.</li>
+</ul>
+<h2 id="options">Options</h2>
+<ol type="1">
+<li><strong>Keep termlib for v0.0.16.</strong> Tag <code>termlib</code>
+v0.0.10 (it has the unreleased fix), bump the <code>go.mod</code>
+require, and treat Charm as its own later effort. Nothing changes in the
+REPL. Cost: none now. Risk: none new. Leaves the “one input stack across
+the Laboratory” question open.</li>
+<li><strong>Vendor termlib’s line editor into Harvey</strong> (copy ~660
+lines into the <code>harvey</code> package, keep <code>x/term</code>).
+Removes the separate module and any release coupling, changes no
+behavior. Cost: Harvey owns the code and termlib loses its only
+consumer.</li>
+<li><strong>Widget-level swap to Charm</strong> (the brief’s Option A).
+Replaces <code>termlib.LineEditor</code> with a wrapper around
+<code>textinput</code>/<code>textarea</code>, same narrow surface. Cost:
+~30 new packages and a rebuild of history, completion, multi-line and
+editor handoff, on the one component every keystroke goes through. Risk:
+input regressions in the release that also ships the learning mode.</li>
+<li><strong>Full REPL rearchitecture on Bubble Tea</strong> (the brief’s
+Option B). A rewrite of most of the interactive surface: streaming,
+<code>!</code> output, recording hooks, every blocking prompt. A
+separate project, not a release item.</li>
+</ol>
+<h2 id="recommendation">Recommendation</h2>
+<p><strong>Option 1 for v0.0.16</strong>, and take Charm as a deliberate
+follow-up once the learning mode has been in use. The evaluation the
+gate asks for has a clear answer: termlib is small, owned, tested, has
+no functional defect affecting Harvey, and the only reason it was
+questioned (the stale <code>replace</code>) is fixed. Replacing the
+input layer in the same release as the largest feature since v0.0.15
+puts the risk where a regression is most visible and hardest to
+unit-test. If the goal is one input stack across the Laboratory, that is
+a good reason to do Option 3, but it is a reason about
+<code>kb</code>/Harvey consistency, and it can wait for its own
+release.</p>
+<p>Whichever is chosen, the decision belongs in <code>decisions/</code>
+as a record (DR-0003), authored <code>proposed</code>.</p>
+</section>
+</body>
+</html>

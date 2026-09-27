@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <title>harvey</title>
+    <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a href="#main-content" class="visually-hidden">skip to main content</a>
+<nav>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="index.html">Harvey</a></li>
+    <li><a href="LICENSE">LICENSE</a></li>
+    <li><a href="INSTALL.html">INSTALL</a></li>
+    <li><a href="user_manual.html">User Manual</a></li>
+    <li><a href="about.html">About</a></li>
+    <!-- <li><a href="search.html">Search</a></li> -->
+    <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
+</ul>
+</nav>
+<section id="main-content">
+<h1 id="harvey-refactoring-plan">Harvey Refactoring Plan</h1>
+<p><strong>Date</strong>: 2026-06-28<br />
+<strong>Status</strong>: Approved for scheduling<br />
+<strong>Source</strong>: Code audit conducted 2026-06-28</p>
+<p>This plan addresses the technical debt identified in the June 2026
+audit. Work items are labeled R0 → R9, ordered by risk (lowest first).
+Each item can be done in isolation; earlier items reduce the risk of
+later ones.</p>
+<p><strong>Ground rules for all refactoring work:</strong></p>
+<ul>
+<li>Every item must pass <code>go test ./...</code> and
+<code>go test -race</code> before and after.</li>
+<li>No behavior changes. No new features. No opportunistic cleanup
+beyond the stated scope.</li>
+<li>Commit after each item, not after the whole phase.</li>
+<li>If a move touches a function called from many places, use
+<code>grep</code> to find all callers before moving.</li>
+</ul>
+<hr />
+<h2 id="audit-summary">Audit summary</h2>
+<table>
+<colgroup>
+<col style="width: 47%" />
+<col style="width: 52%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Metric</th>
+<th scope="col">Finding</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Largest file</td>
+<td><code>commands.go</code> — 7026 lines, 145 functions, 8 embedded
+subsystems</td>
+</tr>
+<tr>
+<td>Second largest</td>
+<td><code>helptext.go</code> — 3864 lines, all inline string
+literals</td>
+</tr>
+<tr>
+<td>God file</td>
+<td><code>terminal.go</code> — 2543 lines, 6+ distinct concerns</td>
+</tr>
+<tr>
+<td>Duplicated token heuristic</td>
+<td>4 locations (<code>routing.go</code>, <code>terminal.go</code>,
+<code>commands.go</code>, <code>pipeline.go</code>)</td>
+</tr>
+<tr>
+<td><code>NewMemoryStore</code> opens</td>
+<td>11 separate opens across 5 files; no session-scoped handle</td>
+</tr>
+<tr>
+<td>Agent struct fields</td>
+<td>35 fields; no sub-struct grouping</td>
+</tr>
+<tr>
+<td>Config struct fields</td>
+<td>~45 fields; 3 separate places where defaults are set</td>
+</tr>
+<tr>
+<td>Files with no test</td>
+<td><code>builtin_tools.go</code> (933 lines)</td>
+</tr>
+<tr>
+<td>Orphan test files</td>
+<td>~9 test files named for removed phases, not current source
+files</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="r0-quick-wins-isolated-one-function-fixes">R0 — Quick wins:
+isolated one-function fixes</h2>
+<p><strong>Risk: very low. Each change is a rename or a function move
+with no logic change.</strong></p>
+<p>Do these in any order. Each is independently committable.</p>
+<h3 id="r0-a-consolidate-estimatetokens">R0-A — Consolidate
+<code>estimateTokens</code></h3>
+<p><strong>Problem:</strong> <code>estimateTokens</code> is documented
+as living in <code>routing.go</code> but
+<code>context_estimator.go</code> exists precisely to own token
+accounting. Three other files inline the same <code>len(s)/4</code>
+heuristic without calling it.</p>
+<p><strong>Fix:</strong> 1. Move <code>estimateTokens</code> from
+<code>routing.go</code> to <code>context_estimator.go</code>. 2. In
+<code>terminal.go</code> (~line 1352), <code>commands.go</code> (~line
+661), and <code>pipeline.go</code> (~line 284): replace the inline
+<code>len(...) / 4</code> with a call to
+<code>estimateTokens(...)</code>. 3. Update the comment in
+<code>context_estimator.go</code> that says “defined in routing.go”.</p>
+<h3 id="r0-b-delete-filterenvironment-alias">R0-B — Delete
+<code>filterEnvironment</code> alias</h3>
+<p><strong>Problem:</strong> <code>terminal.go:73</code> defines a
+one-line alias for <code>filterCommandEnvironment</code> in
+<code>commands.go:92</code>.</p>
+<p><strong>Fix:</strong> 1. Delete the <code>filterEnvironment</code>
+function from <code>terminal.go</code>. 2. At
+<code>terminal.go:754</code> (the one call site), call
+<code>filterCommandEnvironment</code> directly.</p>
+<h3 id="r0-c-move-ragaugment-to-rag_support.go">R0-C — Move
+<code>ragAugment</code> to <code>rag_support.go</code></h3>
+<p><strong>Problem:</strong> <code>ragAugment</code> (77 lines,
+<code>terminal.go:2332</code>) operates on <code>RagStore</code> and
+<code>Agent.Rag</code> — it belongs next to <code>RagStore</code> in
+<code>rag_support.go</code>, not in the terminal REPL file.</p>
+<p><strong>Fix:</strong> 1. Cut <code>ragAugment</code> from
+<code>terminal.go</code>, paste into <code>rag_support.go</code>. 2. It
+is called only from <code>terminal.go</code>; keep the call there, no
+callers change. 3. Confirm <code>go build</code> still passes
+(<code>ragAugment</code> references <code>Agent</code> fields that are
+visible from <code>rag_support.go</code> since both are package
+<code>harvey</code>).</p>
+<h3 id="r0-d-move-ragchunk-to-rag_support.go">R0-D — Move
+<code>ragChunk</code> to <code>rag_support.go</code></h3>
+<p><strong>Problem:</strong> <code>ragChunk</code> (~40 lines,
+<code>commands.go:6238</code>) is a RAG-ingestion helper buried 6238
+lines into <code>commands.go</code>. It has no <code>Agent</code>
+dependency.</p>
+<p><strong>Fix:</strong> 1. Cut <code>ragChunk</code> from
+<code>commands.go</code>, paste into <code>rag_support.go</code>. 2. Its
+callers are in <code>commands.go</code> — no imports change (same
+package).</p>
+<h3 id="r0-e-move-resolvellamafilepath-to-llamafile.go">R0-E — Move
+<code>resolveLlamafilePath</code> to <code>llamafile.go</code></h3>
+<p><strong>Problem:</strong> <code>resolveLlamafilePath</code> is
+defined in <code>terminal.go:1573</code> but called 5 times from
+<code>llamafile.go</code> and only 3 times from
+<code>terminal.go</code>. The calling file should not own a function it
+doesn’t dominate.</p>
+<p><strong>Fix:</strong> 1. Cut <code>resolveLlamafilePath</code> from
+<code>terminal.go</code>, paste into <code>llamafile.go</code>. 2.
+Confirm callers in <code>terminal.go</code> still compile (same package
+— they will).</p>
+<h3 id="r0-f-merge-ollamaformatbytes-into-formatbytes">R0-F — Merge
+<code>ollamaFormatBytes</code> into <code>formatBytes</code></h3>
+<p><strong>Problem:</strong> <code>commands.go</code> has two
+<code>formatBytes</code> variants 566 lines apart.
+<code>ollamaFormatBytes</code> adds only a <code>zeroDash</code>
+behavior (returns <code>"—"</code> for zero).</p>
+<p><strong>Fix:</strong> 1. Add a <code>zeroDash bool</code> parameter
+to <code>formatBytes</code>, or inline the <code>"—"</code> check at the
+one <code>ollamaFormatBytes</code> call site and delete the function. 2.
+Delete <code>ollamaFormatBytes</code>.</p>
+<h3 id="r0-g-rename-orphan-test-files">R0-G — Rename orphan test
+files</h3>
+<p><strong>Problem:</strong> ~9 test files are named for removed
+development phases (<code>phase_d_test.go</code>,
+<code>phase_e_test.go</code>, <code>tier2_test.go</code>,
+<code>tier3_test.go</code>, <code>routing_phase4_test.go</code>, etc.)
+rather than for the source files they test. This makes navigation
+confusing.</p>
+<p><strong>Fix:</strong> Identify what each file actually tests (grep
+for the tested functions), then rename to match the source file
+(<code>pdf_extract_test.go</code>, <code>tool_executor_test.go</code>,
+etc.). No code changes — rename only.</p>
+<h3 id="r0-h-remove-duplicate-llamafileentry-definition">R0-H — Remove
+duplicate <code>LlamafileEntry</code> definition</h3>
+<p><strong>Problem:</strong> <code>config.go</code> contains two
+definitions of <code>LlamafileEntry</code> — one at approximately line
+80–85 and a second at approximately line 1090–1104. Duplicate type
+definitions are a compilation hazard and a maintenance trap: edits to
+one copy are silently missed in the other.</p>
+<p><strong>Fix:</strong> 1. Confirm which definition is canonical (check
+which one is referenced by
+<code>LlamafileConfig.Models []LlamafileEntry</code> and called from
+<code>llamafile.go</code>). 2. Delete the duplicate. Verify with
+<code>go build</code> that only one definition remains and all callers
+still compile.</p>
+<hr />
+<h2
+id="r1-move-prose-and-apertus-tool-call-logic-to-tool_executor.go">R1 —
+Move prose and Apertus tool-call logic to
+<code>tool_executor.go</code></h2>
+<p><strong>Risk: low. Pure move, no logic change.</strong></p>
+<p><strong>Problem:</strong> <code>tryExecuteProseToolCalls</code> and
+<code>tryExecuteApertusToolCalls</code> (~110 lines total, currently in
+<code>terminal.go</code>) operate on <code>CodeBlock</code> and
+<code>ToolRegistry</code> — the same types <code>tool_executor.go</code>
+already owns. They were placed in <code>terminal.go</code> because
+they’re called from <code>runChatTurn</code>, but they have no
+terminal-specific dependencies.</p>
+<p><strong>Fix:</strong> 1. Cut both functions from
+<code>terminal.go</code>. 2. Paste into <code>tool_executor.go</code>.
+3. Call sites in <code>terminal.go</code> remain unchanged (same
+package).</p>
+<p><strong>Acceptance:</strong> <code>go test -race ./...</code> passes.
+<code>terminal.go</code> shrinks by ~110 lines.</p>
+<hr />
+<h2 id="r2-extract-commands_rag.go-from-commands.go">R2 — Extract
+<code>commands_rag.go</code> from <code>commands.go</code></h2>
+<p><strong>Risk: medium. Largest single extraction; most callers to
+verify.</strong></p>
+<p><strong>Problem:</strong> The <code>/rag</code> command handler and
+the entire RAG ingestion pipeline (<code>ragIngestFile</code>,
+<code>ragIngestRemotePrefix</code>, <code>ragIngestS3Prefix</code>,
+<code>ragIngestHTTP</code>, <code>ragChunk</code>) account for roughly
+1400 lines inside <code>commands.go</code>. After R0-D,
+<code>ragChunk</code> is already in <code>rag_support.go</code>. The
+remaining ingest functions have no dependency on the other commands in
+<code>commands.go</code>.</p>
+<p><strong>Fix:</strong> 1. Create <code>commands_rag.go</code>. 2. Move
+<code>cmdRag</code> and all <code>ragIngest*</code> functions into it.
+3. Move the <code>/rag</code> help text from <code>helptext.go</code>
+into <code>commands_rag.go</code> as a package-level <code>const</code>
+(or keep in <code>helptext.go</code> — either is fine as long as it’s
+consistent). 4. Verify no import cycle: <code>commands_rag.go</code>
+will import nothing that <code>commands.go</code> doesn’t already
+import.</p>
+<p><strong>Acceptance:</strong> <code>go test -race ./...</code> passes.
+<code>commands.go</code> shrinks by ~1400 lines.</p>
+<hr />
+<h2 id="r3-extract-commands_memory.go-from-commands.go">R3 — Extract
+<code>commands_memory.go</code> from <code>commands.go</code></h2>
+<p><strong>Risk: medium.</strong></p>
+<p><strong>Problem:</strong> <code>/memory</code> commands and
+workspace-profile management (~640 lines) are an independent subsystem
+inside <code>commands.go</code>. They call into
+<code>memory_store.go</code> and <code>memory_miner.go</code> —
+same-package files — but do not interact with other commands.</p>
+<p><strong>Fix:</strong> 1. Create <code>commands_memory.go</code>. 2.
+Move <code>cmdMemory</code> and its sub-handlers
+(<code>cmdMemoryList</code>, <code>cmdMemoryShow</code>,
+<code>cmdMemoryForget</code>, <code>cmdMemoryMine</code>, etc.) into it.
+3. Move profile-management helpers that are only called from memory
+commands.</p>
+<p><strong>Acceptance:</strong> <code>go test -race ./...</code> passes.
+<code>commands.go</code> shrinks by ~640 lines.</p>
+<hr />
+<h2
+id="r4-extract-commands_kb.go-commands_skill.go-commands_route.go">R4 —
+Extract <code>commands_kb.go</code>, <code>commands_skill.go</code>,
+<code>commands_route.go</code></h2>
+<p><strong>Risk: low-medium. Three smaller extractions that can be done
+together or separately.</strong></p>
+<table>
+<thead>
+<tr>
+<th scope="col">New file</th>
+<th scope="col">Source</th>
+<th scope="col">Lines approx</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands_kb.go</code></td>
+<td><code>/kb</code> handlers</td>
+<td>~500</td>
+</tr>
+<tr>
+<td><code>commands_skill.go</code></td>
+<td><code>/skill</code>, <code>/skillset</code> handlers</td>
+<td>~400</td>
+</tr>
+<tr>
+<td><code>commands_route.go</code></td>
+<td><code>/route</code> handlers</td>
+<td>~250</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Fix for each:</strong> Same pattern as R2 and R3 — create
+file, move handlers, verify <code>go test -race ./...</code>.</p>
+<p>After R2, R3, and R4, <code>commands.go</code> should be under 2000
+lines, containing <code>registerCommands</code>, <code>dispatch</code>,
+<code>Command</code> type, utility functions (<code>isBinary</code>,
+<code>looksLikePath</code>, <code>formatBytes</code>), and any commands
+that don’t belong to a named subsystem.</p>
+<hr />
+<h2 id="r5-extract-backend_startup.go-from-terminal.go">R5 — Extract
+<code>backend_startup.go</code> from <code>terminal.go</code></h2>
+<p><strong>Risk: medium. Prepares for the <code>ManagedBackend</code>
+interface (unified backend design).</strong></p>
+<p><strong>Problem:</strong> Six backend-selection functions currently
+live in <code>terminal.go</code> despite having no terminal-REPL
+logic:</p>
+<ul>
+<li><code>selectBackend</code> (~line 1625)</li>
+<li><code>pickBackend</code> (~line 1707)</li>
+<li><code>startAndUseLlamafile</code> (~line 1797)</li>
+<li><code>pickOllamaModel</code> (~line 1841)</li>
+<li><code>useLlamafileEntry</code> (~line 1593) — also called from
+<code>llamafile.go</code></li>
+<li><code>probeActiveBackend</code> (~line 238)</li>
+</ul>
+<p>These are I/O-heavy (subprocess launch, HTTP probe, user prompt), but
+they are not part of the REPL loop. They belong next to the backend code
+they manage.</p>
+<p><strong>Fix:</strong> 1. Create <code>backend_startup.go</code>. 2.
+Move the six functions listed above into it. 3.
+<code>resolveLlamafilePath</code> (already moved to
+<code>llamafile.go</code> in R0-E) is a dependency; verify it is still
+accessible. 4. <code>Run()</code> in <code>terminal.go</code> calls
+these functions at startup; the calls remain, only the definitions
+move.</p>
+<p><strong>Acceptance:</strong> <code>go test -race ./...</code> passes.
+<code>terminal.go</code> shrinks by ~400 lines. This file also
+establishes the natural location for future <code>ManagedBackend</code>
+lifecycle functions.</p>
+<hr />
+<h2 id="r6-introduce-memorysystem-aggregate-open-once-per-session">R6 —
+Introduce <code>MemorySystem</code> aggregate; open once per
+session</h2>
+<p><strong>Risk: medium-high. Touches 11 call sites; must not change
+behavior.</strong></p>
+<p><strong>Problem:</strong> <code>NewMemoryStore</code> is called 11
+times across 5 files, once per operation rather than once per session.
+This causes file I/O on every memory read, prevents consistent
+session-scoped state, and is likely the root of reported “memory feeling
+broken” behavior (two opens in the same session may see stale state if
+writes happened between them).</p>
+<h3 id="target-shape">Target shape</h3>
+<p>Introduce a <code>MemorySystem</code> aggregate type that owns the
+complete lifecycle of all memory subsystems. This gives every component
+a single open/close path and eliminates the scattered <code>New*</code>
+calls:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// MemorySystem owns the complete lifecycle of Harvey&#39;s memory subsystems.</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">// Open it once per session via OpenMemory; close it on session exit.</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> MemorySystem <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    Store    <span class="op">*</span>MemoryStore</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    Unified  <span class="op">*</span>UnifiedMemory</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    Miner    <span class="op">*</span>Miner</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    Manifest <span class="op">*</span>Manifest</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    Rolling  <span class="op">*</span>RollingSummary</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="co">// OpenMemory initializes all memory subsystems in dependency order.</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="co">// Returns a non-nil *MemorySystem even on partial failure — components</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="co">// that could not be opened are nil and callers must nil-check them.</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> OpenMemory<span class="op">(</span>ws <span class="op">*</span>Workspace<span class="op">,</span> cfg <span class="op">*</span>MemoryConfig<span class="op">)</span> <span class="op">(*</span>MemorySystem<span class="op">,</span> <span class="dt">error</span><span class="op">)</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="co">// Close shuts down all memory subsystems in reverse dependency order.</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>m <span class="op">*</span>MemorySystem<span class="op">)</span> Close<span class="op">()</span> <span class="dt">error</span></span></code></pre></div>
+<p>Add <code>Memory *MemorySystem</code> to <code>Agent</code> in
+<code>harvey.go</code>. All other memory fields on <code>Agent</code>
+that are subsumed by <code>MemorySystem</code> are removed.</p>
+<h3 id="fix-steps">Fix steps</h3>
+<ol type="1">
+<li>Define <code>MemorySystem</code>, <code>OpenMemory</code>, and
+<code>Close</code> in a new file <code>memory_system.go</code>.</li>
+<li>In <code>terminal.go:Run()</code>, call <code>OpenMemory</code> once
+after the workspace is initialized (alongside <code>initRag</code>).
+Assign to <code>a.Memory</code>. Log a warning, not a fatal, if opening
+fails.</li>
+<li>At each of the 11 <code>NewMemoryStore</code> call sites, replace
+with <code>a.Memory.Store</code> (or receive <code>a.Memory</code> as a
+parameter where <code>Agent</code> is not in scope).</li>
+<li>Replace direct calls to <code>NewUnifiedMemory</code>,
+<code>NewMiner</code>, <code>NewManifest</code> at their scattered call
+sites with references to the corresponding <code>a.Memory.*</code>
+field.</li>
+<li>On session exit, call <code>a.Memory.Close()</code>.</li>
+</ol>
+<p><strong>Call sites to update (after R2/R3 move commands to new files,
+line numbers will shift — grep before editing):</strong> -
+<code>harvey.go:336</code> - <code>terminal.go:611</code>,
+<code>1002</code>, <code>1020</code>, <code>2289</code> -
+<code>commands.go:695</code>, <code>988</code>, <code>6339</code> (or
+their new locations in <code>commands_memory.go</code> etc.) -
+<code>completion_candidates.go:127</code></p>
+<p><strong>Acceptance:</strong> <code>go test -race ./...</code> passes.
+Memory operations that previously required re-opening the store now
+reuse the session-scoped handle. Verify auto-mining on session exit uses
+the same <code>Store</code> that saw the session’s turns.</p>
+<hr />
+<h2 id="r7-config-sub-structs-and-single-source-of-defaults">R7 — Config
+sub-structs and single source of defaults</h2>
+<p><strong>Risk: high. Breaking YAML key change; requires migration
+shim.</strong></p>
+<p><strong>Problem:</strong> <code>Config</code> has ~45 flat fields.
+Defaults are set in three places (<code>DefaultConfig</code>,
+<code>LoadHarveyYAML</code>, <code>DefaultChunkConfig</code>). YAML
+parsing uses ~12 intermediate <code>*YAML</code> adapter structs mixed
+into <code>config.go</code>.</p>
+<p><strong>Fix (in two sub-steps):</strong></p>
+<h3 id="r7-a-separate-yaml-adapter-types-into-config_yaml.go">R7-A —
+Separate YAML adapter types into <code>config_yaml.go</code></h3>
+<p>Move all <code>*YAML</code> structs and the <code>harveyYAML</code>
+type from <code>config.go</code> into a new <code>config_yaml.go</code>.
+<code>config.go</code> retains <code>Config</code>,
+<code>DefaultConfig</code>, <code>LoadHarveyYAML</code>, and config
+methods. No behavior change; the boundary is purely organizational.</p>
+<p>While extracting the YAML types, audit the top-level
+<code>harveyYAML</code> struct for legacy fields that are no longer
+populated by the parser: - <code>KnowledgeDB</code> (approximately
+<code>config.go:627</code>) — superseded by nested
+<code>knowledge_base.db</code> field; verify no active YAML files set
+this key before removing. - <code>RAG</code> (approximately
+<code>config.go:632</code>) — superseded by the <code>memory.rag</code>
+stanza; same verification step.</p>
+<p>If confirmed unused, remove the fields and add a migration note to
+<code>CONFIGURATION.md</code> so users with old <code>harvey.yaml</code>
+files know the key is gone.</p>
+<h3 id="r7-b-group-related-config-fields-into-sub-structs">R7-B — Group
+related Config fields into sub-structs</h3>
+<p>Proposed groupings (YAML keys change — requires migration shim for
+one release):</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> OllamaConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    URL           <span class="dt">string</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    Model         <span class="dt">string</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    ContextLength <span class="dt">int</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    Timeout       time<span class="op">.</span>Duration</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> LlamafileConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    URL            <span class="dt">string</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    ModelsDir      <span class="dt">string</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    StartupTimeout time<span class="op">.</span>Duration</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    GPULayers      <span class="dt">int</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    MaxTokens      <span class="dt">int</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    Models         <span class="op">[]</span>LlamafileEntry</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    Active         <span class="dt">string</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> SecurityConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    SafeMode        <span class="dt">bool</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    AllowedCommands <span class="op">[]</span><span class="dt">string</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>    Permissions     PermissionsConfig</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>    RunTimeout      time<span class="op">.</span>Duration</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> SessionConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>    AutoRecord       <span class="dt">bool</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>    RecordPath       <span class="dt">string</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>    ContinuePath     <span class="dt">string</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>    ResumeLatest     <span class="dt">bool</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>    ReplayPath       <span class="dt">string</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>    ReplayOutputPath <span class="dt">string</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>    ReplayContinue   <span class="dt">bool</span></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p><code>MemoryConfig</code> currently mixes RAG config, knowledge base
+config, and rolling summary config in a single flat struct. Split it
+into focused sub-structs that match the three-silo architecture:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> MemoryConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    Enabled       <span class="dt">bool</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    TopK          <span class="dt">int</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    InjectOnStart <span class="dt">bool</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    BudgetPct     <span class="dt">float64</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    RollingSummary RollingSummaryConfig</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    Rag            RagConfig        <span class="co">// replaces RagStores, RagActive, RagEnabled</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    Knowledge      KnowledgeConfig  <span class="co">// replaces KnowledgeDB, CurrentProjectID</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> RagConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    Enabled <span class="dt">bool</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    Active  <span class="dt">string</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    Stores  <span class="op">[]</span>RagStoreEntry</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> KnowledgeConfig <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>    DBPath           <span class="dt">string</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>    CurrentProjectID <span class="dt">int64</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>This <code>MemoryConfig</code> restructure is independent of the
+backend changes and can be done at the same time as the
+<code>OllamaConfig</code>/<code>LlamafileConfig</code> grouping.</p>
+<p>There is only one user (<code>harvey.yaml</code> is a personal
+workspace file, not distributed). No migration shim is needed — update
+<code>harvey.yaml</code> directly when the config struct changes and
+document the new key names in <code>CONFIGURATION.md</code>.</p>
+<p><strong>Defer R7-B until the unified backend design
+(unified-model-backend-design.md) is finalized</strong>, since that
+design changes <code>OllamaConfig</code> and adds
+<code>LlamaCppConfig</code>. Do R7-A (the file split) immediately as it
+has no behavior risk.</p>
+<hr />
+<h2 id="r8-direct-test-file-for-builtin_tools.go">R8 — Direct test file
+for <code>builtin_tools.go</code></h2>
+<p><strong>Risk: low. Adding tests never breaks behavior.</strong></p>
+<p><strong>Problem:</strong> <code>builtin_tools.go</code> (933 lines)
+has no dedicated test file. The <code>write_file</code> auto-format
+path, PDF extraction error path, chunking guard branches, and
+permission-checking paths are untested at the unit level.</p>
+<p><strong>Fix:</strong> 1. Create <code>builtin_tools_test.go</code>.
+2. Write tests for: - <code>read_file</code> with an over-budget file
+and <code>chunking.enabled: false</code> (should read normally) -
+<code>read_file</code> with an over-budget file and
+<code>chunking.enabled: true</code>, user cancels (should return
+“cancelled”) - <code>write_file</code> with an auto-formattable Go file
+(should apply gofmt) - <code>write_file</code> with a file the workspace
+denies (should return permission error) - <code>list_files</code> with a
+nested directory - Any error paths in PDF extraction that can be
+exercised without <code>pdftotext</code></p>
+<p>Use the existing <code>mockLLMClient</code> from
+<code>tier3_test.go</code> (or its renamed successor after R0-G) as the
+test double for any paths that call the LLM.</p>
+<hr />
+<h2 id="r9-lower-maxinjectfilebytes-safety-fix-not-refactoring">R9 —
+Lower <code>maxInjectFileBytes</code> (safety fix, not refactoring)</h2>
+<p><strong>Risk: very low. One constant change.</strong></p>
+<p><strong>Problem:</strong> <code>file_inject.go:20</code> sets
+<code>maxInjectFileBytes = 64 * 1024</code>. A 30KB file injected inline
+alongside existing history and memories causes OOM on Pi (observed
+2026-06-28). At 4 bytes/token, 64KB ≈ 16K tokens — far more than an 8B
+model can handle reliably on CPU.</p>
+<p><strong>Fix:</strong></p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> maxInjectFileBytes <span class="op">=</span> <span class="dv">16</span> <span class="op">*</span> <span class="dv">1024</span>  <span class="co">// ~4K tokens; Pi-safe default</span></span></code></pre></div>
+<p>Add a comment explaining the rationale. This is tracked in TODO.md as
+part of the W5 bug; including it here because it belongs to the
+structural audit as much as the feature work.</p>
+<hr />
+<h2 id="work-order-and-schedule">Work order and schedule</h2>
+<h3 id="do-now-before-any-new-features">Do now (before any new
+features)</h3>
+<table>
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 37%" />
+<col style="width: 45%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Item</th>
+<th scope="col">Files touched</th>
+<th scope="col">Estimated effort</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R9</td>
+<td><code>file_inject.go</code></td>
+<td>5 minutes</td>
+</tr>
+<tr>
+<td>R0-B</td>
+<td><code>terminal.go</code></td>
+<td>10 minutes</td>
+</tr>
+<tr>
+<td>R0-A</td>
+<td><code>routing.go</code>, <code>context_estimator.go</code>,
+<code>terminal.go</code>, <code>commands.go</code>,
+<code>pipeline.go</code></td>
+<td>30 minutes</td>
+</tr>
+<tr>
+<td>R0-F</td>
+<td><code>commands.go</code></td>
+<td>15 minutes</td>
+</tr>
+<tr>
+<td>R0-E</td>
+<td><code>terminal.go</code>, <code>llamafile.go</code></td>
+<td>15 minutes</td>
+</tr>
+<tr>
+<td>R0-C</td>
+<td><code>terminal.go</code>, <code>rag_support.go</code></td>
+<td>20 minutes</td>
+</tr>
+<tr>
+<td>R0-D</td>
+<td><code>commands.go</code>, <code>rag_support.go</code></td>
+<td>20 minutes</td>
+</tr>
+<tr>
+<td>R0-G</td>
+<td>9 test files</td>
+<td>30 minutes (find + rename)</td>
+</tr>
+<tr>
+<td>R0-H</td>
+<td><code>config.go</code></td>
+<td>15 minutes</td>
+</tr>
+<tr>
+<td>R1</td>
+<td><code>terminal.go</code>, <code>tool_executor.go</code></td>
+<td>45 minutes</td>
+</tr>
+</tbody>
+</table>
+<h3 id="after-r0-and-r1-stabilize-one-commit-per-item-tests-pass">After
+R0 and R1 stabilize (one commit per item, tests pass)</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Item</th>
+<th scope="col">Dependencies</th>
+<th scope="col">Estimated effort</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R7-A</td>
+<td>None</td>
+<td>1 hour</td>
+</tr>
+<tr>
+<td>R5</td>
+<td>R0-E</td>
+<td>2 hours</td>
+</tr>
+<tr>
+<td>R2</td>
+<td>R0-D</td>
+<td>3 hours</td>
+</tr>
+<tr>
+<td>R3</td>
+<td>None</td>
+<td>2 hours</td>
+</tr>
+<tr>
+<td>R4</td>
+<td>None</td>
+<td>2 hours</td>
+</tr>
+</tbody>
+</table>
+<h3 id="after-r2r5-stabilize">After R2–R5 stabilize</h3>
+<table>
+<thead>
+<tr>
+<th scope="col">Item</th>
+<th scope="col">Dependencies</th>
+<th scope="col">Estimated effort</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R6</td>
+<td>R2, R3 (so call sites are in final locations)</td>
+<td>3 hours</td>
+</tr>
+<tr>
+<td>R8</td>
+<td>R0-G (so test files have stable names)</td>
+<td>2 hours</td>
+</tr>
+<tr>
+<td>R7-B</td>
+<td>Unified backend design finalized</td>
+<td>4 hours + migration</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="expected-outcomes">Expected outcomes</h2>
+<p>After R0–R5:</p>
+<ul>
+<li><code>commands.go</code>: ~7026 → ~1800 lines</li>
+<li><code>terminal.go</code>: ~2543 → ~1900 lines</li>
+<li>Token heuristic: 4 implementations → 1 canonical function</li>
+<li><code>NewMemoryStore</code> opens: 11 → will reduce further in
+R6</li>
+</ul>
+<p>After R6:</p>
+<ul>
+<li><code>MemorySystem</code> aggregate type owns all memory subsystem
+lifecycle</li>
+<li>Memory operations consistent across a session; single open/close
+path</li>
+<li><code>NewMemoryStore</code> opens: 11 → 1 (via
+<code>OpenMemory</code>)</li>
+<li>“Memory feels broken” reports should decrease</li>
+</ul>
+<p>After R7-A:</p>
+<ul>
+<li><code>config.go</code>: ~1281 → ~850 lines (YAML adapters
+extracted)</li>
+</ul>
+<p>After R8:</p>
+<ul>
+<li><code>builtin_tools.go</code> has test coverage</li>
+<li>The W5 chunking guard can be regression-tested without a live
+LLM</li>
+</ul>
+</section>
+</body>
+</html>
