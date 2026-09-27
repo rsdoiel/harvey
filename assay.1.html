@@ -38,6 +38,12 @@ per-prompt results to the output directory.</p>
 and injects the top-k retrieved chunks as context before calling the
 model. With -rag-compare, every prompt is run twice (once without RAG,
 once with) and a per-check delta table is appended to the report.</p>
+<p>With -guide-compare and -guide-file, every prompt is run twice (once
+with no system message, once with the guide file’s content as a system
+message) and a per-check delta table is appended to the report — useful
+for testing whether an always-on guide (a HARVEY.md section, a skill’s
+prose) still changes model behavior once a computational sensor exists
+for the same failure mode. Mutually exclusive with -rag-compare.</p>
 <h1 id="options">OPTIONS</h1>
 <dl>
 <dt>-corpus PATH</dt>
@@ -57,12 +63,20 @@ Run only prompts in the named category. Omit to run all categories.
 <dd>
 Path to a llamafile binary to evaluate. assay starts the llamafile
 server automatically before the run and stops it when finished. The
-model name is derived from the binary filename. Cannot be combined with
--models.
+model name is derived from the binary filename. Mutually exclusive with
+-llamacpp.
+</dd>
+<dt>-llamacpp URL</dt>
+<dd>
+Base URL of a running llama-server instance, e.g. http://localhost:8081.
+The user is responsible for starting and stopping llama-server. If
+-models is not set, assay queries GET /v1/models to discover the loaded
+model. Mutually exclusive with -llamafile.
 </dd>
 <dt>-ollama URL</dt>
 <dd>
-Base URL of the Ollama server. Default: http://localhost:11434
+Base URL of the Ollama server (also used for RAG embeddings when -rag-db
+is set with –llamafile or –llamacpp). Default: http://localhost:11434
 </dd>
 <dt>-output PATH</dt>
 <dd>
@@ -90,6 +104,19 @@ nomic-embed-text
 Run each prompt twice — once without RAG context and once with — and
 append a per-check delta table to the report. Requires -rag-db.
 </dd>
+<dt>-guide-file PATH</dt>
+<dd>
+Path to a plain text file whose content becomes a system message sent to
+the model on the “guide” variant of a -guide-compare run. Ignored unless
+-guide-compare is set.
+</dd>
+<dt>-guide-compare</dt>
+<dd>
+Run each prompt twice — once with no system message (identical to
+assay’s default dispatch) and once with -guide-file’s content sent as a
+system message — and append a per-check delta table to the report.
+Requires -guide-file. Mutually exclusive with -rag-compare.
+</dd>
 <dt>-h, -help, –help</dt>
 <dd>
 Display this help message.
@@ -98,7 +125,70 @@ Display this help message.
 <dd>
 Display version information.
 </dd>
+<dt>-json</dt>
+<dd>
+On a failing command line or run, print the error as
+{“error”,“class”,“code”} JSON on stderr instead of text. Wherever -json
+appears on the line, it still applies to whatever else fails.
+</dd>
 </dl>
+<h1 id="exit-status">EXIT STATUS</h1>
+<p>assay does everything it can and then exits with the class of the
+first thing that failed, using the workspace’s exit codes:</p>
+<dl>
+<dt>0</dt>
+<dd>
+The run finished. Prompts whose automatic checks failed are results, not
+failures, and exit 0.
+</dd>
+<dt>1</dt>
+<dd>
+Nothing to run: no prompts match -category, or the server has no models.
+</dd>
+<dt>2</dt>
+<dd>
+The command line is wrong: an unknown option, an option without its
+value, a surplus argument, or options that conflict (-rag-compare
+without -rag-db, -guide-compare without -guide-file, -llamafile with
+-llamacpp).
+</dd>
+<dt>65</dt>
+<dd>
+A file assay read is wrong: a corpus that will not parse or has no
+prompts, or a RAG store it cannot use.
+</dd>
+<dt>66</dt>
+<dd>
+A named input is missing: the -corpus, -guide-file or -llamafile file.
+</dd>
+<dt>69</dt>
+<dd>
+A service cannot be reached: Ollama or llama-server while listing
+models, a llamafile that will not start, or a model call that failed.
+The run still finishes, writes its report, and says how many calls
+failed.
+</dd>
+<dt>70</dt>
+<dd>
+An internal error, or one nothing classified. Please report it.
+</dd>
+<dt>73</dt>
+<dd>
+The output directory cannot be created.
+</dd>
+<dt>74</dt>
+<dd>
+report.md or results.json could not be written. The other is still
+tried.
+</dd>
+<dt>77</dt>
+<dd>
+The operating system refused access to a file or directory.
+</dd>
+</dl>
+<p>With -json, an error prints as {“error”,“class”,“code”} JSON on
+stderr instead of text; class and code are the same class name and
+number as the table above.</p>
 <h1 id="output">OUTPUT</h1>
 <p>assay writes two files to the output directory:</p>
 <dl>

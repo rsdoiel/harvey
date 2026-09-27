@@ -30,6 +30,27 @@ models locally. No cloud account or API key required.</p>
 href="https://ollama.com">Ollama</a> or a <a
 href="https://github.com/Mozilla-Ocho/llamafile">llamafile</a></li>
 </ul>
+<h2 id="hardware-requirements">Hardware requirements</h2>
+<p>Harvey runs entirely on local hardware, so the practical limits are
+RAM (to hold the model) and storage (for the model files themselves),
+not just raw compute.</p>
+<ul>
+<li><strong>RAM</strong> — 8 GB minimum for models up to ~7B parameters
+(matches the default <code>Qwen2.5-Coder-7B</code> recommendation
+below); 16 GB or more gives headroom for larger models, or lets a
+7B-class model run while leaving RAM free for the rest of your
+work.</li>
+<li><strong>Storage</strong> — at least 64 GB free if you expect to try
+more than one model. Individual llamafiles and Ollama models routinely
+run several GB each (the <code>Qwen2.5-Coder-7B-Q5_K_S.llamafile</code>
+below is ~5 GB), and Harvey’s RAG stores and session recordings add up
+over time.</li>
+<li><strong>Raspberry Pi</strong> — a Raspberry Pi 5 (8 GB or more) runs
+Harvey fine with CPU-only inference; expect roughly 2–10 tokens/s
+depending on model size and quantization without dedicated AI
+accelerator hardware. A hardware NPU accelerator (e.g. Raspberry Pi’s AI
+HAT+ 2) is not currently supported as a backend.</li>
+</ul>
 <h2 id="compile-from-source">Compile from source</h2>
 <pre class="shell"><code>git clone https://github.com/rsdoiel/harvey
 cd harvey

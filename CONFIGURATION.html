@@ -307,13 +307,21 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="
 <td>No</td>
 <td>Base URL for encoderfile embedder</td>
 </tr>
+<tr>
+<td><code>per_prompt</code></td>
+<td>boolean</td>
+<td>No</td>
+<td><code>true</code></td>
+</tr>
 </tbody>
 </table>
 <p><strong>Important Notes:</strong> - Paths are relative to the
 workspace root - The <code>model_map</code> ensures each generation
 model uses the correct embedding model - Embedding model binding is
 enforced: you cannot mix embeddings from different models in the same
-store</p>
+store - Set <code>per_prompt: false</code> on the active store when
+using the <code>retrieve_memory</code> tool — this avoids redundant
+per-turn retrieval and lets the model decide when to fetch context</p>
 <p><strong>Llamafile Backend (<code>llamafile:</code>):</strong></p>
 <table style="width:100%;">
 <colgroup>
@@ -399,7 +407,7 @@ store</p>
 <td><code>name</code></td>
 <td>string</td>
 <td>Yes</td>
-<td>Short identifier used by <code>/llamafile use</code> and
+<td>Short identifier used by <code>/model use</code> and
 <code>@mention</code></td>
 </tr>
 <tr>
@@ -1002,7 +1010,7 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb11-1">
 <span id="cb11-21"><a href="#cb11-21" aria-hidden="true" tabindex="-1"></a><span class="fu">## Available Tools</span></span>
 <span id="cb11-22"><a href="#cb11-22" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb11-23"><a href="#cb11-23" aria-hidden="true" tabindex="-1"></a>You have access to the following slash commands: /read, /write, /run, /search,</span>
-<span id="cb11-24"><a href="#cb11-24" aria-hidden="true" tabindex="-1"></a>/git, /apply, /clear, /summarize, /context, /kb, /rag, /ollama, /route, /skill.</span>
+<span id="cb11-24"><a href="#cb11-24" aria-hidden="true" tabindex="-1"></a>/git, /clear, /summarize, /context, /kb, /rag, /model, /route, /skill.</span>
 <span id="cb11-25"><a href="#cb11-25" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb11-26"><a href="#cb11-26" aria-hidden="true" tabindex="-1"></a><span class="fu">## Rules</span></span>
 <span id="cb11-27"><a href="#cb11-27" aria-hidden="true" tabindex="-1"></a></span>
@@ -1241,8 +1249,9 @@ automatically at first use - Check <code>agents/knowledge.db</code>
 exists - Verify path in <code>harvey.yaml</code> or create the
 directory</p>
 <p><strong>“Model cache not found”</strong> - Harvey creates it
-automatically - Check <code>agents/model_cache.db</code> exists - Run
-<code>/ollama probe</code> to populate it</p>
+automatically - Check <code>agents/model_cache.db</code> exists - Save
+an alias for a model in <code>/model use</code>; that probes an Ollama
+model and fills the cache</p>
 <p><strong>“RAG store not found”</strong> - Run
 <code>/rag new NAME</code> to create a store - Run
 <code>/rag use NAME</code> to activate it - Verify the database file
@@ -1327,36 +1336,69 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb16-1"><a href=
 <span id="cb16-38"><a href="#cb16-38" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">&quot;.&quot;</span><span class="kw">:</span><span class="at">      </span><span class="kw">[</span><span class="at">read</span><span class="kw">,</span><span class="at"> write</span><span class="kw">,</span><span class="at"> exec</span><span class="kw">,</span><span class="at"> delete</span><span class="kw">]</span></span>
 <span id="cb16-39"><a href="#cb16-39" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">&quot;docs/&quot;</span><span class="kw">:</span><span class="at">  </span><span class="kw">[</span><span class="at">read</span><span class="kw">]</span></span>
 <span id="cb16-40"><a href="#cb16-40" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-41"><a href="#cb16-41" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Tool calling ──────────────────────────────────────────────────────────────</span></span>
-<span id="cb16-42"><a href="#cb16-42" aria-hidden="true" tabindex="-1"></a><span class="fu">tools</span><span class="kw">:</span></span>
-<span id="cb16-43"><a href="#cb16-43" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb16-44"><a href="#cb16-44" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_tool_calls_per_turn</span><span class="kw">:</span><span class="at"> </span><span class="dv">10</span><span class="co">     # hard limit per user turn</span></span>
-<span id="cb16-45"><a href="#cb16-45" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_output_bytes</span><span class="kw">:</span><span class="at"> </span><span class="dv">65536</span><span class="co">         # cap on tool output injected into context (64 KiB)</span></span>
-<span id="cb16-46"><a href="#cb16-46" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">tool_result_compaction</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">    # compact prior tool-call rounds before new calls</span></span>
-<span id="cb16-47"><a href="#cb16-47" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-48"><a href="#cb16-48" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Memory system ─────────────────────────────────────────────────────────────</span></span>
-<span id="cb16-49"><a href="#cb16-49" aria-hidden="true" tabindex="-1"></a><span class="fu">memory</span><span class="kw">:</span></span>
-<span id="cb16-50"><a href="#cb16-50" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb16-51"><a href="#cb16-51" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">top_k</span><span class="kw">:</span><span class="at"> </span><span class="dv">5</span><span class="co">                        # experience memories retrieved at session start</span></span>
-<span id="cb16-52"><a href="#cb16-52" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">inject_on_start</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb16-53"><a href="#cb16-53" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">budget_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.25</span><span class="co">                # fraction of context window reserved for memory</span></span>
-<span id="cb16-54"><a href="#cb16-54" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rolling_summary</span><span class="kw">:</span></span>
-<span id="cb16-55"><a href="#cb16-55" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb16-56"><a href="#cb16-56" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">warn_at_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span><span class="co">             # compression triggers at 80% context usage</span></span>
-<span id="cb16-57"><a href="#cb16-57" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">keep_turns</span><span class="kw">:</span><span class="at"> </span><span class="dv">6</span><span class="co">                 # recent turns kept verbatim after compression</span></span>
-<span id="cb16-58"><a href="#cb16-58" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">knowledge_base</span><span class="kw">:</span></span>
-<span id="cb16-59"><a href="#cb16-59" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">path</span><span class="kw">:</span><span class="at"> agents/knowledge.db</span></span>
-<span id="cb16-60"><a href="#cb16-60" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rag</span><span class="kw">:</span></span>
-<span id="cb16-61"><a href="#cb16-61" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb16-62"><a href="#cb16-62" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">active</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb16-63"><a href="#cb16-63" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">stores</span><span class="kw">:</span></span>
-<span id="cb16-64"><a href="#cb16-64" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb16-65"><a href="#cb16-65" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/golang.db</span></span>
-<span id="cb16-66"><a href="#cb16-66" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
-<span id="cb16-67"><a href="#cb16-67" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">model_map</span><span class="kw">:</span></span>
-<span id="cb16-68"><a href="#cb16-68" aria-hidden="true" tabindex="-1"></a><span class="at">          qwen2.5-coder</span><span class="fu">:7b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
-<span id="cb16-69"><a href="#cb16-69" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedder_kind</span><span class="kw">:</span><span class="at"> ollama</span><span class="co">     # or &quot;encoderfile&quot; for a local encoderfile binary</span></span>
-<span id="cb16-70"><a href="#cb16-70" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedder_url</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">          # base URL when embedder_kind = &quot;encoderfile&quot;</span></span></code></pre></div>
+<span id="cb16-41"><a href="#cb16-41" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Knowledge-base learning mode ─────────────────────────────────────────────</span></span>
+<span id="cb16-42"><a href="#cb16-42" aria-hidden="true" tabindex="-1"></a><span class="co"># The model `/kb learn draft` uses to write summaries of ingested documents</span></span>
+<span id="cb16-43"><a href="#cb16-43" aria-hidden="true" tabindex="-1"></a><span class="co"># (sessions and hand-offs). A route name or a local model name. Leave it unset</span></span>
+<span id="cb16-44"><a href="#cb16-44" aria-hidden="true" tabindex="-1"></a><span class="co"># to use the active model. An @name on the command overrides it for one run:</span></span>
+<span id="cb16-45"><a href="#cb16-45" aria-hidden="true" tabindex="-1"></a><span class="co">#   /kb learn draft @granite --limit 10</span></span>
+<span id="cb16-46"><a href="#cb16-46" aria-hidden="true" tabindex="-1"></a><span class="co"># Kept separate from any retrieval-time model on purpose: the model that</span></span>
+<span id="cb16-47"><a href="#cb16-47" aria-hidden="true" tabindex="-1"></a><span class="co"># drafts a summary should not be the one that later matches against it, and a</span></span>
+<span id="cb16-48"><a href="#cb16-48" aria-hidden="true" tabindex="-1"></a><span class="co"># small, cheap model is usually enough for drafting because a human accepts</span></span>
+<span id="cb16-49"><a href="#cb16-49" aria-hidden="true" tabindex="-1"></a><span class="co"># or edits every draft before it is trusted.</span></span>
+<span id="cb16-50"><a href="#cb16-50" aria-hidden="true" tabindex="-1"></a><span class="fu">learn_model</span><span class="kw">:</span><span class="at"> granite</span></span>
+<span id="cb16-51"><a href="#cb16-51" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-52"><a href="#cb16-52" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Chunked document analysis ────────────────────────────────────────────────</span></span>
+<span id="cb16-53"><a href="#cb16-53" aria-hidden="true" tabindex="-1"></a><span class="fu">chunking</span><span class="kw">:</span></span>
+<span id="cb16-54"><a href="#cb16-54" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">                    # when false, read_file reads files without any size check</span></span>
+<span id="cb16-55"><a href="#cb16-55" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">threshold</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span><span class="co">                  # alert fires when file exceeds this fraction of remaining context</span></span>
+<span id="cb16-56"><a href="#cb16-56" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">chunk_size_bytes</span><span class="kw">:</span><span class="at"> </span><span class="dv">6000</span><span class="co">           # target size of each chunk in bytes (~1500 tokens)</span></span>
+<span id="cb16-57"><a href="#cb16-57" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_chunks</span><span class="kw">:</span><span class="at"> </span><span class="dv">20</span><span class="co">                   # warn when a document would produce more than this many chunks</span></span>
+<span id="cb16-58"><a href="#cb16-58" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">overlap</span><span class="kw">:</span><span class="at"> paragraph</span><span class="co">               # &quot;paragraph&quot; (repeat last unit), &quot;none&quot;; default &quot;paragraph&quot;</span></span>
+<span id="cb16-59"><a href="#cb16-59" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stm_warn_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.20</span><span class="co">               # nudge model to invoke summary_context when &lt;20% context remains; 0 disables</span></span>
+<span id="cb16-60"><a href="#cb16-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-61"><a href="#cb16-61" aria-hidden="true" tabindex="-1"></a><span class="co"># When `chunking.enabled` is true and a file would overflow the remaining</span></span>
+<span id="cb16-62"><a href="#cb16-62" aria-hidden="true" tabindex="-1"></a><span class="co"># context window, Harvey prints an alert and prompts for chunk instructions:</span></span>
+<span id="cb16-63"><a href="#cb16-63" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb16-64"><a href="#cb16-64" aria-hidden="true" tabindex="-1"></a><span class="co">#   Context overflow: report.md is approximately 8000 tokens; 3600 tokens remain.</span></span>
+<span id="cb16-65"><a href="#cb16-65" aria-hidden="true" tabindex="-1"></a><span class="co">#   Enter instructions to process each chunk in turn, or &quot;no&quot; to return.</span></span>
+<span id="cb16-66"><a href="#cb16-66" aria-hidden="true" tabindex="-1"></a><span class="co">#   [read report.md and extract all section headings]</span></span>
+<span id="cb16-67"><a href="#cb16-67" aria-hidden="true" tabindex="-1"></a><span class="co">#   &gt;</span></span>
+<span id="cb16-68"><a href="#cb16-68" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb16-69"><a href="#cb16-69" aria-hidden="true" tabindex="-1"></a><span class="co"># The pre-filled suggestion (in brackets) is the last user message. Pressing</span></span>
+<span id="cb16-70"><a href="#cb16-70" aria-hidden="true" tabindex="-1"></a><span class="co"># Enter accepts it; typing a new instruction replaces it; typing &quot;no&quot; cancels.</span></span>
+<span id="cb16-71"><a href="#cb16-71" aria-hidden="true" tabindex="-1"></a><span class="co"># The instruction may begin with @model to route chunk processing to a specific</span></span>
+<span id="cb16-72"><a href="#cb16-72" aria-hidden="true" tabindex="-1"></a><span class="co"># endpoint, e.g. &quot;@phi extract the key findings from each section&quot;.</span></span>
+<span id="cb16-73"><a href="#cb16-73" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-74"><a href="#cb16-74" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Tool calling ──────────────────────────────────────────────────────────────</span></span>
+<span id="cb16-75"><a href="#cb16-75" aria-hidden="true" tabindex="-1"></a><span class="fu">tools</span><span class="kw">:</span></span>
+<span id="cb16-76"><a href="#cb16-76" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb16-77"><a href="#cb16-77" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_tool_calls_per_turn</span><span class="kw">:</span><span class="at"> </span><span class="dv">10</span><span class="co">     # hard limit per user turn</span></span>
+<span id="cb16-78"><a href="#cb16-78" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_output_bytes</span><span class="kw">:</span><span class="at"> </span><span class="dv">65536</span><span class="co">         # cap on tool output injected into context (64 KiB)</span></span>
+<span id="cb16-79"><a href="#cb16-79" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">tool_result_compaction</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">    # compact prior tool-call rounds before new calls</span></span>
+<span id="cb16-80"><a href="#cb16-80" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-81"><a href="#cb16-81" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Memory system ─────────────────────────────────────────────────────────────</span></span>
+<span id="cb16-82"><a href="#cb16-82" aria-hidden="true" tabindex="-1"></a><span class="fu">memory</span><span class="kw">:</span></span>
+<span id="cb16-83"><a href="#cb16-83" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb16-84"><a href="#cb16-84" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">top_k</span><span class="kw">:</span><span class="at"> </span><span class="dv">5</span><span class="co">                        # experience memories retrieved at session start</span></span>
+<span id="cb16-85"><a href="#cb16-85" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">inject_on_start</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb16-86"><a href="#cb16-86" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">budget_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.25</span><span class="co">                # fraction of context window reserved for memory</span></span>
+<span id="cb16-87"><a href="#cb16-87" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rolling_summary</span><span class="kw">:</span></span>
+<span id="cb16-88"><a href="#cb16-88" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb16-89"><a href="#cb16-89" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">warn_at_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span><span class="co">             # compression triggers at 80% context usage</span></span>
+<span id="cb16-90"><a href="#cb16-90" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">keep_turns</span><span class="kw">:</span><span class="at"> </span><span class="dv">6</span><span class="co">                 # recent turns kept verbatim after compression</span></span>
+<span id="cb16-91"><a href="#cb16-91" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">knowledge_base</span><span class="kw">:</span></span>
+<span id="cb16-92"><a href="#cb16-92" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">path</span><span class="kw">:</span><span class="at"> agents/knowledge.db</span></span>
+<span id="cb16-93"><a href="#cb16-93" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rag</span><span class="kw">:</span></span>
+<span id="cb16-94"><a href="#cb16-94" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb16-95"><a href="#cb16-95" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">active</span><span class="kw">:</span><span class="at"> golang</span></span>
+<span id="cb16-96"><a href="#cb16-96" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">stores</span><span class="kw">:</span></span>
+<span id="cb16-97"><a href="#cb16-97" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> golang</span></span>
+<span id="cb16-98"><a href="#cb16-98" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/golang.db</span></span>
+<span id="cb16-99"><a href="#cb16-99" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb16-100"><a href="#cb16-100" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">model_map</span><span class="kw">:</span></span>
+<span id="cb16-101"><a href="#cb16-101" aria-hidden="true" tabindex="-1"></a><span class="at">          qwen2.5-coder</span><span class="fu">:7b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
+<span id="cb16-102"><a href="#cb16-102" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedder_kind</span><span class="kw">:</span><span class="at"> ollama</span><span class="co">     # or &quot;encoderfile&quot; for a local encoderfile binary</span></span>
+<span id="cb16-103"><a href="#cb16-103" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedder_url</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">          # base URL when embedder_kind = &quot;encoderfile&quot;</span></span></code></pre></div>
 <p><em>For more details on specific subsystems, see:</em> - <a
 href="ROUTING.html">ROUTING.md</a> — Remote endpoint routing - <a
 href="KNOWLEDGE_BASE.html">KNOWLEDGE_BASE.md</a> — Knowledge base schema

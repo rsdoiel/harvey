@@ -21,8 +21,7 @@
 <section id="main-content">
 <h1 id="harvey-fountain-format-specification">Harvey Fountain Format
 Specification</h1>
-<p><em>Version 1.2 — Multi-model character attribution for Harvey
-session recordings</em></p>
+<p><em>Version 1.3 — Chunked document analysis scene and notes</em></p>
 <hr />
 <h2 id="overview">Overview</h2>
 <p>Harvey uses the <strong><a
@@ -337,7 +336,47 @@ files</strong> (where all participants are known).</p>
 <pre><code>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 18:30:00
 INT. AGENT MODE 2026-05-04 18:35:00
 INT. SKILL FOUNTAIN-ANALYSIS 2026-05-04 18:40:00
+INT. CONTEXT RECALL 2026-06-24 10:00:01
+INT. CHUNK ANALYSIS — document.md 2026-06-27 10:04:08
 EXT. MISTRAL AND RSDOIEL 2026-05-04 18:45:00</code></pre>
+<p><strong>Special-format headings.</strong> Some scene types do not
+follow the <code>CHARACTER AND CHARACTER</code> pattern and instead use
+a descriptive label. These headings are recognised by their fixed
+prefix:</p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Prefix</th>
+<th scope="col">Scene type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INT. CONTEXT RECALL</code></td>
+<td>Memory injection at session start</td>
+</tr>
+<tr>
+<td><code>INT. CHUNK ANALYSIS —</code></td>
+<td>Chunked document analysis (filename follows the dash)</td>
+</tr>
+<tr>
+<td><code>INT. AGENT MODE</code></td>
+<td>File write operations</td>
+</tr>
+<tr>
+<td><code>INT. SKILL</code></td>
+<td>Skill activation</td>
+</tr>
+<tr>
+<td><code>INT. SHELL</code></td>
+<td>Shell command execution</td>
+</tr>
+</tbody>
+</table>
 <h3 id="scene-description">Scene Description</h3>
 <p>The scene description appears between the scene heading and the first
 character/dialogue line. It provides context for the scene.</p>
@@ -456,6 +495,43 @@ item.</p>
 
 [[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
 [[recall: tool_use_d55f70 (tool_use) — score 0.75]]</code></pre>
+<h4 id="chunk-analysis-notes">Chunk Analysis Notes</h4>
+<p>Three note types appear exclusively inside
+<code>INT. CHUNK ANALYSIS</code> scenes.</p>
+<p><strong><code>[[chunk:]]</code> — analysis header.</strong> Written
+once at the top of the scene, before the RSDOIEL dialogue, recording the
+parameters of the analysis run.</p>
+<pre><code>[[chunk: file=NAME, chunks=N, model=MODEL, boundary=TYPE, chunk-size=N]]</code></pre>
+<p>Fields: <code>file</code> (base filename), <code>chunks</code> (total
+chunk count), <code>model</code> (ALL-CAPS model name),
+<code>boundary</code> (<code>paragraph</code> or <code>source</code>),
+<code>chunk-size</code> (target size in bytes).</p>
+<p><strong><code>[[chunk-result:]]</code> — per-chunk status.</strong>
+One note per chunk, written after each map-phase LLM call completes, in
+order.</p>
+<pre><code>[[chunk-result: i/N — ok]]
+[[chunk-result: i/N — error: &lt;first line of error&gt;]]</code></pre>
+<p><strong><code>[[synthesis:]]</code> — synthesis step status.</strong>
+Written once after all chunk results are recorded, before HARVEY’s
+closing line.</p>
+<pre><code>[[synthesis: model=MODEL — ok]]
+[[synthesis: model=MODEL — error: &lt;first line of error&gt;]]</code></pre>
+<p><strong>Complete <code>INT. CHUNK ANALYSIS</code> scene
+example:</strong></p>
+<pre><code>INT. CHUNK ANALYSIS — document.md 2026-06-27 10:04:08
+
+[[chunk: file=document.md, chunks=3, model=LLAMA3, boundary=paragraph, chunk-size=6000]]
+
+RSDOIEL
+Summarize the methodology and findings of each section. @llama3
+
+[[chunk-result: 1/3 — ok]]
+[[chunk-result: 2/3 — ok]]
+[[chunk-result: 3/3 — error: context exceeded]]
+[[synthesis: model=LLAMA3 — ok]]
+
+HARVEY
+Chunk analysis complete. Synthesized result injected into conversation.</code></pre>
 <h4 id="session-end">Session End</h4>
 <p>Every session file must end with:</p>
 <pre><code>THE END.</code></pre>
@@ -630,6 +706,39 @@ when memory injection is off or no items were recalled.</p>
 
 [[recall: workspace_profile_250928 (workspace_profile) — score 1.00]]
 [[recall: tool_use_d55f70 (tool_use) — score 0.75]]</code></pre>
+<h3 id="chunk-analysis-scene-int.-chunk-analysis-filename">Chunk
+Analysis Scene (<code>INT. CHUNK ANALYSIS — FILENAME</code>)</h3>
+<p>Written when a file read would overflow the model’s remaining context
+and the user chooses to proceed with chunked analysis. The scene opens
+between the turn that triggered the overflow and the turn that receives
+the synthesized result. It records the chunk parameters, the user’s
+processing instruction, per-chunk status, and synthesis status.</p>
+<pre><code>INT. CHUNK ANALYSIS — report.md 2026-06-27 10:04:08
+
+[[chunk: file=report.md, chunks=12, model=LLAMA3, boundary=paragraph, chunk-size=6000]]
+
+RSDOIEL
+Summarize the methodology and findings of each section. @llama3
+
+[[chunk-result: 1/12 — ok]]
+[[chunk-result: 2/12 — ok]]
+[[chunk-result: 3/12 — ok]]
+[[synthesis: model=LLAMA3 — ok]]
+
+HARVEY
+Chunk analysis complete. Synthesized result injected into conversation.</code></pre>
+<p><strong>Fields in scene heading:</strong>
+<code>INT. CHUNK ANALYSIS —</code> followed by the base filename and a
+timestamp.</p>
+<p><strong>Notes in scene:</strong> - One <code>[[chunk:]]</code> header
+note immediately after the scene heading - The RSDOIEL line contains the
+user’s chunk instruction (may include <code>@model</code> routing) - One
+<code>[[chunk-result:]]</code> note per chunk, in order - One
+<code>[[synthesis:]]</code> note as the final note before HARVEY’s
+closing line</p>
+<p>The RSDOIEL dialogue line (the chunk instruction) is available to
+<code>/memory mine</code> for extraction as a reusable workflow
+pattern.</p>
 <h3 id="agent-mode-scenes-int.-agent-mode">Agent Mode Scenes
 (<code>INT. AGENT MODE</code>)</h3>
 <p>File write operations and other agent actions.</p>
@@ -845,24 +954,38 @@ and first ALL-CAPS character</li>
 <code>^\[\[rag: (\d+) chunks from (.+), top score ([\d.]+)\]\]</code></li>
 <li>Recall note:
 <code>^\[\[recall: (\S+) \((\S+)\) — score ([\d.]+)\]\]</code></li>
+<li>Chunk header:
+<code>^\[\[chunk: file=(.+), chunks=(\d+), model=(.+), boundary=(\w+), chunk-size=(\d+)\]\]</code></li>
+<li>Chunk result:
+<code>^\[\[chunk-result: (\d+)/(\d+) — (ok|error:.+)\]\]</code></li>
+<li>Synthesis:
+<code>^\[\[synthesis: model=(.+) — (ok|error:.+)\]\]</code></li>
 <li><span class="citation" data-cites="mention">@mention</span>:
 <code>@([a-zA-Z][a-zA-Z0-9_-]*)</code></li>
 </ul></li>
+<li><strong>Detect special-format scene headings</strong> (do not match
+the <code>CHARACTER AND CHARACTER</code> regex):
+<ul>
+<li>Context recall:
+<code>^INT\. CONTEXT RECALL (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})$</code></li>
+<li>Chunk analysis:
+<code>^INT\. CHUNK ANALYSIS — (.+) (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})$</code></li>
+</ul></li>
 </ol>
 <h3 id="character-type-detection">Character Type Detection</h3>
-<div class="sourceCode" id="cb35"><pre
-class="sourceCode python"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pseudocode</span></span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> character_type(name, scene_description, known_routes, author):</span>
-<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> name <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span>:</span>
-<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;harvey-native&quot;</span></span>
-<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="kw">in</span> known_routes:</span>
-<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;routed-ollama&quot;</span></span>
-<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="op">==</span> author:</span>
-<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;human&quot;</span></span>
-<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> is_all_caps_alphanumeric(name):</span>
-<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;cloud-model&quot;</span></span>
-<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
-<span id="cb35-12"><a href="#cb35-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb40"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pseudocode</span></span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> character_type(name, scene_description, known_routes, author):</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> name <span class="op">==</span> <span class="st">&quot;HARVEY&quot;</span>:</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;harvey-native&quot;</span></span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="kw">in</span> known_routes:</span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;routed-ollama&quot;</span></span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> name <span class="op">==</span> author:</span>
+<span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;human&quot;</span></span>
+<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> is_all_caps_alphanumeric(name):</span>
+<span id="cb40-10"><a href="#cb40-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;cloud-model&quot;</span></span>
+<span id="cb40-11"><a href="#cb40-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb40-12"><a href="#cb40-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span></code></pre></div>
 <h2 id="complete-example-sessions">Complete Example Sessions</h2>
 <h3 id="example-1-basic-harvey-session-local-model">Example 1: Basic
 Harvey Session (Local Model)</h3>
@@ -983,7 +1106,41 @@ respond)</p>
 data-cites="offline-model">@offline-model</span> what is your
 status?</p>
 <p>HARVEY Offline-model does not respond.</p>
-<p>THE END. ```</p>
+<p>THE END.</p>
+<pre><code>
+### Scenario 7: Chunked Document Analysis
+
+A file read overflows the model&#39;s remaining context. The user is alerted
+and provides a chunk instruction. Harvey runs the map-reduce workflow and
+injects the synthesized result back into the main conversation.
+</code></pre>
+<p>INT. HARVEY AND RSDOIEL TALKING 2026-06-27 10:04:00</p>
+<p>Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace:
+/home/user/project.</p>
+<p>RSDOIEL Read report.md and summarize the methodology section.</p>
+<p>HARVEY Context overflow: report.md is approximately 68,000 tokens;
+12,000 tokens remain in current context. Enter instructions to process
+each chunk in turn, or “no” to return to the conversation.</p>
+<p>INT. CHUNK ANALYSIS — report.md 2026-06-27 10:04:08</p>
+<p>[[chunk: file=report.md, chunks=4, model=LLAMA3, boundary=paragraph,
+chunk-size=6000]]</p>
+<p>RSDOIEL Summarize the methodology and findings of each section. <span
+class="citation" data-cites="llama3">@llama3</span></p>
+<p>[[chunk-result: 1/4 — ok]] [[chunk-result: 2/4 — ok]] [[chunk-result:
+3/4 — ok]] [[chunk-result: 4/4 — ok]] [[synthesis: model=LLAMA3 —
+ok]]</p>
+<p>HARVEY Chunk analysis complete. Synthesized result injected into
+conversation.</p>
+<p>INT. HARVEY AND RSDOIEL TALKING 2026-06-27 10:07:45</p>
+<p>Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace:
+/home/user/project.</p>
+<p>LLAMA3 The methodology section describes a three-phase experiment:
+data collection, analysis, and validation… ```</p>
+<p><strong>Note:</strong> The <code>INT. CHUNK ANALYSIS</code> scene is
+a structured aside. The main conversation resumes in a new
+<code>INT. HARVEY AND … TALKING</code> scene after the synthesis
+completes. The synthesized result appears as the model’s reply in that
+next scene.</p>
 <h2 id="validation-rules">Validation Rules</h2>
 <h3 id="required-elements">Required Elements</h3>
 <table>
@@ -1166,6 +1323,14 @@ elements.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>1.3</td>
+<td>2026-06-27</td>
+<td>Added <code>INT. CHUNK ANALYSIS — FILENAME</code> scene type for
+chunked document analysis; added <code>[[chunk:]]</code>,
+<code>[[chunk-result:]]</code>, <code>[[synthesis:]]</code> notes;
+documented special-format scene heading regex variants</td>
+</tr>
 <tr>
 <td>1.2</td>
 <td>2026-06-24</td>

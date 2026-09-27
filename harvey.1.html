@@ -59,14 +59,34 @@ display version information
 <dd>
 display license information
 </dd>
-<dt>-m, –model</dt>
+<dt>init <source></dt>
 <dd>
-MODEL Ollama model to use on startup
+seed model aliases from another workspace directory or a .yaml file,
+then exit. SOURCE may be a workspace directory (reads agents/harvey.yaml
+inside it) or a standalone .yaml file with a model_aliases: map at the
+top level.
+</dd>
+<dt>-m, –model MODEL</dt>
+<dd>
+Ollama model to use on startup
 </dd>
 <dt>–ollama URL</dt>
 <dd>
-Ollama base URL (default: http://localhost:11434) -w, –workdir DIR
+Ollama base URL (default: http://localhost:11434)
 </dd>
+<dt>–llamafile PATH</dt>
+<dd>
+connect to PATH for this session (not persisted to harvey.yaml)
+</dd>
+<dt>–llamafile-url URL</dt>
+<dd>
+override the llamafile API base URL (default: http://localhost:8080)
+</dd>
+<dt>–llamafile-dir PATH</dt>
+<dd>
+override the llamafile discovery directory (default: ~/Models)
+</dd>
+<dt>-w, –workdir DIR</dt>
 <dd>
 workspace directory (default: current directory)
 </dd>
@@ -86,6 +106,10 @@ resume the most recent session automatically (no argument needed)
 <dd>
 load conversation history from a Fountain recording and open the REPL
 </dd>
+<dt>–replay-continue</dt>
+<dd>
+with –replay, open the REPL after the replay instead of exiting
+</dd>
 <dt>–replay FILE</dt>
 <dd>
 re-send every user turn from FILE to the current model and record fresh
@@ -104,6 +128,13 @@ every LLM request/response, RAG injection, tool call, and skill
 dispatch. Use “harvey –help status” to see the log path during a
 session.
 </dd>
+<dt>–json</dt>
+<dd>
+on a failing command line or session, print the error as
+{“error”,“class”,“code”} JSON on stderr instead of text. Wherever –json
+appears on the line, it still applies to whatever else fails. Does not
+change stdout, and has nothing to print when the command succeeds.
+</dd>
 </dl>
 <h1 id="environment">ENVIRONMENT</h1>
 <p>ANTHROPIC_API_KEY API key for Anthropic Claude (optional, for /route
@@ -115,6 +146,79 @@ API key for OpenAI (optional, for /route add NAME openai://)</p>
 <p>All of the above API key variables are filtered out of every child
 process environment — they are never passed to commands run via ! or
 /run.</p>
+<h1 id="exit-status">EXIT STATUS</h1>
+<p>harvey exits with the workspace’s exit codes, so a script can tell
+what went wrong from the number:</p>
+<dl>
+<dt>0</dt>
+<dd>
+The session ended normally (/exit, Ctrl-D or Ctrl-C at the prompt), or
+the option printed its output and exited (–help, –version, –license,
+init).
+</dd>
+<dt>2</dt>
+<dd>
+The command line is wrong and nothing was attempted: an unknown option,
+an option without its value, a surplus argument, a help topic that does
+not exist, or a -w directory that the current directory is not inside.
+</dd>
+<dt>65</dt>
+<dd>
+A file harvey read is wrong: a –replay recording that will not parse, an
+init source that is malformed, or a system prompt too large for the
+model’s context window.
+</dd>
+<dt>66</dt>
+<dd>
+A named input is missing or is the wrong kind of thing: the -w
+directory, the –continue or –replay file, the init source, or the
+–llamafile file. These are checked before a model is started.
+</dd>
+<dt>69</dt>
+<dd>
+A service cannot be reached: no model is connected and nobody is at a
+terminal to choose one, or a llamafile will not start.
+</dd>
+<dt>70</dt>
+<dd>
+An internal error, or one nothing classified. Please report it.
+</dd>
+<dt>73</dt>
+<dd>
+An output cannot be created: the –record-file path, or the workspace
+directory.
+</dd>
+<dt>74</dt>
+<dd>
+A read or write failed part way.
+</dd>
+<dt>75</dt>
+<dd>
+A locked database; trying again may work.
+</dd>
+<dt>77</dt>
+<dd>
+The operating system refused access to a file or directory.
+</dd>
+<dt>78</dt>
+<dd>
+agents/harvey.yaml is present but malformed, and nobody is at a
+terminal.
+</dd>
+</dl>
+<p>A session is interactive when standard input is a terminal, except
+that –replay without –replay-continue never reaches the prompt and
+counts as not interactive. At a terminal a malformed harvey.yaml is a
+warning and a session with no model still starts (use /model use to
+connect one); without a terminal both are failures, so a script does not
+run a session that cannot work. In a non-interactive session the process
+exits with the class of the first failed slash command or chat turn, if
+any, once the session ends normally (/exit, end of input) — an
+interactive session at a terminal always exits 0 that way, since a typo
+is something the person can just try again.</p>
+<p>With –json, an error prints as {“error”,“class”,“code”} JSON on
+stderr instead of text; class and code are the same class name and
+number as the table above.</p>
 <h1 id="commands">COMMANDS</h1>
 <p>Type /help TOPIC inside Harvey for the full guide on any topic. All
 topics are also available from the shell: harvey –help TOPIC.</p>
@@ -170,11 +274,18 @@ files
 </dl>
 <p><strong>Model and backend</strong></p>
 <dl>
-<dt>/ollama &lt;start [debug]|stop|status|list|ps|pull MODEL|push
-MODEL|show MODEL|create NAME|cp SRC DEST|rm MODEL|probe [MODEL]|logs|use
-MODEL|env|alias NAME FULLNAME&gt;</dt>
+<dt>/model [list|use <a href="#name">NAME</a>|show <a
+href="#name">NAME</a>|status|stop|clean|mode [MODEL] MODE|alias …]</dt>
 <dd>
-manage the local Ollama server and installed models
+unified model management across llamafile, Ollama, and llama.cpp
+backends; place .llamafile or .gguf files in ~/Models/ — Harvey
+discovers them automatically; Ollama models are listed live when Ollama
+is running; use ollama CLI for pull/rm
+</dd>
+<dt>/workspace &lt;status|init [PATH]&gt;</dt>
+<dd>
+show workspace root, alias count and profile; seed aliases from another
+workspace
 </dd>
 <dt>/inspect [MODEL]</dt>
 <dd>
@@ -185,12 +296,6 @@ href="#name">NAME</a>|list|on|off|status&gt;</dt>
 <dd>
 manage named remote LLM endpoints (<span class="citation"
 data-cites="mention">@mention</span> routing)
-</dd>
-<dt>/llamafile &lt;add [PATH] <a href="#name">NAME</a>|use NAME|show <a
-href="#name">NAME</a>|list|start <a href="#name">NAME</a>|status|remove
-NAME|download&gt;</dt>
-<dd>
-manage local llamafile model backends
 </dd>
 </dl>
 <p><strong>Context and history</strong></p>
@@ -235,10 +340,38 @@ list, inspect, load, or replay recorded sessions
 </dl>
 <p><strong>Knowledge base</strong></p>
 <dl>
-<dt>/kb &lt;status|search TEXT|inject TEXT|project [ID]|observe KIND
-BODY|concept NAME&gt;</dt>
+<dt>/kb &lt;status|search TEXT|inject [PROJECT]|project [ID]|observe
+KIND BODY|concept NAME|source|retract ID|cite ID…|show
+ID|check-retractions&gt;</dt>
 <dd>
 query and update the SQLite knowledge base
+</dd>
+<dt>/kb learn ingest [–min-words N] [–all] [–dry-run]</dt>
+<dd>
+offer recorded sessions (at least 200 words) and hand-off notes to the
+knowledge base as documents, and ingest the ones you choose
+</dd>
+<dt>/kb learn draft [–limit N] [–dry-run] <span class="citation"
+data-cites="model">[@model]</span></dt>
+<dd>
+draft summaries for the ingested documents with a model (<span
+class="citation" data-cites="model">@model</span>, else learn_model in
+harvey.yaml, else the active model); default 25 items, –limit 0 for all.
+Nothing is trusted until you accept it
+</dd>
+<dt>/kb learn review <span class="citation"
+data-cites="model">[@model]</span></dt>
+<dd>
+walk the drafts: [a]ccept makes a summary trusted and searchable, [e]dit
+opens $EDITOR, [r]edraft asks the model again, [s]kip, [q]uit. Bare /kb
+learn drafts, then reviews
+</dd>
+<dt>/kb learn concepts [–limit N]</dt>
+<dd>
+suggest new concepts from the ingested documents; you pick which become
+concepts, then see each affected document as a diff of changed lines and
+choose whether to write it. Writes obey the permissions table; Fountain
+documents (sessions, hand-offs) are never rewritten
 </dd>
 <dt>/rag &lt;list|new NAME|use NAME|drop NAME|setup|ingest
 PATH|status|query TEXT|on|off&gt;</dt>

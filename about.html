@@ -20,33 +20,56 @@
 </nav>
 <section id="main-content">
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.15">harvey 0.0.15</h2>
+<h2 id="harvey-0.0.17">harvey 0.0.17</h2>
 <ul>
-<li><code>/model mode [MODEL] {structured|prose|inject|none}</code>: set
-or display the tool-execution strategy for a model; persisted in the
-model cache and survives re-probes</li>
-<li>File-reference injection: when a model does not reliably call tools,
-Harvey pre-injects the content of workspace files mentioned in the
-prompt as <code>### File:</code> blocks</li>
-<li>Cannot-read retry: if a model responds indicating it cannot access a
-file, Harvey retries once with file content pre-loaded; retry uses
-RunToolLoop when in structured mode</li>
-<li><code>ModelCapability.ToolMode</code> field and
-<code>ToolMode*</code> constants added; <code>tool_mode</code> column
-added to the model cache database with automatic migration</li>
-<li>Bug fix: <code>FastProbeModel</code> no longer overwrites a user-set
-tool mode on re-probe</li>
-<li>Bug fix: option-2 retry now clears stale
-<code>toolCallRecords</code> before history rollback, preventing
-inconsistent session transcripts</li>
-<li>Bug fix: <code>noToolCalls</code> computed correctly after option-2
-retry using pre-rollback <code>hadToolCalls</code> flag</li>
-<li>Bug fix: option-2 retry uses <code>RunToolLoop</code> (not bare
-<code>Client.Chat</code>) when in structured-tools mode</li>
-<li>Bug fix: <code>cantReadPhrases</code> entry tightened from
-<code>"please provide the file"</code> to
-<code>"please provide the file content"</code> to avoid spurious
-retries</li>
+<li>Breaking: <code>harvey</code> and <code>assay</code> now use the
+workspace exit-code convention (workspace DR-0003; harvey
+DR-0005/DR-0006) instead of exiting only 0 or 1. Five cases that exited
+0 now fail (<code>--continue</code>/<code>--record-file</code> naming a
+bad path, a malformed <code>harvey.yaml</code> or no reachable backend
+in a non-interactive session, and <code>assay</code> when every model
+call fails); every other case exits a more specific code than a bare 1.
+See <code>harvey/CHANGES.md</code>’s v0.0.17 section for the full
+upgrade table</li>
+<li><code>-json</code>/<code>--json</code> on both binaries: a failing
+startup/flag-parsing error (or, for <code>harvey</code>, a failed
+non-interactive session) prints as <code>{"error","class","code"}</code>
+JSON on stderr instead of text, matching <code>kb</code>’s shape</li>
+<li>A non-interactive <code>harvey</code> session (piped stdin, or
+<code>--replay</code> without <code>--replay-continue</code>) now exits
+with the class of its first failed slash command or chat turn, instead
+of always 0; an interactive session at a terminal is unaffected.
+<code>/plan</code>’s errors are the first command family reclassified to
+give real signal here</li>
+<li><code>/rag setup</code>’s embedding-model auto-pick now confirms its
+keyword-based guess with one live <code>/api/embed</code> call before
+committing to it, falling back to another candidate (or warning) when
+the guess is wrong — <code>ThoroughProbeModel</code>’s first caller</li>
+<li>Ollama models are now probed on every selection, not just when a new
+alias is saved, so <code>/model use NAME</code> and the startup picker
+no longer silently degrade to file-injection instead of tool calls; a
+<code>/model mode</code> override survives re-probing (previously
+erased)</li>
+<li>Removed roughly 30 stale
+<code>/ollama</code>/<code>/llamafile</code> references across runtime
+messages, help text and generated docs; both commands were replaced by
+<code>/model</code> months ago. <code>stale_commands_test.go</code>
+guards against regressions</li>
+<li>Bug fix: closed stdin (Ctrl-D, a closed pipe) at a yes/no prompt no
+longer defaults to “yes” — affected <code>Start Ollama now?</code>,
+<code>Restart MODEL?</code>, and three skill prompts</li>
+<li>Bug fix: a failed memory-embed no longer leaves an orphaned
+<code>.fountain</code> file; the error now says to run
+<code>ollama pull MODEL</code></li>
+<li>Bug fix: <code>/model use NAME</code> now matches any registered
+model by exact name or unique prefix, not just the picker’s list</li>
+<li>Bug fix: the “1-byte” line reader actually buffered 16 bytes
+(<code>bufio</code>’s minimum) and could swallow piped multi-line input
+after a prompt</li>
+<li><code>knowledge</code> bumped to the released v0.0.14;
+<code>termlib</code> bumped to the released v0.0.10 (a
+display-corrupting bug fix for prompts wider than the terminal or
+containing an embedded newline)</li>
 </ul>
 <h2 id="authors">Authors</h2>
 <ul>

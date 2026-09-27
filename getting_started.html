@@ -37,9 +37,10 @@ llamafile from the <a
 href="https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles">Mozilla
 AI pre-built llamafiles page</a>, place it in <code>~/Models/</code>,
 and run <code>harvey</code>. Harvey will find and connect to it
-automatically. See <a href="harvey-llamafile.7.html">Llamafile
-Commands</a> for details. Ollama is also supported as an alternative
-backend.</p>
+automatically. Ollama and llama.cpp servers are also supported. Use
+<code>/model list</code> to see every model Harvey can reach and
+<code>/model use NAME</code> to switch; see <a
+href="harvey-model.7.html">Model Commands</a>.</p>
 </blockquote>
 <p>All file I/O is constrained to the workspace. A knowledge base is
 stored at <code>&lt;workspace&gt;/agents/knowledge.db</code> and is
@@ -156,7 +157,7 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb3-1"><
 class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>$ harvey</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  Harvey  0.0.14</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  Harvey  0.0.16</span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>✓ Workspace: /home/user/myproject</span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>✓ Knowledge base: agents/knowledge.db</span>
@@ -358,19 +359,19 @@ family.</p>
 </tbody>
 </table>
 <p>The key distinction: <strong><code>add</code></strong> registers
-something you already have (a llamafile binary, a route URL);
+something you already have (a route URL, a model alias);
 <strong><code>new</code></strong> creates something Harvey manages from
 scratch (a RAG database, a skill bundle, a plan). Both verbs are
 distinct from <code>use</code>, which activates something already
 registered.</p>
-<p>For backend services (<code>/llamafile</code>, <code>/ollama</code>),
+<p>For backend services (<code>/model</code>, <code>/route</code>),
 <code>status</code> checks whether the server is reachable — it is not
 the same as <code>show</code>, which displays item content.</p>
 <p><strong>Examples across command families:</strong></p>
-<pre><code>/llamafile add ~/Models/Qwen.llamafile   — register an existing file
-/llamafile use qwen-coding               — activate a registered model
-/llamafile show qwen-coding              — show model details
-/llamafile remove qwen-coding            — unregister
+<pre><code>/model list                              — models across llamafile, llama.cpp, Ollama
+/model use qwen-coding                   — activate one (name, alias, or unique prefix)
+/model show qwen-coding                  — show model details
+/model alias add qc qwen2.5-coder:7b     — define a short alias
 
 /rag new my-docs                         — create a new RAG database
 /rag use my-docs                         — activate it
@@ -385,8 +386,10 @@ the same as <code>show</code>, which displays item content.</p>
 /route remove pi2                        — unregister</code></pre>
 <h2 id="slash-commands">Slash commands</h2>
 <p>Type <code>/help</code> at any prompt for a live command list. All
-commands begin with <code>/</code>.</p>
-<h2 id="session-commands">Session commands</h2>
+commands begin with <code>/</code>. Each command has its own manual
+page, named <code>harvey-COMMAND.7</code>, and the full list is in <a
+href="harvey.1.html">harvey(1)</a>.</p>
+<h3 id="session">Session</h3>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -409,9 +412,22 @@ commands begin with <code>/</code>.</p>
 status</td>
 </tr>
 <tr>
+<td><code>/hint</code></td>
+<td>Show suggestions for improving results (RAG, memory, KB)</td>
+</tr>
+<tr>
 <td><code>/clear</code></td>
 <td>Reset conversation history (system prompt and pinned context are
 kept)</td>
+</tr>
+<tr>
+<td><code>/summarize</code> <code>/compact</code></td>
+<td>Ask the model to summarize the history and replace it with the
+summary</td>
+</tr>
+<tr>
+<td><code>/context &lt;show\|add TEXT...\|clear&gt;</code></td>
+<td>Manage pinned context that survives <code>/clear</code></td>
 </tr>
 <tr>
 <td><code>/exit</code> <code>/quit</code> <code>/bye</code></td>
@@ -419,60 +435,7 @@ kept)</td>
 </tr>
 </tbody>
 </table>
-<h2 id="backend-commands">Backend commands</h2>
-<p><strong>Llamafile (primary)</strong></p>
-<table>
-<colgroup>
-<col style="width: 50%" />
-<col style="width: 50%" />
-</colgroup>
-<thead>
-<tr>
-<th scope="col">Command</th>
-<th scope="col">Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>/llamafile add [PATH] [NAME]</code></td>
-<td>Register a llamafile and connect to it; picker shown when PATH is
-omitted</td>
-</tr>
-<tr>
-<td><code>/llamafile use [NAME]</code></td>
-<td>Switch to a registered llamafile; picker shown when NAME is
-omitted</td>
-</tr>
-<tr>
-<td><code>/llamafile show [NAME]</code></td>
-<td>Show path, size, and context length for a model</td>
-</tr>
-<tr>
-<td><code>/llamafile list</code></td>
-<td>List all registered models; active model marked with
-<code>→</code></td>
-</tr>
-<tr>
-<td><code>/llamafile start [NAME]</code></td>
-<td>Start the active (or named) model’s server</td>
-</tr>
-<tr>
-<td><code>/llamafile status</code></td>
-<td>Show active model, API URL, and reachability</td>
-</tr>
-<tr>
-<td><code>/llamafile remove NAME</code></td>
-<td>Unregister a model (binary not deleted)</td>
-</tr>
-<tr>
-<td><code>/llamafile download</code></td>
-<td>Print a table of recommended models with download URLs</td>
-</tr>
-</tbody>
-</table>
-<p>See <a href="harvey-llamafile.7.html">Llamafile Commands</a> for full
-reference.</p>
-<p><strong>Unified model management</strong></p>
+<h3 id="models-and-routing">Models and routing</h3>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -487,31 +450,61 @@ reference.</p>
 <tbody>
 <tr>
 <td><code>/model list</code></td>
-<td>List all models across llamafile and Ollama</td>
+<td>List models across llamafile, llama.cpp, and Ollama</td>
 </tr>
 <tr>
-<td><code>/model use NAME</code></td>
-<td>Switch to a named model regardless of backend</td>
+<td><code>/model use [NAME]</code></td>
+<td>Switch to a model by name, alias, or unique prefix; a picker is
+shown when NAME is omitted</td>
 </tr>
 <tr>
 <td><code>/model show [NAME]</code></td>
-<td>Show the active (or named) model details</td>
+<td>Show the active (or named) model’s details</td>
 </tr>
 <tr>
 <td><code>/model status</code></td>
 <td>Check whether the active backend is reachable</td>
 </tr>
 <tr>
-<td><code>/model alias add ALIAS FULLNAME</code></td>
-<td>Define a short alias for a long model name</td>
+<td><code>/model stop</code></td>
+<td>Stop the active llamafile or llama.cpp server, if Harvey started
+it</td>
 </tr>
 <tr>
-<td><code>/model alias list</code></td>
-<td>List all defined aliases</td>
+<td><code>/model clean</code></td>
+<td>Remove aliases whose model is no longer installed</td>
+</tr>
+<tr>
+<td><code>/model mode [MODEL] [MODE]</code></td>
+<td>Show or set how a model gets tools: <code>structured</code>,
+<code>prose</code>, <code>inject</code>, or <code>none</code></td>
+</tr>
+<tr>
+<td><code>/model alias add ALIAS FULLNAME</code></td>
+<td>Define a short alias for a long model name (<code>alias list</code>
+shows them)</td>
+</tr>
+<tr>
+<td><code>/inspect [MODEL]</code></td>
+<td>Show capability details for installed Ollama models</td>
+</tr>
+<tr>
+<td><code>/route add NAME URL [MODEL]</code></td>
+<td>Register a remote endpoint, then address it with <code>@NAME</code>
+in a prompt</td>
+</tr>
+<tr>
+<td><code>/route &lt;list\|use\|rm\|models\|probe\|set\|on\|off\|status&gt;</code></td>
+<td>Manage registered routes</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Ollama (alternative)</strong></p>
+<p>Harvey does not pull Ollama models for you. To install one, run
+<code>ollama pull MODEL</code> in a shell (or
+<code>/run ollama pull MODEL</code>), then <code>/model list</code>. See
+<a href="harvey-model.7.html">Model Commands</a> and <a
+href="harvey-routing.7.html">Routing</a>.</p>
+<h3 id="files-and-code">Files and code</h3>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -525,46 +518,193 @@ reference.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>/ollama start [debug]</code></td>
-<td>Launch <code>ollama serve</code> in the background</td>
+<td><code>/read FILE [FILE...]</code></td>
+<td>Inject workspace files into the conversation</td>
 </tr>
 <tr>
-<td><code>/ollama stop</code></td>
-<td>Print a reminder to use your system’s service manager</td>
+<td><code>/read-dir [PATH] [--depth N]</code></td>
+<td>Read all eligible files in a directory into context</td>
 </tr>
 <tr>
-<td><code>/ollama status</code></td>
-<td>Check whether Ollama is reachable</td>
+<td><code>/read-pdf FILE [PAGES]</code></td>
+<td>Extract text from a PDF (requires poppler)</td>
 </tr>
 <tr>
-<td><code>/ollama list</code></td>
-<td>List installed models; the current model is marked with
-<code>*</code></td>
+<td><code>/read-chunks PATH [--chunk-size N] ...</code></td>
+<td>Run chunked map-reduce analysis on a large file</td>
 </tr>
 <tr>
-<td><code>/ollama pull MODEL</code></td>
-<td>Download a model from the Ollama registry</td>
+<td><code>/attach FILE</code></td>
+<td>Attach an image, PDF, or text file to the next turn</td>
 </tr>
 <tr>
-<td><code>/ollama use MODEL</code></td>
-<td>Switch to a different installed model mid-session</td>
+<td><code>/write PATH</code></td>
+<td>Write the last reply (or its first code block) to a file</td>
 </tr>
 <tr>
-<td><code>/ollama probe [MODEL]</code></td>
-<td>Test and cache capability flags for a model</td>
+<td><code>/files [PATH]</code> <code>/file-tree [PATH]</code></td>
+<td>List files, or show a tree</td>
 </tr>
 <tr>
-<td><code>/ollama logs</code></td>
-<td>Tail the Ollama service log</td>
+<td><code>/search PATTERN [PATH]</code></td>
+<td>Search workspace files and inject the matches</td>
 </tr>
 <tr>
-<td><code>/ollama env</code></td>
-<td>Show Ollama environment variables as seen by Harvey</td>
+<td><code>/run COMMAND [ARGS...]</code></td>
+<td>Run a command in the workspace and inject its output</td>
+</tr>
+<tr>
+<td><code>/git &lt;status\|diff\|log\|show\|blame&gt;</code></td>
+<td>Run a read-only git command and inject the output</td>
+</tr>
+<tr>
+<td><code>/format FILE [FILE...]</code></td>
+<td>Format source files in place</td>
 </tr>
 </tbody>
 </table>
-<p>See <a href="harvey-ollama.7.html">Ollama Commands</a> for full
-reference.</p>
+<h3 id="planning-and-repetition">Planning and repetition</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/plan &lt;TASK\|next\|status\|show\|clear&gt;</code></td>
+<td>Generate a step-by-step plan and run it with bounded context per
+step</td>
+</tr>
+<tr>
+<td><code>/loop INTERVAL [--count N] PROMPT</code></td>
+<td>Repeat a prompt or command on an interval (default 10 times, max
+100)</td>
+</tr>
+<tr>
+<td><code>/pipeline CONFIDENCE% FILE...</code></td>
+<td>Chain Markdown prompt files through models with confidence
+gating</td>
+</tr>
+</tbody>
+</table>
+<h3 id="memory-knowledge-and-skills">Memory, knowledge, and skills</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/memory &lt;mine\|list\|show\|flag\|forget\|status\|recall\|profile&gt;</code></td>
+<td>Mine sessions for memories and manage the memory store</td>
+</tr>
+<tr>
+<td><code>/recall QUERY</code></td>
+<td>Alias for <code>/memory recall</code></td>
+</tr>
+<tr>
+<td><code>/profile &lt;list\|show\|edit\|use\|rename\|on\|off&gt;</code></td>
+<td>Alias for <code>/memory profile</code></td>
+</tr>
+<tr>
+<td><code>/kb ...</code></td>
+<td>The knowledge base; see <a href="#knowledge-base-commands">Knowledge
+base commands</a></td>
+</tr>
+<tr>
+<td><code>/rag &lt;list\|new\|use\|show\|remove\|drop\|ingest\|status\|query\|on\|off&gt;</code></td>
+<td>Named RAG knowledge stores</td>
+</tr>
+<tr>
+<td><code>/skill &lt;list\|load\|show\|info\|status\|new\|run\|suggest&gt;</code></td>
+<td>List, load, create, and run Agent Skills</td>
+</tr>
+<tr>
+<td><code>/skill-set &lt;list\|load\|show\|info\|new\|create\|status\|unload&gt;</code></td>
+<td>Load named bundles of skills</td>
+</tr>
+<tr>
+<td><code>/workspace &lt;init [FROM_PATH]\|status&gt;</code></td>
+<td>Workspace settings; <code>init</code> copies aliases from another
+workspace</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sessions-and-recording">Sessions and recording</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/record &lt;start [FILE]\|stop\|status&gt;</code></td>
+<td>Record the session to a Fountain file</td>
+</tr>
+<tr>
+<td><code>/rename NAME</code></td>
+<td>Rename the active recording</td>
+</tr>
+<tr>
+<td><code>/session &lt;list\|show\|use\|continue\|replay&gt;</code></td>
+<td>List, inspect, load, or replay recordings</td>
+</tr>
+<tr>
+<td><code>/resume [FILE]</code></td>
+<td>Alias for <code>/session use</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="security">Security</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/safemode &lt;on\|off\|status\|allow CMD\|deny CMD\|reset&gt;</code>
+<code>/safe</code></td>
+<td>Safe mode and the command allowlist</td>
+</tr>
+<tr>
+<td><code>/permissions &lt;list\|set PATH PERMS\|reset&gt;</code></td>
+<td>Per-path read, write, exec, and delete permissions</td>
+</tr>
+<tr>
+<td><code>/audit &lt;show [n]\|clear\|status&gt;</code></td>
+<td>View or clear the audit log</td>
+</tr>
+<tr>
+<td><code>/security status</code></td>
+<td>Overview of safe mode, permissions, and audit</td>
+</tr>
+</tbody>
+</table>
 <h2 id="file-operations">File operations</h2>
 <p>These commands move information between the workspace and the
 conversation.</p>
@@ -601,7 +741,7 @@ content, it may contain adversarial text designed to redirect the
 model’s behavior. Review output before accepting the model’s follow-up
 suggestions.</p>
 </blockquote>
-<h2 id="security">Security</h2>
+<h2 id="security-1">Security</h2>
 <p>Harvey includes a layered security system for controlling what it can
 do on your system. All settings persist across sessions in
 <code>agents/harvey.yaml</code>.</p>
@@ -634,7 +774,7 @@ safe, <code>harvey [unsafe] &gt;</code> in red = off).</p>
 <h3 id="workspace-permissions">Workspace permissions</h3>
 <p>Fine-grained read/write/exec/delete control per path prefix, checked
 before every <code>/read</code>, <code>/write</code>, and
-<code>/apply</code> operation.</p>
+tagged-code-block write.</p>
 <pre><code>harvey &gt; /permissions set docs/ read
   Set permissions for &quot;docs/&quot;: read
 
@@ -778,6 +918,15 @@ conversation history and persists across sessions.</p>
 <td>Show all projects with recent observations</td>
 </tr>
 <tr>
+<td><code>/kb search TERM...</code></td>
+<td>Full-text search (quote phrases, <code>*</code> for a prefix)</td>
+</tr>
+<tr>
+<td><code>/kb inject [PROJECT]</code></td>
+<td>Add the current (or named) project’s knowledge to the conversation
+context</td>
+</tr>
+<tr>
 <td><code>/kb project list</code></td>
 <td>List projects with ID and status</td>
 </tr>
@@ -794,12 +943,37 @@ conversation history and persists across sessions.</p>
 <td>Record an observation against the active project</td>
 </tr>
 <tr>
+<td><code>/kb show OBS_ID</code></td>
+<td>Show one observation in full</td>
+</tr>
+<tr>
 <td><code>/kb concept list</code></td>
 <td>List all concepts</td>
 </tr>
 <tr>
 <td><code>/kb concept add NAME [DESC]</code></td>
 <td>Add a named concept</td>
+</tr>
+<tr>
+<td><code>/kb source &lt;list\|add\|show ID\|remove ID&gt;</code></td>
+<td>Manage cited sources (papers, pages, datasets)</td>
+</tr>
+<tr>
+<td><code>/kb cite SOURCE_ID...</code></td>
+<td>Link sources to the most recently recorded observation</td>
+</tr>
+<tr>
+<td><code>/kb retract SOURCE_ID [--note NOTE]</code></td>
+<td>Mark a source as retracted</td>
+</tr>
+<tr>
+<td><code>/kb check-retractions</code></td>
+<td>Check every source’s DOI against Retraction Watch and mark hits</td>
+</tr>
+<tr>
+<td><code>/kb learn &lt;ingest\|draft\|review&gt;</code></td>
+<td>Turn recorded sessions and hand-off notes into reviewed documents;
+see <a href="harvey-learn.7.html">the learn manual</a></td>
 </tr>
 </tbody>
 </table>
@@ -812,14 +986,14 @@ Project &quot;harvey&quot; added (id=1) and set as current.
 harvey &gt; /kb observe finding WAL mode doubled write throughput in the knowledge base
 Observation recorded (id=1, kind=finding).
 
-harvey &gt; /kb observe decision Use bufio.Scanner for all interactive prompt reading
+harvey &gt; /kb observe decision Use WAL mode for the knowledge base
 Observation recorded (id=2, kind=decision).
 
 harvey &gt; /kb status
   [1] harvey  (active)
       Terminal coding agent
       [finding] WAL mode doubled write throughput in the knowledge base
-      [decision] Use bufio.Scanner for all interactive prompt reading</code></pre>
+      [decision] Use WAL mode for the knowledge base</code></pre>
 <h2 id="recording-commands">Recording commands</h2>
 <p>Harvey can record sessions to <a
 href="https://fountain.io">Fountain</a> screenplay files. Fountain

@@ -25,12 +25,12 @@
 <p>/inspect /inspect MODEL</p>
 <h1 id="description">DESCRIPTION</h1>
 <p>/inspect queries the local Ollama server for detailed information
-about installed models. Requires an Ollama backend; use /ollama start
-first if Ollama is not running.</p>
+about installed models. Requires an Ollama backend; use /model use to
+pick an Ollama model, and run “ollama serve” in a shell if Ollama is not
+running.</p>
 <p>Without a MODEL argument, /inspect shows a summary table of all
 installed models: name, disk size, family, context length, and
-capability flags (tools, embed, tagged-blocks). This is identical to
-/ollama list.</p>
+capability flags (tools, embed, tagged-blocks).</p>
 <p>With a MODEL argument, /inspect shows the full detail view for that
 model: family, parameter count, quantization level, disk size, context
 length, and all Modelfile parameter lines (e.g. temperature, system
@@ -50,9 +50,9 @@ prompt).</p>
   Modelfile parameters:
     stop &quot;&lt;end_of_turn&gt;&quot;</code></pre>
 <h1 id="see-also">SEE ALSO</h1>
-<p>/ollama list — model table (same as /inspect with no args) /ollama
-probe — test and cache capability flags /ollama show MODEL — raw
-Modelfile via the ollama CLI /help ollama</p>
+<p>/model list — models across llamafile, llama.cpp, and Ollama /model
+use NAME — switch models (an Ollama model is probed on first alias)
+ollama show MODEL — raw Modelfile, run in a shell /help model</p>
 </section>
 </body>
 </html>

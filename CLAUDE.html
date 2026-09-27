@@ -158,8 +158,10 @@ time by <code>UnifiedMemory.Recall()</code>:</p>
 </tr>
 <tr>
 <td><strong>Knowledge base</strong></td>
-<td><code>knowledge.go</code>, <code>agents/knowledge.db</code></td>
-<td>Hand-authored experiments/observations/concepts (relational)</td>
+<td><code>github.com/rsdoiel/knowledge</code> (external module, a normal
+versioned <code>require</code> in <code>go.mod</code>; no
+<code>replace</code>), <code>agents/knowledge.db</code></td>
+<td>Hand-authored projects/observations/concepts (relational)</td>
 <td>Optional, also via <code>UnifiedMemory</code></td>
 </tr>
 </tbody>
@@ -216,6 +218,32 @@ each prompt twice (base + RAG) and shows a per-check delta table -
 testable capability per entry, at least one automatable
 <code>contains:</code> check, and 2–4 <code>human:</code> review
 questions targeting the specific failure modes that matter.</p>
+<h2 id="exit-codes">Exit codes</h2>
+<p>Both binaries use the workspace exit-code convention (workspace
+DR-0003; the table is in the Laboratory <code>CLAUDE.md</code>, “Exit
+codes for command-line tools”): 0 ok, 1 negative, 2 usage, 65 data, 66
+no_input, 69 unavailable, 70 internal, 73 cant_create, 74 io, 75
+temp_fail, 77 no_permission, 78 config. <code>exitcode.go</code> is the
+classifier: constructors (<code>Usagef</code>, <code>NoInputf</code>,
+<code>Dataf</code>, …) and sentinels (<code>ErrNotFound</code>,
+<code>ErrInvalid</code>) classify at the source,
+<code>ExitCodeFor(err)</code> maps an error to its class, and an error
+nothing classified is 70, never 1. Never match message text to classify.
+Each <code>main</code> is a thin <code>os.Exit(mainRun(...))</code>;
+<code>flagSpecs</code> (harvey) and <code>defineAssayFlags</code>
+(assay) are the single lists of options, and <code>flags_test.go</code>
+in each <code>cmd/</code> compares them with the OPTIONS section of the
+manual, so a new option needs its manual entry and its mistakes must be
+usage errors (2). The <code>EXIT STATUS</code> sections in
+<code>HelpText</code> and <code>AssayHelpText</code> list the codes each
+tool can return and are tested. <code>harvey</code> treats a session as
+non-interactive when stdin is not a terminal, or for
+<code>--replay</code> without <code>--replay-continue</code>; problems a
+person could fix in the session are then failures
+(<code>harvey.yaml</code> 78, no backend 69). <code>assay</code>
+finishes its run and exits with the class of the first failure; failing
+automatic checks are results (exit 0). Design and history:
+<code>exit-codes-survey.md</code>, <code>exit-codes-plan.md</code>.</p>
 <h2 id="key-invariants-to-preserve">Key invariants to preserve</h2>
 <ul>
 <li><code>ToolRegistry.Dispatch</code> returns
@@ -228,8 +256,10 @@ in sync if changed.</li>
 <li><code>suggestPathFromHistory</code> returns <code>""</code> when
 there are ≠1 path-like tokens in the last user message. The
 <code>autoExecuteReply</code> fallback only calls
-<code>promptAction</code> (the Y/n box) when a single candidate is
-found; otherwise it asks the user to type a path.</li>
+<code>promptAction</code> (the Y/n box, which also reports end of input;
+a caller that writes files must treat that as quit, never as yes) when a
+single candidate is found; otherwise it asks the user to type a
+path.</li>
 <li>The <code>mockLLMClient</code> in <code>tier3_test.go</code> is the
 canonical test double for <code>LLMClient</code> — reuse it rather than
 creating new ones.</li>

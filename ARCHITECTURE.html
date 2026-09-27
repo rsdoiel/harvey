@@ -49,7 +49,7 @@ lear_messages.go            Edward Lear-themed spinner waiting messages
 --- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
 anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go for cloud providers
-llamafile.go                /llamafile command family; model registration and discovery
+llamafile.go                llamafile model registration and discovery (reached through /model)
 llamafile_service.go        Llamafile server lifecycle (start, probe, port selection)
 model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
@@ -455,8 +455,8 @@ route</td>
 </thead>
 <tbody>
 <tr>
-<td><code>/ollama start\|stop\|status\|list\|ps\|pull\|push\|show\|create\|cp\|rm\|probe\|logs\|use\|env\|alias</code></td>
-<td>Manage local Ollama server</td>
+<td><code>/model list\|use\|show\|status\|stop\|clean\|mode\|alias</code></td>
+<td>Manage models across llamafile, llama.cpp and Ollama</td>
 </tr>
 <tr>
 <td><code>/inspect [MODEL]</code></td>
@@ -465,10 +465,6 @@ route</td>
 <tr>
 <td><code>/route add\|rm\|models\|probe\|set\|list\|on\|off\|status</code></td>
 <td>Manage named remote endpoints</td>
-</tr>
-<tr>
-<td><code>/llamafile add\|use\|list\|start\|status\|drop</code></td>
-<td>Manage llamafile model backends</td>
 </tr>
 </tbody>
 </table>
@@ -1028,7 +1024,7 @@ dispatches that turn to the named endpoint.</p>
 <h3 id="llamafile-backend-llamafile.go-llamafile_service.go">Llamafile
 backend (<code>llamafile.go</code>,
 <code>llamafile_service.go</code>)</h3>
-<p>Llamafile binaries are registered via <code>/llamafile add</code> and
+<p>Llamafile binaries are registered via <code>/model use</code> and
 stored in <code>Config.LlamafileModels</code>.
 <code>llamafile_service.go</code> handles the server lifecycle:
 <code>FindFreePort</code> selects an available TCP port,

@@ -50,7 +50,8 @@ the need to re-probe every model on each launch.</p>
 <tr>
 <td>Redundant network calls</td>
 <td>Repeated /api/show requests to Ollama</td>
-<td>Single probe per model, cached indefinitely</td>
+<td>One <code>/api/show</code> per selection, cached for
+<code>/model show</code> and offline use</td>
 </tr>
 <tr>
 <td>Inconsistent capability detection</td>
@@ -75,14 +76,9 @@ thorough (live test) probing</li>
 <h2 id="quick-start">Quick Start</h2>
 <p>The model cache works automatically — no configuration required:</p>
 <div class="sourceCode" id="cb1"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># First run: probes all installed models and caches results</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Subsequent runs: loads from cache, much faster</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Force re-probe a specific model</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /ollama probe llama3.2:latest</span></code></pre></div>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Selecting an Ollama model (startup picker, /model use, or @NAME) probes</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co"># it and caches the result; selecting it again refreshes the entry</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /model use llama3.2:latest</span></code></pre></div>
 <h2 id="architecture">Architecture</h2>
 <pre><code>┌─────────────────────────────────────────────────────────────────────┐
 │                      MODEL CACHE ARCHITECTURE                       │
@@ -113,16 +109,26 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="
 <li><strong>Harvey Startup:</strong>
 <ul>
 <li>Open model cache database (<code>agents/model_cache.db</code>)</li>
-<li>Load all cached ModelCapability entries</li>
-<li>Use cached data for model selection UI</li>
+<li>Harvey does not probe installed models at startup; it probes the one
+it selects (below)</li>
 </ul></li>
-<li><strong>Model Probe (on demand):</strong>
+<li><strong>Model selection (Ollama):</strong>
 <ul>
-<li>Call <code>FastProbeModel()</code> or
-<code>ThoroughProbeModel()</code></li>
-<li>Fetch model metadata from Ollama <code>/api/show</code></li>
-<li>For thorough probe: test <code>/api/embed</code> endpoint</li>
-<li>Store results in cache with timestamp</li>
+<li><code>setOllamaModel</code> calls
+<code>probeOllamaModelAndCache</code>, which runs
+<code>FastProbeModel()</code> (one <code>/api/show</code> request) with
+a 5 second limit</li>
+<li>Any tool mode set with <code>/model mode</code> is carried over; the
+probe itself always reports auto</li>
+<li>Store results in cache with timestamp; a failed probe changes
+nothing</li>
+<li><code>ThoroughProbeModel()</code> (adds an <code>/api/embed</code>
+request) is wired into <code>/rag setup</code>’s embedder auto-pick only
+(<code>confirmEmbedder</code> in <code>commands_rag.go</code>),
+confirming or correcting the keyword guess with one live call before
+committing to it. Nothing else calls it — a full
+<code>setOllamaModel</code>-wide swap would cost an extra request on
+every model switch for a signal most selections never use</li>
 </ul></li>
 <li><strong>Cache Query:</strong>
 <ul>
@@ -436,82 +442,78 @@ tool support</p>
 </tbody>
 </table>
 <h2 id="usage-patterns">Usage Patterns</h2>
-<h3 id="automatic-probing-on-startup">Automatic Probing on Startup</h3>
-<p>Harvey automatically probes models when needed:</p>
+<h3 id="automatic-probing-on-selection">Automatic Probing on
+Selection</h3>
+<p>Every path that selects an Ollama model ends in
+<code>setOllamaModel</code>, which probes and caches it:</p>
 <div class="sourceCode" id="cb12"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co">// In harvey initialization</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> model<span class="op">,</span> ok <span class="op">:=</span> knownModels<span class="op">[</span>name<span class="op">];</span> <span class="op">!</span>ok <span class="op">{</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">cap</span><span class="op">,</span> err <span class="op">:=</span> FastProbeModel<span class="op">(</span>ctx<span class="op">,</span> ollamaURL<span class="op">,</span> name<span class="op">)</span></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> err <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>        cache<span class="op">.</span>Set<span class="op">(</span><span class="bu">cap</span><span class="op">)</span></span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+class="sourceCode go"><code class="sourceCode go"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">func</span> <span class="op">(</span>a <span class="op">*</span>Agent<span class="op">)</span> setOllamaModel<span class="op">(</span>model <span class="dt">string</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ... wire the client and backend ...</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    a<span class="op">.</span>probeOllamaModelAndCache<span class="op">(</span>model<span class="op">)</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <h3 id="manual-probing">Manual Probing</h3>
-<div class="sourceCode" id="cb13"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Probe a specific model</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /ollama probe llama3.2:latest</span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Probe all installed models</span></span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /ollama probe <span class="at">--all</span></span></code></pre></div>
+<p>There is no probe command (<code>/ollama probe</code> was removed
+with <code>/ollama</code>). Select the model again with
+<code>/model use NAME</code> to refresh its entry.</p>
 <h3 id="setting-tool-mode">Setting Tool Mode</h3>
 <p>Override the auto-detected tool execution strategy for a model:</p>
-<div class="sourceCode" id="cb14"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show the current mode for the active model</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /model mode</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Force file-injection mode for a small model that ignores the tools schema</span></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /model mode phi4:latest inject</span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Force structured tool_calls for a model whose probe result was wrong</span></span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /model mode granite4.1:8b structured</span>
-<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Reset to auto-detection (clears the override)</span></span>
-<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Note: /model mode auto is planned for v0.0.16; until then, use:</span></span>
-<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/model_cache.db <span class="st">&quot;UPDATE model_capabilities SET tool_mode=&#39;&#39; WHERE name=&#39;phi4:latest&#39;&quot;</span></span></code></pre></div>
-<p>Tool modes survive <code>/ollama probe</code> — re-probing a model
-does not overwrite a mode set via <code>/model mode</code>.</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show the current mode for the active model</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /model mode</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Force file-injection mode for a small model that ignores the tools schema</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /model mode phi4:latest inject</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Force structured tool_calls for a model whose probe result was wrong</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /model mode granite4.1:8b structured</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Reset to auto-detection (clears the override)</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Note: /model mode auto is planned for v0.0.16; until then, use:</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/model_cache.db <span class="st">&quot;UPDATE model_capabilities SET tool_mode=&#39;&#39; WHERE name=&#39;phi4:latest&#39;&quot;</span></span></code></pre></div>
+<p>Tool modes survive a re-probe — re-probing a model does not overwrite
+a mode set via <code>/model mode</code>.</p>
 <h3 id="checking-model-capabilities">Checking Model Capabilities</h3>
-<div class="sourceCode" id="cb15"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># List all models with their capabilities</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /ollama list</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="co"># The output shows:</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="co"># - Model name and family</span></span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="co"># - Parameter size and quantization</span></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="co"># - Context length</span></span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="co"># - Tool support (✓, —, ?)</span></span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a><span class="co"># - Embedding support (✓, —, ?)</span></span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># List all models with their capabilities</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span><span class="op">&gt;</span> /inspect</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># The output shows:</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="co"># - Model name and family</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a><span class="co"># - Parameter size and quantization</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="co"># - Context length</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="co"># - Tool support (✓, —, ?)</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a><span class="co"># - Embedding support (✓, —, ?)</span></span></code></pre></div>
 <h3 id="programmatic-access">Programmatic Access</h3>
-<div class="sourceCode" id="cb16"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Open the cache</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>mc<span class="op">,</span> err <span class="op">:=</span> OpenModelCache<span class="op">(</span>ws<span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">)</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="cf">defer</span> mc<span class="op">.</span>Close<span class="op">()</span></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="co">// Get a specific model&#39;s capabilities</span></span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="bu">cap</span><span class="op">,</span> err <span class="op">:=</span> mc<span class="op">.</span>Get<span class="op">(</span><span class="st">&quot;llama3.2:latest&quot;</span><span class="op">)</span></span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">cap</span> <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Tools: %s, Embed: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> <span class="bu">cap</span><span class="op">.</span>SupportsTools<span class="op">,</span> <span class="bu">cap</span><span class="op">.</span>SupportsEmbed<span class="op">)</span></span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
-<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Iterate all cached models</span></span>
-<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>all<span class="op">,</span> _ <span class="op">:=</span> mc<span class="op">.</span>All<span class="op">()</span></span>
-<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> c <span class="op">:=</span> <span class="kw">range</span> all <span class="op">{</span></span>
-<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> c<span class="op">.</span>SupportsEmbed <span class="op">==</span> CapYes <span class="op">{</span></span>
-<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Println<span class="op">(</span>c<span class="op">.</span>Name<span class="op">,</span> <span class="st">&quot;supports embeddings&quot;</span><span class="op">)</span></span>
-<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
-<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Open the cache</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>mc<span class="op">,</span> err <span class="op">:=</span> OpenModelCache<span class="op">(</span>ws<span class="op">,</span> <span class="st">&quot;&quot;</span><span class="op">)</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="cf">defer</span> mc<span class="op">.</span>Close<span class="op">()</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="co">// Get a specific model&#39;s capabilities</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="bu">cap</span><span class="op">,</span> err <span class="op">:=</span> mc<span class="op">.</span>Get<span class="op">(</span><span class="st">&quot;llama3.2:latest&quot;</span><span class="op">)</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">cap</span> <span class="op">!=</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    fmt<span class="op">.</span>Printf<span class="op">(</span><span class="st">&quot;Tools: %s, Embed: %s</span><span class="ch">\n</span><span class="st">&quot;</span><span class="op">,</span> <span class="bu">cap</span><span class="op">.</span>SupportsTools<span class="op">,</span> <span class="bu">cap</span><span class="op">.</span>SupportsEmbed<span class="op">)</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Iterate all cached models</span></span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>all<span class="op">,</span> _ <span class="op">:=</span> mc<span class="op">.</span>All<span class="op">()</span></span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _<span class="op">,</span> c <span class="op">:=</span> <span class="kw">range</span> all <span class="op">{</span></span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> c<span class="op">.</span>SupportsEmbed <span class="op">==</span> CapYes <span class="op">{</span></span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>        fmt<span class="op">.</span>Println<span class="op">(</span>c<span class="op">.</span>Name<span class="op">,</span> <span class="st">&quot;supports embeddings&quot;</span><span class="op">)</span></span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <h2 id="configuration">Configuration</h2>
 <h3 id="database-location">Database Location</h3>
 <p><strong>Default:</strong> <code>agents/model_cache.db</code> in the
 workspace root</p>
 <p><strong>Custom Path:</strong></p>
-<div class="sourceCode" id="cb17"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>mc<span class="op">,</span> err <span class="op">:=</span> OpenModelCache<span class="op">(</span>ws<span class="op">,</span> <span class="st">&quot;custom/path/model_cache.db&quot;</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>mc<span class="op">,</span> err <span class="op">:=</span> OpenModelCache<span class="op">(</span>ws<span class="op">,</span> <span class="st">&quot;custom/path/model_cache.db&quot;</span><span class="op">)</span></span></code></pre></div>
 <p><strong>YAML Configuration:</strong></p>
-<div class="sourceCode" id="cb18"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># In harvey.yaml</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="fu">model_cache</span><span class="kw">:</span></span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">path</span><span class="kw">:</span><span class="at"> custom/path/model_cache.db</span></span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># In harvey.yaml</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="fu">model_cache</span><span class="kw">:</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">path</span><span class="kw">:</span><span class="at"> custom/path/model_cache.db</span></span></code></pre></div>
 <h3 id="sqlite-settings">SQLite Settings</h3>
 <p>The database is configured with: - <strong>Journal Mode:</strong> WAL
 (Write-Ahead Logging) - <strong>Foreign Keys:</strong> ON - <strong>Max
@@ -525,7 +527,8 @@ Connections:</strong> 1 (prevents locking issues)</p>
 <li>Use when embedding model is known from name</li>
 <li>Use for quick capability checks</li>
 </ul></li>
-<li><strong>Thorough Probe:</strong>
+<li><strong>Thorough Probe (library only; Harvey does not call
+it):</strong>
 <ul>
 <li>Use when embedding capability is uncertain</li>
 <li>Use before relying on embedding functionality</li>
@@ -537,12 +540,12 @@ Connections:</strong> 1 (prevents locking issues)</p>
 <li><strong>Let Harvey manage the cache:</strong>
 <ul>
 <li>Cache is automatically created on first use</li>
-<li>Probing happens automatically when needed</li>
+<li>A model is probed each time it is selected</li>
 </ul></li>
 <li><strong>Clear cache when needed:</strong>
 <ul>
-<li>If Ollama is updated, consider clearing the cache</li>
-<li>If model definitions change, re-probe specific models</li>
+<li>After an Ollama update, re-select the models you use</li>
+<li>To drop an entry, delete its row (see Force Re-probe)</li>
 </ul></li>
 <li><strong>Backup the cache:</strong>
 <ul>
@@ -580,13 +583,14 @@ Connections:</strong> 1 (prevents locking issues)</p>
 <tbody>
 <tr>
 <td>Model not found in cache</td>
-<td>Never probed or deleted</td>
-<td>Run <code>/ollama probe MODEL</code></td>
+<td>Never selected, or the probe failed</td>
+<td>Select it with <code>/model use MODEL</code> (Ollama must be
+running)</td>
 </tr>
 <tr>
 <td>Outdated cache entries</td>
 <td>Model updated in Ollama</td>
-<td>Re-probe the model or delete and re-probe</td>
+<td>Select the model again with <code>/model use</code></td>
 </tr>
 <tr>
 <td>Database locked</td>
@@ -595,8 +599,9 @@ Connections:</strong> 1 (prevents locking issues)</p>
 </tr>
 <tr>
 <td>“None” probe level</td>
-<td>Model never probed</td>
-<td>Run a probe to populate</td>
+<td>Entry made by <code>/model mode</code> before the model was
+selected</td>
+<td>Select the model with <code>/model use</code></td>
 </tr>
 <tr>
 <td>Incorrect tool support</td>
@@ -607,7 +612,8 @@ override</td>
 <tr>
 <td>Incorrect embed support</td>
 <td>Keyword detection failed</td>
-<td>Use thorough probe for definitive answer</td>
+<td><code>/rag setup</code> confirms live before committing; elsewhere,
+not fixable from Harvey today</td>
 </tr>
 <tr>
 <td>Model ignores tools schema</td>
@@ -622,31 +628,32 @@ override</td>
 </tbody>
 </table>
 <h3 id="force-re-probe">Force Re-probe</h3>
-<p>To force a fresh probe of a model:</p>
-<div class="sourceCode" id="cb19"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Delete the old entry</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>mc<span class="op">.</span>Delete<span class="op">(</span><span class="st">&quot;model:tag&quot;</span><span class="op">)</span></span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Run a new probe</span></span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="bu">cap</span><span class="op">,</span> err <span class="op">:=</span> FastProbeModel<span class="op">(</span>ctx<span class="op">,</span> ollamaURL<span class="op">,</span> <span class="st">&quot;model:tag&quot;</span><span class="op">)</span></span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> err <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
-<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>    mc<span class="op">.</span>Set<span class="op">(</span><span class="bu">cap</span><span class="op">)</span></span>
-<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Selecting the model again with <code>/model use NAME</code> re-probes
+it. From Go code:</p>
+<div class="sourceCode" id="cb18"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Delete the old entry</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>mc<span class="op">.</span>Delete<span class="op">(</span><span class="st">&quot;model:tag&quot;</span><span class="op">)</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Run a new probe</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="bu">cap</span><span class="op">,</span> err <span class="op">:=</span> FastProbeModel<span class="op">(</span>ctx<span class="op">,</span> ollamaURL<span class="op">,</span> <span class="st">&quot;model:tag&quot;</span><span class="op">)</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> err <span class="op">==</span> <span class="ot">nil</span> <span class="op">{</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    mc<span class="op">.</span>Set<span class="op">(</span><span class="bu">cap</span><span class="op">)</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
 <h3 id="database-corruption">Database Corruption</h3>
 <p>If the database file is corrupted:</p>
-<div class="sourceCode" id="cb20"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove the corrupted file</span></span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span> agents/model_cache.db</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Harvey will create a new one on next startup</span></span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="co"># All capabilities will be re-probed</span></span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove the corrupted file</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span> agents/model_cache.db</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Harvey will create a new one on next startup</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Each model is probed again the next time it is selected</span></span></code></pre></div>
 <h3 id="verify-cache-contents">Verify Cache Contents</h3>
-<div class="sourceCode" id="cb21"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check the database directly</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/model_cache.db <span class="st">&quot;SELECT name, probe_level, supports_tools, supports_embed FROM model_capabilities&quot;</span></span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Count entries</span></span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/model_cache.db <span class="st">&quot;SELECT COUNT(*) FROM model_capabilities&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb20"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check the database directly</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/model_cache.db <span class="st">&quot;SELECT name, probe_level, supports_tools, supports_embed FROM model_capabilities&quot;</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Count entries</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/model_cache.db <span class="st">&quot;SELECT COUNT(*) FROM model_capabilities&quot;</span></span></code></pre></div>
 <h2 id="performance">Performance</h2>
 <h3 id="cache-size">Cache Size</h3>
 <ul>
@@ -690,7 +697,7 @@ earlier)</h3>
 <p>Harvey v0.2+ includes automatic model caching:</p>
 <ol type="1">
 <li>Start Harvey — cache is created automatically</li>
-<li>Models are probed as they’re discovered</li>
+<li>Each Ollama model is probed when you select it</li>
 <li>Cache grows as you use more models</li>
 </ol>
 <h3 id="from-old-cache-format">From Old Cache Format</h3>

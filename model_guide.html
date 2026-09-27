@@ -20,9 +20,9 @@
 </nav>
 <section id="main-content">
 <h1 id="harvey-model-selection-guide">Harvey Model Selection Guide</h1>
-<p><em>Last updated: 2026-05-12 — model inventory from
-<code>/ollama probe</code> (agents/model_cache.db). M1 Mac is the
-primary machine; Raspberry Pi 500+ runs a subset.</em></p>
+<p><em>Last updated: 2026-05-12 — model inventory from probing
+(agents/model_cache.db). M1 Mac is the primary machine; Raspberry Pi
+500+ runs a subset.</em></p>
 <hr />
 <h2 id="capability-legend">Capability legend</h2>
 <p><strong>Tools</strong> — model sends <code>tool_call</code> responses
@@ -454,8 +454,8 @@ care.</p>
 <hr />
 <h2 id="suggested-model-aliases">Suggested model aliases</h2>
 <p>Add to <code>agents/harvey.yaml</code> under
-<code>model_aliases:</code>. Use <code>/ollama alias NAME MODEL</code>
-or edit the file directly.</p>
+<code>model_aliases:</code>. Use
+<code>/model alias add NAME MODEL</code> or edit the file directly.</p>
 <div class="sourceCode" id="cb1"><pre
 class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model_aliases</span><span class="kw">:</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co">  # Coding and agent work</span></span>
@@ -505,10 +505,10 @@ model doesn’t know well, run <code>/rag on</code> before asking.</li>
 harvey
 
 # 2. Select model mid-session (or use an alias):
-/ollama use agent              # → apertus-tools:8b (agent tasks)
-/ollama use coder              # → devstral-small-2:24b (complex coding)
-/ollama use docs               # → ministral-3:latest (long documents)
-/ollama use fast               # → cogito:3b (quick Q&amp;A)
+/model use agent              # → apertus-tools:8b (agent tasks)
+/model use coder              # → devstral-small-2:24b (complex coding)
+/model use docs               # → ministral-3:latest (long documents)
+/model use fast               # → cogito:3b (quick Q&amp;A)
 
 # 3. Enable RAG if needed
 /rag on
@@ -544,7 +544,8 @@ you can independently verify. Model weights can encode biases or
 unexpected behaviours; test new models in a safe-mode session before
 granting broader permissions.</p>
 <h2 id="keeping-this-guide-current">Keeping this guide current</h2>
-<p>Run <code>/ollama probe</code> after installing new models to update
+<p>Save an alias for a new model in <code>/model use</code> after
+installing it; that probes it and updates
 <code>agents/model_cache.db</code>. Re-examine the capability columns
 (tools, tagged blocks) and update the inventory table above when results
 change. The <code>probed_at</code> column tracks when each entry was

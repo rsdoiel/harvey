@@ -21,10 +21,2844 @@
 <section id="main-content">
 <h1 id="harvey-architecture-ux-decision-log">Harvey — Architecture &amp;
 UX Decision Log</h1>
+<blockquote>
+<p><strong>Frozen 2026-09-23 (see
+<code>decisions/0002-*.md</code>).</strong> This file is history and no
+longer receives new entries. New decisions are authored as decision
+records:
+<code>kb record new --project harvey --dir harvey/decisions</code>, then
+indexed with <code>kb ingest</code> and <code>kb index</code>, so
+<code>kb search</code> reaches them. An entry below that is still
+load-bearing can be converted to a record on demand; there is no bulk
+backfill.</p>
+</blockquote>
 <p>This file records significant architectural and UX decisions, their
-rationale, and known trade-offs. New decisions are added at the top.
-Each entry names the decision, the context that prompted it, the chosen
+rationale, and known trade-offs. Entries were added at the top. Each
+entry names the decision, the context that prompted it, the chosen
 approach, the rejected alternatives, and the consequences.</p>
+<hr />
+<h2
+id="knowledge.go-extracted-into-its-own-module-github.comrsdoielknowledge">2026-07-27
+— <code>knowledge.go</code> extracted into its own module,
+<code>github.com/rsdoiel/knowledge</code></h2>
+<p><strong>Context.</strong> Step 2 of
+<code>knowledge_db_merge_design.md</code>’s sequencing (UUID migration →
+SQL merge → module split → JSON-L export, in that order), unblocked by
+the cross-machine merge completing earlier the same day (previous
+entry). Motivation: <code>henry</code> and <code>antennaApp</code> both
+want to write structured observations into
+<code>agents/knowledge.db</code> but were limited to raw
+<code>sqlite3</code> CLI inserts, since the typed CRUD API was locked
+inside harvey’s own module. Full audit in the new repo’s
+<code>module-extraction-design.md</code>; phased plan in
+<code>module-extraction-plan.md</code>.</p>
+<p><strong>Decision.</strong> <code>knowledge.go</code>,
+<code>knowledge_merge.go</code>, <code>knowledge_test.go</code>,
+<code>knowledge_merge_test.go</code>, and <code>cmd/kbmerge</code> all
+moved verbatim into <code>~/Laboratory/knowledge</code> (new repo,
+scaffolded via CMTools — <code>codemeta.json</code>,
+<code>cmt --init go</code>, <code>LICENSE</code>, <code>go.mod</code>).
+The only harvey-specific coupling found in the audit was
+<code>OpenKnowledgeBase(ws *Workspace, customPath string)</code>’s
+dependence on <code>Workspace.AbsPath</code> for default-path resolution
+— replaced with <code>Open(dbPath string)</code> plus a
+<code>DefaultPath(root string) string</code> helper, so the library no
+longer needs to know what a “workspace” is. <code>IdentifierType</code>
+(used by callers) stays in harvey — confirmed unreferenced by the
+knowledge-base code itself. Kept
+<code>KnowledgeBase</code>/<code>OpenKnowledgeBase</code>-style naming
+as-is rather than also cleaning up the
+<code>knowledge.KnowledgeBase</code> stutter in the same pass —
+deliberately deferred (see Rejected). <code>harvey/go.mod</code> uses
+<code>replace github.com/rsdoiel/knowledge =&gt; ../knowledge</code>
+until the new repo is pushed/tagged.</p>
+<p><strong>Two real gaps surfaced only once compiling harvey against the
+actual package boundary — not caught by the design doc’s audit, which
+could only inspect source, not enforce it:</strong> 1.
+<code>commands_kb.go</code>’s <code>/kb observe</code> called the
+then-unexported <code>isValidKind</code>/used
+<code>ValidObservationKinds</code> — the module’s own package boundary
+made this a real compile error, not a style nit. Exported as
+<code>IsValidKind</code> (with a proper doc comment) in the
+<code>knowledge</code> module. 2. <code>commands_kb.go</code>’s
+<code>/kb show</code> reached directly into <code>KnowledgeBase</code>’s
+<strong>unexported</strong> <code>db</code> field to hand-run a query
+fetching one observation by id — an encapsulation break that was
+completely invisible while both files shared a package, and only became
+a compile error once separated. Added <code>ObservationByID</code> (with
+its own test) to the <code>knowledge</code> module as the proper public
+API, rather than exposing the field.</p>
+<p>A third issue — a leftover <code>OpenKnowledgeBase(ws, "")</code>
+call in <code>commands_test.go</code>’s <code>newTestAgentWithKB</code>
+— wasn’t caught by <code>go build</code> at all (test files aren’t part
+of a build), only surfaced via <code>go vet</code>/<code>go test</code>.
+Worth remembering for any future extraction of this shape:
+<code>go build</code> passing is not sufficient evidence that a
+package-boundary move is complete.</p>
+<p><strong>Rejected.</strong> Renaming
+<code>KnowledgeBase</code>/<code>OpenKnowledgeBase</code> to drop the
+<code>knowledge.KnowledgeBase</code> stutter
+(e.g. <code>knowledge.Base</code>/<code>knowledge.Open</code>) in the
+same pass — combining a repo move, a signature change, and a rename into
+one change makes it harder to tell which part caused a problem if one
+appears; a pure cosmetic rename is low-risk enough to do later, on its
+own. Fixing root <code>CLAUDE.md</code>’s separate, pre-existing
+<code>experiments</code>/<code>experiment_*</code> schema staleness
+(documented in <code>knowledge_db_schema_stale.md</code>) while touching
+nearby docs — confirmed that section doesn’t actually reference
+<code>harvey/knowledge.go</code> or any implementation file at all (it’s
+schema/SQL-only), so there was no “module location” reason to touch it;
+the older staleness issue is out of this change’s scope and wasn’t
+fixed.</p>
+<p><strong>Consequences.</strong>
+<code>go build</code>/<code>go vet</code>/<code>go test</code> clean in
+both repos; <code>bin/harvey</code> builds. Smoke-tested twice against
+real data: <code>bin/kbmerge</code> (moved, import-only change) merging
+two copies of the live production db produced identical counts to its
+pre-move behavior; a throwaway test exercising harvey’s actual
+<code>initKnowledgeBase</code> code path against the real, live
+<code>agents/knowledge.db</code> confirmed all 5 real projects
+(<code>harvey</code>, <code>henry</code>, <code>antennaApp</code>,
+<code>sparqlset</code>, <code>audiobox</code>) round-trip correctly
+through the moved code. <code>harvey/CLAUDE.md</code>’s three-silo table
+updated to name the external module. Still open: publishing
+<code>github.com/rsdoiel/knowledge</code> to GitHub and dropping the
+<code>replace</code> directive; the
+<code>KnowledgeBase</code>/<code>Open</code> stutter rename; JSON-L
+export (step 3 of the sequencing, deferred, unstarted).</p>
+<hr />
+<h2
+id="cross-machine-knowledge.db-merge-completed-and-placed-on-both-machines">2026-07-27
+— Cross-machine <code>knowledge.db</code> merge completed and placed on
+both machines</h2>
+<p><strong>Context.</strong> With both fixes verified against a copy of
+macmini’s data (previous entry), completed the actual cross-machine sync
+this whole thread existed for. First, over SSH: both
+<code>~/Laboratory</code> (root repo) and
+<code>~/Laboratory/harvey</code> on <code>macmini-rd.local</code> were
+behind <code>origin/main</code> (root repo was also ahead by one local,
+unpushed commit touching only <code>knowledge_tool.md</code> — no
+overlap with incoming changes). Fetched and diffed the incoming commits
+before pulling to confirm no conflicts; <code>harvey</code>
+fast-forwarded cleanly to <code>8aaaea4</code>, root
+<code>Laboratory</code> merged cleanly (merge commit
+<code>e418c8e</code>, local commit preserved). Backed up macmini’s live
+<code>agents/knowledge.db</code>
+(<code>agents/knowledge.db.pre-experiments-migration-20260727</code>),
+then triggered both the <code>concepts.created_at</code> fix and the
+<code>experiments</code>→<code>projects</code> migration against it
+directly (same throwaway <code>go run</code> pattern used on the copy) —
+verified identical results to the earlier copy-based test (4 projects, 0
+unmigrated observations, 0 null <code>created_at</code>, legacy tables
+intact).</p>
+<p><strong>Decision.</strong> <code>scp</code>’d macmini’s now-migrated
+live database to wren, ran
+<code>bin/kbmerge -a &lt;wren's live db&gt; -b &lt;macmini's live db&gt; -force</code>
+locally on wren, and independently verified the output before placing it
+anywhere: <code>PRAGMA integrity_check</code> clean, zero dangling rows
+across all six join-table combinations, every row has a non-empty
+<code>uuid</code>. Backed up wren’s pre-merge live database
+(<code>agents/knowledge.db.pre-merge-20260727</code>), replaced wren’s
+live <code>agents/knowledge.db</code> with the merged file, then
+<code>scp</code>’d that same merged file to replace macmini’s live
+<code>agents/knowledge.db</code>. Confirmed byte-identical via checksum
+on both machines afterward (<code>06c7ecf...</code>) — true parity, not
+just “close enough.”</p>
+<p><strong>Rejected.</strong> <code>scp</code>-ing wren’s <em>original,
+unmerged</em> <code>knowledge.db</code> directly over macmini’s — raised
+and rejected explicitly (by the user) before doing this, since it would
+have silently discarded macmini’s unique data (the newly-migrated
+<code>harvey</code>/<code>sparqlset</code>/<code>audiobox</code> project
+data) instead of merging it in. <code>bin/kbmerge</code> never
+overwrites its inputs by design, so parity requires placing its
+<em>output</em> on both ends, not just moving one input on top of the
+other.</p>
+<p><strong>Consequences.</strong> Both machines now have an identical,
+fully-merged <code>agents/knowledge.db</code>: 5 projects
+(<code>harvey</code>, <code>henry</code>, <code>antennaApp</code>,
+<code>sparqlset</code>, <code>audiobox</code>), 46 concepts, 181
+observations — no data lost (88 from wren + 93 from macmini = 181,
+exact). Two real name/uuid collisions (<code>harvey</code>,
+<code>henry</code> — both genuinely the same real-world project
+independently tracked on each machine) were found and reconciled via
+<code>-force</code>, same as the dry-run test earlier. Backups exist on
+both machines at every step (<code>.pre-cleanup-20260727</code>,
+<code>.pre-experiments-migration-20260727</code>,
+<code>.pre-merge-20260727</code>) in case anything needs to be unwound.
+Not pushed to git: macmini’s root <code>Laboratory</code> merge commit
+<code>e418c8e</code> remains local-only
+(<code>agents/knowledge.db</code> itself is untracked, unaffected by
+this). Remaining steps from
+<code>../knowledge_db_merge_design.md</code>’s sequencing —
+knowledge-base module extraction (step 3), JSON-L export (step 4,
+deferred) — are unstarted; not part of this session’s scope.</p>
+<hr />
+<h2
+id="experiments-projects-legacy-data-migration-real-cross-machine-binkbmerge-succeeds-end-to-end">2026-07-27
+— <code>experiments</code> → <code>projects</code> legacy data
+migration; real cross-machine <code>bin/kbmerge</code> succeeds
+end-to-end</h2>
+<p><strong>Context.</strong> The <code>concepts.created_at</code> fix
+(previous entry) got a real <code>bin/kbmerge</code> attempt against
+macmini’s data past <code>concepts</code> and into the next, deferred
+blocker: <code>no such column: o.project_id</code>. Auditing this
+(rather than assuming “harvey renamed experiments to projects and forgot
+a migration”) found the actual origin: <code>harvey/knowledge.go</code>
+has used <code>projects</code>/<code>project_id</code> since its very
+first commit (<code>5b1d802</code>) — it has never contained the word
+“experiment.” The
+<code>experiments</code>/<code>experiment_concepts</code>/<code>experiment_summary</code>
+schema documented in root <code>CLAUDE.md</code> describes an older,
+hand-run <code>sqlite3</code> convention that predates
+<code>harvey</code>’s SQL-backed implementation and was never updated
+once <code>harvey</code> superseded it (matches the existing
+<code>knowledge_db_schema_stale.md</code> memory, filed 2026-07-05,
+which flagged this as a docs staleness issue — this is the same gap
+showing up as live, real data on one machine). Checked every reachable
+<code>knowledge.db</code> (wren’s live file,
+<code>harvey/agents/knowledge.db</code>,
+<code>harvey/.harvey/knowledge.db</code>, and the copy of macmini’s
+file): only macmini’s has <code>experiments</code> tables, holding 93
+real observations and 35 concepts across 4 real projects
+(<code>harvey</code>, <code>sparqlset</code>, <code>henry</code>,
+<code>audiobox</code>) invisible to current <code>harvey</code> (nothing
+in <code>knowledge.go</code> reads <code>experiments</code>).
+<code>henry</code> existed in <em>both</em> <code>experiments</code>
+(real data) and <code>projects</code> (an empty stub, created at some
+point after <code>harvey</code> started being used on that machine) —
+the central collision case the migration had to resolve correctly.</p>
+<p>Full audit and confirmed decisions in
+<code>experiments-migration-design.md</code>; phased TDD plan in
+<code>experiments-migration-plan.md</code>.</p>
+<p><strong>Decision.</strong> <code>migrateExperimentsToProjects</code>
+(new function in <code>knowledge.go</code>, called from
+<code>OpenKnowledgeBase</code> right after <code>kb</code> is
+constructed): (1) no-op, checked via <code>sqlite_master</code>, if no
+<code>experiments</code> table exists — the common case, unaffected; (2)
+for each <code>experiments</code> row, match <code>name</code> against
+an existing <code>projects</code> row and reuse it if found (resolves
+the <code>henry</code> collision — its real observations attach to the
+<em>pre-existing</em> stub project, not a new duplicate), else create
+one via the existing <code>AddProject</code> path, folding
+<code>language</code>/<code>repo_url</code> into
+<code>description</code>
+(e.g. <code>"Go — https://github.com/rsdoiel/Laboratory"</code>) since
+<code>projects</code> has no equivalent columns; (3) translate
+<code>observations.experiment_id</code> → the resolved
+<code>project_id</code>, guarded by <code>project_id IS NULL</code> for
+idempotency; (4) translate <code>experiment_concepts</code> →
+<code>project_concepts</code> via <code>INSERT OR IGNORE</code>, deduped
+by the join table’s own primary key. Added
+<code>ALTER TABLE observations ADD COLUMN project_id INTEGER REFERENCES projects(id)</code>
+to <code>kbAlterStmts</code> (nullable, no default — unlike the
+<code>concepts.created_at</code> case this needed no special handling,
+since a plain <code>NULL</code> default has no non-empty-table
+restriction).
+<strong><code>experiments</code>/<code>experiment_concepts</code>/<code>experiment_summary</code>
+are never modified or dropped</strong> — inert once migrated,
+sidestepping <code>observations.experiment_id</code>’s
+<code>NOT NULL REFERENCES experiments(id)</code> constraint entirely
+rather than attempting a <code>DROP COLUMN</code>.</p>
+<p>TDD-first: five tests in <code>knowledge_test.go</code>
+(<code>TestOpenKnowledgeBase_MigratesExperimentsWithoutCollision</code>,
+<code>_WithCollision</code>, <code>_MigrationIdempotent</code>,
+<code>_MigrationLeavesLegacyTablesIntact</code>,
+<code>_NoExperimentsTableIsNoOp</code>) — three confirmed red (missing
+project creation, missing <code>project_id</code> column) before
+implementation, all five green after, on the first implementation
+attempt.</p>
+<p><strong>Rejected.</strong> Dropping the legacy tables/column after
+migration — no correctness benefit, one-way, and avoids the
+<code>DROP COLUMN</code>/FK complication entirely (see design doc
+decision 5). Inventing a new <code>projects</code> column for
+<code>language</code>/<code>repo_url</code> — unnecessary for data that
+exists on exactly one legacy database and is superseded going forward by
+<code>codemeta.json</code>-based tracking anyway (folding into
+<code>description</code> was your explicit call over the alternative of
+just dropping it).</p>
+<p><strong>Consequences.</strong> <code>go vet ./...</code> and
+<code>go test ./...</code> clean. Verified against the real copy of
+macmini’s <code>knowledge.db</code>
+(<code>macmini-rd.local-agents/knowledge.db</code> on wren, migration
+triggered via a throwaway <code>go run</code>, then removed): 3 new
+projects created (<code>harvey</code>, <code>sparqlset</code>,
+<code>audiobox</code>) with folded descriptions, <code>henry</code>’s
+pre-existing description left untouched, zero unmigrated observations,
+legacy tables intact and unchanged, and the observation/concept counts
+per project (69/10/9/5, summing to the expected 93) match the
+pre-migration <code>experiments</code> data exactly. <strong>Then ran
+the real cross-machine merge this whole thread exists for:</strong>
+<code>bin/kbmerge -a &lt;wren's live db&gt; -b &lt;migrated macmini copy&gt; -force</code>
+succeeded completely — found and reconciled 2 real name/uuid collisions
+(<code>harvey</code> and <code>henry</code>, both genuinely the same
+real-world project independently tracked on each machine —
+<code>harvey</code> colliding was new information, only possible once
+macmini’s <code>harvey</code> project existed at all), merged 3+4→5
+projects, 17+35→46 concepts, 87+93→180 observations (no data lost —
+87+93 sums exactly to 180), and wrote a reviewable merged database. Not
+yet done: macmini’s actual <strong>live</strong>
+<code>agents/knowledge.db</code> still needs this same code fix applied
+via its own <code>git pull</code> + reopen (only the copy on wren was
+exercised); the merged output database has not been copied into place
+over either machine’s real file — <code>bin/kbmerge</code> deliberately
+never does that automatically, per its own design.</p>
+<hr />
+<h2
+id="concepts.created_at-lazy-migration-gap-fixed-real-cross-machine-binkbmerge-attempt-surfaces-the-next-deferred-blocker">2026-07-27
+— <code>concepts.created_at</code> lazy-migration gap fixed; real
+cross-machine <code>bin/kbmerge</code> attempt surfaces the next
+(deferred) blocker</h2>
+<p><strong>Context.</strong> With both machines UUID-migrated (previous
+entry) and a real copy of macmini’s <code>agents/knowledge.db</code>
+placed on <code>wren</code>
+(<code>macmini-rd.local-agents/knowledge.db</code>, copied by the user
+via the <code>agents/</code> directory tree), ran an actual
+<code>bin/kbmerge -a &lt;wren's live db&gt; -b &lt;macmini's copy&gt; -force</code>.
+It failed:
+<code>knowledge: merge concepts from b: SQL logic error: no such column: created_at</code>.
+Auditing macmini’s live schema (over SSH, before the copy existed) had
+already shown its <code>concepts</code> table predates
+<code>created_at</code> being added to the base
+<code>CREATE TABLE</code> DDL in <code>schema</code>
+(<code>knowledge.go</code>) — and <code>kbAlterStmts</code> had no
+<code>ALTER TABLE concepts ADD COLUMN created_at ...</code> to backfill
+it, an oversight from whenever <code>created_at</code> was added to the
+DDL (every other column added since then — <code>identifier_type</code>,
+<code>identifier_value</code>, <code>uuid</code>,
+<code>origin_host</code> — got a matching <code>ALTER</code>;
+<code>created_at</code> did not). Nothing in the live app ever reads
+<code>concepts.created_at</code> (confirmed via <code>grep</code>), so
+this was invisible until <code>knowledge_merge.go</code>’s hardcoded
+column list for the <code>concepts</code> copy step needed it.</p>
+<p><strong>Decision.</strong> Added
+<code>ALTER TABLE concepts ADD COLUMN created_at DATETIME</code> to
+<code>kbAlterStmts</code> (no <code>DEFAULT CURRENT_TIMESTAMP</code>
+clause) plus a new one-time, idempotent
+<code>UPDATE concepts SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL</code>
+run right after the <code>kbAlterStmts</code> loop. TDD-first per
+convention:
+<code>TestOpenKnowledgeBase_BackfillsLegacyConceptsCreatedAt</code>
+(<code>knowledge_test.go</code>) builds a raw legacy-shape
+<code>concepts</code> table (no <code>created_at</code>) matching
+macmini’s real schema, seeds one row, then opens it via
+<code>OpenKnowledgeBase</code> and asserts <code>created_at</code> is
+backfilled to a non-empty value — confirmed red
+(<code>no such column: created_at</code>) before the fix, green
+after.</p>
+<p><strong>A second, more interesting bug surfaced while diagnosing the
+first attempt at this fix</strong>, worth recording since it explains
+why the fix isn’t a plain
+<code>ADD COLUMN ... DEFAULT CURRENT_TIMESTAMP</code>: SQLite itself
+(not a driver quirk — reproduced identically against the real
+<code>sqlite3</code> CLI) rejects <code>ALTER TABLE ADD COLUMN</code>
+with a non-constant default (<code>CURRENT_TIMESTAMP</code>,
+<code>CURRENT_DATE</code>, <code>CURRENT_TIME</code>, or any expression)
+<strong>whenever the table already has at least one row</strong> —
+confirmed by bisecting five probe tests (empty table: succeeds; table
+with one pre-existing row:
+<code>Cannot add a column with non-constant default</code>). Every
+real-world legacy <code>concepts</code> table this fix will ever run
+against necessarily has rows (that’s the whole reason the column is
+missing), so the original naive fix (mirroring the DDL’s own
+<code>DEFAULT CURRENT_TIMESTAMP</code>) would have failed at the exact
+moment it mattered and been masked again by <code>kbAlterStmts</code>’
+blanket <code>_, _ = db.Exec(stmt)</code> error-swallowing — exactly the
+kind of silent-migration-failure this project’s convention of writing a
+red test against the real reproduction case first is meant to catch.</p>
+<p><strong>Rejected.</strong> Giving the <code>ALTER</code> statement
+<code>DEFAULT CURRENT_TIMESTAMP</code> directly — fails on any non-empty
+table, i.e. every real one. Rewriting
+<code>AddConceptWithIdentifier</code>’s <code>INSERT</code> to
+explicitly supply <code>created_at</code> — unnecessary: fresh tables
+(created via the current <code>schema</code> DDL) already get
+<code>DEFAULT CURRENT_TIMESTAMP</code> at the column-definition level
+for free, and <code>concepts.created_at</code> isn’t read anywhere in
+the live app today, so a legacy-altered table’s new rows briefly showing
+<code>NULL</code> until the next session’s backfill catches up is an
+acceptable, low-stakes gap for a column with no consumer — consistent
+with the project’s own precedent of using best-effort sentinels
+(<code>origin_host="unknown"</code>) rather than fabricating precise
+provenance for pre-existing data.</p>
+<p><strong>Consequences.</strong> <code>go vet ./...</code> and
+<code>go test ./...</code> clean. Re-ran the real cross-machine merge
+after this fix and after re-triggering the lazy migration on the
+(pre-fix-snapshot) copy of macmini’s db: it now gets
+<strong>past</strong> the <code>concepts</code> step and fails at
+<code>observations</code> instead —
+<code>no such column: o.project_id</code> — which is the already-known,
+already-deferred <code>experiments</code>/<code>experiment_id</code> vs
+<code>projects</code>/<code>project_id</code> legacy-schema gap (see
+<code>TODO.md</code>; not addressed here, per explicit scope decision to
+fix only <code>concepts.created_at</code> today). This confirms the fix
+is complete and correctly scoped: the merge tool now fails at the next
+real, distinct, already-documented blocker, not a re-occurrence of this
+one. Macmini’s actual live <code>agents/knowledge.db</code> (as opposed
+to the copy on <code>wren</code>) still needs this same code fix applied
+via its own <code>git pull</code> + reopen — not done in this session,
+since it wasn’t asked for and only the copy was available for
+testing.</p>
+<hr />
+<h2
+id="correction-2026-07-26-uuid-migration-work-happened-on-wren-not-macmini-rd.local-macmini-migrated-separately-genuinely-divergent-data-confirmed">2026-07-27
+— Correction: 2026-07-26 UUID migration work happened on
+<code>wren</code>, not <code>macmini-rd.local</code>; macmini migrated
+separately, genuinely divergent data confirmed</h2>
+<p><strong>Context.</strong> Following the same-day cleanup below,
+checked <code>macmini-rd.local</code> over SSH for the same dangling-row
+issue and to confirm its UUID migration state, since
+<code>TODO.md</code>/<code>DECISIONS.md</code>’s 2026-07-26 entries said
+the migration was “verified on this machine (macmini-rd.local)”. Its
+live <code>agents/knowledge.db</code> had <strong>no <code>uuid</code>
+column at all</strong> — the migration had never run there.
+Cross-referencing timestamps (the <code>bin/kbmerge</code> build time,
+the db file mtime, and the <code>origin_host='wren'</code> rows already
+found on wren) makes clear the entire 2026-07-26
+UUID-migration/merge-tool thread actually ran on <code>wren</code>;
+“macmini-rd.local” in the prior write-up was a mislabel (probably
+carried over from the design docs, which use
+<code>macmini-rd.local</code> as the example machine name throughout),
+not a real machine identification.</p>
+<p><strong>Decision.</strong> <code>git pull</code> on macmini (was one
+commit behind, clean tree, fast-forwarded to <code>394b499</code>), then
+triggered the migration directly: wrote a throwaway
+<code>cmd/migrateonce/main.go</code> that calls
+<code>harvey.NewWorkspace</code> + <code>harvey.OpenKnowledgeBase</code>
+against the real <code>/Users/rsdoiel/Laboratory</code> workspace, ran
+it once with <code>go run</code>, then deleted the directory
+(<code>git status</code> confirmed clean afterward — no trace left in
+the repo). Chose this over launching <code>bin/harvey</code>
+interactively over SSH, which would have blocked on stdin.</p>
+<p><strong>Consequences.</strong> Macmini’s
+<code>agents/knowledge.db</code> is now migrated: all rows in
+<code>projects</code>/<code>observations</code>/<code>concepts</code>
+have non-empty <code>uuid</code>s (macmini has no <code>sources</code>
+rows yet). Confirmed macmini has <strong>zero dangling join-table
+rows</strong> already — the historical-delete bug fixed below is
+specific to wren’s file, not universal. More importantly, macmini’s data
+is confirmed genuinely divergent from wren’s: macmini has only the
+<code>henry</code> project (35 concepts, 93 observations, 0 sources),
+while wren has
+<code>harvey</code>/<code>henry</code>/<code>antennaApp</code> (17
+concepts, 85 observations, 6 sources) — a real test case for
+<code>bin/kbmerge</code>, not the same-machine stand-in used in the
+2026-07-26 verification. Both machines are now genuinely migrated; the
+next actionable step for <code>../knowledge_db_merge_design.md</code>’s
+sequencing is transferring one machine’s <code>knowledge.db</code> to
+the other (or running <code>kbmerge</code> with both files reachable
+from one machine) to do a first real cross-machine merge.</p>
+<hr />
+<h2
+id="dangling-observation_concepts-rows-cleaned-up-on-wren-uuid-migration-confirmed-already-applied-there">2026-07-27
+— Dangling <code>observation_concepts</code> rows cleaned up on
+<code>wren</code>; UUID migration confirmed already applied there</h2>
+<p><strong>Context.</strong> <code>TODO.md</code>’s Bugs section (added
+2026-07-26 on <code>macmini-rd.local</code>) flagged 24 of 101
+<code>observation_concepts</code> rows in
+<code>agents/knowledge.db</code> referencing
+<code>observation_id</code>s that no longer existed — found while
+manually verifying the merge tool. Picked up on <code>wren</code>
+(2026-07-27). Also relevant: <code>TODO.md</code>’s “Update next” item
+still said the UUID migration hadn’t run on <code>wren</code> yet;
+checking the live file directly showed otherwise.</p>
+<p><strong>Decision.</strong> Delete the dangling rows directly
+(<code>DELETE FROM observation_concepts WHERE observation_id NOT IN (SELECT id FROM observations)</code>),
+after taking a file-level backup
+(<code>agents/knowledge.db.pre-cleanup-20260727</code>), rather than
+adding any code path — the root cause is a historical write outside
+<code>OpenKnowledgeBase</code>’s single pinned connection
+(<code>db.SetMaxOpenConns(1)</code> plus
+<code>PRAGMA foreign_keys=ON</code> applied at every open means the
+current Go code enforces FKs correctly on every insert/delete it
+performs; a raw <code>sqlite3</code> CLI session, which does not enable
+<code>foreign_keys</code> by default, is the more likely origin). No
+<code>Delete*</code> function exists anywhere in
+<code>knowledge.go</code> today, ruling out the application code as the
+source. Also checked the other five parent→child combinations
+(<code>observation_concepts</code>→<code>concepts</code>,
+<code>project_concepts</code>→<code>projects</code>,
+<code>project_concepts</code>→<code>concepts</code>,
+<code>observation_sources</code>→<code>observations</code>,
+<code>observation_sources</code>→<code>sources</code>) before stopping —
+all were already clean, so the fix is scoped to exactly the one table
+TODO.md named.</p>
+<p><strong>Additionally confirmed (same session):</strong>
+<code>wren</code>’s <code>agents/knowledge.db</code> already has the
+UUID migration fully applied — all 3 projects / 84 observations / 17
+concepts / 6 sources have non-empty <code>uuid</code>s, and 4
+observations already carry <code>origin_host='wren'</code>, meaning the
+lazy migration ran automatically here on some prior
+<code>OpenKnowledgeBase</code> call and new rows have been written
+since. <code>TODO.md</code>’s “hasn’t run there yet” language (written
+from <code>macmini-rd.local</code>, which cannot observe
+<code>wren</code>’s state) is now corrected in place.</p>
+<p><strong>Rejected.</strong> Adding a
+<code>PRAGMA foreign_keys=ON</code> guard or connection-init hook to
+<code>knowledge.go</code> — the existing <code>SetMaxOpenConns(1)</code>
++ schema-time pragma already makes every code path through
+<code>OpenKnowledgeBase</code> FK-safe; the dangling rows predate that,
+or came from outside the Go code entirely, so a code change would not
+have fixed anything that’s still capable of recurring through the
+app.</p>
+<p><strong>Consequences.</strong> This machine’s
+<code>agents/knowledge.db</code> now has zero dangling join-table rows
+across all six checked combinations. <code>macmini-rd.local</code>’s
+copy was not touched and needs the same check run there independently —
+its dangling-row count (if any) is unknown until someone runs the same
+query on that machine. Both machines are now confirmed UUID-migrated,
+which was the actual remaining blocker on a real cross-machine
+<code>bin/kbmerge</code> run (see <code>TODO.md</code>) — but that run
+itself still needs a physical transfer of one machine’s
+<code>knowledge.db</code> to the other, which hasn’t happened.</p>
+<hr />
+<h2
+id="cross-machine-knowledge.db-merge-tool-sqlattach-cmdkbmerge-binary-design-only-not-yet-implemented">2026-07-26
+— Cross-machine <code>knowledge.db</code> merge tool:
+SQL/<code>ATTACH</code>, <code>cmd/kbmerge</code> binary (design only,
+not yet implemented)</h2>
+<p><strong>Context.</strong> Step 2 of the
+<code>../knowledge_db_merge_design.md</code> sequencing, unblocked by
+the same-day UUID migration (previous entry): reconcile
+<code>agents/knowledge.db</code> after it drifts independently on
+<code>macmini-rd.local</code> and <code>wren.local</code>. Full design
+in <code>merge-tool-design.md</code>; phased plan (M1–M8, TDD-first) in
+<code>merge-tool-plan.md</code>.</p>
+<p><strong>Decision.</strong>
+<code>MergeKnowledgeBases(aPath, bPath, mergedPath string) ([]MergeTableSummary, error)</code>
+in a new <code>knowledge_merge.go</code> (package <code>harvey</code>):
+creates a fresh, fully-migrated <code>mergedPath</code> by reusing
+<code>OpenKnowledgeBase</code>, <code>ATTACH DATABASE</code>s both
+sources read-only, copies parent tables (<code>projects</code>,
+<code>concepts</code>, <code>sources</code>) with an explicit column
+list excluding <code>id</code> so dedup happens only via the real
+<code>uuid</code>/<code>name</code> UNIQUE constraints (not an
+accidental raw-id collision — see the correction below), translates
+<code>observations.project_id</code> and all three join tables through
+<code>uuid</code> joins on both sides, and reopens
+<code>mergedPath</code> once more afterward so the existing
+<code>rebuildFTSIfNeeded</code> (<code>knowledge.go:811</code>)
+populates the merged FTS index for free. A separate
+<code>CollisionReport(aPath, bPath) ([]NameCollision, error)</code>
+surfaces the known pre-migration edge case (same
+<code>projects.name</code>/<code>concepts.name</code>, two different
+<code>uuid</code>s) before a real merge runs, rather than letting
+<code>INSERT OR IGNORE</code> resolve it silently. Orchestration (WAL
+checkpoint, file copy with <code>-wal</code>/<code>-shm</code> sidecars,
+backup, printing the summary) lives in a new <code>cmd/kbmerge</code>
+binary — core logic stays in the tested package, mirroring
+<code>cmd/assay</code>’s relationship to the root package.</p>
+<p><strong>Correction to the umbrella design, caught while writing this
+doc.</strong> <code>../knowledge_db_merge_design.md</code>’s original
+parent-table step said
+<code>INSERT OR IGNORE INTO merged.&lt;table&gt; SELECT * FROM a.&lt;table&gt;</code>.
+Since <code>id</code> is <code>INTEGER PRIMARY KEY AUTOINCREMENT</code>
+in every table, a literal <code>SELECT *</code> would copy
+<code>a</code>’s raw ids into <code>merged</code> first;
+<code>b</code>’s copy running afterward could then be silently dropped
+by <code>INSERT OR IGNORE</code> whenever a <code>b</code> row’s raw id
+happened to coincide with an already-inserted <code>a</code> row — a
+false dedup on primary key, not the intended one on <code>uuid</code>.
+Fixed by using an explicit column list that excludes <code>id</code>
+everywhere, letting <code>merged</code> assign fresh autoincrement ids
+per row. Corrected in both documents.</p>
+<p><strong>Rejected.</strong> Nothing new — <code>cmd/kbmerge</code> as
+a standalone binary (vs. an interactive <code>/kb merge</code> slash
+command) follows directly from the umbrella design’s own stated
+precedent (<code>cmd/assay</code>’s relationship to the root package)
+and from this being an offline, cross-machine, file-level operation
+rather than something that belongs in a live chat session’s
+<code>/kb</code> surface (<code>harvey-kb.7.md</code>).</p>
+<p><strong>Consequences.</strong> Implemented same-day, M1–M7 per
+<code>merge-tool-plan.md</code> (M8 full verification still open):
+<code>CollisionReport</code>, <code>MergeKnowledgeBases</code>, and
+<code>cmd/kbmerge</code> all in place with passing tests. <strong>A real
+data-loss bug was caught during manual smoke-testing of
+<code>cmd/kbmerge</code></strong> (not by the unit tests, which didn’t
+cover this until added after the fact): the originally-planned “-force
+resolves a collision by keeping the first-seen row” silently dropped
+every child row (observations, links) attached to the <em>losing</em>
+side’s row too, not just the duplicate metadata row — because those
+children’s <code>uuid</code> join has no merged parent left to attach
+to. Fixed with a new <code>ReconcileCollisions(bPath, collisions)</code>
+(M1.5, <code>knowledge_merge.go</code>), called by
+<code>cmd/kbmerge</code> before <code>MergeKnowledgeBases</code>
+whenever <code>-force</code> is set: rewrites <code>b</code>‘s colliding
+rows to share <code>a</code>’s <code>uuid</code>, so both sides’
+children correctly merge into the one surviving parent. Reconfirmed via
+a real end-to-end smoke test through the actual <code>bin/kbmerge</code>
+binary (not just unit tests): before the fix, 2 source observations on a
+collided project merged down to 1; after, both survive.
+<code>merge-tool-design.md</code> and <code>merge-tool-plan.md</code>
+both corrected in place to document <code>ReconcileCollisions</code> and
+the collision-handling rationale. M8 complete same day:
+<code>go build</code>/<code>go vet</code>/<code>go test ./...</code> all
+clean; <code>go test -race</code> blocked by the same pre-existing
+Raspberry Pi ThreadSanitizer/VMA-width issue noted in the UUID migration
+entry (not a regression). Manual two-copy merge against the real,
+already-migrated <code>agents/knowledge.db</code> (two copies, one
+distinguishing observation added to each) merged cleanly with correct
+counts throughout — and surfaced an unrelated, pre-existing data-quality
+finding: 24 of 101 <code>observation_concepts</code> rows in the live
+database reference <code>observation_id</code>s that no longer exist
+(dangling links, most likely from some historical delete that ran
+without <code>PRAGMA foreign_keys=ON</code> active on that connection —
+SQLite’s FK enforcement is per-connection, not persisted in the file).
+<code>MergeKnowledgeBases</code>’s join-based copy naturally excludes
+unresolvable links rather than propagating them, so this didn’t affect
+the merge’s correctness, but the 24 orphaned rows still exist in the
+live, unmerged <code>agents/knowledge.db</code> today — logged
+separately as a <code>finding</code> observation in
+<code>agents/knowledge.db</code> itself; not fixed here, out of scope
+for this session. Still blocked on actually running the merge against
+<code>wren.local</code>’s real data until that machine also has the UUID
+migration applied (that machine hasn’t run it yet, per the previous
+entry’s consequences).</p>
+<hr />
+<h2
+id="knowledge.go-uuid-migration-v7-ids-origin_host-sentinel-index-after-backfill">2026-07-26
+— <code>knowledge.go</code> UUID migration: v7 ids,
+<code>origin_host</code> sentinel, index-after-backfill</h2>
+<p><strong>Context.</strong> <code>agents/knowledge.db</code> drifts
+independently between <code>macmini-rd.local</code> and
+<code>wren.local</code> because every table uses a plain autoincrement
+integer PK with no cross-machine identity — full problem statement in
+<code>../knowledge_db_merge_design.md</code>. This is step 1 of that
+document’s sequencing (UUID migration → SQL/ATTACH merge → module split
+→ JSON-L export): give every row in <code>projects</code>,
+<code>observations</code>, <code>concepts</code>, <code>sources</code> a
+stable, globally-unique id at creation time so a future merge is an
+idempotent set-union instead of best-effort content matching. Design and
+decisions reviewed against the live code on this date — no drift since
+the 2026-07-25 design session (no <code>uuid</code> column exists yet,
+<code>github.com/google/uuid</code> still indirect in
+<code>go.mod</code>).</p>
+<p><strong>Decision.</strong> Add
+<code>uuid TEXT NOT NULL DEFAULT ''</code> to all four entity tables
+(not the join tables) via the existing <code>kbAlterStmts</code>
+lazy-migration idiom, backfilled in Go with UUID <strong>v7</strong>
+(<code>github.com/google/uuid</code>, already a <code>go.mod</code>
+dependency) since SQLite has no built-in generator — mirrors the
+existing one-time <code>source_doi → sources</code> backfill already in
+<code>OpenKnowledgeBase</code>, idempotent via a
+<code>WHERE uuid = ''</code> guard. A <code>UNIQUE</code> index is
+created only <em>after</em> backfill completes, since
+<code>ADD COLUMN</code> sets every existing row to the same
+<code>''</code> default at once and an earlier index would fail
+immediately. Also add <code>origin_host</code>, backfilling pre-existing
+rows to an explicit <code>"unknown"</code> sentinel — never the current
+machine’s <code>os.Hostname()</code>, which would misattribute rows
+actually created on the other machine to whichever machine happens to
+run the migration first; only new rows stamp the real hostname, at
+insert time. Full design in <code>uuid-migration-design.md</code>;
+phased implementation plan (W1–W6, TDD-first) in
+<code>uuid-migration-plan.md</code>.</p>
+<p><strong>Rejected.</strong> UUID v4 for some/all tables — v7’s
+time-ordering is a free bonus with no downside for internal ids, so
+there was no reason to mix schemes. Backfilling <code>origin_host</code>
+to the current machine’s real hostname — would silently misattribute
+every pre-migration row, including ones from the other machine, to
+whichever machine happens to migrate first.</p>
+<p><strong>Consequences.</strong> Implemented same-day, W1–W6 per
+<code>uuid-migration-plan.md</code>: nine new
+<code>kbAlterStmts</code>/<code>kbSourcesAlterStmts</code> entries, a
+<code>backfillUUIDs</code> helper (backfill + unique index per table, in
+<code>OpenKnowledgeBase</code>), and <code>uuid.NewV7()</code> +
+<code>os.Hostname()</code> stamped into all four <code>Add*</code>
+insert paths. <code>github.com/google/uuid</code> promoted from
+<code>// indirect</code> to a direct <code>go.mod</code> dependency.
+Nine new tests in <code>knowledge_test.go</code> (four
+backfill/idempotency, four insert-path, one conflict-preserves-uuid)
+confirmed red before implementation, green after. Verified against the
+real <code>agents/knowledge.db</code> on this machine: all 105 existing
+rows (3 projects, 79 observations, 17 concepts, 6 sources) backfilled to
+a non-empty <code>uuid</code>, and all 3 pre-existing projects correctly
+show <code>origin_host="unknown"</code>. <code>go test ./...</code> and
+<code>go vet ./...</code> clean. <code>go test -race</code> could not be
+verified on this machine — ThreadSanitizer fails immediately with
+<code>unsupported VMA range: Found 47 - Supported 48</code>, a
+kernel/hardware limitation on this Raspberry Pi confirmed pre-existing
+(identical failure on unmodified <code>main</code> via
+<code>git stash</code>), unrelated to this change. No merge tool, module
+extraction, or JSON-L export yet — all remain out of scope and deferred
+per the sequencing already decided in
+<code>../knowledge_db_merge_design.md</code>.</p>
+<hr />
+<h2
+id="ai-hat-2-hailo-ollama-as-a-candidate-fourth-backend-proposed-not-committed">2026-07-25
+— AI HAT+ 2 / <code>hailo-ollama</code> as a candidate fourth backend
+(proposed, not committed)</h2>
+<p><strong>Context.</strong> <em>AI Projects with Raspberry Pi</em>
+(Hattersley &amp; Jepson, 2026), reviewed in
+<code>../AI_Pi_Projects_Lessons.md</code>, describes the Raspberry Pi AI
+HAT+ 2: a Hailo-10H NPU (40 TOPS, INT4) with its own dedicated 8GB
+onboard RAM, entirely separate from the host Pi’s RAM and CPU,
+supporting local LLMs/VLMs up to roughly 6B parameters. It’s driven by a
+local server process, <code>hailo-ollama</code>, exposing a REST API
+shaped like Ollama’s own (<code>/api/pull</code>,
+<code>/api/chat</code>, streaming JSON with the same
+<code>done</code>/<code>eval_count</code>/<code>done_reason</code>
+fields) on port 8000 instead of Ollama’s 11434 — specifically so the two
+don’t collide when both are present.</p>
+<p>This is directly relevant to the CPU-only-inference pain already
+documented across <code>TODO.md</code> and this log (the
+<code>GPULayers</code> default fix, the multi-hour
+<code>/read-chunks</code> runs, the per-model timing benchmarking still
+in progress): a hardware accelerator with dedicated RAM that competes
+with the host for neither CPU nor memory would sidestep that class of
+problem structurally rather than by further tuning CPU-only
+settings.</p>
+<p><strong>Decision.</strong> Not yet committed. Given Harvey’s existing
+pluggable backend architecture (<code>backend_ollama.go</code>,
+<code>backend_llamafile.go</code>, <code>backend_llamacpp.go</code>, all
+wired through <code>any-llm-go</code>), adding AI HAT+ 2 support is
+plausibly closer to “point the existing Ollama client at
+<code>http://localhost:8000</code> instead of <code>:11434</code>” than
+a new backend implementation — but this is unconfirmed. A design spike
+is needed to verify actual API compatibility (does
+<code>hailo-ollama</code> support everything Harvey’s
+<code>backend_ollama.go</code> calls, e.g. <code>/api/show</code> for
+model metadata, streaming semantics, embeddings) before any
+implementation work is scheduled. Model choice on Hailo is also
+constrained to Hailo-optimised models
+(e.g. <code>deepseek_r1_distill_qwen:1.5b</code>,
+<code>llama3.2:3b</code>, <code>qwen2.5-coder:1.5b</code>), which is a
+real trade-off against the open model selection Harvey’s other three
+backends allow.</p>
+<p><strong>Consequences.</strong> No code change. Logged here and as a
+<code>hypothesis</code>-kind observation in
+<code>agents/knowledge.db</code> (project <code>harvey</code>, tagged
+with a new <code>hardware-acceleration</code> concept) so the idea
+persists across sessions. Requires hardware Harvey’s current test
+environment doesn’t have (an AI HAT+ 2 board) before the design spike
+can actually run.</p>
+<hr />
+<h2
+id="preflight-reachability-check-in-runchunkedanalysis-todo.md-bug-fix">2026-07-13
+— Preflight reachability check in <code>RunChunkedAnalysis</code>
+(TODO.md bug fix)</h2>
+<p><strong>Context.</strong> <code>TODO.md</code>, found 2026-07-06 via
+a real debug-log trace: with an unreachable backend (server died
+mid-session), every chunk in <code>RunChunkedAnalysis</code>’s map phase
+fired its own “connection refused,” was recorded as a per-chunk failure
+(by design — a single chunk failure doesn’t abort the map phase, so
+genuinely-partial failures still get a synthesis attempt over what
+succeeded), and the run only actually errored out at the synthesis call.
+On a multi-chunk document this burns through the whole file’s worth of
+failed HTTP calls before surfacing what is really one root-cause
+problem. The TODO’s own suggested fix: “a cheap preflight reachability
+probe… at the top of
+<code>cmdReadChunks</code>/<code>RunChunkedAnalysis</code>.”</p>
+<p><strong>Decision.</strong> Added
+<code>probeClientReachable(client LLMClient) (reachable, checked bool)</code>
+(<code>chunk_analyzer.go</code>) — type-asserts to
+<code>*AnyLLMClient</code> and dispatches on <code>ProviderName()</code>
+to the same local health-probe functions already used elsewhere in the
+codebase (<code>ProbeOllama</code> for “ollama”;
+<code>ProbeLlamafile</code>/<code>probeLlamaCpp</code> — both via
+<code>LlamafileHealthURL(ac.BackendURL())</code>, since
+<code>BackendURL()</code> for these two already carries a
+<code>/v1</code> suffix the bare-base-URL probes don’t expect — for
+“llamafile”/“llamacpp”). <code>checked=false</code> for cloud providers
+(no local health endpoint to probe) and any
+non-<code>*AnyLLMClient</code> (test doubles) — callers must treat
+<code>checked=false</code> as “nothing to verify,” never as a failure.
+Called once, at the very top of <code>RunChunkedAnalysis</code>, before
+the map-phase loop begins — not duplicated at each of the three call
+sites (<code>cmdReadChunks</code>, <code>injectOrChunk</code>,
+<code>read_file</code>’s chunking guard). All three already have their
+own reasonable error-handling path for a <code>RunChunkedAnalysis</code>
+error, so an early, single error return flows through each unmodified,
+giving the “fail immediately with one clear message” behavior the TODO
+asked for without touching any of the three call sites at all.</p>
+<p><strong>Rejected.</strong> Duplicating the probe at each call site
+instead of once inside <code>RunChunkedAnalysis</code> — would triple
+the code for no benefit, and risks the three copies drifting (the same
+class of problem this whole thread has repeatedly found and fixed
+elsewhere, e.g. the tool-call-dispatch and context-percentage
+duplication fixed in the harness-prerequisite-refactor cycle).</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestRunChunkedAnalysis_FailsFastWhenBackendUnreachable</code>
+(<code>chunk_analyzer_test.go</code>), using a real
+<code>*AnyLLMClient</code> pointed at a guaranteed-unreachable address
+(<code>http://127.0.0.1:1</code>) — confirmed red first (all chunks +
+synthesis attempted, ~4s of real HTTP timeouts before erroring, matching
+the exact reported symptom), then green (fails immediately, no
+chunk-processing progress lines at all). Every other existing
+<code>RunChunkedAnalysis</code>/<code>read_file</code>/<code>injectOrChunk</code>/<code>cmdReadChunks</code>
+test — all built on
+<code>mockLLMClient</code>/<code>seqMockClient</code> test doubles, not
+<code>*AnyLLMClient</code> — passes unmodified, since
+<code>probeClientReachable</code> correctly returns
+<code>checked=false</code> for them and the preflight is a no-op. Full
+suite green except the same pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in
+every entry above. <code>go vet ./...</code> and <code>gofmt -l</code>
+both clean.</p>
+<hr />
+<h2
+id="startandusellamafile-registers-an-adopted-server-entry-closing-the-gap-deferred-alongside-adoptexternalserver">2026-07-13
+— <code>startAndUseLlamafile</code> registers an adopted-server entry
+(closing the gap deferred alongside
+<code>adoptExternalServer</code>)</h2>
+<p><strong>Context.</strong>
+<code>TODO.md</code>/<code>DECISIONS.md</code> (2026-07-05 entry) named
+this as a known, deferred gap at the time the sibling bug was fixed:
+<code>startAndUseLlamafile</code> (<code>backend_startup.go</code>)
+probes an already-running llamafile server’s actual served model; when
+that detected name differs from the configured entry, it adopts the
+detected name via <code>useLlamafileEntry</code> and returned
+immediately — never reaching the registration block (used by the
+non-adopted, fresh-start branch) that calls
+<code>ProbeLlamafileContextLength</code> and stores a
+<code>LlamafileEntry</code>. Same failure mode as the already-fixed
+<code>adoptExternalServer</code>: a model reached this way has
+<code>ContextLength</code> stuck at 0 for the whole session, since
+<code>effectiveContextLimit()</code> has no <code>LlamafileEntry</code>
+to read it from.</p>
+<p><strong>Decision.</strong> After
+<code>useLlamafileEntry(useName, out)</code> succeeds (its error is now
+checked, where it was previously returned directly), register a
+<code>LlamafileEntry{Name: useName}</code> — probing
+<code>ContextLength</code> via <code>ProbeLlamafileContextLength</code>
+— when <code>a.Config.LlamafileEntryByName(useName) == nil</code>.
+<code>Path</code> is left empty, exactly matching
+<code>adoptExternalServer</code>’s own precedent
+(<code>llamafile.go:159</code>,
+<code>LlamafileEntry{Name: name, Path: ""}</code>) — the adopted
+server’s actual model file path is genuinely unknown to Harvey, since it
+wasn’t the one that launched the process. Applied uniformly regardless
+of whether the detected name differed from the configured one (not gated
+to only the “differs” sub-case), matching the existing non-adopted
+branch’s own unconditional registration check — simpler than
+special-casing, and harmless when an entry already exists (the
+<code>== nil</code> guard is a no-op then, same as the pre-existing
+branch).</p>
+<p><strong>Rejected.</strong> Nothing — direct application of the same
+fix already reviewed and shipped for <code>adoptExternalServer</code>,
+to the one remaining call site with the identical gap.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestStartAndUseLlamafile_AdoptedDifferentName_RegistersEntry</code>
+(<code>llamafile_test.go</code>), mirroring
+<code>TestAdoptExternalServer_probesContextLength</code>’s
+fake-<code>/v1/models</code>-server pattern exactly — confirmed red (no
+entry registered) then green (<code>ContextLength</code> probed and
+stored). Existing
+<code>TestStartAndUseLlamafile_staleServerSameModel</code>/<code>_staleServerDifferentModel</code>
+and all
+<code>TestAdoptExternalServer_*</code>/<code>TestPickBackend_*</code>
+tests pass unmodified. Full suite green except the same pre-existing,
+unrelated <code>TestCmdModelList_ShowsLlamafileEntries</code> failure
+noted in every entry above. <code>go vet ./...</code> and
+<code>gofmt -l</code> both clean.</p>
+<hr />
+<h2
+id="read_files-chunking-guard-also-fixed-for-mention-third-occurrence-of-direction-ds-bug-1">2026-07-13
+— <code>read_file</code>’s chunking guard also fixed for
+<code>@mention</code> (third occurrence of Direction D’s Bug 1)</h2>
+<p><strong>Context.</strong> Flagged as a related-but-out-of-scope
+finding while fixing the chunk-analysis double-logging bug (previous
+entry, same date): <code>builtin_tools.go</code>’s
+<code>read_file</code> tool has its own pre-read chunking guard (fires
+when a requested file exceeds the context budget), and it carried the
+exact same cosmetic-only <code>@mention</code> defect as Bug 1 in
+<code>subagent-dispatch-design.md</code> (Direction D) — it parsed
+<code>@mention</code> out of the chunk instruction only to relabel
+<code>ChunkAnalysisParams.Model</code> for recording, then always
+dispatched <code>RunChunkedAnalysis</code> via <code>a.Client</code>,
+never the mentioned model. Direction D’s original audit found and fixed
+this same defect in <code>cmdReadChunks</code> and
+<code>injectOrChunk</code> but missed this third call site entirely —
+<code>read_file</code>’s chunking guard is a separate, less obvious
+trigger path (fires from a tool call mid-conversation, not a slash
+command) that wasn’t part of that audit’s search.</p>
+<p><strong>Decision.</strong> Applied the identical fix pattern used for
+the other two call sites: resolve <code>@mention</code> via
+<code>resolveDispatchTarget(a, mentionName, a.Out)</code> instead of
+just relabeling; use the resolved <code>target.Client</code> (introduced
+as a new local <code>client</code> variable, defaulting to
+<code>a.Client</code>) for the <code>RunChunkedAnalysis</code> call;
+<code>defer target.Restore()</code> when resolution succeeds. One naming
+note: the handler already had a local variable named
+<code>resolved</code> (the resolved absolute file path from
+<code>resolveWorkspacePath</code>), so the dispatch-resolution boolean
+is named <code>dispatchOK</code> here instead of <code>resolved</code>
+(the name used in <code>cmdReadChunks</code>) to avoid shadowing.</p>
+<p><strong>Rejected.</strong> Nothing — this is a direct, mechanical
+application of an already-established, already-reviewed fix pattern to a
+call site that was simply missed the first time.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestReadFile_MentionDispatchesToNamedModel</code>
+(<code>tools_test.go</code>), mirroring
+<code>TestCmdReadChunks_MentionDispatchesToNamedModel</code>’s pattern
+(using <code>attemptModelSwitchOverride</code> to make the resolved
+client’s reply distinguishable from <code>a.Client</code>’s without
+spawning a real process) — confirmed red against the pre-fix code, then
+green. All existing <code>read_file</code>/chunking tests
+(<code>TestReadFile_UnderBudget</code>,
+<code>TestReadFile_OverBudget_*</code>,
+<code>TestReadFile_ChunkingEnabled*</code>) pass unmodified. Full suite
+green except the same pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in
+every entry above. <code>go vet ./...</code> and <code>gofmt -l</code>
+both clean.</p>
+<p>With this fix, all three of Harvey’s chunk-analysis trigger points
+(<code>cmdReadChunks</code>, <code>injectOrChunk</code>,
+<code>read_file</code>’s pre-read guard) now consistently resolve
+<code>@mention</code> to a real dispatch target via
+<code>resolveDispatchTarget</code>, closing out Bug 1 completely rather
+than leaving one call site with the original defect.</p>
+<hr />
+<h2
+id="chunk-analysis-debug-log-double-logging-fixed-via-resolvedispatchtarget-debuglog-wiring-not-a-caller-side-deletion-todo.md-bug-fix">2026-07-13
+— Chunk-analysis debug-log double-logging fixed via
+<code>resolveDispatchTarget</code> DebugLog wiring, not a caller-side
+deletion (TODO.md bug fix)</h2>
+<p><strong>Context.</strong> <code>TODO.md</code>:
+<code>RunChunkedAnalysis</code> (<code>chunk_analyzer.go</code>) called
+<code>dbg.LogLLMRequest</code>/<code>LogLLMResponse</code>/<code>LogError</code>
+itself around every chunk and synthesis <code>client.Chat</code> call,
+while <code>AnyLLMClient.chatInternal</code>
+(<code>anyllm_client.go</code>) already logs the same request/response
+internally — <code>agents/logs/*.jsonl</code> got two near-identical
+lines per actual HTTP call. The TODO item’s own suggested fix was “drop
+the caller-side logging in <code>chunk_analyzer.go</code>, since
+<code>chatInternal</code> already logs unconditionally.”</p>
+<p>Checked that premise before applying it. <code>chatInternal</code>’s
+logging goes through the client’s own <code>DebugLog</code> field
+(<code>a.DebugLog.LogLLMRequest(...)</code>,
+<code>anyllm_client.go:162</code>) — nil-safe, but only <em>correct</em>
+when that field is actually wired to the real, open
+<code>*DebugLog</code>. Traced every path that can produce the
+<code>client</code> passed into <code>RunChunkedAnalysis</code> from
+<code>cmdReadChunks</code>/<code>injectOrChunk</code> (both use
+<code>resolveDispatchTarget</code>, Direction D): <code>a.Client</code>
+(the live agent client) is wired once at startup and is fine, but
+<code>resolveDispatchTarget</code>’s <strong>route-registry
+branch</strong> (<code>clientForEndpoint</code>) and
+<strong>local-switch branch</strong> (<code>attemptModelSwitch</code>’s
+Ollama case, <code>newOllamaLLMClient</code> with no
+<code>DebugLog</code> param) both construct fresh
+<code>*AnyLLMClient</code>s that are never wired to anything. Naively
+deleting the caller-side logging per the TODO’s literal suggestion would
+have silently taken these paths from “logged once (by the caller)” to
+“logged never” — trading a real, reported bug for a quieter, worse one,
+specifically for <code>@mention</code>-dispatched chunk analysis.</p>
+<p><strong>Decision.</strong> Two-part fix. (1)
+<code>dispatch_target.go</code> gained
+<code>wireDebugLog(client LLMClient, dbg *DebugLog) LLMClient</code> —
+sets <code>.DebugLog</code> when <code>client</code> is an
+<code>*AnyLLMClient</code>, no-ops otherwise (e.g. test doubles) —
+applied at all three of <code>resolveDispatchTarget</code>’s return
+points (route branch, already-active branch, local-switch branch), so
+every client it can ever hand back is guaranteed to log its own calls
+correctly before any caller-side logging is removed. (2) Only then:
+removed the now-redundant <code>dbg *DebugLog</code> parameter entirely
+from <code>RunChunkedAnalysis</code> (not just its call sites — the
+parameter itself, since after removing every use of it the parameter
+would have been dead), and all six internal
+<code>dbg.LogLLMRequest</code>/<code>LogError</code>/<code>LogLLMResponse</code>
+call sites (map-phase request/error/response, reduce-phase
+request/error/response). Updated all three production callers
+(<code>commands.go</code>, <code>file_inject.go</code>,
+<code>builtin_tools.go</code>) and all eleven test call sites
+(<code>chunk_analyzer_test.go</code>) to match the new five-argument
+signature.</p>
+<p><strong>Rejected.</strong> Applying the TODO’s literal suggestion
+as-is (delete caller-side logging, leave
+<code>resolveDispatchTarget</code> unwired) — would have introduced a
+silent logging regression for the <code>@mention</code>-dispatch path,
+discovered only by tracing where <code>client</code> actually comes from
+rather than assuming the two call sites always see the same,
+already-wired client.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog</code>,
+<code>TestResolveDispatchTarget_LocalSwitch_WiresDebugLog</code> (both
+confirmed red — <code>ac.DebugLog</code> was nil after resolution — then
+green). <code>chunk_analyzer_test.go</code>’s existing eleven tests
+(map/reduce/error/recorder/progress/message-isolation/system-prompt
+coverage) all pass unmodified in behavior, only their call signatures
+updated — confirming the removal is behavior-preserving for the actual
+chunk-analysis logic. Full suite green except the same pre-existing,
+unrelated <code>TestCmdModelList_ShowsLlamafileEntries</code> failure
+noted in every entry above. <code>go vet ./...</code> and
+<code>gofmt -l</code> both clean.</p>
+<p><strong>Related finding, not fixed (out of scope for this session’s
+ask):</strong> <code>builtin_tools.go</code>’s <code>read_file</code>
+tool has its own pre-read chunking guard with the <em>exact same</em>
+cosmetic-only <code>@mention</code> bug (Bug 1) that Direction D fixed
+for <code>/read-chunks</code> and <code>injectOrChunk</code> — it parses
+<code>@mention</code> to relabel <code>ChunkAnalysisParams.Model</code>
+for recording, but always dispatches via <code>a.Client</code>, never
+the mentioned model. Missed during Direction D’s original audit (only
+two of the three chunk-analysis-triggering call sites were found and
+fixed at the time). Noted in <code>TODO.md</code> as a follow-up; not
+fixed here since it wasn’t part of what was asked this session.</p>
+<hr />
+<h2
+id="pickbackend-startup-picker-gains-.ggufllama.cpp-models-todo.md-bug-fix">2026-07-13
+— <code>pickBackend</code> startup picker gains
+<code>.gguf</code>/llama.cpp models (TODO.md bug fix)</h2>
+<p><strong>Context.</strong> <code>TODO.md</code>: “I have both
+Llamafile and gguf models in ~/Models on my Mac, but the gguf models are
+not listed as an option (llama.cpp is installed).” Traced the exact code
+path before proposing a fix. <code>selectBackend</code>
+(<code>backend_startup.go</code>) has three cases: Case 0 adopts an
+already-running <code>llama-server</code> via a live health probe
+(<code>Detect()</code>); Case 2 (<code>pickBackend</code>) shows a
+combined picker whenever any llamafile is registered. Initial hypothesis
+was that Case 0’s gate condition
+(<code>len(a.Config.LlamaCpp.ModelsDir) &gt; 0 || a.Config.LlamaCpp.URL != ""</code>)
+was too narrow — checked more carefully and found this was wrong:
+<code>DefaultConfig()</code> always sets
+<code>LlamaCpp.URL = "http://127.0.0.1:8081"</code>, and the YAML-merge
+logic (<code>config.go:899-900</code>) only ever overwrites it with a
+non-empty value, never clears it — so the gate is satisfied in practice
+regardless of what the user’s <code>harvey.yaml</code> says. Case 0
+already runs its probe every startup; it just silently finds nothing
+when no server is running, which is the common case for a user who has
+<code>.gguf</code> files on disk but hasn’t started
+<code>llama-server</code> themselves. Corrected the diagnosis before
+implementing rather than fixing a gate that wasn’t actually broken.</p>
+<p>The real, sole root cause: <code>pickBackend</code>’s option-building
+only ever considers registered llamafiles, disk-scanned unregistered
+llamafiles, and live Ollama models — there is no code path for
+<code>.gguf</code>/llama.cpp models at all.
+<code>/model list</code>/<code>/model use</code>
+(<code>aggregateModels</code>, <code>model_picker.go</code>) already
+correctly combine all three backends (confirmed via the existing,
+passing <code>TestCmdModelList_ShowsGGUFEntries</code>) — the startup
+flow simply predates that later unification and was never brought in
+line with it.</p>
+<p><strong>Decision.</strong> Added a <code>.gguf</code> disk-scan
+branch to <code>pickBackend</code>, mirroring the existing “llamafiles
+found on disk but not yet registered” block exactly: scan via
+<code>NewLlamaCppBackend(a.Config, agentsDir).ListModels()</code>,
+dedupe against <code>seenPaths</code>, append as
+<code>option{kind: "llamacpp", ...}</code>. The <code>option</code>
+struct’s <code>kind</code> field now documents three values instead of
+two. When the user picks a <code>"llamacpp"</code> option, the
+chosen-option switch calls the already-existing
+<code>startLlamaCppModelPath(a, chosen.path, out)</code>
+(<code>backend_llamacpp.go:462</code>) — no new start handler needed,
+since that function already does everything required (stop current
+backend, start <code>llama-server</code> for the given path, wire
+<code>a.Client</code>/<code>a.Backend</code>, clear stale
+<code>Llamafile.Active</code>, probe+cache).</p>
+<p><strong>Rejected.</strong> “Fixing” Case 0’s gate condition —
+considered per the initial hypothesis, but tracing
+<code>DefaultConfig()</code>/the YAML merge logic showed there was no
+real bug there; would have been a no-op change justified by a mistaken
+premise.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestPickBackend_ListsGGUFModels</code>
+(<code>llamafile_test.go</code>), mirroring
+<code>TestPickBackend_ListsUnregisteredDiskModels</code>’s existing
+pattern (temp <code>ModelsDir</code>, unreachable URLs elsewhere to
+isolate the picker’s output). Confirmed red first — the test’s initial
+failure was itself revealing: with no llamafile/Ollama/gguf options at
+all, <code>pickBackend</code> fell into its “no models found” first-run
+wizard branch rather than the numbered picker, confirming the gap was
+structural, not cosmetic. Confirmed green after the fix. Full suite
+green except one already-diagnosed, unrelated pre-existing failure
+(<code>TestCmdModelList_ShowsLlamafileEntries</code>) — noted below as a
+related but out-of-scope finding, not fixed as part of this change since
+it wasn’t asked for. <code>go vet ./...</code> and <code>gofmt -l</code>
+both clean.</p>
+<p><strong>Related finding, not fixed (out of scope for this session’s
+ask):</strong> <code>TestCmdModelList_ShowsLlamafileEntries</code> — the
+one failure that has been called “pre-existing, unrelated” throughout
+every prior entry in this log — turns out to have a diagnosable root
+cause, found while working in this same area: it doesn’t set
+<code>a.Config.Llamafile.ModelsDir</code> to an isolated temp directory
+the way
+<code>TestPickBackend_ListsUnregisteredDiskModels</code>/<code>TestPickBackend_ListsGGUFModels</code>
+do, so <code>aggregateModels</code>’s llamafile disk-scan leaks whatever
+real <code>.llamafile</code> files happen to sit in
+<code>$HOME/Models</code> on the machine running the test — which on
+this sandbox includes real entries from prior Henry-related benchmarking
+work, none of which is literally <code>"bonsai-8b"</code> (the fixture’s
+exact name), hence the mismatch. A one-line fix (isolate
+<code>ModelsDir</code> to <code>t.TempDir()</code>, matching the sibling
+tests) would resolve it; not applied here since it wasn’t part of what
+was asked.</p>
+<hr />
+<h2
+id="direction-f-harness-template-skills-blocked-on-a-prerequisite-that-doesnt-exist-not-pursued">2026-07-13
+— Direction F (harness-template skills): blocked on a prerequisite that
+doesn’t exist — not pursued</h2>
+<p><strong>Context.</strong>
+<code>harness-engineering-exploration.md</code> Direction F: bundle
+guides <em>and</em> sensor scaffolding together into an invokable skill,
+so loading a skill can provision sensor configuration into the
+workspace, not just inject markdown into the system prompt. The
+exploration doc itself flagged this as sequenced last, downstream of
+Direction A having more sensors to template — but auditing before
+designing found the gap is more fundamental than “not enough sensors
+yet.”</p>
+<p>Checked <code>commands_skill.go</code>’s <code>skillLoad</code> (the
+<code>/skill load</code> implementation): it does exactly one thing —
+<code>a.AddMessage("user", "[skill: name]\n\n"+skill.Body)</code>. Pure
+markdown-into-context injection; no hook exists anywhere for a skill to
+provision anything else into the workspace. More fundamentally, checked
+whether <em>any</em> sensor in Harvey today is config-driven at all:
+<code>gofmt</code> <code>Check()</code> and <code>go vet</code>
+(Direction A’s only two shipped sensors,
+<code>computational-sensors-design.md</code>) are both hardcoded —
+neither reads an external ruleset file. The only sensor-related field
+anywhere in <code>Config</code> is
+<code>SensorInjectFormatFindings</code>, a single visibility-gating
+bool, not a ruleset. <strong>There is no such thing as “sensor
+configuration” in Harvey yet, for any sensor</strong> — so “scaffold
+sensor config alongside guide markdown” has no artifact to scaffold,
+independent of how many sensors exist.</p>
+<p><strong>Decision.</strong> Confirmed with the user (2026-07-13): stop
+here, document the finding, build nothing. Direction F is blocked on a
+genuine prerequisite — a configurable sensor (e.g. a
+<code>gocyclo</code>-style complexity check with a per-project
+threshold, named as a Direction A candidate but never built) — not
+merely “more sensors to choose from.” Building F’s mechanism now,
+against a hypothetical config shape with nothing real to provision, was
+considered and rejected: it would be speculative infrastructure with no
+working example to validate its design against, the same anti-pattern
+already avoided in Direction B (item 1, content-aware guide selection —
+no path-scoped skill existed to gate) and Direction D (chunk analysis
+correctly left tool-free rather than force-fit into the
+consolidation).</p>
+<p><strong>Rejected.</strong> Expanding scope to build a configurable
+sensor first, then F on top of it — a real, legitimate path, but two
+increments’ worth of work the user did not ask for this session; left as
+the natural next step whenever Direction A itself grows a config-driven
+sensor for its own reasons. Designing F’s provisioning mechanism
+generically without a real sensor to prove it against — rejected for the
+same reason Direction E’s “mechanism only” choice was <em>not</em>
+applied here: Direction E had <code>--rag-compare</code>’s existing
+shape to mirror as a concrete template; F has no analogous existing
+mechanism in Harvey to mirror, so building it now would be closer to
+invention than extraction.</p>
+<p><strong>Consequences.</strong> No code changes.
+<code>harness-engineering-exploration.md</code>’s Directions A–F are now
+all either implemented (A, B, D, E) or explicitly resolved as
+blocked-not-pursued (F) — this closes out the thread this document
+opened. Revisit F only if/when a config-driven sensor exists in Harvey
+for independent reasons; at that point F would have a first real
+artifact to scaffold and the “mechanism only” pattern from Direction E
+likely applies then.</p>
+<hr />
+<h2
+id="assay---guide-compare-the-mechanism-only-no-real-experiment-run-yet-direction-e">2026-07-13
+— <code>assay --guide-compare</code>: the mechanism only, no real
+experiment run yet (Direction E)</h2>
+<p><strong>Context.</strong> <code>guide-compare-design.md</code> /
+<code>guide-compare-plan.md</code>. Direction E’s own framing (“once
+with a guide’s prose included in the system prompt and once with it
+stripped but the corresponding sensor active”) assumes
+<code>cmd/assay</code> already has a system-prompt path to toggle.
+Auditing <code>cmd/assay/main.go</code> in full found it doesn’t: every
+dispatch is a bare
+<code>[]harvey.Message{{Role: "user", Content: promptText}}</code>
+(<code>main.go:939</code> pre-change) — no system message of any kind,
+ever. A second finding: checked <code>HARVEY.md</code>’s guide sections
+against Direction A’s two shipped sensors (<code>gofmt</code>
+<code>Check()</code>, <code>go vet</code>) — neither corresponds.
+Harvey’s formatting is silent/automatic (the guide never told the model
+to format manually, so there’s no prose to test removing), and nothing
+in <code>HARVEY.md</code> addresses <code>go vet</code>-style
+correctness bugs. The closest candidate (“Documentation conventions,”
+doc-comment presence) has no sensor at all. <strong>Confirmed with the
+user (2026-07-13): this increment builds the mechanism only</strong> —
+no real “does removing this guide hurt” experiment exists to run yet,
+and manufacturing one (new guide prose to match an existing sensor, or a
+new sensor to match existing prose, purely to have a subject) would
+defeat the point.</p>
+<p><strong>Decision.</strong> Added <code>--guide-compare</code> (bool)
+and <code>--guide-file PATH</code> (string) to <code>cmd/assay</code>,
+mirroring <code>--rag-compare</code>’s existing shape as closely as
+possible per the exploration doc’s own open question about the smallest
+viable assay change: <strong>no corpus-format changes at all</strong> —
+the guide is a whole-run, system-prompt-level concern, not a per-prompt
+one, so <code>Prompt</code>/<code>Checks</code> are untouched; only new
+top-level flags plus new <code>AssayResults</code>/report fields,
+exactly mirroring how <code>RagCompare</code>/<code>RagChunks</code>
+were added. New pure function
+<code>buildGuideMessages(guideText, promptText string, useGuide bool) []harvey.Message</code>
+(mirroring <code>buildRAGContext</code>’s existing extracted-helper
+pattern) — the “base” variant is byte-identical to today’s existing
+default dispatch; the “guide” variant prepends a system message built
+from <code>--guide-file</code>’s content. The guide file is treated as
+an <strong>opaque, externally-supplied string</strong>, never derived
+from Harvey’s own <code>HARVEY.md</code>/skills-catalog assembly —
+respects <code>cmd/assay/main.go</code>’s established “otherwise
+self-contained” boundary (<code>CLAUDE.md</code>). <code>variant</code>
+struct gained a third <code>useGuide bool</code> field rather than a new
+enum. <code>--guide-compare</code> requires <code>--guide-file</code>
+and is mutually exclusive with <code>--rag-compare</code> (a combined
+guide×RAG comparison would need a 2×2 variant matrix the report format
+isn’t shaped for — deferred, not this increment’s).
+<code>writeReport</code> gained a third branch (mirroring
+<code>RagCompare</code>’s structure exactly, minus the “chunks injected”
+row, which has no guide analog) in both the summary-table and
+per-prompt-detail sections.</p>
+<p><strong>Rejected.</strong> Sharing a <code>writeReport</code> helper
+between the <code>RagCompare</code> and <code>GuideCompare</code>
+branches — the two differ in header label and one row; extracting a
+helper now would mean parameterizing for a third mode that doesn’t exist
+yet, against this repo’s own “don’t design for hypothetical future
+requirements” convention. Re-deriving the guide text from Harvey’s own
+system-prompt assembly inside assay — would cross
+<code>cmd/assay</code>’s self-contained boundary.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestBuildGuideMessages_WithGuide</code>,
+<code>TestBuildGuideMessages_WithoutGuide</code>,
+<code>TestBuildGuideMessages_EmptyGuideTextFallsBackToPlain</code>, and
+<code>TestWriteReport_GuideCompare_RendersDeltaTable</code> — the last
+of these is the first direct test of <code>writeReport</code>’s
+rendering logic at all (none existed before this, for
+<code>RagCompare</code> either); all confirmed red then green. Flag
+validation (<code>--guide-compare</code> requires
+<code>--guide-file</code>; mutual exclusivity with
+<code>--rag-compare</code>) stays inline in <code>main()</code>,
+uncovered by a unit test — matching the existing precedent that
+<code>--rag-compare requires --rag-db</code>’s validation has no test
+either, not introducing a new testing standard for one flag pair when
+the directly analogous existing one doesn’t have it. Manually verified
+end-to-end against a local fake OpenAI-compatible server: a 16-call run
+(8 prompts × base/guide) completed without error and produced a report
+with distinct Base/Guide sections; confirmed separately (by reading
+<code>chatInternal</code>/<code>harvestMessagesToAnyllm</code> in
+<code>anyllm_client.go</code>) that a
+<code>Message{Role: "system"}</code> is forwarded through the exact
+same, already-in-production code path Harvey’s normal chat turns use for
+<code>Config.SystemPrompt</code> — not new, unverified SDK territory.
+<code>AssayHelpText</code> (<code>helptext.go</code>) and the derived
+<code>assay.1.md</code> updated and regenerated via
+<code>./bin/assay -help &gt; assay.1.md</code>, matching the Makefile’s
+own generation recipe. Full suite green except the same pre-existing,
+unrelated <code>TestCmdModelList_ShowsLlamafileEntries</code> failure
+noted in every entry above. <code>go vet ./...</code> clean.</p>
+<p><strong>No real first experiment was run</strong> — deferred per the
+confirmed scope. A plausible future subject, noted but not built:
+<code>HARVEY.md</code>’s “Documentation conventions” section paired with
+a new doc-comment-presence sensor, neither of which exists yet.</p>
+<hr />
+<h2
+id="shared-foldbackturn-helper-direction-d-phase-d-direction-d-complete">2026-07-13
+— Shared <code>foldBackTurn</code> helper (Direction D, Phase D) —
+Direction D complete</h2>
+<p><strong>Context.</strong> <code>subagent-dispatch-design.md</code> /
+<code>subagent-dispatch-plan.md</code> Phase D, the last of four.
+<code>cmdReadChunks</code> (<code>commands.go</code>) and
+<code>@mention</code> route dispatch (<code>terminal.go</code>) both
+duplicated the same two-call pattern —
+<code>a.AddMessage("user", ...)</code> followed by
+<code>a.AddMessage("assistant", ...)</code> — to summarize a bounded
+sub-dispatch back into the main conversation. <code>/plan next</code>
+deliberately does not fold back into history at all (a plan step is a
+side-effecting action, not a chat turn) and was correctly left
+untouched, per the design doc’s original scope decision.</p>
+<p><strong>Decision.</strong> Added
+<code>Agent.foldBackTurn(userContent, assistantContent string)</code>
+(<code>harvey.go</code>, next to <code>AddMessage</code>) — two
+<code>AddMessage</code> calls. <code>cmdReadChunks</code> and the
+<code>@mention</code> route-dispatch branch both call it instead of
+inlining the pair independently.</p>
+<p><strong>Rejected.</strong> Nothing rejected — this phase was a pure
+mechanical extraction with no behavioral judgment calls, per the
+plan.</p>
+<p><strong>Consequences.</strong> No new tests needed, per the plan —
+this is a pure refactor of already-tested call sites. Confirmed every
+existing test that inspects <code>a.History</code> after a
+<code>/read-chunks</code> or <code>@mention</code> dispatch
+(<code>TestCmdReadChunks_AddsResultToHistory</code>,
+<code>TestAtMentionDispatch_landsInHistory</code>, plus the full
+<code>read_chunks_cmd_test.go</code>/<code>routing_test.go</code>
+suites) passes unmodified. Full suite green except the same
+pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in
+every entry above. <code>go vet ./...</code> clean.</p>
+<p><strong>This completes all four phases of
+<code>subagent-dispatch-design.md</code>/<code>subagent-dispatch-plan.md</code>
+(Direction D).</strong> Summary across the full direction: fixed two
+real, previously-uncaught bugs found by auditing before designing (Bug
+1: <code>@mention</code> in chunk-analysis instructions was
+cosmetic-only, contradicting documented design intent; Bug 2:
+<code>/plan next</code>’s post-step model restore read a config field
+the switch itself had already overwritten, so it never actually restored
+anything) via one shared, correctly-tested
+<code>resolveDispatchTarget</code> primitive (Phases A–B); then removed
+two further real duplications, each verified behavior-preserving by
+re-running every pre-existing affected test unmodified rather than
+assumed (Phases C–D). <code>@mention</code>’s local-model-switch
+fallthrough and chunk analysis’s tool-free design were both explicitly
+audited and correctly left out of scope throughout, rather than folded
+in for the sake of a larger-looking consolidation.</p>
+<p>Directions E (guide-vs-sensor token-cost comparison via
+<code>assay --guide-compare</code>) and F (harness-template skills) from
+<code>harness-engineering-exploration.md</code> remain open.</p>
+<hr />
+<h2
+id="shared-runboundedturn-tool-vs-plain-chat-helper-direction-d-phase-c">2026-07-13
+— Shared <code>runBoundedTurn</code> tool-vs-plain-chat helper
+(Direction D, Phase C)</h2>
+<p><strong>Context.</strong> <code>subagent-dispatch-design.md</code> /
+<code>subagent-dispatch-plan.md</code> Phase C. <code>cmdPlanNext</code>
+(<code>plan_cmd.go</code>) and <code>DispatchToEndpoint</code>
+(<code>routing.go</code>) each independently implemented the same
+branch: build a <code>ToolExecutor</code> and call
+<code>RunToolLoop</code> when tools are enabled and a registry exists,
+otherwise call <code>client.Chat</code> directly. Chunk analysis
+(<code>chunk_analyzer.go</code>) does not have this branch at all —
+confirmed during Direction D’s initial audit that it’s deliberately
+tool-free (each chunk is read-only text synthesis; no side-effecting
+tools wanted), so it’s correctly excluded from this helper, not an
+oversight.</p>
+<p><strong>Decision.</strong> Added <code>bounded_turn.go</code>:
+<code>runBoundedTurn(ctx, client, registry, cfg, useTools, messages, dbg, w) (updatedHistory []Message, stats ChatStats, err error)</code>.
+Takes the <code>ToolExecutor</code> path when
+<code>useTools &amp;&amp; registry != nil</code> (returning the
+tool-extended history, or the unchanged input messages if
+<code>RunToolLoop</code> itself falls back because the client isn’t
+<code>ToolCapable</code>); otherwise a direct <code>client.Chat</code>
+call, returning <code>nil</code> for <code>updatedHistory</code> — the
+<code>nil</code>-vs-non-nil distinction is what
+<code>cmdPlanNext</code>’s
+<code>planStepHadErrors(updatedHistory)</code> depends on, and ranging
+over a <code>nil</code> slice is already a no-op matching the prior
+<code>else</code>-branch behavior exactly. Both call sites now delegate
+to it: <code>cmdPlanNext</code> passes
+<code>a.Tools</code>/<code>a.Config.ToolsEnabled</code> (identical gate
+to before); <code>DispatchToEndpoint</code> passes
+<code>registry</code>/<code>ep.Tools</code> (identical gate to before,
+<code>dbg</code> is <code>nil</code> since that function never had a
+<code>DebugLog</code> parameter to begin with).</p>
+<p><strong>Rejected.</strong> Extending <code>chunk_analyzer.go</code>’s
+<code>RunChunkedAnalysis</code> to also use <code>runBoundedTurn</code>
+— would add tool-calling to chunk analysis, a scope expansion the design
+doc explicitly ruled out, not a duplication this phase is meant to
+remove.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestRunBoundedTurn_UsesToolLoopWhenEnabled</code>,
+<code>TestRunBoundedTurn_PlainChatWhenToolsDisabled</code>,
+<code>TestRunBoundedTurn_PlainChatReturnsNilHistory</code> (registry
+<code>nil</code> even with <code>useTools=true</code> still takes the
+plain-chat path) — confirmed red then green; no <code>ToolCapable</code>
+mock exists anywhere in the test suite (<code>RunToolLoop</code>‘s
+actual tool-calling branch has never been unit-tested, only its
+non-<code>ToolCapable</code> fallback), so these tests exercise the
+fallback path, which is still sufficient to prove
+<code>runBoundedTurn</code> picks the right branch and returns the right
+nil-vs-non-nil history — introducing a full <code>ToolCapable</code>
+test double was judged out of scope for this extraction. Both call
+sites’ full existing test suites
+(<code>TestCmdPlanNext_modelAnnotationSwitches</code> plus all
+<code>plan_test.go</code> tests; all <code>routing_test.go</code> tests
+including
+<code>TestDispatchToEndpoint_toolsDisabledFallsBackToChat</code>/<code>_toolsNilRegistryFallsBackToChat</code>)
+pass unmodified after the swap — direct evidence the extraction is
+behavior-preserving. Full suite green except the same pre-existing,
+unrelated <code>TestCmdModelList_ShowsLlamafileEntries</code> failure
+noted in every entry above. <code>go vet ./...</code> clean.</p>
+<p>Phase D (shared fold-back helper) is next, per
+<code>subagent-dispatch-plan.md</code>.</p>
+<hr />
+<h2
+id="mention-in-chunk-analysis-instructions-actually-dispatches-now-direction-d-phase-b">2026-07-13
+— <code>@mention</code> in chunk-analysis instructions actually
+dispatches now (Direction D, Phase B)</h2>
+<p><strong>Context.</strong> <code>subagent-dispatch-design.md</code> /
+<code>subagent-dispatch-plan.md</code> Phase B — fixing Bug 1, confirmed
+during Direction D’s audit: <code>cmdReadChunks</code>
+(<code>commands.go</code>) and <code>injectOrChunk</code>’s auto-chunk
+path (<code>file_inject.go</code>) both parsed an <code>@mention</code>
+out of the chunk instruction, but only used it to relabel
+<code>ChunkAnalysisParams.Model</code> for recording — the actual
+<code>RunChunkedAnalysis</code> call always ran against
+<code>a.Client</code> unconditionally, contradicting the documented
+design intent (<code>chunked-analysis-design.md</code>,
+<code>DECISIONS.md</code> 2026-07-05: “Harvey’s existing
+<code>@mention</code> routing infrastructure routes each chunk analysis
+call to the named model”).</p>
+<p><strong>Decision.</strong> Both call sites now call
+<code>resolveDispatchTarget(a, mentionName, out)</code> (added in Phase
+A) after parsing the mention out of the instruction, and pass
+<code>target.Client</code> — not <code>a.Client</code> — to
+<code>RunChunkedAnalysis</code>. <code>cmdReadChunks</code> (one file,
+one resolution) uses <code>defer target.Restore()</code>.
+<code>injectOrChunk</code> loops over potentially multiple path-like
+tokens in one prompt, each independently mentionable — using
+<code>defer</code> there would queue every iteration’s restore until the
+whole function returns, leaving an earlier iteration’s switched-in model
+still active while a later iteration’s chunk analysis runs. Instead each
+iteration calls <code>restore()</code> explicitly right after its own
+<code>RunChunkedAnalysis</code> call (on both the success and error
+paths), keeping each token’s resolve/dispatch/restore cycle fully
+self-contained within its own loop iteration. An unresolvable
+<code>@name</code> in either path prints the same “not found — using
+current model” warning style already used elsewhere in the codebase
+(<code>/plan next</code>, <code>@mention</code> routing) rather than
+silently falling back.</p>
+<p><strong>Rejected.</strong> Using <code>defer</code> inside
+<code>injectOrChunk</code>’s loop for symmetry with
+<code>cmdReadChunks</code> — rejected once the multi-file-per-prompt
+case was considered: it would incorrectly leave a still-switched model
+active across unrelated later iterations instead of restoring
+immediately after each one’s own use.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestCmdReadChunks_MentionDispatchesToNamedModel</code> and
+<code>TestInjectOrChunk_LargeFileMentionDispatchesToNamedModel</code>,
+both using <code>attemptModelSwitchOverride</code> (from Phase A) to
+make the resolved client’s replies distinguishable from
+<code>a.Client</code>’s without spawning a real process. Both confirmed
+red against the pre-fix code (temporarily reverted, confirmed the exact
+“default reply” output the bug predicts, then restored) before
+confirming green against the fix — direct proof this was a real,
+previously-uncaught bug, not a hypothetical. Full suite green except the
+same pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in
+every entry above. <code>go vet ./...</code> clean.</p>
+<p>Phases C (shared tool-vs-plain execution helper) and D (shared
+fold-back helper) are next, per
+<code>subagent-dispatch-plan.md</code>.</p>
+<hr />
+<h2
+id="resolvedispatchtarget-one-correct-model-resolution-primitive-fixing-a-real-plan-next-restore-bug-direction-d-phase-a">2026-07-13
+— <code>resolveDispatchTarget</code>: one correct model-resolution
+primitive, fixing a real <code>/plan next</code> restore bug (Direction
+D, Phase A)</h2>
+<p><strong>Context.</strong> <code>subagent-dispatch-design.md</code> /
+<code>subagent-dispatch-plan.md</code> Phase A. Auditing
+<code>/plan next</code>,
+<code>/read-chunks</code>/<code>injectOrChunk</code>’s auto-chunk path,
+and <code>@mention</code> registry dispatch in full (per
+<code>harness-engineering-exploration.md</code> Direction D) found three
+independent ways of resolving “which model should run this bounded turn”
+— and confirmed two of them are actually broken, not just duplicated.
+<strong>Bug 2</strong> (this phase’s target): <code>cmdPlanNext</code>
+(<code>plan_cmd.go</code>) captured
+<code>defaultModel := activeModelLabel(a)</code> before a step-scoped
+model switch, but its restore call ignored that captured value entirely
+and instead read <code>a.Config.Llamafile.Active</code> live, at restore
+time — a field <code>switchLlamafileModel</code>
+(<code>llamafile.go:220</code>) had already overwritten to the
+<em>step’s own</em> model as part of performing the switch. Traced the
+exact mutation to confirm this wasn’t a hypothetical: the restore call
+was, by construction, always trying to “switch to” the model that was
+already active, never the one that was active before the step. Confirmed
+with the user (2026-07-13) that this is in scope to fix as part of
+Direction D rather than filed separately, since the fix is exactly the
+shared model-resolution primitive this direction already needs.</p>
+<p><strong>A second, deeper finding while designing the fix:</strong> a
+cheap reference-swap restore (saving
+<code>a.Backend</code>/<code>a.Client</code> and reassigning them back)
+would not have worked either — <code>switchLlamafileModel</code>
+<em>stops</em> the previous backend process before starting the new one,
+so by restore time the pre-step process is already dead. A correct
+restore must capture the pre-step <em>identifying name</em> before
+switching and genuinely relaunch through the same mechanism, paying a
+second real cold-start cost — not something this fix can make cheaper,
+only correct (consistent with the Hardware Reality Check’s framing that
+a model swap costs minutes each way).</p>
+<p><strong>Decision.</strong> Added <code>dispatch_target.go</code>:
+<code>DispatchTarget{Client LLMClient, Restore func()}</code> and
+<code>resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget, bool, error)</code>,
+resolving in order: (1) a registered route endpoint
+(<code>a.Routes.Lookup</code>) — an independent <code>LLMClient</code>
+via <code>clientForEndpoint</code>, never touching
+<code>a.Client</code>/<code>a.Backend</code>, <code>Restore</code> a
+no-op; (2) <code>name</code> already matches the active local model
+(case-insensitive, added as genuine no-op avoidance — auditing found the
+original code never actually had this despite the misleading
+<code>defaultModel</code> capture) — <code>Restore</code> a no-op; (3) a
+real local switch via <code>attemptModelSwitch</code>, capturing
+<code>prevLlamafileActive</code>/<code>prevOllamaModel</code>
+<strong>before</strong> switching so <code>Restore</code> relaunches the
+correct name afterward, not a post-switch-clobbered one. Added
+<code>Agent.attemptModelSwitchOverride func(name string, out io.Writer) (bool, error)</code>
+(nil-checked, same pattern as the existing
+<code>toolsReliableOverride</code>) so tests can simulate a successful
+local switch without spawning a real llamafile/llama.cpp process.
+<code>cmdPlanNext</code> now calls <code>resolveDispatchTarget</code>
+instead of its own broken switch/restore block, using the resolved
+<code>client</code> for the step’s
+<code>Chat</code>/<code>RunToolLoop</code> call and calling
+<code>restore()</code> unconditionally afterward — including on the
+step-failure path, which the original code never restored on at all (a
+deliberate, disclosed small improvement: leaving the agent stuck on a
+temporary step model after a failed step is a footgun, not a behavior
+worth preserving).</p>
+<p><strong>A third finding, while writing the regression test:</strong>
+<code>TestCmdPlanNext_modelAnnotationSwitches</code> originally
+constructed its test <code>PlanStep</code> with
+<code>Model: "phi-mini"</code> set directly on the struct, title text
+left unannotated. Tracing why the rewritten test initially failed with
+<em>zero</em> switch calls (not merely “wrong restore name”) found that
+<code>formatPlan</code> (called by <code>SavePlan</code>) only ever
+writes <code>s.Title</code> verbatim and never re-emits
+<code>Model</code> separately — so a <code>Model</code> field set
+without a <code>[model: NAME]</code> marker embedded in
+<code>Title</code> is silently dropped on the <code>SavePlan</code> →
+<code>LoadPlan</code> round trip <code>cmdPlanNext</code> performs. This
+means the <em>original</em> (pre-existing) test never exercised the
+switch path at all, for a completely different reason than its own
+stated one (“switch will fail, server not running”) — it never even
+reached a real switch attempt. Fixed by embedding the marker in
+<code>Title</code> directly, matching the actual file format. Not
+treated as a bug to fix elsewhere (plan-file serialization is outside
+Direction D’s scope) — noted here as a real gap found, not silently
+worked around.</p>
+<p><strong>Rejected.</strong> Filing the two dispatch bugs as separate,
+unrelated fixes — rejected per the confirmed decision; both live in the
+exact code this direction already consolidates. Skipping restore on the
+step-failure path (matching the original’s silence there) — rejected as
+encoding an accident (never restoring on error) as if it were a
+deliberate choice, when no positive reason for it was found.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestResolveDispatchTarget_RouteEndpoint_NoAgentMutation</code>,
+<code>TestResolveDispatchTarget_AlreadyActive_SkipsSwitch</code>,
+<code>TestResolveDispatchTarget_LocalSwitch_RestoreReturnsToOriginal</code>
+(the direct regression test for Bug 2 — simulates
+<code>switchLlamafileModel</code>’s exact mutation via the override and
+asserts <code>Restore()</code> switches back to the pre-step name, not
+the step’s own),
+<code>TestResolveDispatchTarget_UnknownName_ReturnsNotFound</code> — all
+confirmed red then green.
+<code>TestCmdPlanNext_modelAnnotationSwitches</code> was rewritten to
+actually assert on switch/restore behavior instead of only “doesn’t
+panic”; verified it fails against the pre-Phase-A
+<code>cmdPlanNext</code> code (temporarily reverted, confirmed red,
+restored) before confirming it passes against the fix. Full suite green
+except the same pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in
+every entry above (untouched by this change). <code>go vet ./...</code>
+clean.</p>
+<p>Phase B (wiring <code>resolveDispatchTarget</code> into
+<code>/read-chunks</code>/<code>injectOrChunk</code>, fixing Bug 1) is
+next, per <code>subagent-dispatch-plan.md</code>.</p>
+<hr />
+<h2
+id="cause-neutral-gofmt-check-message-direction-b-phase-b">2026-07-13 —
+Cause-neutral <code>gofmt</code> <code>Check()</code> message (Direction
+B, Phase B)</h2>
+<p><strong>Context.</strong> <code>feedforward-budget-design.md</code> /
+<code>feedforward-budget-plan.md</code> Phase B. The original plan
+proposed sharpening <code>PipeExternalFormatter.Check</code>’s generic
+<code>"content differs from formatted output"</code> message to name
+what the design doc assumed was the realistic residual cause: a syntax
+error <code>gofmt</code> can’t parse, on the reasoning that
+<code>Check()</code> only fires after <code>applyAutoFormat</code>
+already ran and presumably fixed everything else.</p>
+<p><strong>Correction found before implementing, by grepping every
+<code>.go</code> file for the exact string being replaced (not just the
+formatter’s own test file).</strong> Two existing Direction-A tests,
+<code>TestWriteFile_FormatCheckSensor_reportsWhenAutoFormatOff</code>
+and <code>TestWriteFile_FormatCheckSensor_injectsWhenConfigured</code>
+(<code>builtin_tools_test.go:277-324</code>), deliberately set
+<code>Config.AutoFormat = false</code> and write
+syntactically-valid-but-unformatted Go (extra whitespace, no syntax
+error) — a real, tested, supported configuration.
+<code>runPostWriteSensors</code> calls <code>Check()</code>
+unconditionally regardless of <code>AutoFormat</code>, so in that config
+the finding is genuinely “auto-format is disabled,” not a parse failure.
+<code>Check()</code> has no way to distinguish the two causes internally
+— it only ever compares raw content against the formatter’s canonical
+output. The original plan’s proposed message (“likely a syntax error”)
+would have been actively wrong in the <code>AutoFormat=false</code>
+case.</p>
+<p><strong>Decision.</strong> Confirmed with the user: use a
+cause-neutral message that names both real causes with actionable
+guidance for each, rather than asserting one as dominant.
+<code>code_formatters.go:152</code>
+(<code>PipeExternalFormatter.Check</code>) now returns:
+<code>"gofmt: content is not in canonical format — if auto-format is disabled, run gofmt or write already-formatted content; if it was enabled, a syntax error may have prevented it (check the file compiles)"</code>.</p>
+<p><strong>Rejected.</strong> The original “likely a syntax error”
+wording (shown wrong by the <code>AutoFormat=false</code> test path).
+Branching the message on <code>Config.AutoFormat</code> at the call site
+(passing the flag into
+<code>runPostWriteSensors</code>/<code>Check()</code> so each config
+gets a precise, single-cause message) — considered, but adds a parameter
+to thread through for a message-wording nicety; the cause-neutral single
+message covers both cases accurately without a signature change.
+Reverting to the fully generic original message — rejected since the
+cause-neutral version is still strictly more actionable (names the two
+remedies) even without pinpointing which applies.</p>
+<p><strong>Consequences.</strong> Updated the two
+<code>builtin_tools_test.go</code> assertions that pinned the old
+substring (<code>"differs from formatted"</code> →
+<code>"not in canonical format"</code>). Added
+<code>TestPipeExtFormatter_Check_ReportsCauseNeutralMessage</code>
+(<code>code_formatters_test.go</code>, using <code>tr a-z A-Z</code> as
+a formatter guaranteed to differ from lowercase input) — the first
+direct test of <code>PipeExternalFormatter.Check</code>’s “differs”
+message text; none existed before this change.
+<code>FileExternalFormatter.Check</code> (returns no message at all —
+file-mode check unsupported) and <code>BuiltinFormatter.Check</code>’s
+message are confirmed byte-identical to before, per scope.
+<code>go vet ./...</code> clean. Full suite green except the same
+pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in
+every entry above (untouched by this change).</p>
+<p>This completes both phases of
+<code>feedforward-budget-design.md</code>/<code>feedforward-budget-plan.md</code>
+(Direction B). Item 1 (content-aware guide selection) remains explicitly
+out of scope, per that document’s own audit — no path-scoped skill
+exists yet in Harvey’s own catalog to gate.</p>
+<hr />
+<h2
+id="shared-budgettracker-across-ragaugment-and-injectorchunk-direction-b-phase-a">2026-07-13
+— Shared <code>BudgetTracker</code> across <code>ragAugment</code> and
+<code>injectOrChunk</code> (Direction B, Phase A)</h2>
+<p><strong>Context.</strong> <code>feedforward-budget-design.md</code> /
+<code>feedforward-budget-plan.md</code> Phase A. Confirmed real via code
+audit before designing: <code>runChatTurn</code> ran
+<code>ragAugment</code> (always requesting top-5 chunks, no budget check
+on the survivors) then <code>injectOrChunk</code> (each small file
+checked only against a flat 16KB <code>maxInjectFileBytes</code> cap, no
+aggregate check across multiple files in one prompt) — three
+independent, uncoordinated budget mechanisms (RAG, direct-file-inject,
+the pre-existing oversized-file chunking path), exactly as
+<code>small-model-budget-design.md</code> Direction 2 diagnosed. Three
+decisions were confirmed with the user before implementing:
+omitted-content notes are model-visible (not just a
+<code>SensorEvent</code>) since “some retrieved/requested content was
+withheld” is directly relevant to how the model should answer;
+<code>BudgetTracker.Total = remainingContext(a)</code> as-is, no
+additional response-headroom reservation this increment; and the overall
+Phase A/B scope as drafted.</p>
+<p><strong>Decision.</strong> Added <code>budget_tracker.go</code>:
+<code>BudgetTracker{Total, Used int}</code>,
+<code>NewBudgetTracker(total int) *BudgetTracker</code>,
+<code>(*BudgetTracker) Reserve(tokens int) bool</code>,
+<code>(*BudgetTracker) Remaining() int</code>.
+<code>ragAugment(prompt string, tracker *BudgetTracker)</code> gained a
+second parameter — chunks are kept in score-descending order until one
+fails <code>tracker.Reserve(estimateTokens(c.Content))</code>; that
+chunk and all lower-scored ones after it are omitted, and a
+<code>"[Note: %d lower-relevance chunk(s) omitted — context budget]"</code>
+line is appended to the context block.
+<code>injectOrChunk(ctx, prompt, out, tracker *BudgetTracker)</code>
+gained a fourth parameter — its two direct-inject branches (≤16KB, and
+oversized-but-fits-<code>remainingContext</code>) now
+<code>Reserve</code> before appending; a file that doesn’t fit is
+skipped with the existing dim-style human note plus a
+<code>"[Note: %d file(s) exceeded context budget and were not injected: ...]"</code>
+line appended after the loop. <code>runChatTurn</code> constructs one
+<code>BudgetTracker</code> per turn, before the <code>ragAugment</code>
+call, and threads the <em>same instance</em> into
+<code>injectOrChunk</code> — this is what makes it a shared pool rather
+than two independent trackers. A <code>nil</code> tracker is treated as
+“unconstrained” by both consumers, preserving every pre-existing call
+site’s behavior unchanged.</p>
+<p><strong>A real regression found and fixed during verification, not
+just a test artifact.</strong> <code>remainingContext(a)</code> returns
+0 both when the context is genuinely full and when the limit is simply
+unknown (<code>effectiveContextLimit() &lt;= 0</code>) — its own doc
+comment says so. Naively passing that straight into
+<code>NewBudgetTracker</code> meant any session with an unset/unprobed
+context length (e.g. <code>newTestAgent</code>’s default config, and
+plausibly some real llamafile-entry-less configs) got
+<code>Total = 0</code>, silently blocking <em>all</em> file/RAG
+injection, even a one-line file — caught by
+<code>TestRunChatTurn_CannotReadRetry_SkipsWhenAlreadyInjected</code>
+turning red after Phase A landed. Fixed by reusing the exact convention
+<code>injectOrChunk</code>’s pre-existing oversized-file branch already
+applies for the same ambiguity: fall back to a conservative 4096-token
+default only when the limit is positively unknown
+(<code>a.effectiveContextLimit() &lt;= 0</code>), not when it’s known
+and genuinely exhausted.</p>
+<p><strong>Rejected.</strong> Reserving additional response headroom on
+top of <code>remainingContext(a)</code> in this increment (would close
+<code>small-model-budget-design.md</code>’s “response headroom”
+priority-table gap, but was confirmed out of scope — a separate,
+adjacent change). Wiring <code>injectMemoryContext</code>’s
+session-start memory budget into the same shared tracker (fires once per
+session, not per turn — not the same coordination gap). Wiring the
+interactive chunked-analysis branch of <code>injectOrChunk</code> into
+the shared tracker (already budget-aware via its own
+<code>remainingContext(a)</code> call and
+interactive/self-limiting).</p>
+<p><strong>Consequences.</strong> TDD-first for
+<code>budget_tracker.go</code>
+(<code>TestBudgetTracker_ReserveFitsWithinTotal</code>,
+<code>TestBudgetTracker_ReserveRejectsWhenExceeded</code>,
+<code>TestBudgetTracker_ReserveExactlyAtTotal</code>,
+<code>TestBudgetTracker_RemainingReflectsUsed</code>, confirmed red then
+green) and for <code>ragAugment</code>’s trimming logic
+(<code>TestRAGAugment_BudgetTracker_TrimsLowerScoredChunks</code>,
+confirmed red — first for an unrelated reason, a same-source
+<code>Ingest</code> call overwriting the prior batch, fixed in the test,
+then red for the right reason, then green). One honest deviation:
+<code>injectOrChunk</code>’s budget-skip logic and its test
+(<code>TestInjectOrChunk_BudgetTracker_SkipsFileThatDoesNotFit</code>)
+were written in the same pass rather than strict red-then-green;
+verified after the fact by temporarily disabling the new
+<code>Reserve</code> checks and confirming the test fails for the
+expected reason, then restoring — a real check, but not the same order
+as the rest of this session’s TDD-first work, noted rather than silently
+presented as identical. A new
+<code>TestBudgetTracker_SharedAcrossRAGAndFileInjection</code> proves
+the pool is genuinely shared (RAG consuming ~200 of a 220-token tracker
+leaves too little for a file that would otherwise fit) rather than two
+independent budgets that happen to run in sequence. Five existing
+<code>ragAugment</code> call sites and five existing
+<code>injectOrChunk</code> call sites were updated to pass
+<code>nil</code> (unconstrained), confirmed behavior-unchanged before
+the new trimming/skip logic was added. <code>go vet ./...</code> clean.
+Full suite green except the same pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in
+every 2026-07-12 entry above (untouched by this change).</p>
+<p>Phase B (sharpen <code>gofmt</code> <code>Check()</code>’s generic
+message) is next, per <code>feedforward-budget-plan.md</code>.</p>
+<hr />
+<h2
+id="add-go-vet-as-the-first-genuinely-new-sensor-direction-a-phase-b">2026-07-12
+— Add <code>go vet</code> as the first genuinely new sensor (Direction
+A, Phase B)</h2>
+<p><strong>Context.</strong>
+<code>computational-sensors-design.md</code> /
+<code>computational-sensors-plan.md</code> Phase B, following Phase A’s
+<code>Check()</code> wiring. <code>go vet</code> was chosen over
+<code>staticcheck</code>/<code>gocyclo</code>/unused-param/hunspell as
+the first genuinely new sensor because it only reports near-certain bugs
+by design — no style-nit noise floor to tune, unlike a general linter —
+making it the lowest-risk addition to introduce first (per the
+exploration doc’s own warning against activating a wave of rules at
+once). The two judgment calls flagged as open in the design doc were
+resolved in the plan doc before implementing: <code>go vet</code> only
+runs when the workspace has a <code>go.mod</code>; a genuine
+<code>go vet</code> finding is distinguished from <code>go vet</code>
+itself failing to run (mid-edit compile error) via a
+<code>"# "</code>-prefixed package-header line in its output, which
+never appears before a real per-analyzer finding.</p>
+<p><strong>Decision.</strong> Added
+<code>runGoVet(a *Agent, absPath string) []SensorEvent</code>
+(<code>builtin_tools.go</code>), invoked from
+<code>runPostWriteSensors</code> for <code>.go</code> files. Findings
+are always both human-visible (<code>SensorEvent</code>) and appended to
+the tool-result string unconditionally — no config gate, unlike Phase
+A’s <code>Check()</code> findings — since <code>go vet</code> has no
+low-severity tier to withhold tokens for. A <code>"# "</code>-prefixed
+line in <code>go vet</code>’s output causes the entire result to be
+suppressed (nil, no events, no appendix), treating a build failure as
+Harvey’s own sensor failing to run rather than a code-quality finding,
+matching <code>applyAutoFormat</code>’s existing “errors are silently
+suppressed” policy. Timeout is a dedicated 15s constant
+(<code>goVetTimeout</code>), not <code>Config.Security.RunTimeout</code>
+(5 minutes, meant for user-driven
+<code>run_command</code>/<code>git_command</code> — inappropriate for
+something that runs synchronously on every <code>.go</code> write on
+Pi-class CPU).</p>
+<p><strong>Rejected.</strong> Reusing
+<code>Config.Security.RunTimeout</code> for <code>go vet</code>’s
+timeout, as the plan doc originally suggested (“reuse whatever timeout
+convention run_command already uses”) — on reflection during
+implementation, the two have different risk profiles (an occasional
+user-invoked shell command vs. a sensor running on every single file
+write) and reusing a 5-minute default would let a hung/slow
+<code>go vet</code> invocation block every write for far too long.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestWriteFile_GoVetSensor_reportsRealFinding</code> (a
+<code>Printf</code> format/argument mismatch — both
+<code>SensorEvent</code> and tool-result appendix),
+<code>TestWriteFile_GoVetSensor_suppressesCompileError</code> (an
+undefined-symbol compile error — neither),
+<code>TestWriteFile_GoVetSensor_skipsWithoutGoModule</code> (no
+<code>go.mod</code> → <code>go vet</code> never invoked). The two
+suppression-path tests were vacuously green before implementation
+(nothing ran at all yet) and were re-confirmed as meaningfully green
+afterward — real subprocess timings (1.32s / 0.07s) confirm
+<code>go vet</code> actually ran and the suppression logic was genuinely
+exercised, not just trivially passing. Full suite green except the same
+pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in the
+earlier 2026-07-12 entries.</p>
+<p>This completes both phases of
+<code>computational-sensors-design.md</code>/<code>computational-sensors-plan.md</code>
+(Direction A’s first increment).
+<code>staticcheck</code>/<code>gocyclo</code>/unused-param/hunspell-style
+checks remain deliberately deferred to a follow-on increment, per that
+document’s own scope decision.</p>
+<hr />
+<h2
+id="wire-dormant-codeformatter.check-into-a-post-write-sensor-direction-a-phase-a">2026-07-12
+— Wire dormant <code>CodeFormatter.Check()</code> into a post-write
+sensor (Direction A, Phase A)</h2>
+<p><strong>Context.</strong>
+<code>computational-sensors-design.md</code> /
+<code>computational-sensors-plan.md</code> Phase A, the first
+harness-engineering direction resumed after the prerequisite refactor
+cycle. Scoping found that
+<code>CodeFormatter.Check(content, filePath) (bool, []FormatIssue)</code>
+(<code>language_registry.go</code>) already exists, is implemented for
+Go via <code>gofmt</code> (<code>PipeExternalFormatter</code>), and is
+unit-tested — but nothing outside its own tests ever calls it.
+Separately, <code>applyAutoFormat</code> (<code>builtin_tools.go</code>)
+already runs the formatter automatically after every
+<code>write_file</code>, with its result note appended into the tool’s
+own returned string (model-visible, costs tokens), gated by
+<code>Config.AutoFormat</code> (default <code>true</code>). An earlier
+draft of the design doc assumed a separate <code>edit_file</code> tool
+existed and needed the same wiring — checked, and Harvey has no
+<code>edit_file</code> tool at all, only whole-file
+<code>write_file</code>; corrected before implementing.</p>
+<p><strong>Decision.</strong> Added
+<code>runPostWriteSensors(a *Agent, relPath string) string</code>
+(<code>builtin_tools.go</code>), called from <code>write_file</code>
+after <code>applyAutoFormat</code>, running <code>Check()</code> against
+whatever content is currently on disk (i.e. after any auto-format
+rewrite already happened). Confirmed with the user beforehand: findings
+are human-visible by default (always a <code>SensorEvent</code> via a
+new <code>Agent.ActiveStatus StatusReporter</code> field, free, no token
+cost) and model-visible (appended to the tool-result string) only when
+<code>Config.SensorInjectFormatFindings</code> (default
+<code>false</code>, surfaced in <code>harvey.yaml</code> as
+<code>sensor_inject_format_findings</code>) is set. Rationale for the
+default: after a successful auto-format, <code>Check()</code> on a Go
+file should almost never find anything left to report; the residual case
+(a syntax error <code>gofmt</code> can’t parse) is rare enough not to
+warrant spending tokens on by default, but still cheap and useful to
+surface to a human.</p>
+<p><code>Agent.ActiveStatus</code> is new plumbing needed because tool
+handlers (closures created in <code>RegisterBuiltinTools(r, a)</code>,
+capturing <code>*Agent</code>) had no path to the turn’s live
+<code>StatusReporter</code> — that lived only on
+<code>ToolExecutor.Status</code>, which handler closures never see, and
+<code>ToolExecutor</code> itself has no <code>*Agent</code> reference.
+Rather than changing <code>ToolHandler</code>’s signature (which would
+touch every registered tool), <code>ActiveStatus</code> is set alongside
+the two existing <code>ex.Status = sp</code> /
+<code>ex.Status = retrySp</code> assignments in <code>terminal.go</code>
+and cleared to <code>nil</code> once each spinner stops.</p>
+<p><strong>Rejected.</strong> Changing <code>ToolHandler</code>’s
+signature to thread a reporter through explicitly — correct in principle
+but a much larger, more invasive change for this increment;
+<code>Agent.ActiveStatus</code> achieves the same reporting path with
+two call-site changes instead of touching every tool.</p>
+<p><strong>Consequences.</strong> TDD-first:
+<code>TestWriteFile_FormatCheckSensor_reportsWhenAutoFormatOff</code>,
+<code>TestWriteFile_FormatCheckSensor_injectsWhenConfigured</code>,
+<code>TestWriteFile_FormatCheckSensor_silentWhenAlreadyFormatted</code>
+(using a new <code>captureStatus</code> <code>StatusReporter</code> test
+double), confirmed red, then green. Full suite green except the same
+pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in the
+earlier 2026-07-12 entries. Phase B (<code>go vet</code>, a genuinely
+new sensor) is next.</p>
+<hr />
+<h2
+id="unify-sensorstatus-reporting-into-one-sensorevent-shape">2026-07-12
+— Unify sensor/status reporting into one SensorEvent shape</h2>
+<p><strong>Context.</strong>
+<code>harness-prerequisite-refactor-design.md</code> /
+<code>harness-prerequisite-refactor-plan.md</code> Phase C (Item 3).
+Three disconnected mechanisms reported what are all, conceptually,
+sensor signals: <code>tool_executor.go</code>’s
+<code>e.Status.UpdateStatus(...)</code> calls (transient, rendered on
+the spinner’s status line), <code>groundingCheck</code>’s result
+(printed directly to <code>out</code> after the spinner had already
+stopped), and the prose-tool-call “only tool-call syntax” warning (also
+printed directly, independently). This was flagged in
+<code>harness-engineering-exploration.md</code> as the direct
+prerequisite for that document’s Direction A (new computational sensors
+need somewhere to report) and Direction C (the sensor-sidecar
+pattern).</p>
+<p><strong>Decision.</strong> Added <code>sensor_event.go</code>:
+<code>SensorClass</code>
+(<code>Computational</code>/<code>Inferential</code>, per the
+harness-engineering framework’s computational/inferential axis) and
+<code>SensorEvent{Kind, Message, Class}</code>, plus
+<code>reportSensorEvent(out io.Writer, ev SensorEvent)</code> — the one
+place the “print a warning line” formatting now exists, used by both
+<code>groundingCheck</code>’s call site and the prose-tool-call-syntax
+warning in <code>terminal.go</code>. <code>StatusReporter</code>
+(<code>tool_executor.go</code>) gained
+<code>ReportSensor(ev SensorEvent)</code> alongside the existing
+<code>UpdateStatus(msg string)</code>; <code>*Spinner</code> implements
+it as a thin delegate (<code>s.UpdateStatus(ev.Message)</code>) — no
+rendering change, since the spinner’s live status line doesn’t yet do
+anything with <code>Kind</code>/<code>Class</code>. All three original
+signals now construct a <code>SensorEvent</code>: the three
+<code>ExecuteToolCalls</code> call sites (<code>tool_executor.go</code>)
+via <code>ReportSensor</code>, and the two <code>terminal.go</code> call
+sites via <code>reportSensorEvent</code>. Every event constructed today
+is <code>Computational</code> — each is a deterministic check over
+already-known content (a string match, a tool-dispatch result), not an
+LLM judgment; <code>Inferential</code> exists for a future sensor
+(e.g. an LLM-based review) with nothing emitting it yet.</p>
+<p>Scope was deliberately limited to this plumbing, per the plan: no UI
+redesign (the sensor-sidecar two-view pattern from
+<code>harness-engineering-exploration.md</code> Direction C remains
+unbuilt follow-on design work), and the spinner’s rendering is
+unchanged.</p>
+<p><strong>Rejected.</strong> Rendering
+<code>Class</code>/<code>Kind</code> differently now (e.g. distinct
+symbols per kind) — premature without a second,
+non-<code>Computational</code> sensor to actually distinguish from;
+deferred to whenever Direction A’s tooling introduces a real second
+sensor kind.</p>
+<p><strong>Consequences.</strong> Neither <code>groundingCheck</code>’s
+nor the prose-tool-call-syntax warning’s <em>printed output</em> had
+prior test coverage (only <code>groundingCheck</code>’s own return value
+was tested, in <code>grounding_test.go</code>) — new tests were written
+first: <code>TestReportSensorEvent_writesMessage</code>,
+<code>TestReportSensorEvent_matchesPreRefactorGroundingFormat</code>
+(exact-byte characterization of the grounding call site’s pre-refactor
+format), <code>TestSpinner_ReportSensor_delegatesToUpdateStatus</code>.
+One honest caveat: the grounding call site’s output is byte-for-byte
+unchanged (<code>reportSensorEvent</code>’s format was matched to it
+exactly), but the prose-tool-call-syntax warning’s output is only
+<em>visually</em> identical, not byte-identical — its pre-refactor code
+had the space after “⚠” outside the ANSI color wrap
+(<code>yellow("  ⚠")+" "+text</code>) while
+<code>reportSensorEvent</code> puts it inside
+(<code>yellow("  ⚠ ")+text</code>); both render as the same visible text
+in a terminal, since ANSI color codes don’t affect a plain space’s
+appearance, but the two original call sites already disagreed with each
+other at the byte level before this change, so a single shared formatter
+could not be byte-identical to both simultaneously — matched to the
+grounding style since that had the more precise characterization test.
+Full package suite green except the same pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in the
+other 2026-07-12 entries.</p>
+<p>This completes all three items of
+<code>harness-prerequisite-refactor-design.md</code>/<code>harness-prerequisite-refactor-plan.md</code>
+(Item 4 remains owned entirely by
+<code>small-model-budget-design.md</code>). Harvey is now ready to
+resume the <code>harness-engineering-exploration.md</code> directions
+this cycle was a prerequisite for.</p>
+<hr />
+<h2 id="unify-token-budgetcontext-percentage-reporting">2026-07-12 —
+Unify token-budget/context-percentage reporting</h2>
+<p><strong>Context.</strong>
+<code>harness-prerequisite-refactor-design.md</code> /
+<code>harness-prerequisite-refactor-plan.md</code> Phase B (Item 1). The
+same “estimate tokens used, compute %, pick a warning tier” logic was
+written three times: the turn-time warning’s Ollama branch
+(<code>terminal.go</code>, exact count via <code>CountTokens</code>),
+its llamafile/llama.cpp branch (estimated), and <code>/status</code>’s
+<code>cmdStatus</code> (a third, near-identical copy branching on
+provider again). Auditing all three side by side surfaced three real
+discrepancies, not just duplicated code:</p>
+<ol type="1">
+<li>The turn-time Ollama branch read <code>limit</code> directly from
+<code>a.Config.Ollama.ContextLength</code>, while <code>/status</code>
+and the llamafile branch both used <code>effectiveContextLimit()</code>
+— which additionally falls back to a probed
+llamafile-entry/<code>ModelCache</code> value when
+<code>Ollama.ContextLength</code> is unset in <code>harvey.yaml</code>.
+This meant the live overflow warning could silently never fire for a
+session where <code>/status</code> would correctly report high
+usage.</li>
+<li>The ≥100%-full message text differed by backend for no documented
+reason: Ollama said “reply may be truncated”; llamafile said “try /clear
+or switch to a model with larger context.”</li>
+<li>The estimate methodology itself differed: the turn-time llamafile
+branch summed <code>estimateTokens</code> per message
+(<code>for _, m := range a.History { used += estimateTokens(m.Content) }</code>),
+while <code>/status</code>’s estimate branch called
+<code>estimateTokens</code> once on the whole concatenated history
+(<code>estimateTokens(HistoryText(a.History))</code>). Since
+<code>estimateTokens</code> floors at a minimum of 1 token per call,
+per-message summation over-counts whenever history has many
+short/compacted messages.</li>
+</ol>
+<p><strong>Decision.</strong> All three, confirmed with the user before
+implementing:</p>
+<ol type="1">
+<li>Use <code>effectiveContextLimit()</code> as the limit source
+everywhere, including the Ollama turn-time path — fixes the silent-gap
+case.</li>
+<li>Unify the ≥100% message to one combined line:
+<code>"Context full: %s%d / %d tokens (%d%%) — reply may be truncated; try /clear or switch to a model with larger context"</code>.</li>
+<li>Use the whole-history-string estimate
+(<code>estimateTokens(HistoryText(a.History))</code>) everywhere,
+matching <code>/status</code>’s pre-existing (more accurate) approach
+rather than per-message summation.</li>
+</ol>
+<p>Implemented as
+<code>Agent.contextUsage() (used, limit int, exact bool)</code> and
+<code>formatContextUsage(used, limit int, exact bool) (contextTier, string)</code>
+in <code>context_estimator.go</code>. <code>runChatTurn</code>
+(<code>terminal.go</code>) and <code>cmdStatus</code>
+(<code>commands.go</code>) both call <code>contextUsage()</code>;
+<code>runChatTurn</code> additionally calls
+<code>formatContextUsage()</code> and gates printing on tier
+(≥80%/≥100%), while <code>cmdStatus</code> keeps its own always-shown
+“Tokens: …” line format using just the raw
+<code>used</code>/<code>limit</code>/<code>exact</code> values.</p>
+<p><strong>Rejected.</strong> Preserving today’s three-way divergence
+behind explicit per-caller parameters — considered for each of the three
+discrepancies, but none had a positive rationale on inspection; all
+three read as unintentional drift from being implemented separately at
+different times rather than deliberate design choices.</p>
+<p><strong>Consequences.</strong> None of
+<code>contextUsage()</code>/<code>formatContextUsage()</code> had direct
+unit tests before this change (the logic was only reachable indirectly
+through <code>runChatTurn</code>/<code>cmdStatus</code>);
+characterization/new-behavior tests were written first, confirmed red,
+then made green by the implementation:
+<code>TestContextUsage_estimatedPath</code>,
+<code>TestContextUsage_ollamaExactPath</code>,
+<code>TestContextUsage_ollamaUsesEffectiveContextLimit</code>
+(regression test for discrepancy 1),
+<code>TestFormatContextUsage_belowWarnThreshold</code>,
+<code>TestFormatContextUsage_warnTierExact</code>,
+<code>TestFormatContextUsage_warnTierEstimated</code>,
+<code>TestFormatContextUsage_fullTier</code>,
+<code>TestFormatContextUsage_unknownLimit</code>. Full package suite
+green except the same pre-existing, unrelated
+<code>TestCmdModelList_ShowsLlamafileEntries</code> failure noted in the
+2026-07-12 tool-call-dispatch entry above (untouched by this change
+either).</p>
+<hr />
+<h2
+id="unify-tool-call-dispatch-and-report-tryexecuteapertustoolcalls-tryexecuteprosetoolcalls">2026-07-12
+— Unify tool-call dispatch-and-report
+(<code>tryExecuteApertusToolCalls</code> /
+<code>tryExecuteProseToolCalls</code>)</h2>
+<p><strong>Context.</strong>
+<code>harness-prerequisite-refactor-design.md</code> Item 2.
+<code>tryExecuteApertusToolCalls</code> (Apertus-native
+<code>&lt;SPECIAL_71&gt;...&lt;SPECIAL_72&gt;</code> syntax) and
+<code>tryExecuteProseToolCalls</code> (fenced JSON blocks, used by small
+models like qwen2.5/llama3.2) were near-byte-identical: same
+<code>NewToolExecutor</code> setup, same <code>ExecuteToolCalls</code>
+call, same per-result reporting loop — differing only in which parser
+produced <code>calls</code>. Auditing them while scoping the
+pre-harness-engineering refactor cycle surfaced a real behavioral
+inconsistency, not just duplicated code: only the prose path printed an
+immediate “⚠ Unknown tool(s): … Available tools: …” terminal warning
+(<code>tool_executor.go:316-324</code> in the pre-refactor code); the
+Apertus path silently omitted it, even though both paths fed their
+<code>unknownNames</code> into the same downstream self-correction
+message injected into history (<code>terminal.go:1367-1378</code>). No
+code comment or design doc justified the asymmetry — it reads as Apertus
+support having been added after prose support without carrying the same
+reporting over.</p>
+<p><strong>Decision.</strong> Extracted the shared execute-and-report
+step into
+<code>executeAndReportToolCalls(a *Agent, calls []anyllm.ToolCall, out io.Writer) (dispatched bool, unknownNames []string)</code>
+(<code>tool_executor.go</code>). Both
+<code>tryExecuteApertusToolCalls</code> and
+<code>tryExecuteProseToolCalls</code> are now thin wrappers: parse, bail
+on <code>len(calls) == 0</code>, delegate. Resolved the inconsistency by
+making both paths print the “Unknown tool(s)” warning — user confirmed
+(2026-07-12) this should be the fix rather than preserving the old
+asymmetric behavior. Also extracted
+<code>availableToolNames(a *Agent) []string</code> (the
+<code>GetToolSchemas()</code> → name-slice loop), which was duplicated a
+third time in <code>terminal.go</code>’s history-injection correction
+message; both call sites now share it.</p>
+<p><strong>Rejected.</strong> Preserving the Apertus path’s silence via
+a boolean flag/branch in the merged function — considered, but there was
+no positive reason found for the asymmetry, so carrying it forward as an
+explicit option would have encoded an accident as a decision.</p>
+<p><strong>Consequences.</strong> Neither original function had direct
+unit test coverage before this change (only their parsers,
+<code>ParseProseToolCalls</code>/<code>ParseApertusToolCalls</code>,
+were tested in <code>codeblock_test.go</code>) —
+characterization/new-behavior tests were written first per this repo’s
+TDD-first convention, confirmed red against the pre-refactor code, then
+the refactor made them green:
+<code>TestExecuteAndReportToolCalls_dispatchesKnownTool</code>,
+<code>TestExecuteAndReportToolCalls_unknownToolWarnsWithAvailableList</code>,
+<code>TestTryExecuteProseToolCalls_toolsDisabled</code>,
+<code>TestTryExecuteProseToolCalls_unknownToolWarns</code>,
+<code>TestTryExecuteApertusToolCalls_dispatchesKnownTool</code>,
+<code>TestTryExecuteApertusToolCalls_unknownToolWarns</code> (the last
+of these locks in the new, consistent warning behavior). Full package
+test run is otherwise green; the one unrelated pre-existing failure
+(<code>TestCmdModelList_ShowsLlamafileEntries</code>, tied to
+already-in-progress, uncommitted llamafile-discovery work in
+<code>llamafile.go</code>/<code>backend_startup.go</code> predating this
+session) is untouched by this change. <code>go test -race</code> cannot
+run in this sandbox
+(<code>ThreadSanitizer: unsupported VMA range</code>) — pre-existing
+environment limitation, not caused by this change.</p>
+<h2
+id="ibm-generative-computing-granite-switch-mellea-research-review">2026-07-08
+— IBM generative computing / Granite Switch / Mellea research
+review</h2>
+<p><strong>Context.</strong> TODO.md carried two research items: review
+IBM’s aLoRA, Mellea, and Granite Libraries/Project Switch blog posts,
+and review github.com/generative-computing/granite-switch for
+implications across Harvey, Henry, and Mable. Reviewed all three IBM
+Research blog posts (inference-friendly aLoRAs, generative
+computing/Mellea, Granite libraries/Project Switch) and the
+granite-switch repo.</p>
+<p><strong>Findings.</strong> - <strong>aLoRA</strong> (activated LoRA)
+adapts weights only for tokens after an in-prompt invocation string, so
+the base model’s KV cache computed before that point is reusable — no
+full reprocessing on adapter switch. IBM claims 20–30x faster
+per-task-switch vs. standard LoRA. - <strong>Granite Switch</strong>
+composes multiple task-specific aLoRA “adapter functions” (RAG
+query-rewrite, hallucination detection, citation gen,
+requirement-checking, Guardian safety checks) onto one base Granite
+model via a control-token dispatcher, sharing one KV cache across
+switches. Apache-2.0, Python/PyTorch, served via vLLM or HF
+Transformers. Only trained for Granite-family models (3.2/4.1 lineage) —
+of models currently on Harvey’s benchmark list, only
+<code>granite-4.1-8b-source-Q4_K_M</code> would qualify. -
+<strong>Mellea</strong> is a Python orchestration layer on top: converts
+type hints to schemas, auto-inserts control tokens, enforces output
+constraints at decode time — “generative computing” as typed function
+calls with verifiers instead of free-text prompting. - <strong>Ecosystem
+check (the load-bearing finding):</strong> aLoRA is not
+vLLM/HF-exclusive. llama.cpp merged native aLoRA support upstream at
+release <strong>b6396</strong> (ggml-org/llama.cpp#15212, discussion
+#15213) — GGUF format plus <code>llama-server</code> support, not just
+static LoRA merge/scale. mozilla-ai/llamafile (what Henry produces) has
+generic <code>--lora</code>/<code>--lora-scaled</code> support (PR #786)
+aligned with llama.cpp’s API, but it is unconfirmed whether that
+predates or includes the b6396 aLoRA-specific commit. Ollama’s
+<code>ADAPTER</code> support is the older static-adapter path with no
+confirmed aLoRA invocation-string/KV-reuse mechanics. - Harvey’s own
+<code>~/Laboratory/hullicination.txt</code> (garbled Gemma4-E4B
+chunked-read output) is a live example of the failure mode Granite
+Switch’s hallucination-detection adapter targets — concrete motivation
+if the runtime-support question resolves favorably.</p>
+<p><strong>Decision.</strong> No immediate adoption. Do not pull in
+vLLM/Mellea as a Python orchestration layer for Harvey — that doubles
+the runtime stack Harvey deliberately avoids (Go + Ollama/llama.cpp).
+Henry’s existing Python/HF/torch pipeline is the more natural
+integration point <em>if</em> the tokenizer/control-token propagation
+through GGUF conversion checks out. Concrete next checks captured in
+<code>~/Laboratory/henry/continue_next_time.txt</code> rather than acted
+on now.</p>
+<p><strong>Rejected.</strong> Adopting Mellea directly (Python-only, no
+Go bridge). Treating this as applicable to Mable today (Mable is
+from-scratch corpus training, not Granite adapter composition) — noted
+as a design pattern worth remembering when Mable reaches its
+training-architecture decision, not an action item.</p>
+<p><strong>Consequences.</strong> TODO.md research items checked off,
+pointing here. Henry gets a follow-up list in
+<code>continue_next_time.txt</code> covering the llama.cpp/llamafile
+version check and GGUF tokenizer-metadata question. Separately under
+discussion: whether a Mellea-equivalent (typed instructions + verifiers)
+belongs in Harvey itself as a Go module, and whether KV-cache reuse for
+such a scheme is llama.cpp’s responsibility or something Harvey would
+need to manage at the orchestration layer.</p>
+<hr />
+<h2
+id="read-chunks-command-explicit-chunked-analysis-independent-of-the-overflow-trigger">2026-07-05
+— <code>/read-chunks</code> command: explicit chunked analysis,
+independent of the overflow trigger</h2>
+<p><strong>Context.</strong> The only way to exercise
+<code>RunChunkedAnalysis</code> (map-reduce chunking) was to hit the
+automatic context-overflow guard — either by feeding a genuinely huge
+file, or by artificially shrinking <code>effectiveContextLimit()</code>
+(as the 2026-07-05 live retests did). This made comparing chunking
+strategies, or comparing chunk-quality across models with different
+context windows, needlessly fragile: results were confounded by whatever
+the current model’s context budget happened to be.</p>
+<p><strong>Decision.</strong> Add
+<code>/read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]</code>
+(<code>cmdReadChunks</code>, <code>read_chunks_cmd_test.go</code>). It
+calls <code>ChunkDocument</code> + <code>RunChunkedAnalysis</code>
+directly — the identical functions the automatic path uses — with no
+threshold check at all; invoking the command is the confirmation.
+<code>--chunk-size</code>/<code>--max-chunks</code>/<code>--overlap</code>
+override <code>a.Config.Chunking</code> for that invocation only (not
+persisted), so the same file/model can be swept across chunking
+strategies in one session. <code>INSTRUCTION</code> falls back to the
+last user message when omitted, matching the implicit path’s pre-fill
+convenience; <code>@model</code> mentions are parsed the same way.
+Unlike the tool-call path (where the synthesis is returned as a tool
+result and re-composed by another model turn) or the pre-inject path
+(where it’s prepended as context for the next model turn),
+<code>/read-chunks</code> prints the full synthesis directly to the
+terminal — the point is to see the chunking pipeline’s raw output for
+evaluation, not have it filtered through an additional model pass — and
+also appends it to history as a normal user/assistant exchange so
+follow-up questions can reference it.</p>
+<p><strong>Rejected.</strong> Gating the command behind the same
+overflow check it’s meant to bypass (defeats the purpose). Silently
+ignoring <code>a.Config.Chunking.Enabled: false</code> — that flag only
+gates the <em>automatic</em> trigger; an explicit command isn’t
+automatic, so it’s not checked here at all (only the per-invocation
+<code>--chunk-size</code>/<code>--max-chunks</code>/<code>--overlap</code>
+flags override the loaded config, leaving other fields like
+<code>Enabled</code> irrelevant to this path).</p>
+<p><strong>Consequences.</strong> Naming follows the existing hyphenated
+convention (<code>/read-pdf</code>, <code>/read-dir</code>), not the
+<code>/read_chunks</code> placeholder. Command registered alongside
+<code>/read</code> in <code>commands.go</code>. Tests:
+<code>TestCmdReadChunks_NoArgs</code>,
+<code>TestCmdReadChunks_NoClient</code>,
+<code>TestCmdReadChunks_BypassesThreshold</code>,
+<code>TestCmdReadChunks_InstructionFallsBackToLastUserMessage</code>,
+<code>TestCmdReadChunks_NoInstructionNoHistory</code>,
+<code>TestCmdReadChunks_PermissionDenied</code>,
+<code>TestCmdReadChunks_InvalidChunkSizeFlag</code>,
+<code>TestCmdReadChunks_AddsResultToHistory</code>.</p>
+<hr />
+<h2 id="resume-slash-command-as-a-thin-alias-for-session-use">2026-07-05
+— <code>/resume</code> slash command as a thin alias for
+<code>/session use</code></h2>
+<p><strong>Context.</strong> Live-testing the chunking fix (see below)
+via piped/tmux-driven input was fragile in part because the interactive
+startup flow’s prompt sequence is hard to predict from outside
+(resume-session prompt, model picker, possible external-server-adopt
+prompt). Investigating a general “invoke CLI flags from inside the REPL”
+mechanism, most of it turned out to already exist:
+<code>/model use</code>, <code>/session continue</code>,
+<code>/session replay</code>, and <code>/record start</code> already
+delegate to the same underlying functions the equivalent CLI flags call
+(established by the 2026-06-20 unified-<code>/model</code>-command
+decision). <code>/session use</code> with no arguments already shows the
+identical interactive picker the startup “Resume a prior session?”
+prompt uses, and loads the chosen file via
+<code>ContinueFromFountain</code> — functionally identical to what a
+<code>/resume</code> command would do.</p>
+<p><strong>Decision.</strong> Add <code>/resume [FILE]</code> as a thin
+alias: <code>cmdResume</code> simply calls
+<code>cmdSession(a, append([]string{"use"}, args...), out)</code>. No
+new generic flag-to-command mechanism was built — the existing
+per-command delegation pattern already covers this need, and
+<code>/resume</code> is the discoverable name matching the
+<code>--resume</code> CLI flag.</p>
+<p><strong>Rejected.</strong> Building a generic mechanism to invoke
+arbitrary startup flags mid-session. Most flags either already have a
+natural slash-command equivalent (model selection, session load/replay,
+recording) or don’t make sense mid-session (<code>--workdir</code>,
+<code>--llamafile-dir</code>). A generic passthrough would duplicate the
+existing per-command pattern without covering meaningfully more
+ground.</p>
+<p><strong>Consequences.</strong>
+<code>TestCmdResume_aliasForSessionUse</code>,
+<code>TestCmdResume_noArgsShowsPicker</code> added. The startup-time
+interactive “Resume a prior session? [y/N]” prompt itself is unchanged —
+dropping it in favor of <code>--resume</code>/<code>/resume</code> was
+considered but deferred, see TODO.md.</p>
+<hr />
+<h2 id="llamafile-gpulayers-defaults-to-0-cpu-only-not-99">2026-07-05 —
+Llamafile GPULayers defaults to 0 (CPU-only), not 99</h2>
+<p><strong>Context.</strong> A live chunking retest against
+<code>bonsai-8b</code> (Q1_0 quantization) on Raspberry Pi hardware
+appeared to hang for 20+ minutes. Investigation found the underlying
+<code>llama-server</code> process had been running for <strong>over 2
+hours of CPU time</strong> with no output, launched with
+<code>-ngl 99</code> (maximise GPU offload) — Harvey’s default for every
+llamafile model (<code>config.go</code>,
+<code>LlamafileConfig.GPULayers: 99</code>). Raspberry Pi hardware has
+no usable GPU-compute backend; forcing maximum GPU-layer offload on such
+hardware is a plausible cause of severe degradation or an effective
+hang, independent of the quantization type.
+<code>LlamaCppConfig.GPULayers</code> (the sibling backend’s config)
+already defaulted to <code>0</code> for this exact reason — the
+llamafile default was an inconsistency, not a deliberate choice.</p>
+<p><strong>Decision.</strong> Change
+<code>LlamafileConfig.GPULayers</code>’s default from <code>99</code> to
+<code>0</code>. <code>buildLlamafileArgs</code>
+(<code>llamafile_service.go</code>) already treats <code>0</code> as
+“explicitly pass <code>-ngl 0</code>” (forces CPU-only), distinct from a
+negative value (omits the flag, defers to the binary’s own default) — so
+<code>0</code> is the correct, unambiguous safe default, not just an
+arbitrary placeholder. Users with real GPU-compute hardware opt in via
+<code>gpu_layers:</code> in <code>harvey.yaml</code>. The “only persist
+when overriding the default” check in <code>SaveLlamafileConfig</code>
+was updated from <code>!= 99</code> to <code>!= 0</code> to match.</p>
+<p><strong>Consequences.</strong>
+<code>TestDefaultConfig_LlamafileGPULayersDefaultsToZero</code>,
+<code>TestSaveLlamafileConfig_DoesNotPersistDefaultGPULayers</code>,
+<code>TestSaveLlamafileConfig_PersistsCustomGPULayers</code> added.
+Existing <code>harvey.yaml</code> files that don’t already set
+<code>gpu_layers</code> explicitly silently pick up the new safer
+default on next load — no migration needed. Users on capable GPU
+hardware who were relying on the implicit 99-default will need to add
+<code>gpu_layers: 99</code> explicitly.</p>
+<hr />
+<h2
+id="chunking-guard-fix-unknown-context-limit-must-not-bypass-overflow-detection">2026-07-05
+— Chunking guard fix: unknown context limit must not bypass overflow
+detection</h2>
+<p><strong>Context.</strong> TODO.md reported garbled output from
+Gemma4-E4B when asked to review a document for topic drift, with the
+note “Never got the chunk prompt entry option.” Root-cause investigation
+traced this to <code>remainingContext()</code>
+(<code>context_estimator.go</code>) returning <code>0</code> both when
+the model’s context limit is genuinely unknown and when it is known but
+exhausted. <code>read_file</code>’s chunking pre-read guard in
+<code>builtin_tools.go</code> used
+<code>if rem := remainingContext(a); rem &gt; 0</code> as its sole gate
+— so an unknown limit silently skipped the entire overflow check and
+fell through to a full raw read, rather than triggering the chunk-prompt
+UX. <code>file_inject.go</code>’s <code>injectOrChunk</code> already
+handled this correctly (falling back to a conservative 4096-token budget
+when <code>rem &lt;= 0</code> and the limit truly is unknown), but
+<code>builtin_tools.go</code>’s tool-call path did not share that
+logic.</p>
+<p>A second, deeper cause was found for the llamafile backend
+specifically: <code>effectiveContextLimit()</code>
+(<code>harvey.go</code>) only resolves a context window for llamafile
+models from the <code>LlamafileEntry.ContextLength</code> field in
+<code>harvey.yaml</code> — the <code>ModelCache</code> fallback never
+carries a value for llamafile models, because
+<code>probeLlamaCppAndCache</code> (used by
+<code>useLlamafileEntry</code> on every llamafile connect, including
+adoption) only writes <code>SupportsTools</code>/<code>ToolMode</code>
+into the cache, never <code>ContextLength</code>.
+<code>switchLlamafileModel</code> and <code>addAndStartLlamafile</code>
+both call <code>ProbeLlamafileContextLength</code> to populate
+<code>LlamafileEntry.ContextLength</code>, but
+<code>adoptExternalServer</code> (<code>llamafile.go</code>) — used when
+Harvey detects an already-running llamafile server at startup and offers
+to adopt it — did not. Any model adopted this way has
+<code>ContextLength</code> permanently stuck at <code>0</code> for the
+session.</p>
+<p><strong>Decision.</strong> Two fixes: (1)
+<code>builtin_tools.go</code>’s <code>read_file</code> chunking guard
+now uses the same fallback pattern as <code>injectOrChunk</code>:
+<code>rem &lt;= 0</code> sets <code>rem = 4096</code> rather than
+skipping the guard outright. (2) <code>adoptExternalServer</code> now
+calls <code>ProbeLlamafileContextLength</code> and stores the result on
+the registered <code>LlamafileEntry</code>, matching the other two
+llamafile-registration call sites.</p>
+<p><strong>Known remaining gap.</strong>
+<code>startAndUseLlamafile</code> (<code>backend_startup.go</code>) has
+a similar hole: when it detects a server already running under a
+<em>different</em> model name than the configured active entry, it
+adopts the detected name via <code>useLlamafileEntry</code> without
+registering (or probing) a matching <code>LlamafileEntry</code>.
+Deferred — this is a narrower edge case (requires an already-running
+server serving an unexpected model) than the primary
+adopt-on-first-connect path just fixed.</p>
+<p><strong>Consequences.</strong>
+<code>TestReadFile_ChunkingEnabledContextLimitUnknown</code>
+(<code>builtin_tools_test.go</code>) and
+<code>TestAdoptExternalServer_probesContextLength</code>
+(<code>llamafile_test.go</code>) cover the two fixes. Live retest
+against <code>bonsai-8b</code> (Q1_0 quantization) was inconclusive on
+chunk-quality: the test document (~12.7KB) fell just under the
+4096-token fallback budget so chunking did not trigger, and the
+single-shot response did not complete within ~20 minutes, suggesting
+Q1_0 quantization has poor CPU dequantization throughput on this
+hardware independent of the chunking fix. Re-testing chunk-quality on a
+document large enough to force chunking, and/or against a non-Q1_0 4B–8B
+model, is still open — see TODO.md.</p>
+<hr />
+<h2
+id="assay-switches-from-callollama-to-harvey.llmclient-for-all-backends">2026-06-30
+— Assay switches from <code>callOllama</code> to
+<code>harvey.LLMClient</code> for all backends</h2>
+<p><strong>Context.</strong> <code>bin/assay</code> had a private
+<code>callOllama</code> function that spoke Ollama’s proprietary
+<code>/api/chat</code> endpoint directly. Llamafile happened to also
+expose this Ollama-compatible API, so the single function covered two
+backends. Adding llama.cpp support requires the OpenAI-compatible
+<code>/v1/chat/completions</code> path, which Ollama does not expose at
+<code>/api/chat</code>. Writing a parallel <code>callOpenAI</code>
+function would create two diverging code paths that must be kept in
+sync.</p>
+<p><strong>Decision.</strong> Replace <code>callOllama</code> (and the
+private <code>ollamaRequest</code> / <code>ollamaResponse</code>
+structs) with <code>harvey.LLMClient</code> — the same interface used
+throughout the harvey interactive agent. The concrete implementation
+(<code>AnyLLMClient</code> backed by <code>mozilla-ai/any-llm-go</code>)
+already supports Ollama, llamafile, and llama.cpp via the
+OpenAI-compatible API. All three backends follow the same
+<code>client.Chat(ctx, messages, &amp;buf)</code> call path. Token stats
+come from <code>harvey.ChatStats</code> instead of the proprietary
+Ollama response shape.</p>
+<p><strong>Rejected.</strong> Adding a parallel
+<code>callLlamaCpp</code> function that speaks
+<code>/v1/chat/completions</code> directly. This avoids touching the
+existing Ollama path but creates maintenance burden: two implementations
+of the same call, diverging error handling, different stat fields. Token
+stat normalisation would have to be done twice.</p>
+<p><strong>Consequences.</strong> The <code>ollamaRequest</code>,
+<code>ollamaMessage</code>, and <code>ollamaResponse</code> types are
+removed from <code>cmd/assay/main.go</code>. The <code>callOllama</code>
+function is removed. Token stats now come from
+<code>ChatStats.PromptTokens</code>, <code>ChatStats.ReplyTokens</code>,
+and <code>ChatStats.TokensPerSec</code>. The Ollama model-listing path
+(<code>listOllamaModels</code>) is retained as-is since it calls
+<code>/api/tags</code> directly and is Ollama-specific by nature. A
+parallel <code>listOpenAIModels</code> helper is added for llama.cpp’s
+<code>/v1/models</code> endpoint.</p>
+<hr />
+<h2
+id="assay-does-not-manage-the-llama-server-process-lifecycle">2026-06-30
+— Assay does not manage the llama-server process lifecycle</h2>
+<p><strong>Context.</strong> For llamafile, assay starts the binary
+itself (<code>StartLlamafileService</code>), finds a free port, and
+defers cleanup. This was necessary because llamafile is a single
+self-contained executable with no prior setup. llama.cpp
+(<code>llama-server</code>) requires separate configuration: model path,
+context size, GPU layers, quantisation, threading. These are
+server-administrator decisions that assay should not make on behalf of
+the user.</p>
+<p><strong>Decision.</strong> <code>--llamacpp URL</code> connects to a
+running <code>llama-server</code> at the given URL. Assay does not start
+or stop it. The user starts the server before running assay and stops it
+afterward. This matches the <code>--ollama</code> pattern exactly.</p>
+<p><strong>Rejected.</strong> A <code>--llamacpp-path PATH</code> flag
+that mirrors <code>--llamafile PATH</code>. The reason it was rejected:
+llama.cpp needs too many server-tuning flags (ctx, threads, GPU layers)
+to make a one-flag launch practical without exposing all of them in
+assay’s flag set — which would duplicate harvey’s own LlamaCpp
+configuration. Requiring the user to start the server explicitly keeps
+assay’s surface area small.</p>
+<p><strong>Consequences.</strong> Users must start
+<code>llama-server</code> before running assay. Error messages guide
+them: if the URL is unreachable, assay exits immediately with a clear
+message rather than timing out.</p>
+<hr />
+<h2
+id="shared-probellamacppandcache-helper-for-capability-detection">2026-06-30
+— Shared <code>probeLlamaCppAndCache</code> helper for capability
+detection</h2>
+<p><strong>Context.</strong> <code>ProbeLlamafileProps</code> was
+already implemented and wired for llamafile (via
+<code>useLlamafileEntry</code> in <code>backend_startup.go</code>), but
+the llama.cpp startup path (<code>startLlamaCppModelPath</code> in
+<code>backend_llamacpp.go</code>) never called it. As a result,
+<code>toolsReliable()</code> always found no <code>ModelCache</code>
+entry for llama.cpp models and returned false — but tool definitions
+were still sent, causing the model to hallucinate rather than call
+them.</p>
+<p><strong>Decision.</strong> Extract the probe-then-cache-write logic
+into a
+<code>probeLlamaCppAndCache(a *Agent, modelName, baseURL string)</code>
+helper in <code>backend_llamacpp.go</code>. Wire it into both paths: -
+<code>useLlamafileEntry</code> in <code>backend_startup.go</code>
+(replaced inline block with one call) -
+<code>startLlamaCppModelPath</code> in <code>backend_llamacpp.go</code>
+(new, called after backend is fully wired)</p>
+<p>The function is a no-op when <code>a.ModelCache == nil</code> or when
+an existing entry has <code>ProbeLevel != "none"</code>, preserving the
+skip-on-re-probe behaviour.</p>
+<p><strong>Rejected.</strong> Duplicating the inline block in
+<code>startLlamaCppModelPath</code> would have caused the two paths to
+drift. A method on <code>Agent</code> was also considered but adds no
+real benefit over a package-level helper that takes
+<code>*Agent</code>.</p>
+<p><strong>Consequences.</strong> Both llamafile and llama.cpp models
+now populate <code>model_cache.db</code> immediately after startup.
+<code>toolsReliable()</code> sees the capability entry on the first turn
+rather than defaulting to <code>CapNo</code>.</p>
+<hr />
+<h2
+id="ollama-command-removed-ollama-management-delegated-to-the-ollama-cli">2026-06-30
+— <code>/ollama</code> command removed; Ollama management delegated to
+the Ollama CLI</h2>
+<p><strong>Context.</strong> Harvey had a large <code>/ollama</code>
+command with subcommands covering start/stop/status, server lifecycle,
+model listing, pull/push/rm, probe, logs, env, ps, and alias management.
+Most of these duplicate functionality already covered by the
+<code>ollama</code> CLI itself. The surface was redundant, brittle
+(Harvey had to maintain parity with the Ollama API), and added cognitive
+load for users who switch between Harvey and the shell. The unified
+<code>/model</code> command (introduced 2026-06-20) already provided a
+backend-agnostic entry point for model switching. The alias subcommand
+was already shared.</p>
+<p><strong>Decision.</strong> Remove <code>/ollama</code> entirely.
+Ollama model management (pull, push, rm, list, show, run) is delegated
+entirely to the <code>ollama</code> CLI. Harvey’s responsibilities for
+Ollama reduce to:</p>
+<ol type="1">
+<li><strong>Model discovery</strong> — <code>aggregateModels</code>
+queries the live Ollama <code>/api/tags</code> endpoint when Ollama is
+reachable; result appears in <code>/model list</code>.</li>
+<li><strong>Model switching</strong> — <code>/model use</code> resolves
+across all backends including Ollama.</li>
+<li><strong>Alias management</strong> — <code>/model alias</code>
+unchanged; aliases now carry an <code>Engine</code> field (“ollama”,
+“llamafile”, “llamacpp”, or “” for legacy).</li>
+<li><strong>Auto-probe on alias creation</strong> — when
+<code>/model use</code> creates a new Ollama alias,
+<code>FastProbeModel</code> is called immediately so capability data
+(tool support, embed support, context length) is cached without a
+separate <code>/ollama probe</code> command.</li>
+<li><strong>Stale alias cleanup</strong> — <code>/model clean</code>
+replaces <code>/ollama clean</code>, pruning aliases for all engines
+(not just Ollama) using <code>pruneStaleModelRefs</code>. Legacy aliases
+with no engine field are preserved.</li>
+<li><strong>Service lifecycle</strong> — Harvey starts Ollama only when
+a model needs it and Harvey was configured to manage it.
+<code>/model stop</code> and <code>/model status</code> remain
+backend-agnostic. Detailed service management (logs, env, ps) is the
+<code>ollama</code> CLI’s job.</li>
+</ol>
+<p>The <code>cmdOllama</code>, <code>ollamaProbe</code>,
+<code>pruneStaleOllamaRefs</code>, <code>ollamaModelTable</code>, and
+<code>removeModelFromConfig</code> functions are deleted.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Keep <code>/ollama</code> as a thin wrapper around the
+<code>ollama</code> CLI</em> — adds indirection without value; users who
+want <code>ollama</code> output should just type
+<code>!ollama</code>.</li>
+<li><em>Keep only the useful subcommands (<code>start</code>,
+<code>stop</code>, <code>status</code>, <code>list</code>)</em> —
+<code>/model</code> already provides all of these in a backend-agnostic
+way. Keeping a subset of <code>/ollama</code> would confuse the command
+vocabulary.</li>
+<li><em>Preserve <code>/ollama probe</code> as an explicit command</em>
+— auto-probe on alias creation covers the same need at the moment the
+alias is most useful (right after setup). An explicit probe command is
+redundant.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>commands.go</code> loses ~600 lines: <code>cmdOllama</code>,
+<code>ollamaProbe</code>, <code>pruneStaleOllamaRefs</code>,
+<code>ollamaModelTable</code>, <code>removeModelFromConfig</code>.</li>
+<li><code>ModelAlias</code> struct gains <code>Engine string</code>
+(persisted as <code>engine:</code> in YAML; legacy aliases without this
+field match any backend).</li>
+<li><code>pruneStaleModelRefs(a, liveOllama, liveLlamafile, liveLlamaCpp, out)</code>
+replaces <code>pruneStaleOllamaRefs</code>.</li>
+<li><code>aggregateModels</code> provides the unified model list for
+<code>/model list</code> across all backends.</li>
+<li>Users who relied on <code>/ollama pull</code>,
+<code>/ollama rm</code>, etc. must use the <code>ollama</code> CLI or
+<code>! ollama &lt;subcommand&gt;</code>.</li>
+<li>Tests for all deleted functions removed;
+<code>TestOllamaCommandRemoved</code> verifies the command table entry
+is gone.</li>
+</ul>
+<hr />
+<h2
+id="blank-slate-active-model-no-persistence-no-auto-start-from-config">2026-06-30
+— Blank-slate active model: no persistence, no auto-start from
+config</h2>
+<p><strong>Context.</strong> Harvey previously persisted the last-used
+Llamafile model to <code>harvey.yaml</code> as
+<code>llamafile.active</code> and auto-started it at next session. This
+caused surprising behavior: starting Harvey would silently launch the
+last Llamafile process without prompting, the “active” model name was
+meaningless across session restarts (the user may have added or removed
+models), and the pattern did not generalise to Ollama or llama.cpp. The
+concept of “sticky active model” proved idiosyncratic across all three
+backends.</p>
+<p><strong>Decision.</strong> Drop the active-model persistence concept
+for sessions not being resumed. Specifically:</p>
+<ul>
+<li><code>SaveLlamafileConfig</code> never writes the
+<code>active:</code> YAML field (always saved as <code>""</code>).</li>
+<li><code>selectBackend</code> Case 1 (auto-start the persisted active
+Llamafile) is removed.</li>
+<li>When Harvey is started with <code>--llamafile PATH</code>, the path
+is threaded as a <code>hint</code> into <code>selectBackend</code> for
+that session only; it is not persisted.</li>
+<li>When resuming a session (<code>--continue</code> /
+<code>--resume</code>), the session’s model is restored via existing
+session-resume logic, not via the config’s <code>active:</code>
+field.</li>
+</ul>
+<p>The intent is that at startup Harvey always shows the full model
+picker, giving the user explicit control every time, rather than
+guessing which model they want.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Persist active model and let the user opt out</em> — adds a
+config knob; the cost of always picking is low and the benefit of a
+clean slate is high for users who cycle through many models.</li>
+<li><em>Persist active model only for Ollama</em> — inconsistent across
+backends; users would need to learn different startup behavior per
+engine.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li><code>Config.Llamafile.Active</code> is still loaded from YAML for
+backward compat but is never written back, so it decays naturally as the
+user’s config is saved.</li>
+<li><code>backend_startup.go</code> Case 1 deleted; Case 2 (picker from
+registered models) is now the first case.</li>
+<li><code>TestSaveLlamafileConfig_DoesNotPersistActive</code> verifies
+the new behavior.</li>
+<li>Users who depended on the auto-start behavior must use
+<code>--llamafile PATH</code> at the CLI or pick from the model picker
+at startup.</li>
+</ul>
+<hr />
+<h2 id="plan-ivr-support-deferred-design-incomplete">2026-06-28 —
+<code>/plan</code> IVR support deferred — design incomplete</h2>
+<p><strong>Context.</strong> Harvey’s <code>/plan</code> feature
+provides bounded-context task execution but lacks output validation and
+automatic repair. The Instruct-Validate-Repair (IVR) pattern (from the
+<a href="https://mellea.ai/blogs/why-mellea/">Mellea project</a>) was
+evaluated as a candidate extension. Two integration options were
+considered: (A) extend <code>/plan</code> with opt-in inline validation
+annotations; or (B) add a new <code>/ivr</code> command.</p>
+<p><strong>Decision.</strong> <strong>Deferred to a future
+phase.</strong> Design review revealed too many open questions to
+proceed safely in the current release cycle:</p>
+<ul>
+<li>What does “step output” mean for each validation type?
+<code>validate: command:go build ./...</code> clearly tests workspace
+state after the step, but <code>validate: regex:^func Test</code> is
+ambiguous — does it match the model’s raw response text or a file? This
+distinction determines the entire implementation.</li>
+<li>The repair prompt design includes “previous output” verbatim, which
+could overflow the context window of a small model when the prior step
+produced large text (a build log, a file listing, etc.).</li>
+<li>The <code>no_errors</code> validation type has no deterministic
+definition — “common error patterns” is LLM-like vagueness in a system
+that explicitly requires deterministic validation.</li>
+<li>The relationship between IVR and Harvey’s strict output enforcement
+work (Idea 3 in <a
+href="capability-adapter-concept.html">capability-adapter-concept.md</a>)
+is unexplored. Idea 3 may provide the structural foundation IVR needs
+before behavioral validation can be layered on top.</li>
+</ul>
+<p><strong>Preferred path when ready.</strong> Option A (extend
+<code>/plan</code> with annotations) remains the correct integration
+point. Option B (separate <code>/ivr</code> command) is rejected — IVR
+is fundamentally about making <code>/plan</code> more reliable, not a
+separate workflow.</p>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li>No code changes in this release.</li>
+<li><a href="plan-ivr-design.html">plan-ivr-design.md</a> is marked
+incomplete and deferred.</li>
+<li>Idea 3 in <a
+href="capability-adapter-concept.html">capability-adapter-concept.md</a>
+should be developed first; its strict output enforcement pattern may
+resolve IVR’s core validation ambiguity.</li>
+<li>IVR design resumes after Idea 3 is implemented and the
+validation-target question is answered.</li>
+</ul>
+<hr />
+<h2
+id="local-model-backend-design-deferred-unified-abstraction-under-exploration">2026-06-28
+— Local model backend design deferred — unified abstraction under
+exploration</h2>
+<p><strong>Context.</strong> Users want llama.cpp as a Harvey backend
+for better performance on ARM devices. A server-based integration design
+was drafted in <a
+href="llamacpp-support.design.html">llamacpp-support.design.md</a>.
+Design review identified a broader problem: Ollama and Llamafile
+management both have reliability issues in their current form, and
+adding a third ad-hoc backend without resolving the underlying
+inconsistency would make the situation worse. All three backends
+(Ollama, Llamafile, llama.cpp) share the same lifecycle concerns —
+start, stop, status, model listing, client wiring — but are currently
+implemented independently with different data structures and command
+patterns.</p>
+<p><strong>Decision.</strong> <strong>Implementation deferred.</strong>
+The design phase continues toward a unified model backend abstraction
+covering all three local inference backends. The existing
+<code>llamacpp-support.design.md</code> is a reference, not a finalized
+design.</p>
+<p>The unified design will address: - A common
+<code>ManagedBackend</code> interface for lifecycle management (start,
+stop, status, list models, active model, base URL, new LLM client) -
+Consistent client wiring in <code>Agent</code> when the active backend
+changes — replacing the current split between
+<code>OllamaStartedByHarvey bool</code> and
+<code>llamafileProc *os.Process</code> - A unified or parallel command
+surface that users can discover consistently across backends - Server
+detection and adoption (currently only Llamafile has
+<code>adoptExternalServer</code>; Ollama and llama.cpp need equivalent)
+- PID or process persistence across Harvey sessions for backends Harvey
+started</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Direct embedding of llama.cpp via CGO</em> — too much build
+complexity and maintenance burden for the Pi-first use case. Remains
+deferred.</li>
+<li><em>Ollama-only</em> — insufficient for users who need GGUF control
+or llama.cpp-specific quantization options.</li>
+<li><em>Proceed with ad-hoc llama.cpp commands</em> — would entrench the
+inconsistency rather than fix it.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li>No new <code>/llamacpp</code> command implementation in this
+release.</li>
+<li><a
+href="llamacpp-support.design.html">llamacpp-support.design.md</a>
+retains value as a backend-specific reference.</li>
+<li>New exploration document: <a
+href="unified-model-backend-design.html">unified-model-backend-design.md</a>.</li>
+</ul>
+<hr />
+<h2
+id="chunked-document-analysis-uses-paragraphblock-boundaries-not-fixed-size-tokens">2026-06-27
+— Chunked document analysis uses paragraph/block boundaries, not
+fixed-size tokens</h2>
+<p><strong>Context.</strong> The chunked analysis feature (see <a
+href="chunked-analysis-design.html">chunked-analysis-design.md</a>) must
+split a document into chunks before the map phase. The three practical
+options are: fixed-size token windows, semantic embedding-based splits,
+and structure-aware splits on natural document boundaries (paragraphs
+for prose, function/block boundaries for source code).</p>
+<p><strong>Decision.</strong> Use structure-aware splitting: paragraph
+boundaries (double newline) for prose document types (<code>.md</code>,
+<code>.txt</code>, <code>.rst</code>, <code>.tex</code>,
+<code>.html</code>), and function/block boundaries
+(blank-line-then-signature heuristic) for source code types
+(<code>.go</code>, <code>.ts</code>, <code>.py</code>, <code>.js</code>,
+<code>.c</code>, <code>.h</code>, others). Each chunk includes the last
+paragraph or signature of the preceding chunk as overlap. Document type
+is detected by file extension; unknown extensions default to paragraph
+splitting.</p>
+<p>Structure-aware chunking is supported by multiple independent
+studies. The Bioengineering evaluation (Gomez-Cabello et al., 2025)
+found adaptive boundary alignment achieved 87% accuracy vs 50% for
+fixed-size chunking across identical RAG pipelines. AutoChunker (Jain et
+al., ACL 2025) demonstrated that preserving document hierarchy at
+boundaries reduces noise and improves chunk coherence. The KES 2026
+systematic comparison (Śmigielski et al.) confirmed structure-aware
+outperforms fixed-size across diverse document and query types.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Fixed-size token windows</em> — simple to implement but
+consistently underperforms in the literature. QASC (Rastogi, 2605.22834)
+found 20% of technical documents yield inconsistent retrieval outcomes
+for identical queries when chunk size varies, because fixed windows cut
+across sentence and argument boundaries.</li>
+<li><em>Semantic embedding-based splits</em> — requires an active
+embedding model (not guaranteed in all Harvey configurations) and adds
+indexing latency. Gains over paragraph splitting are modest (Oil &amp;
+Gas study: structure- aware outperforms semantic at lower computational
+cost). Deferred.</li>
+<li><em>Language-aware parser for source code</em> — using
+<code>go/parser</code>, <code>tree-sitter</code>, or similar for precise
+function boundary detection. Adds a per-language dependency tree. The
+blank-line-then-signature heuristic correctly identifies boundaries in
+well-formatted Go and TypeScript without any dependency. Deferred until
+the heuristic proves insufficient.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li>Document type detection by file extension is required before
+chunking; unknown types fall back to paragraph splitting.</li>
+<li>Chunk size (default 1,500 tokens / ~6,000 bytes) and overlap
+strategy are configurable in <code>harvey.yaml</code> under a new
+<code>chunking:</code> stanza.</li>
+<li>If a document would produce more than <code>max_chunks</code>
+(default 20), Harvey warns the user before proceeding — processing 20 of
+100 chunks omits material and the user should know.</li>
+</ul>
+<hr />
+<h2
+id="chunked-analysis-uses-map-reduce-sliding-window-and-ephemeral-rag-deferred">2026-06-27
+— Chunked analysis uses map-reduce; sliding window and ephemeral RAG
+deferred</h2>
+<p><strong>Context.</strong> When a document is split into N chunks,
+Harvey must process each chunk and combine the results. Three patterns
+were considered: map-reduce (process chunks independently, synthesize
+once), sliding-window summarization (process chunks sequentially, carry
+a rolling summary), and ephemeral RAG (ingest the file into a temporary
+vector store and query it).</p>
+<p><strong>Decision.</strong> Use map-reduce. Each chunk is processed
+independently with the user’s chunk instruction as the prompt (map
+phase). After all chunks complete, a single synthesis pass combines the
+partial results into a final answer that is injected into the main
+conversation history (reduce phase). The synthesis model defaults to the
+same model used for the map phase.</p>
+<p>DocETL (Shankar et al., 2410.12189) showed that decomposing
+single-pass LLM document operations into map→reduce sequences improved
+accuracy 21–80% over single-pass approaches across four complex document
+analysis tasks. NexusSum (Kim &amp; Kim, ACL 2025) demonstrated a 30%
+improvement in BERTScore F1 using a hierarchical multi-LLM pipeline with
+controlled per-chunk output, the same two-phase structure Harvey adopts
+here.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Sliding-window summarization</em> — processes chunks
+sequentially, passing a rolling summary to each subsequent chunk prompt.
+Information loss compounds at each step; for a 20-chunk document, the
+summary entering chunk 20 is a distillation of nineteen distillations.
+ContextWeaver (Wu et al., 2604.23069) confirms that approaches which
+discard earlier reasoning context degrade multi-step performance.
+Rejected.</li>
+<li><em>Ephemeral RAG</em> — ingests the file into a temporary vector
+store and uses the existing <code>ragAugment</code> pipeline to retrieve
+relevant chunks. Suits retrieval use cases (find relevant chunks) but
+not analysis use cases (process every chunk). Requires an active
+embedding model not guaranteed in all Harvey configurations. Deferred as
+a future option for very large corpora where the user wants to query
+rather than analyze exhaustively.</li>
+<li><em>Per-chunk user confirmation</em> — pause after each chunk result
+for user review before proceeding. Adds control at the cost of 20+
+interruptions for a single document. Progress is displayed in the
+terminal during the map phase but no per-chunk confirmation is
+required.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li>The map phase runs unattended; terminal progress
+(<code>Processing chunk 3/12…</code>) is the user’s visibility into
+it.</li>
+<li>The synthesized result is injected into main conversation history as
+the assistant’s response to the original user message; the conversation
+continues normally from that point.</li>
+<li>The synthesis prompt is derived automatically from the user’s chunk
+instruction; no second prompt is shown to the user (D4).</li>
+<li>If any individual chunk fails, Harvey records <code>error</code> in
+the Fountain note for that chunk and continues. A partial synthesis is
+still attempted; the user is informed of failed chunks in the
+terminal.</li>
+</ul>
+<hr />
+<h2
+id="chunked-analysis-is-user-directed-overflow-triggers-an-alert-not-silent-chunking">2026-06-27
+— Chunked analysis is user-directed; overflow triggers an alert, not
+silent chunking</h2>
+<p><strong>Context.</strong> When Harvey detects that reading a file
+would overflow the model’s remaining context, it must decide whether to
+chunk silently and automatically or to pause and involve the user. The
+trigger for this decision uses two signals: an <code>os.Stat</code>
+byte-size estimate before the file is read, and a remaining-context
+estimate that accounts for current history, system prompt, and injected
+memories (not the raw context window).</p>
+<p><strong>Decision.</strong> Harvey alerts the user rather than
+chunking silently. The alert shows the file name, estimated size, and
+estimated remaining context, then presents the user’s most recent
+message as a pre-filled chunk prompt with the instruction: <em>Enter
+instructions to process each chunk in turn, or “no” to return to the
+conversation.</em> The user may edit the prompt, accept it as-is, or
+cancel. The chunk prompt may include an <code>@model</code> directive,
+which Harvey’s existing <code>@mention</code> routing infrastructure
+uses to route each chunk analysis call to the named model.</p>
+<p>QASC (Rastogi, 2605.22834) provides direct empirical support:
+treating the user query as a first-class input to segmentation improves
+relevance 18–27% over fixed or automatically derived chunking prompts.
+Chunking quality is tied to query specificity; only the user knows what
+they want from each chunk.</p>
+<p>The two-signal trigger (byte estimate before read, remaining-context
+estimate accounting for history) addresses the underlying accounting
+bug: Harvey currently compares file size against the raw context window
+rather than the context that remains after history and injected content
+are accounted for. ContextWeaver (Wu et al., 2604.23069) identifies this
+as the primary cause of unexpected context overflow in agentic
+systems.</p>
+<p><strong>Rejected alternatives.</strong></p>
+<ul>
+<li><em>Silent automatic chunking</em> — derives the chunk prompt from
+the original user message and proceeds without interruption. Rejected:
+(1) a generic “read this file” prompt produces poor chunk results per
+QASC; (2) silent chunking obscures Harvey’s behavior and prevents the
+user from cancelling before many LLM calls are made; (3) the user may
+realize the file is irrelevant to their question only when the alert
+appears.</li>
+<li><em>Trigger on raw context window only</em> — compare file size
+against the model’s total context window, ignoring existing history.
+This is the current (buggy) behavior. It causes overflow when the
+conversation has accumulated significant context. Rejected as the
+trigger for the new feature; the remaining-context estimate is used
+instead.</li>
+</ul>
+<p><strong>Consequences.</strong></p>
+<ul>
+<li>The <code>read_file</code> tool path gains a pre-read size check
+using <code>os.Stat</code> and a remaining-context estimate derived from
+serialized history length.</li>
+<li>A new alert UX path is required in <code>terminal.go</code>; it
+resembles the existing tool-confirmation flow.</li>
+<li><code>@mention</code> in the chunk prompt is parsed by the existing
+routing infrastructure; no new routing code is needed.</li>
+<li>The chunk sub-conversation (user’s instruction, per-chunk status
+notes, synthesis status) is recorded as a new
+<code>INT. CHUNK ANALYSIS</code> scene in the session <code>.spmd</code>
+file. The user’s chunk instruction in that scene is available to
+<code>/memory mine</code> for extraction as a reusable workflow
+pattern.</li>
+<li>A new <code>chunking:</code> stanza in <code>harvey.yaml</code>
+controls the alert threshold (default 80% of remaining context), chunk
+size, max chunks, and overlap strategy.</li>
+</ul>
 <hr />
 <h2
 id="source-registry-lives-in-knowledge.db-not-a-separate-database">2026-06-25
@@ -1692,6 +4526,53 @@ store.</p>
 <p><strong>Consequences.</strong> Known overlap. No immediate action
 required.</p>
 <hr />
+<h2
+id="dual-rag-injection-audit-status-update-folded-into-provenance-proposal">2026-07-25
+— Dual RAG injection audit: status update, folded into provenance
+proposal</h2>
+<p><strong>Context.</strong> Since the 2026-06-02 entry above,
+<code>per_prompt: false</code> (<code>SkipPerPrompt</code>,
+<code>config.go:68</code>) shipped 2026-06-28 as part of the M6 memory
+milestone. When set on a RAG store entry, <code>ragAugment</code>
+(<code>rag_support.go:621</code>) skips per-prompt injection for that
+store entirely. This is a related but distinct fix from either option
+the 2026-06-02 entry proposed: it’s a static, per-store,
+manually-opted-in YAML flag, not an automatic check of whether
+<code>a.RagOn</code> is set (option a) or whether
+<code>UnifiedMemory.Recall()</code> already injected from the same store
+this session (option b). A user who isn’t aware of the overlap, and
+leaves <code>per_prompt</code> unset, still gets double injection today
+— the default behavior described in the 2026-06-02 entry is
+unchanged.</p>
+<p><strong>Decision.</strong> Do not close this as a standalone item.
+Fold the remaining automatic-dedup work into the design phase of
+<code>improved_provenance_reasoning_proposal.md</code>, informed by Doc
+Searls’ “personal AI” writing (digested in
+<code>../doc_searchs_personal_ai_summary.md</code>): - The proposal’s
+Problem 1 (grounding checks don’t see RAG-injected content) and Problem
+2 (retrieval confidence isn’t visible) are both currently scoped only to
+<code>ragAugment</code>‘s injection.
+<code>UnifiedMemory.Recall()</code>’s session-start RAG injection
+(<code>harvey.go:358</code>, <code>injectMemoryContext</code>) is a
+second, currently-unaddressed injection path into the same conversation
+— a hallucinated misreading of <code>Recall()</code>-injected content is
+exactly as ungrounded as one from <code>ragAugment</code>-injected
+content (Searls’ “logohybris”: confident, fluent wrongness
+indistinguishable from a real answer). - Designing the grounding fix (A)
+and the confidence-display fix (B) against only one of the two injection
+paths would leave the other path’s chunks silently ungrounded and
+confidence-invisible even after the proposal ships — reproducing, at the
+injection-plumbing level, the exact problem the proposal exists to
+close. - Closing the automatic-dedup gap and closing the
+grounding/confidence gap are best done as one pass over everything RAG
+injects into the model’s context, not two separate patches to the same
+call sites later.</p>
+<p><strong>Consequences.</strong> No code change from this entry alone.
+<code>improved_provenance_reasoning_proposal.md</code>’s “Constraints
+for the design phase” section gains a bullet naming this fact so a
+future design pass doesn’t have to rediscover it. The 2026-06-02 entry
+above is left as historical record.</p>
+<hr />
 <h2 id="prose-tool-call-correction-injection">2026-05-31 — prose tool
 call correction injection</h2>
 <p><strong>Context.</strong> Small models emit tool calls as JSON fenced
@@ -1777,6 +4658,40 @@ namespace (<code>/rag</code>, <code>/memory</code>, <code>/kb</code>).
 The unified retrieval via <code>/memory recall</code> is the recommended
 entry point. All three silos share a token budget enforced at injection
 time.</p>
+<hr />
+<h2 id="skill-suggestions-from-session-transcripts">2026-06-30 — Skill
+suggestions from session transcripts</h2>
+<p><strong>Context.</strong> Sessions accumulate reusable multi-step
+workflows that would benefit from being captured as skills. A mechanism
+is needed to propose skill candidates automatically rather than
+requiring users to author SKILL.md files by hand.</p>
+<p><strong>Decision 1 — Output goes directly to the live
+<code>agents/skills/</code> directory</strong>, not a staging area. Each
+accepted candidate immediately becomes loadable via
+<code>/skill load</code>. The generated SKILL.md is clearly marked as
+auto-generated and the user is expected to review and refine it before
+committing. This avoids a two-step accept-then-move workflow that adds
+friction without safety benefit.</p>
+<p><strong>Decision 2 — Command lives on <code>/skill</code>, not
+<code>/memory</code></strong>, as <code>suggest</code>.
+<code>/skill suggest [SESSION]</code> fits the skill management
+namespace naturally; using <code>/memory suggest</code> would imply the
+output is a memory record. The subcommand reads from a session file
+(defaulting to the most recent <code>.spmd</code>) and is otherwise
+independent of the memory mining pipeline.</p>
+<p><strong>Decision 3 — Separate LLM prompt from
+<code>memory mine</code></strong>. <code>skillSuggestorPrompt</code> in
+<code>skill_suggestor.go</code> is a distinct constant from the memory
+miner’s extraction prompt. The output schemas differ (skills need
+<code>steps[]</code> and <code>variables[]</code>; memories need
+<code>kind</code> and <code>confidence</code>), and mixing them into one
+prompt would degrade extraction quality for both.</p>
+<p><strong>Consequences.</strong> <code>Suggestor</code> in
+<code>skill_suggestor.go</code> owns the full pipeline.
+<code>cmdSkill</code> wires the <code>suggest</code> subcommand.
+<code>SkillCandidate</code> reuses <code>SkillVariable</code> (updated
+to add <code>Type</code> field and JSON tags). No staging directory is
+needed.</p>
 </section>
 </body>
 </html>

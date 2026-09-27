@@ -19,142 +19,857 @@
 </ul>
 </nav>
 <section id="main-content">
-<h1 id="action-items">Action Items</h1>
 <h2 id="bugs">Bugs</h2>
-<h2 id="release-review">Release Review</h2>
-<h2 id="next-v0.0.15-release">Next (v0.0.15 release)</h2>
-<h3 id="bug-fixes-must-clear-before-tagging">Bug fixes (must clear
-before tagging)</h3>
 <ul class="task-list">
-<li><p><label><input type="checkbox"
-checked="" /><strong>ollama.go:486</strong> —
-<code>FastProbeModel</code> sets
-<code>cap.ToolMode = ToolModeStructured</code> unconditionally for
-tool-capable models. <code>ModelCache.Set</code> UPSERTs this, silently
-overwriting any mode the user set via <code>/model mode</code>. Fix:
-removed <code>cap.ToolMode = ToolModeStructured</code> from
-FastProbeModel; toolsReliable() falls through to SupportsTools==CapYes
-correctly.</label></p></li>
-<li><p><label><input type="checkbox"
-checked="" /><strong>terminal.go:1297</strong> — After option-2 retry,
-<code>toolCallRecords</code> still holds records from the first-pass
-<code>RunToolLoop</code> (populated at line 1141) even though those
-history entries were rolled back at line 1181. Fix: set
-<code>toolCallRecords = nil</code> at the top of the option-2 block
-before rolling back history.</label></p></li>
-<li><p><label><input type="checkbox"
-checked="" /><strong>terminal.go:1321</strong> — After option-2 retry,
-<code>noToolCalls</code> was always <code>true</code>. Fix: capture
-<code>hadToolCalls := len(a.History) &gt; histLenBeforeChat</code>
-before option-2 fires, then compute
-<code>noToolCalls := !hadToolCalls &amp;&amp; len(a.History) == histLenBeforeChat</code>.</label></p></li>
-<li><p><label><input type="checkbox"
-checked="" /><strong>terminal.go:1185</strong> — Option-2 retry called
-<code>a.Client.Chat</code> directly, bypassing <code>RunToolLoop</code>.
-Fix: when <code>useStructuredTools</code> is true, option-2 retry now
-uses <code>RunToolLoop</code> (with a fresh spinner) and updates
-<code>toolCallRecords</code> from the retry’s history
-slice.</label></p></li>
-<li><p><label><input type="checkbox"
-checked="" /><strong>terminal.go:1203</strong> — After option-2 retry
-with RunToolLoop, <code>a.History[histLenBeforeChat:]</code> now
-correctly contains the retry’s tool-call messages (populated by the
-fixed retry path). groundingCheck uses these
-automatically.</label></p></li>
-<li><p><label><input type="checkbox"
-checked="" /><strong>file_inject.go:116</strong> —
-<code>cantReadPhrases</code> entry
-<code>"please provide the file"</code> was too broad. Fix: tightened to
-<code>"please provide the file content"</code>.</label></p></li>
-<li><p><label><input type="checkbox"
-checked="" /><strong>model_cache.go:47</strong> — Exported
-<code>ToolMode*</code> constants now have <code>/** ... */</code>
-block-doc comments with Description and Example sections as required by
-CLAUDE.md.</label></p></li>
+<li><label><input type="checkbox" checked="" /><strong>FIXED
+2026-09-25.</strong> <code>getting_started.md</code> was stale (21
+registered commands missing, <code>/llamafile</code> and
+<code>/ollama</code> documented though no longer registered,
+<code>/kb</code> subcommands short). Command tables now come from the
+registry; the <code>/kb</code> registry entry itself omitted
+<code>learn</code>, <code>source</code>, <code>retract</code>,
+<code>cite</code>, <code>show</code> and <code>check-retractions</code>
+and is fixed (<code>kb_registry_test.go</code> keeps it in step with
+<code>cmdKB</code>).</label></li>
+<li><label><input type="checkbox" checked="" /><strong>FIXED
+2026-09-25.</strong> <code>/model use NAME</code> only searched the
+registry and aliases, so an Ollama model could be reached only through
+the picker. It now falls back to every model <code>/model list</code>
+shows: exact name (case-insensitive), then a unique prefix; an ambiguous
+prefix lists the candidates. Tests:
+<code>model_use_name_test.go</code>.</label></li>
+<li><label><input type="checkbox" checked="" /><strong>FIXED
+2026-09-25.</strong> (Original report below.) Cause:
+<code>nomic-embed-text</code> was not installed, and
+<code>MemoryStore.Save</code> wrote the memory file before embedding, so
+each failed save left an orphan <code>.fountain</code> file.
+<code>Save</code> now embeds first, writes nothing on failure, restores
+any prior file if the index write fails, and the error says to run
+<code>ollama pull MODEL</code>. Tests:
+<code>memory_save_atomic_test.go</code>. Two orphans from the report
+remain on disk in <code>agents/memories/tool_use/</code>
+(<code>tool_use_b39dd1.fountain</code>,
+<code>tool_use_760a04.fountain</code>); delete by hand.</label></li>
 </ul>
-<h3 id="release-steps-after-bugs-cleared">Release steps (after bugs
-cleared)</h3>
+<pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Connected: Apertus (llamafile)
+  /help for commands · /exit to quit
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  25 session(s) unmined — /memory mine to extract learnings
+  RAG has 514 chunk(s) but is off — /rag on to enable context injection
+harvey &gt; /memory list
+project_fact_019f37             project_fact      -               0.5  safe_mode default allowed_commands now includes kb and man
+workspace_profile_29074f        workspace_profile  -               0.5  Data Scientist — Laboratory
+project_fact_84e77b             project_fact      -               0.5  Project: Laboratory
+project_fact_4f8e21             project_fact      pattern         1.0  harvey/INSTALL.md is hand-maintained, not cmt-generated; installer.sh/ps1 removed (pre-release, no binary distribution yet)
+harvey &gt; /memory mine
+Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session-20260924-143905.spmd …
+LLM proposed 1 memory candidate(s). Starting review…
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Proposed memory 1 of 1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Type:        tool_use
+ Kind:        pitfall
+ Description: Never use the &#39;+&#39; character in filenames to avoid shell parameter expansion issues.
+ Action:      Use &#39;-&#39; or &#39;_&#39; instead of &#39;+&#39; in filenames.
+ Tags:        shell, filenames, parameters
+ Summary:     The &#39;+&#39; character in filenames triggers parameter expansion, leading to incorrect file handling by shells. This is a permanent shell behavior.
+
+[a]ccept  [e]dit  [s]how similar  [r]eplace &lt;id&gt;  [f]ull view  [k]skip  [q]uit
+&gt; a
+Error saving memory: memory store: save: embed: ollama embed: HTTP 404: {&quot;error&quot;:&quot;model \&quot;nomic-embed-text:latest\&quot; not found, try pulling it first&quot;}
+
+Done. Accepted: 0  Skipped: 0
+harvey &gt; /memory list
+project_fact_019f37             project_fact      -               0.5  safe_mode default allowed_commands now includes kb and man
+workspace_profile_29074f        workspace_profile  -               0.5  Data Scientist — Laboratory
+project_fact_84e77b             project_fact      -               0.5  Project: Laboratory
+project_fact_4f8e21             project_fact      pattern         1.0  harvey/INSTALL.md is hand-maintained, not cmt-generated; installer.sh/ps1 removed (pre-release, no binary distribution yet)
+harvey &gt; /memory mine
+Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session-20260713-171056.spmd …
+LLM proposed 1 memory candidate(s). Starting review…
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Proposed memory 1 of 1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Type:        tool_use
+ Kind:        pitfall
+ Description: Always use the chunk-size parameter when processing large files with Qwen3.5-4B-Q5_K_S.
+ Action:      Increase the chunk-size parameter when processing large files.
+ Tags:        model, processing, chunk-size
+ Summary:     Files over 800 characters without chunk-size cause errors. This is a permanent model quirk.
+
+[a]ccept  [e]dit  [s]how similar  [r]eplace &lt;id&gt;  [f]ull view  [k]skip  [q]uit
+&gt; a
+Error saving memory: memory store: save: embed: ollama embed: HTTP 404: {&quot;error&quot;:&quot;model \&quot;nomic-embed-text:latest\&quot; not found, try pulling it first&quot;}
+
+Done. Accepted: 0  Skipped: 0
+harvey &gt; /memory mine
+Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session-20260706-172458.spmd …</code></pre>
 <ul class="task-list">
-<li><label><input type="checkbox" />Bump <code>codemeta.json</code>
-version to 0.0.15, update <code>releaseDate</code> and
-<code>releaseNotes</code></label></li>
-<li><label><input type="checkbox" />Regenerate <code>version.go</code>:
-<code>cmt codemeta.json version.go</code></label></li>
-<li><label><input type="checkbox" />Commit and tag
-<code>v0.0.15</code></label></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
+2026-09-25.</strong> <code>bufio.NewReaderSize(x, 1)</code> was used in
+six places to read a line without reading ahead, with comments claiming
+a one-byte buffer. <code>bufio</code> enforces a 16-byte minimum, so it
+swallowed up to 15 bytes of following input (verified).
+<code>newLineReader</code> (in <code>model_picker.go</code>) reads one
+byte per call and replaces all six sites. Tests:
+<code>line_reader_test.go</code>, mutation-checked.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
+2026-09-25: stale <code>/ollama</code> and <code>/llamafile</code>
+references.</strong> Neither command is registered (<code>/model</code>
+replaced them), but about 30 places told users to run them. Now: runtime
+messages in <code>commands.go</code>, <code>commands_rag.go</code>,
+<code>commands_skill.go</code>, <code>plan_cmd.go</code>,
+<code>terminal.go</code>, <code>backend_startup.go</code> point at
+<code>/model use</code> or a shell <code>ollama</code> command;
+<code>helptext.go</code> (status, rag, inspect) and the generated pages
+<code>harvey-inspect/rag/status.7.md</code> follow;
+<code>harvey-model.7.md</code>, <code>-model-alias</code>,
+<code>-routing</code> hand-patched; <code>README.md</code>,
+<code>CONFIGURATION.md</code>, <code>ARCHITECTURE.md</code>,
+<code>models.md</code>, <code>model_guide.md</code>,
+<code>MODEL_CACHE.md</code>, <code>ROUTING.md</code>,
+<code>reference.md</code>, <code>user_manual.md</code> corrected.
+<code>harvey-llamafile.7</code> and <code>harvey-ollama.7</code> (.md
+and .html) are deleted: they documented commands that no longer exist.
+The <code>/ollama use|probe</code> tab completion moved to
+<code>/model alias add ALIAS MODEL</code>.
+<code>stale_commands_test.go</code> fails if any non-test Go file names
+either command again. Left as history: <code>CHANGES.md</code>,
+<code>DECISIONS.md</code>, the <code>*-design.md</code> and
+<code>*-plan.md</code> files, the release notes in
+<code>README.md</code>/<code>about.md</code>.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
+2026-09-25: Ollama models were probed only when an alias was
+saved.</strong> A model chosen any other way (startup picker with the
+alias prompt declined, <code>/model use NAME</code>) had no cache entry,
+so <code>toolsReliable()</code> answered false and Harvey silently
+injected file contents instead of using tools; the alias-time probe also
+erased a <code>/model mode</code> override (<code>Set</code> replaces
+the row). <code>setOllamaModel</code> now probes on every selection
+through <code>probeOllamaModelAndCache</code>, carrying the tool mode
+over; no <code>/model probe</code> command
+(<code>ollama_select_probe_test.go</code>, DR-0004
+<code>proposed</code>). <code>MODEL_CACHE.md</code> rewritten to match.
+<strong>Update 2026-09-27:</strong> <code>ThoroughProbeModel</code> now
+has one caller — see DR-0006 below.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>DONE
+2026-09-27 (harvey DR-0006): closed out DR-0005’s two deferred items,
+plus two more loose ends.</strong></label></p>
+<ul>
+<li><code>termlib</code> bumped to the
+<code>v0.0.9</code>+<code>354195d</code> pseudo-version (no
+<code>v0.0.10</code> tag exists; tagging it is optional, left to
+RSDOIEL). <strong>Update 2026-09-27: RSDOIEL tagged and released termlib
+v0.0.10; <code>go.mod</code> re-bumped from the pseudo-version to the
+real tag,
+<code>go build</code>/<code>go vet</code>/<code>go test ./...</code>
+clean.</strong></li>
+<li><code>ThoroughProbeModel</code> wired into <code>/rag setup</code>’s
+embedder auto-pick (<code>confirmEmbedder</code> in
+<code>commands_rag.go</code>): the keyword guess is confirmed or
+corrected with one live <code>/api/embed</code> call before the store
+commits to it. Not wired into every <code>setOllamaModel</code>
+selection (rejected — extra request on every switch for a signal only
+RAG setup uses).</li>
+<li><code>--json</code> (<code>harvey.PrintJSONError</code>,
+<code>harvey.ExtractJSONFlag</code> in <code>exitcode.go</code>): both
+binaries accept <code>-json</code>/<code>--json</code> anywhere on the
+line and print a failing startup/flag-parsing error (or, for
+<code>harvey</code>, a failed non-interactive session) as
+<code>{"error","class","code"}</code> JSON on stderr, matching
+<code>kb</code>’s shape.</li>
+<li>Scripted <code>harvey</code> exit codes: a non-interactive session
+(<code>keepFirstFailure</code> in <code>terminal.go</code>) now exits
+with the class of its first failed slash command or chat turn instead of
+always 0. <code>plan_cmd.go</code>’s two unclassified errors
+reclassified (<code>Unavailablef</code>, <code>Negativef</code>) as the
+first command family this covers.</li>
+<li><strong>Follow-up, not done here:</strong> most other command
+handlers (<code>/read</code>, <code>/read-dir</code>, an unknown command
+name, most of
+<code>commands_rag.go</code>/<code>commands_skill.go</code>) still
+print-and-swallow a failure or return an unclassified
+<code>fmt.Errorf</code>, so a scripted session using them still exits 0
+or 70. Reclassifying each is its own pass, named but not started.</li>
+</ul></li>
+<li><p><label><input type="checkbox" checked="" /><strong>DONE
+2026-09-27: adopted the workspace exit-code convention</strong>
+(workspace DR-0003; the <code>kb</code> implementation is knowledge
+DR-0047 to DR-0049; harvey DR-0005). <code>cmd/harvey</code> and
+<code>cmd/assay</code> now exit 0 ok, 1 negative, 2 usage, 65 data, 66
+no_input, 69 unavailable, 70 internal, 73 cant_create, 74 io, 75
+temp_fail, 77 no_permission, 78 config — <code>exitcode.go</code>,
+<code>EXIT STATUS</code> in both manuals, <code>flags_test.go</code>
+enforcement. <code>--json</code> mode/error class was scoped out
+(neither binary has a <code>--json</code> mode yet). <strong>Survey done
+2026-09-25:</strong> <code>exit-codes-survey.md</code> (baseline of 41
+table rows, 20 harvey and 21 assay, decisions Q1-Q5, plan H0-H6). Plan:
+<code>exit-codes-plan.md</code>. <strong>H0-H5 done 2026-09-25</strong>,
+committed. <strong>H6 done 2026-09-27</strong>:
+<code>scripts/compare-exit-codes.py</code> +
+<code>scripts/README.md</code> (old-vs-new harness, modelled on
+<code>knowledge</code>’s, closed-port backend, <code>pgrep ollama</code>
+guard); run against the v0.0.16 baseline (<code>df39cfe</code>, via a
+throwaway <code>git worktree</code>) — 32 commands changed exit code,
+every one matching the survey/DR-0005 table exactly, no exit 70, no
+hang, no stray Ollama process. <code>harvey/decisions/0005-*.md</code>
+written and <strong>accepted</strong> by RSDOIEL.
+<code>CHANGES.md</code> <code>## Unreleased</code> has the upgrade
+table.</label></p></li>
 </ul>
-<h2 id="deferred-to-v0.0.16">Deferred to v0.0.16</h2>
-<h3 id="option-2-reactive-retry-surgical-rollback">Option 2 reactive
-retry — surgical rollback</h3>
-<p>See <a href="audit-trail-plan.html">audit-trail-plan.md</a> W1 and
-the small-model tool-use mitigation work (file_inject.go option 2).</p>
+<h2 id="action-items">Action Items</h2>
 <ul class="task-list">
-<li><label><input type="checkbox" />The current retry in
-<code>terminal.go</code> calls <code>Client.Chat</code> directly and
-rolls back the full history by one message. When
-<code>RunToolLoop</code> added intermediate tool-call/tool-result
-messages before the refusal, those are silently dropped. Implement a
-surgical rollback that only removes the assistant refusal message and
-re-adds the augmented user message, preserving prior tool loop
-history.</label></li>
+<li><p><label><input type="checkbox" checked="" /><strong>DONE, shipped
+in v0.0.16.</strong> Fully integrate the updates to the knowledge model,
+Harvey should support a learning mode that integrates both human, model
+and hybrid dialogs for evaluation, summarization, concept tagging and
+re-ingest for the knowledge base.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>DONE, shipped
+in v0.0.16.</strong> I’ve evolved the development methodology since last
+working on Harvey. The knowledge took kb has been updated to reflect
+those changes. Harvey repo needs to be brought into alignment with the
+new practrices around design decision reviews and recording them in a
+decisions directory that kb can be used to update the agents knowledge
+base for the active workspace. This could impact how we treat the
+knowledge base as a memory reservoir for Harvey, it could also shed
+light of how we handle boundries between memory layers, documents versus
+querying SQLite3 database representations, TAGS and the workspace
+knowledge base</label></p>
+<p><strong>Status 2026-09-24 (end of day):</strong> both items above are
+done and scheduled for <strong>v0.0.16</strong>, per
+<code>knowledge-learning-mode-design.md</code> / <code>-plan.md</code>.
+H0-H7 are done and committed:
+<code>/kb learn ingest|draft|review|concepts</code>,
+<code>learn_model</code> in <code>harvey.yaml</code>,
+<code>go.mod</code> at knowledge <code>fd588ef</code> (unreleased
+v0.0.13; RSDOIEL chose to ship on it). Harvey <code>decisions/</code>:
+DR-0001 and DR-0002 accepted, DR-0003 (keep termlib) proposed. The
+termlib gate is cleared and <code>harvey/CLAUDE.md</code> is fixed. What
+remains before the tag is the release process itself (below), which is
+RSDOIEL’s step.</p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
+2026-09-24. <code>promptAction</code> treated end of input as
+“yes”.</strong> Found while building <code>/kb learn concepts</code>:
+Ctrl-D or a closed pipe at a “Write: PATH” box wrote the file.
+<code>promptAction</code> now returns <code>(choice, ended)</code> and
+every caller treats <code>ended</code> as quit
+(<code>/kb learn concepts</code>, and both write prompts in
+<code>autoExecuteReply</code>); a bare Enter is still yes. The same pass
+found that the tagged-block path in <code>autoExecuteReply</code> never
+checked <code>CheckWritePermission</code> (only the untagged fallback
+did), so a read-only path could be written after a yes; it is now
+refused before the prompt. 8 red-first tests in
+<code>commands_test.go</code>; one older test had encoded the bug
+(“Empty input → Enter → yes”) and now sends a real
+Enter.</label></p></li>
+<li><p><label><input type="checkbox" /><strong>Design spike: AI HAT+ 2
+(Hailo-10H) as a fourth Harvey backend.</strong> Blocked on hardware — a
+Raspberry Pi 5 16GB + AI HAT+ 2 build is planned but not yet purchased
+(parts list: <code>../Harvey-Project-Parts-List.txt</code>).
+<code>hailo-ollama</code> (the HAT’s local server) exposes
+<code>/api/pull</code> and <code>/api/chat</code> on port 8000 with the
+same streaming JSON shape
+(<code>done</code>/<code>eval_count</code>/<code>done_reason</code>) as
+Ollama’s own API on 11434 — the spike is to confirm how close that
+compatibility actually is and whether it can reuse
+<code>backend_ollama.go</code> pointed at a different URL/port, or needs
+its own <code>backend_hailo.go</code> alongside
+<code>backend_llamafile.go</code>/<code>backend_llamacpp.go</code>.
+Model choice is constrained to Hailo’s curated set
+(deepseek_r1_distill_qwen:1.5b, llama3.2:3b, qwen2.5-coder:1.5b,
+qwen2.5-instruct:1.5b, qwen2:1.5b — all smaller than Harvey’s current
+CPU-only lineup), so this is an offload/speed play, not a capability
+upgrade. See <code>agents/knowledge.db</code> project
+<code>harvey</code>, observations 423 (original near-drop-in-backend
+idea), 444 (unrelated dual-model arbitration hypothesis, same session),
+445 (book review this spike is drawn from), and 446 (parts
+list).</label></p></li>
 </ul>
-<h3
-id="model-mode-model-auto-reset-to-auto"><code>/model mode MODEL auto</code>
-— reset to auto</h3>
-<p>See <a href="audit-trail-plan.html">audit-trail-plan.md</a> option 3
-(<code>/model mode</code> command, <code>model_cache.go</code>).</p>
+<h2 id="update-next">Update next</h2>
 <ul class="task-list">
-<li><label><input type="checkbox" /><code>/model mode</code> currently
-accepts <code>structured</code>, <code>prose</code>,
-<code>inject</code>, and <code>none</code> but has no <code>auto</code>
-value to clear an explicit override and return the model to
-capability-detected defaults. Add <code>auto</code> as a valid mode that
-sets <code>tool_mode = ''</code> (empty) in
-<code>model_capabilities</code>, restoring <code>modelToolMode()</code>
-fallback to <code>CapabilityStatus</code>.</label></li>
+<li><p><label><input type="checkbox" checked="" /><strong>Blocked on
+<code>knowledge</code></strong> — <strong>resolved 2026-09-15.</strong>
+Decided 2026-09-08 (see <code>agents/knowledge.db</code>, project
+<code>harvey</code>, observation id</label></p>
+<ol start="398" type="1">
+<li>to hold the release until <code>kb ingest</code>’s bugs and
+<code>[[wikilink]]</code> tagging settled. Both shipped in
+<code>knowledge</code> v0.0.4–v0.0.6 (<code>wikilink-tagging</code>,
+<code>concept-tag-retrieval</code>, <code>narrative-documents</code> —
+see <code>../knowledge/CHANGES.md</code>), and <code>go.mod</code> had
+no local <code>replace</code> for <code>knowledge</code> by the time
+this was checked — it was already a plain tagged dependency. Bumped
+<code>go.mod</code> <code>github.com/rsdoiel/knowledge</code> v0.0.3 →
+v0.0.6; <code>go build</code>/<code>go test ./...</code> clean. Also
+rewired <code>memory_unified.go</code>’s <code>recallKB</code> to try
+<code>kb.MatchConceptNames</code>/<code>RecallByConceptNames</code>
+first (concept-tag match, not project-scoped, widened to
+<code>records</code> and <code>reviewed</code>-status
+<code>document</code> sections), falling back to the original
+project-scoped substring scan over <code>observations</code> when no
+concept matches — item 1–2 of
+<code>knowledge-learning-mode-feature-request.md</code>. TDD: 6 new
+tests in <code>memory_unified_test.go</code>, confirmed red before
+implementation. <strong>Still open:</strong> items 3–6 of that
+feature-request doc (the learning-mode UX itself, session-to-document
+ingestion, decisions-directory realignment) — untouched by this
+change.</li>
+</ol>
+<p><strong>Update 2026-09-17:</strong> re-bumped <code>go.mod</code>
+<code>github.com/rsdoiel/knowledge</code> v0.0.6 → v0.0.9
+(<code>v0.0.7</code> ingest/search bug fixes, <code>v0.0.8</code>
+<code>index --check</code></p>
+<ul>
+<li><code>observation update</code> correction path, <code>v0.0.9</code>
+<code>project rename</code>/ <code>concept rename</code> + cross-machine
+last-writer-wins + <code>kb index --all</code> — see
+<code>../knowledge/CHANGES.md</code>). <code>go build ./...</code> and
+<code>go test ./...</code> clean, no API changes touched harvey’s four
+consumers (<code>harvey.go</code>, <code>commands_kb.go</code>,
+<code>memory_unified.go</code>, <code>terminal.go</code>);
+<code>knowledge.go</code>/ <code>knowledge_merge.go</code> no longer
+exist in harvey (fully extracted into the module already).
+<code>go test -race ./...</code> could not run on this machine (Pi:
+“ThreadSanitizer: unsupported VMA range, Found 47 - Supported 48”) — a
+platform limitation, not something this bump caused; unverified under
+the race detector until run on hardware ThreadSanitizer supports. Items
+3–6 of the feature-request doc remain open and untouched.</li>
 </ul>
-<h3 id="retraction-monitoring-service">Retraction monitoring
-service</h3>
-<p>See <a
-href="scholarly-provenance-plan.html">scholarly-provenance-plan.md</a>
-S2 and <a
-href="scholarly-provenance-design.html">scholarly-provenance-design.md</a>.</p>
-<ul class="task-list">
-<li><label><input type="checkbox" />The <code>sources</code> table in
-<code>knowledge.db</code> already has <code>retracted INTEGER</code> and
-<code>retraction_note TEXT</code> columns for manual marking (via
-<code>/kb retract</code>). Add a periodic background check against the
-Retraction Watch API (<code>retractionwatch.com</code>) that flags
-retracted DOIs automatically. A <code>/kb check-retractions</code>
-command (or scheduled task) should query registered sources with
-<code>identifier_type = 'doi'</code> and update
-<code>retracted</code>/<code>retraction_note</code> on
-hits.</label></li>
+<p><strong>Update 2026-09-23:</strong> re-bumped v0.0.9 → v0.0.11
+(<code>v0.0.10</code>
+<code>concept suggest</code>/<code>document tag</code>/density-linking/<code>project rename</code>
+for record-owning projects; <code>v0.0.11</code>
+<code>document fuzzy-tag</code>/<code>frontmatter</code>, fuzzy
+clustering, <code>kb search</code> punctuation fix).
+<code>go build</code>, <code>go vet</code>, <code>go test ./...</code>
+clean, no code changes needed; race detector still unrunnable on this
+Pi. Items 3–6 are now designed: see
+<code>knowledge-learning-mode-design.md</code> / <code>-plan.md</code>
+and <code>decisions/0001</code>–<code>0002</code> (all
+<code>proposed</code>). Track B of that plan is gated on
+<code>knowledge</code> v0.0.12
+(<code>../knowledge/library-lift-plan.md</code>).</p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>DONE
+2026-09-24: evaluated the <code>github.com/rsdoiel/termlib</code>
+dependency; decision is to keep it for v0.0.16.</strong> Requested
+2026-09-15 after the stale <code>go.mod</code> <code>replace</code> was
+found. Full facts and options in <code>termlib-evaluation.md</code>
+(Harvey’s whole use is 6 lines in <code>terminal.go</code>; termlib is
+the author’s own small module with one dependency; Charm would add about
+30 packages and a rebuild of the line editor). RSDOIEL chose “keep
+termlib”; recorded as <code>decisions/0003-*.md</code>
+(<code>proposed</code>). <code>repl-charm-migration-design.md</code> had
+wrongly said the drop was already decided; corrected there.
+<strong>Optional, author’s step:</strong> termlib <code>main</code> is
+one commit ahead of <code>v0.0.9</code> (<code>354195d</code>, a
+wide/multi-row prompt fix that does not affect Harvey’s one-row prompt);
+tag <code>v0.0.10</code> and bump <code>go.mod</code> if wanted. Charm
+stays a later, separate effort.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />Release readiness —
+<strong>v0.0.16 is tagged and published (checked 2026-09-25); the tag is
+left as is and later fixes go forward into the next release.
+<code>go.mod</code> now pins knowledge v0.0.13. The note below is
+history.</strong> Original: <strong>prep done 2026-09-15,
+tagging/publishing still open, now also gated on the termlib evaluation
+above.</strong> All three prep items from the original note are done:
+(1) stale
+<code>replace github.com/rsdoiel/termlib =&gt; ../termlib</code> removed
+from <code>go.mod</code> — <code>go mod tidy</code> confirmed the build
+against the real tagged <code>v0.0.9</code>, no local checkout needed;
+(2) version bumped <code>0.0.15a</code> → <code>0.0.16</code>; (3)
+<code>releaseNotes</code> written covering everything since
+<code>v0.0.15</code> and propagated to
+<code>CHANGES.md</code>/<code>about.md</code>/<code>CITATION.cff</code>/<code>version.go</code>
+via <code>cmt</code>. <strong>Note:</strong>
+<code>cmt codemeta.json README.md</code> was run but reverted — it
+discards hand-curated content (Security Note, Features, Quick Start,
+Documentation index) that root <code>CLAUDE.md</code>’s “regenerated,
+never hand-edited” categorization doesn’t account for;
+<code>README.md</code> was hand-patched instead (version/date/notes
+only). If <code>cmt codemeta.json README.md</code> is ever run again,
+diff it before committing — same class of gotcha as the
+<code>knowledge</code> repo’s Makefile (see root
+<code>CLAUDE.md</code>’s “Note for knowledge”). <strong>Update
+2026-09-24:</strong> the termlib gate is cleared (above); release notes
+now cover the learning mode, the write-prompt and permission fixes and
+the <code>/kb search</code> hyphen fix (hand-patched in
+<code>codemeta.json</code>, <code>CHANGES.md</code>,
+<code>about.md</code>, <code>README.md</code>; <code>cmt</code> was not
+run). RSDOIEL chose to ship on the knowledge pre-release commit
+<code>fd588ef</code> (v0.0.13 is not tagged), so <code>go.mod</code>
+requires a pseudo-version and the notes say so. <strong>Still
+open:</strong> the actual release process (<code>make release</code> to
+cross-compile <code>dist/*.zip</code>, then <code>release.bash</code> to
+tag <code>v0.0.16</code>, push, and create the draft GitHub release) —
+deliberately not run automatically since it pushes commits and creates a
+public (draft) release.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />Cross-machine
+<code>knowledge.db</code> sync — <strong>DONE 2026-07-27</strong>. Steps
+1 (UUID migration) and 2 (merge tool) were already built; this session
+applied both, fixed two real bugs discovered along the way
+(<code>concepts.created_at</code>,
+<code>experiments</code>→<code>projects</code>), and completed a genuine
+merge, placed on both machines. Sequence: pulled both
+<code>~/Laboratory</code> and <code>~/Laboratory/harvey</code> up to
+date on <code>macmini-rd.local</code> over SSH (no conflicts — checked
+incoming commits against macmini’s one unpushed local commit first);
+backed up and migrated macmini’s real live
+<code>agents/knowledge.db</code> (both fixes, verified identical to the
+earlier copy-based test); <code>scp</code>’d it to wren; ran
+<code>bin/kbmerge -a &lt;wren&gt; -b &lt;macmini&gt; -force</code>
+locally; independently verified the merged output
+(<code>PRAGMA integrity_check</code> clean, zero dangling join rows, all
+UUIDs present) before placing it anywhere; backed up wren’s pre-merge
+live db; replaced wren’s live <code>agents/knowledge.db</code> with the
+merged file; <code>scp</code>’d that same file to replace macmini’s.
+Confirmed byte-identical (checksum) on both machines afterward. Result:
+5 projects
+(<code>harvey</code>/<code>henry</code>/<code>antennaApp</code>/<code>sparqlset</code>/<code>audiobox</code>),
+46 concepts, 181 observations, no data lost. See the 2026-07-27
+“Cross-machine <code>knowledge.db</code> merge completed” entry in
+<code>DECISIONS.md</code>. Backups on both machines:
+<code>.pre-cleanup-20260727</code>,
+<code>.pre-experiments-migration-20260727</code> (macmini),
+<code>.pre-merge-20260727</code> (wren). <strong>Not done:</strong>
+macmini’s root <code>Laboratory</code> repo has an unpushed merge commit
+(<code>e418c8e</code>) from the <code>git pull</code> step — ask before
+pushing. <strong>Next, if wanted:</strong> knowledge-base module
+extraction (own repo/<code>go.mod</code>, step 3) and JSON-L export
+(deferred, step 4) — full sequencing in
+<code>../knowledge_db_merge_design.md</code>. Full resume context also
+recorded as a <code>note</code> observation in
+<code>agents/knowledge.db</code> (project <code>harvey</code>, concept
+<code>cross-machine-sync</code>, most recent entry).</label></p></li>
 </ul>
-<h3 id="llama.cpp-apertus-tool-call-format">llama.cpp Apertus tool-call
-format</h3>
-<p>See <code>henry</code> project
-(<code>henry-handoff-20260622-llamafile-factory.spmd</code>).</p>
+<h2 id="bugs-1">Bugs</h2>
 <ul class="task-list">
-<li><label><input type="checkbox" />When llama.cpp gains stable custom
-token support, update <code>templates/apertus-4b-toolcall.jinja</code>
-in the <code>henry</code> project to use structured tool-call tokens
-instead of the current prose JSON fence workaround. Retest with Apertus
-4B via <code>bin/assay --llamafile</code>.</label></li>
+<li><p><label><input type="checkbox" checked="" />macmini-rd.local’s
+<code>agents/knowledge.db</code> was still on the
+pre-<code>harvey</code>
+<code>experiments</code>/<code>experiment_id</code> schema (documented
+historically in root <code>CLAUDE.md</code>, predating
+<code>harvey/knowledge.go</code>, which has used <code>projects</code>/
+<code>project_id</code> since its first commit) — 93 real observations
+and 35 concepts across 4 real projects were invisible to the app, and
+<code>observations</code> had no <code>project_id</code> column at all.
+<strong>Fixed 2026-07-27:</strong>
+<code>migrateExperimentsToProjects</code> in <code>knowledge.go</code>,
+called from <code>OpenKnowledgeBase</code>; no-op if no legacy
+<code>experiments</code> table exists (confirmed true for every other
+reachable <code>knowledge.db</code>). See
+<code>experiments-migration-design.md</code>/<code>-plan.md</code> and
+<code>DECISIONS.md</code> same date. TDD: five new tests in
+<code>knowledge_test.go</code>, three confirmed red before
+implementation. Verified against the real copy of macmini’s database and
+via a full successful <code>bin/kbmerge</code> run. <strong>Still
+open:</strong> apply to macmini’s actual live database (only the copy
+was migrated/tested).</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><code>concepts</code>
+table missing <code>created_at</code> on any <code>knowledge.db</code>
+created before that column was added to the base schema DDL (found on
+macmini-rd.local’s real database 2026-07-27, via a genuine cross-machine
+<code>bin/kbmerge</code> attempt — <code>kbAlterStmts</code> had no
+<code>ALTER</code> for it, unlike every other column added after the
+original <code>CREATE TABLE</code>). <strong>Fixed 2026-07-27:</strong>
+added the missing
+<code>ALTER TABLE concepts ADD COLUMN created_at DATETIME</code> (no
+<code>DEFAULT CURRENT_TIMESTAMP</code> — SQLite rejects a non-constant
+<code>ADD COLUMN</code> default on any non-empty table, confirmed
+against real <code>sqlite3</code>, not just the Go driver) plus an
+idempotent one-time <code>UPDATE ... WHERE created_at IS NULL</code>
+backfill. TDD:
+<code>TestOpenKnowledgeBase_BackfillsLegacyConceptsCreatedAt</code>
+(<code>knowledge_test.go</code>) reproduces macmini’s exact legacy
+shape. See <code>DECISIONS.md</code> same date. <strong>Still
+open:</strong> macmini’s actual live <code>agents/knowledge.db</code>
+needs this fix applied via its own <code>git pull</code> + reopen — only
+a copy was fixed/tested here.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />24 of 101
+<code>observation_concepts</code> rows in
+<code>agents/knowledge.db</code> (this machine) reference
+<code>observation_id</code> values that no longer exist in
+<code>observations</code> — dangling links, found 2026-07-26 while
+manually verifying the merge tool (see <code>DECISIONS.md</code>, same
+date, “Cross-machine <code>knowledge.db</code> merge tool” entry).
+Likely a historical delete that ran on a connection without
+<code>PRAGMA foreign_keys=ON</code> active (SQLite enforces FKs
+per-connection, not persistently in the file) — e.g. a raw
+<code>sqlite3</code> CLI session, since <code>OpenKnowledgeBase</code>
+itself pins a single connection (<code>db.SetMaxOpenConns(1)</code>) and
+sets the pragma on every open, so the current Go code path was never the
+source. Not caused by, and didn’t affect the correctness of, the UUID
+migration or merge tool — <code>MergeKnowledgeBases</code>’s join-based
+copy already excludes unresolvable links rather than propagating them.
+<strong>Fixed 2026-07-27 (on <code>wren</code>):</strong> backed up the
+live file to <code>agents/knowledge.db.pre-cleanup-20260727</code>, then
+ran
+<code>DELETE FROM observation_concepts WHERE observation_id NOT IN (SELECT id FROM observations)</code>
+— removed exactly 24 rows. Also checked the other five parent/join
+combinations (<code>observation_concepts</code>→<code>concepts</code>,
+<code>project_concepts</code>→<code>projects</code>/<code>concepts</code>,
+<code>observation_sources</code>→<code>observations</code>/<code>sources</code>)
+— all were already clean, so no further cleanup was needed. This
+machine’s <code>agents/knowledge.db</code> only;
+<code>macmini-rd.local</code>’s copy was not touched and should be
+checked separately.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />Remove the prompt to
+remove previous session at startup (we have a <code>-resume</code> and
+<code>/resume</code> option if needed) — already fixed in commit
+<code>9e3e13b</code> (2026-07-12, bundled into an earlier “Quick Save”
+commit, not checked off at the time). <code>pickSession</code>’s
+interactive “Resume a prior session? [y/N]” prompt was removed from
+<code>Run()</code> (<code>terminal.go</code>);
+<code>--continue</code>/<code>--resume</code> CLI flags
+(<code>cmd/harvey/main.go</code>) and <code>/resume</code>,
+<code>/session use|continue|replay</code> (<code>commands.go</code>) are
+the confirmed, working replacement.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />I have both Llamafile
+and gguf models in ~/Models on my Mac, bit the gguf models are not
+listed as an option (llama.cpp is installed) — fixed 2026-07-13. Root
+cause: <code>pickBackend</code> (<code>backend_startup.go</code>), the
+combined startup picker used whenever any llamafile is registered, built
+its options list from registered llamafiles + disk-scanned unregistered
+llamafiles + live Ollama models — with no code path for
+<code>.gguf</code>/llama.cpp models at all.
+<code>/model list</code>/<code>/model use</code>
+(<code>aggregateModels</code>) already handled all three backends
+correctly; the startup flow had never been brought in line with that
+later unification. Fixed by adding a disk-scan branch (mirroring the
+existing llamafile one) plus a <code>"llamacpp"</code> option kind that
+starts the model via the already-existing
+<code>startLlamaCppModelPath</code>. See DECISIONS.md 2026-07-13 entry.
+Test: <code>TestPickBackend_ListsGGUFModels</code>.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />Chunk prompt never
+triggered for Gemma4-E4B — root cause found and fixed 2026-07-05, see <a
+href="DECISIONS.html">DECISIONS.md</a> (2026-07-05 — Chunking guard
+fix). Two bugs: <code>remainingContext()</code> returning 0 for “unknown
+limit” was treated the same as “skip the guard” in
+<code>builtin_tools.go</code>’s <code>read_file</code> (now falls back
+to a 4096-token budget, matching <code>file_inject.go</code>); and
+<code>adoptExternalServer</code> never probed context length for
+llamafile models adopted from an already-running server, so
+<code>effectiveContextLimit()</code> stayed 0 for the whole session.
+Tests: <code>TestReadFile_ChunkingEnabledContextLimitUnknown</code>,
+<code>TestAdoptExternalServer_probesContextLength</code>.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />Llamafile GPULayers
+defaulted to 99 (maximise GPU) on every platform, including Raspberry Pi
+hardware with no usable GPU-compute backend. This is the actual
+explanation for the <code>bonsai-8b</code> (Q1_0) retest below appearing
+to hang for 20+ minutes — the underlying <code>llama-server</code>
+process was still running after 2+ hours of CPU time. Fixed 2026-07-05:
+default changed to 0 (CPU-only), matching
+<code>LlamaCppConfig.GPULayers</code>’s existing default. See
+DECISIONS.md 2026-07-05 entry. Tests:
+<code>TestDefaultConfig_LlamafileGPULayersDefaultsToZero</code>,
+<code>TestSaveLlamafileConfig_DoesNotPersistDefaultGPULayers</code>,
+<code>TestSaveLlamafileConfig_PersistsCustomGPULayers</code>.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />Chunk-quality retest
+against the actual Gemma4-E4B model — RESOLVED 2026-07-05. Downloaded
+<code>gemma-4-E4B-it-Q5_K_M.llamafile</code> (7.4GB) from
+huggingface.co/mozilla-ai/llamafile_0.10 (no longer dependent on the
+<code>henry</code> build pipeline). Ran
+<code>/read-chunks natural_language_programming.md --chunk-size 800 --max-chunks 20 [topic-drift instruction]</code>
+— 23 chunks, stopped after 4 completed (user time constraints). All 4
+chunks were coherent, on-topic, and did genuinely useful paragraph-level
+drift analysis — a stark contrast to the original garbled-token bug
+report. <strong>Conclusion: the map-reduce chunking approach itself is
+sound.</strong> The original hallucination was entirely explained by the
+chunk-prompt guard never firing (TODO items above), not model coherence
+collapse under the chunking prompt. Per-chunk pace: ~10 min/chunk at
+800-byte chunks, CPU-only (<code>-ngl 0</code>, confirmed via
+<code>ps</code>), 377–385% CPU utilization — genuinely computing, not
+hung. 23 chunks would extrapolate to ~4 hours total, consistent with an
+overnight/unattended run being the intended use case. Full per-chunk
+output is preserved in
+<code>agents/sessions/harvey-session-20260705-205110.spmd</code> (chunks
+1-4) even though the run was killed before synthesis.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />Benchmark per-chunk
+timing across candidate models, now that GPULayers defaults to 0. No
+other model has been timed with the GPU-layers fix in place — the
+earlier <code>bonsai-8b</code> 20+ min “hang” was confounded by the
+GPULayers=99 bug and is not valid timing data. Use
+<code>/read-chunks PATH --chunk-size 800 --max-chunks 2</code> (or 3) on
+the same test document across models to get a fast, comparable per-chunk
+time without committing to a full run. Candidates on disk in
+<code>~/Models/</code> as of 2026-07-05:
+<code>OpenELM-3B-Instruct-Q4_K_M</code>, <code>Qwen3.5-4B-Q5_K_S</code>,
+<code>gemma-4-E2B-it-Q5_K_M</code> (smaller Gemma4 sibling, needs
+<code>chmod +x</code>), <code>Bonsai-8B-Q1_0</code> (retest — previous
+timing invalid), <code>Apertus-8B-Instruct-2509</code>,
+<code>granite-4.1-8b-source-Q4_K_M</code>, plus
+<code>gemma-4-E4B-it-Q5_K_M</code> (~10 min/chunk baseline from today).
+Goal: build a real per-model-per-chunk timing table to answer “which
+model fits a given overnight/unattended time budget on a Pi
+500.”</label></p>
+<p><strong>Update 2026-08-08:</strong> Started the real per-model run
+(Claude Code session, not manually at the terminal) — a standalone
+throwaway Go program (<code>chunkbench</code>, built against this module
+via a local <code>go.mod</code> <code>replace</code>, not checked in
+anywhere) that calls <code>ChunkDocument</code> +
+<code>LlamafileBackend.Start</code>/<code>NewClient</code> +
+<code>client.Chat</code> directly per model, sequentially, timing 2
+chunks each against <code>natural_language_programming.md</code> (12711
+bytes, <code>--chunk-size 800</code> → 23 total chunks, confirms the
+same chunking as the 2026-07-05 run). Stopped by user request partway
+through (3 of 7 models attempted) to free up the Pi; resume by rerunning
+the remaining models below. Confirmed via <code>ps</code> that the
+actual server invocation carries <code>-ngl 0 -c 16384</code> as
+configured — the GPULayers fix is genuinely in effect for this run,
+unlike every prior timing attempt.</p>
+<p>Results so far (context_length as configured in
+<code>harvey.yaml</code>):</p>
+<ul>
+<li><code>gemma-4-E4B-it-Q5_K_M</code> (ctx 16384): chunk 1 = 4m40s,
+chunk 2 = 4m36s (avg ~4m38s/chunk). Notably faster than the “~10
+min/chunk” figure quoted above — that figure was a rough estimate from
+the real 23-chunk run, not a tight back-to-back 2-chunk measurement;
+treat ~4.5 min/chunk as the more reliable number for this model at this
+chunk size.</li>
+<li><code>gemma-4-E2B-it-Q5_K_M</code>: <strong>no valid data</strong> —
+both chunks errored with <code>connection refused</code>, and the
+backend reported “server ready in 0s” (immediate, suspicious). Root
+cause: a genuine race in the benchmark script, not a Harvey bug —
+<code>LlamafileBackend.Start</code> adopts an already-listening server
+instead of launching a fresh one (by design, for the case of an
+externally-started server), and the script called <code>Stop()</code> on
+the previous model then <code>Start()</code> on this one with no gap;
+the prior process’s SIGINT hadn’t yet released port 8080, so Start
+wrongly “adopted” the dying gemma-4-E4B server, which then actually
+exited moments later. <strong>Needs a Detect()-poll-until-down guard
+between Stop() and the next Start()</strong> before re-running E2B or
+trusting any future back-to-back sequential benchmark script — worth
+fixing in the script (not this package) since real interactive
+<code>/llamafile use</code> switches are user-paced, not
+back-to-back-instant.</li>
+<li><code>Qwen3.5-4B-Q5_K_S</code> (ctx 16384, the exact model/config
+this TODO item’s “Update 2026-07-25” entry above wanted re-verified):
+chunk 1 = <strong>8m21s</strong> — nearly 2x <code>gemma-4-E4B</code>’s
+per-chunk time even though both ran at the identical
+<code>context_length: 16384</code>. This is a real, moderately
+surprising data point: it means the earlier “large configured context
+inflates CPU-only KV-cache setup cost” theory is <strong>not</strong>
+the full explanation for Qwen’s slowness, since 16384 here is already
+the smallest context of any model tested and it’s still the slowest —
+something about this specific model/quant is just inherently heavier per
+token on this CPU. Chunk 2 was in progress (interrupted by the stop
+request) — re-run to get a second data point and confirm chunk 1 wasn’t
+an outlier (e.g. one-time warmup cost).</li>
 </ul>
-<h3 id="dual-rag-injection-audit">Dual RAG injection audit</h3>
-<p>See <a href="DECISIONS.html">DECISIONS.md</a> (2026-06-02 — Dual RAG
-injection audit, deferred).</p>
-<ul class="task-list">
-<li><label><input type="checkbox" />Users with both
-<code>memory.enabled</code> and <code>rag.enabled</code> receive RAG
-content twice per turn: once via <code>UnifiedMemory.Recall()</code> at
-session start and once via <code>ragAugment()</code> per prompt. Audit
-the overlap and either (a) skip RAG chunks in
-<code>UnifiedMemory.Recall()</code> when <code>a.RagOn</code> is true,
-or (b) make <code>ragAugment</code> a no-op when
-<code>UnifiedMemory</code> already injected from the same store this
-session.</label></li>
+<p><strong>Not yet run:</strong> <code>Bonsai-8B-Q1_0</code> (ctx
+65536), <code>OpenELM-3B-Instruct-Q4_K_M</code> (ctx 16384),
+<code>granite-4.1-8b-source-Q4_K_M</code> (ctx 16384),
+<code>Apertus-8B-Instruct-2509</code> (ctx 49152) — all still queued, in
+that order, in the <code>chunkbench</code> script’s model list.</p>
+<p><strong>Update 2026-08-08 (completed):</strong> Re-ran
+<code>chunkbench</code> (v2, fixed: a <code>waitForPortFree</code>
+poll-until-down guard between each model’s <code>Stop()</code> and the
+next model’s <code>Start()</code>, closing the race that invalidated
+<code>gemma-4-E2B</code>’s first attempt) for the 6 remaining/retry
+models. All completed cleanly; full table below (2 chunks each,
+<code>--chunk-size 800</code>, CPU-only <code>-ngl 0</code>, confirmed
+via <code>ps</code> on every model this time):</p>
+<table>
+<thead>
+<tr>
+<th scope="col">model</th>
+<th scope="col">context</th>
+<th scope="col">avg/chunk</th>
+<th scope="col">extrapolated, full 23-chunk doc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Apertus-8B-Instruct-2509</code></td>
+<td>49152</td>
+<td>1m51s</td>
+<td>~42 min</td>
+</tr>
+<tr>
+<td><code>granite-4.1-8b-source-Q4_K_M</code></td>
+<td>16384</td>
+<td>2m19s</td>
+<td>~53 min</td>
+</tr>
+<tr>
+<td><code>gemma-4-E2B-it-Q5_K_M</code></td>
+<td>16384</td>
+<td>2m24s</td>
+<td>~55 min</td>
+</tr>
+<tr>
+<td><code>Bonsai-8B-Q1_0</code></td>
+<td>65536</td>
+<td>3m36s</td>
+<td>~83 min</td>
+</tr>
+<tr>
+<td><code>gemma-4-E4B-it-Q5_K_M</code></td>
+<td>16384</td>
+<td>4m38s</td>
+<td>~107 min</td>
+</tr>
+<tr>
+<td><code>OpenELM-3B-Instruct-Q4_K_M</code></td>
+<td>16384</td>
+<td>6m13s</td>
+<td>~143 min</td>
+</tr>
+<tr>
+<td><code>Qwen3.5-4B-Q5_K_S</code></td>
+<td>16384</td>
+<td>7m51s</td>
+<td>~180 min</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Conclusion: parameter count does not predict per-chunk speed
+on this CPU.</strong> The two fastest models (<code>Apertus</code>,
+<code>granite</code>) are both 8B-class; the smallest model tested
+(<code>OpenELM</code>, 3B) is the second-slowest, beaten only by
+<code>Qwen3.5-4B</code>. Quantization scheme/architecture dominates raw
+size for CPU-only inference here. <code>Qwen3.5-4B-Q5_K_S</code> is now
+confirmed slowest across three independent chunk measurements (8m21s,
+7m0s, 8m41s — consistently ~7-8.5 min/chunk), at the <em>smallest</em>
+context length of any model tested, which rules out “large configured
+context inflates KV-cache cost” as an explanation for its historical
+slowness; something about this specific model/quant is inherently
+heavier per token here. For an overnight/unattended full-document run on
+this Pi 500, <code>Apertus-8B-Instruct-2509</code> is the clear best fit
+(~42 min vs. up to 3 hours for <code>Qwen3.5-4B-Q5_K_S</code>).</p>
+<p>See <code>agents/knowledge.db</code> (Laboratory root), project
+<code>harvey</code>, concept <code>chunking</code>, for the same summary
+as a finding observation.</p></li>
+<li><p><label><input type="checkbox" checked="" />Added
+<code>/read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]</code>
+— runs the chunked map-reduce pipeline directly, with no
+overflow-threshold check, and lets chunk-size/ overlap/max-chunks be
+swept per-invocation independent of harvey.yaml. See DECISIONS.md
+2026-07-05 entry. Tests in
+<code>read_chunks_cmd_test.go</code>.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />Known remaining gap:
+<code>startAndUseLlamafile</code> (<code>backend_startup.go</code>)
+adopts an already-running server under a detected model name without
+registering/ probing a matching <code>LlamafileEntry</code> when that
+name differs from the configured active entry — same class of bug as the
+fixed <code>adoptExternalServer</code> case, narrower scope. Fixed
+2026-07-13: <code>useLlamafileEntry</code>’s result is now checked, and
+when no <code>LlamafileEntry</code> exists yet for the adopted name, one
+is registered (empty <code>Path</code>, matching
+<code>adoptExternalServer</code>’s own precedent — the adopted server’s
+actual model file path is unknown) with a probed
+<code>ContextLength</code>. See DECISIONS.md 2026-07-13 entry. Test:
+<code>TestStartAndUseLlamafile_AdoptedDifferentName_RegistersEntry</code>.</label></p></li>
+<li><p><label><input type="checkbox"
+checked="" /><code>/read-chunks</code> doesn’t fail fast when the
+llamafile backend is unreachable (e.g. the server died after cancelling
+a prior prompt). Found 2026-07-06 via
+<code>agents/logs/harvey-20260706-172458.jsonl</code>: every chunk in
+the map phase fired its own “connection refused” to
+<code>localhost:8080</code> and was recorded as a per-chunk failure (by
+design — a chunk failure doesn’t abort the map phase), then the run only
+actually errored out at the synthesis call. On a multi-chunk document
+this burns through the whole file before surfacing what is really a
+single root-cause problem. Fixed 2026-07-13: a new
+<code>probeClientReachable</code> helper
+(<code>chunk_analyzer.go</code>) dispatches on the client’s
+<code>ProviderName()</code> (ollama/llamafile/llamacpp use their
+existing local health probes; cloud providers and test doubles are
+skipped, <code>checked=false</code>) and is called once at the top of
+<code>RunChunkedAnalysis</code> — fixing all three chunk-analysis call
+sites (<code>cmdReadChunks</code>, <code>injectOrChunk</code>,
+<code>read_file</code>’s guard) through their existing error-handling
+paths, no per-call-site change needed. See DECISIONS.md 2026-07-13
+entry. Test:
+<code>TestRunChunkedAnalysis_FailsFastWhenBackendUnreachable</code>.</label></p></li>
+<li><p><label><input type="checkbox" checked="" />Debug log records each
+chunk’s LLM call twice during <code>/read-chunks</code> — fixed
+2026-07-13. Root cause confirmed as described:
+<code>RunChunkedAnalysis</code> (<code>chunk_analyzer.go</code>) logged
+every chunk/synthesis call itself while
+<code>AnyLLMClient.chatInternal</code> (<code>anyllm_client.go</code>)
+already logs the same call internally. Fix was not a simple “drop the
+caller-side calls,” though: <code>chatInternal</code>’s own
+<code>DebugLog</code> field is nil for any freshly- constructed client
+(<code>resolveDispatchTarget</code>’s route-registry and local-switch
+branches both build fresh <code>*AnyLLMClient</code>s that were never
+wired), so naively removing the caller-side logging would have silently
+dropped logging entirely for <code>@mention</code>-dispatched chunk
+analysis instead of fixing a duplicate. Fixed in two parts:</label></p>
+<ol type="1">
+<li><code>resolveDispatchTarget</code> (<code>dispatch_target.go</code>)
+now wires <code>DebugLog</code> onto whatever client it resolves, for
+all three of its branches; (2) the now-redundant
+<code>dbg *DebugLog</code> parameter was removed entirely from
+<code>RunChunkedAnalysis</code>, along with all its internal logging
+calls. See DECISIONS.md 2026-07-13 entry. Tests:
+<code>TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog</code>,
+<code>TestResolveDispatchTarget_LocalSwitch_WiresDebugLog</code>.
+<strong>Related finding, fixed separately 2026-07-13:</strong>
+<code>builtin_tools.go</code>’s <code>read_file</code> pre-read chunking
+guard had the same cosmetic-only <code>@mention</code> bug already fixed
+elsewhere for <code>/read-chunks</code>/<code>injectOrChunk</code>
+during Direction D (Bug 1 in <code>subagent-dispatch-design.md</code>) —
+it parsed <code>@mention</code> to relabel
+<code>ChunkAnalysisParams.Model</code> but always dispatched via
+<code>a.Client</code>, never the mentioned model. Missed during that
+earlier work (only two of the three chunk-analysis call sites were found
+at the time); now fixed the same way, via
+<code>resolveDispatchTarget</code>. See DECISIONS.md 2026-07-13 entry.
+Test: <code>TestReadFile_MentionDispatchesToNamedModel</code>.</li>
+</ol></li>
+<li><p><label><input type="checkbox"
+checked="" /><code>Qwen3.5-4B-Q5_K_S</code>’s <code>/read-chunks</code>
+chunk 1 ran 54+ minutes (interrupted by user 2026-07-06, still pegged at
+~389% CPU when stopped — genuinely computing, not hung) versus the ~10
+min/chunk baseline already measured for
+<code>gemma-4-E4B-it-Q5_K_M</code>. Original theory: this entry’s
+<code>harvey.yaml</code> <code>context_length</code> was 180224 at the
+time, vs. 16384–65536 for the other registered models — a much larger
+configured context can inflate CPU-only KV-cache setup/compute cost
+regardless of actual chunk size.</label></p>
+<p><strong>Update 2026-07-25:</strong> confirmed via
+<code>gguf-dump</code> against the GGUF embedded in
+<code>Qwen3.5-4B-Q5_K_S.llamafile</code> (extracted with
+<code>unzip</code>, since llamafile is a zip-appended APE binary, not a
+raw GGUF) that the model’s own <em>trained</em> context length is
+<code>qwen35.context_length = 262144</code> — even larger than the
+180224 this item suspected, and far above the 16384–65536 range of every
+other registered model. This makes the KV-cache-allocation theory more
+plausible, not less: llama.cpp/llamafile allocate KV cache proportional
+to the configured <code>-c</code> value at server startup
+(<code>ActiveLlamafileContextLength()</code> →
+<code>StartLlamafileService</code>, see
+<code>backend_llamafile.go</code>), independent of actual prompt/chunk
+size, so a <code>-c</code> anywhere near this model’s native max would
+explain slow, CPU-bound startup cost.</p>
+<p>Also confirmed: <code>agents/harvey.yaml</code>’s registered entry
+for <code>Qwen3.5-4B-Q5_K_S</code> <strong>already reads
+<code>context_length: 16384</code></strong> — the exact value this item
+proposed testing. No record exists of when or why it was changed (no
+matching git history in this repo — <code>git log -p -S 180224</code>
+returns nothing), so this may already be applied but never
+re-benchmarked. Remaining step: run
+<code>/read-chunks PATH --chunk-size 800 --max-chunks 2</code> against
+the current (16384) config to confirm chunk time now falls in line with
+the ~10 min/chunk baseline, then fold into the per-model timing table
+above. Not run yet — this is a multi-minute, CPU-heavy operation and
+deserves an explicit go-ahead rather than running unattended.</p>
+<p><strong>Resolved 2026-08-08</strong>, by the completed per-model
+benchmark above: at <code>context_length: 16384</code> — the exact
+config this item wanted verified — <code>Qwen3.5-4B-Q5_K_S</code>
+measured 8m21s, 7m0s, and 8m41s per chunk across three independent runs
+(~7-8.5 min/chunk, consistent). This confirms the 16384 setting already
+fixed the original 54+ minute outlier, but <strong>not</strong> the
+KV-cache-allocation theory itself: 16384 is the smallest context of any
+model benchmarked, yet <code>Qwen3.5-4B-Q5_K_S</code> is still the
+single slowest model tested (nearly 2x the next-slowest,
+<code>OpenELM-3B</code>). The remaining slowness is
+model/quant-specific, not context-length-driven — no further action
+planned here.</p></li>
 </ul>
 </section>
 </body>

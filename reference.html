@@ -113,19 +113,6 @@ session-experience memory store</li>
 <li><strong><a href="harvey-kb.7.html">harvey-kb.7.md</a></strong> —
 Query and update the SQLite knowledge base</li>
 </ul>
-<h3 id="llamafile-integration">Llamafile Integration</h3>
-<ul>
-<li><strong><a
-href="harvey-llamafile.7.html">harvey-llamafile.7.md</a></strong> —
-Manage llamafile backends:
-<code>/llamafile add|use|list|start|status|remove|download</code></li>
-</ul>
-<h3 id="ollama-integration">Ollama Integration</h3>
-<ul>
-<li><strong><a
-href="harvey-ollama.7.html">harvey-ollama.7.md</a></strong> — Manage the
-local Ollama server and installed models</li>
-</ul>
 <h3 id="unified-model-management">Unified Model Management</h3>
 <ul>
 <li><strong><a
@@ -231,7 +218,7 @@ href="INSTALL_NOTES_Windows.html">INSTALL_NOTES_Windows.md</a></strong>
 <li><strong><a href="models.html">models.md</a></strong> — Models in use
 and evaluation status</li>
 <li><strong><a href="model_guide.html">model_guide.md</a></strong> —
-Model selection guide based on <code>/ollama probe</code> results</li>
+Model selection guide based on capability probing results</li>
 <li><strong><a
 href="Llamafile_notes.html">Llamafile_notes.md</a></strong> — Mozilla
 AI’s single-file runnable models (note: not currently integrated with
@@ -334,27 +321,27 @@ HTML page generation</li>
 <tbody>
 <tr>
 <td>List models</td>
-<td><code>/ollama list</code></td>
+<td><code>/model list</code></td>
 </tr>
 <tr>
 <td>Pull a model</td>
-<td><code>/ollama pull &lt;model&gt;</code></td>
+<td><code>ollama pull &lt;model&gt;</code> (in a shell)</td>
 </tr>
 <tr>
 <td>Use a model</td>
-<td><code>/ollama use &lt;model&gt;</code></td>
+<td><code>/model use &lt;model&gt;</code></td>
 </tr>
 <tr>
 <td>Show model info</td>
-<td><code>/ollama show &lt;model&gt;</code></td>
+<td><code>/model show &lt;model&gt;</code></td>
 </tr>
 <tr>
 <td>Start Ollama</td>
-<td><code>/ollama start</code></td>
+<td><code>ollama serve</code> (in a shell)</td>
 </tr>
 <tr>
-<td>Check Ollama status</td>
-<td><code>/ollama status</code></td>
+<td>Check the backend</td>
+<td><code>/model status</code></td>
 </tr>
 </tbody>
 </table>

@@ -118,7 +118,7 @@ from <code>show</code> which displays content).</p>
 <code>add</code> registers something you already have; <code>new</code>
 creates something Harvey manages from scratch.</p>
 <p>Learning this vocabulary for one command teaches you all the others:
-<code>/llamafile</code>, <code>/rag</code>, <code>/route</code>,
+<code>/model</code>, <code>/rag</code>, <code>/route</code>,
 <code>/session</code>, <code>/skill</code>, <code>/skill-set</code>, and
 <code>/memory profile</code> all follow the same pattern.</p>
 <hr />
@@ -152,17 +152,12 @@ recall</li>
 </ul>
 <h3 id="model-management">Model Management</h3>
 <ul>
-<li><strong><a href="harvey-llamafile.7.html">Llamafile
-Commands</a></strong> — Primary local backend: add, use, show, list,
-start, download, remove</li>
 <li><strong><a href="harvey-model.7.html">Unified /model
 Command</a></strong> — <code>/model list|use|show|status</code> works
-across llamafile and Ollama</li>
+across llamafile, llama.cpp and Ollama</li>
 <li><strong><a href="harvey-model-alias.7.html">Model &amp; Alias
 Commands</a></strong> — <code>@mention</code> inline model switching and
 <code>/model alias</code> short names</li>
-<li><strong><a href="harvey-ollama.7.html">Ollama Commands</a></strong>
-— Alternative local backend: service control and model management</li>
 <li><strong><a href="ROUTING.html">Routing</a></strong> — Connect to
 remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI, remote
 Ollama) via <span class="citation" data-cites="mention">@mention</span>

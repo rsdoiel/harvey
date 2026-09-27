@@ -71,13 +71,14 @@ while bge-small-en-v1.5 scores around 62% and nomic-embed-text around
 <p>The /rag new wizard detects which embedding models are installed and
 proposes the best available one, preferring nomic-embed-text &gt;
 mxbai-embed-large &gt; bge- &gt; all-minilm. If none are installed, it
-prints a list of recommended models you can pull with /ollama pull.</p>
+prints a list of recommended models you can pull with “ollama pull” in a
+shell.</p>
 <p>Each store is bound to one embedding model at creation time. If you
 want to try a different embedding model for the same topic, create a new
 store and re-ingest the documents.</p>
 <h1 id="workflow-first-store">WORKFLOW — FIRST STORE</h1>
 <pre><code>  # Step 1 — choose an embedding model (one-time)
-  /ollama pull nomic-embed-text
+  ollama pull nomic-embed-text      (in a shell, outside Harvey)
 
   # Step 2 — create and name a store
   /rag new golang

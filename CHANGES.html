@@ -20,8 +20,180 @@
 </nav>
 <section id="main-content">
 <h1 id="changes">CHANGES</h1>
-<h2 id="v0.0.15-2026-06-26">v0.0.15 (2026-06-26)</h2>
+<h2 id="v0.0.17-2026-09-27">v0.0.17 (2026-09-27)</h2>
+<h3 id="breaking-exit-codes">Breaking (exit codes)</h3>
+<p>Both <code>harvey</code> and <code>assay</code> now use the workspace
+exit-code convention (workspace DR-0003; harvey DR-0005) instead of
+exiting only 0 or 1. A script or an embedding tool that reads either
+binary’s exit status should check these against the new table (0 ok, 1
+negative, 2 usage, 65 data, 66 no_input, 69 unavailable, 70 internal, 73
+cant_create, 74 io, 75 temp_fail, 77 no_permission, 78 config — see
+<code>harvey/CLAUDE.md</code>, “Exit codes”). Five cases that used to
+exit 0 now fail:</p>
+<table>
+<thead>
+<tr>
+<th scope="col">Case</th>
+<th scope="col">Was</th>
+<th scope="col">Now</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>harvey --continue</code> names a session that does not
+exist</td>
+<td>0</td>
+<td>66</td>
+</tr>
+<tr>
+<td><code>harvey --record-file</code> names a path that cannot be
+created</td>
+<td>0</td>
+<td>73</td>
+</tr>
+<tr>
+<td><code>harvey.yaml</code> is malformed, in a non-interactive
+session</td>
+<td>0</td>
+<td>78</td>
+</tr>
+<tr>
+<td>No backend reachable, in a non-interactive session</td>
+<td>0</td>
+<td>69</td>
+</tr>
+<tr>
+<td><code>assay</code>: every model call fails (the backend is
+down)</td>
+<td>0</td>
+<td>69</td>
+</tr>
+</tbody>
+</table>
+<p>Every other case that used to exit 1 now exits the more specific code
+for its cause (2 usage, 65 data, 66 no_input, 69 unavailable, 73
+cant_create, 77 no_permission — see <code>exit-codes-survey.md</code>’s
+baseline table and <code>harvey/decisions/0005-*.md</code> for the full
+list and the reasoning). <code>harvey --help</code>/<code>-h</code>,
+<code>--version</code>, <code>-l</code>, <code>help</code>, and
+<code>assay --help</code>/<code>--version</code> are unchanged, at 0. An
+error nothing classified is 70, never 1 — a 70 anywhere is a bug, not a
+documented class. Verified old-versus-new against the v0.0.16 baseline
+with <code>scripts/compare-exit-codes.py</code>: every changed code
+above and none unexpected, no exit 70, no hang.</p>
+<h3 id="other">Other</h3>
+<ul>
+<li>An interactive <code>harvey</code> session still warns and continues
+on a malformed <code>harvey.yaml</code> or an unreachable backend, so
+nothing changes at a terminal — only non-interactive runs (stdin not a
+terminal, or <code>--replay</code> without
+<code>--replay-continue</code>) now fail fast.</li>
+<li>A surplus positional argument to <code>harvey</code> is now a usage
+error (2), previously reported as “Unknown flag”.</li>
+<li><code>assay</code> finishes its run and writes the report before
+exiting with the class of the first failure; a prompt’s failing
+automatic checks are still a result, not a tool failure, and still exit
+0.</li>
+</ul>
+<h3 id="added-harvey-dr-0006">Added (harvey DR-0006)</h3>
+<ul>
+<li><code>-json</code>/<code>--json</code> on <code>harvey</code> and
+<code>assay</code>: a failing startup/flag-parsing error (or, for
+<code>harvey</code>, a failed non-interactive session — see below)
+prints as <code>{"error","class","code"}</code> JSON on stderr instead
+of text, matching <code>kb</code>’s shape. Recognised wherever it sits
+on the command line, so it still applies when a later flag — or the flag
+package’s own parse, for <code>assay</code> — is what fails.</li>
+<li>A non-interactive <code>harvey</code> session (piped stdin, or
+<code>--replay</code> without <code>--replay-continue</code>) now exits
+with the class of the first slash command or chat turn that failed,
+instead of always 0. An interactive session at a terminal is unaffected.
+<code>/plan</code>’s two previously-unclassified errors (“no backend
+connected”, “no plan found”) now carry a real class (69, 1); most other
+command families do not yet and still exit 0 or 70 on a failure — a
+named follow-up, not done here.</li>
+<li><code>/rag setup</code>’s embedding-model auto-pick now confirms its
+keyword-based guess with one live <code>/api/embed</code> call before
+committing to it, falling back to another candidate (or warning) when
+the guess turns out to be wrong. <code>ThoroughProbeModel</code> gets
+its first caller.</li>
+<li><code>github.com/rsdoiel/termlib</code> bumped to the
+<code>v0.0.9</code>+<code>354195d</code> pseudo-version (no
+<code>v0.0.10</code> tag exists yet).</li>
+</ul>
+<h2 id="v0.0.16-2026-09-24">v0.0.16 (2026-09-24)</h2>
 <h3 id="new-features">New features</h3>
+<ul>
+<li>Full agentic-memory tool suite: <code>retrieve_memory</code>,
+<code>add_memory</code>, <code>update_memory</code>,
+<code>delete_memory</code>, <code>filter_context</code>,
+<code>summary_context</code> builtin tools, plus proactive STM-budget
+warnings</li>
+<li>Unified <code>/model</code> command: <code>/llamafile</code> and
+<code>/llamacpp</code> merged into one backend-agnostic facade;
+<code>@mention</code> switches the active model while preserving
+history; unregistered <code>.llamafile</code>/<code>.gguf</code> models
+are now found via disk scan</li>
+<li><code>knowledge</code> module extraction: knowledge-base code split
+into its own module (<code>github.com/rsdoiel/knowledge</code>), now
+consumed at the released v0.0.13; <code>recallKB</code> tries
+concept-tag matching (<code>MatchConceptNames</code>/
+<code>RecallByConceptNames</code>) before falling back to substring
+search, and now surfaces decision records and reviewed document
+summaries, not just observations</li>
+<li>Cross-machine <code>knowledge.db</code> sync: UUID-based merge tool
+(<code>bin/kbmerge</code>), legacy
+<code>experiments</code>→<code>projects</code> migration</li>
+<li>Retraction-checking for cited sources in the knowledge base</li>
+<li><code>/read-chunks</code>: explicit chunked document analysis,
+independent of context-overflow triggers</li>
+<li>Knowledge learning mode:
+<code>/kb learn ingest|draft|review|concepts</code> turns recorded
+sessions and hand-off notes into searchable, human-reviewed knowledge. A
+model drafts summaries (<code>@model</code>, else
+<code>learn_model</code> in <code>agents/harvey.yaml</code>, else the
+active model); nothing is trusted or searchable until you accept it;
+<code>$EDITOR</code> edits are recorded as human.
+<code>/kb learn concepts</code> suggests new concepts, previews each
+affected document as a diff of changed lines, and writes only after a
+yes, through the permissions table. Fountain sessions and hand-offs are
+never rewritten</li>
+</ul>
+<h3 id="bug-fixes">Bug fixes</h3>
+<ul>
+<li>Chunk-prompt guard: two bugs prevented the chunking UX from ever
+triggering on models with an unknown context limit — fixed and
+live-verified against Gemma-4-E4B</li>
+<li>Llamafile <code>GPULayers</code> now defaults to 0 (CPU-only)
+instead of 99, fixing an apparent multi-hour “hang” on Raspberry Pi
+hardware with no GPU backend</li>
+<li><code>pickBackend</code> startup picker now lists
+<code>.gguf</code>/llama.cpp models, not just llamafiles and Ollama</li>
+<li><code>kb</code> and <code>man</code> added to the safe-mode default
+command allowlist</li>
+<li>File-write confirmations no longer treat end of input (Ctrl-D, a
+closed pipe) as “yes”, and tagged code-block writes now honour the
+<code>permissions:</code> table (previously only the untagged fallback
+did)</li>
+<li><code>/kb search</code> no longer fails on hyphenated terms such as
+<code>map-reduce</code> (picked up from <code>knowledge</code>
+v0.0.13)</li>
+</ul>
+<h3 id="internal">Internal</h3>
+<ul>
+<li>R0–R8 refactor series: shared <code>BudgetTracker</code>,
+<code>resolveDispatchTarget</code>,
+<code>runBoundedTurn</code>/<code>foldBackTurn</code> helpers; unified
+sensor/status reporting; <code>go vet</code> and
+<code>gofmt Check()</code> wired in as sensors</li>
+<li>Removed a stale local
+<code>replace github.com/rsdoiel/termlib =&gt; ../termlib</code> — was
+silently masking a broken build for anyone without a local
+<code>../termlib</code> checkout; now consumes the tagged
+<code>v0.0.9</code></li>
+</ul>
+<h2 id="v0.0.15-2026-06-26">v0.0.15 (2026-06-26)</h2>
+<h3 id="new-features-1">New features</h3>
 <ul>
 <li><code>/model mode [MODEL] {structured|prose|inject|none}</code>: set
 or display the tool-execution strategy for a model. The mode is
@@ -48,7 +220,7 @@ calls in the retry response are correctly dispatched.</li>
 <code>tool_mode</code> column is added to existing databases
 automatically on first open (idempotent <code>ALTER TABLE</code>).</li>
 </ul>
-<h3 id="bug-fixes">Bug fixes</h3>
+<h3 id="bug-fixes-1">Bug fixes</h3>
 <ul>
 <li><code>FastProbeModel</code> no longer sets
 <code>ToolMode = ToolModeStructured</code> when probing a tool-capable
@@ -77,7 +249,7 @@ access.</li>
 convention.</li>
 </ul>
 <h2 id="v0.0.14-2026-06-21">v0.0.14 (2026-06-21)</h2>
-<h3 id="new-features-1">New features</h3>
+<h3 id="new-features-2">New features</h3>
 <ul>
 <li>Llamafile is now the primary language model backend: startup
 sequence shows registered llamafiles first, auto-selects on preferred
@@ -141,7 +313,7 @@ configuration fields documented (<code>model_aliases</code>,
 added; complete annotated <code>harvey.yaml</code> example</li>
 </ul>
 <h2 id="v0.0.13-2026-06-19">v0.0.13 (2026-06-19)</h2>
-<h3 id="new-features-2">New features</h3>
+<h3 id="new-features-3">New features</h3>
 <ul>
 <li><code>/profile</code> command: top-level alias for
 <code>/memory profile &lt;list|show|edit|use|rename&gt;</code> — profile
@@ -164,7 +336,7 @@ the model name from the binary path</li>
 <code>read_file</code> directly without asking the user to convert
 files</li>
 </ul>
-<h3 id="bug-fixes-1">Bug fixes</h3>
+<h3 id="bug-fixes-2">Bug fixes</h3>
 <ul>
 <li>S3 remote: improved not-found detection for missing keys and missing
 buckets; path-style access now correctly enabled for non-AWS
@@ -178,7 +350,7 @@ by directory scan, fixing cases where auto-discovery missed models not
 registered via <code>/llamafile add</code></li>
 </ul>
 <h2 id="v0.0.12-2026-06-17">v0.0.12 (2026-06-17)</h2>
-<h3 id="new-features-3">New features</h3>
+<h3 id="new-features-4">New features</h3>
 <ul>
 <li>Memory enrichment: added <code>kind</code> field to memory documents
 classifying why knowledge matters
@@ -228,7 +400,7 @@ instead of silently continuing</li>
 <li>Plan execution: steps with blocked or failed tool calls are no
 longer auto-marked complete</li>
 </ul>
-<h3 id="bug-fixes-2">Bug fixes</h3>
+<h3 id="bug-fixes-3">Bug fixes</h3>
 <ul>
 <li>Llamafile: fixed exec format error on macOS (APE binaries now
 launched via <code>/bin/sh</code>)</li>
@@ -247,7 +419,7 @@ Metal/CUDA)</li>
 context-injection path instead of erroring out</li>
 </ul>
 <h2 id="v0.0.11-2026-06-11">v0.0.11 (2026-06-11)</h2>
-<h3 id="new-features-4">New features</h3>
+<h3 id="new-features-5">New features</h3>
 <ul>
 <li>Added scholarly identifier extraction and normalization for 14
 identifier types (DOI, ORCID, ROR, RAiD, ArXiv, FundRef, ISBN, ISSN,
@@ -267,7 +439,7 @@ papers, institutions, funders) via an identifier type/value pair</li>
 <code>project_fact</code> memory metadata</li>
 </ul>
 <h2 id="v0.0.10-2026-06-09">v0.0.10 (2026-06-09)</h2>
-<h3 id="new-features-5">New features</h3>
+<h3 id="new-features-6">New features</h3>
 <ul>
 <li>Added multi-language code-aware chunking for RAG ingestion (C, C++,
 Pascal, Oberon, Lisp, Basic)</li>
@@ -295,7 +467,7 @@ management</li>
 <li>Added help guides and <code>/status profile</code> display</li>
 </ul>
 <h2 id="v0.0.7-2026-06-02">v0.0.7 (2026-06-02)</h2>
-<h3 id="new-features-6">New features</h3>
+<h3 id="new-features-7">New features</h3>
 <p><strong><code>assay</code> evaluation harness</strong> — a new
 <code>bin/assay</code> tool for running a prompt corpus against one or
 more Ollama models and producing a Markdown report plus JSON results for
@@ -348,7 +520,7 @@ store, chunk count, RAG on/off)</li>
 is saved to <code>agents/harvey_history</code> on exit (capped at 1000
 entries, most recent kept) and reloaded on the next startup; history is
 per-workspace to avoid leaking commands and paths between projects.</p>
-<h3 id="bug-fixes-3">Bug fixes</h3>
+<h3 id="bug-fixes-4">Bug fixes</h3>
 <ul>
 <li>Removed unreachable dead code (<code>cmdRunCtx</code>,
 <code>extractRunSuggestions</code>) that was missing the safe-mode
@@ -363,7 +535,7 @@ all are now listed under their appropriate sections</li>
 through to the unknown-topic error</li>
 </ul>
 <h2 id="v0.0.6-2026-05-30">v0.0.6 (2026-05-30)</h2>
-<h3 id="new-features-7">New features</h3>
+<h3 id="new-features-8">New features</h3>
 <p><strong>Remote protocol integration</strong> — Harvey can now read
 files from remote storage over <code>s3://</code>, <code>http://</code>,
 <code>https://</code>, <code>sftp://</code>, and <code>scp://</code>
@@ -438,7 +610,7 @@ hangs when a server stalls after accepting the connection.</li>
 <code>HTTP_BEARER_TOKEN</code>, <code>HTTP_BASIC_PASSWORD</code> from
 child-process environments.</li>
 </ul>
-<h3 id="bug-fixes-4">Bug fixes</h3>
+<h3 id="bug-fixes-5">Bug fixes</h3>
 <ul>
 <li>Fixed tools-loop processing problem where the model’s tool-call
 responses were not advancing the conversation correctly</li>
