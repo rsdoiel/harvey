@@ -362,6 +362,11 @@ func (a *Agent) Run(out io.Writer) error {
 		in = os.Stdin
 	}
 	interactive := a.interactiveSession(in)
+	// firstScriptFailure is the class a non-interactive session exits with:
+	// the first slash command or chat turn that failed, if any (DR-0006). An
+	// interactive session never sets it — a typo at a terminal is something
+	// the person just tries again, not a reason to change the exit status.
+	var firstScriptFailure error
 	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			a.Config.Ollama.ContextLength = n
@@ -642,7 +647,7 @@ func (a *Agent) Run(out io.Writer) error {
 		if err == io.EOF || err == termlib.ErrInterrupted {
 			saveCmdHistory(a.Workspace, le)
 			fmt.Fprintln(out, dim("Goodbye."))
-			return nil
+			return firstScriptFailure
 		}
 		if err != nil {
 			return err
@@ -690,6 +695,9 @@ func (a *Agent) Run(out io.Writer) error {
 			shouldExit, cmdErr := a.dispatch(input, out)
 			if cmdErr != nil {
 				fmt.Fprintf(out, red("Error: ")+"%v\n", cmdErr)
+				if !interactive {
+					firstScriptFailure = keepFirstFailure(firstScriptFailure, cmdErr)
+				}
 			}
 			if shouldExit {
 				break
@@ -1018,6 +1026,9 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 		if turnErr != nil {
 			fmt.Fprintf(out, red("Error: ")+"%v\n", turnErr)
+			if !interactive {
+				firstScriptFailure = keepFirstFailure(firstScriptFailure, turnErr)
+			}
 			continue
 		}
 	}
@@ -1074,7 +1085,17 @@ func (a *Agent) Run(out io.Writer) error {
 			a.sessionCompressed, a.avgToksPerSec())
 	}
 
-	return nil
+	return firstScriptFailure
+}
+
+// keepFirstFailure returns existing when it is already set, otherwise
+// candidate: the first non-nil error offered wins, and nothing later can
+// replace it — the same bulk-command rule assay's own firstFailure uses.
+func keepFirstFailure(existing, candidate error) error {
+	if existing != nil {
+		return existing
+	}
+	return candidate
 }
 
 /** runChatTurn sends input through Harvey's chat pipeline — RAG augmentation,

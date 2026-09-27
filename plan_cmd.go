@@ -62,7 +62,7 @@ func cmdPlan(a *Agent, args []string, out io.Writer) error {
 // checklist from the response, and saves it to agents/plan.md.
 func cmdPlanCreate(a *Agent, task string, out io.Writer) error {
 	if a.Client == nil {
-		return fmt.Errorf("no backend connected — use /model use first")
+		return Unavailablef("no backend connected — use /model use first")
 	}
 
 	planningPrompt := "You are planning a multi-step task. " +
@@ -91,7 +91,7 @@ func cmdPlanCreate(a *Agent, task string, out io.Writer) error {
 
 	p, err := PlanFromLLMResponse(buf.String(), task)
 	if err != nil {
-		return fmt.Errorf("could not parse plan from response: %w", err)
+		return Dataf("could not parse plan from response: %w", err)
 	}
 	if len(p.Steps) == 0 {
 		fmt.Fprintln(out, yellow("  ⚠")+" Model did not produce a checklist. Raw response:")
@@ -113,7 +113,7 @@ func cmdPlanCreate(a *Agent, task string, out io.Writer) error {
 // a fresh bounded context, marks it done, and saves the updated plan.
 func cmdPlanNext(a *Agent, out io.Writer) error {
 	if a.Client == nil {
-		return fmt.Errorf("no backend connected — use /model use first")
+		return Unavailablef("no backend connected — use /model use first")
 	}
 	if a.Workspace == nil {
 		return fmt.Errorf("no workspace available")
@@ -122,7 +122,7 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 	p, err := LoadPlan(a.Workspace)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("no plan found — use /plan TASK to create one")
+			return Negativef("no plan found — use /plan TASK to create one")
 		}
 		return fmt.Errorf("could not load plan: %w", err)
 	}
