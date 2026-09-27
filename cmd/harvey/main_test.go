@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,45 @@ func TestMainRun_UsageErrorsExitTwoWithNothingOnStdout(t *testing.T) {
 		if !strings.Contains(errOut, tc.msg) {
 			t.Errorf("%s: stderr %q, want it to contain %q", tc.name, errOut, tc.msg)
 		}
+	}
+}
+
+// --json turns a failing command line's error into the workspace convention's
+// {"error","class","code"} envelope on stderr, wherever --json sits on the
+// line, and never touches stdout.
+func TestMainRun_JSONFlagPrintsTheErrorEnvelope(t *testing.T) {
+	for _, args := range [][]string{
+		{"--json", "--bogus"},
+		{"--bogus", "--json"},
+	} {
+		code, out, errOut := run(t, args...)
+		if code != 2 {
+			t.Errorf("harvey %v: exit %d, want 2", args, code)
+		}
+		if out != "" {
+			t.Errorf("harvey %v: stdout %q, want nothing", args, out)
+		}
+		var envelope struct {
+			Error string `json:"error"`
+			Class string `json:"class"`
+			Code  int    `json:"code"`
+		}
+		if err := json.Unmarshal([]byte(errOut), &envelope); err != nil {
+			t.Fatalf("harvey %v: stderr %q is not valid JSON: %v", args, errOut, err)
+		}
+		if envelope.Class != "usage" || envelope.Code != 2 {
+			t.Errorf("harvey %v: envelope = %+v, want class usage code 2", args, envelope)
+		}
+	}
+}
+
+// A --json run that succeeds (help, version) is unaffected: --json only
+// shapes an error, and none of these produce one.
+func TestMainRun_JSONFlagDoesNotAffectSuccess(t *testing.T) {
+	code, out, errOut := run(t, "--json", "--version")
+	if code != 0 || out == "" || errOut != "" {
+		t.Errorf("harvey --json --version: exit %d, stdout %d bytes, stderr %q; want 0, some output, none",
+			code, len(out), errOut)
 	}
 }
 

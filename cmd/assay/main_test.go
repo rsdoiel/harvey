@@ -234,6 +234,52 @@ func TestMainRun_UsageErrorsExitTwoWithNothingOnStdout(t *testing.T) {
 	}
 }
 
+// --json turns a failing command line into the workspace convention's
+// {"error","class","code"} envelope, whether the failure comes from the flag
+// package itself, a usage check assay makes by hand, or a later classified
+// error, and wherever --json sits on the line.
+func TestMainRun_JSONFlagPrintsTheErrorEnvelope(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		args  []string
+		class string
+		code  int
+	}{
+		{"unrecognised flag", []string{"--json", "--bogus"}, "usage", 2},
+		{"single-dash spelling", []string{"-json", "--bogus"}, "usage", 2},
+		{"json after the bad flag", []string{"--bogus", "--json"}, "usage", 2},
+		{"hand-checked usage", []string{"--json", "--rag-compare"}, "usage", 2},
+		{"corpus missing", []string{"--json", "--corpus", "/nonexistent/zzz.yaml"}, "no_input", 66},
+	} {
+		code, out, errOut := runAssay(t, tc.args...)
+		if code != tc.code {
+			t.Errorf("%s: exit %d, want %d\nstderr: %s", tc.name, code, tc.code, errOut)
+		}
+		if out != "" {
+			t.Errorf("%s: stdout %q, want nothing", tc.name, out)
+		}
+		var envelope struct {
+			Error string `json:"error"`
+			Class string `json:"class"`
+			Code  int    `json:"code"`
+		}
+		if err := json.Unmarshal([]byte(errOut), &envelope); err != nil {
+			t.Fatalf("%s: stderr %q is not valid JSON: %v", tc.name, errOut, err)
+		}
+		if envelope.Class != tc.class || envelope.Code != tc.code {
+			t.Errorf("%s: envelope = %+v, want class %s code %d", tc.name, envelope, tc.class, tc.code)
+		}
+	}
+}
+
+func TestMainRun_JSONFlagDoesNotAffectSuccess(t *testing.T) {
+	code, out, errOut := runAssay(t, "--json", "--version")
+	if code != 0 || out == "" || errOut != "" {
+		t.Errorf("assay --json --version: exit %d, stdout %d bytes, stderr %q; want 0, some output, none",
+			code, len(out), errOut)
+	}
+}
+
 // H4 of exit-codes-plan.md: assay's inputs, availability and outputs by class,
 // and the bulk rule: a run does everything, then exits with the class of the
 // first failed step. Failing automatic checks are results, not failures.

@@ -103,6 +103,12 @@ init <source>
   every LLM request/response, RAG injection, tool call, and skill dispatch.
   Use "harvey --help status" to see the log path during a session.
 
+--json
+: on a failing command line or session, print the error as
+  {"error","class","code"} JSON on stderr instead of text. Wherever --json
+  appears on the line, it still applies to whatever else fails. Does not
+  change stdout, and has nothing to print when the command succeeds.
+
 # ENVIRONMENT
 
 ANTHROPIC_API_KEY   API key for Anthropic Claude (optional, for /route add NAME anthropic://)
@@ -165,8 +171,15 @@ A session is interactive when standard input is a terminal, except that --replay
 without --replay-continue never reaches the prompt and counts as not
 interactive. At a terminal a malformed harvey.yaml is a warning and a session
 with no model still starts (use /model use to connect one); without a terminal
-both are failures, so a script does not run a session that cannot work. The exit
-status of commands typed inside a session is not reported.
+both are failures, so a script does not run a session that cannot work. In a
+non-interactive session the process exits with the class of the first failed
+slash command or chat turn, if any, once the session ends normally (/exit,
+end of input) — an interactive session at a terminal always exits 0 that way,
+since a typo is something the person can just try again.
+
+With --json, an error prints as {"error","class","code"} JSON on stderr
+instead of text; class and code are the same class name and number as the
+table above.
 
 # COMMANDS
 
@@ -3879,6 +3892,11 @@ failure mode. Mutually exclusive with -rag-compare.
 -v, -version, --version
 : Display version information.
 
+-json
+: On a failing command line or run, print the error as
+  {"error","class","code"} JSON on stderr instead of text. Wherever -json
+  appears on the line, it still applies to whatever else fails.
+
 # EXIT STATUS
 
 {app_name} does everything it can and then exits with the class of the first
@@ -3919,6 +3937,10 @@ thing that failed, using the workspace's exit codes:
 
 77
 : The operating system refused access to a file or directory.
+
+With -json, an error prints as {"error","class","code"} JSON on stderr
+instead of text; class and code are the same class name and number as the
+table above.
 
 # OUTPUT
 

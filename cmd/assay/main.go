@@ -879,8 +879,11 @@ func defineAssayFlags(fs *flag.FlagSet) assayFlags {
 
 // mainRun is the whole of assay's command line, with the process's arguments and
 // streams passed in so it can be tested. args[0] is the program name. It returns
-// the exit status; main only calls os.Exit with it.
+// the exit status; main only calls os.Exit with it. --json is recognised here,
+// wherever it sits on the line, so it still applies when a later flag — or the
+// flag package's own parse — is what fails.
 func mainRun(args []string, out, errOut io.Writer) int {
+	jsonOut, args := harvey.ExtractJSONFlag(args)
 	appName := filepath.Base(args[0])
 	for _, arg := range args[1:] {
 		switch arg {
@@ -893,8 +896,24 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		}
 	}
 
+	// fail reports err and returns the exit status of its class; usageFail is
+	// the same for a plain-text usage message assay checks by hand (not the
+	// flag package's own). Both honour --json.
+	fail := func(err error) int {
+		if jsonOut {
+			return harvey.PrintJSONError(errOut, err)
+		}
+		fmt.Fprintf(errOut, "assay: %v\n", err)
+		return harvey.ExitCodeFor(err).Code
+	}
+	usageFail := func(msg string) int { return fail(harvey.Usagef("%s", msg)) }
+
 	fs := flag.NewFlagSet(appName, flag.ContinueOnError)
-	fs.SetOutput(errOut)
+	if jsonOut {
+		fs.SetOutput(io.Discard)
+	} else {
+		fs.SetOutput(errOut)
+	}
 	f := defineAssayFlags(fs)
 	corpusPath := f.corpusPath
 	modelsFlag := f.modelsFlag
@@ -910,35 +929,28 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	guideFile := f.guideFile
 	guideCompare := f.guideCompare
 	if err := fs.Parse(args[1:]); err != nil {
+		if jsonOut {
+			return harvey.PrintJSONError(errOut, harvey.Usagef("%v", err))
+		}
 		return 2 // the flag set has already described the problem on errOut
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(errOut, "assay: unexpected argument: %s\n", fs.Arg(0))
-		return 2
+		return usageFail(fmt.Sprintf("unexpected argument: %s", fs.Arg(0)))
 	}
 
 	if *ragCompare && *ragDB == "" {
-		fmt.Fprintln(errOut, "assay: --rag-compare requires --rag-db")
-		return 2
+		return usageFail("--rag-compare requires --rag-db")
 	}
 	if *guideCompare && *guideFile == "" {
-		fmt.Fprintln(errOut, "assay: --guide-compare requires --guide-file")
-		return 2
+		return usageFail("--guide-compare requires --guide-file")
 	}
 	if *guideCompare && *ragCompare {
-		fmt.Fprintln(errOut, "assay: --guide-compare and --rag-compare are mutually exclusive")
-		return 2
+		return usageFail("--guide-compare and --rag-compare are mutually exclusive")
 	}
 	if *llamafilePath != "" && *llamacppURL != "" {
-		fmt.Fprintln(errOut, "assay: --llamafile and --llamacpp are mutually exclusive")
-		return 2
+		return usageFail("--llamafile and --llamacpp are mutually exclusive")
 	}
 
-	// fail reports err and returns the exit status of its class.
-	fail := func(err error) int {
-		fmt.Fprintf(errOut, "assay: %v\n", err)
-		return harvey.ExitCodeFor(err).Code
-	}
 	// A run does everything it can, then exits with the class of the first
 	// failed step (workspace DR-0003: no exit 0 with failures). note remembers
 	// it; failedCalls counts the model calls that errored.

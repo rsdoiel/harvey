@@ -123,11 +123,17 @@ func exitStatus(err error) int {
 
 // mainRun is the whole of harvey's command line, with the process's streams
 // and arguments passed in so it can be tested. args[0] is the program name.
-// It returns the exit status; main only calls os.Exit with it.
+// It returns the exit status; main only calls os.Exit with it. --json is
+// recognised here, wherever it sits on the line, so it still applies when a
+// later flag is the one that fails; runArgs never sees the token.
 func mainRun(args []string, out, errOut io.Writer) int {
+	jsonOut, args := harvey.ExtractJSONFlag(args)
 	err := runArgs(args, out, errOut)
 	if err == nil {
 		return 0
+	}
+	if jsonOut {
+		return harvey.PrintJSONError(errOut, err)
 	}
 	if harvey.ExitCodeFor(err) == harvey.ClassUsage {
 		fmt.Fprintln(errOut, err)

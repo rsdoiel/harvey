@@ -53,8 +53,9 @@ func manualOptions(t *testing.T, manual string) []manualOption {
 	return opts
 }
 
-// The options outside the table: they print something and exit.
-var immediateOptions = []string{"-h", "--help", "-v", "--version", "-l", "--license"}
+// The options outside the table: they print something and exit, or (--json)
+// are extracted before flagSpecs ever sees them.
+var immediateOptions = []string{"-h", "--help", "-v", "--version", "-l", "--license", "--json"}
 
 func TestFlags_TheManualAndTheCodeListTheSameOptions(t *testing.T) {
 	fromManual := map[string]bool{}

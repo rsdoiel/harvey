@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -255,5 +256,82 @@ func TestSentinels_SurviveWrapping(t *testing.T) {
 	err := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", ErrNotFound))
 	if !errors.Is(err, ErrNotFound) {
 		t.Error("errors.Is lost ErrNotFound")
+	}
+}
+
+// PrintJSONError is the {"error", "class", "code"} envelope both binaries'
+// --json mode uses, matching kb's shape (workspace DR-0003).
+
+func TestPrintJSONError_WritesTheEnvelope(t *testing.T) {
+	var buf strings.Builder
+	code := PrintJSONError(&buf, NoInputf("corpus %s does not exist", "x.yaml"))
+	if code != 66 {
+		t.Errorf("code = %d, want 66", code)
+	}
+	var envelope struct {
+		Error string `json:"error"`
+		Class string `json:"class"`
+		Code  int    `json:"code"`
+	}
+	if err := json.Unmarshal([]byte(buf.String()), &envelope); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, buf.String())
+	}
+	if envelope.Class != "no_input" || envelope.Code != 66 {
+		t.Errorf("envelope = %+v, want class no_input code 66", envelope)
+	}
+	if envelope.Error == "" {
+		t.Error("envelope.Error is empty")
+	}
+}
+
+func TestPrintJSONError_NilErrorWritesNothing(t *testing.T) {
+	var buf strings.Builder
+	if code := PrintJSONError(&buf, nil); code != 0 {
+		t.Errorf("code = %d, want 0", code)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("nil error wrote %q, want nothing", buf.String())
+	}
+}
+
+func TestPrintJSONError_UnclassifiedIsInternal(t *testing.T) {
+	var buf strings.Builder
+	code := PrintJSONError(&buf, errors.New("something broke"))
+	if code != 70 {
+		t.Errorf("code = %d, want 70", code)
+	}
+}
+
+// ExtractJSONFlag removes every "--json" token from args (wherever it is),
+// so downstream flag parsing never sees it as unknown, and both binaries
+// can detect --json before their own parsing might fail.
+
+func TestExtractJSONFlag_FindsAndRemovesIt(t *testing.T) {
+	got, rest := ExtractJSONFlag([]string{"prog", "--json", "--bogus"})
+	if !got {
+		t.Error("--json not detected")
+	}
+	if len(rest) != 2 || rest[0] != "prog" || rest[1] != "--bogus" {
+		t.Errorf("rest = %v, want [prog --bogus]", rest)
+	}
+}
+
+func TestExtractJSONFlag_AcceptsTheSingleDashSpellingToo(t *testing.T) {
+	got, rest := ExtractJSONFlag([]string{"prog", "-json", "--corpus", "x"})
+	if !got {
+		t.Error("-json not detected")
+	}
+	if len(rest) != 3 || rest[0] != "prog" || rest[1] != "--corpus" || rest[2] != "x" {
+		t.Errorf("rest = %v, want [prog --corpus x]", rest)
+	}
+}
+
+func TestExtractJSONFlag_AbsentLeavesArgsUnchanged(t *testing.T) {
+	got, rest := ExtractJSONFlag([]string{"prog", "--bogus"})
+	if got {
+		t.Error("--json wrongly detected")
+	}
+	if len(rest) != 2 || rest[0] != "prog" || rest[1] != "--bogus" {
+		t.Errorf("rest = %v, want [prog --bogus]", rest)
 	}
 }

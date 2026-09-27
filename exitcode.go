@@ -416,3 +416,68 @@ func sqliteClass(code int) ExitClass {
 	}
 	return ClassIO
 }
+
+/** PrintJSONError writes err to w as the workspace convention's machine-
+ * readable error envelope, matching kb's --json shape (workspace DR-0003):
+ * {"error": "...", "class": "...", "code": N}. A nil err writes nothing.
+ * Both harvey and assay use this for their --json mode, so a script reading
+ * either binary's stderr gets the same shape kb already produces.
+ *
+ * Parameters:
+ *   w   (io.Writer) — destination, normally the process's stderr.
+ *   err (error)     — the error to report; a no-op when nil.
+ *
+ * Returns:
+ *   int — the exit code err classifies to (0 for nil).
+ *
+ * Example:
+ *   os.Exit(harvey.PrintJSONError(os.Stderr, err))
+ */
+func PrintJSONError(w io.Writer, err error) int {
+	class := ExitCodeFor(err)
+	if err == nil {
+		return class.Code
+	}
+	envelope := struct {
+		Error string `json:"error"`
+		Class string `json:"class"`
+		Code  int    `json:"code"`
+	}{Error: err.Error(), Class: class.Name, Code: class.Code}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(envelope)
+	return class.Code
+}
+
+/** ExtractJSONFlag reports whether "-json" or "--json" appears anywhere in
+ * args and returns args with every occurrence removed, so a flag parser
+ * downstream never sees it as an unknown flag. Both spellings are accepted
+ * since harvey's own flags are double-dash-only and assay's (the standard
+ * library flag package) are conventionally single-dash. Both binaries call
+ * this before their own argument parsing, so --json is honoured even when a
+ * later flag on the same command line — or the flag package's own parse —
+ * is what fails.
+ *
+ * Parameters:
+ *   args ([]string) — the raw command line, args[0] is the program name.
+ *
+ * Returns:
+ *   bool     — true when -json or --json was present.
+ *   []string — args with every occurrence removed; the relative order of
+ *              everything else is unchanged.
+ *
+ * Example:
+ *   jsonOut, args := harvey.ExtractJSONFlag(os.Args) // ["prog","--json","-x"] -> true, ["prog","-x"]
+ */
+func ExtractJSONFlag(args []string) (bool, []string) {
+	found := false
+	filtered := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--json" || a == "-json" {
+			found = true
+			continue
+		}
+		filtered = append(filtered, a)
+	}
+	return found, filtered
+}

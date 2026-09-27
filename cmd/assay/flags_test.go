@@ -75,7 +75,7 @@ func manualOptions(t *testing.T, manual string) map[string]bool {
 
 func TestFlags_TheManualAndTheCodeListTheSameOptions(t *testing.T) {
 	manual := manualOptions(t, harvey.AssayHelpText)
-	inCode := map[string]bool{"h": true, "help": true, "v": true, "version": true}
+	inCode := map[string]bool{"h": true, "help": true, "v": true, "version": true, "json": true}
 	for _, o := range definedOptions() {
 		inCode[o.name] = true
 		placeholder, listed := manual[o.name]
