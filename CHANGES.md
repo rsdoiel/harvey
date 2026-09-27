@@ -1,5 +1,44 @@
 # CHANGES
 
+## Unreleased
+
+### Breaking (exit codes)
+
+Both `harvey` and `assay` now use the workspace exit-code convention (workspace DR-0003;
+harvey DR-0005) instead of exiting only 0 or 1. A script or an embedding tool that reads
+either binary's exit status should check these against the new table (0 ok, 1 negative,
+2 usage, 65 data, 66 no_input, 69 unavailable, 70 internal, 73 cant_create, 74 io, 75
+temp_fail, 77 no_permission, 78 config — see `harvey/CLAUDE.md`, "Exit codes"). Five
+cases that used to exit 0 now fail:
+
+| Case | Was | Now |
+|---|---|---|
+| `harvey --continue` names a session that does not exist | 0 | 66 |
+| `harvey --record-file` names a path that cannot be created | 0 | 73 |
+| `harvey.yaml` is malformed, in a non-interactive session | 0 | 78 |
+| No backend reachable, in a non-interactive session | 0 | 69 |
+| `assay`: every model call fails (the backend is down) | 0 | 69 |
+
+Every other case that used to exit 1 now exits the more specific code for its cause (2
+usage, 65 data, 66 no_input, 69 unavailable, 73 cant_create, 77 no_permission — see
+`exit-codes-survey.md`'s baseline table and `harvey/decisions/0005-*.md` for the full
+list and the reasoning). `harvey --help`/`-h`, `--version`, `-l`, `help`, and `assay
+--help`/`--version` are unchanged, at 0. An error nothing classified is 70, never 1 — a
+70 anywhere is a bug, not a documented class. Verified old-versus-new against the
+v0.0.16 baseline with `scripts/compare-exit-codes.py`: every changed code above and
+none unexpected, no exit 70, no hang.
+
+### Other
+
+- An interactive `harvey` session still warns and continues on a malformed `harvey.yaml`
+  or an unreachable backend, so nothing changes at a terminal — only non-interactive runs
+  (stdin not a terminal, or `--replay` without `--replay-continue`) now fail fast.
+- A surplus positional argument to `harvey` is now a usage error (2), previously reported
+  as "Unknown flag".
+- `assay` finishes its run and writes the report before exiting with the class of the
+  first failure; a prompt's failing automatic checks are still a result, not a tool
+  failure, and still exit 0.
+
 ## v0.0.16 (2026-09-24)
 
 ### New features

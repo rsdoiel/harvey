@@ -242,7 +242,16 @@ workspace convention and at `exitcode.go` as the worked example.
 
 ---
 
-## H6 — Old versus new, and the decision record
+## H6 — Old versus new, and the decision record (done, 2026-09-27)
+
+`scripts/compare-exit-codes.py` + `scripts/README.md`, run against the v0.0.16 baseline
+(`df39cfe`) via a throwaway `git worktree`: 40 commands, 32 changed exit code, every one
+matching this plan and the survey's Convention column, no exit 70, no hang, no stray
+Ollama process (`pgrep -x ollama` unchanged). `harvey/decisions/0005-*.md` written and
+accepted. `CHANGES.md` `## Unreleased` carries the upgrade table. A handful of survey
+rows needing a live model response or a zero-model Ollama instance are listed in the
+script's own "not covered" footer rather than faked.
+
 
 **Comparison.** As in `kb`'s X5: build the v0.0.16 tree (`df39cfe`) as the baseline and
 the new tree, run the same commands against each in a fresh scratch workspace with an
