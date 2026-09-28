@@ -167,15 +167,49 @@ func TestLearnCandidates_NewestFirst(t *testing.T) {
 	}
 }
 
-func TestLearnCandidates_OnlyFountainFilesAreConsidered(t *testing.T) {
+func TestLearnCandidates_HandOffExtensions(t *testing.T) {
+	// agents/decisions/0004 moved hand-offs to Markdown going forward
+	// (project tier: agents/projects/<project>/hand-off/), while existing
+	// Fountain hand-offs stay valid too.
 	f := newLearnFixture(t)
-	f.write(t, "agents/hand-off/notes.md", "# not a hand-off\n")
+	f.write(t, "agents/hand-off/notes.txt", "not a hand-off\n")
 	f.write(t, "agents/hand-off/a.spmd", fountainWithWords(5))
 	f.write(t, "agents/hand-off/b.fountain", fountainWithWords(5))
+	f.write(t, "agents/hand-off/c.md", "# recap\n"+strings.Repeat("word ", 5))
 	os.MkdirAll(filepath.Join(f.root, "agents/hand-off/sub.spmd"), 0o755)
 	cs, _ := learnCandidates(f.kb, f.root, 0)
-	if len(cs) != 2 {
-		t.Errorf("candidates = %+v, want only a.spmd and b.fountain (no .md, no directory)", cs)
+	if len(cs) != 3 {
+		t.Errorf("candidates = %+v, want a.spmd, b.fountain and c.md (no .txt, no directory)", cs)
+	}
+}
+
+func TestLearnCandidates_SessionsStayFountainOnly(t *testing.T) {
+	// Session transcripts are auto-recorded Fountain and do not follow
+	// hand-offs' move to Markdown (context-continuity-design.md, idea B).
+	f := newLearnFixture(t)
+	f.write(t, "agents/sessions/s.md", "# not a session transcript\n"+strings.Repeat("word ", 300))
+	f.write(t, "agents/sessions/s.spmd", fountainWithWords(300))
+	cs, _ := learnCandidates(f.kb, f.root, 0)
+	if candidateByName(cs, "s.md") != nil {
+		t.Error("a Markdown file in agents/sessions was offered; sessions stay Fountain-only")
+	}
+	if candidateByName(cs, "s.spmd") == nil {
+		t.Error("s.spmd was not offered")
+	}
+}
+
+func TestLearnCandidates_ProjectTierHandOffsAreAlsoOffered(t *testing.T) {
+	// agents/decisions/0004: project-scoped hand-offs live under
+	// agents/projects/<project>/hand-off/, not just the flat agents/hand-off/.
+	f := newLearnFixture(t)
+	f.write(t, "agents/projects/harvey/hand-off/topic.md", "# recap\n"+strings.Repeat("word ", 5))
+	f.write(t, "agents/projects/knowledge/hand-off/other.spmd", fountainWithWords(5))
+	cs, _ := learnCandidates(f.kb, f.root, 0)
+	if c := candidateByName(cs, "topic.md"); c == nil || c.Kind != "hand-off" {
+		t.Errorf("candidates = %+v, want harvey's project-tier hand-off offered as a hand-off", cs)
+	}
+	if c := candidateByName(cs, "other.spmd"); c == nil || c.Kind != "hand-off" {
+		t.Errorf("candidates = %+v, want knowledge's project-tier hand-off offered as a hand-off", cs)
 	}
 }
 

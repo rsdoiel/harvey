@@ -57,13 +57,18 @@ type LearnCandidate struct {
 }
 
 /** learnCandidates lists the hand-off notes and recorded sessions under root
- * (agents/hand-off and agents/sessions) that are not yet in the knowledge
- * base, newest first. Only .spmd and .fountain files count. A hand-off is
- * always a candidate; a session is a candidate only if it has at least
- * minWords words. A file already stored as a document, under either its
- * working-directory-relative path or its absolute path, is left out, so a
- * second consumer that stored the absolute form cannot cause a duplicate. A
- * directory that does not exist is not an error.
+ * that are not yet in the knowledge base, newest first. Hand-offs are read
+ * from agents/hand-off (workspace tier) and every project's
+ * agents/projects/PROJECT/hand-off (agents/decisions/0004); sessions only
+ * from agents/sessions.
+ * Hand-offs accept .spmd, .fountain or .md — sessions stay Fountain-only
+ * (.spmd, .fountain), since auto-recorded transcripts did not move to
+ * Markdown the way hand-offs did (context-continuity-design.md, idea B). A
+ * hand-off is always a candidate; a session is a candidate only if it has at
+ * least minWords words. A file already stored as a document, under either
+ * its working-directory-relative path or its absolute path, is left out, so
+ * a second consumer that stored the absolute form cannot cause a duplicate.
+ * A directory that does not exist is not an error.
  *
  * Parameters:
  *   kb       (*knowledge.KnowledgeBase) — the open knowledge base.
@@ -86,11 +91,29 @@ func learnCandidates(kb *knowledge.KnowledgeBase, root string, minWords int) ([]
 		cwd = resolved
 	}
 
+	handOffExts := map[string]bool{".spmd": true, ".fountain": true, ".md": true}
+	sessionExts := map[string]bool{".spmd": true, ".fountain": true}
+
+	sources := []struct {
+		dir  string
+		kind string
+		exts map[string]bool
+	}{
+		{filepath.Join(root, harveySubdir, "hand-off"), "hand-off", handOffExts},
+		{filepath.Join(root, harveySubdir, "sessions"), "session", sessionExts},
+	}
+	if projectHandOffDirs, err := filepath.Glob(filepath.Join(root, harveySubdir, "projects", "*", "hand-off")); err == nil {
+		for _, dir := range projectHandOffDirs {
+			sources = append(sources, struct {
+				dir  string
+				kind string
+				exts map[string]bool
+			}{dir, "hand-off", handOffExts})
+		}
+	}
+
 	var out []LearnCandidate
-	for _, src := range []struct{ dir, kind string }{
-		{filepath.Join(root, harveySubdir, "hand-off"), "hand-off"},
-		{filepath.Join(root, harveySubdir, "sessions"), "session"},
-	} {
+	for _, src := range sources {
 		entries, err := os.ReadDir(src.dir)
 		if os.IsNotExist(err) {
 			continue
@@ -100,7 +123,7 @@ func learnCandidates(kb *knowledge.KnowledgeBase, root string, minWords int) ([]
 		}
 		for _, e := range entries {
 			ext := filepath.Ext(e.Name())
-			if e.IsDir() || (ext != ".spmd" && ext != ".fountain") {
+			if e.IsDir() || !src.exts[ext] {
 				continue
 			}
 			abs := filepath.Join(src.dir, e.Name())
