@@ -397,11 +397,20 @@ func (a *Agent) injectMemoryContext(query string) {
 }
 
 /** WriteHandoff extracts a structural summary from the current conversation
- * history and writes it as a Fountain document to handoffDir. The file is
- * named by timestamp and uses the .spmd extension so the memory miner can
- * process it in a future session.
+ * history and writes it as a Markdown document to handoffDir, per
+ * HANDOFF_FORMAT.md (Laboratory workspace `agents/decisions/0005`). The file
+ * is named by timestamp and uses the .md extension so `kb learn` and
+ * learnCandidates can process it in a future session.
  *
- * No LLM call is made. The summary is built from three heuristics:
+ * No LLM call is made, so this carries only a `## State Recap` section, not
+ * a full carried-forward-and-corrected recap in HANDOFF_FORMAT.md's sense —
+ * it does not read or repoint STATE.md, since a heuristic delta snapshot is
+ * exactly the kind of hand-off that spec warns should not become "current
+ * state." `scope: workspace` and an empty `projects:` list are used
+ * unconditionally: Harvey's Workspace has no concept of which experiment a
+ * conversation belongs to, so this cannot claim a project tier honestly.
+ *
+ * The summary is built from three heuristics:
  *   - Last topics:     first line of the last three assistant messages.
  *   - Files touched:   path-like tokens (containing "/" but not "://") from
  *                      the last twenty turns, capped at five unique paths.
@@ -422,7 +431,7 @@ func (a *Agent) injectMemoryContext(query string) {
  */
 func (a *Agent) WriteHandoff(store *MemoryStore, handoffDir string) (string, error) {
 	ts := time.Now().UTC()
-	filename := ts.Format("2006-01-02T150405Z") + ".spmd"
+	filename := ts.Format("20060102-150405") + "-profile-switch.md"
 	path := filepath.Join(handoffDir, filename)
 
 	profileName := "(unknown)"
@@ -483,31 +492,37 @@ func (a *Agent) WriteHandoff(store *MemoryStore, handoffDir string) (string, err
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("INT. HAND-OFF - %s\n\n", ts.Format(time.RFC3339)))
-	sb.WriteString(fmt.Sprintf("HARVEY\nProfile switched from: %s.\n\n", profileName))
-	if len(lastTopics) > 0 || len(filesTouched) > 0 || len(openQuestions) > 0 {
-		sb.WriteString("NOTE:\n")
-		if len(lastTopics) > 0 {
-			sb.WriteString("  Last topics:\n")
-			for _, t := range lastTopics {
-				sb.WriteString("    - " + t + "\n")
-			}
-		}
-		if len(filesTouched) > 0 {
-			sb.WriteString("  Files touched:\n")
-			for _, f := range filesTouched {
-				sb.WriteString("    - " + f + "\n")
-			}
-		}
-		if len(openQuestions) > 0 {
-			sb.WriteString("  Open questions:\n")
-			for _, q := range openQuestions {
-				sb.WriteString("    - " + q + "\n")
-			}
+	sb.WriteString("---\n")
+	sb.WriteString(fmt.Sprintf("title: \"Profile switch: %s\"\n", profileName))
+	sb.WriteString(fmt.Sprintf("date: \"%s\"\n", ts.Format("2006-01-02")))
+	sb.WriteString("author: harvey (auto)\n")
+	sb.WriteString("scope: workspace\n")
+	sb.WriteString("projects: []\n")
+	sb.WriteString("previous: \"\"\n")
+	sb.WriteString("---\n\n")
+	sb.WriteString("## State Recap\n\n")
+	sb.WriteString(fmt.Sprintf("### Current State\n\nProfile switched from: %s.\n\n", profileName))
+	if len(lastTopics) > 0 {
+		sb.WriteString("### Recent Topics\n\n")
+		for _, t := range lastTopics {
+			sb.WriteString("- " + t + "\n")
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString("THE END.\n")
+	if len(filesTouched) > 0 {
+		sb.WriteString("### Important Files\n\n")
+		for _, f := range filesTouched {
+			sb.WriteString("- " + f + "\n")
+		}
+		sb.WriteString("\n")
+	}
+	if len(openQuestions) > 0 {
+		sb.WriteString("### Known Problems / Open Questions\n\n")
+		for _, q := range openQuestions {
+			sb.WriteString("- " + q + "\n")
+		}
+		sb.WriteString("\n")
+	}
 
 	if err := os.WriteFile(path, []byte(sb.String()), 0o644); err != nil {
 		return "", err

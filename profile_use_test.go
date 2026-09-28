@@ -77,19 +77,22 @@ func TestWriteHandoff_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteHandoff: %v", err)
 	}
-	if !strings.HasSuffix(path, ".spmd") {
-		t.Errorf("handoff file should have .spmd extension: %q", path)
+	if !strings.HasSuffix(path, ".md") {
+		t.Errorf("handoff file should have .md extension per HANDOFF_FORMAT.md: %q", path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read handoff: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "INT. HAND-OFF") {
-		t.Error("handoff file missing scene heading")
+	if !strings.HasPrefix(content, "---\n") {
+		t.Error("handoff file missing YAML frontmatter")
 	}
-	if !strings.Contains(content, "THE END.") {
-		t.Error("handoff file missing THE END.")
+	if !strings.Contains(content, "scope: workspace") {
+		t.Error("handoff file missing scope: workspace (auto-generated, project-agnostic)")
+	}
+	if !strings.Contains(content, "## State Recap") {
+		t.Error("handoff file missing State Recap section")
 	}
 }
 
