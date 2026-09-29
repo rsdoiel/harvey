@@ -277,8 +277,8 @@ func (u *UnifiedMemory) recallRAG(query string, embedder Embedder) ([]UnifiedRes
 const kbConceptRecallLimit = 5
 
 // recallKB returns knowledge-base content related to query. It first tries
-// concept-tag matching (kb.MatchConceptNames against query, then
-// kb.RecallByConceptNames) — not scoped to CurrentProjectID, since a tagged
+// concept-tag matching (kb.RecallByText, which matches concept names in query
+// and recalls what is linked to them) — not scoped to CurrentProjectID, since a tagged
 // concept is a deliberate cross-project signal. When no concept matches (or
 // none of the matches carry surfaceable content — see formatConceptMatch),
 // it falls back to the original substring scan over the current project's
@@ -301,31 +301,27 @@ func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 	defer kb.Close()
 
 	if query != "" {
-		names, err := kb.MatchConceptNames(query)
+		// The same call `kb concept recall` makes (knowledge DR-0051), so what
+		// Harvey injects and what a curator sees at the command line agree.
+		recall, err := kb.RecallByText(query, kbConceptRecallLimit, "")
 		if err != nil {
 			return nil, err
 		}
-		if len(names) > 0 {
-			matches, err := kb.RecallByConceptNames(names, kbConceptRecallLimit)
-			if err != nil {
-				return nil, err
+		var out []UnifiedResult
+		for _, h := range recall.Hits {
+			content := formatConceptMatch(h.ConceptMatch)
+			if content == "" {
+				continue
 			}
-			var out []UnifiedResult
-			for _, m := range matches {
-				content := formatConceptMatch(m)
-				if content == "" {
-					continue
-				}
-				out = append(out, UnifiedResult{
-					Source:  "kb",
-					ID:      fmt.Sprintf("kb:%s:%d", m.SourceType, m.ID),
-					Content: content,
-					Score:   0.6,
-				})
-			}
-			if len(out) > 0 {
-				return out, nil
-			}
+			out = append(out, UnifiedResult{
+				Source:  "kb",
+				ID:      fmt.Sprintf("kb:%s:%d", h.SourceType, h.ID),
+				Content: content,
+				Score:   0.6,
+			})
+		}
+		if len(out) > 0 {
+			return out, nil
 		}
 	}
 
