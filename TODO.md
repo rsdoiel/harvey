@@ -93,8 +93,11 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 - [x] **FIXED 2026-09-24. `promptAction` treated end of input as "yes".** Found while building `/kb learn concepts`: Ctrl-D or a closed pipe at a "Write: PATH" box wrote the file. `promptAction` now returns `(choice, ended)` and every caller treats `ended` as quit (`/kb learn concepts`, and both write prompts in `autoExecuteReply`); a bare Enter is still yes. The same pass found that the tagged-block path in `autoExecuteReply` never checked `CheckWritePermission` (only the untagged fallback did), so a read-only path could be written after a yes; it is now refused before the prompt. 8 red-first tests in `commands_test.go`; one older test had encoded the bug ("Empty input → Enter → yes") and now sends a real Enter.
 
 - [ ] **Design spike: AI HAT+ 2 (Hailo-10H) as a fourth Harvey backend.**
-  Blocked on hardware — a Raspberry Pi 5 16GB + AI HAT+ 2 build is planned
-  but not yet purchased (parts list: `../Harvey-Project-Parts-List.txt`).
+  Blocked on the hardware arriving — a Raspberry Pi 5 16GB, the AI HAT+ 2
+  and a 256GB SD card (OS and models) were ordered 2026-10-02 and have not
+  yet arrived (parts list: `../Harvey-Project-Parts-List.txt`). When it
+  does, start by testing the models listed in *AI Projects with Raspberry
+  Pi* (Hattersley & Jepson, 2026; `../AI_Pi_Projects_Lessons.md`).
   `hailo-ollama` (the HAT's local server) exposes `/api/pull` and
   `/api/chat` on port 8000 with the same streaming JSON shape
   (`done`/`eval_count`/`done_reason`) as Ollama's own API on 11434 — the
