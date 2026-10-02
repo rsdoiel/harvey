@@ -580,7 +580,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 			return nil
 		}
 		if !PrintHelpTopic(out, topic, "", "", "", "") {
-			fmt.Fprintf(out, "  Unknown help topic %q.\n  Type /help topics for the topic index.\n\n", args[0])
+			return Usagef("unknown help topic %q  (type /help topics for the topic index)", args[0])
 		}
 		return nil
 	}
@@ -783,11 +783,11 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 		return cmdModelList(a, out)
 	case "use":
 		if len(args) < 2 {
-			return pickAndUseModel(a, out)
+			return defaultClass(ClassUnavailable, pickAndUseModel(a, out))
 		}
 		switched, err := attemptModelSwitch(a, args[1], out)
 		if err != nil {
-			return err
+			return defaultClass(ClassUnavailable, err)
 		}
 		if switched {
 			return nil
@@ -796,17 +796,16 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 		// (llamafile, llama.cpp and Ollama models), by name or by a unique prefix.
 		if models, lerr := listLocalModels(a); lerr == nil {
 			if m, ambiguous, ok := matchModel(models, args[1]); ok {
-				return useSelectedModel(a, m, out, false)
+				return defaultClass(ClassUnavailable, useSelectedModel(a, m, out, false))
 			} else if len(ambiguous) > 0 {
-				fmt.Fprintf(out, "  %q matches several models; use the full name, or /model use for a picker:\n", args[1])
+				var names []string
 				for _, c := range ambiguous {
-					fmt.Fprintf(out, "    %s [%s]\n", c.Name, c.Engine)
+					names = append(names, fmt.Sprintf("%s [%s]", c.Name, c.Engine))
 				}
-				return nil
+				return Usagef("%q matches several models (%s); use the full name, or /model use for a picker", args[1], strings.Join(names, ", "))
 			}
 		}
-		fmt.Fprintf(out, "  Model %q not found — see /model list, or /model use (no arg) for a picker.\n", args[1])
-		return nil
+		return Negativef("model %q not found — see /model list, or /model use (no arg) for a picker", args[1])
 	case "alias":
 		return cmdModelAlias(a, args[1:], out)
 	case "mode":
@@ -881,6 +880,7 @@ func cmdModelClean(a *Agent, out io.Writer) error {
 // cmdModelShowEntry prints details for the named model, or the active model when name is "".
 // For llamafile models it shows path, size, and context length.
 func cmdModelShowEntry(a *Agent, name string, out io.Writer) error {
+	explicit := name != ""
 	if name == "" {
 		label := activeModelLabel(a)
 		if a.Client != nil {
@@ -899,8 +899,13 @@ func cmdModelShowEntry(a *Agent, name string, out io.Writer) error {
 	}
 	entry := a.Config.LlamafileEntryByName(name)
 	if entry == nil {
-		fmt.Fprintf(out, "  llamafile %q not found.\n", name)
-		return nil
+		if !explicit {
+			// The active model was already shown; its llamafile entry is not
+			// registered, which is a status, not a failure.
+			fmt.Fprintf(out, "  llamafile %q not found.\n", name)
+			return nil
+		}
+		return Negativef("llamafile %q not found", name)
 	}
 	active := ""
 	if entry.Name == a.Config.Llamafile.Active {
@@ -932,7 +937,7 @@ func cmdModelList(a *Agent, out io.Writer) error {
 	}
 	if len(models) == 0 {
 		fmt.Fprintln(out, "  No models found. Use /model use to start one.")
-		return nil
+		return Negativef("no models found")
 	}
 
 	activeEngine := ""
@@ -1027,12 +1032,10 @@ func cmdModelStatus(a *Agent, out io.Writer) error {
 // Backends not started by Harvey are not stopped.
 func cmdModelStop(a *Agent, out io.Writer) error {
 	if a.Backend == nil {
-		fmt.Fprintln(out, "  No managed backend is active.")
-		return nil
+		return Negativef("no managed backend is active")
 	}
 	if !a.Backend.StartedByHarvey() {
-		fmt.Fprintf(out, "  The %s backend was not started by Harvey — not stopping.\n", a.Backend.Name())
-		return nil
+		return Negativef("the %s backend was not started by Harvey — not stopping", a.Backend.Name())
 	}
 	backendName := a.Backend.Name()
 	modelName := a.Backend.ActiveModel()
@@ -1077,13 +1080,13 @@ func isValidToolMode(s string) bool {
  */
 func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 	if a.ModelCache == nil {
-		return fmt.Errorf("no model cache — run /probe first to populate it")
+		return Negativef("no model cache — run /probe first to populate it")
 	}
 
 	activeModelName := func() (string, error) {
 		ac, ok := a.Client.(*AnyLLMClient)
 		if !ok {
-			return "", fmt.Errorf("no active Ollama model")
+			return "", Negativef("no active Ollama model")
 		}
 		return ac.ModelName(), nil
 	}
@@ -1117,13 +1120,11 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 		modelName = args[0]
 		mode = args[1]
 	default:
-		fmt.Fprintf(out, "  Usage: /model mode [MODEL] {auto|structured|prose|inject|none}\n")
-		return nil
+		return Usagef("usage: /model mode [MODEL] {auto|structured|prose|inject|none}")
 	}
 
 	if !isValidToolMode(mode) {
-		fmt.Fprintf(out, "  Unknown mode %q. Valid modes: auto, structured, prose, inject, none\n", mode)
-		return nil
+		return Usagef("unknown mode %q. Valid modes: auto, structured, prose, inject, none", mode)
 	}
 
 	cap, err := a.ModelCache.Get(modelName)
@@ -1243,8 +1244,7 @@ func cmdHint(a *Agent, _ []string, out io.Writer) error {
  */
 func cmdSafeMode(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /safemode <on|off|status|allow CMD|deny CMD|reset>")
-		return nil
+		return Usagef("usage: /safemode <on|off|status|allow CMD|deny CMD|reset>")
 	}
 
 	switch strings.ToLower(args[0]) {
@@ -1256,46 +1256,46 @@ func cmdSafeMode(a *Agent, args []string, out io.Writer) error {
 		return safeModeStatus(a, out)
 	case "allow":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /safemode allow CMD")
-			return nil
+			return Usagef("usage: /safemode allow CMD")
 		}
 		return safeModeAllow(a, args[1], out)
 	case "deny":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /safemode deny CMD")
-			return nil
+			return Usagef("usage: /safemode deny CMD")
 		}
 		return safeModeDeny(a, args[1], out)
 	case "reset":
 		return safeModeReset(a, out)
 	default:
-		fmt.Fprintf(out, "Unknown safemode subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "Usage: /safemode <on|off|status|allow CMD|deny CMD|reset>")
+		return Usagef("unknown safemode subcommand: %q  (usage: /safemode <on|off|status|allow CMD|deny CMD|reset>)", args[0])
 	}
-	return nil
 }
 
 func safeModeOn(a *Agent, out io.Writer) error {
 	a.Config.Security.SafeMode = true
+	var saveErr error
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist safe mode: %v\n", err)
+			saveErr = defaultClass(ClassIO, fmt.Errorf("could not persist safe mode: %w", err))
 		}
 	}
 	fmt.Fprintln(out, "  Safe mode enabled. Only allowed commands can be executed.")
 	fmt.Fprintf(out, "  Allowed: %s\n", strings.Join(a.Config.Security.AllowedCommands, ", "))
-	return nil
+	return saveErr
 }
 
 func safeModeOff(a *Agent, out io.Writer) error {
 	a.Config.Security.SafeMode = false
+	var saveErr error
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist safe mode: %v\n", err)
+			saveErr = defaultClass(ClassIO, fmt.Errorf("could not persist safe mode: %w", err))
 		}
 	}
 	fmt.Fprintln(out, "  Safe mode disabled. All commands are allowed.")
-	return nil
+	return saveErr
 }
 
 func safeModeStatus(a *Agent, out io.Writer) error {
@@ -1317,47 +1317,54 @@ func safeModeAllow(a *Agent, cmd string, out io.Writer) error {
 	} else {
 		fmt.Fprintf(out, "  %q is already in the allowlist.\n", cmd)
 	}
+	var saveErr error
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist allowlist: %v\n", err)
+			saveErr = defaultClass(ClassIO, fmt.Errorf("could not persist allowlist: %w", err))
 		}
 	}
-	return nil
+	return saveErr
 }
 
 func safeModeDeny(a *Agent, cmd string, out io.Writer) error {
+	var notListed error
 	oldLen := len(a.Config.Security.AllowedCommands)
 	a.Config.RemoveAllowedCommand(cmd)
 	if len(a.Config.Security.AllowedCommands) < oldLen {
 		fmt.Fprintf(out, "  Removed %q from allowlist.\n", cmd)
 	} else {
 		fmt.Fprintf(out, "  %q is not in the allowlist.\n", cmd)
+		notListed = Negativef("%q is not in the allowlist", cmd)
 	}
+	var saveErr error
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist allowlist: %v\n", err)
+			saveErr = defaultClass(ClassIO, fmt.Errorf("could not persist allowlist: %w", err))
 		}
 	}
-	return nil
+	return keepFirstFailure(notListed, saveErr)
 }
 
 func safeModeReset(a *Agent, out io.Writer) error {
 	a.Config.ResetAllowedCommands()
+	var saveErr error
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist allowlist: %v\n", err)
+			saveErr = defaultClass(ClassIO, fmt.Errorf("could not persist allowlist: %w", err))
 		}
 	}
 	fmt.Fprintln(out, "  Allowlist reset to defaults.")
 	fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.Security.AllowedCommands, ", "))
-	return nil
+	return saveErr
 }
 
 func cmdInspect(a *Agent, args []string, out io.Writer) error {
 	ac, ok := a.Client.(*AnyLLMClient)
 	if !ok || ac.ProviderName() != "ollama" {
-		fmt.Fprintln(out, "Inspect requires an Ollama backend. Use /model use to pick an Ollama model.")
-		return nil
+		return Unavailablef("/inspect requires an Ollama backend. Use /model use to pick an Ollama model")
 	}
 	oc := NewOllamaClient(ac.BackendURL(), "")
 	ctx := context.Background()
@@ -1366,7 +1373,7 @@ func cmdInspect(a *Agent, args []string, out io.Writer) error {
 		// Detail view for a single named model.
 		detail, err := oc.ShowModel(ctx, args[0])
 		if err != nil {
-			return err
+			return defaultClass(ClassUnavailable, err)
 		}
 		state := ""
 		if detail.Running {
@@ -1394,7 +1401,7 @@ func cmdInspect(a *Agent, args []string, out io.Writer) error {
 	// Summary table for all installed models.
 	summaries, err := oc.ModelSummaries(ctx)
 	if err != nil {
-		return err
+		return defaultClass(ClassUnavailable, err)
 	}
 	if len(summaries) == 0 {
 		fmt.Fprintln(out, "No models installed. In a shell, pull one with: ollama pull <model>")
@@ -1601,12 +1608,10 @@ func ollamaTruncateName(s string, max int) string {
  */
 func cmdRename(a *Agent, args []string, out io.Writer) error {
 	if a.Recorder == nil {
-		fmt.Fprintln(out, "No active recording. Start one with /record start.")
-		return nil
+		return Negativef("no active recording. Start one with /record start")
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /rename NAME")
-		return nil
+		return Usagef("usage: /rename NAME")
 	}
 	name := filepath.Base(args[0])
 	if !strings.HasSuffix(name, ".spmd") && !strings.HasSuffix(name, ".fountain") {
@@ -1614,7 +1619,7 @@ func cmdRename(a *Agent, args []string, out io.Writer) error {
 	}
 	newPath := filepath.Join(filepath.Dir(a.Recorder.Path()), name)
 	if err := a.Recorder.Rename(newPath); err != nil {
-		return fmt.Errorf("rename: %w", err)
+		return defaultClass(ClassIO, fmt.Errorf("rename: %w", err))
 	}
 	fmt.Fprintf(out, "Session renamed to: %s\n", newPath)
 	return nil
@@ -1725,14 +1730,12 @@ func ollamaFormatCtx(tokens int) string {
  */
 func cmdRecord(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /record <start [FILE]|stop|status>")
-		return nil
+		return Usagef("usage: /record <start [FILE]|stop|status>")
 	}
 	switch strings.ToLower(args[0]) {
 	case "start":
 		if a.Recorder != nil {
-			fmt.Fprintf(out, "Already recording to %s. Use /record stop first.\n", a.Recorder.Path())
-			return nil
+			return Negativef("already recording to %s. Use /record stop first", a.Recorder.Path())
 		}
 		path := ""
 		if len(args) >= 2 {
@@ -1754,14 +1757,13 @@ func cmdRecord(a *Agent, args []string, out io.Writer) error {
 		}
 		r, err := NewRecorder(path, model, ws)
 		if err != nil {
-			return err
+			return AsCreate(err)
 		}
 		a.Recorder = r
 		fmt.Fprintf(out, "Recording started: %s\n", path)
 	case "stop":
 		if a.Recorder == nil {
-			fmt.Fprintln(out, "Not currently recording.")
-			return nil
+			return Negativef("not currently recording")
 		}
 		path := a.Recorder.Path()
 		if err := a.Recorder.Close(); err != nil {
@@ -1776,8 +1778,7 @@ func cmdRecord(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintln(out, "Not recording.")
 		}
 	default:
-		fmt.Fprintf(out, "Unknown record subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /record <start [FILE]|stop|status>")
+		return Usagef("unknown record subcommand: %s  (usage: /record <start [FILE]|stop|status>)", args[0])
 	}
 	return nil
 }
@@ -3154,8 +3155,7 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
 
 	case "add":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /context add TEXT...")
-			return nil
+			return Usagef("usage: /context add TEXT...")
 		}
 		text := strings.Join(args[1:], " ")
 		if a.PinnedContext == "" {
@@ -3178,8 +3178,7 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "  Pinned context updated (%d chars).\n", len(a.PinnedContext))
 
 	default:
-		fmt.Fprintf(out, "Unknown context subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /context <show|add TEXT...|clear>")
+		return Usagef("unknown context subcommand: %s  (usage: /context <show|add TEXT...|clear>)", args[0])
 	}
 	return nil
 }
@@ -3253,15 +3252,13 @@ func cmdResume(a *Agent, args []string, out io.Writer) error {
 
 func cmdSession(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>")
-		return nil
+		return Usagef("usage: /session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>")
 	}
 	switch strings.ToLower(args[0]) {
 	case "list":
 		sessDir := a.SessionsDir
 		if sessDir == "" {
-			fmt.Fprintln(out, "  No sessions directory configured.")
-			return nil
+			return NoInputf("no sessions directory configured")
 		}
 		files, err := ListSessionFiles(sessDir)
 		if err != nil {
@@ -3282,18 +3279,15 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		} else if a.Recorder != nil {
 			path = a.Recorder.Path()
 		} else {
-			fmt.Fprintln(out, "  Usage: /session show FILE")
-			return nil
+			return Usagef("usage: /session show FILE")
 		}
 		info, err := os.Stat(path)
 		if err != nil {
-			fmt.Fprintf(out, "  ✗ %v\n", err)
-			return nil
+			return err
 		}
 		_, model, turns, err := parseFountainSession(path)
 		if err != nil {
-			fmt.Fprintf(out, "  ✗ Could not parse session: %v\n", err)
-			return nil
+			return defaultClass(ClassData, fmt.Errorf("could not parse session: %w", err))
 		}
 		fmt.Fprintf(out, "  File:    %s\n", path)
 		fmt.Fprintf(out, "  Date:    %s\n", info.ModTime().Format("2006-01-02 15:04"))
@@ -3309,16 +3303,14 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 	case "use", "continue":
 		if len(args) < 2 {
 			if a.SessionsDir == "" {
-				fmt.Fprintln(out, "  No sessions directory configured.")
-				return nil
+				return NoInputf("no sessions directory configured")
 			}
 			files, err := ListSessionFiles(a.SessionsDir)
 			if err != nil {
 				return err
 			}
 			if len(files) == 0 {
-				fmt.Fprintln(out, "  No sessions found. Start a conversation to create one.")
-				return nil
+				return Negativef("no sessions found. Start a conversation to create one")
 			}
 			items := make([]SelectItem, len(files))
 			for i, f := range files {
@@ -3335,14 +3327,12 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		}
 		n, err := a.ContinueFromFountain(args[1])
 		if err != nil {
-			fmt.Fprintf(out, "  ✗ %v\n", err)
-			return nil
+			return defaultClass(ClassData, fmt.Errorf("%s: %w", args[1], err))
 		}
 		fmt.Fprintf(out, green("✓")+" Loaded %d turns from %s\n", n, args[1])
 	case "replay":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /session replay FILE [OUTPUT]")
-			return nil
+			return Usagef("usage: /session replay FILE [OUTPUT]")
 		}
 		src := args[1]
 		outPath := ""
@@ -3352,13 +3342,11 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 			outPath = DefaultSessionPath(a.SessionsDir)
 		}
 		if a.Client == nil {
-			fmt.Fprintln(out, "  No backend connected. Use /model use to connect a model (for Ollama, run `ollama serve` first).")
-			return nil
+			return errNoBackend()
 		}
 		return a.ReplayFromFountain(context.Background(), src, outPath, out)
 	default:
-		fmt.Fprintf(out, "Unknown session subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>")
+		return Usagef("unknown session subcommand: %s  (usage: /session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>)", args[0])
 	}
 	return nil
 }
@@ -3391,8 +3379,7 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 	switch args[0] {
 	case "set", "add":
 		if len(args) < 3 {
-			fmt.Fprintln(out, "Usage: /model alias set ALIAS FULL_MODEL_NAME [--tags tag1,tag2]")
-			return nil
+			return Usagef("usage: /model alias set ALIAS FULL_MODEL_NAME [--tags tag1,tag2]")
 		}
 		alias := strings.ToLower(args[1])
 		full := args[2]
@@ -3411,8 +3398,7 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 		}
 		// Reject if the alias name clashes with an installed model name.
 		if aliasClashesWithModel(a, alias) {
-			fmt.Fprintf(out, "  ✗ %q is already an installed model name — choose a different alias.\n", alias)
-			return nil
+			return Negativef("%q is already an installed model name — choose a different alias", alias)
 		}
 		// Warn if updating an existing alias.
 		if existing, ok := a.Config.ModelAliases[alias]; ok && existing.Model != full {
@@ -3420,8 +3406,7 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 		}
 		a.Config.ModelAliases[alias] = ModelAlias{Model: full, Tags: tags}
 		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, "  ✗ Failed to save: %v\n", err)
-			return nil
+			return defaultClass(ClassIO, fmt.Errorf("saving model aliases: %w", err))
 		}
 		tagStr := ""
 		if len(tags) > 0 {
@@ -3432,14 +3417,12 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 	case "tags":
 		// /model alias tags ALIAS TAG [TAG...]
 		if len(args) < 3 {
-			fmt.Fprintln(out, "Usage: /model alias tags ALIAS TAG [TAG...]")
-			return nil
+			return Usagef("usage: /model alias tags ALIAS TAG [TAG...]")
 		}
 		alias := strings.ToLower(args[1])
 		entry, ok := a.Config.ModelAliases[alias]
 		if !ok {
-			fmt.Fprintf(out, "  Alias %q not found.\n", alias)
-			return nil
+			return Negativef("alias %q not found", alias)
 		}
 		for _, t := range args[2:] {
 			t = strings.ToLower(strings.TrimSpace(t))
@@ -3459,30 +3442,26 @@ func cmdModelAlias(a *Agent, args []string, out io.Writer) error {
 		}
 		a.Config.ModelAliases[alias] = entry
 		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, "  ✗ Failed to save: %v\n", err)
-			return nil
+			return defaultClass(ClassIO, fmt.Errorf("saving model aliases: %w", err))
 		}
 		fmt.Fprintf(out, "  Tags for %q: [%s]\n", alias, strings.Join(entry.Tags, ", "))
 
 	case "remove", "rm", "delete":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /model alias remove ALIAS")
-			return nil
+			return Usagef("usage: /model alias remove ALIAS")
 		}
 		alias := strings.ToLower(args[1])
 		if _, ok := a.Config.ModelAliases[alias]; !ok {
-			fmt.Fprintf(out, "  Alias %q not found.\n", alias)
-			return nil
+			return Negativef("alias %q not found", alias)
 		}
 		delete(a.Config.ModelAliases, alias)
 		if err := SaveModelAliases(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, "  ✗ Failed to save: %v\n", err)
-			return nil
+			return defaultClass(ClassIO, fmt.Errorf("saving model aliases: %w", err))
 		}
 		fmt.Fprintf(out, "  Alias %q removed.\n", alias)
 
 	default:
-		fmt.Fprintf(out, "  Unknown subcommand %q. Use: list, set, tags, remove\n", args[0])
+		return Usagef("unknown subcommand %q. Use: list, set, tags, remove", args[0])
 	}
 	return nil
 }
@@ -3825,7 +3804,7 @@ func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
 	switch sub {
 	case "init":
 		if a.Workspace == nil {
-			return fmt.Errorf("no workspace is open")
+			return errNoWorkspace()
 		}
 		fromPath := ""
 		if len(args) > 2 {
@@ -3839,7 +3818,7 @@ func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
 		}
 		copied, skipped, err := ImportAliasesFrom(fromPath, a.Workspace, a.Config, out)
 		if err != nil {
-			return err
+			return defaultClass(ClassData, err)
 		}
 		if copied == 0 && skipped == 0 {
 			// message already printed by ImportAliasesFrom
@@ -3849,8 +3828,7 @@ func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
 		return nil
 	case "", "status":
 		if a.Workspace == nil {
-			fmt.Fprintln(out, "  No workspace open.")
-			return nil
+			return errNoWorkspace()
 		}
 		fmt.Fprintf(out, "  Root:    %s\n", a.Workspace.Root)
 		fmt.Fprintf(out, "  Aliases: %d defined\n", len(a.Config.ModelAliases))
@@ -3870,7 +3848,6 @@ func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
 		}
 		return nil
 	default:
-		fmt.Fprintf(out, "  Unknown subcommand %q. Usage: /workspace <init [FROM_PATH]|status>\n", sub)
-		return nil
+		return Usagef("unknown subcommand %q. Usage: /workspace <init [FROM_PATH]|status>", sub)
 	}
 }

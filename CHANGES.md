@@ -40,6 +40,22 @@
   `/read` and `/format` still try every file, then report the first failure. `/run` does not
   fail when the command it ran exits non-zero: that output is the point. At a terminal nothing
   changes except that the message now appears as `Error: ...`.
+- The same for the model, session and settings commands: `/model` (use, list, show, stop,
+  mode, alias), `/inspect`, `/safemode`, `/record`, `/rename`, `/context`, `/session`
+  (and `/resume`), `/workspace` and `/help TOPIC`. A failed `@name` model switch in a
+  scripted session now counts as the turn's failure too.
+
+  | Failure | Exit |
+  |---|---|
+  | missing argument, unknown subcommand, unknown mode or help topic, a model name that matches several models | 2 |
+  | no workspace; no sessions directory; a session file that does not exist | 66 |
+  | no backend connected (`/session replay`), `/inspect` without an Ollama backend, a model that fails to start | 69 |
+  | a session file that does not parse | 65 |
+  | settings that could not be saved (`/safemode`, `/model alias`) or a recording that could not be renamed | 74 |
+  | a recording file that could not be created | 73 |
+  | no such model, alias, or llamafile; no models or sessions to pick from; a backend to stop that is not running; already recording or not recording; `/safemode deny` of a command not in the list; no model cache for `/model mode` | 1 |
+
+  `/safemode` still applies the change in memory when saving fails, and now also exits 74.
 
 - `/learn` found no hand-offs after the workspace moved them from `agents/hand-off/` to
   `agents/projects/<project>/hand-off/` (workspace DR-0004). `learnCandidates` now also

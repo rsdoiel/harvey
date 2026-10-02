@@ -678,6 +678,9 @@ func (a *Agent) Run(out io.Writer) error {
 			switched, switchErr := attemptModelSwitch(a, name, out)
 			if switchErr != nil {
 				fmt.Fprintf(out, yellow("  ⚠ Model switch failed: ")+"%v\n", switchErr)
+				if !interactive {
+					firstScriptFailure = keepFirstFailure(firstScriptFailure, defaultClass(ClassUnavailable, switchErr))
+				}
 				continue
 			}
 			if switched {

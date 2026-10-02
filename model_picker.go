@@ -90,8 +90,7 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
 		return err
 	}
 	if len(models) == 0 {
-		fmt.Fprintln(out, "  No models found. Install a llamafile, *.gguf, or an Ollama model.")
-		return nil
+		return Negativef("no models found. Install a llamafile, *.gguf, or an Ollama model")
 	}
 
 	// Build display items.

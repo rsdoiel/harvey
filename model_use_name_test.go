@@ -93,15 +93,16 @@ func TestModelUse_AmbiguousNameListsTheMatchesAndSwitchesNothing(t *testing.T) {
 	before := a.Config.Ollama.Model
 	withLocalModels(t, []ModelSummary{{Name: "llama3.2:3b", Engine: "ollama"}, {Name: "llama3.2:1b", Engine: "ollama"}})
 	var out bytes.Buffer
-	if err := cmdModel(a, []string{"use", "llama3"}, &out); err != nil {
-		t.Fatal(err)
+	err := cmdModel(a, []string{"use", "llama3"}, &out)
+	if ExitCodeFor(err) != ClassUsage {
+		t.Fatalf("an ambiguous name should be a usage error, got: %v", err)
 	}
 	if a.Config.Ollama.Model != before {
 		t.Errorf("an ambiguous name switched the model to %q", a.Config.Ollama.Model)
 	}
 	for _, want := range []string{"llama3.2:3b", "llama3.2:1b", "several"} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("output %q should list the matches and say several matched (%q)", out.String(), want)
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should list the matches and say several matched (%q)", err, want)
 		}
 	}
 }
@@ -110,11 +111,12 @@ func TestModelUse_UnknownNameStillSaysNotFound(t *testing.T) {
 	a := newTestAgent(t)
 	withLocalModels(t, []ModelSummary{{Name: "llama3.2:3b", Engine: "ollama"}})
 	var out bytes.Buffer
-	if err := cmdModel(a, []string{"use", "nosuch"}, &out); err != nil {
-		t.Fatal(err)
+	err := cmdModel(a, []string{"use", "nosuch"}, &out)
+	if ExitCodeFor(err) != ClassNegative {
+		t.Fatalf("an unknown name should be a negative result, got: %v", err)
 	}
-	if !strings.Contains(out.String(), "not found") || !strings.Contains(out.String(), "/model list") {
-		t.Errorf("output %q should say not found and point at /model list", out.String())
+	if !strings.Contains(err.Error(), "not found") || !strings.Contains(err.Error(), "/model list") {
+		t.Errorf("error %q should say not found and point at /model list", err)
 	}
 }
 

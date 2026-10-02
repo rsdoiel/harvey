@@ -17,11 +17,9 @@ func TestCmdWorkspaceStatus_NoWorkspace(t *testing.T) {
 	a.Workspace = nil
 
 	var buf bytes.Buffer
-	if err := cmdWorkspace(a, []string{"workspace", "status"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "No workspace open") {
-		t.Errorf("expected 'No workspace open', got: %q", buf.String())
+	err := cmdWorkspace(a, []string{"workspace", "status"}, &buf)
+	if ExitCodeFor(err) != ClassNoInput || !strings.Contains(err.Error(), "no workspace") {
+		t.Errorf("expected a no_input error naming the missing workspace, got: %v", err)
 	}
 }
 
@@ -196,10 +194,8 @@ func TestCmdWorkspace_UnknownSubcommand(t *testing.T) {
 	a := newTestAgent(t)
 
 	var buf bytes.Buffer
-	if err := cmdWorkspace(a, []string{"workspace", "bogus"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "Unknown subcommand") {
-		t.Errorf("expected 'Unknown subcommand' message, got: %q", buf.String())
+	err := cmdWorkspace(a, []string{"workspace", "bogus"}, &buf)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown subcommand") {
+		t.Errorf("expected a usage error naming the unknown subcommand, got: %v", err)
 	}
 }

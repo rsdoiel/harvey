@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -353,5 +354,187 @@ func TestRun_NonInteractive_FailedFileCommandDecidesExitClass(t *testing.T) {
 	err := a.Run(io.Discard)
 	if got := ExitCodeFor(err); got != ClassNoInput {
 		t.Fatalf("Run() = %s (%v), want no_input from the first failing command", got.Name, err)
+	}
+}
+
+// ─── Phase 3: model, session, context, safe-mode, record, workspace ──────────
+
+// isolateModels keeps a test away from the developer's real model directories
+// and from any Ollama server that happens to be running.
+func isolateModels(t *testing.T, a *Agent) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HARVEY_LLAMAFILE_DIR", "")
+	a.Config.Ollama.URL = "http://127.0.0.1:1"
+	// DefaultConfig resolved ~/Models before HOME was redirected.
+	a.Config.Llamafile.ModelsDir = t.TempDir()
+	a.Config.LlamaCpp.ModelsDir = t.TempDir()
+}
+
+func withModelCache(t *testing.T, a *Agent) {
+	t.Helper()
+	mc, err := OpenModelCache(a.Workspace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { mc.Close() })
+	a.ModelCache = mc
+}
+
+func TestHandlerErrors_Model(t *testing.T) {
+	model := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdModel(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"use: no such model", isolateModels, model("use", "no-such-model-xyz"), ClassNegative},
+		{"list: no models", isolateModels, model("list"), ClassNegative},
+		{"stop: no backend active", nil, model("stop"), ClassNegative},
+		{"show: no such llamafile", func(t *testing.T, a *Agent) { isolateModels(t, a) }, model("show", "nope"), ClassNegative},
+		{"mode: no model cache", nil, model("mode", "structured"), ClassNegative},
+		{"mode: no active Ollama model", withModelCache, model("mode"), ClassNegative},
+		{"mode: too many arguments", withModelCache, model("mode", "a", "b", "c"), ClassUsage},
+		{"mode: unknown mode", withModelCache, model("mode", "m", "bogus"), ClassUsage},
+		{"mode: ok", withModelCache, model("mode", "m", "prose"), ClassOK},
+		{"alias set: missing arguments", nil, model("alias", "set", "x"), ClassUsage},
+		{"alias tags: missing arguments", nil, model("alias", "tags", "x"), ClassUsage},
+		{"alias tags: no such alias", nil, model("alias", "tags", "x", "t"), ClassNegative},
+		{"alias remove: missing argument", nil, model("alias", "remove"), ClassUsage},
+		{"alias remove: no such alias", nil, model("alias", "remove", "nope"), ClassNegative},
+		{"alias: unknown subcommand", nil, model("alias", "bogus"), ClassUsage},
+		{"alias set: ok", func(t *testing.T, a *Agent) { isolateModels(t, a) }, model("alias", "set", "mine", "some-model"), ClassOK},
+	})
+}
+
+func TestHandlerErrors_Inspect(t *testing.T) {
+	runHandlerCases(t, []handlerCase{
+		{"no Ollama backend", nil, func(a *Agent, o io.Writer) error { return cmdInspect(a, nil, o) }, ClassUnavailable},
+	})
+}
+
+func TestHandlerErrors_SafeMode(t *testing.T) {
+	sm := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdSafeMode(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"no arguments", nil, sm(), ClassUsage},
+		{"allow without a command", nil, sm("allow"), ClassUsage},
+		{"deny without a command", nil, sm("deny"), ClassUsage},
+		{"unknown subcommand", nil, sm("bogus"), ClassUsage},
+		{"deny a command not in the list", nil, sm("deny", "no-such-command-xyz"), ClassNegative},
+		{"allow", nil, sm("allow", "ls"), ClassOK},
+		{"status", nil, sm("status"), ClassOK},
+		{"settings cannot be saved", func(t *testing.T, a *Agent) {
+			if err := os.MkdirAll(filepath.Join(a.Workspace.Root, "agents"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			// A directory where harvey.yaml should be makes the save fail.
+			if err := os.MkdirAll(filepath.Join(a.Workspace.Root, "agents", "harvey.yaml"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, sm("on"), ClassIO},
+	})
+}
+
+func TestHandlerErrors_RecordAndRename(t *testing.T) {
+	rec := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdRecord(a, args, o) }
+	}
+	recording := func(t *testing.T, a *Agent) {
+		r, err := NewRecorder(filepath.Join(a.Workspace.Root, "s.spmd"), "m", a.Workspace.Root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { r.Close() })
+		a.Recorder = r
+	}
+	runHandlerCases(t, []handlerCase{
+		{"record: no arguments", nil, rec(), ClassUsage},
+		{"record: unknown subcommand", nil, rec("bogus"), ClassUsage},
+		{"record stop: not recording", nil, rec("stop"), ClassNegative},
+		{"record start: already recording", recording, rec("start"), ClassNegative},
+		{"record start: cannot create the file", nil, rec("start", "/nonexistent-dir/x/s.spmd"), ClassCantCreate},
+		{"record status", nil, rec("status"), ClassOK},
+		{"rename: not recording", nil, func(a *Agent, o io.Writer) error { return cmdRename(a, []string{"n"}, o) }, ClassNegative},
+		{"rename: no name", recording, func(a *Agent, o io.Writer) error { return cmdRename(a, nil, o) }, ClassUsage},
+	})
+}
+
+func TestHandlerErrors_Context(t *testing.T) {
+	cx := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdContext(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"add without text", nil, cx("add"), ClassUsage},
+		{"unknown subcommand", nil, cx("bogus"), ClassUsage},
+		{"show", nil, cx("show"), ClassOK},
+		{"add", nil, cx("add", "note"), ClassOK},
+	})
+}
+
+func TestHandlerErrors_Session(t *testing.T) {
+	se := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdSession(a, args, o) }
+	}
+	withDir := func(t *testing.T, a *Agent) { a.SessionsDir = t.TempDir() }
+	runHandlerCases(t, []handlerCase{
+		{"no arguments", nil, se(), ClassUsage},
+		{"unknown subcommand", nil, se("bogus"), ClassUsage},
+		{"list: no sessions directory", nil, se("list"), ClassNoInput},
+		{"list: empty directory", withDir, se("list"), ClassOK},
+		{"show: no file", nil, se("show"), ClassUsage},
+		{"show: missing file", nil, se("show", "/nonexistent/x.spmd"), ClassNoInput},
+		{"show: not a session", func(t *testing.T, a *Agent) { writeFixture(t, a, "bad.spmd", "\x00\x01 not fountain") }, func(a *Agent, o io.Writer) error {
+			p, _ := a.Workspace.AbsPath("bad.spmd")
+			return cmdSession(a, []string{"show", p}, o)
+		}, ClassOK}, // a file that parses as an empty session is not an error
+		{"use: no sessions directory", nil, se("use"), ClassNoInput},
+		{"use: no sessions", withDir, se("use"), ClassNegative},
+		{"use: missing file", nil, se("use", "/nonexistent/x.spmd"), ClassNoInput},
+		{"continue: missing file", nil, se("continue", "/nonexistent/x.spmd"), ClassNoInput},
+		{"replay: no file", nil, se("replay"), ClassUsage},
+		{"replay: no backend", nil, se("replay", "x.spmd"), ClassUnavailable},
+	})
+}
+
+func TestHandlerErrors_Workspace(t *testing.T) {
+	ws := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdWorkspace(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"status: no workspace", noWorkspace, ws(), ClassNoInput},
+		{"init: no workspace", noWorkspace, ws("init", "init"), ClassNoInput},
+		{"unknown subcommand", nil, ws("x", "bogus"), ClassUsage},
+		{"status", nil, ws(), ClassOK},
+	})
+}
+
+func TestHandlerErrors_Help(t *testing.T) {
+	runHandlerCases(t, []handlerCase{
+		{"unknown topic", nil, func(a *Agent, o io.Writer) error { return cmdHelp(a, []string{"nosuchtopic"}, o) }, ClassUsage},
+		{"topics", nil, func(a *Agent, o io.Writer) error { return cmdHelp(a, []string{"topics"}, o) }, ClassOK},
+	})
+}
+
+// A failed @name model switch is a failure of the turn: a scripted session
+// exits with its class instead of continuing as if nothing happened.
+func TestRun_NonInteractive_FailedModelSwitchDecidesExitClass(t *testing.T) {
+	a := scriptedFixture(t, false, "@broken hello\n")
+	a.Config.ModelAliases = map[string]ModelAlias{
+		"broken": {Model: "no-such-file.gguf", Engine: "llamacpp"},
+	}
+	a.Config.LlamaCpp.ModelsDir = t.TempDir()
+	err := a.Run(io.Discard)
+	got := ExitCodeFor(err)
+	if got == ClassOK || got == ClassInternal {
+		t.Fatalf("Run() = %s (%v), want a real failure class for a model that cannot be started", got.Name, err)
+	}
+}
+
+// A model that cannot be found by /model use says no (exit 1), not "internal".
+func TestRun_NonInteractive_UnknownModelDecidesExitClass(t *testing.T) {
+	a := scriptedFixture(t, false, "/model use no-such-model-xyz\n")
+	err := a.Run(io.Discard)
+	if got := ExitCodeFor(err); got != ClassNegative {
+		t.Fatalf("Run() = %s (%v), want negative (no such model)", got.Name, err)
 	}
 }

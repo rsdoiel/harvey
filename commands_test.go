@@ -1357,12 +1357,9 @@ func TestCmdModelUse_noArg_noModels(t *testing.T) {
 	a.Config.Ollama.URL = "http://127.0.0.1:1" // unreachable — ProbeOllama returns false
 	a.In = strings.NewReader("\n")
 	var buf strings.Builder
-	if err := cmdModel(a, []string{"use"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "no") && !strings.Contains(out, "No") && !strings.Contains(out, "register") && !strings.Contains(out, "Usage") {
-		t.Errorf("expected no-models message, got: %s", out)
+	err := cmdModel(a, []string{"use"}, &buf)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no models found") {
+		t.Errorf("expected a negative result naming 'no models found', got: %v", err)
 	}
 }
 
@@ -1417,12 +1414,9 @@ func TestSessionUse_noArg_noSessions(t *testing.T) {
 	a.SessionsDir = t.TempDir() // empty
 	a.In = strings.NewReader("\n")
 	var buf strings.Builder
-	if err := cmdSession(a, []string{"use"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "No session") && !strings.Contains(out, "no session") {
-		t.Errorf("expected no-sessions message, got: %s", out)
+	err := cmdSession(a, []string{"use"}, &buf)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no sessions found") {
+		t.Errorf("expected a negative result naming 'no sessions found', got: %v", err)
 	}
 }
 
@@ -1676,11 +1670,9 @@ func TestCmdModelMode_InvalidMode(t *testing.T) {
 	a, _ := newTestAgentWithCache(t, "phi4:latest")
 
 	var out strings.Builder
-	if err := cmdModel(a, []string{"mode", "turbo"}, &out); err != nil {
-		t.Fatalf("unexpected error for invalid mode: %v", err)
-	}
-	if !strings.Contains(out.String(), "Unknown mode") && !strings.Contains(out.String(), "unknown mode") {
-		t.Errorf("expected unknown mode message; got: %s", out.String())
+	err := cmdModel(a, []string{"mode", "turbo"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown mode") {
+		t.Errorf("expected a usage error naming the unknown mode; got: %v", err)
 	}
 }
 
