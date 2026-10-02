@@ -540,7 +540,8 @@ func (a *Agent) registerSkillCommands() {
  *
  * Returns:
  *   bool  — true if the agent should exit after this command.
- *   error — any error returned by the handler.
+ *   error — any error returned by the handler, or a usage error (exit class 2)
+ *     when the command name is not registered.
  *
  * Example:
  *   exit, err := agent.dispatch("/kb status", os.Stdout)
@@ -561,8 +562,7 @@ func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
 	}
 	cmd, ok := a.commands[name]
 	if !ok {
-		fmt.Fprintf(out, yellow("Unknown command: ")+"/%s  (type /help for a list)\n", name)
-		return false, nil
+		return false, Usagef("unknown command: /%s  (type /help for a list)", name)
 	}
 	if cmd.Handler != nil {
 		return false, cmd.Handler(a, args, out)

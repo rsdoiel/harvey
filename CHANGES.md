@@ -18,6 +18,12 @@
 
 ### Fixed
 
+- An unknown slash command is now a usage error (exit class 2) instead of a printed
+  message that let a scripted session exit 0. At a terminal nothing changes except the
+  message, which now reads `Error: unknown command: /name`. Inside `/loop`, a mistyped
+  command stops the loop after the first iteration instead of repeating the message.
+  First step of reclassifying the command handlers' errors (the DR-0006 follow-up).
+
 - `/learn` found no hand-offs after the workspace moved them from `agents/hand-off/` to
   `agents/projects/<project>/hand-off/` (workspace DR-0004). `learnCandidates` now also
   scans each project's `hand-off/` directory and accepts `.md` hand-offs (workspace
