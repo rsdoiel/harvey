@@ -634,13 +634,11 @@ func ragCountLarge(files []string) int {
 
 func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	if a.Rag == nil {
-		fmt.Fprintln(out, "RAG is not configured. Run /rag new NAME first.")
-		return nil
+		return Negativef("RAG is not configured. Run /rag new NAME first")
 	}
 	entry := a.Config.Memory.ActiveRagStore()
 	if entry == nil {
-		fmt.Fprintln(out, "No active RAG store. Run /rag use NAME to select one.")
-		return nil
+		return Negativef("no active RAG store. Run /rag use NAME to select one")
 	}
 	embedder := NewEmbedderForEntry(entry, a.Config.Ollama.URL)
 
@@ -682,37 +680,40 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	// Separate remote URIs from local paths. Remote S3 prefixes are ingested
 	// directly (download → ingest → remove per object) without the large-file
 	// confirmation flow, since the user explicitly addressed them by URI.
+	var failed error // first failure from any source; every source is still tried
 	var localPaths []string
 	for _, p := range rawPaths {
 		switch parseURIScheme(p) {
 		case "":
 			localPaths = append(localPaths, p)
 		case "s3":
-			ragIngestS3Prefix(a, p, embedder, out)
+			failed = keepFirstFailure(failed, ragIngestS3Prefix(a, p, embedder, out))
 		case "sftp", "scp":
 			r, err := NewRemoteReader(p)
 			if err != nil {
 				fmt.Fprintf(out, "  ✗ %s: %v\n", p, err)
+				failed = keepFirstFailure(failed, defaultClass(ClassUsage, fmt.Errorf("%s: %w", p, err)))
 				continue
 			}
-			ragIngestRemotePrefix(a, r, parseURIScheme(p), p, embedder, out)
+			failed = keepFirstFailure(failed, ragIngestRemotePrefix(a, r, parseURIScheme(p), p, embedder, out))
 		case "http", "https":
-			ragIngestHTTP(a, p, embedder, out)
+			failed = keepFirstFailure(failed, ragIngestHTTP(a, p, embedder, out))
 		default:
 			fmt.Fprintf(out, "  ⚠ unsupported scheme %q, skipping %s\n", parseURIScheme(p), p)
+			failed = keepFirstFailure(failed, Usagef("unsupported scheme %q in %s", parseURIScheme(p), p))
 		}
 	}
 	if len(localPaths) == 0 {
-		return nil
+		return failed
 	}
 
 	// Collect all candidate files across all given local paths.
 	files, err := ragCollectFiles(localPaths, a.Workspace.AbsPath)
 	if err != nil {
-		return defaultClass(ClassNoInput, fmt.Errorf("collecting files: %w", err))
+		return keepFirstFailure(failed, defaultClass(ClassNoInput, fmt.Errorf("collecting files: %w", err)))
 	}
 	if len(files) == 0 {
-		return Negativef("no ingestable files found")
+		return keepFirstFailure(failed, Negativef("no ingestable files found"))
 	}
 
 	// When there are multiple files or any file is large, show the list and
@@ -736,7 +737,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 		scanner.Scan()
 		if answer := strings.ToLower(strings.TrimSpace(scanner.Text())); answer != "y" && answer != "yes" {
 			fmt.Fprintln(out, "Cancelled.")
-			return nil
+			return failed
 		}
 	}
 
@@ -748,6 +749,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 			n, diagrams, err := ragIngestPDF(a.Rag, embedder, absFile, meta)
 			if err != nil {
 				fmt.Fprintf(out, " — error: %v\n", err)
+				failed = keepFirstFailure(failed, defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", absFile, err)))
 			} else {
 				fmt.Fprintf(out, " — %d chunk(s)", n)
 				if len(diagrams) > 0 {
@@ -760,6 +762,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 			n, err := ragIngestFile(a.Rag, embedder, absFile, meta)
 			if err != nil {
 				fmt.Fprintf(out, " — error: %v\n", err)
+				failed = keepFirstFailure(failed, defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", absFile, err)))
 			} else {
 				fmt.Fprintf(out, " — %d chunk(s)\n", n)
 				total += n
@@ -767,7 +770,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 		}
 	}
 	fmt.Fprintf(out, "Ingested %d chunk(s) total from %d file(s).\n", total, len(files))
-	return nil
+	return failed
 }
 
 /** ragIngestRemotePrefix lists all ingestable objects under a remote prefix URI
@@ -791,13 +794,14 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
  *   r, _ := NewRemoteReader("sftp://host/docs/")
  *   ragIngestRemotePrefix(a, r, "sftp", "sftp://host/docs/", embedder, out)
  */
-func ragIngestRemotePrefix(a *Agent, r RemoteReader, scheme, uri string, embedder Embedder, out io.Writer) {
+func ragIngestRemotePrefix(a *Agent, r RemoteReader, scheme, uri string, embedder Embedder, out io.Writer) error {
 	objects, err := r.List(context.Background(), uri)
 	if err != nil {
 		fmt.Fprintf(out, "  ✗ list %s: %v\n", uri, err)
-		return
+		return defaultClass(ClassUnavailable, fmt.Errorf("list %s: %w", uri, err))
 	}
 	var ingested int
+	var failed error // first failure; every object is still tried
 	for _, obj := range objects {
 		if obj.IsDir {
 			continue
@@ -809,6 +813,7 @@ func ragIngestRemotePrefix(a *Agent, r RemoteReader, scheme, uri string, embedde
 		f, err := os.CreateTemp("", "harvey-"+scheme+"-*"+ext)
 		if err != nil {
 			fmt.Fprintf(out, "  ✗ temp for %s: %v\n", obj.URI, err)
+			failed = keepFirstFailure(failed, AsCreate(fmt.Errorf("temp for %s: %w", obj.URI, err)))
 			continue
 		}
 		tmpPath := f.Name()
@@ -816,6 +821,7 @@ func ragIngestRemotePrefix(a *Agent, r RemoteReader, scheme, uri string, embedde
 			f.Close()
 			os.Remove(tmpPath)
 			fmt.Fprintf(out, "  ✗ download %s: %v\n", obj.URI, err)
+			failed = keepFirstFailure(failed, defaultClass(ClassUnavailable, fmt.Errorf("download %s: %w", obj.URI, err)))
 			continue
 		}
 		f.Close()
@@ -827,6 +833,7 @@ func ragIngestRemotePrefix(a *Agent, r RemoteReader, scheme, uri string, embedde
 			n, diagrams, err = ragIngestPDF(a.Rag, embedder, tmpPath, ProvenanceMeta{})
 			if err != nil {
 				fmt.Fprintf(out, " — error: %v\n", err)
+				failed = keepFirstFailure(failed, defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", obj.URI, err)))
 			} else {
 				fmt.Fprintf(out, " — %d chunk(s)", n)
 				if len(diagrams) > 0 {
@@ -839,6 +846,7 @@ func ragIngestRemotePrefix(a *Agent, r RemoteReader, scheme, uri string, embedde
 			n, err = ragIngestFile(a.Rag, embedder, tmpPath, ProvenanceMeta{})
 			if err != nil {
 				fmt.Fprintf(out, " — error: %v\n", err)
+				failed = keepFirstFailure(failed, defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", obj.URI, err)))
 			} else {
 				fmt.Fprintf(out, " — %d chunk(s)\n", n)
 				ingested += n
@@ -849,16 +857,17 @@ func ragIngestRemotePrefix(a *Agent, r RemoteReader, scheme, uri string, embedde
 	if ingested > 0 {
 		fmt.Fprintf(out, "  %s: ingested %d chunk(s) from %s\n", scheme, ingested, uri)
 	}
+	return failed
 }
 
 // ragIngestS3Prefix is kept for backwards compatibility; delegates to ragIngestRemotePrefix.
-func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) {
+func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) error {
 	s3r, err := newS3Reader()
 	if err != nil {
 		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
-		return
+		return defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", uri, err))
 	}
-	ragIngestRemotePrefix(a, s3r, "s3", uri, embedder, out)
+	return ragIngestRemotePrefix(a, s3r, "s3", uri, embedder, out)
 }
 
 /** ragIngestHTTP downloads a single HTTP or HTTPS resource, writes it to a
@@ -873,7 +882,7 @@ func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) {
  * Example:
  *   ragIngestHTTP(a, "https://example.com/spec.md", embedder, out)
  */
-func ragIngestHTTP(a *Agent, uri string, embedder Embedder, out io.Writer) {
+func ragIngestHTTP(a *Agent, uri string, embedder Embedder, out io.Writer) error {
 	ext := strings.ToLower(filepath.Ext(uri))
 	if ext == "" {
 		ext = ".txt" // treat extensionless URLs as plain text
@@ -881,7 +890,7 @@ func ragIngestHTTP(a *Agent, uri string, embedder Embedder, out io.Writer) {
 	f, err := os.CreateTemp("", "harvey-http-*"+ext)
 	if err != nil {
 		fmt.Fprintf(out, "  ✗ temp for %s: %v\n", uri, err)
-		return
+		return AsCreate(fmt.Errorf("temp for %s: %w", uri, err))
 	}
 	tmpPath := f.Name()
 	r := newHTTPReader()
@@ -889,7 +898,7 @@ func ragIngestHTTP(a *Agent, uri string, embedder Embedder, out io.Writer) {
 		f.Close()
 		os.Remove(tmpPath)
 		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
-		return
+		return defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", uri, err))
 	}
 	f.Close()
 	defer os.Remove(tmpPath)
@@ -901,7 +910,7 @@ func ragIngestHTTP(a *Agent, uri string, embedder Embedder, out io.Writer) {
 		n, diagrams, err = ragIngestPDF(a.Rag, embedder, tmpPath, ProvenanceMeta{})
 		if err != nil {
 			fmt.Fprintf(out, " — error: %v\n", err)
-			return
+			return defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", uri, err))
 		}
 		fmt.Fprintf(out, " — %d chunk(s)", n)
 		if len(diagrams) > 0 {
@@ -912,13 +921,14 @@ func ragIngestHTTP(a *Agent, uri string, embedder Embedder, out io.Writer) {
 		n, err = ragIngestFile(a.Rag, embedder, tmpPath, ProvenanceMeta{})
 		if err != nil {
 			fmt.Fprintf(out, " — error: %v\n", err)
-			return
+			return defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", uri, err))
 		}
 		fmt.Fprintf(out, " — %d chunk(s)\n", n)
 	}
 	if n > 0 {
 		fmt.Fprintf(out, "  http: ingested %d chunk(s) from %s\n", n, uri)
 	}
+	return nil
 }
 
 // ragIngestFile reads a file, splits it into chunks (language-aware when a
@@ -1063,13 +1073,11 @@ func ragIngestPDF(store *RagStore, embedder Embedder, path string, meta Provenan
 // ragQuery runs a manual retrieval test against the RAG store.
 func ragQuery(a *Agent, query string, out io.Writer) error {
 	if a.Rag == nil {
-		fmt.Fprintln(out, "RAG is not configured. Run /rag new NAME first.")
-		return nil
+		return Negativef("RAG is not configured. Run /rag new NAME first")
 	}
 	entry := a.Config.Memory.ActiveRagStore()
 	if entry == nil {
-		fmt.Fprintln(out, "No active RAG store. Run /rag use NAME to select one.")
-		return nil
+		return Negativef("no active RAG store. Run /rag use NAME to select one")
 	}
 	embedder := NewEmbedderForEntry(entry, a.Config.Ollama.URL)
 	chunks, err := a.Rag.Query(query, embedder, 5)

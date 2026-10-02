@@ -70,23 +70,13 @@
   | a skill-set that could not be created | 73 |
   | no such memory, source, observation, route, skill, store or project; nothing to pick from; no current project; `/memory recall` or `/rag query` with no results; `/rag ingest` with no ingestable files; a skill-set that already exists; no skill-set loaded to unload | 1 |
 
-  `/kb cite` tries every ID, then reports the first failure. Not yet covered: remote ingestion
-  (`/rag ingest` with an `http://`, `s3://` or `sftp://` source) still prints a failed object
-  and carries on, so a scripted session exits 0 even when a remote object could not be read.
-
-- The remaining commands: `/loop`, `/audit`, `/permissions`, `/security`, `/pipeline` and
-  `/plan`, plus the option errors of `/kb learn concepts|ingest` and `/route models`.
-
-  | Failure | Exit |
-  |---|---|
-  | missing argument, unknown subcommand, bad number, an invalid permission, an unknown option, a bad `/loop` interval or count, a bad `/pipeline` threshold | 2 |
-  | no workspace; a `/pipeline` file that does not exist | 66 |
-  | settings or a plan that could not be saved (`/permissions`, `/plan next`) | 74 |
-  | no audit buffer; no plan to show or advance; a `/plan next` step whose tool calls failed; a `/pipeline` step below its confidence threshold, or an `@mention` that names no model | 1 |
-
-  `/loop` still runs every iteration, even when one fails, and now returns the first failure
-  when it finishes. `/model` and `/security` with an unknown subcommand are usage errors; `/model
-  NAME` used to show the active model and ignore the name.
+  `/kb cite` tries every ID, then reports the first failure. `/rag ingest` does the same across
+  all its sources, local and remote (`http://`, `https://`, `s3://`, `sftp://`, `scp://`): a list
+  that cannot be read, a download that fails, an unsupported scheme, or a file the embedding
+  server cannot embed does not stop the rest, and the first failure decides the exit status.
+  Download, list and embedding failures are 69 unless the underlying error already has a class;
+  an unsupported scheme is 2; a temp file that cannot be created is 73; no RAG store (or no
+  active one) for `/rag ingest` or `/rag query` is 1.
 
 ### Fixed (continued)
 

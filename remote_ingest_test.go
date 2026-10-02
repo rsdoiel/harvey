@@ -278,3 +278,164 @@ func TestRagIngest_sftp_noLongerWarnsUnsupported(t *testing.T) {
 		t.Errorf("sftp:// should no longer produce the s3-only warning; got: %s", out)
 	}
 }
+
+// ─── failures are returned, so a scripted session sees them ──────────────────
+
+// offlineEmbedder stands in for an embedding server that cannot be used.
+func offlineEmbedder() Embedder {
+	return &failingEmbedder{name: "stub", err: fmt.Errorf("embedder offline")}
+}
+
+func ingestAgent(t *testing.T) (*Agent, *RagStore) {
+	t.Helper()
+	dir := t.TempDir()
+	store, err := NewRagStore(filepath.Join(dir, "r.db"), "stub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.db.Close() })
+	ws, _ := NewWorkspace(dir)
+	a := NewAgent(DefaultConfig(), ws)
+	a.Rag = store
+	return a, store
+}
+
+func TestRagIngestRemotePrefix_ListFailureIsReturned(t *testing.T) {
+	a, _ := ingestAgent(t)
+	reader := &mockRemoteReader{listErr: fmt.Errorf("connection refused")}
+	err := ragIngestRemotePrefix(a, reader, "sftp", "sftp://host/docs/", stubEmbedder{"stub"}, io.Discard)
+	if ExitCodeFor(err) != ClassUnavailable || !strings.Contains(err.Error(), "connection refused") {
+		t.Fatalf("err = %v, want an unavailable error naming the cause", err)
+	}
+}
+
+func TestRagIngestRemotePrefix_DownloadFailureIsReturned(t *testing.T) {
+	a, store := ingestAgent(t)
+	reader := &mockRemoteReader{
+		objects: []RemoteObjectInfo{{URI: "sftp://host/docs/file.md", Size: 10}},
+		getErr:  fmt.Errorf("permission denied"),
+	}
+	err := ragIngestRemotePrefix(a, reader, "sftp", "sftp://host/docs/", stubEmbedder{"stub"}, io.Discard)
+	if ExitCodeFor(err) != ClassUnavailable {
+		t.Fatalf("err = %v, want unavailable", err)
+	}
+	if n, _ := store.Count(); n != 0 {
+		t.Errorf("%d chunks stored after a failed download", n)
+	}
+}
+
+// One bad object does not stop the rest, and the failure is still reported.
+func TestRagIngestRemotePrefix_ReportsTheFirstFailureAfterTryingEveryObject(t *testing.T) {
+	a, store := ingestAgent(t)
+	reader := &mockRemoteReader{
+		objects: []RemoteObjectInfo{
+			{URI: "sftp://host/docs/missing.md", Size: 10},
+			{URI: "sftp://host/docs/good.md", Size: 20},
+		},
+		content: map[string]string{"sftp://host/docs/good.md": "# Good\n\nSome content.\n"},
+	}
+	err := ragIngestRemotePrefix(a, reader, "sftp", "sftp://host/docs/", stubEmbedder{"stub"}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "missing.md") {
+		t.Fatalf("err = %v, want the first failure (missing.md)", err)
+	}
+	if n, _ := store.Count(); n == 0 {
+		t.Errorf("the good object was not ingested")
+	}
+}
+
+func TestRagIngestRemotePrefix_EmbedderFailureIsReturned(t *testing.T) {
+	a, _ := ingestAgent(t)
+	reader := &mockRemoteReader{
+		objects: []RemoteObjectInfo{{URI: "sftp://host/docs/a.md", Size: 20}},
+		content: map[string]string{"sftp://host/docs/a.md": "# A\n\nText.\n"},
+	}
+	err := ragIngestRemotePrefix(a, reader, "sftp", "sftp://host/docs/", offlineEmbedder(), io.Discard)
+	if ExitCodeFor(err) != ClassUnavailable {
+		t.Fatalf("err = %v, want unavailable (the embedder could not be used)", err)
+	}
+}
+
+func TestRagIngestRemotePrefix_NothingToIngestIsNotAFailure(t *testing.T) {
+	a, _ := ingestAgent(t)
+	reader := &mockRemoteReader{objects: []RemoteObjectInfo{{URI: "sftp://host/docs/", IsDir: true}}}
+	if err := ragIngestRemotePrefix(a, reader, "sftp", "sftp://host/docs/", stubEmbedder{"stub"}, io.Discard); err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+}
+
+func TestRagIngestHTTP_FailuresAreReturned(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/ok.md") {
+			io.WriteString(w, "# Ok\n\nContent.\n")
+			return
+		}
+		http.Error(w, "gone", http.StatusNotFound)
+	}))
+	defer srv.Close()
+	a, _ := ingestAgent(t)
+
+	if err := ragIngestHTTP(a, srv.URL+"/ok.md", stubEmbedder{"stub"}, io.Discard); err != nil {
+		t.Fatalf("a good URL: err = %v, want nil", err)
+	}
+	err := ragIngestHTTP(a, srv.URL+"/missing.md", stubEmbedder{"stub"}, io.Discard)
+	if ExitCodeFor(err) != ClassUnavailable {
+		t.Fatalf("a 404: err = %v, want unavailable", err)
+	}
+	err = ragIngestHTTP(a, srv.URL+"/ok.md", offlineEmbedder(), io.Discard)
+	if ExitCodeFor(err) != ClassUnavailable {
+		t.Fatalf("embedder failure: err = %v, want unavailable", err)
+	}
+}
+
+// ragIngest as a whole: every source is tried, then the first failure is
+// returned, whether it came from a remote object, an unsupported scheme or a
+// local file.
+func ragIngestFixture(t *testing.T) (*Agent, *RagStore) {
+	a, store := ingestAgent(t)
+	a.Config.Memory.RagStores = []RagStoreEntry{{Name: "s", EmbeddingModel: "stub"}}
+	a.Config.Memory.RagActive = "s"
+	a.Config.Ollama.URL = "http://127.0.0.1:1" // the embedder cannot be reached
+	return a, store
+}
+
+func TestRagIngest_NotConfiguredIsNegative(t *testing.T) {
+	a := newTestAgent(t)
+	if err := ragIngest(a, []string{"x.md"}, io.Discard); ExitCodeFor(err) != ClassNegative {
+		t.Fatalf("no store: err = %v, want negative", err)
+	}
+	a, _ = ingestAgent(t)
+	if err := ragIngest(a, []string{"x.md"}, io.Discard); ExitCodeFor(err) != ClassNegative {
+		t.Fatalf("no active store: err = %v, want negative", err)
+	}
+}
+
+func TestRagIngest_UnsupportedSchemeIsUsage(t *testing.T) {
+	a, _ := ragIngestFixture(t)
+	err := ragIngest(a, []string{"gopher://host/x.md"}, io.Discard)
+	if ExitCodeFor(err) != ClassUsage {
+		t.Fatalf("err = %v, want usage", err)
+	}
+}
+
+func TestRagIngest_RemoteFailureIsReturned(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "gone", http.StatusNotFound)
+	}))
+	defer srv.Close()
+	a, _ := ragIngestFixture(t)
+	err := ragIngest(a, []string{srv.URL + "/missing.md"}, io.Discard)
+	if ExitCodeFor(err) != ClassUnavailable {
+		t.Fatalf("err = %v, want unavailable", err)
+	}
+}
+
+func TestRagIngest_LocalFileFailureIsReturned(t *testing.T) {
+	a, _ := ragIngestFixture(t)
+	if err := a.Workspace.WriteFile("a.md", []byte("# A\n\nSome text to embed.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := ragIngest(a, []string{"a.md"}, io.Discard)
+	if ExitCodeFor(err) != ClassUnavailable {
+		t.Fatalf("err = %v, want unavailable (the embedding server cannot be reached)", err)
+	}
+}
