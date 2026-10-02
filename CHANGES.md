@@ -1,5 +1,37 @@
 # CHANGES
 
+## Unreleased
+
+### Changed
+
+- `/profile use`'s automatic hand-off (`WriteHandoff`) now writes Markdown per
+  `HANDOFF_FORMAT.md` (frontmatter and a State Recap section) with a `.md` extension,
+  instead of Fountain. It stays workspace-tier and does not touch `STATE.md`: it is a
+  heuristic snapshot with no LLM pass.
+- `recallKB` retrieves through the knowledge library's `RecallByText` (knowledge
+  DR-0051) instead of its own matching.
+- `github.com/rsdoiel/knowledge` bumped from v0.0.14 to v0.0.15. This brings DR-0054
+  (`kb import` keeps an observation kind outside the vocabulary and warns) and DR-0055
+  (`kb project add` on an existing name exits 1). Harvey's own code does not depend on
+  either behaviour, but a script that shells out to `kb project add` should read the
+  knowledge v0.0.15 notes.
+
+### Fixed
+
+- `/learn` found no hand-offs after the workspace moved them from `agents/hand-off/` to
+  `agents/projects/<project>/hand-off/` (workspace DR-0004). `learnCandidates` now also
+  scans each project's `hand-off/` directory and accepts `.md` hand-offs (workspace
+  DR-0005). Session recordings are still Fountain only.
+
+### Project layout
+
+- Design briefs, plans, decision records and notes moved out of this repository into
+  `~/Laboratory/agents/projects/harvey/{design,plans,decisions,notes}/` (harvey DR-0008,
+  which supersedes DR-0002). `DECISIONS.md` is frozen at 2026-09-23 under `notes/`; new
+  decisions are records. Code comments that cite `DECISIONS.md` by date are accurate
+  history and were left as they were. `developer_guide.md` links point at the new
+  locations.
+
 ## v0.0.17 (2026-09-27)
 
 ### Breaking (exit codes)
