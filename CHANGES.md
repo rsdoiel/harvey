@@ -21,7 +21,8 @@
 - An unknown slash command is now a usage error (exit class 2) instead of a printed
   message that let a scripted session exit 0. At a terminal nothing changes except the
   message, which now reads `Error: unknown command: /name`. Inside `/loop`, a mistyped
-  command stops the loop after the first iteration instead of repeating the message.
+  command is reported on every iteration as before, and `/loop` now returns the first failure
+  when it finishes (see below).
   First step of reclassifying the command handlers' errors (the DR-0006 follow-up).
 - The file and workspace commands now return classed errors instead of printing a failure
   and succeeding, so a scripted session exits with the class of the first one that failed
@@ -72,6 +73,20 @@
   `/kb cite` tries every ID, then reports the first failure. Not yet covered: remote ingestion
   (`/rag ingest` with an `http://`, `s3://` or `sftp://` source) still prints a failed object
   and carries on, so a scripted session exits 0 even when a remote object could not be read.
+
+- The remaining commands: `/loop`, `/audit`, `/permissions`, `/security`, `/pipeline` and
+  `/plan`, plus the option errors of `/kb learn concepts|ingest` and `/route models`.
+
+  | Failure | Exit |
+  |---|---|
+  | missing argument, unknown subcommand, bad number, an invalid permission, an unknown option, a bad `/loop` interval or count, a bad `/pipeline` threshold | 2 |
+  | no workspace; a `/pipeline` file that does not exist | 66 |
+  | settings or a plan that could not be saved (`/permissions`, `/plan next`) | 74 |
+  | no audit buffer; no plan to show or advance; a `/plan next` step whose tool calls failed; a `/pipeline` step below its confidence threshold, or an `@mention` that names no model | 1 |
+
+  `/loop` still runs every iteration, even when one fails, and now returns the first failure
+  when it finishes. `/model` and `/security` with an unknown subcommand are usage errors; `/model
+  NAME` used to show the active model and ignore the name.
 
 ### Fixed (continued)
 

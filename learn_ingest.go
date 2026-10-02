@@ -290,19 +290,16 @@ func kbLearnIngest(a *Agent, args []string, out io.Writer) error {
 			dryRun = true
 		case "--min-words":
 			if i+1 >= len(args) {
-				fmt.Fprintln(out, "--min-words needs a number.", usage)
-				return nil
+				return Usagef("--min-words needs a number. %s", usage)
 			}
 			n, err := strconv.Atoi(args[i+1])
 			if err != nil || n < 0 {
-				fmt.Fprintf(out, "--min-words %q is not a number of words. %s\n", args[i+1], usage)
-				return nil
+				return Usagef("--min-words %q is not a number of words. %s", args[i+1], usage)
 			}
 			minWords = n
 			i++
 		default:
-			fmt.Fprintf(out, "Unknown option %q. %s\n", args[i], usage)
-			return nil
+			return Usagef("unknown option %q. %s", args[i], usage)
 		}
 	}
 	projectID := a.Config.Memory.CurrentProjectID

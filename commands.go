@@ -822,8 +822,10 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 		return cmdModelShowEntry(a, name, out)
 	case "clean":
 		return cmdModelClean(a, out)
-	default:
+	case "":
 		return cmdModelShowEntry(a, "", out)
+	default:
+		return Usagef("unknown model subcommand: %q  (usage: /model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...])", sub)
 	}
 }
 

@@ -137,8 +137,7 @@ func sleepInterruptible(ctx context.Context, d time.Duration) bool {
 func cmdLoop(a *Agent, args []string, out io.Writer) error {
 	interval, count, rest, err := parseLoopArgs(args)
 	if err != nil {
-		fmt.Fprintln(out, err.Error())
-		return nil
+		return Usagef("%v", err)
 	}
 
 	fmt.Fprintf(out, dim("  Looping every %s, up to %d time(s): %s\n"), interval, count, rest)
@@ -161,6 +160,7 @@ func cmdLoop(a *Agent, args []string, out io.Writer) error {
 	}()
 
 	completed := 0
+	var failed error // first iteration failure; the loop still runs to the end
 	cancelled := false
 	stopped := false
 
@@ -178,6 +178,7 @@ func cmdLoop(a *Agent, args []string, out io.Writer) error {
 		}
 		if iterErr != nil {
 			fmt.Fprintf(out, red("  loop error: ")+"%v\n", iterErr)
+			failed = keepFirstFailure(failed, iterErr)
 		}
 		if ctx.Err() != nil {
 			cancelled = true
@@ -200,5 +201,5 @@ func cmdLoop(a *Agent, args []string, out io.Writer) error {
 	default:
 		fmt.Fprintf(out, dim("  Loop finished after %d/%d iteration(s).\n"), completed, count)
 	}
-	return nil
+	return failed
 }

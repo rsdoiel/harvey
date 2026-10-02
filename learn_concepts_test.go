@@ -314,11 +314,9 @@ func TestLearnConcepts_TheLimitFlagCapsTheList(t *testing.T) {
 	}
 	f.a.In = strings.NewReader("")
 	var out strings.Builder
-	if err := kbLearnConcepts(f.a, []string{"--limit", "x"}, &out); err != nil {
-		t.Fatalf("kbLearnConcepts: %v", err)
-	}
-	if !strings.Contains(out.String(), "--limit") {
-		t.Errorf("a bad --limit should print usage:\n%s", out.String())
+	err := kbLearnConcepts(f.a, []string{"--limit", "x"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "--limit") {
+		t.Errorf("a bad --limit should be a usage error naming --limit, got: %v", err)
 	}
 }
 

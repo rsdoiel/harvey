@@ -52,8 +52,7 @@ import (
  */
 func cmdPermissions(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /permissions <list [PATH]|set PATH PERMS|reset>")
-		return nil
+		return Usagef("usage: /permissions <list [PATH]|set PATH PERMS|reset>")
 	}
 
 	switch strings.ToLower(args[0]) {
@@ -64,10 +63,8 @@ func cmdPermissions(a *Agent, args []string, out io.Writer) error {
 	case "reset":
 		return permissionsReset(a, out)
 	default:
-		fmt.Fprintf(out, "Unknown permissions subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "Usage: /permissions <list [PATH]|set PATH PERMS|reset>")
+		return Usagef("unknown permissions subcommand: %q  (usage: /permissions <list [PATH]|set PATH PERMS|reset>)", args[0])
 	}
-	return nil
 }
 
 func permissionsList(a *Agent, args []string, out io.Writer) error {
@@ -107,10 +104,7 @@ func permissionsList(a *Agent, args []string, out io.Writer) error {
 
 func permissionsSet(a *Agent, args []string, out io.Writer) error {
 	if len(args) < 2 {
-		fmt.Fprintln(out, "Usage: /permissions set PATH PERMS")
-		fmt.Fprintln(out, "  PERMS is a comma-separated list of: read, write, exec, delete")
-		fmt.Fprintln(out, "  Example: /permissions set src/ read,write")
-		return nil
+		return Usagef("usage: /permissions set PATH PERMS  (PERMS is a comma-separated list of: read, write, exec, delete; example: /permissions set src/ read,write)")
 	}
 
 	path := args[0]
@@ -130,9 +124,7 @@ func permissionsSet(a *Agent, args []string, out io.Writer) error {
 
 	for _, p := range perms {
 		if !validPerms[p] {
-			fmt.Fprintf(out, "  Invalid permission: %q\n", p)
-			fmt.Fprintf(out, "  Valid permissions: %s\n", strings.Join(AllPermissions, ", "))
-			return nil
+			return Usagef("invalid permission: %q  (valid permissions: %s)", p, strings.Join(AllPermissions, ", "))
 		}
 	}
 
@@ -143,26 +135,28 @@ func permissionsSet(a *Agent, args []string, out io.Writer) error {
 
 	a.Config.SetPermission(path, perms)
 	// Persist to harvey.yaml
+	var saveErr error
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, "  Warning: could not save permissions: %v\n", err)
+			saveErr = persistFailure(out, "permissions", err)
 		}
 	}
 	fmt.Fprintf(out, "  Set permissions for %q: %s\n", path, strings.Join(perms, ", "))
-	return nil
+	return saveErr
 }
 
 func permissionsReset(a *Agent, out io.Writer) error {
 	a.Config.ResetPermissions()
 	// Persist to harvey.yaml
+	var saveErr error
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, "  Warning: could not save permissions: %v\n", err)
+			saveErr = persistFailure(out, "permissions", err)
 		}
 	}
 	fmt.Fprintln(out, "  Permissions reset to defaults.")
 	fmt.Fprintln(out, "  Root (.) has: read, write, exec, delete")
-	return nil
+	return saveErr
 }
 
 // ─── Permission Check Helpers ─────────────────────────────────────────────
@@ -202,6 +196,9 @@ func (a *Agent) CheckDeletePermission(path string) bool {
  *   error — On command execution failure.
  */
 func cmdSecurity(a *Agent, args []string, out io.Writer) error {
+	if len(args) > 0 && strings.ToLower(args[0]) != "status" {
+		return Usagef("unknown security subcommand: %q  (usage: /security status)", args[0])
+	}
 	sep := strings.Repeat("=", 61)
 	fmt.Fprintln(out, cyan(bold(sep)))
 	fmt.Fprintln(out, bold("  Security Status"))

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -684,4 +685,189 @@ func TestHandlerErrors_Rag(t *testing.T) {
 		{"new: encoderfile needs a url", nil, rg("new", "s", "--embedder", "encoderfile"), ClassUsage},
 		{"status: nothing configured is a status", nil, rg("status"), ClassOK},
 	})
+}
+
+// ─── Phase 5: the remaining handlers, and the guards ─────────────────────────
+
+func TestHandlerErrors_Loop(t *testing.T) {
+	lp := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdLoop(a, args, o) }
+	}
+	withCommands := func(t *testing.T, a *Agent) { a.registerCommands() }
+	runHandlerCases(t, []handlerCase{
+		{"no arguments", nil, lp(), ClassUsage},
+		{"bad interval", nil, lp("soon", "hello"), ClassUsage},
+		{"bad count", nil, lp("1ms", "--count", "x", "hello"), ClassUsage},
+		{"no prompt", nil, lp("1ms"), ClassUsage},
+		{"every iteration fails: the first failure is returned", withCommands, lp("1ms", "--count", "2", "/nosuchcommand"), ClassUsage},
+		{"ok", withCommands, lp("1ms", "--count", "2", "/status"), ClassOK},
+	})
+}
+
+// A failing iteration does not stop the loop (as before), and the loop reports
+// how many it ran before returning the failure.
+func TestCmdLoop_FailingIterationDoesNotStopTheLoop(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	var out strings.Builder
+	err := cmdLoop(a, []string{"1ms", "--count", "3", "/nosuchcommand"}, &out)
+	if ExitCodeFor(err) != ClassUsage {
+		t.Fatalf("err = %v, want usage", err)
+	}
+	if n := strings.Count(out.String(), "[loop "); n != 3 {
+		t.Errorf("ran %d iterations, want all 3\n%s", n, out.String())
+	}
+}
+
+func TestHandlerErrors_Audit(t *testing.T) {
+	au := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdAudit(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"no arguments", nil, au(), ClassUsage},
+		{"unknown subcommand", nil, au("bogus"), ClassUsage},
+		{"show: not a number", nil, au("show", "x"), ClassUsage},
+		{"show: no audit buffer", nil, au("show"), ClassNegative},
+		{"clear: no audit buffer", nil, au("clear"), ClassNegative},
+		{"status: no audit buffer", nil, au("status"), ClassNegative},
+		{"status", func(t *testing.T, a *Agent) { a.AuditBuffer = NewAuditBuffer(10) }, au("status"), ClassOK},
+	})
+}
+
+func TestHandlerErrors_Permissions(t *testing.T) {
+	pm := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdPermissions(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"no arguments", nil, pm(), ClassUsage},
+		{"unknown subcommand", nil, pm("bogus"), ClassUsage},
+		{"set: missing arguments", nil, pm("set", "src/"), ClassUsage},
+		{"set: invalid permission", nil, pm("set", "src/", "read,fly"), ClassUsage},
+		{"list", nil, pm("list"), ClassOK},
+		{"set", nil, pm("set", "src/", "read"), ClassOK},
+		{"set: cannot be saved", func(t *testing.T, a *Agent) {
+			if err := os.MkdirAll(filepath.Join(a.Workspace.Root, "agents", "harvey.yaml"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, pm("set", "src/", "read"), ClassIO},
+		{"reset: cannot be saved", func(t *testing.T, a *Agent) {
+			if err := os.MkdirAll(filepath.Join(a.Workspace.Root, "agents", "harvey.yaml"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, pm("reset"), ClassIO},
+	})
+}
+
+func TestHandlerErrors_Pipeline(t *testing.T) {
+	pl := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdPipeline(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"no workspace", noWorkspace, pl("90%", "a.md"), ClassNoInput},
+		{"no arguments", nil, pl(), ClassUsage},
+		{"threshold is not a percentage", nil, pl("high", "a.md"), ClassUsage},
+		{"threshold out of range", nil, pl("0%", "a.md"), ClassUsage},
+		{"missing file", nil, pl("90%", "nope.md"), ClassNoInput},
+	})
+}
+
+func TestHandlerErrors_Plan(t *testing.T) {
+	pn := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdPlan(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"status: no workspace", noWorkspace, pn("status"), ClassNoInput},
+		{"show: no workspace", noWorkspace, pn("show"), ClassNoInput},
+		{"clear: no workspace", noWorkspace, pn("clear"), ClassNoInput},
+		{"next: no workspace", func(t *testing.T, a *Agent) { a.Client = &mockLLMClient{}; a.Workspace = nil }, pn("next"), ClassNoInput},
+		{"status: no plan", nil, pn("status"), ClassNegative},
+		{"show: no plan", nil, pn("show"), ClassNegative},
+		{"next: no plan", func(t *testing.T, a *Agent) { a.Client = &mockLLMClient{} }, pn("next"), ClassNegative},
+	})
+}
+
+func TestHandlerErrors_LearnOptions(t *testing.T) {
+	kb := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdKB(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"concepts: unknown option", withKB, kb("learn", "concepts", "--bogus"), ClassUsage},
+		{"concepts: --limit without a number", withKB, kb("learn", "concepts", "--limit"), ClassUsage},
+		{"concepts: --limit not a number", withKB, kb("learn", "concepts", "--limit", "x"), ClassUsage},
+		{"ingest: unknown option", withKB, kb("learn", "ingest", "--bogus"), ClassUsage},
+		{"ingest: --min-words without a number", withKB, kb("learn", "ingest", "--min-words"), ClassUsage},
+		{"ingest: --min-words not a number", withKB, kb("learn", "ingest", "--min-words", "x"), ClassUsage},
+	})
+	runHandlerCases(t, []handlerCase{
+		{"route models: no URL", nil, func(a *Agent, o io.Writer) error { return routeModels(a, nil, o) }, ClassUsage},
+	})
+}
+
+// ─── guards ──────────────────────────────────────────────────────────────────
+
+// Every command that declares subcommands rejects an unknown one as a usage
+// error. This is the guard against a new command that prints "unknown
+// subcommand" and returns nil, which a scripted session would read as success.
+func TestGuard_EveryCommandWithSubcommandsRejectsAnUnknownOne(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	checked := 0
+	for name, cmd := range a.commands {
+		if len(cmd.Subcommands) == 0 || cmd.Handler == nil {
+			continue
+		}
+		// /plan takes free text as the task to plan, so no word is "unknown".
+		if name == "plan" {
+			continue
+		}
+		// Each probe gets a fresh agent so one command's side effects cannot
+		// hide another's behaviour.
+		b := newTestAgent(t)
+		b.registerCommands()
+		withKB(t, b)
+		withMemory(t, b)
+		withRoutes(t, b)
+		t.Run(name, func(t *testing.T) {
+			_, err := b.dispatch("/"+name+" zz-no-such-subcommand-zz", io.Discard)
+			if ExitCodeFor(err) != ClassUsage {
+				t.Errorf("/%s with an unknown subcommand = %v, want a usage error", name, err)
+			}
+		})
+		checked++
+	}
+	if checked < 10 {
+		t.Fatalf("only %d commands declare subcommands; the guard is not looking at the registry", checked)
+	}
+}
+
+// No command handler prints a usage line or an unknown/invalid-value message
+// and carries on: those are errors, and belong in a Usagef return. The scan is
+// textual on purpose, so a new handler that copies the old print-and-return-nil
+// shape fails here before it ships.
+func TestGuard_HandlersDoNotPrintUsageOrInvalidValueAndContinue(t *testing.T) {
+	// memory_miner.go's prompts are an interactive review loop, not a command.
+	skip := map[string]bool{"memory_miner.go": true}
+	bad := regexp.MustCompile(`(?i)Fprint(f|ln)?\(out, "[^"]*(usage:|unknown (audit|permissions|[a-z-]+ )?(subcommand|option|setting|value)|invalid (number|permission|[a-z]+ id))`)
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") || skip[f] {
+			continue
+		}
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "//") || strings.HasPrefix(strings.TrimSpace(line), "*") {
+				continue
+			}
+			// A per-item warning that also records the failure (kbCite) is fine.
+			if bad.MatchString(line) && !strings.Contains(line, "skipping") {
+				t.Errorf("%s:%d prints a failure and continues; return Usagef(...) instead:\n\t%s", f, i+1, strings.TrimSpace(line))
+			}
+		}
+	}
 }

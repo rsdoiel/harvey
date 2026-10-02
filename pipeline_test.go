@@ -241,8 +241,8 @@ func TestCmdPipeline_failAtStep2(t *testing.T) {
 
 	histBefore := len(a.History)
 	var out strings.Builder
-	if err := cmdPipeline(a, []string{"90%", "s1.md", "s2.md"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := cmdPipeline(a, []string{"90%", "s1.md", "s2.md"}, &out); ExitCodeFor(err) != ClassNegative {
+		t.Fatalf("expected a negative result for a step below the threshold, got: %v", err)
 	}
 
 	if len(a.History) != histBefore {
@@ -261,14 +261,12 @@ func TestCmdPipeline_mentionUnresolved(t *testing.T) {
 
 	histBefore := len(a.History)
 	var out strings.Builder
-	if err := cmdPipeline(a, []string{"90%", "s1.md"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	err := cmdPipeline(a, []string{"90%", "s1.md"}, &out)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "did not resolve") {
+		t.Errorf("expected a negative result naming the unresolved @mention, got: %v", err)
 	}
 	if len(a.History) != histBefore {
 		t.Errorf("History changed on unresolved @mention")
-	}
-	if !strings.Contains(out.String(), "did not resolve") {
-		t.Errorf("output missing resolution error: %q", out.String())
 	}
 }
 
@@ -278,8 +276,8 @@ func TestCmdPipeline_fileNotFound(t *testing.T) {
 
 	histBefore := len(a.History)
 	var out strings.Builder
-	if err := cmdPipeline(a, []string{"90%", "missing.md"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := cmdPipeline(a, []string{"90%", "missing.md"}, &out); ExitCodeFor(err) != ClassNoInput {
+		t.Fatalf("expected a no_input error for a missing file, got: %v", err)
 	}
 	if len(a.History) != histBefore {
 		t.Errorf("History changed on file-not-found")

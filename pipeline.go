@@ -336,13 +336,12 @@ func runPipelineStep(
  */
 func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		return fmt.Errorf("pipeline: no workspace configured")
+		return errNoWorkspace()
 	}
 
 	threshold, absPaths, parseErr := parsePipelineArgs(a.Workspace.Root, args)
 	if parseErr != nil {
-		fmt.Fprintln(out, parseErr)
-		return nil
+		return defaultClass(ClassUsage, parseErr)
 	}
 	total := len(absPaths)
 
@@ -352,14 +351,12 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 		rel, _ := filepath.Rel(a.Workspace.Root, abs)
 		body, readErr := readPipelineFile(a.Workspace.Root, abs)
 		if readErr != nil {
-			fmt.Fprintln(out, readErr)
-			return nil
+			return defaultClass(ClassNoInput, readErr)
 		}
 		mention := scanAtMention(body)
 		client, resolveErr := resolvePipelineClient(a, mention)
 		if resolveErr != nil {
-			fmt.Fprintln(out, resolveErr)
-			return nil
+			return defaultClass(ClassNegative, resolveErr)
 		}
 		steps[i] = pipelineStep{absPath: abs, relPath: rel, body: body, client: client}
 	}
@@ -443,7 +440,8 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 					stepNum, total, score, threshold,
 				))
 			}
-			return nil
+			// The step ran but did not meet the bar: the answer is no.
+			return defaultClass(ClassNegative, stepErr)
 		}
 
 		// Fountain: CUT TO next step if there is one.

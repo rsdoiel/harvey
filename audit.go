@@ -267,8 +267,7 @@ func (b *AuditBuffer) Capacity() int {
  */
 func cmdAudit(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /audit <show [n]|clear|status>")
-		return nil
+		return Usagef("usage: /audit <show [n]|clear|status>")
 	}
 
 	switch strings.ToLower(args[0]) {
@@ -279,24 +278,20 @@ func cmdAudit(a *Agent, args []string, out io.Writer) error {
 	case "status":
 		return auditStatus(a, out)
 	default:
-		fmt.Fprintf(out, "Unknown audit subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "Usage: /audit <show [n]|clear|status>")
+		return Usagef("unknown audit subcommand: %q  (usage: /audit <show [n]|clear|status>)", args[0])
 	}
-	return nil
 }
 
 func auditShow(a *Agent, args []string, out io.Writer) error {
 	n := 10
 	if len(args) > 0 {
 		if _, err := fmt.Sscanf(args[0], "%d", &n); err != nil {
-			fmt.Fprintf(out, "Invalid number: %s\n", args[0])
-			return nil
+			return Usagef("invalid number: %s", args[0])
 		}
 	}
 
 	if a.AuditBuffer == nil {
-		fmt.Fprintln(out, "  Audit buffer not initialized.")
-		return nil
+		return Negativef("audit buffer not initialized")
 	}
 
 	events := a.AuditBuffer.Get(n)
@@ -314,8 +309,7 @@ func auditShow(a *Agent, args []string, out io.Writer) error {
 
 func auditClear(a *Agent, out io.Writer) error {
 	if a.AuditBuffer == nil {
-		fmt.Fprintln(out, "  Audit buffer not initialized.")
-		return nil
+		return Negativef("audit buffer not initialized")
 	}
 	a.AuditBuffer.Clear()
 	fmt.Fprintln(out, "  Audit buffer cleared.")
@@ -324,8 +318,7 @@ func auditClear(a *Agent, out io.Writer) error {
 
 func auditStatus(a *Agent, out io.Writer) error {
 	if a.AuditBuffer == nil {
-		fmt.Fprintln(out, "  Audit buffer not initialized.")
-		return nil
+		return Negativef("audit buffer not initialized")
 	}
 	fmt.Fprintf(out, "  Audit buffer: %d/%d events\n", a.AuditBuffer.Size(), a.AuditBuffer.Capacity())
 	if a.AuditBuffer.LogPath != "" {

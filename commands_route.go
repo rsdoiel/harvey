@@ -277,10 +277,7 @@ func formatCapabilities(caps anyllm.Capabilities) string {
  */
 func routeModels(a *Agent, args []string, out io.Writer) error {
 	if len(args) < 1 {
-		fmt.Fprintln(out, "  Usage: /route models URL")
-		fmt.Fprintln(out, "  Example: /route models anthropic://")
-		fmt.Fprintln(out, "           /route models ollama://192.168.1.12:11434")
-		return nil
+		return Usagef("usage: /route models URL  (example: /route models anthropic://  or  /route models ollama://192.168.1.12:11434)")
 	}
 	rawURL := args[0]
 	kind, err := InferRouteKind(rawURL)

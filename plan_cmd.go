@@ -116,7 +116,7 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 		return Unavailablef("no backend connected — use /model use first")
 	}
 	if a.Workspace == nil {
-		return fmt.Errorf("no workspace available")
+		return errNoWorkspace()
 	}
 
 	p, err := LoadPlan(a.Workspace)
@@ -199,12 +199,14 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 	if toolErrors {
 		fmt.Fprintln(out, yellow("  ⚠")+" One or more tool calls failed — step not marked done.")
 		fmt.Fprintln(out, dim("  Fix the issue and run /plan next to retry, or edit agents/plan.md to skip."))
-		return nil
+		return Negativef("step not marked done: one or more tool calls failed")
 	}
 
 	p.MarkDone(step.Index)
+	var saveErr error
 	if err := SavePlan(a.Workspace, p); err != nil {
 		fmt.Fprintf(out, yellow("  ⚠ Could not save plan: %v\n"), err)
+		saveErr = defaultClass(ClassIO, fmt.Errorf("could not save plan: %w", err))
 	}
 
 	if p.AllDone() {
@@ -213,7 +215,7 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 		next := p.NextStep()
 		fmt.Fprintln(out, dim("  Next: "+next.Title+"  (run /plan next to continue)"))
 	}
-	return nil
+	return saveErr
 }
 
 // planStepHadErrors reports whether any uncompacted tool messages in history
@@ -238,13 +240,12 @@ func planStepHadErrors(history []Message) bool {
 // cmdPlanStatus prints the current plan checklist with completion markers.
 func cmdPlanStatus(a *Agent, out io.Writer) error {
 	if a.Workspace == nil {
-		return fmt.Errorf("no workspace available")
+		return errNoWorkspace()
 	}
 	p, err := LoadPlan(a.Workspace)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Fprintln(out, "  No plan found. Use /plan TASK to create one.")
-			return nil
+			return Negativef("no plan found. Use /plan TASK to create one")
 		}
 		return fmt.Errorf("could not load plan: %w", err)
 	}
@@ -255,7 +256,7 @@ func cmdPlanStatus(a *Agent, out io.Writer) error {
 // cmdPlanShow prints the raw agents/plan.md file.
 func cmdPlanShow(a *Agent, out io.Writer) error {
 	if a.Workspace == nil {
-		return fmt.Errorf("no workspace available")
+		return errNoWorkspace()
 	}
 	absPath, err := a.Workspace.AbsPath(filepath.Join(harveySubdir, planFileName))
 	if err != nil {
@@ -264,8 +265,7 @@ func cmdPlanShow(a *Agent, out io.Writer) error {
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Fprintln(out, "  No plan found. Use /plan TASK to create one.")
-			return nil
+			return Negativef("no plan found. Use /plan TASK to create one")
 		}
 		return err
 	}
@@ -279,7 +279,7 @@ func cmdPlanShow(a *Agent, out io.Writer) error {
 // cmdPlanClear deletes agents/plan.md after confirmation.
 func cmdPlanClear(a *Agent, out io.Writer) error {
 	if a.Workspace == nil {
-		return fmt.Errorf("no workspace available")
+		return errNoWorkspace()
 	}
 	absPath, err := a.Workspace.AbsPath(filepath.Join(harveySubdir, planFileName))
 	if err != nil {

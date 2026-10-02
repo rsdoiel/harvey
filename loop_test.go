@@ -198,12 +198,12 @@ func TestCmdLoop_invalidArgs(t *testing.T) {
 		a := newLoopTestAgent("")
 		var out bytes.Buffer
 		err := cmdLoop(a, tc.args, &out)
-		if err != nil {
-			t.Errorf("args=%v: expected nil error, got %v", tc.args, err)
+		if ExitCodeFor(err) != ClassUsage {
+			t.Errorf("args=%v: expected a usage error, got %v", tc.args, err)
 			continue
 		}
-		if !strings.Contains(strings.ToLower(out.String()), tc.wantOut) {
-			t.Errorf("args=%v: output %q does not contain %q", tc.args, out.String(), tc.wantOut)
+		if !strings.Contains(strings.ToLower(err.Error()), tc.wantOut) {
+			t.Errorf("args=%v: error %q does not contain %q", tc.args, err, tc.wantOut)
 		}
 	}
 }

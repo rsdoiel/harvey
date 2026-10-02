@@ -718,11 +718,9 @@ func TestRouteModels_noArgs(t *testing.T) {
 	a := newTestAgent(t)
 	a.Routes = NewRouteRegistry()
 	var out strings.Builder
-	if err := routeModels(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "Usage") {
-		t.Errorf("expected usage message, got: %s", out.String())
+	err := routeModels(a, nil, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("expected a usage error, got: %v", err)
 	}
 }
 

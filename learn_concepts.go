@@ -413,17 +413,14 @@ func kbLearnConcepts(a *Agent, args []string, out io.Writer) error {
 	limit := learnConceptsDefaultLimit
 	for i := 0; i < len(args); i++ {
 		if args[i] != "--limit" {
-			fmt.Fprintf(out, "Unknown option %q. %s\n", args[i], usage)
-			return nil
+			return Usagef("unknown option %q. %s", args[i], usage)
 		}
 		if i+1 >= len(args) {
-			fmt.Fprintln(out, "--limit needs a number.", usage)
-			return nil
+			return Usagef("--limit needs a number. %s", usage)
 		}
 		n, err := strconv.Atoi(args[i+1])
 		if err != nil || n < 0 {
-			fmt.Fprintf(out, "--limit %q is not a number of candidates. %s\n", args[i+1], usage)
-			return nil
+			return Usagef("--limit %q is not a number of candidates. %s", args[i+1], usage)
 		}
 		limit = n
 		i++
