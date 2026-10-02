@@ -79,21 +79,17 @@ Harvey runs on:
 
 ## Release Notes
 
-- version: 0.0.17
+- version: 0.0.18
 - status: active
-- released: 2026-09-27
+- released: 2026-10-02
 
-- Breaking: `harvey` and `assay` now use the workspace exit-code convention (workspace DR-0003; harvey DR-0005/DR-0006) instead of exiting only 0 or 1. Five cases that exited 0 now fail (`--continue`/`--record-file` naming a bad path, a malformed `harvey.yaml` or no reachable backend in a non-interactive session, and `assay` when every model call fails); every other case exits a more specific code than a bare 1. See `harvey/CHANGES.md`'s v0.0.17 section for the full upgrade table
-- `-json`/`--json` on both binaries: a failing startup/flag-parsing error (or, for `harvey`, a failed non-interactive session) prints as `{"error","class","code"}` JSON on stderr instead of text, matching `kb`'s shape
-- A non-interactive `harvey` session (piped stdin, or `--replay` without `--replay-continue`) now exits with the class of its first failed slash command or chat turn, instead of always 0; an interactive session at a terminal is unaffected. `/plan`'s errors are the first command family reclassified to give real signal here
-- `/rag setup`'s embedding-model auto-pick now confirms its keyword-based guess with one live `/api/embed` call before committing to it, falling back to another candidate (or warning) when the guess is wrong — `ThoroughProbeModel`'s first caller
-- Ollama models are now probed on every selection, not just when a new alias is saved, so `/model use NAME` and the startup picker no longer silently degrade to file-injection instead of tool calls; a `/model mode` override survives re-probing (previously erased)
-- Removed roughly 30 stale `/ollama`/`/llamafile` references across runtime messages, help text and generated docs; both commands were replaced by `/model` months ago. `stale_commands_test.go` guards against regressions
-- Bug fix: closed stdin (Ctrl-D, a closed pipe) at a yes/no prompt no longer defaults to "yes" — affected `Start Ollama now?`, `Restart MODEL?`, and three skill prompts
-- Bug fix: a failed memory-embed no longer leaves an orphaned `.fountain` file; the error now says to run `ollama pull MODEL`
-- Bug fix: `/model use NAME` now matches any registered model by exact name or unique prefix, not just the picker's list
-- Bug fix: the "1-byte" line reader actually buffered 16 bytes (`bufio`'s minimum) and could swallow piped multi-line input after a prompt
-- `knowledge` bumped to the released v0.0.14; `termlib` bumped to the released v0.0.10 (a display-corrupting bug fix for prompts wider than the terminal or containing an embedded newline)
+- Breaking for scripts: every slash command now returns a classed error instead of printing a failure and carrying on, so a non-interactive `harvey` session (piped stdin, or `--replay` without `--replay-continue`) exits with the class of its first failed command, where it used to exit 0 or 70. An unknown command is 2, a missing file or workspace 66, no matches or nothing to act on 1, a path or action refused by the permission rules 77, an unreachable backend 69, a file of the wrong kind 65, a setting that cannot be saved 74. `harvey/CHANGES.md` has the table for each command family. A session at a terminal is unaffected apart from the message now reading `Error: ...`. `/loop`, `/read`, `/format`, `/kb cite` and `/rag ingest` still try every item, then return the first failure
+- `/model` and `/security` with an unknown subcommand are now usage errors; `/model NAME` used to show the active model and ignore the name
+- Bug fix: `/workspace init FROM_PATH` never imported anything, because the handler read its subcommand from the wrong argument; `/workspace bogus` quietly showed the status
+- Bug fix: `/learn` found no hand-offs after the workspace moved them to `agents/projects/<project>/hand-off/`; it now scans each project's `hand-off/` directory and accepts Markdown hand-offs
+- `/profile use`'s automatic hand-off is now written as Markdown per `HANDOFF_FORMAT.md` instead of Fountain; `recallKB` retrieves through the knowledge library's `RecallByText`
+- Design briefs, plans, decision records and notes moved out of this repository into `agents/projects/harvey/` (harvey DR-0008); 21 earlier decisions from `DECISIONS.md` are now records DR-0009 to DR-0029
+- `knowledge` bumped to the released v0.0.15
 
 
 ### Authors

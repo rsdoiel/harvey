@@ -1,6 +1,6 @@
 # CHANGES
 
-## Unreleased
+## v0.0.18 (2026-10-02)
 
 ### Changed
 
