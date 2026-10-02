@@ -39,15 +39,14 @@ import (
  */
 func cmdMemory(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /memory <mine|list|show|flag|forget|status|recall|profile> [args...]")
-		return nil
+		return Usagef("usage: /memory <mine|list|show|flag|forget|status|recall|profile> [args...]")
 	}
 	// profile on/off only touch a.Config — they don't need the memory store.
 	if args[0] == "profile" && len(args) >= 2 && (args[1] == "on" || args[1] == "off") {
 		return cmdMemoryProfile(a, args[1:], out, nil)
 	}
 	if a.Memory == nil || a.Memory.Store == nil {
-		return fmt.Errorf("/memory: memory store not available")
+		return Negativef("/memory: memory store not available")
 	}
 	store := a.Memory.Store
 
@@ -69,9 +68,7 @@ func cmdMemory(a *Agent, args []string, out io.Writer) error {
 	case "profile":
 		return cmdMemoryProfile(a, args[1:], out, store)
 	default:
-		fmt.Fprintf(out, "Unknown /memory subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "Usage: /memory <mine|list|show|flag|forget|status|recall|profile> [args...]")
-		return nil
+		return Usagef("unknown /memory subcommand: %q  (usage: /memory <mine|list|show|flag|forget|status|recall|profile> [args...])", args[0])
 	}
 }
 
@@ -177,8 +174,7 @@ func cmdMemoryShow(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 	if len(args) == 0 {
 		items := memorySelectItems(store)
 		if len(items) == 0 {
-			fmt.Fprintln(out, "No memories found.")
-			return nil
+			return Negativef("no memories found")
 		}
 		chosen, err := SelectFrom(items, fmt.Sprintf("Show which memory [1-%d] or Enter to cancel: ", len(items)), a.In, out)
 		if err != nil || chosen == "" {
@@ -191,8 +187,7 @@ func cmdMemoryShow(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 		return fmt.Errorf("memory show: %w", err)
 	}
 	if doc == nil {
-		fmt.Fprintf(out, "Memory %q not found.\n", args[0])
-		return nil
+		return Negativef("memory %q not found", args[0])
 	}
 	data, err := doc.Bytes()
 	if err != nil {
@@ -207,8 +202,7 @@ func cmdMemoryForget(a *Agent, args []string, out io.Writer, store *MemoryStore)
 	if len(args) == 0 {
 		items := memorySelectItems(store)
 		if len(items) == 0 {
-			fmt.Fprintln(out, "No memories found.")
-			return nil
+			return Negativef("no memories found")
 		}
 		chosen, err := SelectFrom(items, fmt.Sprintf("Forget which memory [1-%d] or Enter to cancel: ", len(items)), a.In, out)
 		if err != nil || chosen == "" {
@@ -230,8 +224,7 @@ func cmdMemoryFlag(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 	if len(args) == 0 {
 		items := memorySelectItems(store)
 		if len(items) == 0 {
-			fmt.Fprintln(out, "No memories found.")
-			return nil
+			return Negativef("no memories found")
 		}
 		chosen, err := SelectFrom(items, fmt.Sprintf("Flag which memory [1-%d] or Enter to cancel: ", len(items)), a.In, out)
 		if err != nil || chosen == "" {
@@ -324,8 +317,7 @@ func cmdMemoryStatus(a *Agent, args []string, out io.Writer, store *MemoryStore)
 // cmdMemoryRecall queries all memory silos and prints grouped results.
 func cmdMemoryRecall(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /memory recall <query>")
-		return nil
+		return Usagef("usage: /memory recall <query>")
 	}
 	query := strings.Join(args, " ")
 
@@ -340,7 +332,7 @@ func cmdMemoryRecall(a *Agent, args []string, out io.Writer, store *MemoryStore)
 	}
 	if len(results) == 0 {
 		fmt.Fprintln(out, "No memories found.")
-		return nil
+		return Negativef("memory recall: no memories match %q", query)
 	}
 
 	curSource := ""
@@ -386,8 +378,7 @@ func cmdMemoryProfile(a *Agent, args []string, out io.Writer, store *MemoryStore
 	case "off":
 		return cmdMemoryProfileSetInject(a, false, out)
 	default:
-		fmt.Fprintf(out, "Usage: /memory profile <list|show|edit|use|rename|on|off> [args...]\n")
-		return nil
+		return Usagef("usage: /memory profile <list|show|edit|use|rename|on|off> [args...]")
 	}
 }
 
@@ -395,9 +386,11 @@ func cmdMemoryProfile(a *Agent, args []string, out io.Writer, store *MemoryStore
 // session start (Config.Memory.InjectOnStart) and persists the change to harvey.yaml.
 func cmdMemoryProfileSetInject(a *Agent, enable bool, out io.Writer) error {
 	a.Config.Memory.InjectOnStart = enable
+	var saveErr error
 	if a.Workspace != nil {
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
 			fmt.Fprintf(out, "  Warning: could not persist setting: %v\n", err)
+			saveErr = defaultClass(ClassIO, fmt.Errorf("could not persist setting: %w", err))
 		}
 	}
 	if enable {
@@ -405,7 +398,7 @@ func cmdMemoryProfileSetInject(a *Agent, enable bool, out io.Writer) error {
 	} else {
 		fmt.Fprintln(out, "  Profile injection off — workspace profile will not be injected at session start.")
 	}
-	return nil
+	return saveErr
 }
 
 // cmdMemoryProfileList lists active and archived workspace profiles (old "show" behavior).
@@ -420,8 +413,7 @@ func cmdMemoryProfileShowContent(a *Agent, out io.Writer, store *MemoryStore) er
 		return err
 	}
 	if len(metas) == 0 {
-		fmt.Fprintln(out, "  No workspace profiles found. Run /profile use to set one.")
-		return nil
+		return Negativef("no workspace profiles found. Run /profile use to set one")
 	}
 	active := metas[0]
 	doc, err := store.ByID(active.ID)
@@ -429,8 +421,7 @@ func cmdMemoryProfileShowContent(a *Agent, out io.Writer, store *MemoryStore) er
 		return fmt.Errorf("profile show: %w", err)
 	}
 	if doc == nil {
-		fmt.Fprintln(out, "  Profile document not found on disk.")
-		return nil
+		return NoInputf("profile document not found on disk")
 	}
 	fmt.Fprintf(out, "\nActive workspace profile: %s (%s)\n\n", active.Description, active.ID)
 	fmt.Fprintln(out, strings.Repeat("─", 60))
@@ -457,14 +448,12 @@ func cmdMemoryProfileShowContent(a *Agent, out io.Writer, store *MemoryStore) er
 // cmdMemoryProfileRename updates the description/title of the active workspace profile.
 func cmdMemoryProfileRename(a *Agent, args []string, out io.Writer, store *MemoryStore) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /memory profile rename NAME")
-		return nil
+		return Usagef("usage: /memory profile rename NAME")
 	}
 	newName := strings.Join(args, " ")
 	metas, err := store.List(string(MemoryTypeWorkspaceProfile))
 	if err != nil || len(metas) == 0 {
-		fmt.Fprintln(out, "  No active workspace profile to rename.")
-		return nil
+		return Negativef("no active workspace profile to rename")
 	}
 	active := metas[0]
 	doc, err := store.ByID(active.ID)
@@ -472,8 +461,7 @@ func cmdMemoryProfileRename(a *Agent, args []string, out io.Writer, store *Memor
 		return fmt.Errorf("profile rename: %w", err)
 	}
 	if doc == nil {
-		fmt.Fprintln(out, "  Profile document not found on disk.")
-		return nil
+		return NoInputf("profile document not found on disk")
 	}
 	doc.Meta.Description = newName
 	doc.FountainBody = rewriteProfileTitle(doc.FountainBody, newName)
@@ -668,8 +656,7 @@ func cmdMemoryProfileUpdate(a *Agent, out io.Writer, store *MemoryStore) error {
 		return fmt.Errorf("profile update: %w", err)
 	}
 	if len(metas) == 0 {
-		fmt.Fprintln(out, "No workspace_profile memories found. Start Harvey in a fresh workspace to run onboarding.")
-		return nil
+		return Negativef("no workspace_profile memories found. Start Harvey in a fresh workspace to run onboarding")
 	}
 	// List is ordered by updated_at DESC; first entry is most recent.
 	doc, err := store.ByID(metas[0].ID)
@@ -677,8 +664,7 @@ func cmdMemoryProfileUpdate(a *Agent, out io.Writer, store *MemoryStore) error {
 		return fmt.Errorf("profile update: load doc: %w", err)
 	}
 	if doc == nil {
-		fmt.Fprintln(out, "Profile document not found on disk.")
-		return nil
+		return NoInputf("profile document not found on disk")
 	}
 	edited, err := editInEditor(doc, out)
 	if err != nil {

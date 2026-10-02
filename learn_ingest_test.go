@@ -452,8 +452,8 @@ func TestCmdKB_RoutesLearnAndListsItInTheUsage(t *testing.T) {
 		t.Errorf("output = %q, want /kb learn routed", out.String())
 	}
 	var usage strings.Builder
-	cmdKB(a, []string{"nonesuch"}, &usage)
-	if !strings.Contains(usage.String(), "learn") {
-		t.Errorf("usage = %q, want it to list learn", usage.String())
+	err := cmdKB(a, []string{"nonesuch"}, &usage)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "learn") {
+		t.Errorf("err = %v, want a usage error listing learn", err)
 	}
 }

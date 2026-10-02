@@ -104,27 +104,21 @@ func cmdRoute(a *Agent, args []string, out io.Writer) error {
 		}
 		name := args[1]
 		if a.Routes == nil || a.Routes.Lookup(name) == nil {
-			fmt.Fprintf(out, "  Route %q not found. Use /route list to see registered routes.\n", name)
-			return nil
+			return Negativef("route %q not found. Use /route list to see registered routes", name)
 		}
 		a.ActiveRoute = name
 		fmt.Fprintf(out, "  Active route set to %q. All prompts will be dispatched via @%s.\n", name, name)
 		fmt.Fprintln(out, dim("  Use /route use (no name) to clear."))
 		return nil
 	default:
-		fmt.Fprintf(out, "  Unknown route subcommand: %q\n", args[0])
-		fmt.Fprintln(out, "  Usage: /route <add NAME URL [MODEL] | rm NAME | models URL | probe NAME | set NAME tools on|off | list | use [NAME] | on | off | status>")
+		return Usagef("unknown route subcommand: %q  (usage: /route <add NAME URL [MODEL] | rm NAME | models URL | probe NAME | set NAME tools on|off | list | use [NAME] | on | off | status>)", args[0])
 	}
-	return nil
 }
 
 func routeAdd(a *Agent, args []string, out io.Writer) error {
+	var persistErr error
 	if len(args) < 2 {
-		fmt.Fprintln(out, "  Usage: /route add NAME URL [MODEL]")
-		fmt.Fprintln(out, "  Local:  ollama://host:port  llamafile://host:port  llamacpp://host:port")
-		fmt.Fprintln(out, "  Cloud:  anthropic://  deepseek://  gemini://  mistral://  openai://")
-		fmt.Fprintln(out, "  Cloud providers read API keys from environment variables.")
-		return nil
+		return Usagef("usage: /route add NAME URL [MODEL]  (local: ollama://host:port llamafile://host:port llamacpp://host:port; cloud: anthropic:// deepseek:// gemini:// mistral:// openai://, which read API keys from environment variables)")
 	}
 	name, rawURL := args[0], args[1]
 	model := ""
@@ -133,13 +127,12 @@ func routeAdd(a *Agent, args []string, out io.Writer) error {
 	}
 	kind, err := InferRouteKind(rawURL)
 	if err != nil {
-		fmt.Fprintf(out, "  %v\n", err)
-		return nil
+		return Usagef("%v", err)
 	}
 	ep := &RouteEndpoint{Name: name, URL: rawURL, Model: model, Kind: kind}
 	a.Routes.Add(ep)
 	if saveErr := SaveRouteConfig(a.Workspace, a.Routes); saveErr != nil {
-		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
+		persistErr = persistFailure(out, "route config", saveErr)
 	}
 	fmt.Fprintf(out, "  Added: @%s → %s", name, rawURL)
 	if model != "" {
@@ -156,7 +149,7 @@ func routeAdd(a *Agent, args []string, out io.Writer) error {
 			fmt.Fprintln(out, "           Use https:// if the server supports TLS.")
 		}
 	}
-	return nil
+	return persistErr
 }
 
 // isPrivateHost reports whether host is a loopback, link-local, or RFC-1918
@@ -172,16 +165,16 @@ func isPrivateHost(host string) bool {
 }
 
 func routeRemove(a *Agent, name string, out io.Writer) error {
+	var persistErr error
 	if a.Routes.Lookup(name) == nil {
-		fmt.Fprintf(out, "  Endpoint %q not found. Use /route list to see registered endpoints.\n", name)
-		return nil
+		return Negativef("endpoint %q not found. Use /route list to see registered endpoints", name)
 	}
 	a.Routes.Remove(name)
 	if saveErr := SaveRouteConfig(a.Workspace, a.Routes); saveErr != nil {
-		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
+		persistErr = persistFailure(out, "route config", saveErr)
 	}
 	fmt.Fprintf(out, "  Removed: @%s\n", name)
-	return nil
+	return persistErr
 }
 
 func routeList(a *Agent, out io.Writer) error {
@@ -221,23 +214,25 @@ func routeList(a *Agent, out io.Writer) error {
 }
 
 func routeOn(a *Agent, out io.Writer) error {
+	var persistErr error
 	a.Routes.Enabled = true
 	a.Config.RoutingEnabled = true
 	if saveErr := SaveRouteConfig(a.Workspace, a.Routes); saveErr != nil {
-		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
+		persistErr = persistFailure(out, "route config", saveErr)
 	}
 	fmt.Fprintln(out, "  Routing on. Prefix your prompt with @name to dispatch to a registered endpoint.")
-	return nil
+	return persistErr
 }
 
 func routeOff(a *Agent, out io.Writer) error {
+	var persistErr error
 	a.Routes.Enabled = false
 	a.Config.RoutingEnabled = false
 	if saveErr := SaveRouteConfig(a.Workspace, a.Routes); saveErr != nil {
-		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", saveErr)
+		persistErr = persistFailure(out, "route config", saveErr)
 	}
 	fmt.Fprintln(out, "  Routing off. @mentions will be rejected until you run /route on.")
-	return nil
+	return persistErr
 }
 
 func routeStatus(a *Agent, out io.Writer) error {
@@ -290,8 +285,7 @@ func routeModels(a *Agent, args []string, out io.Writer) error {
 	rawURL := args[0]
 	kind, err := InferRouteKind(rawURL)
 	if err != nil {
-		fmt.Fprintf(out, "  %v\n", err)
-		return nil
+		return Usagef("%v", err)
 	}
 
 	fmt.Fprintln(out)
@@ -309,8 +303,7 @@ func routeModels(a *Agent, args []string, out io.Writer) error {
 	ctx := context.Background()
 	models, err := listModelsForEndpoint(ctx, kind, rawURL, a.Config)
 	if err != nil {
-		fmt.Fprintf(out, "  Error: %v\n", err)
-		return nil
+		return defaultClass(ClassUnavailable, err)
 	}
 	if len(models) == 0 {
 		fmt.Fprintln(out, "  No models returned.")
@@ -334,8 +327,7 @@ func routeModels(a *Agent, args []string, out io.Writer) error {
 func routeProbe(a *Agent, name string, out io.Writer) error {
 	ep := a.Routes.Lookup(name)
 	if ep == nil {
-		fmt.Fprintf(out, "  @%s not found. Use /route list to see registered endpoints.\n", name)
-		return nil
+		return Negativef("@%s not found. Use /route list to see registered endpoints", name)
 	}
 
 	reach := probeRouteEndpoint(ep, a.Config)
@@ -382,15 +374,14 @@ func routeProbe(a *Agent, name string, out io.Writer) error {
  * Usage: /route set NAME tools on|off
  */
 func routeSet(a *Agent, args []string, out io.Writer) error {
+	var persistErr error
 	if len(args) < 3 {
-		fmt.Fprintln(out, "  Usage: /route set NAME tools on|off")
-		return nil
+		return Usagef("usage: /route set NAME tools on|off")
 	}
 	name, key, val := args[0], strings.ToLower(args[1]), strings.ToLower(args[2])
 	ep := a.Routes.Lookup(name)
 	if ep == nil {
-		fmt.Fprintf(out, "  @%s not found. Use /route list to see registered endpoints.\n", name)
-		return nil
+		return Negativef("@%s not found. Use /route list to see registered endpoints", name)
 	}
 	switch key {
 	case "tools":
@@ -406,17 +397,15 @@ func routeSet(a *Agent, args []string, out io.Writer) error {
 			ep.Tools = false
 			fmt.Fprintf(out, "  @%s: tools disabled.\n", name)
 		default:
-			fmt.Fprintf(out, "  Unknown value %q — use: on | off\n", val)
-			return nil
+			return Usagef("unknown value %q — use: on | off", val)
 		}
 	default:
-		fmt.Fprintf(out, "  Unknown setting %q — available settings: tools\n", key)
-		return nil
+		return Usagef("unknown setting %q — available settings: tools", key)
 	}
 	if err := SaveRouteConfig(a.Workspace, a.Routes); err != nil {
-		fmt.Fprintf(out, "  Warning: could not persist route config: %v\n", err)
+		persistErr = persistFailure(out, "route config", err)
 	}
-	return nil
+	return persistErr
 }
 
 // probeRouteEndpoint returns true when ep appears reachable.

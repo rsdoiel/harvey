@@ -236,11 +236,9 @@ func TestCmdSkillSet_createAlreadyExists(t *testing.T) {
 	a := newTestAgent(t)
 	writeSkillSet(t, a, "exists", "name: exists\nskills:\n  - x\n")
 	var out strings.Builder
-	if err := cmdSkillSet(a, []string{"create", "exists"}, &out); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "already exists") {
-		t.Errorf("expected 'already exists': %s", out.String())
+	err := cmdSkillSet(a, []string{"create", "exists"}, &out)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("expected a negative 'already exists' result, got: %v", err)
 	}
 }
 
@@ -285,10 +283,8 @@ func TestCmdSkillSet_noWorkspace(t *testing.T) {
 func TestCmdSkillSet_unknownSubcommand(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdSkillSet(a, []string{"bogus"}, &out); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "Unknown subcommand") {
-		t.Errorf("expected 'Unknown subcommand': %s", out.String())
+	err := cmdSkillSet(a, []string{"bogus"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown subcommand") {
+		t.Errorf("expected a usage error naming the unknown subcommand, got: %v", err)
 	}
 }

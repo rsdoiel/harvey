@@ -430,8 +430,7 @@ func kbLearnConcepts(a *Agent, args []string, out io.Writer) error {
 	}
 	projectID := a.Config.Memory.CurrentProjectID
 	if projectID == 0 {
-		fmt.Fprintln(out, "No current project. Pick one first with /kb project use ID (see /kb project list).")
-		return nil
+		return Negativef("no current project. Pick one first with /kb project use ID (see /kb project list)")
 	}
 	projects, err := a.KB.Projects()
 	if err != nil {

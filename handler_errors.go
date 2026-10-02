@@ -3,6 +3,7 @@ package harvey
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os/exec"
 )
@@ -56,4 +57,26 @@ func startFailure(program string, err error) error {
 		return ClassedAs(ClassNoInput, fmt.Errorf("%s: %w", program, err))
 	}
 	return defaultClass(ClassIO, fmt.Errorf("%s: %w", program, err))
+}
+
+/** persistFailure reports a setting that was applied in memory but could not
+ * be saved: it prints the warning the command always printed, and returns the
+ * failure as an I/O error (exit 74) so a scripted session sees it.
+ *
+ * Parameters:
+ *   out  (io.Writer) — where the warning goes.
+ *   what (string)    — what could not be saved, e.g. "route config".
+ *   err  (error)     — the save error; never nil here.
+ *
+ * Returns:
+ *   error — an io-class error naming what could not be saved.
+ *
+ * Example:
+ *   if err := SaveRouteConfig(ws, routes); err != nil {
+ *       persistErr = persistFailure(out, "route config", err)
+ *   }
+ */
+func persistFailure(out io.Writer, what string, err error) error {
+	fmt.Fprintf(out, "  Warning: could not persist %s: %v\n", what, err)
+	return defaultClass(ClassIO, fmt.Errorf("could not persist %s: %w", what, err))
 }

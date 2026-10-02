@@ -299,9 +299,10 @@ func TestLearnConcepts_SaysSoWhenThereIsNothingToSuggest(t *testing.T) {
 func TestLearnConcepts_NeedsACurrentProject(t *testing.T) {
 	f := newConceptsFixture(t, "")
 	f.a.Config.Memory.CurrentProjectID = 0
-	out := f.run(t)
-	if !strings.Contains(out, "No current project") {
-		t.Errorf("want the no-project message, got:\n%s", out)
+	var out strings.Builder
+	err := kbLearnConcepts(f.a, nil, &out)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no current project") {
+		t.Errorf("want a negative result naming the missing project, got: %v", err)
 	}
 }
 

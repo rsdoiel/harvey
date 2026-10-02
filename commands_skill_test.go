@@ -24,8 +24,8 @@ func TestCmdSkill_SuggestUnknownSubcommandListed(t *testing.T) {
 	a := newTestAgent(t)
 
 	var out strings.Builder
-	_ = cmdSkill(a, []string{"bogus-subcommand"}, &out)
-	if !strings.Contains(out.String(), "suggest") {
-		t.Errorf("expected 'suggest' in usage message, got: %q", out.String())
+	err := cmdSkill(a, []string{"bogus-subcommand"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "suggest") {
+		t.Errorf("expected a usage error listing 'suggest', got: %v", err)
 	}
 }

@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +18,7 @@ func TestCmdWorkspaceStatus_NoWorkspace(t *testing.T) {
 	a.Workspace = nil
 
 	var buf bytes.Buffer
-	err := cmdWorkspace(a, []string{"workspace", "status"}, &buf)
+	err := cmdWorkspace(a, []string{"status"}, &buf)
 	if ExitCodeFor(err) != ClassNoInput || !strings.Contains(err.Error(), "no workspace") {
 		t.Errorf("expected a no_input error naming the missing workspace, got: %v", err)
 	}
@@ -29,7 +30,7 @@ func TestCmdWorkspaceStatus_ShowsRoot(t *testing.T) {
 	a := newTestAgent(t)
 
 	var buf bytes.Buffer
-	if err := cmdWorkspace(a, []string{"workspace", "status"}, &buf); err != nil {
+	if err := cmdWorkspace(a, []string{"status"}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(buf.String(), a.Workspace.Root) {
@@ -47,7 +48,7 @@ func TestCmdWorkspaceStatus_ShowsAliasCount(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := cmdWorkspace(a, []string{"workspace", "status"}, &buf); err != nil {
+	if err := cmdWorkspace(a, []string{"status"}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := buf.String()
@@ -63,7 +64,7 @@ func TestCmdWorkspaceStatus_NoProfileMessage(t *testing.T) {
 	a.Config.Memory.Enabled = false // memory off → no profile shown
 
 	var buf bytes.Buffer
-	if err := cmdWorkspace(a, []string{"workspace", "status"}, &buf); err != nil {
+	if err := cmdWorkspace(a, []string{"status"}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// With memory disabled the profile block is skipped entirely — output must
@@ -80,7 +81,7 @@ func TestCmdWorkspaceStatus_DefaultSubcommand(t *testing.T) {
 	a := newTestAgent(t)
 
 	var buf bytes.Buffer
-	if err := cmdWorkspace(a, []string{"workspace"}, &buf); err != nil {
+	if err := cmdWorkspace(a, []string{}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(buf.String(), a.Workspace.Root) {
@@ -97,7 +98,7 @@ func TestCmdWorkspaceInit_NoWorkspace(t *testing.T) {
 	a.Workspace = nil
 
 	var buf bytes.Buffer
-	err := cmdWorkspace(a, []string{"workspace", "init"}, &buf)
+	err := cmdWorkspace(a, []string{"init"}, &buf)
 	if err == nil {
 		t.Fatal("expected an error when workspace is nil, got nil")
 	}
@@ -109,7 +110,7 @@ func TestCmdWorkspaceInit_NoPath(t *testing.T) {
 	a := newTestAgent(t)
 
 	var buf bytes.Buffer
-	if err := cmdWorkspace(a, []string{"workspace", "init"}, &buf); err != nil {
+	if err := cmdWorkspace(a, []string{"init"}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := buf.String()
@@ -135,7 +136,7 @@ func TestCmdWorkspaceInit_ImportsAliases(t *testing.T) {
 	a := newTestAgent(t)
 
 	var buf bytes.Buffer
-	if err := cmdWorkspace(a, []string{"workspace", "init", srcDir}, &buf); err != nil {
+	if err := cmdWorkspace(a, []string{"init", srcDir}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := buf.String()
@@ -162,7 +163,7 @@ func TestCmdWorkspaceInit_SkipsExisting(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := cmdWorkspace(a, []string{"workspace", "init", srcDir}, &buf); err != nil {
+	if err := cmdWorkspace(a, []string{"init", srcDir}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// The existing alias must not be overwritten.
@@ -180,7 +181,7 @@ func TestCmdWorkspaceInit_BadPath(t *testing.T) {
 	a := newTestAgent(t)
 
 	var buf bytes.Buffer
-	err := cmdWorkspace(a, []string{"workspace", "init", "/no/such/path/ever"}, &buf)
+	err := cmdWorkspace(a, []string{"init", "/no/such/path/ever"}, &buf)
 	if err == nil {
 		t.Fatal("expected an error for nonexistent path, got nil")
 	}
@@ -194,8 +195,59 @@ func TestCmdWorkspace_UnknownSubcommand(t *testing.T) {
 	a := newTestAgent(t)
 
 	var buf bytes.Buffer
-	err := cmdWorkspace(a, []string{"workspace", "bogus"}, &buf)
+	err := cmdWorkspace(a, []string{"bogus"}, &buf)
 	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown subcommand") {
 		t.Errorf("expected a usage error naming the unknown subcommand, got: %v", err)
+	}
+}
+
+// ─── dispatch ─────────────────────────────────────────────────────────────────
+
+// The handler receives the arguments after the command name, so the
+// subcommand is args[0]. The tests above once passed "workspace" as args[0],
+// which hid a handler that read the subcommand from args[1]: through the real
+// dispatcher `/workspace init PATH` was an unknown subcommand.
+func TestDispatch_WorkspaceInitImportsAliases(t *testing.T) {
+	srcDir := t.TempDir()
+	agentsDir := filepath.Join(srcDir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := "model_aliases:\n  code:\n    model: granite3.3:8b\n    tags: [code]\n"
+	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := newTestAgent(t)
+	a.registerCommands()
+
+	var buf bytes.Buffer
+	if _, err := a.dispatch("/workspace init "+srcDir, &buf); err != nil {
+		t.Fatalf("dispatch(/workspace init PATH) = %v", err)
+	}
+	if _, ok := a.Config.ModelAliases["code"]; !ok {
+		t.Errorf("alias was not imported; output: %q", buf.String())
+	}
+}
+
+func TestDispatch_WorkspaceStatusAndBareCommand(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	for _, line := range []string{"/workspace", "/workspace status", "/workspace init"} {
+		var buf bytes.Buffer
+		if _, err := a.dispatch(line, &buf); err != nil {
+			t.Errorf("dispatch(%q) = %v", line, err)
+		}
+		if !strings.Contains(buf.String(), "Aliases") {
+			t.Errorf("dispatch(%q) output lacks the alias count: %q", line, buf.String())
+		}
+	}
+}
+
+func TestDispatch_WorkspaceUnknownSubcommandIsUsage(t *testing.T) {
+	a := newTestAgent(t)
+	a.registerCommands()
+	_, err := a.dispatch("/workspace bogus", io.Discard)
+	if ExitCodeFor(err) != ClassUsage {
+		t.Errorf("dispatch(/workspace bogus) = %v, want usage", err)
 	}
 }

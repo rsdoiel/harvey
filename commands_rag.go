@@ -54,26 +54,24 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		return ragList(a, out)
 	case "on":
 		if a.Rag == nil {
-			fmt.Fprintln(out, "RAG is not configured. Run /rag new NAME first.")
-			return nil
+			return Negativef("RAG is not configured. Run /rag new NAME first")
 		}
 		a.RagOn = true
 		a.Config.Memory.RagEnabled = true
 		fmt.Fprintln(out, "RAG context injection: on")
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, "Warning: could not save config: %v\n", err)
+			return persistFailure(out, "config", err)
 		}
 	case "off":
 		a.RagOn = false
 		a.Config.Memory.RagEnabled = false
 		fmt.Fprintln(out, "RAG context injection: off")
 		if err := SaveMemoryConfig(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, "Warning: could not save config: %v\n", err)
+			return persistFailure(out, "config", err)
 		}
 	case "new":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /rag new NAME [--embedder ollama|encoderfile] [--embedder-url URL]")
-			return nil
+			return Usagef("usage: /rag new NAME [--embedder ollama|encoderfile] [--embedder-url URL]")
 		}
 		kind, url := ParseEmbedderFlags(args[2:])
 		return ragWizard(a, args[1], kind, url, out)
@@ -81,8 +79,7 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		if len(args) < 2 {
 			items := ragStoreSelectItems(a)
 			if len(items) == 0 {
-				fmt.Fprintln(out, "No RAG stores registered. Run /rag new NAME to create one.")
-				return nil
+				return Negativef("no RAG stores registered. Run /rag new NAME to create one")
 			}
 			chosen, err := SelectFrom(items, fmt.Sprintf("Select store [1-%d] or Enter to cancel: ", len(items)), a.In, out)
 			if err != nil || chosen == "" {
@@ -101,8 +98,7 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		if len(args) < 2 {
 			items := ragStoreSelectItems(a)
 			if len(items) == 0 {
-				fmt.Fprintln(out, "No RAG stores registered.")
-				return nil
+				return Negativef("no RAG stores registered")
 			}
 			chosen, err := SelectFrom(items, fmt.Sprintf("Remove which store [1-%d] or Enter to cancel: ", len(items)), a.In, out)
 			if err != nil || chosen == "" {
@@ -113,18 +109,16 @@ func cmdRag(a *Agent, args []string, out io.Writer) error {
 		return ragDrop(a, args[1], out)
 	case "ingest":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /rag ingest PATH [PATH...] [--doi DOI] [--url URL] [--title TITLE] [--version VER] [--rights RIGHTS]")
-			return nil
+			return Usagef("usage: /rag ingest PATH [PATH...] [--doi DOI] [--url URL] [--title TITLE] [--version VER] [--rights RIGHTS]")
 		}
 		return ragIngest(a, args[1:], out)
 	case "query":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /rag query TEXT")
-			return nil
+			return Usagef("usage: /rag query TEXT")
 		}
 		return ragQuery(a, strings.Join(args[1:], " "), out)
 	default:
-		fmt.Fprintf(out, "Unknown rag subcommand: %s\n", args[0])
+		return Usagef("unknown rag subcommand: %s", args[0])
 	}
 	return nil
 }
@@ -212,14 +206,12 @@ func ragShow(a *Agent, name string, out io.Writer) error {
 	if name == "" {
 		entry = a.Config.Memory.ActiveRagStore()
 		if entry == nil {
-			fmt.Fprintln(out, "No store configured. Run /rag new NAME to create one.")
-			return nil
+			return Negativef("no store configured. Run /rag new NAME to create one")
 		}
 	} else {
 		entry = a.Config.Memory.RagStoreByName(name)
 		if entry == nil {
-			fmt.Fprintf(out, "Store %q not found. Use /rag list to see registered stores.\n", name)
-			return nil
+			return Negativef("store %q not found. Use /rag list to see registered stores", name)
 		}
 	}
 	active := ""
@@ -252,8 +244,7 @@ func ragShow(a *Agent, name string, out io.Writer) error {
 func ragSwitch(a *Agent, name string, out io.Writer) error {
 	entry := a.Config.Memory.RagStoreByName(name)
 	if entry == nil {
-		fmt.Fprintf(out, "Store %q not found. Use /rag list to see available stores.\n", name)
-		return nil
+		return Negativef("store %q not found. Use /rag list to see available stores", name)
 	}
 	if a.Rag != nil {
 		_ = a.Rag.Close()
@@ -280,8 +271,7 @@ func ragSwitch(a *Agent, name string, out io.Writer) error {
 func ragDrop(a *Agent, name string, out io.Writer) error {
 	entry := a.Config.Memory.RagStoreByName(name)
 	if entry == nil {
-		fmt.Fprintf(out, "Store %q not found.\n", name)
-		return nil
+		return Negativef("store %q not found", name)
 	}
 	fmt.Fprintf(out, "Remove store %q from registry? The .db file will NOT be deleted.\n", name)
 	fmt.Fprintf(out, "  Database: %s\n", entry.DBPath)
@@ -394,13 +384,10 @@ func ragWizard(a *Agent, name, embedderKind, embedderURL string, out io.Writer) 
 	// ── Encoderfile path ───────────────────────────────────────────────────────
 	if embedderKind == "encoderfile" {
 		if embedderURL == "" {
-			fmt.Fprintln(out, "Encoderfile requires --embedder-url, e.g. --embedder-url http://localhost:8080")
-			return nil
+			return Usagef("encoderfile requires --embedder-url, e.g. --embedder-url http://localhost:8080")
 		}
 		if !ProbeEncoderfile(embedderURL) {
-			fmt.Fprintf(out, "Encoderfile server not reachable at %s\n", embedderURL)
-			fmt.Fprintln(out, "Start the server: ./your-model.encoderfile serve")
-			return nil
+			return Unavailablef("encoderfile server not reachable at %s  (start the server: ./your-model.encoderfile serve)", embedderURL)
 		}
 		modelID, err := ProbeEncoderfileModel(embedderURL)
 		if err != nil {
@@ -722,12 +709,10 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	// Collect all candidate files across all given local paths.
 	files, err := ragCollectFiles(localPaths, a.Workspace.AbsPath)
 	if err != nil {
-		fmt.Fprintf(out, "  error collecting files: %v\n", err)
-		return nil
+		return defaultClass(ClassNoInput, fmt.Errorf("collecting files: %w", err))
 	}
 	if len(files) == 0 {
-		fmt.Fprintln(out, "No ingestable files found.")
-		return nil
+		return Negativef("no ingestable files found")
 	}
 
 	// When there are multiple files or any file is large, show the list and
@@ -1093,7 +1078,7 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 	}
 	if len(chunks) == 0 {
 		fmt.Fprintln(out, "No results. The store may be empty — run /rag ingest first.")
-		return nil
+		return Negativef("rag query: no results")
 	}
 	fmt.Fprintf(out, "Top %d result(s) for %q:\n\n", len(chunks), query)
 	for i, c := range chunks {

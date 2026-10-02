@@ -72,8 +72,7 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		if len(args) < 2 {
 			names := skillNameCandidates(a)
 			if len(names) == 0 {
-				fmt.Fprintln(out, "Usage: /skill load NAME")
-				return nil
+				return Usagef("usage: /skill load NAME")
 			}
 			chosen, err := SelectFromStrings(names, fmt.Sprintf("Load which skill [1-%d] or Enter to cancel: ", len(names)), a.In, out)
 			if err != nil || chosen == "" {
@@ -86,8 +85,7 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		if len(args) < 2 {
 			names := skillNameCandidates(a)
 			if len(names) == 0 {
-				fmt.Fprintln(out, "Usage: /skill show NAME")
-				return nil
+				return Usagef("usage: /skill show NAME")
 			}
 			chosen, err := SelectFromStrings(names, fmt.Sprintf("Show which skill [1-%d] or Enter to cancel: ", len(names)), a.In, out)
 			if err != nil || chosen == "" {
@@ -104,8 +102,7 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		if len(args) < 2 {
 			names := skillNameCandidates(a)
 			if len(names) == 0 {
-				fmt.Fprintln(out, "Usage: /skill run NAME")
-				return nil
+				return Usagef("usage: /skill run NAME")
 			}
 			chosen, err := SelectFromStrings(names, fmt.Sprintf("Run which skill [1-%d] or Enter to cancel: ", len(names)), a.In, out)
 			if err != nil || chosen == "" {
@@ -122,10 +119,8 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		sg := NewSuggestor(a.Workspace)
 		return sg.Suggest(context.Background(), sessionPath, a, out, a.In)
 	default:
-		fmt.Fprintf(out, "Unknown skill subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /skill <list|load NAME|info NAME|status|new|run NAME|suggest [SESSION]>")
+		return Usagef("unknown skill subcommand: %s  (usage: /skill <list|load NAME|info NAME|status|new|run NAME|suggest [SESSION]>)", args[0])
 	}
-	return nil
 }
 
 func skillList(a *Agent, out io.Writer) error {
@@ -162,17 +157,14 @@ func skillList(a *Agent, out io.Writer) error {
 
 func skillLoad(a *Agent, name string, out io.Writer) error {
 	if len(a.Skills) == 0 {
-		fmt.Fprintln(out, "  No skills available. See /help skills for setup instructions.")
-		return nil
+		return Negativef("no skills available. See /help skills for setup instructions")
 	}
 	skill, ok := a.Skills[name]
 	if !ok {
-		fmt.Fprintf(out, "  Skill %q not found. Use /skill list to see available skills.\n", name)
-		return nil
+		return Negativef("skill %q not found. Use /skill list to see available skills", name)
 	}
 	if skill.Body == "" {
-		fmt.Fprintf(out, "  Skill %q has no body content.\n", name)
-		return nil
+		return Negativef("skill %q has no body content", name)
 	}
 	a.AddMessage("user", fmt.Sprintf("[skill: %s]\n\n%s", name, skill.Body))
 	a.ActiveSkill = name
@@ -185,13 +177,11 @@ func skillLoad(a *Agent, name string, out io.Writer) error {
 
 func skillInfo(a *Agent, name string, out io.Writer) error {
 	if len(a.Skills) == 0 {
-		fmt.Fprintln(out, "  No skills available.")
-		return nil
+		return Negativef("no skills available")
 	}
 	skill, ok := a.Skills[name]
 	if !ok {
-		fmt.Fprintf(out, "  Skill %q not found. Use /skill list to see available skills.\n", name)
-		return nil
+		return Negativef("skill %q not found. Use /skill list to see available skills", name)
 	}
 	fmt.Fprintf(out, "  Name:          %s\n", skill.Name)
 	fmt.Fprintf(out, "  Description:   %s\n", skill.Description)
@@ -257,13 +247,11 @@ func skillNew(a *Agent, out io.Writer) error {
 // skillCompile compiles a named skill to compiled.bash and compiled.ps1.
 func skillCompile(a *Agent, name string, out io.Writer) error {
 	if a.Client == nil {
-		fmt.Fprintln(out, "  No backend connected. Use /model use to connect a model (for Ollama, run `ollama serve` first).")
-		return nil
+		return errNoBackend()
 	}
 	skill, ok := a.Skills[name]
 	if !ok {
-		fmt.Fprintf(out, "  Skill %q not found. Use /skill list to see available skills.\n", name)
-		return nil
+		return Negativef("skill %q not found. Use /skill list to see available skills", name)
 	}
 	fmt.Fprintf(out, "  Compiling skill %q...\n", name)
 	sp := newSpinner(out, 0, a.spinnerLabel()+" · compiling")
@@ -283,8 +271,7 @@ func skillCompile(a *Agent, name string, out io.Writer) error {
 func skillRun(a *Agent, name string, out io.Writer) error {
 	skill, ok := a.Skills[name]
 	if !ok {
-		fmt.Fprintf(out, "  Skill %q not found. Use /skill list to see available skills.\n", name)
-		return nil
+		return Negativef("skill %q not found. Use /skill list to see available skills", name)
 	}
 	warnIfSkillStale(skill, out)
 	reader := newLineReader(a.In)
@@ -328,20 +315,17 @@ func cmdSkillSet(a *Agent, args []string, out io.Writer) error {
 	switch strings.ToLower(args[0]) {
 	case "load":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /skill-set load NAME")
-			return nil
+			return Usagef("usage: /skill-set load NAME")
 		}
 		return skillSetLoad(a, args[1], out)
 	case "info", "show":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /skill-set show NAME")
-			return nil
+			return Usagef("usage: /skill-set show NAME")
 		}
 		return skillSetInfo(a, args[1], out)
 	case "create", "new":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /skill-set new NAME")
-			return nil
+			return Usagef("usage: /skill-set new NAME")
 		}
 		return skillSetCreate(a, args[1], out)
 	case "status":
@@ -349,9 +333,8 @@ func cmdSkillSet(a *Agent, args []string, out io.Writer) error {
 	case "unload":
 		return skillSetUnload(a, out)
 	default:
-		fmt.Fprintf(out, "  Unknown subcommand %q. Usage: /skill-set <list|load NAME|info NAME|create NAME|status|unload>\n", args[0])
+		return Usagef("unknown subcommand %q  (usage: /skill-set <list|load NAME|info NAME|create NAME|status|unload>)", args[0])
 	}
-	return nil
 }
 
 func skillSetList(a *Agent, out io.Writer) error {
@@ -503,12 +486,11 @@ func skillSetInfo(a *Agent, name string, out io.Writer) error {
 func skillSetCreate(a *Agent, name string, out io.Writer) error {
 	dir := skillSetDir(a.Workspace)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("skill-set create: %w", err)
+		return AsCreate(fmt.Errorf("skill-set create: %w", err))
 	}
 	path := filepath.Join(dir, name+".yaml")
 	if _, err := os.Stat(path); err == nil {
-		fmt.Fprintf(out, "  Skill-set %q already exists at %s\n", name, path)
-		return nil
+		return Negativef("skill-set %q already exists at %s", name, path)
 	}
 	content := fmt.Sprintf(`name: %s
 description: |
@@ -519,7 +501,7 @@ metadata:
   version: "1.0"
 `, name)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("skill-set create: %w", err)
+		return AsCreate(fmt.Errorf("skill-set create: %w", err))
 	}
 	fmt.Fprintf(out, "  Created %s\n", path)
 	fmt.Fprintln(out, "  Edit the file to list the skills you want in this bundle.")
@@ -545,8 +527,7 @@ func skillSetStatus(a *Agent, out io.Writer) error {
 
 func skillSetUnload(a *Agent, out io.Writer) error {
 	if a.ActiveSkillSet == "" && a.ActiveSkill == "" {
-		fmt.Fprintln(out, "  No skill-set or skill currently active.")
-		return nil
+		return Negativef("no skill-set or skill currently active")
 	}
 	prev := a.ActiveSkillSet
 	a.ActiveSkillSet = ""

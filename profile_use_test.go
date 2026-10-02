@@ -320,11 +320,9 @@ func TestRewriteProfileTitle_NoMatch(t *testing.T) {
 func TestCmdMemoryProfileDispatch_unknownSubcmd(t *testing.T) {
 	a, store := newProfileTestAgent(t)
 	var out bytes.Buffer
-	if err := cmdMemoryProfile(a, []string{"notasubcmd"}, &out, store); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "Usage:") {
-		t.Errorf("expected usage message for unknown subcommand, got: %s", out.String())
+	err := cmdMemoryProfile(a, []string{"notasubcmd"}, &out, store)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("expected a usage error for the unknown subcommand, got: %v", err)
 	}
 }
 

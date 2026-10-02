@@ -17,7 +17,7 @@ func kbUsageSubcommands(t *testing.T) []string {
 		t.Fatal(err)
 	}
 	for _, line := range strings.Split(string(src), "\n") {
-		if strings.Contains(line, `"Usage: /kb <`) {
+		if strings.Contains(line, `usage: /kb <`) {
 			i := strings.Index(line, "<")
 			j := strings.Index(line, ">")
 			return strings.Split(line[i+1:j], "|")

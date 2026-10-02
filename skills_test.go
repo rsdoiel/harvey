@@ -516,6 +516,13 @@ func runSkillCmd(t *testing.T, a *Agent, args ...string) string {
 	return out.String()
 }
 
+// runSkillCmdErr is runSkillCmd for a command expected to fail.
+func runSkillCmdErr(t *testing.T, a *Agent, args ...string) error {
+	t.Helper()
+	var out strings.Builder
+	return cmdSkill(a, args, &out)
+}
+
 func TestCmdSkill_listEmpty(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
@@ -559,9 +566,9 @@ func TestCmdSkill_listShowsSource(t *testing.T) {
 
 func TestCmdSkill_loadNotFound(t *testing.T) {
 	a := newSkillAgent(t)
-	out := runSkillCmd(t, a, "load", "no-such-skill")
-	if !strings.Contains(out, "not found") {
-		t.Errorf("expected 'not found' message, got: %q", out)
+	err := runSkillCmdErr(t, a, "load", "no-such-skill")
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected a negative 'not found' result, got: %v", err)
 	}
 }
 
@@ -594,9 +601,9 @@ func TestCmdSkill_loadEmptyBody(t *testing.T) {
 	a.Skills = SkillCatalog{
 		"empty": {Name: "empty", Description: "Empty skill.", Body: "", Source: SkillSourceUser},
 	}
-	out := runSkillCmd(t, a, "load", "empty")
-	if !strings.Contains(out, "no body") {
-		t.Errorf("expected 'no body' message, got: %q", out)
+	err := runSkillCmdErr(t, a, "load", "empty")
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no body") {
+		t.Errorf("expected a negative 'no body' result, got: %v", err)
 	}
 }
 
@@ -614,9 +621,9 @@ func TestCmdSkill_loadNoArgs_noSkills(t *testing.T) {
 	// When no skills are in the catalog, no-arg load shows a usage message.
 	a := newSkillAgent(t)
 	a.Skills = SkillCatalog{} // empty
-	out := runSkillCmd(t, a, "load")
-	if !strings.Contains(out, "Usage") {
-		t.Errorf("expected usage message, got: %q", out)
+	err := runSkillCmdErr(t, a, "load")
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("expected a usage error, got: %v", err)
 	}
 }
 
@@ -632,9 +639,9 @@ func TestCmdSkill_infoShowsFields(t *testing.T) {
 
 func TestCmdSkill_infoNotFound(t *testing.T) {
 	a := newSkillAgent(t)
-	out := runSkillCmd(t, a, "info", "nope")
-	if !strings.Contains(out, "not found") {
-		t.Errorf("expected 'not found', got: %q", out)
+	err := runSkillCmdErr(t, a, "info", "nope")
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected a negative 'not found' result, got: %v", err)
 	}
 }
 
@@ -652,9 +659,9 @@ func TestCmdSkill_infoNoArgs_noSkills(t *testing.T) {
 	// When no skills are in the catalog, no-arg info shows a usage message.
 	a := newSkillAgent(t)
 	a.Skills = SkillCatalog{}
-	out := runSkillCmd(t, a, "info")
-	if !strings.Contains(out, "Usage") {
-		t.Errorf("expected usage message, got: %q", out)
+	err := runSkillCmdErr(t, a, "info")
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("expected a usage error, got: %v", err)
 	}
 }
 
@@ -683,9 +690,9 @@ func TestCmdSkill_statusEmpty(t *testing.T) {
 
 func TestCmdSkill_unknownSubcommand(t *testing.T) {
 	a := newSkillAgent(t)
-	out := runSkillCmd(t, a, "frobnicate")
-	if !strings.Contains(out, "Unknown") {
-		t.Errorf("expected unknown subcommand message, got: %q", out)
+	err := runSkillCmdErr(t, a, "frobnicate")
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown skill subcommand") {
+		t.Errorf("expected a usage error naming the unknown subcommand, got: %v", err)
 	}
 }
 

@@ -85,25 +85,21 @@ func kbLearnDraft(a *Agent, args []string, out io.Writer) error {
 			dryRun = true
 		case "--limit":
 			if i+1 >= len(rest) {
-				fmt.Fprintln(out, "--limit needs a number.", usage)
-				return nil
+				return Usagef("--limit needs a number. %s", usage)
 			}
 			n, err := strconv.Atoi(rest[i+1])
 			if err != nil || n < 0 {
-				fmt.Fprintf(out, "--limit %q is not a number of items. %s\n", rest[i+1], usage)
-				return nil
+				return Usagef("--limit %q is not a number of items. %s", rest[i+1], usage)
 			}
 			limit = n
 			i++
 		default:
-			fmt.Fprintf(out, "Unknown option %q. %s\n", rest[i], usage)
-			return nil
+			return Usagef("unknown option %q. %s", rest[i], usage)
 		}
 	}
 	projectID := a.Config.Memory.CurrentProjectID
 	if projectID == 0 {
-		fmt.Fprintln(out, "No current project. Pick one first with /kb project use ID (see /kb project list).")
-		return nil
+		return Negativef("no current project. Pick one first with /kb project use ID (see /kb project list)")
 	}
 
 	items, err := a.KB.DocumentReviewQueue(projectID, "unsummarized")
@@ -142,8 +138,7 @@ func kbLearnDraft(a *Agent, args []string, out io.Writer) error {
 		if name == "" {
 			name = a.Config.LearnModel
 		}
-		fmt.Fprintf(out, "Could not use model %q for drafting: %v\n", name, err)
-		return nil
+		return ClassedAs(ClassUnavailable, fmt.Errorf("could not use model %q for drafting: %w", name, err))
 	}
 	defer restore()
 
@@ -227,13 +222,11 @@ func showReviewItem(out io.Writer, n, total int, it knowledge.DocumentReviewItem
 func kbLearnReview(a *Agent, args []string, out io.Writer) error {
 	mention, rest := splitMention(args)
 	if len(rest) > 0 {
-		fmt.Fprintln(out, "Usage: /kb learn review [@model]   (the model is used only to redraft)")
-		return nil
+		return Usagef("usage: /kb learn review [@model]   (the model is used only to redraft)")
 	}
 	projectID := a.Config.Memory.CurrentProjectID
 	if projectID == 0 {
-		fmt.Fprintln(out, "No current project. Pick one first with /kb project use ID (see /kb project list).")
-		return nil
+		return Negativef("no current project. Pick one first with /kb project use ID (see /kb project list)")
 	}
 	s := &LearnSession{KB: a.KB, ProjectID: projectID}
 	items, err := s.DraftedItems()

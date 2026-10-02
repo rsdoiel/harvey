@@ -56,6 +56,29 @@
   | no such model, alias, or llamafile; no models or sessions to pick from; a backend to stop that is not running; already recording or not recording; `/safemode deny` of a command not in the list; no model cache for `/model mode` | 1 |
 
   `/safemode` still applies the change in memory when saving fails, and now also exits 74.
+- The same for the memory, knowledge-base, RAG, skill and route commands: `/memory` (and
+  `/memory profile`), `/kb` (project, observe, concept, source, retract, cite, show, learn),
+  `/rag`, `/skill`, `/skill-set` and `/route`.
+
+  | Failure | Exit |
+  |---|---|
+  | missing argument, unknown subcommand, an ID that is not a number, an unrecognised route URL, an unknown route setting or value, `--limit` that is not a number | 2 |
+  | a profile document missing on disk | 66 |
+  | the knowledge base not open, no backend connected for `/skill` compile, an encoderfile server that cannot be reached, a model that cannot be used for `/kb learn draft`, a route whose models cannot be listed | 69 |
+  | settings that could not be saved (`/route`, `/rag on|off`, `/memory profile on|off`) | 74 |
+  | a skill-set that could not be created | 73 |
+  | no such memory, source, observation, route, skill, store or project; nothing to pick from; no current project; `/memory recall` or `/rag query` with no results; `/rag ingest` with no ingestable files; a skill-set that already exists; no skill-set loaded to unload | 1 |
+
+  `/kb cite` tries every ID, then reports the first failure. Not yet covered: remote ingestion
+  (`/rag ingest` with an `http://`, `s3://` or `sftp://` source) still prints a failed object
+  and carries on, so a scripted session exits 0 even when a remote object could not be read.
+
+### Fixed (continued)
+
+- `/workspace init FROM_PATH` never imported anything: the handler read its subcommand from the
+  second argument instead of the first, so through the real dispatcher the path was taken as an
+  unknown subcommand, and `/workspace bogus` quietly showed the status. The old tests passed a
+  stray `"workspace"` as the first argument, which hid it.
 
 - `/learn` found no hand-offs after the workspace moved them from `agents/hand-off/` to
   `agents/projects/<project>/hand-off/` (workspace DR-0004). `learnCandidates` now also

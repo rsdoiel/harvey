@@ -2315,6 +2315,8 @@ func cmdReadPDF(a *Agent, args []string, out io.Writer) error {
 	if err != nil {
 		return defaultClass(ClassNoInput, fmt.Errorf("%s: %w", filePath, err))
 	}
+	// Validate the page range before touching the file: a bad range is a usage
+	// error (exit 2, "nothing was attempted"), even when the file is also missing.
 	if pages != "" {
 		first, last, err := parsePDFPageRange(pages)
 		if err != nil {
@@ -3798,8 +3800,8 @@ func cmdFormat(a *Agent, args []string, out io.Writer) error {
  */
 func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
 	sub := ""
-	if len(args) > 1 {
-		sub = args[1]
+	if len(args) > 0 {
+		sub = args[0]
 	}
 	switch sub {
 	case "init":
@@ -3807,8 +3809,8 @@ func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
 			return errNoWorkspace()
 		}
 		fromPath := ""
-		if len(args) > 2 {
-			fromPath = args[2]
+		if len(args) > 1 {
+			fromPath = args[1]
 		}
 		if fromPath == "" {
 			fmt.Fprintf(out, "  Workspace: %s\n", a.Workspace.Root)

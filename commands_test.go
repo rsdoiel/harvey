@@ -730,22 +730,18 @@ func TestRouteModels_badURL(t *testing.T) {
 	a := newTestAgent(t)
 	a.Routes = NewRouteRegistry()
 	var out strings.Builder
-	if err := routeModels(a, []string{"bogus://"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "unrecognised") {
-		t.Errorf("expected unrecognised URL message, got: %s", out.String())
+	err := routeModels(a, []string{"bogus://"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unrecognised") {
+		t.Errorf("expected a usage error naming the unrecognised URL, got: %v", err)
 	}
 }
 
 func TestRouteProbe_notFound(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	if err := routeProbe(a, "ghost", &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "not found") {
-		t.Errorf("expected not-found message, got: %s", out.String())
+	err := routeProbe(a, "ghost", &out)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected a negative not-found result, got: %v", err)
 	}
 }
 
@@ -766,22 +762,18 @@ func TestRouteProbe_knownEndpoint(t *testing.T) {
 func TestRouteSet_noArgs(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	if err := routeSet(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "Usage") {
-		t.Errorf("expected usage message, got: %s", out.String())
+	err := routeSet(a, nil, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("expected a usage error, got: %v", err)
 	}
 }
 
 func TestRouteSet_notFound(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	if err := routeSet(a, []string{"ghost", "tools", "on"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "not found") {
-		t.Errorf("expected not-found message, got: %s", out.String())
+	err := routeSet(a, []string{"ghost", "tools", "on"}, &out)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected a negative not-found result, got: %v", err)
 	}
 }
 
@@ -815,22 +807,18 @@ func TestRouteSet_toolsOff(t *testing.T) {
 func TestRouteSet_unknownKey(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	if err := routeSet(a, []string{"claude", "badkey", "on"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "Unknown setting") {
-		t.Errorf("expected unknown setting message, got: %s", out.String())
+	err := routeSet(a, []string{"claude", "badkey", "on"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown setting") {
+		t.Errorf("expected a usage error naming the unknown setting, got: %v", err)
 	}
 }
 
 func TestRouteSet_unknownValue(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	if err := routeSet(a, []string{"claude", "tools", "maybe"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "Unknown value") {
-		t.Errorf("expected unknown value message, got: %s", out.String())
+	err := routeSet(a, []string{"claude", "tools", "maybe"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown value") {
+		t.Errorf("expected a usage error naming the unknown value, got: %v", err)
 	}
 }
 
@@ -1098,10 +1086,10 @@ func TestRagRemove_alias(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
 	var buf strings.Builder
-	// No stores registered — remove should report that, not error
+	// No stores registered — remove says there is no such store.
 	err := cmdRag(a, []string{"remove", "nonexistent"}, &buf)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if ExitCodeFor(err) != ClassNegative {
+		t.Fatalf("expected a negative result, got: %v", err)
 	}
 }
 
@@ -1123,11 +1111,16 @@ func TestSkillSetNew_aliasForCreate(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
 	var bufNew, bufCreate strings.Builder
+	// Different names, so neither finds the other's file: both aliases create.
 	errNew := cmdSkillSet(a, []string{"new", "myskill"}, &bufNew)
-	errCreate := cmdSkillSet(a, []string{"create", "myskill"}, &bufCreate)
-	// Both attempt the same operation; behaviour and error path are identical.
-	if (errNew == nil) != (errCreate == nil) {
-		t.Errorf("new/create error mismatch: new=%v create=%v", errNew, errCreate)
+	errCreate := cmdSkillSet(a, []string{"create", "otherskill"}, &bufCreate)
+	if errNew != nil || errCreate != nil {
+		t.Errorf("new/create should both succeed: new=%v create=%v", errNew, errCreate)
+	}
+	for _, name := range []string{"myskill", "otherskill"} {
+		if _, err := os.Stat(filepath.Join(skillSetDir(ws), name+".yaml")); err != nil {
+			t.Errorf("%s was not created: %v", name, err)
+		}
 	}
 }
 
@@ -1325,11 +1318,9 @@ func TestRagShow_notFound(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
 	var buf strings.Builder
-	if err := cmdRag(a, []string{"show", "nonexistent"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(buf.String(), "not found") && !strings.Contains(buf.String(), "No RAG") {
-		t.Errorf("expected not-found message, got: %s", buf.String())
+	err := cmdRag(a, []string{"show", "nonexistent"}, &buf)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected a negative not-found result, got: %v", err)
 	}
 }
 
@@ -1337,12 +1328,9 @@ func TestRagShow_noActive(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
 	var buf strings.Builder
-	if err := cmdRag(a, []string{"show"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "No store") && !strings.Contains(out, "no store") && !strings.Contains(out, "not configured") {
-		t.Errorf("expected no-store message, got: %s", out)
+	err := cmdRag(a, []string{"show"}, &buf)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no store configured") {
+		t.Errorf("expected a negative result naming the missing store, got: %v", err)
 	}
 }
 
@@ -1552,11 +1540,9 @@ func TestKBCite_LinksToLastObservation(t *testing.T) {
 func TestKBCite_NoLastObservation(t *testing.T) {
 	a, _ := newTestAgentWithKB(t)
 	var buf strings.Builder
-	if err := kbCite(a, []string{"1"}, &buf); err != nil {
-		t.Fatalf("kbCite: %v", err)
-	}
-	if !strings.Contains(buf.String(), "No recent observation") {
-		t.Errorf("expected 'No recent observation' message; got: %s", buf.String())
+	err := kbCite(a, []string{"1"}, &buf)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no recent observation") {
+		t.Errorf("expected a negative result naming the missing observation; got: %v", err)
 	}
 }
 

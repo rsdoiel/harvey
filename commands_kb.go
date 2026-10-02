@@ -39,8 +39,7 @@ import (
  */
 func cmdKB(a *Agent, args []string, out io.Writer) error {
 	if a.KB == nil {
-		fmt.Fprintln(out, "Knowledge base is not open. This should not happen — please restart Harvey.")
-		return nil
+		return Unavailablef("the knowledge base is not open. This should not happen — please restart Harvey")
 	}
 	if len(args) == 0 {
 		return kbStatus(a, out)
@@ -71,10 +70,8 @@ func cmdKB(a *Agent, args []string, out io.Writer) error {
 	case "check-retractions":
 		return kbCheckRetractions(a, out)
 	default:
-		fmt.Fprintf(out, "Unknown kb subcommand: %s\n", args[0])
-		fmt.Fprintln(out, "Usage: /kb <status|search|inject|project|observe|concept|source|retract|cite|show|learn|check-retractions> [args...]")
+		return Usagef("unknown kb subcommand: %s  (usage: /kb <status|search|inject|project|observe|concept|source|retract|cite|show|learn|check-retractions> [args...])", args[0])
 	}
-	return nil
 }
 
 func kbStatus(a *Agent, out io.Writer) error {
@@ -90,9 +87,7 @@ func kbStatus(a *Agent, out io.Writer) error {
 // kbSearch handles /kb search TERM [TERM...] using the FTS5 index.
 func kbSearch(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /kb search TERM [TERM...]")
-		fmt.Fprintln(out, "Tip:   quote phrases (\"WAL mode\"), use * for prefix (docker*)")
-		return nil
+		return Usagef("usage: /kb search TERM [TERM...]  (quote phrases (\"WAL mode\"), use * for prefix (docker*))")
 	}
 	term := strings.Join(args, " ")
 	results, err := a.KB.Search(term)
@@ -132,8 +127,7 @@ func kbInject(a *Agent, args []string, out io.Writer) error {
 			return err
 		}
 		if p == nil {
-			fmt.Fprintf(out, "  Project %q not found. Use /kb project list to see available projects.\n", name)
-			return nil
+			return Negativef("project %q not found. Use /kb project list to see available projects", name)
 		}
 		projectID = p.ID
 		label = fmt.Sprintf("project %q", p.Name)
@@ -158,8 +152,7 @@ func kbInject(a *Agent, args []string, out io.Writer) error {
 // kbProject handles /kb project <list|add NAME [DESC]|use ID>
 func kbProject(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /kb project <list|add NAME [DESC]|use ID>")
-		return nil
+		return Usagef("usage: /kb project <list|add NAME [DESC]|use ID>")
 	}
 	switch strings.ToLower(args[0]) {
 	case "list":
@@ -183,8 +176,7 @@ func kbProject(a *Agent, args []string, out io.Writer) error {
 		}
 	case "add":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /kb project add NAME [DESCRIPTION]")
-			return nil
+			return Usagef("usage: /kb project add NAME [DESCRIPTION]")
 		}
 		name := args[1]
 		desc := strings.Join(args[2:], " ")
@@ -196,18 +188,16 @@ func kbProject(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "Project %q added (id=%d) and set as current.\n", name, id)
 	case "use":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /kb project use ID")
-			return nil
+			return Usagef("usage: /kb project use ID")
 		}
 		id, err := strconv.ParseInt(args[1], 10, 64)
 		if err != nil {
-			fmt.Fprintf(out, "Invalid project ID: %s\n", args[1])
-			return nil
+			return Usagef("invalid project ID: %s", args[1])
 		}
 		a.Config.Memory.CurrentProjectID = id
 		fmt.Fprintf(out, "Current project set to id=%d.\n", id)
 	default:
-		fmt.Fprintf(out, "Unknown project subcommand: %s\n", args[0])
+		return Usagef("unknown project subcommand: %s", args[0])
 	}
 	return nil
 }
@@ -216,13 +206,10 @@ func kbProject(a *Agent, args []string, out io.Writer) error {
 // KIND defaults to "note" if omitted or invalid.
 func kbObserve(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /kb observe [KIND] TEXT")
-		fmt.Fprintf(out, "Kinds: %s  (default: note)\n", strings.Join(knowledge.ValidObservationKinds, ", "))
-		return nil
+		return Usagef("usage: /kb observe [KIND] TEXT  (kinds: %s; default: note)", strings.Join(knowledge.ValidObservationKinds, ", "))
 	}
 	if a.Config.Memory.CurrentProjectID == 0 {
-		fmt.Fprintln(out, "No current project. Use /kb project add NAME or /kb project use ID first.")
-		return nil
+		return Negativef("no current project. Use /kb project add NAME or /kb project use ID first")
 	}
 
 	kind := "note"
@@ -266,8 +253,7 @@ func kbObserve(a *Agent, args []string, out io.Writer) error {
 // kbConcept handles /kb concept <list|add NAME [DESC]>
 func kbConcept(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /kb concept <list|add NAME [DESCRIPTION]>")
-		return nil
+		return Usagef("usage: /kb concept <list|add NAME [DESCRIPTION]>")
 	}
 	switch strings.ToLower(args[0]) {
 	case "list":
@@ -288,8 +274,7 @@ func kbConcept(a *Agent, args []string, out io.Writer) error {
 		}
 	case "add":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /kb concept add NAME [DESCRIPTION]")
-			return nil
+			return Usagef("usage: /kb concept add NAME [DESCRIPTION]")
 		}
 		name := args[1]
 		desc := strings.Join(args[2:], " ")
@@ -299,7 +284,7 @@ func kbConcept(a *Agent, args []string, out io.Writer) error {
 		}
 		fmt.Fprintf(out, "Concept %q added (id=%d).\n", name, id)
 	default:
-		fmt.Fprintf(out, "Unknown concept subcommand: %s\n", args[0])
+		return Usagef("unknown concept subcommand: %s", args[0])
 	}
 	return nil
 }
@@ -309,8 +294,7 @@ func kbConcept(a *Agent, args []string, out io.Writer) error {
 // kbSource handles /kb source <list|add|show|remove> [args...]
 func kbSource(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /kb source <list|add|show ID|remove ID>")
-		return nil
+		return Usagef("usage: /kb source <list|add|show ID|remove ID>")
 	}
 	switch strings.ToLower(args[0]) {
 	case "list":
@@ -390,8 +374,7 @@ func kbSource(a *Agent, args []string, out io.Writer) error {
 			}
 		}
 		if s.Title == "" {
-			fmt.Fprintln(out, "Usage: /kb source add --title TITLE [--doi DOI] [--url URL] [--authors AUTHORS] ...")
-			return nil
+			return Usagef("usage: /kb source add --title TITLE [--doi DOI] [--url URL] [--authors AUTHORS] ")
 		}
 		id, err := a.KB.AddSource(s)
 		if err != nil {
@@ -400,18 +383,15 @@ func kbSource(a *Agent, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "Source added (id=%d).\n", id)
 	case "show":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /kb source show ID")
-			return nil
+			return Usagef("usage: /kb source show ID")
 		}
 		id, err := strconv.ParseInt(args[1], 10, 64)
 		if err != nil {
-			fmt.Fprintf(out, "Invalid source ID %q\n", args[1])
-			return nil
+			return Usagef("invalid source ID %q", args[1])
 		}
 		s, err := a.KB.ShowSource(id)
 		if err != nil {
-			fmt.Fprintf(out, "  Source %d not found.\n", id)
-			return nil
+			return Negativef("source %d not found", id)
 		}
 		fmt.Fprintf(out, "  ID:        %d\n", s.ID)
 		fmt.Fprintf(out, "  Title:     %s\n", s.Title)
@@ -432,13 +412,11 @@ func kbSource(a *Agent, args []string, out io.Writer) error {
 		}
 	case "remove":
 		if len(args) < 2 {
-			fmt.Fprintln(out, "Usage: /kb source remove ID")
-			return nil
+			return Usagef("usage: /kb source remove ID")
 		}
 		id, err := strconv.ParseInt(args[1], 10, 64)
 		if err != nil {
-			fmt.Fprintf(out, "Invalid source ID %q\n", args[1])
-			return nil
+			return Usagef("invalid source ID %q", args[1])
 		}
 		if err := a.KB.RemoveSource(id); err != nil {
 			fmt.Fprintf(out, "  ✗ %v\n", err)
@@ -446,7 +424,7 @@ func kbSource(a *Agent, args []string, out io.Writer) error {
 		}
 		fmt.Fprintf(out, "Source %d removed.\n", id)
 	default:
-		fmt.Fprintf(out, "Unknown source subcommand: %s\n", args[0])
+		return Usagef("unknown source subcommand: %s", args[0])
 	}
 	return nil
 }
@@ -454,13 +432,11 @@ func kbSource(a *Agent, args []string, out io.Writer) error {
 // kbRetract handles /kb retract ID [--note NOTE]
 func kbRetract(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /kb retract SOURCE_ID [--note NOTE]")
-		return nil
+		return Usagef("usage: /kb retract SOURCE_ID [--note NOTE]")
 	}
 	id, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
-		fmt.Fprintf(out, "Invalid source ID %q\n", args[0])
-		return nil
+		return Usagef("invalid source ID %q", args[0])
 	}
 	note := ""
 	for i := 1; i < len(args); i++ {
@@ -481,28 +457,28 @@ func kbRetract(a *Agent, args []string, out io.Writer) error {
 // kbCite handles /kb cite SOURCE_ID [SOURCE_ID ...]
 // Links one or more sources to the most recently recorded observation.
 func kbCite(a *Agent, args []string, out io.Writer) error {
-	if a.LastObservationID == 0 {
-		fmt.Fprintln(out, "No recent observation to cite. Use /kb observe first.")
-		return nil
-	}
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /kb cite SOURCE_ID [SOURCE_ID ...]")
-		fmt.Fprintln(out, "Use /kb source list to see available source IDs.")
-		return nil
+		return Usagef("usage: /kb cite SOURCE_ID [SOURCE_ID ...]  (use /kb source list to see available source IDs)")
 	}
+	if a.LastObservationID == 0 {
+		return Negativef("no recent observation to cite. Use /kb observe first")
+	}
+	var failed error // first failure; every id is still tried
 	for _, arg := range args {
 		id, err := strconv.ParseInt(arg, 10, 64)
 		if err != nil {
 			fmt.Fprintf(out, "  Invalid source ID %q — skipping\n", arg)
+			failed = keepFirstFailure(failed, Usagef("invalid source ID %q", arg))
 			continue
 		}
 		if err := a.KB.LinkObservationSource(a.LastObservationID, id, "cited"); err != nil {
 			fmt.Fprintf(out, "  ✗ source %d: %v\n", id, err)
+			failed = keepFirstFailure(failed, fmt.Errorf("source %d: %w", id, err))
 		} else {
 			fmt.Fprintf(out, "  Source %d linked to observation %d.\n", id, a.LastObservationID)
 		}
 	}
-	return nil
+	return failed
 }
 
 // ─── /kb show ────────────────────────────────────────────────────────────────
@@ -514,21 +490,18 @@ func kbShow(a *Agent, args []string, out io.Writer) error {
 	if len(args) > 0 {
 		id, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
-			fmt.Fprintf(out, "Invalid observation ID %q\n", args[0])
-			return nil
+			return Usagef("invalid observation ID %q", args[0])
 		}
 		obsID = id
 	} else if a.LastObservationID != 0 {
 		obsID = a.LastObservationID
 	} else {
-		fmt.Fprintln(out, "Usage: /kb show OBS_ID")
-		return nil
+		return Usagef("usage: /kb show OBS_ID")
 	}
 
 	obs, err := a.KB.ObservationByID(obsID)
 	if err != nil {
-		fmt.Fprintf(out, "  Observation %d not found.\n", obsID)
-		return nil
+		return Negativef("observation %d not found", obsID)
 	}
 	fmt.Fprintf(out, "  [%s] %s\n", obs.Kind, obs.Body)
 	if obs.SourceDOI != "" {

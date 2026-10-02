@@ -110,9 +110,10 @@ func TestLearnDraft_AModelThatCannotBeResolvedIsReportedNotFatal(t *testing.T) {
 		return nil, nil, io.ErrUnexpectedEOF
 	}
 	f.doc(t, "d.md", learnDoc)
-	out := runLearn(t, f, "draft", "@nonesuch")
-	if !strings.Contains(out, "nonesuch") {
-		t.Errorf("output = %q, want the unresolvable model named", out)
+	var out strings.Builder
+	err := kbLearn(f.a, []string{"draft", "@nonesuch"}, &out)
+	if ExitCodeFor(err) != ClassUnavailable || !strings.Contains(err.Error(), "nonesuch") {
+		t.Errorf("err = %v, want an unavailable error naming the unresolvable model", err)
 	}
 	if n := f.count(t, "drafted"); n != 0 {
 		t.Errorf("%d items drafted with no model", n)
@@ -187,13 +188,16 @@ func TestLearnDraft_NothingToDraftSaysSo(t *testing.T) {
 func TestLearnDraft_RequiresACurrentProjectAndBadFlagsGiveUsage(t *testing.T) {
 	f := newLearnCmd(t, "")
 	f.a.Config.Memory.CurrentProjectID = 0
-	if out := runLearn(t, f, "draft"); !strings.Contains(out, "/kb project use") {
-		t.Errorf("output = %q, want how to pick a project", out)
+	var out strings.Builder
+	err := kbLearn(f.a, []string{"draft"}, &out)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "/kb project use") {
+		t.Errorf("err = %v, want a negative result saying how to pick a project", err)
 	}
 	f.a.Config.Memory.CurrentProjectID = f.pid
 	for _, args := range [][]string{{"draft", "--limit"}, {"draft", "--limit", "x"}, {"draft", "--bogus"}} {
-		if out := runLearn(t, f, args...); !strings.Contains(out, "Usage") && !strings.Contains(out, "not a number") && !strings.Contains(out, "needs") {
-			t.Errorf("%v: output = %q, want usage guidance", args, out)
+		err := kbLearn(f.a, args, &out)
+		if ExitCodeFor(err) != ClassUsage {
+			t.Errorf("%v: err = %v, want a usage error", args, err)
 		}
 	}
 }

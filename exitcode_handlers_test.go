@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"github.com/rsdoiel/knowledge"
 	"io"
 	"os"
 	"path/filepath"
@@ -502,8 +503,8 @@ func TestHandlerErrors_Workspace(t *testing.T) {
 	}
 	runHandlerCases(t, []handlerCase{
 		{"status: no workspace", noWorkspace, ws(), ClassNoInput},
-		{"init: no workspace", noWorkspace, ws("init", "init"), ClassNoInput},
-		{"unknown subcommand", nil, ws("x", "bogus"), ClassUsage},
+		{"init: no workspace", noWorkspace, ws("init"), ClassNoInput},
+		{"unknown subcommand", nil, ws("bogus"), ClassUsage},
 		{"status", nil, ws(), ClassOK},
 	})
 }
@@ -537,4 +538,150 @@ func TestRun_NonInteractive_UnknownModelDecidesExitClass(t *testing.T) {
 	if got := ExitCodeFor(err); got != ClassNegative {
 		t.Fatalf("Run() = %s (%v), want negative (no such model)", got.Name, err)
 	}
+}
+
+// ─── Phase 4: memory, knowledge base, RAG, skills, routes ────────────────────
+
+func withMemory(t *testing.T, a *Agent) {
+	t.Helper()
+	ms, err := OpenMemory(a.Workspace, &a.Config.Memory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Memory = ms
+	t.Cleanup(func() { ms.Close() })
+}
+
+func withKB(t *testing.T, a *Agent) {
+	t.Helper()
+	kb, err := knowledge.Open(knowledge.DefaultPath(a.Workspace.Root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { kb.Close() })
+	a.KB = kb
+	pid, err := kb.AddProject("test-project", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Config.Memory.CurrentProjectID = pid
+}
+
+func withRoutes(t *testing.T, a *Agent) {
+	a.Routes = NewRouteRegistry()
+	a.Routes.Add(&RouteEndpoint{Name: "claude", URL: "anthropic://", Model: "m", Kind: KindAnthropic})
+}
+
+func TestHandlerErrors_Memory(t *testing.T) {
+	mem := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdMemory(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"no arguments", nil, mem(), ClassUsage},
+		{"store not available", nil, mem("list"), ClassNegative},
+		{"unknown subcommand", withMemory, mem("bogus"), ClassUsage},
+		{"list: nothing stored is an empty listing", withMemory, mem("list"), ClassOK},
+		{"show: no such memory", withMemory, mem("show", "nope"), ClassNegative},
+		{"show: nothing to pick from", withMemory, mem("show"), ClassNegative},
+		{"forget: nothing to pick from", withMemory, mem("forget"), ClassNegative},
+		{"flag: nothing to pick from", withMemory, mem("flag"), ClassNegative},
+		{"recall: no query", withMemory, mem("recall"), ClassUsage},
+		{"recall: nothing found", withMemory, mem("recall", "zzzqqq"), ClassNegative},
+		{"profile: unknown subcommand", withMemory, mem("profile", "bogus"), ClassUsage},
+		{"profile show: no profile", withMemory, mem("profile", "show"), ClassNegative},
+		{"profile rename: no name", withMemory, mem("profile", "rename"), ClassUsage},
+		{"profile rename: no profile", withMemory, mem("profile", "rename", "x"), ClassNegative},
+		{"profile edit: no profile", withMemory, mem("profile", "edit"), ClassNegative},
+	})
+}
+
+func TestHandlerErrors_KB(t *testing.T) {
+	kb := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdKB(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"no arguments shows the status", withKB, kb(), ClassOK},
+		{"search: no terms", withKB, kb("search"), ClassUsage},
+		{"inject: no such project", withKB, kb("inject", "ghost"), ClassNegative},
+		{"project: no arguments", withKB, kb("project"), ClassUsage},
+		{"project add: no name", withKB, kb("project", "add"), ClassUsage},
+		{"project use: no id", withKB, kb("project", "use"), ClassUsage},
+		{"project use: bad id", withKB, kb("project", "use", "x"), ClassUsage},
+		{"project: unknown subcommand", withKB, kb("project", "bogus"), ClassUsage},
+		{"observe: no text", withKB, kb("observe"), ClassUsage},
+		{"concept: no arguments", withKB, kb("concept"), ClassUsage},
+		{"concept add: no name", withKB, kb("concept", "add"), ClassUsage},
+		{"concept: unknown subcommand", withKB, kb("concept", "bogus"), ClassUsage},
+		{"source: no arguments", withKB, kb("source"), ClassUsage},
+		{"source add: no title", withKB, kb("source", "add"), ClassUsage},
+		{"source show: no id", withKB, kb("source", "show"), ClassUsage},
+		{"source show: bad id", withKB, kb("source", "show", "x"), ClassUsage},
+		{"source show: no such source", withKB, kb("source", "show", "999"), ClassNegative},
+		{"source remove: no id", withKB, kb("source", "remove"), ClassUsage},
+		{"source remove: bad id", withKB, kb("source", "remove", "x"), ClassUsage},
+		{"source: unknown subcommand", withKB, kb("source", "bogus"), ClassUsage},
+		{"retract: no id", withKB, kb("retract"), ClassUsage},
+		{"retract: bad id", withKB, kb("retract", "x"), ClassUsage},
+		{"cite: no ids", withKB, kb("cite"), ClassUsage},
+		{"show: no id", withKB, kb("show"), ClassUsage},
+		{"show: bad id", withKB, kb("show", "x"), ClassUsage},
+		{"show: no such observation", withKB, kb("show", "999"), ClassNegative},
+	})
+}
+
+func TestHandlerErrors_Route(t *testing.T) {
+	rt := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdRoute(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"rm: no such route", withRoutes, rt("rm", "ghost"), ClassNegative},
+		{"probe: no such route", withRoutes, rt("probe", "ghost"), ClassNegative},
+		{"set: missing arguments", withRoutes, rt("set", "claude"), ClassUsage},
+		{"set: no such route", withRoutes, rt("set", "ghost", "tools", "on"), ClassNegative},
+		{"set: bad value", withRoutes, rt("set", "claude", "tools", "maybe"), ClassUsage},
+		{"set: unknown setting", withRoutes, rt("set", "claude", "bogus", "on"), ClassUsage},
+		{"unknown subcommand", withRoutes, rt("bogus"), ClassUsage},
+	})
+}
+
+func TestHandlerErrors_Skill(t *testing.T) {
+	sk := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdSkill(a, args, o) }
+	}
+	ss := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdSkillSet(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"load: no name", nil, sk("load"), ClassUsage},
+		{"show: no name", nil, sk("show"), ClassUsage},
+		{"run: no name", nil, sk("run"), ClassUsage},
+		{"unknown subcommand", nil, sk("bogus"), ClassUsage},
+		{"load: no such skill", nil, sk("load", "ghost"), ClassNegative},
+		{"info: no such skill", nil, sk("info", "ghost"), ClassNegative},
+		{"set load: no name", nil, ss("load"), ClassUsage},
+		{"set show: no name", nil, ss("show"), ClassUsage},
+		{"set new: no name", nil, ss("new"), ClassUsage},
+		{"set: unknown subcommand", nil, ss("bogus"), ClassUsage},
+		{"set unload: nothing active", nil, ss("unload"), ClassNegative},
+	})
+}
+
+func TestHandlerErrors_Rag(t *testing.T) {
+	rg := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdRag(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"on: not configured", nil, rg("on"), ClassNegative},
+		{"new: no name", nil, rg("new"), ClassUsage},
+		{"ingest: no path", nil, rg("ingest"), ClassUsage},
+		{"query: no text", nil, rg("query"), ClassUsage},
+		{"unknown subcommand", nil, rg("bogus"), ClassUsage},
+		{"show: no store configured", nil, rg("show"), ClassNegative},
+		{"show: no such store", nil, rg("show", "ghost"), ClassNegative},
+		{"use: no such store", nil, rg("use", "ghost"), ClassNegative},
+		{"drop: no such store", nil, rg("drop", "ghost"), ClassNegative},
+		{"use: nothing to pick from", nil, rg("use"), ClassNegative},
+		{"new: encoderfile needs a url", nil, rg("new", "s", "--embedder", "encoderfile"), ClassUsage},
+		{"status: nothing configured is a status", nil, rg("status"), ClassOK},
+	})
 }
