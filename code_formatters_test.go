@@ -371,11 +371,9 @@ func TestApplyAutoFormat_FileFormatterSafeModeBlocked(t *testing.T) {
 func TestCmdFormat_NoWorkspace(t *testing.T) {
 	a := &Agent{Config: DefaultConfig(), commands: make(map[string]*Command)}
 	var sb strings.Builder
-	if err := cmdFormat(a, []string{"file.pas"}, &sb); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(sb.String(), "requires a workspace") {
-		t.Errorf("expected workspace warning, got: %q", sb.String())
+	err := cmdFormat(a, []string{"file.pas"}, &sb)
+	if ExitCodeFor(err) != ClassNoInput || !strings.Contains(err.Error(), "no workspace") {
+		t.Errorf("expected a no_input error naming the missing workspace, got: %v", err)
 	}
 }
 
@@ -384,11 +382,9 @@ func TestCmdFormat_NoArgs(t *testing.T) {
 	ws, _ := NewWorkspace(dir)
 	a := &Agent{Config: DefaultConfig(), Workspace: ws, commands: make(map[string]*Command)}
 	var sb strings.Builder
-	if err := cmdFormat(a, nil, &sb); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(sb.String(), "Usage:") {
-		t.Errorf("expected usage message, got: %q", sb.String())
+	err := cmdFormat(a, nil, &sb)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("expected a usage error, got: %v", err)
 	}
 }
 
@@ -445,10 +441,11 @@ func TestCmdFormat_UnknownExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	var sb strings.Builder
-	if err := cmdFormat(a, []string{"notes.xyz"}, &sb); err != nil {
-		t.Fatal(err)
-	}
+	err := cmdFormat(a, []string{"notes.xyz"}, &sb)
 	if !strings.Contains(sb.String(), "no language registered") {
 		t.Errorf("expected 'no language registered', got: %q", sb.String())
+	}
+	if ExitCodeFor(err) != ClassNegative {
+		t.Errorf("expected a negative (exit 1) result, got: %v", err)
 	}
 }

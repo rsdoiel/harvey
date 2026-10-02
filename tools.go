@@ -77,7 +77,7 @@ func resolveWorkspacePath(workspaceRoot, p string) (string, error) {
 		rootWithSep += string(filepath.Separator)
 	}
 	if abs != realRoot && !strings.HasPrefix(abs, rootWithSep) {
-		return "", fmt.Errorf("path %q is outside the workspace", p)
+		return "", NoPermissionf("path %q is outside the workspace", p)
 	}
 
 	// Reject symbolic links: Harvey must stay within the physical workspace tree.
@@ -86,22 +86,22 @@ func resolveWorkspacePath(workspaceRoot, p string) (string, error) {
 	// directory instead — it must exist and must not be a symlink.
 	if real, err := filepath.EvalSymlinks(abs); err == nil {
 		if real != abs {
-			return "", fmt.Errorf("path %q contains a symbolic link which is not permitted", p)
+			return "", NoPermissionf("path %q contains a symbolic link which is not permitted", p)
 		}
 	} else {
 		// File does not exist yet; check that the parent is not a symlink.
 		parent := filepath.Dir(abs)
 		if realParent, perr := filepath.EvalSymlinks(parent); perr == nil && realParent != parent {
-			return "", fmt.Errorf("path %q contains a symbolic link which is not permitted", p)
+			return "", NoPermissionf("path %q contains a symbolic link which is not permitted", p)
 		}
 	}
 
 	if isAgentsDir(realRoot, abs) {
-		return "", fmt.Errorf("path %q targets the agents/ directory which is off-limits to tools", p)
+		return "", NoPermissionf("path %q targets the agents/ directory which is off-limits to tools", p)
 	}
 
 	if sensitiveFileDenied(abs) {
-		return "", fmt.Errorf("path %q matches a sensitive file pattern and cannot be accessed by tools", p)
+		return "", NoPermissionf("path %q matches a sensitive file pattern and cannot be accessed by tools", p)
 	}
 
 	return abs, nil

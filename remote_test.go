@@ -125,12 +125,12 @@ func TestCmdAttach_remoteHTTP_fetchError(t *testing.T) {
 
 	a := newTestAgent(t)
 	var out strings.Builder
-	cmdAttach(a, []string{srv.URL + "/file.txt"}, &out)
+	err := cmdAttach(a, []string{srv.URL + "/file.txt"}, &out)
 	if len(a.History) != 0 {
 		t.Error("no history entry expected on fetch error")
 	}
-	if !strings.Contains(out.String(), "✗") {
-		t.Errorf("expected error indicator in output; got: %s", out.String())
+	if err == nil || ExitCodeFor(err) == ClassOK {
+		t.Errorf("expected a classed error for the failed fetch; got: %v", err)
 	}
 }
 

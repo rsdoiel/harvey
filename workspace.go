@@ -105,7 +105,7 @@ func (ws *Workspace) AbsPath(rel string) (string, error) {
 	// Ensure the candidate is absolute and starts with the workspace root
 	// Use filepath.Dir to handle the case where candidate equals ws.Root exactly
 	if !filepath.IsAbs(candidate) {
-		return "", fmt.Errorf("workspace: path %q resolves to non-absolute path", rel)
+		return "", NoPermissionf("workspace: path %q resolves to non-absolute path", rel)
 	}
 	
 	// Normalize both paths for comparison (handles trailing slashes)
@@ -120,7 +120,7 @@ func (ws *Workspace) AbsPath(rel string) (string, error) {
 	}
 	
 	if !strings.HasPrefix(candidateNorm, rootNorm) {
-		return "", fmt.Errorf("workspace: path %q escapes workspace root", rel)
+		return "", NoPermissionf("workspace: path %q escapes workspace root", rel)
 	}
 	
 	return candidate, nil

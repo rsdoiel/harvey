@@ -1639,6 +1639,9 @@ func cmdRename(a *Agent, args []string, out io.Writer) error {
  *   /file-tree harvey/
  */
 func cmdFileTree(a *Agent, args []string, out io.Writer) error {
+	if a.Workspace == nil {
+		return errNoWorkspace()
+	}
 	root := a.Workspace.Root
 	if len(args) > 0 {
 		abs, err := resolveWorkspacePath(a.Workspace.Root, args[0])
@@ -1646,6 +1649,9 @@ func cmdFileTree(a *Agent, args []string, out io.Writer) error {
 			return fmt.Errorf("file-tree: %w", err)
 		}
 		root = abs
+	}
+	if _, err := os.Stat(root); err != nil {
+		return fmt.Errorf("file-tree: %w", err)
 	}
 	rel, _ := filepath.Rel(a.Workspace.Root, root)
 	fmt.Fprintf(out, "%s\n", rel)
@@ -1780,8 +1786,7 @@ func cmdRecord(a *Agent, args []string, out io.Writer) error {
 
 func cmdFiles(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
+		return errNoWorkspace()
 	}
 	path := "."
 	if len(args) > 0 {
@@ -1809,12 +1814,10 @@ func cmdFiles(a *Agent, args []string, out io.Writer) error {
 // the conversation as a user-role context message.
 func cmdRead(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
+		return errNoWorkspace()
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /read FILE [FILE...]")
-		return nil
+		return Usagef("usage: /read FILE [FILE...]")
 	}
 
 	var sb strings.Builder
@@ -1825,17 +1828,20 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 	sb.WriteString("]\n")
 
 	ok := 0
+	var failed error // first per-file failure; every file is still tried
 	for _, rel := range args {
 		// Remote URI: bypass workspace permissions and read directly.
 		if parseURIScheme(rel) != "" {
 			rr, err := NewRemoteReader(rel)
 			if err != nil {
 				fmt.Fprintf(out, "  ✗ %s: %v\n", rel, err)
+				failed = keepFirstFailure(failed, defaultClass(ClassUsage, fmt.Errorf("%s: %w", rel, err)))
 				continue
 			}
 			var buf bytes.Buffer
 			if err := rr.Get(context.Background(), rel, &buf); err != nil {
 				fmt.Fprintf(out, "  ✗ %s: %v\n", rel, err)
+				failed = keepFirstFailure(failed, defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", rel, err)))
 				continue
 			}
 			data := buf.Bytes()
@@ -1855,6 +1861,7 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 				a.AuditBuffer.Log(ActionFileRead, rel, StatusDenied)
 			}
 			fmt.Fprintf(out, "  ✗ %s: read permission denied\n", rel)
+			failed = keepFirstFailure(failed, NoPermissionf("%s: read permission denied", rel))
 			continue
 		}
 
@@ -1863,6 +1870,7 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 			absPath, resolveErr := a.Workspace.AbsPath(rel)
 			if resolveErr != nil {
 				fmt.Fprintf(out, "  ✗ %s: %v\n", rel, resolveErr)
+				failed = keepFirstFailure(failed, fmt.Errorf("%s: %w", rel, resolveErr))
 				continue
 			}
 			result, pdfErr := pdfExtract(absPath, "")
@@ -1871,6 +1879,7 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 					a.AuditBuffer.Log(ActionFileRead, rel, StatusError)
 				}
 				fmt.Fprintf(out, "  ✗ %s: %v\n", rel, pdfErr)
+				failed = keepFirstFailure(failed, defaultClass(ClassData, fmt.Errorf("%s: %w", rel, pdfErr)))
 				continue
 			}
 			if a.AuditBuffer != nil {
@@ -1896,6 +1905,7 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 				a.AuditBuffer.Log(ActionFileRead, rel, StatusError)
 			}
 			fmt.Fprintf(out, "  ✗ %s: %v\n", rel, err)
+			failed = keepFirstFailure(failed, fmt.Errorf("%s: %w", rel, err))
 			continue
 		}
 		if a.AuditBuffer != nil {
@@ -1912,11 +1922,11 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 	}
 
 	if ok == 0 {
-		return nil
+		return failed
 	}
 	a.AddMessage("user", sb.String())
 	fmt.Fprintf(out, "  %d file(s) added to context.\n", ok)
-	return nil
+	return failed
 }
 
 // ─── /read-dir ───────────────────────────────────────────────────────────────
@@ -1966,16 +1976,13 @@ const defaultMaxReadDirBytes = 256 * 1024
  */
 func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
+		return errNoWorkspace()
 	}
 	if a.Client == nil {
-		fmt.Fprintln(out, "No backend connected. Use /model use to connect a model (for Ollama, run `ollama serve` first).")
-		return nil
+		return errNoBackend()
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]")
-		return nil
+		return Usagef("usage: /read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]")
 	}
 
 	cfg := a.Config.Chunking
@@ -1986,38 +1993,32 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 		switch args[i] {
 		case "--chunk-size":
 			if i+1 >= len(args) {
-				fmt.Fprintln(out, "read-chunks: --chunk-size requires a number (bytes)")
-				return nil
+				return Usagef("read-chunks: --chunk-size requires a number (bytes)")
 			}
 			i++
 			n, err := strconv.Atoi(args[i])
 			if err != nil || n <= 0 {
-				fmt.Fprintf(out, "read-chunks: invalid --chunk-size %q\n", args[i])
-				return nil
+				return Usagef("read-chunks: invalid --chunk-size %q", args[i])
 			}
 			cfg.ChunkSizeBytes = n
 		case "--max-chunks":
 			if i+1 >= len(args) {
-				fmt.Fprintln(out, "read-chunks: --max-chunks requires a number")
-				return nil
+				return Usagef("read-chunks: --max-chunks requires a number")
 			}
 			i++
 			n, err := strconv.Atoi(args[i])
 			if err != nil || n <= 0 {
-				fmt.Fprintf(out, "read-chunks: invalid --max-chunks %q\n", args[i])
-				return nil
+				return Usagef("read-chunks: invalid --max-chunks %q", args[i])
 			}
 			cfg.MaxChunks = n
 		case "--overlap":
 			if i+1 >= len(args) {
-				fmt.Fprintln(out, "read-chunks: --overlap requires paragraph|sentence|none")
-				return nil
+				return Usagef("read-chunks: --overlap requires paragraph|sentence|none")
 			}
 			i++
 			mode := args[i]
 			if mode != "paragraph" && mode != "sentence" && mode != "none" {
-				fmt.Fprintf(out, "read-chunks: invalid --overlap %q (want paragraph|sentence|none)\n", mode)
-				return nil
+				return Usagef("read-chunks: invalid --overlap %q (want paragraph|sentence|none)", mode)
 			}
 			cfg.Overlap = mode
 		default:
@@ -2030,8 +2031,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 	}
 
 	if relPath == "" {
-		fmt.Fprintln(out, "Usage: /read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]")
-		return nil
+		return Usagef("usage: /read-chunks PATH [--chunk-size N] [--max-chunks N] [--overlap paragraph|sentence|none] [INSTRUCTION...]")
 	}
 
 	instruction := strings.Join(instrParts, " ")
@@ -2039,16 +2039,14 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 		instruction = lastUserMessage(a)
 	}
 	if instruction == "" {
-		fmt.Fprintln(out, "read-chunks: no instruction given and no prior user message to fall back to")
-		return nil
+		return Usagef("read-chunks: no instruction given and no prior user message to fall back to")
 	}
 
 	if !a.CheckReadPermission(relPath) {
 		if a.AuditBuffer != nil {
 			a.AuditBuffer.Log(ActionFileRead, relPath, StatusDenied)
 		}
-		fmt.Fprintf(out, "  ✗ %s: read permission denied\n", relPath)
-		return nil
+		return NoPermissionf("%s: read permission denied", relPath)
 	}
 
 	absPath, err := a.Workspace.AbsPath(relPath)
@@ -2115,8 +2113,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 
 func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
+		return errNoWorkspace()
 	}
 
 	dirArg := "."
@@ -2126,20 +2123,17 @@ func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 		switch args[i] {
 		case "--depth", "-d":
 			if i+1 >= len(args) {
-				fmt.Fprintln(out, "read-dir: --depth requires a number")
-				return nil
+				return Usagef("read-dir: --depth requires a number")
 			}
 			i++
 			n, err := strconv.Atoi(args[i])
 			if err != nil || n < 0 {
-				fmt.Fprintf(out, "read-dir: invalid depth %q\n", args[i])
-				return nil
+				return Usagef("read-dir: invalid depth %q", args[i])
 			}
 			maxDepth = n
 		default:
 			if dirArg != "." {
-				fmt.Fprintln(out, "Usage: /read-dir [PATH] [--depth N]")
-				return nil
+				return Usagef("usage: /read-dir [PATH] [--depth N]")
 			}
 			dirArg = args[i]
 		}
@@ -2155,8 +2149,7 @@ func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 		if a.AuditBuffer != nil {
 			a.AuditBuffer.Log(ActionFileRead, relDir, StatusDenied)
 		}
-		fmt.Fprintf(out, "read-dir: read permission denied for %s\n", relDir)
-		return nil
+		return NoPermissionf("read-dir: read permission denied for %s", relDir)
 	}
 
 	info, err := os.Stat(absDir)
@@ -2164,8 +2157,7 @@ func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 		return fmt.Errorf("read-dir: %w", err)
 	}
 	if !info.IsDir() {
-		fmt.Fprintf(out, "read-dir: %s is not a directory\n", dirArg)
-		return nil
+		return Dataf("read-dir: %s is not a directory", dirArg)
 	}
 
 	const perFileCap = defaultMaxOutputBytes
@@ -2265,7 +2257,7 @@ func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 
 	if ok == 0 {
 		fmt.Fprintln(out, "  No readable files found.")
-		return nil
+		return Negativef("read-dir: no readable files found in %s", dirArg)
 	}
 
 	a.AddMessage("user", sb.String())
@@ -2305,14 +2297,11 @@ const readPDFMaxPages = 20
  */
 func cmdReadPDF(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /read-pdf FILE [PAGES]")
-		fmt.Fprintln(out, "  Example: /read-pdf ~/docs/spec.pdf 40-55")
-		return nil
+		return Usagef("usage: /read-pdf FILE [PAGES]  (example: /read-pdf ~/docs/spec.pdf 40-55)")
 	}
 
 	if err := checkPopplerTools(); err != nil {
-		fmt.Fprintln(out, err.Error())
-		return nil
+		return ClassedAs(ClassUnavailable, err)
 	}
 
 	filePath := args[0]
@@ -2323,36 +2312,34 @@ func cmdReadPDF(a *Agent, args []string, out io.Writer) error {
 
 	absPath, err := resolvePDFPath(filePath)
 	if err != nil {
-		fmt.Fprintf(out, "  ✗ %s: %v\n", filePath, err)
-		return nil
+		return defaultClass(ClassNoInput, fmt.Errorf("%s: %w", filePath, err))
+	}
+	if pages != "" {
+		first, last, err := parsePDFPageRange(pages)
+		if err != nil {
+			return Usagef("%v", err)
+		}
+		if last-first+1 > readPDFMaxPages {
+			return Usagef("page range %s spans %d pages; limit is %d. Narrow the range, e.g.: %d-%d",
+				pages, last-first+1, readPDFMaxPages, first, first+readPDFMaxPages-1)
+		}
+	}
+	if _, err := os.Stat(absPath); err != nil {
+		return fmt.Errorf("%s: %w", filePath, err)
 	}
 
 	// Enforce page cap before the expensive extraction.
 	if pages == "" {
 		infoOut, err := runTool("pdfinfo", absPath)
 		if err != nil {
-			fmt.Fprintf(out, "  ✗ cannot read PDF: %v\n", err)
-			return nil
+			return defaultClass(ClassData, fmt.Errorf("cannot read PDF: %w", err))
 		}
 		info := parsePDFInfo(infoOut)
 		if info.Pages > readPDFMaxPages {
-			fmt.Fprintf(out, "  ✗ %s has %d pages; /read-pdf is limited to %d pages per call.\n",
-				filePath, info.Pages, readPDFMaxPages)
-			fmt.Fprintf(out, "     Specify a range, e.g.: /read-pdf %s 1-%d\n", filePath, readPDFMaxPages)
-			return nil
+			return Usagef("%s has %d pages; /read-pdf is limited to %d pages per call. Specify a range, e.g.: /read-pdf %s 1-%d",
+				filePath, info.Pages, readPDFMaxPages, filePath, readPDFMaxPages)
 		}
-	} else {
-		first, last, err := parsePDFPageRange(pages)
-		if err != nil {
-			fmt.Fprintf(out, "  ✗ %v\n", err)
-			return nil
-		}
-		if last-first+1 > readPDFMaxPages {
-			fmt.Fprintf(out, "  ✗ page range %s spans %d pages; limit is %d.\n",
-				pages, last-first+1, readPDFMaxPages)
-			fmt.Fprintf(out, "     Narrow the range, e.g.: %d-%d\n", first, first+readPDFMaxPages-1)
-			return nil
-		}
+
 	}
 
 	fmt.Fprintf(out, "  Extracting %s", filePath)
@@ -2363,8 +2350,7 @@ func cmdReadPDF(a *Agent, args []string, out io.Writer) error {
 
 	result, err := pdfExtract(absPath, pages)
 	if err != nil {
-		fmt.Fprintf(out, "  ✗ %v\n", err)
-		return nil
+		return defaultClass(ClassData, err)
 	}
 
 	var sb strings.Builder
@@ -2467,11 +2453,7 @@ const attachMaxTextBytes = 256 * 1024 // 256 KB
  */
 func cmdAttach(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /attach FILE")
-		fmt.Fprintln(out, "  Images: attached natively if the route supports vision, text description otherwise.")
-		fmt.Fprintln(out, "  PDFs:   text extracted via pdfExtract (20-page cap; requires poppler).")
-		fmt.Fprintln(out, "  Other:  injected as plain text (≤ 256 KB).")
-		return nil
+		return Usagef("usage: /attach FILE  (images: native if the route supports vision, else a text description; PDFs: text via poppler, 20-page cap; other: plain text up to 256 KB)")
 	}
 
 	filePath := args[0]
@@ -2483,18 +2465,15 @@ func cmdAttach(a *Agent, args []string, out io.Writer) error {
 
 	absPath, err := resolvePDFPath(filePath)
 	if err != nil {
-		fmt.Fprintf(out, "  ✗ %s: %v\n", filePath, err)
-		return nil
+		return defaultClass(ClassNoInput, fmt.Errorf("%s: %w", filePath, err))
 	}
 
 	fi, err := os.Stat(absPath)
 	if err != nil {
-		fmt.Fprintf(out, "  ✗ %s: %v\n", filePath, err)
-		return nil
+		return fmt.Errorf("%s: %w", filePath, err)
 	}
 	if fi.IsDir() {
-		fmt.Fprintf(out, "  ✗ %s is a directory; use /read-dir for directories\n", filePath)
-		return nil
+		return Usagef("%s is a directory; use /read-dir for directories", filePath)
 	}
 
 	// PDFs are routed before reading the full file to avoid loading 100 MB
@@ -2505,8 +2484,7 @@ func cmdAttach(a *Agent, args []string, out io.Writer) error {
 
 	data, err := os.ReadFile(absPath)
 	if err != nil {
-		fmt.Fprintf(out, "  ✗ %s: %v\n", filePath, err)
-		return nil
+		return fmt.Errorf("%s: %w", filePath, err)
 	}
 
 	mime := attachDetectMIME(absPath, data)
@@ -2525,13 +2503,11 @@ func cmdAttach(a *Agent, args []string, out io.Writer) error {
 func cmdAttachRemote(a *Agent, uri string, out io.Writer) error {
 	rr, err := NewRemoteReader(uri)
 	if err != nil {
-		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
-		return nil
+		return defaultClass(ClassUsage, fmt.Errorf("%s: %w", uri, err))
 	}
 	var buf bytes.Buffer
 	if err := rr.Get(context.Background(), uri, &buf); err != nil {
-		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
-		return nil
+		return defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", uri, err))
 	}
 	data := buf.Bytes()
 	base := filepath.Base(uri)
@@ -2540,15 +2516,13 @@ func cmdAttachRemote(a *Agent, uri string, out io.Writer) error {
 	if strings.ToLower(filepath.Ext(base)) == ".pdf" {
 		f, err := os.CreateTemp("", "harvey-remote-*.pdf")
 		if err != nil {
-			fmt.Fprintf(out, "  ✗ %s: create temp: %v\n", uri, err)
-			return nil
+			return AsCreate(fmt.Errorf("%s: create temp: %w", uri, err))
 		}
 		tmpPath := f.Name()
 		defer os.Remove(tmpPath)
 		if _, werr := f.Write(data); werr != nil {
 			f.Close()
-			fmt.Fprintf(out, "  ✗ %s: write temp: %v\n", uri, werr)
-			return nil
+			return defaultClass(ClassIO, fmt.Errorf("%s: write temp: %w", uri, werr))
 		}
 		f.Close()
 		return cmdReadPDF(a, []string{tmpPath}, out)
@@ -2567,9 +2541,7 @@ func cmdAttachRemote(a *Agent, uri string, out io.Writer) error {
 // carries the attachment metadata.
 func attachImage(a *Agent, filePath, base string, data []byte, mime string, out io.Writer) error {
 	if len(data) > attachMaxImageBytes {
-		fmt.Fprintf(out, "  ✗ %s: image too large (%s); maximum is 5 MB\n",
-			filePath, formatBytes(int64(len(data))))
-		return nil
+		return Dataf("%s: image too large (%s); maximum is 5 MB", filePath, formatBytes(int64(len(data))))
 	}
 
 	if attachClientSupportsVision(a) {
@@ -2598,10 +2570,8 @@ func attachImage(a *Agent, filePath, base string, data []byte, mime string, out 
 // conversation. Binary files are rejected with an explanation.
 func attachText(a *Agent, filePath, base string, data []byte, mime string, out io.Writer) error {
 	if len(data) > attachMaxTextBytes {
-		fmt.Fprintf(out, "  ✗ %s: file too large (%s) for text injection; maximum is 256 KB\n",
+		return Dataf("%s: file too large (%s) for text injection; maximum is 256 KB. Use /rag ingest to index large files for retrieval instead",
 			filePath, formatBytes(int64(len(data))))
-		fmt.Fprintln(out, "     Use /rag ingest to index large files for retrieval instead.")
-		return nil
 	}
 	// Reject binary content (null byte in sample is the classic heuristic).
 	sample := data
@@ -2610,9 +2580,7 @@ func attachText(a *Agent, filePath, base string, data []byte, mime string, out i
 	}
 	for _, b := range sample {
 		if b == 0 {
-			fmt.Fprintf(out, "  ✗ %s appears to be binary (%s); /attach supports images, PDFs, and text files\n",
-				filePath, mime)
-			return nil
+			return Dataf("%s appears to be binary (%s); /attach supports images, PDFs, and text files", filePath, mime)
 		}
 	}
 
@@ -2666,12 +2634,10 @@ func attachClientSupportsVision(a *Agent) bool {
 // the full reply text is written.
 func cmdWrite(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
+		return errNoWorkspace()
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /write PATH")
-		return nil
+		return Usagef("usage: /write PATH")
 	}
 	dest := args[0]
 
@@ -2684,8 +2650,7 @@ func cmdWrite(a *Agent, args []string, out io.Writer) error {
 		}
 	}
 	if reply == "" {
-		fmt.Fprintln(out, "No assistant reply in history to write.")
-		return nil
+		return Negativef("no assistant reply in history to write")
 	}
 
 	content, ok := extractCodeBlock(reply)
@@ -2697,14 +2662,13 @@ func cmdWrite(a *Agent, args []string, out io.Writer) error {
 		if a.AuditBuffer != nil {
 			a.AuditBuffer.Log(ActionFileWrite, dest, StatusDenied)
 		}
-		fmt.Fprintf(out, "  write permission denied for %s\n", dest)
-		return nil
+		return NoPermissionf("write permission denied for %s", dest)
 	}
 	if err := a.Workspace.WriteFile(dest, []byte(content), 0o644); err != nil {
 		if a.AuditBuffer != nil {
 			a.AuditBuffer.Log(ActionFileWrite, dest, StatusError)
 		}
-		return fmt.Errorf("write: %w", err)
+		return AsCreate(fmt.Errorf("write: %w", err))
 	}
 	if a.AuditBuffer != nil {
 		a.AuditBuffer.Log(ActionFileWrite, dest, StatusSuccess)
@@ -2778,12 +2742,10 @@ const maxRunOutput = 8000
 // sensitive data leakage. Uses a timeout context to prevent hanging.
 func cmdRun(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
+		return errNoWorkspace()
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /run COMMAND [ARGS...]")
-		return nil
+		return Usagef("usage: /run COMMAND [ARGS...]")
 	}
 
 	// Safe mode check: verify command is in allowlist
@@ -2791,10 +2753,8 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 		if a.AuditBuffer != nil {
 			a.AuditBuffer.Log(ActionCommand, strings.Join(args, " "), StatusDenied)
 		}
-		fmt.Fprintf(out, yellow("  Command %q is not allowed in safe mode.\n"), args[0])
-		fmt.Fprintf(out, "  Allowed commands: %s\n", strings.Join(a.Config.Security.AllowedCommands, ", "))
-		fmt.Fprintln(out, "  Use /safemode off to disable, or /safemode allow CMD to add it.")
-		return nil
+		return NoPermissionf("command %q is not allowed in safe mode (allowed: %s). Use /safemode off to disable, or /safemode allow CMD to add it",
+			args[0], strings.Join(a.Config.Security.AllowedCommands, ", "))
 	}
 
 	// Log allowed command execution
@@ -2808,11 +2768,10 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 	// Validate command line to prevent shell metacharacter injection
 	program, cmdArgs, err := parseCommandLine(cmdLine)
 	if err != nil {
-		fmt.Fprintf(out, yellow("  Invalid command: %v\n"), err)
 		if a.AuditBuffer != nil {
 			a.AuditBuffer.Log(ActionCommand, cmdLine, StatusDenied)
 		}
-		return nil
+		return Usagef("invalid command: %v", err)
 	}
 
 	// Use a context with an optional timeout to prevent hanging commands.
@@ -2829,7 +2788,12 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 	cmd.Dir = a.Workspace.Root
 	// Filter environment to prevent sensitive data leakage
 	cmd.Env = filterCommandEnvironment(os.Environ())
-	raw, _ := cmd.CombinedOutput() // error reflected via exit code note below
+	raw, runErr := cmd.CombinedOutput() // a non-zero exit is reflected in the note below
+	if cmd.ProcessState == nil && runErr != nil {
+		// The program never started. Its own exit status is output for the
+		// model, not a failure of /run, but a program that cannot start is.
+		return startFailure(program, runErr)
+	}
 
 	truncated := false
 	output := raw
@@ -2865,17 +2829,15 @@ const maxSearchMatches = 100
 // into the conversation as a user-role context message.
 func cmdSearch(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
+		return errNoWorkspace()
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /search PATTERN [PATH]")
-		return nil
+		return Usagef("usage: /search PATTERN [PATH]")
 	}
 
 	re, err := regexp.Compile(args[0])
 	if err != nil {
-		return fmt.Errorf("search: invalid pattern: %w", err)
+		return Usagef("search: invalid pattern: %w", err)
 	}
 	searchRoot := "."
 	if len(args) > 1 {
@@ -2935,7 +2897,7 @@ func cmdSearch(a *Agent, args []string, out io.Writer) error {
 
 	if len(matches) == 0 {
 		fmt.Fprintf(out, "  No matches for %q\n", args[0])
-		return nil
+		return Negativef("search: no matches for %q", args[0])
 	}
 
 	var sb strings.Builder
@@ -2986,18 +2948,15 @@ var gitAllowedSubcmds = map[string]bool{
 // the output into the conversation as a user-role context message.
 func cmdGit(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		fmt.Fprintln(out, "No workspace initialised.")
-		return nil
+		return errNoWorkspace()
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /git <status|diff|log|show|blame> [ARGS...]")
-		return nil
+		return Usagef("usage: /git <status|diff|log|show|blame> [ARGS...]")
 	}
 
 	sub := strings.ToLower(args[0])
 	if !gitAllowedSubcmds[sub] {
-		fmt.Fprintf(out, "  /git only supports read-only subcommands: status, diff, log, show, blame\n")
-		return nil
+		return Usagef("/git only supports read-only subcommands: status, diff, log, show, blame")
 	}
 
 	gitArgs := append([]string{sub}, args[1:]...)
@@ -3008,11 +2967,20 @@ func cmdGit(a *Agent, args []string, out io.Writer) error {
 	cmd.Dir = a.Workspace.Root
 	// Filter environment to prevent sensitive data leakage
 	cmd.Env = filterCommandEnvironment(os.Environ())
-	raw, _ := cmd.CombinedOutput()
+	raw, runErr := cmd.CombinedOutput()
+	if cmd.ProcessState == nil && runErr != nil {
+		return startFailure("git", runErr)
+	}
+	// git ran but reported failure (not a repository, bad revision): the
+	// output is still shown to the model, and the command says no.
+	var gitFailed error
+	if code := cmd.ProcessState.ExitCode(); code != 0 {
+		gitFailed = Negativef("git %s exited %d", sub, code)
+	}
 
 	if len(raw) == 0 {
 		fmt.Fprintln(out, "  (no output)")
-		return nil
+		return gitFailed
 	}
 
 	truncated := false
@@ -3032,7 +3000,7 @@ func cmdGit(a *Agent, args []string, out io.Writer) error {
 
 	a.AddMessage("user", sb.String())
 	fmt.Fprintf(out, "  %d bytes of output added to context.\n", len(output))
-	return nil
+	return gitFailed
 }
 
 // taggedBlock is a fenced code block whose opening fence names a target file.
@@ -3119,8 +3087,7 @@ const summarizePrompt = "Please summarize this conversation concisely. Capture t
 // into a single summary message, then replaces the history with that summary.
 func cmdSummarize(a *Agent, args []string, out io.Writer) error {
 	if a.Client == nil {
-		fmt.Fprintln(out, "No backend connected. Use /model use to connect a model (for Ollama, run `ollama serve` first).")
-		return nil
+		return errNoBackend()
 	}
 
 	// Count non-system messages to decide if there's anything worth summarising.
@@ -3131,8 +3098,7 @@ func cmdSummarize(a *Agent, args []string, out io.Writer) error {
 		}
 	}
 	if meaningful < 2 {
-		fmt.Fprintln(out, "Not enough conversation history to summarize.")
-		return nil
+		return Negativef("not enough conversation history to summarize")
 	}
 
 	request := append(append([]Message(nil), a.History...),
@@ -3145,12 +3111,11 @@ func cmdSummarize(a *Agent, args []string, out io.Writer) error {
 	sp.stop()
 
 	if chatErr != nil {
-		return fmt.Errorf("summarize: %w", chatErr)
+		return defaultClass(ClassUnavailable, fmt.Errorf("summarize: %w", chatErr))
 	}
 	summary := strings.TrimSpace(buf.String())
 	if summary == "" {
-		fmt.Fprintln(out, "  Received empty summary — history unchanged.")
-		return nil
+		return Unavailablef("the backend returned an empty summary; history unchanged")
 	}
 
 	// Replace history: system prompt + pinned context + summary.
@@ -3772,43 +3737,48 @@ func (a *Agent) logAction(kind, target string, choice actionChoice, outcome stri
 // are skipped when safe mode is enabled.
 func cmdFormat(a *Agent, args []string, out io.Writer) error {
 	if a.Workspace == nil {
-		fmt.Fprintln(out, "  /format requires a workspace.")
-		return nil
+		return errNoWorkspace()
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(out, "Usage: /format FILE [FILE...]")
-		return nil
+		return Usagef("usage: /format FILE [FILE...]")
 	}
+	var failed error // first per-file failure; every file is still tried
 	for _, relPath := range args {
 		data, err := a.Workspace.ReadFile(relPath)
 		if err != nil {
 			fmt.Fprintf(out, "  %s: read error: %v\n", relPath, err)
+			failed = keepFirstFailure(failed, fmt.Errorf("%s: read: %w", relPath, err))
 			continue
 		}
 		ext := filepath.Ext(relPath)
 		langID, ok := globalRegistry.DetectFromExtension(ext)
 		if !ok {
 			fmt.Fprintf(out, "  %s: no language registered for extension %q\n", relPath, ext)
+			failed = keepFirstFailure(failed, Negativef("%s: no language registered for extension %q", relPath, ext))
 			continue
 		}
 		f := globalRegistry.GetFormatter(langID)
 		if f == nil {
 			fmt.Fprintf(out, "  %s: no formatter registered for %q\n", relPath, langID)
+			failed = keepFirstFailure(failed, Negativef("%s: no formatter registered for %q", relPath, langID))
 			continue
 		}
 		if f.Mode() == FileFormatter && a.Config.Security.SafeMode {
 			fmt.Fprintf(out, "  %s: file-mode formatter requires safe mode off (/safemode off)\n", relPath)
+			failed = keepFirstFailure(failed, NoPermissionf("%s: file-mode formatter requires safe mode off (/safemode off)", relPath))
 			continue
 		}
 		absPath, err := a.Workspace.AbsPath(relPath)
 		if err != nil {
 			fmt.Fprintf(out, "  %s: path error: %v\n", relPath, err)
+			failed = keepFirstFailure(failed, fmt.Errorf("%s: %w", relPath, err))
 			continue
 		}
 		original := string(data)
 		formatted, err := f.Format(original, absPath)
 		if err != nil {
 			fmt.Fprintf(out, "  %s: formatter error: %v\n", relPath, err)
+			failed = keepFirstFailure(failed, defaultClass(ClassData, fmt.Errorf("%s: formatter: %w", relPath, err)))
 			continue
 		}
 		if formatted == original {
@@ -3817,11 +3787,12 @@ func cmdFormat(a *Agent, args []string, out io.Writer) error {
 		}
 		if err := os.WriteFile(absPath, []byte(formatted), 0o644); err != nil {
 			fmt.Fprintf(out, "  %s: write error: %v\n", relPath, err)
+			failed = keepFirstFailure(failed, defaultClass(ClassIO, fmt.Errorf("%s: write: %w", relPath, err)))
 			continue
 		}
 		fmt.Fprintf(out, "  %s: formatted (%d → %d bytes)\n", relPath, len(original), len(formatted))
 	}
-	return nil
+	return failed
 }
 
 // ─── /workspace ──────────────────────────────────────────────────────────────

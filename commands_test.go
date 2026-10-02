@@ -92,8 +92,8 @@ func TestExtractCodeBlock_multipleBlocks(t *testing.T) {
 func TestCmdRead_noArgs(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdRead(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := cmdRead(a, nil, &out); ExitCodeFor(err) != ClassUsage {
+		t.Fatalf("expected a usage error, got: %v", err)
 	}
 	if len(a.History) != 0 {
 		t.Error("expected no history added for empty args")
@@ -103,8 +103,8 @@ func TestCmdRead_noArgs(t *testing.T) {
 func TestCmdRead_fileNotFound(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdRead(a, []string{"nonexistent.txt"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := cmdRead(a, []string{"nonexistent.txt"}, &out); ExitCodeFor(err) != ClassNoInput {
+		t.Fatalf("expected a no_input error, got: %v", err)
 	}
 	// No readable files → nothing added to history.
 	if len(a.History) != 0 {
@@ -161,8 +161,9 @@ func TestCmdRead_partialError(t *testing.T) {
 	a.Workspace.WriteFile("exists.txt", []byte("data"), 0o644)
 
 	var out strings.Builder
-	if err := cmdRead(a, []string{"exists.txt", "missing.txt"}, &out); err != nil {
-		t.Fatalf("cmdRead: %v", err)
+	// The missing file is reported, but the readable one is still added.
+	if err := cmdRead(a, []string{"exists.txt", "missing.txt"}, &out); ExitCodeFor(err) != ClassNoInput {
+		t.Fatalf("cmdRead: expected a no_input error for the missing file, got: %v", err)
 	}
 	// One file succeeded — history should still be populated.
 	if len(a.History) != 1 {
@@ -175,19 +176,17 @@ func TestCmdRead_partialError(t *testing.T) {
 func TestCmdWrite_noArgs(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdWrite(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := cmdWrite(a, nil, &out); ExitCodeFor(err) != ClassUsage {
+		t.Fatalf("expected a usage error, got: %v", err)
 	}
 }
 
 func TestCmdWrite_noHistory(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdWrite(a, []string{"out.txt"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "No assistant reply") {
-		t.Error("expected 'No assistant reply' message")
+	err := cmdWrite(a, []string{"out.txt"}, &out)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no assistant reply") {
+		t.Errorf("expected a negative result naming the missing reply, got: %v", err)
 	}
 }
 
@@ -236,8 +235,8 @@ func TestCmdWrite_withoutCodeBlock(t *testing.T) {
 func TestCmdRun_noArgs(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdRun(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := cmdRun(a, nil, &out); ExitCodeFor(err) != ClassUsage {
+		t.Fatalf("expected a usage error, got: %v", err)
 	}
 	if len(a.History) != 0 {
 		t.Error("expected no history added for empty args")
@@ -681,11 +680,9 @@ func TestCmdReadDir_sensitiveFileSkipped(t *testing.T) {
 func TestCmdReadDir_noWorkspace(t *testing.T) {
 	a := &Agent{Config: DefaultConfig(), commands: make(map[string]*Command)}
 	var out strings.Builder
-	if err := cmdReadDir(a, nil, &out); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "No workspace") {
-		t.Error("expected 'No workspace' message when workspace is nil")
+	err := cmdReadDir(a, nil, &out)
+	if ExitCodeFor(err) != ClassNoInput || !strings.Contains(err.Error(), "no workspace") {
+		t.Errorf("expected a no_input error when workspace is nil, got: %v", err)
 	}
 }
 
@@ -694,11 +691,9 @@ func TestCmdReadDir_notADirectory(t *testing.T) {
 	writeWSFile(t, a, "file.txt", []byte("not a dir\n"))
 
 	var out strings.Builder
-	if err := cmdReadDir(a, []string{"file.txt"}, &out); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "not a directory") {
-		t.Errorf("expected 'not a directory' message, got: %s", out.String())
+	err := cmdReadDir(a, []string{"file.txt"}, &out)
+	if ExitCodeFor(err) != ClassData || !strings.Contains(err.Error(), "not a directory") {
+		t.Errorf("expected a data error naming 'not a directory', got: %v", err)
 	}
 }
 

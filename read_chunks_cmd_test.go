@@ -12,22 +12,18 @@ func TestCmdReadChunks_NoArgs(t *testing.T) {
 	a := newTestAgent(t)
 	a.Client = &mockLLMClient{reply: "synthesis"}
 	var out strings.Builder
-	if err := cmdReadChunks(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "Usage:") {
-		t.Errorf("expected usage message, got: %s", out.String())
+	err := cmdReadChunks(a, nil, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("expected a usage error, got: %v", err)
 	}
 }
 
 func TestCmdReadChunks_NoClient(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdReadChunks(a, []string{"doc.md", "summarize"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "No backend") {
-		t.Errorf("expected 'No backend' message, got: %s", out.String())
+	err := cmdReadChunks(a, []string{"doc.md", "summarize"}, &out)
+	if ExitCodeFor(err) != ClassUnavailable || !strings.Contains(err.Error(), "no backend") {
+		t.Errorf("expected an unavailable error naming the missing backend, got: %v", err)
 	}
 }
 
@@ -87,11 +83,9 @@ func TestCmdReadChunks_NoInstructionNoHistory(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	var out strings.Builder
-	if err := cmdReadChunks(a, []string{"doc.md"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "no instruction") {
-		t.Errorf("expected 'no instruction' message, got: %s", out.String())
+	err := cmdReadChunks(a, []string{"doc.md"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "no instruction") {
+		t.Errorf("expected a usage error naming 'no instruction', got: %v", err)
 	}
 }
 
@@ -103,11 +97,9 @@ func TestCmdReadChunks_PermissionDenied(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	var out strings.Builder
-	if err := cmdReadChunks(a, []string{"secret.md", "summarize"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "permission denied") {
-		t.Errorf("expected permission denied message, got: %s", out.String())
+	err := cmdReadChunks(a, []string{"secret.md", "summarize"}, &out)
+	if ExitCodeFor(err) != ClassNoPermission || !strings.Contains(err.Error(), "permission denied") {
+		t.Errorf("expected a no_permission error, got: %v", err)
 	}
 }
 
@@ -115,11 +107,9 @@ func TestCmdReadChunks_InvalidChunkSizeFlag(t *testing.T) {
 	a := newTestAgent(t)
 	a.Client = &mockLLMClient{reply: "ok"}
 	var out strings.Builder
-	if err := cmdReadChunks(a, []string{"doc.md", "--chunk-size", "notanumber"}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "invalid --chunk-size") {
-		t.Errorf("expected invalid --chunk-size message, got: %s", out.String())
+	err := cmdReadChunks(a, []string{"doc.md", "--chunk-size", "notanumber"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "invalid --chunk-size") {
+		t.Errorf("expected a usage error naming --chunk-size, got: %v", err)
 	}
 }
 

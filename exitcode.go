@@ -262,6 +262,48 @@ func CantCreatef(format string, a ...any) error { return classErrorf(ClassCantCr
  */
 func IOf(format string, a ...any) error { return classErrorf(ClassIO, format, a...) }
 
+/** NoPermissionf is fmt.Errorf that marks its result as a permission refusal
+ * (exit 77): the operating system or Harvey's own permission rules refused
+ * access to a path or an action.
+ *
+ * Parameters:
+ *   format (string) — a fmt.Errorf format; %w keeps a cause reachable.
+ *   a      (...any) — the format's arguments.
+ *
+ * Returns:
+ *   error — a *ClassedError of ClassNoPermission.
+ *
+ * Example:
+ *   return harvey.NoPermissionf("%s: read permission denied", path)
+ */
+func NoPermissionf(format string, a ...any) error {
+	return classErrorf(ClassNoPermission, format, a...)
+}
+
+/** defaultClass gives err the class when nothing has classified it yet, and
+ * leaves an error that already carries a class (an explicit one, or a
+ * standard-library error that classifies itself) unchanged.
+ *
+ * Parameters:
+ *   class (ExitClass) — the class to apply to an unclassified error.
+ *   err   (error)     — the error; may be nil.
+ *
+ * Returns:
+ *   error — err, or err classed as class when it had no class of its own.
+ *
+ * Example:
+ *   return defaultClass(ClassUnavailable, fmt.Errorf("fetch %s: %w", uri, err))
+ */
+func defaultClass(class ExitClass, err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, classified := ExitClassOf(err); classified {
+		return err
+	}
+	return ClassedAs(class, err)
+}
+
 /** Configf is fmt.Errorf that marks its result as a configuration file that is
  * present but wrong (exit 78).
  *

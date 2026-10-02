@@ -23,6 +23,23 @@
   message, which now reads `Error: unknown command: /name`. Inside `/loop`, a mistyped
   command stops the loop after the first iteration instead of repeating the message.
   First step of reclassifying the command handlers' errors (the DR-0006 follow-up).
+- The file and workspace commands now return classed errors instead of printing a failure
+  and succeeding, so a scripted session exits with the class of the first one that failed
+  (harvey DR-0006 follow-up). `/files`, `/file-tree`, `/read`, `/read-dir`, `/read-pdf`,
+  `/read-chunks`, `/attach`, `/write`, `/run`, `/search`, `/git`, `/format`, `/summarize`:
+
+  | Failure | Exit |
+  |---|---|
+  | missing or surplus argument, bad flag value, `/search` pattern that does not compile, unknown option | 2 |
+  | no workspace; a named file or directory that does not exist; a program `/run` cannot start | 66 |
+  | no backend connected (`/read-chunks`, `/summarize`); a remote fetch that fails | 69 |
+  | read, write or exec refused by Harvey's permission rules or safe mode; a path outside the workspace, through a symbolic link, in `agents/`, or matching a sensitive-file pattern | 77 |
+  | a file of the wrong kind: binary or too large for `/attach`, not a directory for `/read-dir`, not a PDF, a source file the formatter rejects | 65 |
+  | nothing found: `/search` with no matches, `/read-dir` with no readable files, `/write` with no reply to write, `/git` when git itself fails, `/format` for an extension with no formatter, `/summarize` with too little history | 1 |
+
+  `/read` and `/format` still try every file, then report the first failure. `/run` does not
+  fail when the command it ran exits non-zero: that output is the point. At a terminal nothing
+  changes except that the message now appears as `Error: ...`.
 
 - `/learn` found no hand-offs after the workspace moved them from `agents/hand-off/` to
   `agents/projects/<project>/hand-off/` (workspace DR-0004). `learnCandidates` now also

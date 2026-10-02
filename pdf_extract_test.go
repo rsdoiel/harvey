@@ -269,9 +269,9 @@ func TestCmdReadPDF_noArgs(t *testing.T) {
 	a := newTestAgent(t)
 	a.registerCommands()
 	var out strings.Builder
-	_ = cmdReadPDF(a, nil, &out)
-	if !strings.Contains(out.String(), "Usage") {
-		t.Errorf("expected usage message, got: %s", out.String())
+	err := cmdReadPDF(a, nil, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("expected a usage error, got: %v", err)
 	}
 }
 
@@ -280,10 +280,9 @@ func TestCmdReadPDF_rangeExceedsLimit(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
 	// A 21-page range always exceeds the cap regardless of the file.
-	_ = cmdReadPDF(a, []string{"/nonexistent.pdf", "1-21"}, &out)
-	msg := out.String()
-	if !strings.Contains(msg, "21 pages") || !strings.Contains(msg, "limit") {
-		t.Errorf("expected page-cap error, got: %s", msg)
+	err := cmdReadPDF(a, []string{"/nonexistent.pdf", "1-21"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "21 pages") || !strings.Contains(err.Error(), "limit") {
+		t.Errorf("expected a usage error naming the page cap, got: %v", err)
 	}
 }
 
@@ -437,27 +436,27 @@ func TestCmdReadPDF_integration(t *testing.T) {
 func TestCmdAttach_noArgs(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	_ = cmdAttach(a, nil, &out)
-	if !strings.Contains(out.String(), "Usage") {
-		t.Errorf("expected usage message, got: %s", out.String())
+	err := cmdAttach(a, nil, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("expected a usage error, got: %v", err)
 	}
 }
 
 func TestCmdAttach_directory(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	_ = cmdAttach(a, []string{t.TempDir()}, &out)
-	if !strings.Contains(out.String(), "directory") {
-		t.Errorf("expected directory error, got: %s", out.String())
+	err := cmdAttach(a, []string{t.TempDir()}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "directory") {
+		t.Errorf("expected a usage error naming the directory, got: %v", err)
 	}
 }
 
 func TestCmdAttach_missingFile(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	_ = cmdAttach(a, []string{"/nonexistent/file.txt"}, &out)
-	if !strings.Contains(out.String(), "✗") {
-		t.Errorf("expected error for missing file, got: %s", out.String())
+	err := cmdAttach(a, []string{"/nonexistent/file.txt"}, &out)
+	if ExitCodeFor(err) != ClassNoInput {
+		t.Errorf("expected a no_input error for a missing file, got: %v", err)
 	}
 }
 
@@ -486,9 +485,9 @@ func TestCmdAttach_binaryFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out strings.Builder
-	_ = cmdAttach(a, []string{tmp}, &out)
-	if !strings.Contains(out.String(), "binary") {
-		t.Errorf("expected binary rejection, got: %s", out.String())
+	err := cmdAttach(a, []string{tmp}, &out)
+	if ExitCodeFor(err) != ClassData || !strings.Contains(err.Error(), "binary") {
+		t.Errorf("expected a data error naming 'binary', got: %v", err)
 	}
 	if len(a.History) > 0 {
 		t.Error("expected no message added for binary file")

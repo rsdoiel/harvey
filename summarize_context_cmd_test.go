@@ -32,11 +32,9 @@ func (m *mockLLMClient) Close() error                               { return nil
 func TestCmdSummarize_noClient(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdSummarize(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "No backend") {
-		t.Error("expected 'No backend' message")
+	err := cmdSummarize(a, nil, &out)
+	if ExitCodeFor(err) != ClassUnavailable || !strings.Contains(err.Error(), "no backend") {
+		t.Errorf("expected an unavailable error naming the missing backend, got: %v", err)
 	}
 }
 
@@ -47,11 +45,9 @@ func TestCmdSummarize_tooShort(t *testing.T) {
 	a.AddMessage("user", "hello")
 
 	var out strings.Builder
-	if err := cmdSummarize(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "Not enough") {
-		t.Error("expected 'Not enough' message")
+	err := cmdSummarize(a, nil, &out)
+	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "not enough") {
+		t.Errorf("expected a negative result naming 'not enough', got: %v", err)
 	}
 	// History should be unchanged.
 	if len(a.History) != 1 {

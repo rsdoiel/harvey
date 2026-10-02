@@ -132,8 +132,8 @@ func TestFindTaggedBlocks_unterminated(t *testing.T) {
 func TestCmdSearch_noArgs(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdSearch(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := cmdSearch(a, nil, &out); ExitCodeFor(err) != ClassUsage {
+		t.Fatalf("expected a usage error, got: %v", err)
 	}
 	if len(a.History) != 0 {
 		t.Error("expected no history for missing args")
@@ -153,8 +153,8 @@ func TestCmdSearch_noMatches(t *testing.T) {
 	a.Workspace.WriteFile("hello.go", []byte("package main\n"), 0o644)
 
 	var out strings.Builder
-	if err := cmdSearch(a, []string{"zzznomatch"}, &out); err != nil {
-		t.Fatalf("cmdSearch: %v", err)
+	if err := cmdSearch(a, []string{"zzznomatch"}, &out); ExitCodeFor(err) != ClassNegative {
+		t.Fatalf("cmdSearch: expected a negative result for no matches, got: %v", err)
 	}
 	if len(a.History) != 0 {
 		t.Error("expected no history for zero matches")
@@ -244,17 +244,17 @@ func initGitRepo(t *testing.T, dir string) {
 func TestCmdGit_noArgs(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	if err := cmdGit(a, nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := cmdGit(a, nil, &out); ExitCodeFor(err) != ClassUsage {
+		t.Fatalf("expected a usage error, got: %v", err)
 	}
 }
 
 func TestCmdGit_disallowedSubcommand(t *testing.T) {
 	a := newTestAgent(t)
 	var out strings.Builder
-	cmdGit(a, []string{"push"}, &out)
-	if !strings.Contains(out.String(), "read-only") {
-		t.Error("expected rejection message for non-read-only subcommand")
+	err := cmdGit(a, []string{"push"}, &out)
+	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "read-only") {
+		t.Errorf("expected a usage error naming read-only subcommands, got: %v", err)
 	}
 	if len(a.History) != 0 {
 		t.Error("disallowed subcommand should not add to history")
