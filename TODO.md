@@ -82,6 +82,17 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
+- [ ] **Shell completion with an install option, as in antenna.** `harvey completion bash|powershell [-install]`,
+  following `antennaApp/completion.go` (shipped 2026-10-05; `InstallCompletion` is the install half).
+  This is the *shell* completion for the `harvey` binary's own verbs and flags (`init`, `help`, `-h`, ...
+  in `cmd/harvey/main.go`). It is separate from the in-REPL `/command` tab completion in
+  `design/tab-completion-design.md`. Harvey follows the exit-code convention, so a bad shell name is 2
+  and a failed install write is 73/74. Document it and add a test that keeps the verb list in step with
+  `main.go`. Tests first. Same behaviour as antenna: bash goes to the bash-completion user directory and
+  never overwrites a file harvey did not write; PowerShell writes beside the profile and adds one
+  dot-source line, once.
+
+
 
 - [x] **SUPERSEDED 2026-09-28 (harvey DR-0007): not implemented.** This item's own reason for buffering to JSONL — that classifying a scene EXT (LLM-triggered shell) vs INT (REPL-contained) needs a look at the whole session — stopped holding up once picked up: `RecordExteriorTurn` (`recorder.go`) already ships `EXT.` for a different, existing meaning (remote-endpoint routing), and the LLM-triggered-vs-REPL-typed distinction this item wanted is already expressed live, per call, with no buffering: `RecordShellCommand` (the REPL `!` path) emits `INT. SHELL`; LLM-triggered actions emit `INT. AGENT MODE` via `StartAgentScene`/`RecordAgentAction`. See `harvey:DR-0007` for the full reasoning, including the other reasons (crash-safety, decoupling from Fountain) considered and declined.
 
