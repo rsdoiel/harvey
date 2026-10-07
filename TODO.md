@@ -203,12 +203,25 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   `/model list` and the picker marked as such, and decide whether
   `/model pull NAME` belongs in harvey for both Ollama and hailo-ollama.
 
-- [ ] **Per-model prompt-size limits.** Hailo compiles each model with a fixed,
-  small context. llama3.2:3b breaks past about 3,300 characters of system
-  prompt, while harvey's assembled prompt is 6,249 (kb observation 367). Find
-  each model's limit (probe or table in the model cache), then trim the system
-  prompt to fit (drop the skills catalog first?) or refuse the model with a
-  clear message. Depends on the empty-reply bug being fixed so failures show.
+- [ ] **Per-model prompt-size limits.** Measured 2026-10-07 (kb 377): the cap is
+  on the WHOLE prompt (system + history + new message), not the system prompt;
+  llama3.2:3b on hailo-ollama passes at 3,000 characters and fails at 3,300 with
+  HTTP 500 "read failed". Harvey's own prompt is 6,249. Three layers, in order:
+  - [x] **Layer 1, 2026-10-07.** `ModelCapability.MaxPromptTokens` in the model
+    cache (chars/4 units, 0 = unknown), seeded at 700 for hailo llama3.2,
+    kept across re-probes, set with `/model limit`. Startup warns (exit 65 when
+    unattended) and each turn is refused before sending. Tests:
+    `prompt_limit_test.go`.
+  - [ ] **Layer 2.** Layered system prompt that shrinks to fit the budget
+    (skills catalog first, then HARVEY.md, then a compact preamble), and
+    history trimmed to the budget each turn. The catalog is concatenated into
+    `Config.SystemPrompt` today, so the layers must be separated first.
+  - [ ] **Layer 3.** Learn the limit from a failure: on a fast 500 or
+    `ErrStreamTruncated` with a large prompt, tell the user, retry once with a
+    smaller prompt, and record the lower limit (DR-0018: alert, do not shrink
+    silently).
+  Related: a client that abandons a request wedges hailo-ollama until it is
+  restarted (kb 378); a request that outlasts `ollama.timeout` does this.
 
 - [ ] **Embeddings on harvey.local.** hailo-ollama has no `/api/embed` and none
   of the curated models embeds, so RAG and memory saves fail against it. Install

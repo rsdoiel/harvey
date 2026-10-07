@@ -578,6 +578,11 @@ func (a *Agent) probeOllamaModelAndCache(model string) {
 	}
 	if existing, _ := a.ModelCache.Get(model); existing != nil {
 		cap.ToolMode = existing.ToolMode
+		// A limit the user set or one learned from a failure outranks the
+		// probe's seed; the seed only fills an empty one.
+		if existing.MaxPromptTokens > 0 {
+			cap.MaxPromptTokens = existing.MaxPromptTokens
+		}
 	}
 	_ = a.ModelCache.Set(cap)
 }

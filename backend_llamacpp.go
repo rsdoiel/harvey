@@ -448,13 +448,18 @@ func probeLlamaCppAndCache(a *Agent, modelName, baseURL string) {
 		return
 	}
 	props := ProbeLlamafileProps(baseURL)
-	_ = a.ModelCache.Set(&ModelCapability{
+	cap := &ModelCapability{
 		Name:          modelName,
 		SupportsTools: props.SupportsTools,
 		ToolMode:      props.ToolMode,
 		ProbeLevel:    "fast",
 		ProbedAt:      time.Now(),
-	})
+	}
+	if existing != nil {
+		// An unprobed entry can still hold a /model limit the user set.
+		cap.MaxPromptTokens = existing.MaxPromptTokens
+	}
+	_ = a.ModelCache.Set(cap)
 }
 
 // startLlamaCppModelPath starts llama-server for the model at modelPath,

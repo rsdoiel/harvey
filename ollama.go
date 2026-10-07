@@ -492,6 +492,11 @@ func FastProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability
 	// models never support tools.
 	if detail.Format == hailoModelFormat {
 		cap.SupportsTools = CapNo
+		// The same server rejects a prompt past a size that differs by model.
+		// Only llama3.2 has been measured; others stay unknown (0).
+		if strings.HasPrefix(detail.Family, "llama3.2") {
+			cap.MaxPromptTokens = hailoLlama32PromptTokens
+		}
 	}
 
 	// Tool support: prefer the capabilities array; fall back to template markers.
@@ -739,3 +744,9 @@ func (e *OllamaEmbedder) Embed(text string) ([]float64, error) {
 	}
 	return er.Embeddings[0], nil
 }
+
+// hailoLlama32PromptTokens seeds ModelCapability.MaxPromptTokens for llama3.2
+// models served by hailo-ollama. Measured on harvey.local, 2026-10-07: 3,000
+// characters (750 estimated tokens) succeed and 3,300 (825) fail with HTTP 500
+// "read failed". The seed sits just under the last size that worked.
+const hailoLlama32PromptTokens = 700

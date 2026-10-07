@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS model_capabilities (
     supports_embed         INTEGER NOT NULL DEFAULT -1,
     supports_tagged_blocks INTEGER NOT NULL DEFAULT -1,
     tool_mode              TEXT    NOT NULL DEFAULT '',
+    max_prompt_tokens      INTEGER NOT NULL DEFAULT 0,
     probe_level            TEXT    NOT NULL DEFAULT 'none',
     probed_at              DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -127,6 +128,7 @@ Columns added after the initial schema are migrated automatically via `ALTER TAB
 | `supports_embed` | INTEGER | CapabilityStatus enum: -1=unknown, 0=no, 1=yes |
 | `supports_tagged_blocks` | INTEGER | CapabilityStatus enum: -1=unknown, 0=no, 1=yes |
 | `tool_mode` | TEXT | Explicit tool-execution mode; `''`=auto, `structured`, `prose`, `inject`, `none` |
+| `max_prompt_tokens` | INTEGER | Most the whole prompt may hold, in chars/4 tokens; `0`=unknown. Set with `/model limit`; a re-probe keeps it |
 | `probe_level` | TEXT | "none", "fast", or "thorough" |
 | `probed_at` | DATETIME | When the last probe ran |
 
@@ -196,6 +198,13 @@ const (
 
 Set via `/model mode` inside Harvey. Re-probing a model does **not** overwrite
 a user-set `ToolMode` — only an explicit `/model mode` command changes it.
+
+`MaxPromptTokens` is the most the whole prompt (system prompt, history and the
+new message) may hold, in `estimateTokens` units (chars/4); `0` means unknown.
+It is separate from `ContextLength`: hailo-ollama's llama3.2:3b fails at about
+750 though no window is advertised. `FastProbeModel` seeds it for llama3.2
+models in hailo's `hef` format (700); `/model limit` sets it. A re-probe keeps a
+non-zero value, as it does `ToolMode`. Harvey refuses a turn over the limit.
 
 #### `ModelCache`
 

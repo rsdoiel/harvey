@@ -403,10 +403,10 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdPipeline,
 		},
 		"model": {
-			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...]",
+			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|limit [MODEL] N|alias ...]",
 			Description: "Unified model management across llamafile, llama.cpp, and Ollama backends",
 			Handler:     cmdModel,
-			Subcommands: []string{"list", "use", "show", "status", "stop", "clean", "mode", "alias"},
+			Subcommands: []string{"list", "use", "show", "status", "stop", "clean", "mode", "limit", "alias"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"use": func(a *Agent) []string { return allModelNames(a) },
 			},
@@ -810,6 +810,8 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 		return cmdModelAlias(a, args[1:], out)
 	case "mode":
 		return cmdModelMode(a, args[1:], out)
+	case "limit":
+		return cmdModelLimit(a, args[1:], out)
 	case "status":
 		return cmdModelStatus(a, out)
 	case "stop":
@@ -1149,6 +1151,95 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(out, "  %s: tool mode set to %s\n", modelName, mode)
+	return nil
+}
+
+/** cmdModelLimit shows or sets a model's prompt limit: the most the whole
+ * prompt (system prompt, history and the new message) may hold, in estimated
+ * tokens (chars/4). The limit is kept in the model cache and survives
+ * re-probing. "auto" (or 0) clears it, meaning unknown.
+ *
+ * Parameters:
+ *   a    (*Agent)    — the active Harvey agent.
+ *   args ([]string)  — arguments after "limit": none to show the active
+ *                      model's limit, "N" or "auto" for the active model, or
+ *                      "MODEL N" / "MODEL auto" for a named one.
+ *   out  (io.Writer) — output stream for user-facing messages.
+ *
+ * Returns:
+ *   error — a usage error for a bad value, negative when there is no cache
+ *           or active Ollama model, or a cache write failure.
+ *
+ * Example:
+ *   cmdModel(a, []string{"limit", "llama3.2:3b", "700"}, os.Stdout)
+ */
+func cmdModelLimit(a *Agent, args []string, out io.Writer) error {
+	if a.ModelCache == nil {
+		return Negativef("no model cache — run /probe first to populate it")
+	}
+	if len(args) > 2 {
+		return Usagef("usage: /model limit [MODEL] {N|auto}")
+	}
+	activeModelName := func() (string, error) {
+		ac, ok := a.Client.(*AnyLLMClient)
+		if !ok {
+			return "", Negativef("no active Ollama model")
+		}
+		return ac.ModelName(), nil
+	}
+
+	if len(args) == 0 {
+		name, err := activeModelName()
+		if err != nil {
+			return err
+		}
+		cap, err := a.ModelCache.Get(name)
+		if err != nil {
+			return err
+		}
+		if cap == nil || cap.MaxPromptTokens == 0 {
+			fmt.Fprintf(out, "  %s: prompt limit unknown (not set)\n", name)
+		} else {
+			fmt.Fprintf(out, "  %s: prompt limit %d tokens\n", name, cap.MaxPromptTokens)
+		}
+		return nil
+	}
+
+	var modelName, value string
+	if len(args) == 1 {
+		name, err := activeModelName()
+		if err != nil {
+			return err
+		}
+		modelName, value = name, args[0]
+	} else {
+		modelName, value = args[0], args[1]
+	}
+	limit := 0
+	if value != "auto" {
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 0 {
+			return Usagef("bad limit %q: use a whole number of tokens, or auto", value)
+		}
+		limit = n
+	}
+
+	cap, err := a.ModelCache.Get(modelName)
+	if err != nil {
+		return err
+	}
+	if cap == nil {
+		cap = &ModelCapability{Name: modelName, ProbeLevel: "none", ProbedAt: time.Now()}
+	}
+	cap.MaxPromptTokens = limit
+	if err := a.ModelCache.Set(cap); err != nil {
+		return err
+	}
+	if limit == 0 {
+		fmt.Fprintf(out, "  %s: prompt limit cleared (unknown)\n", modelName)
+	} else {
+		fmt.Fprintf(out, "  %s: prompt limit set to %d tokens\n", modelName, limit)
+	}
 	return nil
 }
 

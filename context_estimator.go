@@ -3,6 +3,7 @@ package harvey
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -249,4 +250,106 @@ func systemPromptExceedsContext(modelName string, n, limit int) error {
 	return Dataf("system prompt (~%d tokens) exceeds %s's context window (%d tokens) — "+
 		"switch to a model with a larger context, or shorten HARVEY.md / reduce the number "+
 		"of registered skills in agents/skills/", n, modelName, limit)
+}
+
+/** promptTokenLimit returns the active model's cached prompt limit: the most
+ * the whole prompt (system prompt, history and the new message) may hold, in
+ * estimateTokens units. It is separate from effectiveContextLimit, which is
+ * the context window: a model can fail on a prompt far below its window
+ * (hailo-ollama's llama3.2:3b, see kb observation 377).
+ *
+ * Returns:
+ *   int — the limit; 0 when unknown, or when there is no cache or active
+ *         Ollama model.
+ *
+ * Example:
+ *   if n := a.promptTokenLimit(); n > 0 { fmt.Printf("prompt limit %d\n", n) }
+ */
+func (a *Agent) promptTokenLimit() int {
+	if a.ModelCache == nil {
+		return 0
+	}
+	ac, ok := a.Client.(*AnyLLMClient)
+	if !ok {
+		return 0
+	}
+	if cap, _ := a.ModelCache.Get(ac.ModelName()); cap != nil {
+		return cap.MaxPromptTokens
+	}
+	return 0
+}
+
+/** promptBudgetError reports whether the conversation as it stands is too
+ * large for the active model's prompt limit, so a turn can be refused with a
+ * clear message instead of being sent to a server that answers HTTP 500 or
+ * stops responding. The count is the chars/4 estimate of the whole history,
+ * the same units the limit is stored in.
+ *
+ * Returns:
+ *   error — a data-class error naming the model, the sizes and the remedies;
+ *           nil when the prompt fits or the limit is unknown.
+ *
+ * Example:
+ *   if err := a.promptBudgetError(); err != nil { return err }
+ */
+func (a *Agent) promptBudgetError() error {
+	limit := a.promptTokenLimit()
+	if limit <= 0 {
+		return nil
+	}
+	n := estimateTokens(HistoryText(a.History))
+	if n < limit {
+		return nil
+	}
+	name := ""
+	if ac, ok := a.Client.(*AnyLLMClient); ok {
+		name = ac.ModelName()
+	}
+	if sys := a.systemPromptTokens(); sys >= limit {
+		return Dataf("the system prompt alone (~%d tokens) is over %s's prompt limit (%d tokens) — "+
+			"switch to another model, shorten HARVEY.md or register fewer skills, "+
+			"or change the limit with /model limit", sys, name, limit)
+	}
+	return Dataf("the prompt (~%d tokens) is over %s's prompt limit (%d tokens) — "+
+		"shorten the message or /clear the conversation, switch to another model, "+
+		"or change the limit with /model limit", n, name, limit)
+}
+
+/** checkSystemPromptBudget tells the user, before any turn, when the system
+ * prompt alone is over the active model's prompt limit, since every turn would
+ * then be refused. At a terminal it prints a warning and returns nil, so the
+ * person can still switch model or change the limit; with nobody to act on it
+ * it returns the error instead.
+ *
+ * Parameters:
+ *   out         (io.Writer) — destination for the warning.
+ *   interactive (bool)      — true when a person is at a terminal.
+ *
+ * Returns:
+ *   error — nil, or a data-class error when not interactive and over the limit.
+ *
+ * Example:
+ *   if err := a.checkSystemPromptBudget(out, interactive); err != nil { return err }
+ */
+func (a *Agent) checkSystemPromptBudget(out io.Writer, interactive bool) error {
+	err := a.promptBudgetError()
+	if err == nil {
+		return nil
+	}
+	if !interactive {
+		return err
+	}
+	fmt.Fprintf(out, yellow("  ⚠")+" %v\n", err)
+	return nil
+}
+
+// systemPromptTokens is the chars/4 estimate of the system message alone,
+// unpadded: the same units as the prompt limit, unlike systemPromptTokenEstimate.
+func (a *Agent) systemPromptTokens() int {
+	for _, m := range a.History {
+		if m.Role == "system" {
+			return estimateTokens(m.Content)
+		}
+	}
+	return 0
 }

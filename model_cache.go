@@ -157,6 +157,12 @@ type ModelCapability struct {
 	SupportsEmbed        CapabilityStatus
 	SupportsTaggedBlocks CapabilityStatus
 	ToolMode             string
+	// MaxPromptTokens caps the whole prompt (system prompt, history and the new
+	// message) in estimateTokens units (chars/4); 0 = unknown. It is separate
+	// from ContextLength: hailo-ollama's llama3.2:3b fails at about 750 of these
+	// though no context window is advertised. Set by the probe seed, by
+	// /model limit, or learned from a failure; a re-probe never overwrites it.
+	MaxPromptTokens int
 	ProbeLevel           string
 	ProbedAt             time.Time
 }
@@ -232,6 +238,7 @@ func OpenModelCache(ws *Workspace, customPath string) (*ModelCache, error) {
 	// silently ignore that error so this is safe to run on every open.
 	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN supports_tagged_blocks INTEGER NOT NULL DEFAULT -1`)
 	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN tool_mode TEXT NOT NULL DEFAULT ''`)
+	_, _ = db.Exec(`ALTER TABLE model_capabilities ADD COLUMN max_prompt_tokens INTEGER NOT NULL DEFAULT 0`)
 	return &ModelCache{db: db, path: dbPath}, nil
 }
 
@@ -267,7 +274,7 @@ func (mc *ModelCache) Close() error {
 func (mc *ModelCache) Get(name string) (*ModelCapability, error) {
 	const q = `
 	SELECT name, family, parameter_size, quantization, size_bytes,
-	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, probe_level, probed_at
+	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, max_prompt_tokens, probe_level, probed_at
 	FROM model_capabilities WHERE name = ?`
 	row := mc.db.QueryRow(q, name)
 	c, err := scanCapability(row)
@@ -297,8 +304,8 @@ func (mc *ModelCache) Set(cap *ModelCapability) error {
 	const q = `
 	INSERT INTO model_capabilities
 	    (name, family, parameter_size, quantization, size_bytes,
-	     context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, probe_level, probed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	     context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, max_prompt_tokens, probe_level, probed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(name) DO UPDATE SET
 	    family                 = excluded.family,
 	    parameter_size         = excluded.parameter_size,
@@ -309,13 +316,14 @@ func (mc *ModelCache) Set(cap *ModelCapability) error {
 	    supports_embed         = excluded.supports_embed,
 	    supports_tagged_blocks = excluded.supports_tagged_blocks,
 	    tool_mode              = excluded.tool_mode,
+	    max_prompt_tokens      = excluded.max_prompt_tokens,
 	    probe_level            = excluded.probe_level,
 	    probed_at              = excluded.probed_at`
 	_, err := mc.db.Exec(q,
 		cap.Name, cap.Family, cap.ParameterSize, cap.Quantization,
 		cap.SizeBytes, cap.ContextLength,
 		int(cap.SupportsTools), int(cap.SupportsEmbed), int(cap.SupportsTaggedBlocks),
-		cap.ToolMode, cap.ProbeLevel, cap.ProbedAt,
+		cap.ToolMode, cap.MaxPromptTokens, cap.ProbeLevel, cap.ProbedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("model_cache: set %s: %w", cap.Name, err)
@@ -356,7 +364,7 @@ func (mc *ModelCache) Delete(name string) error {
 func (mc *ModelCache) All() ([]ModelCapability, error) {
 	const q = `
 	SELECT name, family, parameter_size, quantization, size_bytes,
-	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, probe_level, probed_at
+	       context_length, supports_tools, supports_embed, supports_tagged_blocks, tool_mode, max_prompt_tokens, probe_level, probed_at
 	FROM model_capabilities ORDER BY name`
 	rows, err := mc.db.Query(q)
 	if err != nil {
@@ -392,7 +400,7 @@ func scanCapability(s scanner) (*ModelCapability, error) {
 		&c.Name, &c.Family, &c.ParameterSize, &c.Quantization,
 		&c.SizeBytes, &c.ContextLength,
 		&tools, &embed, &tagged,
-		&c.ToolMode, &c.ProbeLevel, &probedAt,
+		&c.ToolMode, &c.MaxPromptTokens, &c.ProbeLevel, &probedAt,
 	)
 	if err != nil {
 		return nil, err

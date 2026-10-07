@@ -483,6 +483,25 @@ the scene.
   The mode is persisted in the model cache (agents/model_cache.db) and survives
   across sessions. It overrides the auto-detected capability from capability probing.
 
+  /model limit
+    Show the prompt limit for the active model: the most the whole prompt
+    (system prompt, conversation so far, and your new message) may hold, in
+    estimated tokens (characters / 4). Some servers fail far below the model's
+    context window: hailo-ollama's llama3.2:3b answers HTTP 500 past about 750.
+    When a limit is known, Harvey refuses a turn that would pass it, with a
+    message, instead of sending it.
+
+  /model limit N
+    Set the prompt limit for the active model to N tokens. N must be a whole
+    number; 0 or auto clears it (unknown).
+
+  /model limit MODEL N
+    Set the limit for a named model (need not be the active one).
+
+  The limit is persisted in the model cache and survives re-probing. For
+  llama3.2 models served by hailo-ollama it starts at 700; other models start
+  unknown.
+
   /model stop
     Stop the active llamafile or llama.cpp server if Harvey started it.
     Backends not started by Harvey are left running.

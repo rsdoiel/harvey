@@ -489,6 +489,13 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 	}
 
+	// The prompt limit is separate from the context window: say so now if the
+	// system prompt alone is over it, rather than on the first refused turn.
+	if err := a.checkSystemPromptBudget(out, interactive); err != nil {
+		fmt.Fprintf(out, red("  ✗ %v\n"), err)
+		return err
+	}
+
 	// Debug log — open after backend is known so session_start can record the model.
 	if a.Config.Debug && a.SessionsDir != "" {
 		logsDir := filepath.Join(filepath.Dir(a.SessionsDir), "logs")
@@ -1151,6 +1158,14 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 
 	augmented += stmWarnNudge(a)
 	a.AddMessage("user", augmented)
+
+	// A model with a known prompt limit would answer HTTP 500, or stop
+	// responding, to a prompt past it. Refuse here with a message instead, and
+	// take the message back out so the conversation stays usable.
+	if err := a.promptBudgetError(); err != nil {
+		a.History = a.History[:len(a.History)-1]
+		return "", ChatStats{}, err
+	}
 
 	// Token-count warning — exact count for Ollama, estimated for other backends.
 	used, limit, exact := a.contextUsage()
