@@ -84,6 +84,10 @@ type OllamaConfig struct {
 	Model         string
 	ContextLength int
 	Timeout       time.Duration
+	// URLExplicit and ModelExplicit are set when --ollama or -m/--model gave
+	// the value, so LoadHarveyYAML leaves it alone: the command line wins.
+	URLExplicit   bool
+	ModelExplicit bool
 }
 
 /** LlamafileConfig holds settings for the llamafile inference backend.
@@ -847,10 +851,10 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 			cfg.Security.RunTimeout = d
 		}
 	}
-	if y.Ollama.URL != "" {
+	if y.Ollama.URL != "" && !cfg.Ollama.URLExplicit {
 		cfg.Ollama.URL = y.Ollama.URL
 	}
-	if y.Ollama.Model != "" {
+	if y.Ollama.Model != "" && !cfg.Ollama.ModelExplicit {
 		cfg.Ollama.Model = y.Ollama.Model
 	}
 	if y.Ollama.ContextLength > 0 {

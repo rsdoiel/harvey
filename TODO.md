@@ -8,7 +8,7 @@
   shows `llm_response` with no error. Reproduce with an `httptest` server that
   closes a chunked response early, through the real chat path; expect an error
   the user sees and a recorded failure.
-- [ ] **`--ollama` and `-m/--model` are overridden by `agents/harvey.yaml`.**
+- [x] **FIXED 2026-10-07.** `--ollama` and `-m/--model` were overridden by `agents/harvey.yaml`; the flags now set `Ollama.URLExplicit`/`ModelExplicit`, which `LoadHarveyYAML` honours. Tests: `cli_override_test.go`, `cmd/harvey/cli_override_test.go`. Original report: 
   `flagSpecs` in `cmd/harvey/main.go` sets `cfg.Ollama.URL`/`Model`, then `Run`
   (`terminal.go:407`) calls `LoadHarveyYAML`, which overwrites both when
   `ollama.url`/`ollama.model` are set (`config.go:850-855`). Seen: `harvey

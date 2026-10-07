@@ -64,8 +64,16 @@ type flagSpec struct {
 }
 
 var flagSpecs = []flagSpec{
-	{[]string{"-m", "--model"}, true, func(st *startState, v string) error { st.cfg.Ollama.Model = v; return nil }},
-	{[]string{"--ollama"}, true, func(st *startState, v string) error { st.cfg.Ollama.URL = v; return nil }},
+	{[]string{"-m", "--model"}, true, func(st *startState, v string) error {
+		st.cfg.Ollama.Model = v
+		st.cfg.Ollama.ModelExplicit = true
+		return nil
+	}},
+	{[]string{"--ollama"}, true, func(st *startState, v string) error {
+		st.cfg.Ollama.URL = v
+		st.cfg.Ollama.URLExplicit = true
+		return nil
+	}},
 	{[]string{"--llamafile"}, true, func(st *startState, v string) error {
 		// Session-only: create a synthetic registry entry without persisting.
 		// The file itself is checked once the whole command line has parsed, so
