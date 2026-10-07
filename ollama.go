@@ -108,8 +108,8 @@ type OllamaModelDetail struct {
 	RawParameters string
 	Template      string
 	Capabilities  []string // e.g. ["completion", "tools", "vision"]; nil on older Ollama
+	Format        string   // details.format, e.g. "gguf"; "hef" on hailo-ollama
 }
-
 
 /** ModelSummaries returns an OllamaModelSummary for every model installed on the
  * Ollama server. It also marks which models are currently loaded (running)
@@ -168,6 +168,9 @@ func (o *OllamaClient) ModelSummaries(ctx context.Context) ([]OllamaModelSummary
 	return summaries, nil
 }
 
+// hailoModelFormat is details.format for a model served by hailo-ollama.
+const hailoModelFormat = "hef"
+
 /** ShowModel fetches the full detail for a single installed model by calling
  * /api/show. The context window length is extracted from the model_info
  * metadata by searching for any key ending in ".context_length".
@@ -190,12 +193,14 @@ func (o *OllamaClient) ShowModel(ctx context.Context, model string) (OllamaModel
 		Verbose bool   `json:"verbose"`
 	}
 	type showResp struct {
-		Details      ollamaModelDetails     `json:"details"`
-		Parameters   string                 `json:"parameters"`
-		Template     string                 `json:"template"`
-		ModelInfo    map[string]interface{} `json:"model_info"`
-		Size         int64                  `json:"size"`
-		Capabilities []string               `json:"capabilities"`
+		Details    ollamaModelDetails `json:"details"`
+		Parameters string             `json:"parameters"`
+		Template   string             `json:"template"`
+		// ModelInfo is an object on Ollama but an empty string on hailo-ollama,
+		// so it is decoded late and used only when it is an object.
+		ModelInfo    json.RawMessage `json:"model_info"`
+		Size         int64           `json:"size"`
+		Capabilities []string        `json:"capabilities"`
 	}
 	body, _ := json.Marshal(showReq{Model: model, Verbose: true})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/show", bytes.NewReader(body))
@@ -219,7 +224,9 @@ func (o *OllamaClient) ShowModel(ctx context.Context, model string) (OllamaModel
 
 	// Extract context length — key is "<architecture>.context_length".
 	var ctxLen int
-	for k, v := range sr.ModelInfo {
+	var modelInfo map[string]interface{}
+	_ = json.Unmarshal(sr.ModelInfo, &modelInfo)
+	for k, v := range modelInfo {
 		if strings.HasSuffix(k, ".context_length") {
 			switch n := v.(type) {
 			case float64:
@@ -241,6 +248,7 @@ func (o *OllamaClient) ShowModel(ctx context.Context, model string) (OllamaModel
 		RawParameters: sr.Parameters,
 		Template:      sr.Template,
 		Capabilities:  sr.Capabilities,
+		Format:        sr.Details.Format,
 	}, nil
 }
 
@@ -397,8 +405,8 @@ var embedKeywords = []string{
 var toolMarkers = []string{
 	"{% if tools %}", "{%- if tools %}", // Llama 3, Granite (Jinja2)
 	"[TOOL_CALLS]", "[AVAILABLE_TOOLS]", // Mistral, Ministral
-	"<tool_call>", "✿FUNCTION✿",         // Qwen 2.x variants
-	"<function_calls>",                  // Gemma 4 and others
+	"<tool_call>", "✿FUNCTION✿", // Qwen 2.x variants
+	"<function_calls>", // Gemma 4 and others
 }
 
 // hasEmbedKeyword reports whether name contains a known embedding-model substring.
@@ -479,11 +487,20 @@ func FastProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability
 		ProbedAt:      time.Now(),
 	}
 
+	// hailo-ollama (models in Hailo's "hef" format) answers any /api/chat
+	// carrying a tools key with HTTP 500, whatever the template says, so its
+	// models never support tools.
+	if detail.Format == hailoModelFormat {
+		cap.SupportsTools = CapNo
+	}
+
 	// Tool support: prefer the capabilities array; fall back to template markers.
 	// ToolMode is intentionally left as ToolModeAuto so that toolsReliable()
 	// falls through to the SupportsTools==CapYes check. This preserves any
 	// mode the user set via /model mode across re-probes.
-	if len(detail.Capabilities) > 0 {
+	if cap.SupportsTools != CapUnknown {
+		// decided above
+	} else if len(detail.Capabilities) > 0 {
 		if capabilitiesContain(detail.Capabilities, "tools") {
 			cap.SupportsTools = CapYes
 		} else {

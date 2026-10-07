@@ -16,8 +16,13 @@
   --ollama http://localhost:8001` still connected to `:8000`, and `harvey -m
   qwen2.5-coder:1.5b` ran llama3.2:3b (kb observations 368, 371). The command
   line should win over the file.
-- [ ] **Tool support is read from the template, so hailo-ollama models get a
-  `tools` array they cannot take.** hailo-ollama returns HTTP 500 for any
+- [x] **FIXED 2026-10-07.** The real cause was not the template markers alone:
+  hailo-ollama's `/api/show` returns `"model_info": ""`, which made `ShowModel`
+  fail to decode, so the probe never ran and the mode stayed `auto` with tools
+  unknown. `ShowModel` now tolerates it, and `details.format == "hef"` probes
+  as no tool support (the server 500s on any `tools` key, even `[]`). Tests:
+  `hailo_probe_test.go`. Original report: **Tool support is read from the
+  template, so hailo-ollama models get a `tools` array they cannot take.** hailo-ollama returns HTTP 500 for any
   `/api/chat` carrying `tools`. With llama3.2:3b in tool mode `auto`, harvey
   sent `tools` and every prompt failed with `provider_error: 500` until
   `/model mode prose` was set by hand (kb observations 365, 371). The likely
