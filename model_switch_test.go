@@ -108,8 +108,8 @@ func TestAggregateModels_BothEnginesHaveCorrectPaths(t *testing.T) {
 	}
 
 	for _, m := range models {
-		// Ollama models have no filesystem path — only check local backends.
-		if m.Engine == "ollama" {
+		// Ollama and Hailo models have no filesystem path — only check local backends.
+		if m.Engine == "ollama" || m.Engine == "hailo" {
 			continue
 		}
 		if m.Path == "" {

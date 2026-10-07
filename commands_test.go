@@ -30,6 +30,8 @@ func newTestAgent(t *testing.T) *Agent {
 		Workspace: ws,
 		In:        strings.NewReader(""),
 		commands:  make(map[string]*Command),
+		// A test agent never sees this machine's Hailo card (harvey.local has one).
+		hailoDevicePath: filepath.Join(t.TempDir(), "no-hailo0"),
 	}
 }
 

@@ -172,6 +172,12 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 				return true, err
 			}
 			return true, startLlamaCppModelPath(a, path, out)
+		case "hailo":
+			if err := a.setHailoModel(full); err != nil {
+				return true, err
+			}
+			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
+			return true, nil
 		case "ollama":
 			a.useOllamaClient(full)
 			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))

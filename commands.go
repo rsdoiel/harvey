@@ -861,15 +861,19 @@ func cmdModelClean(a *Agent, out io.Writer) error {
 		}
 	}
 
-	if ProbeOllama(a.Config.Ollama.URL) {
-		if summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background()); err == nil {
-			for _, s := range summaries {
-				liveOllama = append(liveOllama, s.Name)
-			}
+	var liveHailo []string
+	if a.ollamaFamily().Relabelled {
+		migrateRelabelledAliases(a, out)
+	}
+	for _, m := range a.listFamilyModels() {
+		if m.Engine == "hailo" {
+			liveHailo = append(liveHailo, m.Name)
+		} else {
+			liveOllama = append(liveOllama, m.Name)
 		}
 	}
 
-	n, err := pruneStaleModelRefs(a, liveOllama, liveLlamafile, liveLlamaCpp, out)
+	n, err := pruneStaleModelRefs(a, liveOllama, liveLlamafile, liveLlamaCpp, liveHailo, out)
 	if err != nil {
 		return err
 	}
@@ -1555,11 +1559,12 @@ func truncate(s string, n int) string {
 // engine (ollama, llamafile, llamacpp); pass nil to skip that engine.
 // Aliases with Engine=="" are preserved — their backend is unknown.
 // Returns the count of removed aliases; saves config when changed.
-func pruneStaleModelRefs(a *Agent, liveOllama, liveLlamafile, liveLlamaCpp []string, out io.Writer) (int, error) {
+func pruneStaleModelRefs(a *Agent, liveOllama, liveLlamafile, liveLlamaCpp, liveHailo []string, out io.Writer) (int, error) {
 	byEngine := map[string]map[string]bool{
 		"ollama":    setOf(liveOllama),
 		"llamafile": setOf(liveLlamafile),
 		"llamacpp":  setOf(liveLlamaCpp),
+		"hailo":     setOf(liveHailo),
 	}
 
 	removed := 0

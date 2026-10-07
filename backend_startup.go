@@ -533,10 +533,16 @@ func (a *Agent) tryAdoptPriorBackend(agentsDir string, out io.Writer) bool {
 // leave the recorder naming the previous model. At startup the debug log and
 // recorder are not open yet, so both are no-ops there.
 func (a *Agent) useOllamaClient(model string) {
+	a.useModelAt("ollama", a.Config.Ollama.URL, model)
+}
+
+// useModelAt is useOllamaClient for any Ollama-shaped server: url is the
+// server the client talks to, engine the label the switch is recorded under.
+func (a *Agent) useModelAt(engine, url, model string) {
 	a.Config.Ollama.Model = model
-	a.Client = wireDebugLog(newOllamaLLMClient(a.Config.Ollama.URL, model, a.Config.Ollama.Timeout), a.DebugLog)
+	a.Client = wireDebugLog(newOllamaLLMClient(url, model, a.Config.Ollama.Timeout), a.DebugLog)
 	if a.Recorder != nil {
-		_ = a.Recorder.RecordModelSwitch(model, "ollama")
+		_ = a.Recorder.RecordModelSwitch(model, engine)
 	}
 }
 
@@ -567,12 +573,18 @@ func (a *Agent) setOllamaModel(model string) {
  *   a.probeOllamaModelAndCache("llama3.2:latest")
  */
 func (a *Agent) probeOllamaModelAndCache(model string) {
+	a.probeModelAndCache(a.Config.Ollama.URL, model)
+}
+
+// probeModelAndCache is probeOllamaModelAndCache for the server at url; the
+// cache row is keyed by the active backend's engine.
+func (a *Agent) probeModelAndCache(url, model string) {
 	if a.ModelCache == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cap, err := FastProbeModel(ctx, a.Config.Ollama.URL, model)
+	cap, err := FastProbeModel(ctx, url, model)
 	if err != nil {
 		return
 	}

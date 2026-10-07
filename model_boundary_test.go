@@ -88,7 +88,7 @@ func TestCmdModelClean_RemovesStaleOllamaAlias(t *testing.T) {
 	}
 
 	liveOllama := []string{"installed:8b"}
-	n, err := pruneStaleModelRefs(a, liveOllama, nil, nil, io.Discard)
+	n, err := pruneStaleModelRefs(a, liveOllama, nil, nil, nil, io.Discard)
 	if err != nil {
 		t.Fatalf("pruneStaleModelRefs: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestCmdModelClean_RemovesStaleLlamafileAlias(t *testing.T) {
 	}
 
 	liveLlamafile := []string{"bonsai-8b"}
-	n, err := pruneStaleModelRefs(a, nil, liveLlamafile, nil, io.Discard)
+	n, err := pruneStaleModelRefs(a, nil, liveLlamafile, nil, nil, io.Discard)
 	if err != nil {
 		t.Fatalf("pruneStaleModelRefs: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestCmdModelClean_PreservesLegacyAliasWithNoEngine(t *testing.T) {
 		"legacy": {Model: "some-model", Engine: ""}, // no engine — unknown provenance
 	}
 
-	n, err := pruneStaleModelRefs(a, nil, nil, nil, io.Discard)
+	n, err := pruneStaleModelRefs(a, nil, nil, nil, nil, io.Discard)
 	if err != nil {
 		t.Fatalf("pruneStaleModelRefs: %v", err)
 	}

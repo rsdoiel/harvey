@@ -5,7 +5,6 @@ package harvey
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -54,16 +53,8 @@ func aggregateModels(a *Agent) ([]ModelSummary, error) {
 	}
 
 	// Ollama — live query, silent if unreachable.
-	if ProbeOllama(a.Config.Ollama.URL) {
-		if summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background()); err == nil {
-			for _, s := range summaries {
-				all = append(all, ModelSummary{
-					Name:   s.Name,
-					Engine: "ollama",
-				})
-			}
-		}
-	}
+	// Ollama and, when a card or hailo.url is set, hailo-ollama — silent if unreachable.
+	all = append(all, a.listFamilyModels()...)
 
 	return all, nil
 }
@@ -224,6 +215,10 @@ func useSelectedModel(a *Agent, selected ModelSummary, out io.Writer, offerAlias
 				fmt.Fprintf(out, "  Probed: tools=%s  embed=%s  ctx=%d\n",
 					cap.SupportsTools, cap.SupportsEmbed, cap.ContextLength)
 			}
+		}
+	case "hailo":
+		if err := a.setHailoModel(selected.Name); err != nil {
+			return err
 		}
 	case "llamafile":
 		if err := switchLlamafileModel(a, selected.Name, selected.Path, out); err != nil {

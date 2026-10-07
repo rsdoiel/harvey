@@ -203,6 +203,7 @@ type Agent struct {
 	AuditBuffer                *AuditBuffer   // in-memory audit log ring buffer; nil until initialized
 	DebugLog                   *DebugLog      // JSONL diagnostic log; nil when --debug not set
 	Backend                    ManagedBackend // active inference backend; nil when no backend is wired
+	hailoDevicePath            string         // Hailo card device node; "" = /dev/hailo0 (tests set it)
 	ActiveRoute                string         // session-sticky route name; when set, prompts are auto-dispatched via @NAME
 	// ActiveStatus is the current turn's StatusReporter, set by runChatTurn
 	// alongside the ToolExecutor's own Status field and cleared once the
