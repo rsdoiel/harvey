@@ -79,6 +79,11 @@ type ollamaYAML struct {
 	Timeout       string `yaml:"timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
 }
 
+// skillsYAML is the on-disk representation of the skills: section in harvey.yaml.
+type skillsYAML struct {
+	Catalog string `yaml:"catalog,omitempty"` // "off" (default) or "full"
+}
+
 // securityYAML is the on-disk representation of the security: section in harvey.yaml.
 type securityYAML struct {
 	SafeMode        *bool               `yaml:"safe_mode,omitempty"`
@@ -108,6 +113,7 @@ type harveyYAML struct {
 	SensorInjectFormatFindings *bool          `yaml:"sensor_inject_format_findings,omitempty"`
 	Tools           toolsYAML                 `yaml:"tools,omitempty"`
 	ModelAliases    map[string]modelAliasYAML `yaml:"model_aliases,omitempty"`
+	Skills          skillsYAML                `yaml:"skills,omitempty"`
 	Ollama          ollamaYAML                `yaml:"ollama,omitempty"`
 	Security        securityYAML              `yaml:"security,omitempty"`
 	Session         sessionYAML               `yaml:"session,omitempty"`

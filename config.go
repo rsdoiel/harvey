@@ -160,6 +160,31 @@ type SessionConfig struct {
 	ReplayContinue   bool
 }
 
+// Values for SkillsConfig.Catalog (harvey.yaml skills.catalog).
+const (
+	// SkillsCatalogOff keeps the skills catalog out of the system prompt. The
+	// skills are still scanned and their slash commands registered. This is the
+	// default: the model cannot load a skill itself, so the catalog only costs
+	// tokens.
+	SkillsCatalogOff = "off"
+	// SkillsCatalogFull appends the full catalog (name and a one-line
+	// description per skill) to the system prompt.
+	SkillsCatalogFull = "full"
+)
+
+/** SkillsConfig holds settings for skill discovery and prompting.
+ *
+ * Fields:
+ *   Catalog (string) — SkillsCatalogOff (default) or SkillsCatalogFull: whether
+ *                      the catalog of available skills is put in the system prompt.
+ *
+ * Example:
+ *   cfg.Skills = SkillsConfig{Catalog: SkillsCatalogFull}
+ */
+type SkillsConfig struct {
+	Catalog string
+}
+
 /** Config holds Harvey's runtime configuration.
  *
  * Fields:
@@ -186,6 +211,7 @@ type Config struct {
 	RoutingEnabled bool            // when false, @mentions are rejected with a warning
 	ModelCacheDB   string          // path to model_cache.db; empty = harvey/model_cache.db
 	// Grouped settings
+	Skills    SkillsConfig
 	Ollama    OllamaConfig
 	Llamafile LlamafileConfig
 	Security  SecurityConfig
@@ -252,6 +278,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		WorkDir:      ".",
 		ModelAliases: make(map[string]ModelAlias),
+		Skills: SkillsConfig{Catalog: SkillsCatalogOff},
 		Ollama: OllamaConfig{
 			URL: "http://localhost:11434",
 		},
@@ -833,6 +860,13 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	if y.Security.SafeMode != nil {
 		cfg.Security.SafeMode = *y.Security.SafeMode
+	}
+	switch y.Skills.Catalog {
+	case "":
+	case SkillsCatalogOff, SkillsCatalogFull:
+		cfg.Skills.Catalog = y.Skills.Catalog
+	default:
+		return Configf("harvey.yaml: skills.catalog must be %q or %q, got %q", SkillsCatalogOff, SkillsCatalogFull, y.Skills.Catalog)
 	}
 	if y.SyntaxHighlight != nil {
 		cfg.SyntaxHighlight = *y.SyntaxHighlight

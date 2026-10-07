@@ -1684,37 +1684,18 @@ func (a *Agent) initMemory(out io.Writer) {
 }
 
 // loadSkills scans the standard skill directories, stores the catalog on the
-// agent, and appends the XML catalog block to the system prompt so the model
-// knows what skills are available. It also updates Config.SystemPrompt so
-// that /clear re-injects the catalog after resetting history. Non-fatal:
-// if no skills are found the function returns silently.
+// agent and registers the skill commands. Only when skills.catalog is "full"
+// does it also append the XML catalog block to the system prompt (the default,
+// "off", leaves the model's prompt alone: the user loads skills with /skill).
+// Non-fatal: if no skills are found the function returns silently.
 func (a *Agent) loadSkills(out io.Writer) {
 	cat := ScanSkills(a.Workspace.Root, a.Config.AgentsDir)
 	if len(cat) == 0 {
 		return
 	}
 	a.Skills = cat
-	block := CatalogSystemPromptBlock(cat)
-	a.catalogBlock = block // the first layer dropped to fit a model's prompt limit
-
-	// Persist in Config so ClearHistory() keeps the catalog across /clear.
-	if a.Config.SystemPrompt != "" {
-		a.Config.SystemPrompt += "\n\n" + block
-	} else {
-		a.Config.SystemPrompt = block
-	}
-
-	// Update the system message already in History (added before this call).
-	injected := false
-	for i, m := range a.History {
-		if m.Role == "system" {
-			a.History[i].Content += "\n\n" + block
-			injected = true
-			break
-		}
-	}
-	if !injected {
-		a.History = append([]Message{{Role: "system", Content: block}}, a.History...)
+	if a.Config.Skills.Catalog == SkillsCatalogFull {
+		a.injectSkillCatalog(CatalogSystemPromptBlock(cat))
 	}
 
 	proj, user := 0, 0
@@ -1736,6 +1717,27 @@ func (a *Agent) loadSkills(out io.Writer) {
 	}
 	fmt.Fprintf(out, green("✓")+" Skills: %d skill(s) available%s\n", len(cat), detail)
 	a.registerSkillCommands()
+}
+
+// injectSkillCatalog appends block to the system message in History and to
+// Config.SystemPrompt, so /clear re-injects it after resetting history, and
+// remembers it as the first layer dropped to fit a model's prompt limit.
+func (a *Agent) injectSkillCatalog(block string) {
+	a.catalogBlock = block
+
+	if a.Config.SystemPrompt != "" {
+		a.Config.SystemPrompt += "\n\n" + block
+	} else {
+		a.Config.SystemPrompt = block
+	}
+
+	for i, m := range a.History {
+		if m.Role == "system" {
+			a.History[i].Content += "\n\n" + block
+			return
+		}
+	}
+	a.History = append([]Message{{Role: "system", Content: block}}, a.History...)
 }
 
 /** askYesNo prints prompt, reads a line, and returns true for "y"/"yes".

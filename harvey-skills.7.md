@@ -22,8 +22,10 @@ is documented at <https://agentskills.io/home>.
 # HOW SKILLS WORK
 
   1. Discovery — Harvey scans the standard paths below and builds a catalog
-     of (name, description) pairs. The catalog is added to the system prompt
-     so the model knows what skills are available.
+     of (name, description) pairs. The catalog is kept out of the system prompt
+     by default, since the model cannot load a skill itself and the catalog
+     costs tokens on every turn. To put it in the prompt, set
+     skills: catalog: full in agents/harvey.yaml.
 
   2. Activation — type /skill load <name> to inject the full skill body into
      the conversation. The model then follows the skill's instructions for

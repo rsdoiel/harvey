@@ -474,7 +474,7 @@ You have access to the following slash commands: /read, /write, /run, /search,
 **Notes:**
 - The prompt is re-injected after `/clear`
 - Pinned context (from `/context add`) is injected after the system prompt
-- Skills catalog can be injected into the prompt via configuration
+- The skills catalog is not in the prompt by default; set `skills: catalog: full` in `agents/harvey.yaml` to add it (about 180 characters per skill)
 - **Cloud privacy:** When a cloud route (`@claude`, `@openrouter`, etc.) is
   active, HARVEY.md is sent to the remote provider verbatim. Avoid hardcoding
   absolute local paths in HARVEY.md. Use the `<!-- @files -->` dynamic marker

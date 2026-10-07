@@ -706,6 +706,7 @@ func TestLoadSkills_injectsIntoSystemPrompt(t *testing.T) {
 
 	ws, _ := NewWorkspace(dir)
 	cfg := DefaultConfig()
+	cfg.Skills.Catalog = SkillsCatalogFull
 	cfg.SystemPrompt = "You are Harvey."
 	a := NewAgent(cfg, ws)
 	a.AddMessage("system", cfg.SystemPrompt)
@@ -760,7 +761,9 @@ func TestLoadSkills_createsSystemMessageWhenNone(t *testing.T) {
 		"---\nname: bare-skill\ndescription: Skill with no prior system prompt.\n---\n")
 
 	ws, _ := NewWorkspace(dir)
-	a := NewAgent(DefaultConfig(), ws)
+	cfg := DefaultConfig()
+	cfg.Skills.Catalog = SkillsCatalogFull
+	a := NewAgent(cfg, ws)
 	// No system message added — simulate no HARVEY.md.
 
 	a.loadSkills(&strings.Builder{})
@@ -776,5 +779,41 @@ func TestLoadSkills_createsSystemMessageWhenNone(t *testing.T) {
 	}
 	if !hasSys {
 		t.Error("expected a system message to be created when none existed")
+	}
+}
+
+// By default the catalog stays out of the system prompt: the model cannot load
+// a skill itself, so the catalog only costs tokens. The skills are still
+// scanned and their commands registered.
+func TestLoadSkills_catalogOffByDefault(t *testing.T) {
+	dir := t.TempDir()
+	writeSkillFile(t, filepath.Join(dir, "agents", "skills"), "quiet-skill",
+		"---\nname: quiet-skill\ndescription: Not in the prompt unless asked.\n---\n")
+
+	ws, _ := NewWorkspace(dir)
+	cfg := DefaultConfig()
+	cfg.SystemPrompt = "You are Harvey."
+	a := NewAgent(cfg, ws)
+	a.AddMessage("system", cfg.SystemPrompt)
+
+	var out strings.Builder
+	a.loadSkills(&out)
+
+	if len(a.Skills) != 1 {
+		t.Fatalf("skills must still be scanned: got %d", len(a.Skills))
+	}
+	if !strings.Contains(out.String(), "1 skill") {
+		t.Errorf("startup line should still report the skill: %q", out.String())
+	}
+	if a.catalogBlock != "" {
+		t.Errorf("catalogBlock = %q, want empty", a.catalogBlock)
+	}
+	for _, m := range a.History {
+		if m.Role == "system" && strings.Contains(m.Content, "quiet-skill") {
+			t.Errorf("system message must not carry the catalog: %q", m.Content)
+		}
+	}
+	if strings.Contains(a.Config.SystemPrompt, "quiet-skill") {
+		t.Errorf("Config.SystemPrompt must not carry the catalog (/clear would restore it)")
 	}
 }

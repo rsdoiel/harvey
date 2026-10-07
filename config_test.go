@@ -724,3 +724,60 @@ func TestSaveMemoryConfig_KeepsLearnModel(t *testing.T) {
 		t.Errorf("reloaded LearnModel = %q, %v; want granite", cfg2.LearnModel, err)
 	}
 }
+
+// ─── skills.catalog ───────────────────────────────────────────────────────────
+
+func loadSkillsYAMLForTest(t *testing.T, body string) (*Config, error) {
+	t.Helper()
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	if err := os.MkdirAll(filepath.Join(dir, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "agents", "harvey.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	return cfg, LoadHarveyYAML(ws, cfg)
+}
+
+func TestSkillsCatalog_DefaultsToOff(t *testing.T) {
+	if got := DefaultConfig().Skills.Catalog; got != SkillsCatalogOff {
+		t.Errorf("default skills catalog = %q, want %q", got, SkillsCatalogOff)
+	}
+}
+
+func TestLoadHarveyYAML_SkillsCatalogFull(t *testing.T) {
+	cfg, err := loadSkillsYAMLForTest(t, "skills:\n  catalog: full\n")
+	if err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Skills.Catalog != SkillsCatalogFull {
+		t.Errorf("skills catalog = %q, want %q", cfg.Skills.Catalog, SkillsCatalogFull)
+	}
+}
+
+func TestLoadHarveyYAML_SkillsCatalogUnsetKeepsOff(t *testing.T) {
+	cfg, err := loadSkillsYAMLForTest(t, "ollama:\n  model: x\n")
+	if err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.Skills.Catalog != SkillsCatalogOff {
+		t.Errorf("skills catalog = %q, want %q", cfg.Skills.Catalog, SkillsCatalogOff)
+	}
+}
+
+// A value read from harvey.yaml that is outside the vocabulary is a
+// configuration error (exit 78), not something to guess at.
+func TestLoadHarveyYAML_SkillsCatalogBadValueIsConfigError(t *testing.T) {
+	_, err := loadSkillsYAMLForTest(t, "skills:\n  catalog: sometimes\n")
+	if err == nil {
+		t.Fatal("expected an error for skills.catalog: sometimes")
+	}
+	if got := ExitCodeFor(err); got != ClassConfig {
+		t.Errorf("exit class = %v, want ClassConfig", got)
+	}
+	if !strings.Contains(err.Error(), "skills.catalog") {
+		t.Errorf("error should name the key: %v", err)
+	}
+}
