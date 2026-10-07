@@ -379,9 +379,10 @@ func (a *Agent) learnPromptLimit(n int, out io.Writer) {
 	if !ok || a.ModelCache == nil {
 		return
 	}
-	cap, _ := a.ModelCache.Get(ac.ModelName())
+	key := a.modelKey(ac.ModelName())
+	cap, _ := a.ModelCache.Get(key)
 	if cap == nil {
-		cap = &ModelCapability{Name: ac.ModelName(), ProbeLevel: "none", ProbedAt: time.Now()}
+		cap = &ModelCapability{Name: key, ProbeLevel: "none", ProbedAt: time.Now()}
 	}
 	if cap.MaxPromptTokens > 0 && cap.MaxPromptTokens <= n {
 		return

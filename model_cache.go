@@ -411,3 +411,46 @@ func scanCapability(s scanner) (*ModelCapability, error) {
 	c.ProbedAt, _ = time.Parse(time.DateTime, probedAt)
 	return &c, nil
 }
+
+/** modelKey returns the model cache key for a model served by an engine. The
+ * same model name on two engines is two models (different weights, speed and
+ * limits), so the engine is part of the key. Ollama and an unknown engine use
+ * the bare name, which keeps every row written before the engine was part of
+ * the key valid.
+ *
+ * Parameters:
+ *   engine (string) — backend name, e.g. "ollama", "hailo", "llamacpp"; "" = ollama.
+ *   model  (string) — full model name, e.g. "llama3.2:3b".
+ *
+ * Returns:
+ *   string — the key to pass to ModelCache.Get, Set and Delete.
+ *
+ * Example:
+ *   modelKey("hailo", "llama3.2:3b")  // "hailo/llama3.2:3b"
+ *   modelKey("ollama", "llama3.2:3b") // "llama3.2:3b"
+ */
+func modelKey(engine, model string) string {
+	if engine == "" || engine == "ollama" {
+		return model
+	}
+	return engine + "/" + model
+}
+
+/** modelKey returns the cache key for model on the agent's active engine; a
+ * nil Backend counts as ollama.
+ *
+ * Parameters:
+ *   model (string) — full model name.
+ *
+ * Returns:
+ *   string — the cache key.
+ *
+ * Example:
+ *   cap, _ := a.ModelCache.Get(a.modelKey(ac.ModelName()))
+ */
+func (a *Agent) modelKey(model string) string {
+	if a.Backend == nil {
+		return modelKey("", model)
+	}
+	return modelKey(a.Backend.Name(), model)
+}

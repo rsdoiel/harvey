@@ -273,7 +273,7 @@ func (a *Agent) promptTokenLimit() int {
 	if !ok {
 		return 0
 	}
-	if cap, _ := a.ModelCache.Get(ac.ModelName()); cap != nil {
+	if cap, _ := a.ModelCache.Get(a.modelKey(ac.ModelName())); cap != nil {
 		return cap.MaxPromptTokens
 	}
 	return 0

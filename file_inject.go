@@ -345,7 +345,7 @@ func (a *Agent) modelToolMode() string {
 	if !ok {
 		return ToolModeAuto
 	}
-	cap, err := a.ModelCache.Get(ac.ModelName())
+	cap, err := a.ModelCache.Get(a.modelKey(ac.ModelName()))
 	if err != nil || cap == nil {
 		return ToolModeAuto
 	}
@@ -388,7 +388,7 @@ func (a *Agent) toolsReliable() bool {
 	if !ok {
 		return false
 	}
-	cap, err := a.ModelCache.Get(ac.ModelName())
+	cap, err := a.ModelCache.Get(a.modelKey(ac.ModelName()))
 	if err != nil || cap == nil {
 		return false
 	}

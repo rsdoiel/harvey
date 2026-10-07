@@ -239,7 +239,7 @@ func (a *Agent) effectiveContextLimit() int {
 	}
 	if a.ModelCache != nil {
 		if ac, ok := a.Client.(*AnyLLMClient); ok {
-			if cap, _ := a.ModelCache.Get(ac.ModelName()); cap != nil && cap.ContextLength > 0 {
+			if cap, _ := a.ModelCache.Get(a.modelKey(ac.ModelName())); cap != nil && cap.ContextLength > 0 {
 				return cap.ContextLength
 			}
 		}

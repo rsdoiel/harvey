@@ -576,7 +576,8 @@ func (a *Agent) probeOllamaModelAndCache(model string) {
 	if err != nil {
 		return
 	}
-	if existing, _ := a.ModelCache.Get(model); existing != nil {
+	cap.Name = a.modelKey(model)
+	if existing, _ := a.ModelCache.Get(cap.Name); existing != nil {
 		cap.ToolMode = existing.ToolMode
 		// A limit the user set or one learned from a failure outranks the
 		// probe's seed; the seed only fills an empty one.

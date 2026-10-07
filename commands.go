@@ -1103,7 +1103,7 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		cap, err := a.ModelCache.Get(name)
+		cap, err := a.ModelCache.Get(a.modelKey(name))
 		if err != nil {
 			return err
 		}
@@ -1131,12 +1131,12 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 		return Usagef("unknown mode %q. Valid modes: auto, structured, prose, inject, none", mode)
 	}
 
-	cap, err := a.ModelCache.Get(modelName)
+	cap, err := a.ModelCache.Get(a.modelKey(modelName))
 	if err != nil {
 		return err
 	}
 	if cap == nil {
-		cap = &ModelCapability{Name: modelName, ProbeLevel: "none", ProbedAt: time.Now()}
+		cap = &ModelCapability{Name: a.modelKey(modelName), ProbeLevel: "none", ProbedAt: time.Now()}
 	}
 	if mode == "auto" {
 		cap.ToolMode = ToolModeAuto
@@ -1193,7 +1193,7 @@ func cmdModelLimit(a *Agent, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		cap, err := a.ModelCache.Get(name)
+		cap, err := a.ModelCache.Get(a.modelKey(name))
 		if err != nil {
 			return err
 		}
@@ -1224,12 +1224,12 @@ func cmdModelLimit(a *Agent, args []string, out io.Writer) error {
 		limit = n
 	}
 
-	cap, err := a.ModelCache.Get(modelName)
+	cap, err := a.ModelCache.Get(a.modelKey(modelName))
 	if err != nil {
 		return err
 	}
 	if cap == nil {
-		cap = &ModelCapability{Name: modelName, ProbeLevel: "none", ProbedAt: time.Now()}
+		cap = &ModelCapability{Name: a.modelKey(modelName), ProbeLevel: "none", ProbedAt: time.Now()}
 	}
 	cap.MaxPromptTokens = limit
 	if err := a.ModelCache.Set(cap); err != nil {
@@ -1627,7 +1627,7 @@ func ollamaModelTable(a *Agent, summaries []OllamaModelSummary, out io.Writer, n
 	for i, s := range summaries {
 		var cap *ModelCapability
 		if a.ModelCache != nil {
-			cap, _ = a.ModelCache.Get(s.Name)
+			cap, _ = a.ModelCache.Get(a.modelKey(s.Name))
 		}
 
 		tools := CapUnknown

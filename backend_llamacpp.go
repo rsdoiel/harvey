@@ -443,13 +443,14 @@ func probeLlamaCppAndCache(a *Agent, modelName, baseURL string) {
 	if a.ModelCache == nil {
 		return
 	}
-	existing, _ := a.ModelCache.Get(modelName)
+	key := modelKey("llamacpp", modelName)
+	existing, _ := a.ModelCache.Get(key)
 	if existing != nil && existing.ProbeLevel != "none" {
 		return
 	}
 	props := ProbeLlamafileProps(baseURL)
 	cap := &ModelCapability{
-		Name:          modelName,
+		Name:          key,
 		SupportsTools: props.SupportsTools,
 		ToolMode:      props.ToolMode,
 		ProbeLevel:    "fast",

@@ -220,7 +220,7 @@ func useSelectedModel(a *Agent, selected ModelSummary, out io.Writer, offerAlias
 	case "ollama":
 		a.setOllamaModel(selected.Name) // probes and caches the model's capabilities
 		if a.ModelCache != nil {
-			if cap, _ := a.ModelCache.Get(selected.Name); cap != nil && cap.ProbeLevel == "fast" {
+			if cap, _ := a.ModelCache.Get(modelKey(selected.Engine, selected.Name)); cap != nil && cap.ProbeLevel == "fast" {
 				fmt.Fprintf(out, "  Probed: tools=%s  embed=%s  ctx=%d\n",
 					cap.SupportsTools, cap.SupportsEmbed, cap.ContextLength)
 			}

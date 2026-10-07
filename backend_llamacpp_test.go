@@ -471,7 +471,7 @@ func TestLlamaCppProbeAndCache_WritesCapabilityOnToolModel(t *testing.T) {
 
 	probeLlamaCppAndCache(a, "phi4-Q4_K_M", srv.URL)
 
-	cap, err := cache.Get("phi4-Q4_K_M")
+	cap, err := cache.Get(modelKey("llamacpp", "phi4-Q4_K_M"))
 	if err != nil || cap == nil {
 		t.Fatal("expected capability entry in ModelCache after probe, got nil")
 	}
@@ -507,7 +507,7 @@ func TestLlamaCppProbeAndCache_SkipsIfAlreadyProbed(t *testing.T) {
 
 	// Pre-seed the cache with a thorough probe so the fast probe should be skipped.
 	_ = cache.Set(&ModelCapability{
-		Name:          "phi4-Q4_K_M",
+		Name:          modelKey("llamacpp", "phi4-Q4_K_M"),
 		SupportsTools: CapNo,
 		ProbeLevel:    "thorough",
 		ProbedAt:      time.Now(),
@@ -522,7 +522,7 @@ func TestLlamaCppProbeAndCache_SkipsIfAlreadyProbed(t *testing.T) {
 	if probeCalled {
 		t.Error("expected probe to be skipped for already-probed model, but /props was called")
 	}
-	cap, _ := cache.Get("phi4-Q4_K_M")
+	cap, _ := cache.Get(modelKey("llamacpp", "phi4-Q4_K_M"))
 	if cap.SupportsTools != CapNo {
 		t.Error("existing cache entry should not have been overwritten")
 	}
