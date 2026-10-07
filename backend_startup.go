@@ -119,6 +119,7 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 
 	if ProbeOllama(a.Config.Ollama.URL) {
 		fmt.Fprintln(out, green("  ✓")+" Ollama is running")
+		a.noteRelabelledServer(out)
 		if m := os.Getenv("OLLAMA_MODELS"); m != "" {
 			fmt.Fprintf(out, dim("  ⚠ Ollama was already running — OLLAMA_MODELS=%s may not be in effect.\n"), m)
 			fmt.Fprintln(out, dim("    Stop Ollama, then restart Harvey to apply ollama.env settings."))
@@ -548,6 +549,12 @@ func (a *Agent) useModelAt(engine, url, model string) {
 
 // setOllamaModel wires Config.Ollama.Model, Client, and Backend for the given Ollama model name.
 func (a *Agent) setOllamaModel(model string) {
+	// A Hailo server sitting at ollama.url is hailo-ollama, not Ollama (DR-0030).
+	if a.ollamaFamily().Relabelled {
+		if err := a.setHailoModel(model); err == nil {
+			return
+		}
+	}
 	agentsDir := filepath.Join(a.Workspace.Root, "agents")
 	a.useOllamaClient(model)
 	b := NewOllamaBackend(a.Config.Ollama.URL, a.Config.Ollama.Timeout, agentsDir)

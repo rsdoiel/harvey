@@ -170,3 +170,21 @@ func migrateRelabelledAliases(a *Agent, out io.Writer) int {
 	fmt.Fprintf(out, dim("  %d model alias(es) moved from engine ollama to hailo: the server at ollama.url is hailo-ollama.\n    Move the URL to hailo.url in harvey.yaml to free ollama.url for embeddings.\n"), n)
 	return n
 }
+
+/** noteRelabelledServer tells the user, when the server at ollama.url is
+ * hailo-ollama, that Harvey treats it as the hailo engine, and moves their
+ * "ollama" aliases to "hailo". It prints nothing for a plain Ollama server.
+ *
+ * Parameters:
+ *   out (io.Writer) — destination for the notice.
+ *
+ * Example:
+ *   a.noteRelabelledServer(out)
+ */
+func (a *Agent) noteRelabelledServer(out io.Writer) {
+	if !a.ollamaFamily().Relabelled {
+		return
+	}
+	fmt.Fprintf(out, dim("  AI HAT+ 2: the server at %s is hailo-ollama; Harvey uses it as engine hailo.\n"), a.Config.Ollama.URL)
+	migrateRelabelledAliases(a, out)
+}

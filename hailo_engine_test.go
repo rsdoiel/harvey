@@ -248,3 +248,50 @@ func TestMigrateRelabelledAliases(t *testing.T) {
 		t.Errorf("second run migrated %d and said %q; want silence", n, out.String())
 	}
 }
+
+// harvey.local's hand-edited setup: every path that selects an "Ollama" model
+// reaches setOllamaModel, which must notice the server is hailo-ollama.
+func TestSetOllamaModel_OnRelabelledServerUsesHailoEngine(t *testing.T) {
+	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
+	a := familyAgent(t, hl.URL, hl.URL, false, true)
+	mc, _ := OpenModelCache(a.Workspace, "")
+	defer mc.Close()
+	a.ModelCache = mc
+
+	a.setOllamaModel("llama3.2:3b")
+	if a.Backend == nil || a.Backend.Name() != "hailo" {
+		t.Fatalf("backend = %v, want hailo", a.Backend)
+	}
+	if cap, _ := mc.Get("hailo/llama3.2:3b"); cap == nil {
+		t.Error("no capability row under hailo/llama3.2:3b")
+	}
+}
+
+func TestSetOllamaModel_OnPlainOllamaStaysOllama(t *testing.T) {
+	ol, _ := ollamaFamilyServer(t, false, "llama3")
+	a := familyAgent(t, ol.URL, "http://127.0.0.1:1", false, false)
+	a.setOllamaModel("llama3")
+	if a.Backend == nil || a.Backend.Name() != "ollama" {
+		t.Errorf("backend = %v, want ollama", a.Backend)
+	}
+}
+
+// The start-up notice: said once, and only when the server is relabelled.
+func TestNoteRelabelledServer(t *testing.T) {
+	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
+	a := familyAgent(t, hl.URL, hl.URL, false, true)
+	a.Config.ModelAliases["a"] = ModelAlias{Model: "llama3.2:3b", Engine: "ollama"}
+	var out strings.Builder
+	a.noteRelabelledServer(&out)
+	if !strings.Contains(out.String(), "hailo") || a.Config.ModelAliases["a"].Engine != "hailo" {
+		t.Errorf("notice %q; alias %+v", out.String(), a.Config.ModelAliases["a"])
+	}
+
+	ol, _ := ollamaFamilyServer(t, false, "llama3")
+	b := familyAgent(t, ol.URL, "http://127.0.0.1:1", false, false)
+	out.Reset()
+	b.noteRelabelledServer(&out)
+	if out.Len() != 0 {
+		t.Errorf("plain Ollama produced output: %q", out.String())
+	}
+}

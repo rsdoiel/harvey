@@ -461,8 +461,14 @@ machine without the HAT pays no cost. A server is recognised by its
 `GET /hailo/v1/list` answer; regular Ollama does not have that route. Setting
 `hailo.url` is also how a `hailo-ollama` on another machine is used.
 
-Detection is built (`DetectHailo`); it is not yet wired into start-up, the model
-picker or `/model list`. See `agents/projects/harvey/design/hailo-engine-detection-design.md`
+`/model list`, the model picker and `/model use` show Hailo models labelled
+`[hailo]` beside Ollama's. A server at `ollama.url` that answers
+`/hailo/v1/list` is treated as engine `hailo` (there is then no Ollama server),
+and aliases with `engine: ollama` move to `engine: hailo` with a one-line
+notice; move the URL to `hailo.url` to get Ollama back for embeddings. This
+check runs only when a card is present or `hailo.url` is set. The start-up
+picker does not list Hailo models beside Ollama's yet; use `/model use`.
+See `agents/projects/harvey/design/hailo-engine-detection-design.md`
 and DR-0030.
 
 ## Conventions
