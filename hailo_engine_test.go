@@ -295,3 +295,115 @@ func TestNoteRelabelledServer(t *testing.T) {
 		t.Errorf("plain Ollama produced output: %q", out.String())
 	}
 }
+
+// ─── start-up picker ─────────────────────────────────────────────────────────
+
+func TestPickOllamaModel_OffersHailoBesideOllama(t *testing.T) {
+	ol, _ := ollamaFamilyServer(t, false, "llama3", "phi4")
+	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b", "qwen2.5-coder:1.5b")
+	a := familyAgent(t, ol.URL, hl.URL, true, true)
+
+	var out strings.Builder
+	// entries: 1 llama3, 2 phi4, 3 llama3.2:3b [hailo], 4 qwen2.5-coder:1.5b [hailo]
+	if err := a.pickOllamaModel(newTestBufioReader("4\n"), &out, ""); err != nil {
+		t.Fatalf("pickOllamaModel: %v", err)
+	}
+	for _, want := range []string{"llama3", "phi4", "llama3.2:3b", "[hailo]", "[ollama]"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("picker output lacks %q:\n%s", want, out.String())
+		}
+	}
+	if a.Backend == nil || a.Backend.Name() != "hailo" || a.Backend.ActiveModel() != "qwen2.5-coder:1.5b" {
+		t.Errorf("backend = %v, want hailo qwen2.5-coder:1.5b", a.Backend)
+	}
+}
+
+func TestPickOllamaModel_OllamaOnlyIsUnchanged(t *testing.T) {
+	ol, _ := ollamaFamilyServer(t, false, "llama3", "phi4")
+	a := familyAgent(t, ol.URL, "http://127.0.0.1:1", false, false)
+	var out strings.Builder
+	if err := a.pickOllamaModel(newTestBufioReader("2\n"), &out, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "TOOLS") { // the capability table
+		t.Errorf("Ollama-only start no longer shows the capability table:\n%s", out.String())
+	}
+	if a.Backend == nil || a.Backend.Name() != "ollama" || a.Backend.ActiveModel() != "phi4" {
+		t.Errorf("backend = %v", a.Backend)
+	}
+}
+
+// A session model that exists on both engines is not guessed at.
+func TestPickOllamaModel_PreferredModelOnBothEnginesAsks(t *testing.T) {
+	ol, _ := ollamaFamilyServer(t, false, "llama3.2:3b", "phi4")
+	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
+	a := familyAgent(t, ol.URL, hl.URL, true, true)
+	var out strings.Builder
+	if err := a.pickOllamaModel(newTestBufioReader("3\n"), &out, "llama3.2:3b"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "more than one engine") {
+		t.Errorf("no note about the ambiguity:\n%s", out.String())
+	}
+	if a.Backend == nil || a.Backend.Name() != "hailo" {
+		t.Errorf("backend = %v, want the user's pick (hailo)", a.Backend)
+	}
+}
+
+func TestPickOllamaModel_PreferredModelOnOneEngineIsUsed(t *testing.T) {
+	ol, _ := ollamaFamilyServer(t, false, "llama3", "phi4")
+	hl, _ := ollamaFamilyServer(t, true, "qwen2.5-coder:1.5b")
+	a := familyAgent(t, ol.URL, hl.URL, true, true)
+	var out strings.Builder
+	if err := a.pickOllamaModel(newTestBufioReader(""), &out, "qwen2.5-coder:1.5b"); err != nil {
+		t.Fatal(err)
+	}
+	if a.Backend == nil || a.Backend.Name() != "hailo" {
+		t.Errorf("backend = %v, want hailo from the session", a.Backend)
+	}
+}
+
+// Ollama stopped, Hailo up: no "Start Ollama now?" question, the Hailo models are offered.
+func TestSelectBackend_HailoUpOllamaDown(t *testing.T) {
+	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
+	a := familyAgent(t, "http://127.0.0.1:1", hl.URL, true, true)
+	var out strings.Builder
+	if err := a.selectBackend(newTestBufioReader(""), &out, ""); err != nil {
+		t.Fatalf("selectBackend: %v", err)
+	}
+	if strings.Contains(out.String(), "Start Ollama now") {
+		t.Errorf("asked to start Ollama although Hailo is up:\n%s", out.String())
+	}
+	if a.Backend == nil || a.Backend.Name() != "hailo" {
+		t.Errorf("backend = %v, want hailo", a.Backend)
+	}
+}
+
+// harvey.local: ollama.url is the Hailo server.
+func TestSelectBackend_RelabelledServerSaysHailo(t *testing.T) {
+	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
+	a := familyAgent(t, hl.URL, hl.URL, false, true)
+	var out strings.Builder
+	_ = a.selectBackend(newTestBufioReader(""), &out, "")
+	if !strings.Contains(out.String(), "hailo-ollama is running") {
+		t.Errorf("start-up did not say hailo-ollama:\n%s", out.String())
+	}
+	if a.Backend == nil || a.Backend.Name() != "hailo" {
+		t.Errorf("backend = %v, want hailo", a.Backend)
+	}
+}
+
+// The combined picker used when llamafiles are registered lists Hailo too.
+func TestPickBackend_ListsHailoModels(t *testing.T) {
+	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
+	a := familyAgent(t, "http://127.0.0.1:1", hl.URL, true, true)
+	a.Config.Llamafile.Models = []LlamafileEntry{{Name: "phi4", Path: "/models/phi4.llamafile"}}
+	var out strings.Builder
+	_ = a.pickBackend(newTestBufioReader("2\n"), &out, "")
+	if !strings.Contains(out.String(), "llama3.2:3b") || !strings.Contains(out.String(), "(hailo)") {
+		t.Errorf("combined picker lacks the Hailo model:\n%s", out.String())
+	}
+	if a.Backend == nil || a.Backend.Name() != "hailo" {
+		t.Errorf("backend = %v, want hailo", a.Backend)
+	}
+}

@@ -1,6 +1,7 @@
 package harvey
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -187,4 +188,82 @@ func (a *Agent) noteRelabelledServer(out io.Writer) {
 	}
 	fmt.Fprintf(out, dim("  AI HAT+ 2: the server at %s is hailo-ollama; Harvey uses it as engine hailo.\n"), a.Config.Ollama.URL)
 	migrateRelabelledAliases(a, out)
+}
+
+// hasEngine reports whether any of models is served by engine.
+func hasEngine(models []ModelSummary, engine string) bool {
+	for _, m := range models {
+		if m.Engine == engine {
+			return true
+		}
+	}
+	return false
+}
+
+/** pickFamilyModel is the start-up model picker for when a Hailo server is in
+ * play: the models of Ollama and hailo-ollama in one numbered list, each
+ * labelled with its engine. A single model is used outright. A session model
+ * that exists on exactly one engine is used automatically; one that exists on
+ * more than one is not guessed at, and the list is shown with a note.
+ *
+ * Parameters:
+ *   reader         (*bufio.Reader)  — reads the user's selection.
+ *   out            (io.Writer)      — destination for the list and prompt.
+ *   preferredModel (string)         — model name from a resumed session; "" for none.
+ *   models         ([]ModelSummary) — the models on both servers.
+ *
+ * Returns:
+ *   error — when the chosen Hailo model cannot be wired.
+ *
+ * Example:
+ *   err := a.pickFamilyModel(reader, os.Stdout, "", a.listFamilyModels())
+ */
+func (a *Agent) pickFamilyModel(reader *bufio.Reader, out io.Writer, preferredModel string, models []ModelSummary) error {
+	use := func(m ModelSummary, note string) error {
+		if m.Engine == "hailo" {
+			if err := a.setHailoModel(m.Name); err != nil {
+				return err
+			}
+		} else {
+			a.setOllamaModel(m.Name)
+		}
+		fmt.Fprintf(out, "  Using model: %s %s%s\n", cyan(m.Name), dim("["+m.Engine+"]"), note)
+		return nil
+	}
+
+	if len(models) == 1 {
+		return use(models[0], "")
+	}
+
+	if preferredModel != "" {
+		var matches []ModelSummary
+		for _, m := range models {
+			if strings.EqualFold(extractModelName(m.Name), preferredModel) || strings.EqualFold(m.Name, preferredModel) {
+				matches = append(matches, m)
+			}
+		}
+		switch len(matches) {
+		case 1:
+			return use(matches[0], " "+dim("(from session)"))
+		case 0:
+			fmt.Fprintf(out, dim("  Session model %q not found; select from available:\n"), preferredModel)
+		default:
+			fmt.Fprintf(out, dim("  Session model %q exists on more than one engine; choose:\n"), preferredModel)
+		}
+	}
+
+	fmt.Fprintln(out, "  Available models:")
+	for i, m := range models {
+		fmt.Fprintf(out, "  [%d] %-40s %s\n", i+1, m.Name, dim("["+m.Engine+"]"))
+	}
+	fmt.Fprintf(out, "    Select model [1-%d, default=1]: ", len(models))
+	line, _ := reader.ReadString('\n')
+	idx := 1
+	if trimmed := strings.TrimSpace(line); trimmed != "" {
+		fmt.Sscanf(trimmed, "%d", &idx)
+	}
+	if idx < 1 || idx > len(models) {
+		idx = 1
+	}
+	return use(models[idx-1], "")
 }

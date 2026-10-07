@@ -33,6 +33,7 @@ func runFixture(t *testing.T, terminal bool) (*Agent, *Workspace) {
 	cfg.Llamafile.ModelsDir = t.TempDir()
 	cfg.Security.SafeMode = true
 	a := NewAgent(cfg, ws)
+	a.hailoDevicePath = filepath.Join(t.TempDir(), "no-hailo0") // not this machine's card
 	devnull, err := os.Open(os.DevNull)
 	if err != nil {
 		t.Fatal(err)

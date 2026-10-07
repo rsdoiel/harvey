@@ -115,19 +115,35 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 	}
 
 	// Case 3: No llamafiles registered — try Ollama.
-	fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.Ollama.URL)
+	family := a.ollamaFamily()
+	if family.Relabelled {
+		fmt.Fprintf(out, "\n  Checking hailo-ollama at %s...\n", a.Config.Ollama.URL)
+	} else {
+		fmt.Fprintf(out, "\n  Checking Ollama at %s...\n", a.Config.Ollama.URL)
+	}
 
 	if ProbeOllama(a.Config.Ollama.URL) {
-		fmt.Fprintln(out, green("  ✓")+" Ollama is running")
-		a.noteRelabelledServer(out)
-		if m := os.Getenv("OLLAMA_MODELS"); m != "" {
-			fmt.Fprintf(out, dim("  ⚠ Ollama was already running — OLLAMA_MODELS=%s may not be in effect.\n"), m)
-			fmt.Fprintln(out, dim("    Stop Ollama, then restart Harvey to apply ollama.env settings."))
+		if family.Relabelled {
+			fmt.Fprintln(out, green("  ✓")+" hailo-ollama is running")
+		} else {
+			fmt.Fprintln(out, green("  ✓")+" Ollama is running")
+			if m := os.Getenv("OLLAMA_MODELS"); m != "" {
+				fmt.Fprintf(out, dim("  ⚠ Ollama was already running — OLLAMA_MODELS=%s may not be in effect.\n"), m)
+				fmt.Fprintln(out, dim("    Stop Ollama, then restart Harvey to apply ollama.env settings."))
+			}
 		}
+		a.noteRelabelledServer(out)
 		return a.pickOllamaModel(reader, out, preferredModel)
 	}
 
 	fmt.Fprintln(out, yellow("  ✗")+" Ollama is not running")
+
+	// Ollama is down but a Hailo server answers: offer its models instead of
+	// asking to start Ollama.
+	if family.HailoURL != "" {
+		fmt.Fprintf(out, green("  ✓")+" hailo-ollama is running at %s\n", family.HailoURL)
+		return a.pickOllamaModel(reader, out, preferredModel)
+	}
 
 	if askYesNo(reader, out, "    Start Ollama now? [Y/n] ", true) {
 		PrintOllamaEnv(out)
@@ -254,16 +270,12 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 		}
 	}
 
-	if ProbeOllama(a.Config.Ollama.URL) {
-		if summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background()); err == nil {
-			for _, s := range summaries {
-				opts = append(opts, option{
-					label: s.Name + dim(" (ollama)"),
-					kind:  "ollama",
-					name:  s.Name,
-				})
-			}
-		}
+	for _, m := range a.listFamilyModels() {
+		opts = append(opts, option{
+			label: m.Name + dim(" ("+m.Engine+")"),
+			kind:  m.Engine,
+			name:  m.Name,
+		})
 	}
 
 	if len(opts) == 0 {
@@ -301,6 +313,13 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 		return a.startAndUseLlamafile(entry, out)
 	case "llamacpp":
 		return startLlamaCppModelPath(a, chosen.path, out)
+	}
+	if chosen.kind == "hailo" {
+		if err := a.setHailoModel(chosen.name); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen.name))
+		return nil
 	}
 	// Ollama model.
 	a.setOllamaModel(chosen.name)
@@ -401,6 +420,11 @@ func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredMo
 		a.setOllamaModel(a.Config.Ollama.Model)
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.Ollama.Model))
 		return nil
+	}
+
+	// With a Hailo server in play the models of both engines are offered together.
+	if family := a.listFamilyModels(); hasEngine(family, "hailo") {
+		return a.pickFamilyModel(reader, out, preferredModel, family)
 	}
 
 	summaries, err := NewOllamaClient(a.Config.Ollama.URL, "").ModelSummaries(context.Background())

@@ -467,7 +467,9 @@ machine without the HAT pays no cost. A server is recognised by its
 and aliases with `engine: ollama` move to `engine: hailo` with a one-line
 notice; move the URL to `hailo.url` to get Ollama back for embeddings. This
 check runs only when a card is present or `hailo.url` is set. The start-up
-picker does not list Hailo models beside Ollama's yet; use `/model use`.
+picker lists both servers' models together, each labelled; with Ollama stopped
+and Hailo running it offers the Hailo models instead of asking to start Ollama.
+A resumed session's model that exists on both engines is not chosen for you.
 See `agents/projects/harvey/design/hailo-engine-detection-design.md`
 and DR-0030.
 
