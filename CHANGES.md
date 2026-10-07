@@ -1,5 +1,14 @@
 # CHANGES
 
+## Unreleased
+
+### Fixed
+
+- Switching to an Ollama model mid-session (`/model use`, the picker, a model alias,
+  or returning from a step dispatched with `@name` or `[model: name]`) no longer drops
+  the `--debug` log, and the session transcript now records the switch and attributes
+  later replies to the new model instead of the previous one.
+
 ## v0.0.18 (2026-10-02)
 
 ### Changed

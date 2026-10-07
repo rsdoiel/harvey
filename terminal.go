@@ -173,23 +173,15 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 			}
 			return true, startLlamaCppModelPath(a, path, out)
 		case "ollama":
-			a.Config.Ollama.Model = full
-			a.Client = newOllamaLLMClient(a.Config.Ollama.URL, full, a.Config.Ollama.Timeout)
+			a.useOllamaClient(full)
 			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
-			if a.Recorder != nil {
-				_ = a.Recorder.RecordModelSwitch(full, "ollama")
-			}
 			return true, nil
 		default:
 			// "llamafile" or "" (legacy): try switchLlamafileModel, then fall back to Ollama.
 			err := switchLlamafileModel(a, full, "", out)
 			if err != nil {
-				a.Config.Ollama.Model = full
-				a.Client = newOllamaLLMClient(a.Config.Ollama.URL, full, a.Config.Ollama.Timeout)
+				a.useOllamaClient(full)
 				fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
-				if a.Recorder != nil {
-					_ = a.Recorder.RecordModelSwitch(full, "ollama")
-				}
 			}
 			return true, nil
 		}

@@ -526,11 +526,24 @@ func (a *Agent) tryAdoptPriorBackend(agentsDir string, out io.Writer) bool {
 	return true
 }
 
+// useOllamaClient makes model the active Ollama model: it sets
+// Config.Ollama.Model, installs a new client carrying the debug log, and
+// records the switch in the session transcript. Every path that changes the
+// Ollama model goes through here, so none of them can drop the debug log or
+// leave the recorder naming the previous model. At startup the debug log and
+// recorder are not open yet, so both are no-ops there.
+func (a *Agent) useOllamaClient(model string) {
+	a.Config.Ollama.Model = model
+	a.Client = wireDebugLog(newOllamaLLMClient(a.Config.Ollama.URL, model, a.Config.Ollama.Timeout), a.DebugLog)
+	if a.Recorder != nil {
+		_ = a.Recorder.RecordModelSwitch(model, "ollama")
+	}
+}
+
 // setOllamaModel wires Config.Ollama.Model, Client, and Backend for the given Ollama model name.
 func (a *Agent) setOllamaModel(model string) {
 	agentsDir := filepath.Join(a.Workspace.Root, "agents")
-	a.Config.Ollama.Model = model
-	a.Client = newOllamaLLMClient(a.Config.Ollama.URL, model, a.Config.Ollama.Timeout)
+	a.useOllamaClient(model)
 	b := NewOllamaBackend(a.Config.Ollama.URL, a.Config.Ollama.Timeout, agentsDir)
 	b.SetActiveModel(model)
 	b.running = true // we know Ollama is reachable at this point

@@ -24,23 +24,17 @@
   first, since the cached row showed `supports_tools` unknown. The probe should
   catch this, either by recognising the server or by a live tool test, and
   fall back to prose.
-- [ ] **Switching to an Ollama model mid-session leaves the transcript naming
-  the old model.** Seen 2026-10-06 (`harvey-session-20261006-204135.spmd`,
-  kb observation 372): the session started on llama3.2:3b and switched to
-  qwen2.5-coder:1.5b; the reply was attributed to LLAMA3.2 while the stats line
-  said qwen2.5-coder:1.5b, and no `[[model switch]]` note was written.
-  `useSelectedModel` (picker, and `/model use NAME`'s fallback match) calls
-  `Agent.setOllamaModel` (`backend_startup.go:530`), which replaces `a.Client`
-  but never calls `Recorder.RecordModelSwitch`. Test through `/model use` with a
-  name that only the fallback match finds.
-- [ ] **`--debug` stops logging LLM requests after an Ollama model switch.**
-  Same session: the JSONL log has only `session_start`, no `llm_request` or
-  `llm_response` (kb observation 372). `setOllamaModel` and both `ollama`
-  branches of `attemptModelSwitch` (`terminal.go:175-193`) build a new
-  `AnyLLMClient` and never copy `a.DebugLog` onto it, unlike
-  `useLlamafileEntry` (`backend_startup.go:60-62`). One helper that installs a
-  client (debug log, recorder note, label) would fix both bugs and keep the
-  paths from drifting again.
+- [x] **FIXED 2026-10-06.** Switching to an Ollama model mid-session left the
+  transcript naming the old model and stopped `--debug` logging LLM requests
+  (kb observation 372; seen in `harvey-session-20261006-204135.spmd`). Cause:
+  `setOllamaModel` (picker and `/model use NAME`'s fallback match), both `ollama`
+  branches of `attemptModelSwitch`, and the Ollama `Restore` after a dispatched
+  step each built a new client without the debug log; the picker path and
+  `Restore` also wrote no `[[model switch]]` note. All four now go through
+  `Agent.useOllamaClient`, which sets the model, wires the debug log and records
+  the switch. Tests: `model_switch_ollama_test.go`, red first, through `/model use` and
+  `resolveDispatchTarget`. Not covered: `startLlamaCppModelPath` also installs a
+  client without the debug log or a switch note; untested and unchanged.
 
 - [x] **FIXED 2026-09-25.** `getting_started.md` was stale (21 registered commands missing, `/llamafile` and `/ollama` documented though no longer registered, `/kb` subcommands short). Command tables now come from the registry; the `/kb` registry entry itself omitted `learn`, `source`, `retract`, `cite`, `show` and `check-retractions` and is fixed (`kb_registry_test.go` keeps it in step with `cmdKB`).
 - [x] **FIXED 2026-09-25.** `/model use NAME` only searched the registry and aliases, so an Ollama model could be reached only through the picker. It now falls back to every model `/model list` shows: exact name (case-insensitive), then a unique prefix; an ambiguous prefix lists the candidates. Tests: `model_use_name_test.go`.

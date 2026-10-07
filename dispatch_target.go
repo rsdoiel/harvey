@@ -130,8 +130,7 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 			_, _ = switchFn(prevLlamafileActive, out)
 			return
 		}
-		a.Config.Ollama.Model = prevOllamaModel
-		a.Client = newOllamaLLMClient(a.Config.Ollama.URL, prevOllamaModel, a.Config.Ollama.Timeout)
+		a.useOllamaClient(prevOllamaModel)
 	}
 
 	return DispatchTarget{Client: wireDebugLog(a.Client, a.DebugLog), Restore: restore}, true, nil
