@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -143,6 +144,16 @@ func (a *AnyLLMClient) ChatWithTools(ctx context.Context, messages []Message, to
 	return a.chatInternal(ctx, messages, tools, out)
 }
 
+/** ErrStreamTruncated marks a chat reply whose stream ended before the server
+ * said it was done: the connection was closed early, or the server sent
+ * nothing. The reply so far is incomplete, so Chat returns it as an error
+ * rather than as an empty or partial success. It classifies as io (exit 74).
+ *
+ * Example:
+ *   if errors.Is(err, harvey.ErrStreamTruncated) { retry() }
+ */
+var ErrStreamTruncated = errors.New("chat stream truncated")
+
 // chatInternal is the shared implementation for Chat and ChatWithTools.
 // When tools is nil/empty, no tools are sent and tool calls are never returned.
 func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, tools []anyllm.Tool, out io.Writer) (ChatStats, []anyllm.ToolCall, error) {
@@ -166,6 +177,9 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 	// accumulatedCalls holds tool call deltas merged by index.
 	var accumulatedCalls []anyllm.ToolCall
 	var stats ChatStats
+	// finished is set when a chunk carries a finish reason. A stream that ends
+	// without one was cut off: the provider does not report that as an error.
+	finished := false
 
 	for chunk := range chunks {
 		if len(chunk.Choices) == 0 {
@@ -176,6 +190,9 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 			continue
 		}
 		choice := chunk.Choices[0]
+		if choice.FinishReason != "" {
+			finished = true
+		}
 		if delta := choice.Delta.Content; delta != "" {
 			fmt.Fprint(out, delta)
 		}
@@ -195,6 +212,12 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 	}
 
 	if err := <-errs; err != nil {
+		a.DebugLog.LogError("llm_stream", err.Error())
+		return ChatStats{}, nil, err
+	}
+
+	if !finished {
+		err := ClassedAs(ClassIO, fmt.Errorf("%w: the %s stream ended before the reply was complete", ErrStreamTruncated, a.provName))
 		a.DebugLog.LogError("llm_stream", err.Error())
 		return ChatStats{}, nil, err
 	}

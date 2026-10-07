@@ -1,7 +1,8 @@
 
 ## Bugs
 
-- [ ] **A failed or truncated chat stream shows as an empty reply, not an
+- [x] **FIXED 2026-10-07** (`ErrStreamTruncated`, exit class io; tests in
+  `chat_stream_failure_test.go`). **A failed or truncated chat stream shows as an empty reply, not an
   error.** Found on harvey.local 2026-10-06 (kb observation 367): when
   hailo-ollama closes `/api/chat` with no data (llama3.2:3b past its prompt
   limit), harvey prints nothing, records a 0-token reply, and the `--debug` log
