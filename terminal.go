@@ -1232,6 +1232,16 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		a.History = a.History[:len(a.History)-1]
 		return "", ChatStats{}, context.Canceled
 	}
+	// A failure that looks like an oversize prompt gets one retry on a smaller
+	// copy of the conversation; a success also teaches Harvey the model's limit.
+	if chatErr != nil && !useStructuredTools {
+		if st, ok := a.retryWithSmallerPrompt(ctx, chatErr, &buf, out); ok {
+			stats, chatErr = st, nil
+			// The retry replaced the history with a shorter copy, so the length
+			// noted before the call no longer marks where this turn began.
+			histLenBeforeChat = len(a.History)
+		}
+	}
 	if errors.Is(chatErr, ErrToolLoopExceeded) {
 		// Small models (e.g. llama3.2:3b) sometimes call tools indefinitely
 		// and never produce a text response. Warn and retry without tools.

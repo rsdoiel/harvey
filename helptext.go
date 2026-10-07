@@ -503,6 +503,11 @@ the scene.
   HARVEY.md, then the full preamble is swapped for a short one) and the oldest
   whole turns of the conversation are dropped, each time saying so.
 
+  When no limit is known and a turn fails the way an oversize prompt does
+  (the server returns HTTP 500, or the reply is cut off), Harvey retries up to
+  three times on smaller copies of the conversation. The first one that works
+  is kept, its size is recorded as the model's limit, and Harvey says so.
+
   The limit is persisted in the model cache and survives re-probing. For
   llama3.2 models served by hailo-ollama it starts at 700; other models start
   unknown.

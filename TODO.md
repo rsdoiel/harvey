@@ -231,10 +231,17 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
     context). Both print what they cut. Tests: `prompt_fit_test.go`. Side effect:
     `/clear` now expands HARVEY.md's dynamic sections as startup does; it used to
     re-inject them unexpanded.
-  - [ ] **Layer 3.** Learn the limit from a failure: on a fast 500 or
-    `ErrStreamTruncated` with a large prompt, tell the user, retry once with a
-    smaller prompt, and record the lower limit (DR-0018: alert, do not shrink
-    silently).
+  - [x] **Layer 3, 2026-10-07.** A turn that fails like an oversize prompt (a cut
+    stream, a context-length error, a provider HTTP 500; not a refused connection
+    or a missing model) and whose prompt is at least 200 tokens is retried on
+    smaller copies of the conversation, at 70%, 45% and 25% of the failed size
+    (`retryWithSmallerPrompt`, `prompt_fit.go`). The first success replaces the
+    history with the smaller copy and records its size as the model's limit; if
+    none succeeds nothing changes and the original error is shown. Failures on
+    hailo-ollama are fast and only a success is slow, which is why a ladder is
+    affordable. Not done: the tool-loop path (`RunToolLoop`) does not retry.
+    Tests: `prompt_learn_test.go`. The tests caught a panic: a successful retry
+    swaps in a shorter history, so `histLenBeforeChat` had to be re-captured.
   Related: a client that abandons a request wedges hailo-ollama until it is
   restarted (kb 378); a request that outlasts `ollama.timeout` does this.
 

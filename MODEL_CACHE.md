@@ -212,6 +212,10 @@ HARVEY.md, then swapping the full preamble for a compact one; and the oldest
 whole turns of the history are dropped before each send. Each step is reported.
 A turn that still does not fit is refused, not sent.
 
+With no limit known, a turn that fails like an oversize prompt is retried on
+copies of the conversation at 70%, 45% and 25% of the failed size. The first
+retry that succeeds replaces the history and its size is stored as the limit.
+
 #### `ModelCache`
 
 The main handle for the model cache database.
