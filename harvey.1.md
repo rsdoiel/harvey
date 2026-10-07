@@ -52,7 +52,9 @@ init <source>
   standalone .yaml file with a model_aliases: map at the top level.
 
 -m, --model MODEL
-: Ollama model to use on startup
+: Ollama or Hailo model to use on startup. Write engine/model (hailo/llama3.2:3b,
+  ollama/llama3.2:3b) to name the engine; a bare name that both servers have
+  asks at a terminal and is a usage error (exit 2) otherwise
 
 --ollama URL
 : Ollama base URL (default: http://localhost:11434)

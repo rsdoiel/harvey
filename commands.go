@@ -798,11 +798,15 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 			if m, ambiguous, ok := matchModel(models, args[1]); ok {
 				return defaultClass(ClassUnavailable, useSelectedModel(a, m, out, false))
 			} else if len(ambiguous) > 0 {
-				var names []string
-				for _, c := range ambiguous {
-					names = append(names, fmt.Sprintf("%s [%s]", c.Name, c.Engine))
+				// The same name on two engines is asked about, never guessed.
+				if sameNameOnSeveralEngines(ambiguous) {
+					m, cerr := a.chooseAmong(args[1], ambiguous, out)
+					if cerr != nil {
+						return cerr
+					}
+					return defaultClass(ClassUnavailable, useSelectedModel(a, m, out, false))
 				}
-				return Usagef("%q matches several models (%s); use the full name, or /model use for a picker", args[1], strings.Join(names, ", "))
+				return ambiguousModelError(args[1], ambiguous)
 			}
 		}
 		return Negativef("model %q not found — see /model list, or /model use (no arg) for a picker", args[1])
@@ -1107,7 +1111,7 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		cap, err := a.ModelCache.Get(a.modelKey(name))
+		cap, err := a.ModelCache.Get(a.cacheKeyFor(name))
 		if err != nil {
 			return err
 		}
@@ -1135,12 +1139,12 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 		return Usagef("unknown mode %q. Valid modes: auto, structured, prose, inject, none", mode)
 	}
 
-	cap, err := a.ModelCache.Get(a.modelKey(modelName))
+	cap, err := a.ModelCache.Get(a.cacheKeyFor(modelName))
 	if err != nil {
 		return err
 	}
 	if cap == nil {
-		cap = &ModelCapability{Name: a.modelKey(modelName), ProbeLevel: "none", ProbedAt: time.Now()}
+		cap = &ModelCapability{Name: a.cacheKeyFor(modelName), ProbeLevel: "none", ProbedAt: time.Now()}
 	}
 	if mode == "auto" {
 		cap.ToolMode = ToolModeAuto
@@ -1197,7 +1201,7 @@ func cmdModelLimit(a *Agent, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		cap, err := a.ModelCache.Get(a.modelKey(name))
+		cap, err := a.ModelCache.Get(a.cacheKeyFor(name))
 		if err != nil {
 			return err
 		}
@@ -1228,12 +1232,12 @@ func cmdModelLimit(a *Agent, args []string, out io.Writer) error {
 		limit = n
 	}
 
-	cap, err := a.ModelCache.Get(a.modelKey(modelName))
+	cap, err := a.ModelCache.Get(a.cacheKeyFor(modelName))
 	if err != nil {
 		return err
 	}
 	if cap == nil {
-		cap = &ModelCapability{Name: a.modelKey(modelName), ProbeLevel: "none", ProbedAt: time.Now()}
+		cap = &ModelCapability{Name: a.cacheKeyFor(modelName), ProbeLevel: "none", ProbedAt: time.Now()}
 	}
 	cap.MaxPromptTokens = limit
 	if err := a.ModelCache.Set(cap); err != nil {

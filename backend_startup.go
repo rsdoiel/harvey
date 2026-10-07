@@ -416,8 +416,10 @@ func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error
  */
 func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredModel string) error {
 	// Command-line --model flag always wins.
-	if a.Config.Ollama.Model != "" {
-		a.setOllamaModel(a.Config.Ollama.Model)
+	if flag := a.Config.Ollama.Model; flag != "" {
+		if err := a.useStartupModel(flag, out); err != nil {
+			return err
+		}
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.Ollama.Model))
 		return nil
 	}

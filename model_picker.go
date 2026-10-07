@@ -142,6 +142,16 @@ var listLocalModels = aggregateModels
  *   m, ambiguous, ok := matchModel(models, "apert")
  */
 func matchModel(models []ModelSummary, query string) (ModelSummary, []ModelSummary, bool) {
+	// engine/model selects within one engine.
+	if engine, rest := parseQualifiedModel(strings.TrimSpace(query)); engine != "" {
+		var same []ModelSummary
+		for _, m := range models {
+			if strings.EqualFold(m.Engine, engine) {
+				same = append(same, m)
+			}
+		}
+		models, query = same, rest
+	}
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
 		return ModelSummary{}, nil, false

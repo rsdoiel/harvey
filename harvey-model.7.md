@@ -34,7 +34,11 @@ History is preserved — the switch is like a new character entering the scene.
 
   /model use NAME
     Switch to the named model. Harvey checks llamafile models first, then
-    Ollama models.
+    Ollama and Hailo models. NAME may be written engine/model (hailo/llama3.2:3b,
+    ollama/llama3.2:3b, llamacpp/..., llamafile/...) to name the engine; only
+    those four prefixes are read as an engine. A bare name that exists on more
+    than one engine is never chosen for you: at a terminal Harvey lists the
+    qualified forms and asks, and otherwise it exits 2 naming them.
 
   /model status
     Show whether the active backend is reachable.
