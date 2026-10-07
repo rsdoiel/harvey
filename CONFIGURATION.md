@@ -477,7 +477,14 @@ What hailo-ollama cannot do is stated once, in a table keyed by engine
 `/model mode` says), does not ask it to embed or tokenize (token counts are the
 chars/4 estimate), and does not ask it which models are running. A model in
 Hailo's `hef` format on a server Harvey was not told is Hailo is held to the same
-row once it is probed. Embeddings always use `ollama.url`.
+row once it is probed. Embeddings always use `ollama.url`. When one fails on a machine where Hailo is in
+use and Ollama is not there, the error says so plainly (`Hailo cannot embed; no
+Ollama at http://localhost:11434`, or, when `ollama.url` is itself the Hailo
+server, how to separate the two URLs). On a machine with a card whose server is
+not running, start-up prints one line, `AI HAT+ 2 found, hailo-ollama is not
+running at URL`, with `systemctl --user start hailo-ollama` when
+`~/.config/systemd/user/hailo-ollama.service` exists. Harvey does not start the
+server itself.
 See `agents/projects/harvey/design/hailo-engine-detection-design.md`
 and DR-0030.
 

@@ -87,6 +87,9 @@ func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
  *   err := agent.selectBackend(reader, os.Stdout, "GEMMA4")
  */
 func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredModel string) error {
+	// A Hailo card whose server is stopped: say so once, before choosing a backend.
+	a.hailoHint(out)
+
 	// Case 0: llama.cpp models dir has *.gguf files — probe server, offer to start.
 	if len(a.Config.LlamaCpp.ModelsDir) > 0 || a.Config.LlamaCpp.URL != "" {
 		agentsDir := filepath.Join(a.Workspace.Root, "agents")

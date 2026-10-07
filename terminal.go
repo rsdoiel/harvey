@@ -636,7 +636,7 @@ func (a *Agent) Run(out io.Writer) error {
 		if NeedsOnboarding(a.Memory.Store) {
 			var onboardEmbedder Embedder
 			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				onboardEmbedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+				onboardEmbedder = a.embedderFor(entry)
 			}
 			if onboardErr := RunOnboarding(a, a.Memory.Store, onboardEmbedder, out, reader); onboardErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Onboarding: %v\n", onboardErr)
@@ -1070,7 +1070,7 @@ func (a *Agent) Run(out io.Writer) error {
 			if mErr == nil && !manifest.IsMined(sessionPath) {
 				var embedder Embedder
 				if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-					embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+					embedder = a.embedderFor(entry)
 				}
 				miner := NewMiner(a.Memory.Store, manifest, a.Workspace)
 				if mineErr := miner.MineAuto(context.Background(), sessionPath, a, embedder, out); mineErr != nil {

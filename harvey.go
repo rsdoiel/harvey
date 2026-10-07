@@ -204,6 +204,7 @@ type Agent struct {
 	DebugLog                   *DebugLog      // JSONL diagnostic log; nil when --debug not set
 	Backend                    ManagedBackend // active inference backend; nil when no backend is wired
 	hailoDevicePath            string         // Hailo card device node; "" = /dev/hailo0 (tests set it)
+	hailoUnitPath              string         // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service
 	ActiveRoute                string         // session-sticky route name; when set, prompts are auto-dispatched via @NAME
 	// ActiveStatus is the current turn's StatusReporter, set by runChatTurn
 	// alongside the ToolExecutor's own Status field and cleared once the
@@ -377,7 +378,7 @@ func (a *Agent) injectMemoryContext(query string) {
 
 	var embedder Embedder
 	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+		embedder = a.embedderFor(entry)
 	}
 
 	budget := 512

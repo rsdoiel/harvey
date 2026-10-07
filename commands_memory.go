@@ -128,7 +128,7 @@ func cmdMemoryMine(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 
 	var embedder Embedder
 	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+		embedder = a.embedderFor(entry)
 	}
 
 	miner := NewMiner(store, manifest, a.Workspace)
@@ -323,7 +323,7 @@ func cmdMemoryRecall(a *Agent, args []string, out io.Writer, store *MemoryStore)
 
 	var embedder Embedder
 	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+		embedder = a.embedderFor(entry)
 	}
 
 	results, err := a.Memory.Unified.Recall(query, embedder, 0)
@@ -467,7 +467,7 @@ func cmdMemoryProfileRename(a *Agent, args []string, out io.Writer, store *Memor
 	doc.FountainBody = rewriteProfileTitle(doc.FountainBody, newName)
 	var embedder Embedder
 	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+		embedder = a.embedderFor(entry)
 	}
 	if err := store.Save(doc, embedder); err != nil {
 		return fmt.Errorf("profile rename: %w", err)
@@ -535,7 +535,7 @@ func cmdMemoryProfileUse(a *Agent, args []string, out io.Writer, store *MemorySt
 
 	var embedder Embedder
 	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+		embedder = a.embedderFor(entry)
 	}
 
 	wsName := filepath.Base(wsRoot)
@@ -672,7 +672,7 @@ func cmdMemoryProfileUpdate(a *Agent, out io.Writer, store *MemoryStore) error {
 	}
 	var embedder Embedder
 	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+		embedder = a.embedderFor(entry)
 	}
 	if err := store.Save(edited, embedder); err != nil {
 		return fmt.Errorf("profile update: save: %w", err)

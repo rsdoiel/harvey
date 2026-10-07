@@ -792,7 +792,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 
 			var embedder Embedder
 			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+				embedder = a.embedderFor(entry)
 			}
 
 			budget := topK * 300
@@ -967,7 +967,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			// Try to get a vector embedder from the active RAG store.
 			var embedder Embedder
 			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				embedder = NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+				embedder = a.embedderFor(entry)
 			}
 
 			// Embed the criteria once (fails silently → keyword fallback).

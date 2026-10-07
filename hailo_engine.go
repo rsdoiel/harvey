@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -266,4 +268,164 @@ func (a *Agent) pickFamilyModel(reader *bufio.Reader, out io.Writer, preferredMo
 		idx = 1
 	}
 	return use(models[idx-1], "")
+}
+
+// explainingEmbedder wraps an Ollama embedder so that a failure on a machine
+// where Hailo is in play says why: Hailo cannot embed, and Ollama is missing.
+type explainingEmbedder struct {
+	Embedder
+	a *Agent
+}
+
+// Embed embeds text with the wrapped embedder; a failure is explained by
+// explainEmbedError.
+func (e explainingEmbedder) Embed(text string) ([]float64, error) {
+	vec, err := e.Embedder.Embed(text)
+	if err != nil {
+		return nil, e.a.explainEmbedError(err)
+	}
+	return vec, nil
+}
+
+/** wrapEmbedder makes an Ollama embedder explain its failures when Hailo is in
+ * play. Embeddings always use Ollama (hailo-ollama has no /api/embed), so a
+ * failure on a Hailo machine usually means Ollama is not there.
+ *
+ * Parameters:
+ *   e (Embedder) — the embedder to wrap.
+ *
+ * Returns:
+ *   Embedder — e, with failures explained.
+ *
+ * Example:
+ *   embedder := a.wrapEmbedder(NewOllamaEmbedder(a.Config.Ollama.URL, model))
+ */
+func (a *Agent) wrapEmbedder(e Embedder) Embedder { return explainingEmbedder{e, a} }
+
+/** embedderFor is NewEmbedderForEntry for the agent: an Ollama-kind embedder
+ * explains its failures when Hailo is in play (see wrapEmbedder); an
+ * encoderfile embedder is returned as is.
+ *
+ * Parameters:
+ *   entry (*RagStoreEntry) — store configuration entry.
+ *
+ * Returns:
+ *   Embedder — the embedder for the entry.
+ *
+ * Example:
+ *   embedder := a.embedderFor(a.Config.Memory.ActiveRagStore())
+ */
+func (a *Agent) embedderFor(entry *RagStoreEntry) Embedder {
+	e := NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+	if entry.EmbedderKind == "encoderfile" {
+		return e
+	}
+	return a.wrapEmbedder(e)
+}
+
+/** explainEmbedError turns an embedding failure into a plain message when the
+ * cause is that Hailo is in use and Ollama is not there. It looks for Hailo
+ * only now, after a failure, so an embedding that works costs nothing, and a
+ * machine with no card and no hailo.url is never asked about Hailo. Any other
+ * failure is returned unchanged.
+ *
+ * Parameters:
+ *   cause (error) — the embedder's error.
+ *
+ * Returns:
+ *   error — class unavailable when Hailo is in play and Ollama is missing (wrapping
+ *           cause when Ollama is simply unreachable; the relabelled case drops the
+ *           server's 404 body as noise); otherwise cause.
+ *
+ * Example:
+ *   return nil, a.explainEmbedError(err)
+ */
+func (a *Agent) explainEmbedError(cause error) error {
+	f := a.ollamaFamily()
+	if f.HailoURL == "" {
+		return cause
+	}
+	if f.Relabelled {
+		return Unavailablef("Hailo cannot embed; ollama.url (%s) is hailo-ollama, so there is no Ollama server. "+
+			"Run Ollama and set ollama.url to it (default http://localhost:11434), and set hailo.url to %s",
+			a.Config.Ollama.URL, f.HailoURL)
+	}
+	if !ProbeOllama(f.OllamaURL) {
+		return Unavailablef("Hailo cannot embed; no Ollama at %s: %w", f.OllamaURL, cause)
+	}
+	return cause
+}
+
+// hailoUnitDefault is where the user's systemd unit for hailo-ollama lives,
+// relative to the home directory.
+const hailoUnitDefault = ".config/systemd/user/hailo-ollama.service"
+
+// hailoUnitExists reports whether the user's hailo-ollama systemd unit exists.
+func (a *Agent) hailoUnitExists() bool {
+	p := a.hailoUnitPath
+	if p == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		p = filepath.Join(home, hailoUnitDefault)
+	}
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// isLoopbackURL reports whether rawURL names this machine.
+func isLoopbackURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
+}
+
+/** hailoHintLine returns the one-line start-up hint for a Hailo card whose
+ * server is not answering, or "" when there is nothing to say. The systemctl
+ * command is named only when the user's unit exists and the server is meant to
+ * be on this machine.
+ *
+ * Parameters:
+ *   st         (HailoStatus) — what DetectHailo found.
+ *   cfg        (HailoConfig) — the hailo: section.
+ *   unitExists (bool)        — whether ~/.config/systemd/user/hailo-ollama.service exists.
+ *
+ * Returns:
+ *   string — the hint, without a trailing newline; "" for none.
+ *
+ * Example:
+ *   line := hailoHintLine(st, cfg.Hailo, true)
+ */
+func hailoHintLine(st HailoStatus, cfg HailoConfig, unitExists bool) string {
+	if !st.CardPresent || !st.Probed || st.ServerUp {
+		return ""
+	}
+	line := fmt.Sprintf("AI HAT+ 2 found, hailo-ollama is not running at %s", st.URL)
+	if unitExists && isLoopbackURL(st.URL) {
+		line += " (start it: systemctl --user start hailo-ollama)"
+	}
+	return line
+}
+
+/** hailoHint prints the stopped-service hint, if there is one, as a single dim
+ * line. Harvey does not start hailo-ollama itself; it says how.
+ *
+ * Parameters:
+ *   out (io.Writer) — destination for the hint.
+ *
+ * Example:
+ *   a.hailoHint(out)
+ */
+func (a *Agent) hailoHint(out io.Writer) {
+	st := DetectHailo(a.Config.Hailo, a.hailoDevicePath)
+	if line := hailoHintLine(st, a.Config.Hailo, a.hailoUnitExists()); line != "" {
+		fmt.Fprintln(out, dim("  "+line))
+	}
 }

@@ -640,7 +640,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 	if entry == nil {
 		return Negativef("no active RAG store. Run /rag use NAME to select one")
 	}
-	embedder := NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+	embedder := a.embedderFor(entry)
 
 	// Parse provenance flags and separate them from file paths.
 	var meta ProvenanceMeta
@@ -1079,7 +1079,7 @@ func ragQuery(a *Agent, query string, out io.Writer) error {
 	if entry == nil {
 		return Negativef("no active RAG store. Run /rag use NAME to select one")
 	}
-	embedder := NewEmbedderForEntry(entry, a.Config.Ollama.URL)
+	embedder := a.embedderFor(entry)
 	chunks, err := a.Rag.Query(query, embedder, 5)
 	if err != nil {
 		return fmt.Errorf("rag query: %w", err)

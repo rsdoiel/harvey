@@ -630,7 +630,7 @@ func (a *Agent) ragAugment(prompt string, tracker *BudgetTracker) (string, *RAGA
 		}
 	}
 
-	embedder := NewOllamaEmbedder(a.Config.Ollama.URL, embedModel)
+	embedder := a.wrapEmbedder(NewOllamaEmbedder(a.Config.Ollama.URL, embedModel))
 	chunks, err := a.Rag.Query(prompt, embedder, 5)
 	if err != nil || len(chunks) == 0 {
 		return prompt, nil
