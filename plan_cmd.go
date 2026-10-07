@@ -75,8 +75,9 @@ func cmdPlanCreate(a *Agent, task string, out io.Writer) error {
 		{Role: "user", Content: planningPrompt},
 	}
 	if a.Config.SystemPrompt != "" {
+		sys, _ := a.systemPromptText()
 		msgs = []Message{
-			{Role: "system", Content: a.Config.SystemPrompt},
+			{Role: "system", Content: sys},
 			{Role: "user", Content: planningPrompt},
 		}
 	}
@@ -166,7 +167,8 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 	)
 	freshHistory := []Message{}
 	if a.Config.SystemPrompt != "" {
-		freshHistory = append(freshHistory, Message{Role: "system", Content: a.Config.SystemPrompt})
+		sys, _ := a.systemPromptText()
+		freshHistory = append(freshHistory, Message{Role: "system", Content: sys})
 	}
 	freshHistory = append(freshHistory, Message{Role: "user", Content: stepPrompt})
 

@@ -402,7 +402,8 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 			messages = append(messages, Message{Role: "user", Content: userBody})
 		} else {
 			if a.Config.SystemPrompt != "" {
-				messages = []Message{{Role: "system", Content: a.Config.SystemPrompt}}
+				sys, _ := a.systemPromptText()
+				messages = []Message{{Role: "system", Content: sys}}
 			}
 			messages = append(messages, Message{Role: "user",
 				Content: prevResponse + "\n\n---\n\n" + userBody})

@@ -1,6 +1,15 @@
 
 ## Bugs
 
+- [ ] **The write-offer prompt takes the next input line as a file path and
+  writes it.** Found 2026-10-07 piping `Say hello...` then `/exit` into harvey:
+  the reply held a fenced block tagged `bash:testout/hello.bash`; the "Write ...?
+  Path (or Enter to skip)" prompt read `/exit` as the path and Harvey printed
+  `wrote 0 bytes to /exit`, creating an empty `exit` file in the workspace root
+  (an absolute path was mapped inside the workspace). Two faults: a line meant as
+  a command answered the prompt, and `/exit` was accepted as a path. Reproduce
+  through the real prompt with piped stdin; expect no file written and a
+  refusal of an absolute path. Also check the prompt's non-interactive default.
 - [x] **FIXED 2026-10-07** (`ErrStreamTruncated`, exit class io; tests in
   `chat_stream_failure_test.go`). **A failed or truncated chat stream shows as an empty reply, not an
   error.** Found on harvey.local 2026-10-06 (kb observation 367): when
@@ -212,10 +221,16 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
     kept across re-probes, set with `/model limit`. Startup warns (exit 65 when
     unattended) and each turn is refused before sending. Tests:
     `prompt_limit_test.go`.
-  - [ ] **Layer 2.** Layered system prompt that shrinks to fit the budget
-    (skills catalog first, then HARVEY.md, then a compact preamble), and
-    history trimmed to the budget each turn. The catalog is concatenated into
-    `Config.SystemPrompt` today, so the layers must be separated first.
+  - [x] **Layer 2, 2026-10-07.** The system prompt shrinks to 60% of the limit,
+    least essential layer first: the skills catalog, then the tail of HARVEY.md
+    (cut at a paragraph break and marked), then a compact preamble, then all of
+    HARVEY.md (`prompt_fit.go`). `refreshSystemPrompt` runs at startup and every
+    turn, so any model switch is covered, and `/clear` and the plan/pipeline
+    commands use the same fitted text. Before each send, `trimHistoryToBudget`
+    drops the oldest whole turns (never the latest, the system message or pinned
+    context). Both print what they cut. Tests: `prompt_fit_test.go`. Side effect:
+    `/clear` now expands HARVEY.md's dynamic sections as startup does; it used to
+    re-inject them unexpanded.
   - [ ] **Layer 3.** Learn the limit from a failure: on a fast 500 or
     `ErrStreamTruncated` with a large prompt, tell the user, retry once with a
     smaller prompt, and record the lower limit (DR-0018: alert, do not shrink

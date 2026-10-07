@@ -491,6 +491,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// The prompt limit is separate from the context window: say so now if the
 	// system prompt alone is over it, rather than on the first refused turn.
+	a.refreshSystemPrompt(out)
 	if err := a.checkSystemPromptBudget(out, interactive); err != nil {
 		fmt.Fprintf(out, red("  ✗ %v\n"), err)
 		return err
@@ -1129,6 +1130,10 @@ func keepFirstFailure(existing, candidate error) error {
  *   }
  */
 func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool, charName string) (string, ChatStats, error) {
+	// Fit the system prompt to the model in use now: a /model switch since the
+	// last turn may have changed its prompt limit, in either direction.
+	a.refreshSystemPrompt(out)
+
 	// Semantic memory injection — fires once per session (or after /clear).
 	if a.memoryContextPending {
 		a.injectMemoryContext(input)
@@ -1158,6 +1163,8 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 
 	augmented += stmWarnNudge(a)
 	a.AddMessage("user", augmented)
+
+	a.trimHistoryToBudget(out)
 
 	// A model with a known prompt limit would answer HTTP 500, or stop
 	// responding, to a prompt past it. Refuse here with a message instead, and
@@ -1678,6 +1685,7 @@ func (a *Agent) loadSkills(out io.Writer) {
 	}
 	a.Skills = cat
 	block := CatalogSystemPromptBlock(cat)
+	a.catalogBlock = block // the first layer dropped to fit a model's prompt limit
 
 	// Persist in Config so ClearHistory() keeps the catalog across /clear.
 	if a.Config.SystemPrompt != "" {

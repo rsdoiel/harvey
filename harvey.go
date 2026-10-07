@@ -192,10 +192,12 @@ type Agent struct {
 	// via switchLlamafileModel → StartLlamafileService, impractical to exercise
 	// in a unit test).
 	attemptModelSwitchOverride func(name string, out io.Writer) (bool, error)
-	memoryContextPending       bool // true after ClearHistory until first user turn injects memories
-	sessionInjectedTokens      int  // tokens injected via UnifiedMemory this session
-	sessionCompressed          bool // true if rolling summary fired at least once this session
-	sessionTurns               int  // total completed user turns in this session (never rolls off)
+	memoryContextPending       bool   // true after ClearHistory until first user turn injects memories
+	catalogBlock               string // the skills catalog appended to Config.SystemPrompt by loadSkills; the first layer dropped to fit a prompt limit
+	promptFitNote              string // last notice printed about shrinking the system prompt, so it is not repeated every turn
+	sessionInjectedTokens      int    // tokens injected via UnifiedMemory this session
+	sessionCompressed          bool   // true if rolling summary fired at least once this session
+	sessionTurns               int    // total completed user turns in this session (never rolls off)
 	commands                   map[string]*Command
 	statHistory                []ChatStats    // rolling window of recent turn stats
 	AuditBuffer                *AuditBuffer   // in-memory audit log ring buffer; nil until initialized
@@ -345,7 +347,8 @@ func (a *Agent) AddMessageParts(role string, parts []anyllm.ContentPart) {
  */
 func (a *Agent) ClearHistory() {
 	if a.Config.SystemPrompt != "" {
-		a.History = []Message{{Role: "system", Content: a.Config.SystemPrompt}}
+		text, _ := a.systemPromptText()
+		a.History = []Message{{Role: "system", Content: text}}
 	} else {
 		a.History = nil
 	}

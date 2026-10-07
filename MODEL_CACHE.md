@@ -206,6 +206,12 @@ It is separate from `ContextLength`: hailo-ollama's llama3.2:3b fails at about
 models in hailo's `hef` format (700); `/model limit` sets it. A re-probe keeps a
 non-zero value, as it does `ToolMode`. Harvey refuses a turn over the limit.
 
+With a limit known, Harvey fits the prompt to it (`prompt_fit.go`): the system
+prompt shrinks to 60% of the limit, dropping the skills catalog, then the end of
+HARVEY.md, then swapping the full preamble for a compact one; and the oldest
+whole turns of the history are dropped before each send. Each step is reported.
+A turn that still does not fit is refused, not sent.
+
 #### `ModelCache`
 
 The main handle for the model cache database.

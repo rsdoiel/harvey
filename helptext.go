@@ -498,6 +498,11 @@ the scene.
   /model limit MODEL N
     Set the limit for a named model (need not be the active one).
 
+  When a limit is known Harvey also fits the prompt to it: the system prompt
+  is cut to 60% of the limit (the skills catalog goes first, then the end of
+  HARVEY.md, then the full preamble is swapped for a short one) and the oldest
+  whole turns of the conversation are dropped, each time saying so.
+
   The limit is persisted in the model cache and survives re-probing. For
   llama3.2 models served by hailo-ollama it starts at 700; other models start
   unknown.
