@@ -79,6 +79,11 @@ type ollamaYAML struct {
 	Timeout       string `yaml:"timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
 }
 
+// hailoYAML is the on-disk representation of the hailo: section in harvey.yaml.
+type hailoYAML struct {
+	URL string `yaml:"url,omitempty"`
+}
+
 // skillsYAML is the on-disk representation of the skills: section in harvey.yaml.
 type skillsYAML struct {
 	Catalog string `yaml:"catalog,omitempty"` // "off" (default) or "full"
@@ -115,6 +120,7 @@ type harveyYAML struct {
 	ModelAliases    map[string]modelAliasYAML `yaml:"model_aliases,omitempty"`
 	Skills          skillsYAML                `yaml:"skills,omitempty"`
 	Ollama          ollamaYAML                `yaml:"ollama,omitempty"`
+	Hailo           hailoYAML                 `yaml:"hailo,omitempty"`
 	Security        securityYAML              `yaml:"security,omitempty"`
 	Session         sessionYAML               `yaml:"session,omitempty"`
 	Memory          memoryYAML                `yaml:"memory,omitempty"`

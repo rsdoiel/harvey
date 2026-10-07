@@ -90,6 +90,24 @@ type OllamaConfig struct {
 	ModelExplicit bool
 }
 
+/** HailoConfig holds the connection setting for a hailo-ollama server, the
+ * Ollama-shaped server for the Raspberry Pi AI HAT+ 2. It sits beside
+ * OllamaConfig so chat can go to the HAT while embeddings stay on Ollama.
+ *
+ * Fields:
+ *   URL    (string) — hailo-ollama base URL; default "http://localhost:8000".
+ *   URLSet (bool)   — true when harvey.yaml gave hailo.url. An unset URL is
+ *                     probed only when a Hailo card is present; a set one is
+ *                     always probed, which is how a remote server is used.
+ *
+ * Example:
+ *   cfg.Hailo = HailoConfig{URL: "http://pi5.local:8000", URLSet: true}
+ */
+type HailoConfig struct {
+	URL    string
+	URLSet bool
+}
+
 /** LlamafileConfig holds settings for the llamafile inference backend.
  *
  * Fields:
@@ -213,6 +231,7 @@ type Config struct {
 	// Grouped settings
 	Skills    SkillsConfig
 	Ollama    OllamaConfig
+	Hailo     HailoConfig
 	Llamafile LlamafileConfig
 	Security  SecurityConfig
 	Session   SessionConfig
@@ -281,6 +300,9 @@ func DefaultConfig() *Config {
 		Skills: SkillsConfig{Catalog: SkillsCatalogOff},
 		Ollama: OllamaConfig{
 			URL: "http://localhost:11434",
+		},
+		Hailo: HailoConfig{
+			URL: "http://localhost:8000",
 		},
 		Llamafile: LlamafileConfig{
 			URL:            "http://localhost:8080",
@@ -884,6 +906,10 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 		if d, err := parseDurationString(y.Security.RunTimeout); err == nil {
 			cfg.Security.RunTimeout = d
 		}
+	}
+	if y.Hailo.URL != "" {
+		cfg.Hailo.URL = y.Hailo.URL
+		cfg.Hailo.URLSet = true
 	}
 	if y.Ollama.URL != "" && !cfg.Ollama.URLExplicit {
 		cfg.Ollama.URL = y.Ollama.URL

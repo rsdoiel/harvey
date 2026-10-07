@@ -444,6 +444,27 @@ Current git status:
 Workspace files:
 <!-- @files -->
 
+## Hailo (AI HAT+ 2)
+
+```yaml
+hailo:
+  url: http://localhost:8000   # hailo-ollama; default shown
+```
+
+`hailo.url` is the base URL of a `hailo-ollama` server, kept apart from
+`ollama.url` so chat can use the HAT while embeddings stay on Ollama.
+
+Harvey looks for the server only when it has a reason to: `hailo.url` is set in
+`harvey.yaml`, or a Hailo card (`/dev/hailo0`) is present, in which case it tries
+the default URL. With neither, Harvey makes no request and prints nothing, so a
+machine without the HAT pays no cost. A server is recognised by its
+`GET /hailo/v1/list` answer; regular Ollama does not have that route. Setting
+`hailo.url` is also how a `hailo-ollama` on another machine is used.
+
+Detection is built (`DetectHailo`); it is not yet wired into start-up, the model
+picker or `/model list`. See `agents/projects/harvey/design/hailo-engine-detection-design.md`
+and DR-0030.
+
 ## Conventions
 
 - Use Go 1.26+ features
