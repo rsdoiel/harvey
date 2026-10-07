@@ -36,6 +36,7 @@ import (
 type OllamaClient struct {
 	baseURL string
 	model   string
+	engine  string // engine label for the capability table; "" asks the server
 	http    *http.Client
 }
 
@@ -47,6 +48,14 @@ func NewOllamaClient(baseURL, model string) *OllamaClient {
 		model:   model,
 		http:    &http.Client{},
 	}
+}
+
+// NewOllamaClientFor is NewOllamaClient for a server of the named engine; the
+// engine's capability row decides which utility requests are made.
+func NewOllamaClientFor(engine, baseURL, model string) *OllamaClient {
+	c := NewOllamaClient(baseURL, model)
+	c.engine = engine
+	return c
 }
 
 type ollamaModelDetails struct {
@@ -142,7 +151,9 @@ func (o *OllamaClient) ModelSummaries(ctx context.Context) ([]OllamaModelSummary
 
 	// Collect names of currently running models (best-effort; ignore errors).
 	running := map[string]bool{}
-	if psReq, err := http.NewRequestWithContext(ctx, http.MethodGet, o.baseURL+"/api/ps", nil); err == nil {
+	caps, known := capsForEngine(o.engine)
+	askPS := !(known && caps.ProcessList == CapNo)
+	if psReq, err := http.NewRequestWithContext(ctx, http.MethodGet, o.baseURL+"/api/ps", nil); askPS && err == nil {
 		if psResp, err := o.http.Do(psReq); err == nil {
 			defer psResp.Body.Close()
 			var ps ollamaTagsResp
@@ -468,10 +479,19 @@ func capabilitiesContain(caps []string, name string) bool {
  *   fmt.Printf("tools: %s  embed: %s\n", cap.SupportsTools, cap.SupportsEmbed)
  */
 func FastProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability, error) {
+	cap, _, err := fastProbe(ctx, baseURL, name)
+	return cap, err
+}
+
+// fastProbe is FastProbeModel that also returns the engine it concluded the
+// server is: "hailo" when the model's format is hef, else "". An engine with a
+// capability row has its facts applied from the row instead of read from the
+// template and the model name.
+func fastProbe(ctx context.Context, baseURL, name string) (*ModelCapability, string, error) {
 	c := NewOllamaClient(baseURL, name)
 	detail, err := c.ShowModel(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	cap := &ModelCapability{
@@ -487,11 +507,16 @@ func FastProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability
 		ProbedAt:      time.Now(),
 	}
 
-	// hailo-ollama (models in Hailo's "hef" format) answers any /api/chat
-	// carrying a tools key with HTTP 500, whatever the template says, so its
-	// models never support tools.
+	// hailo-ollama (models in Hailo's "hef" format): the engine's capability
+	// row states what it cannot do (it answers any /api/chat carrying a tools
+	// key with HTTP 500, whatever the template says), so the template and the
+	// model name are not consulted.
+	engine := ""
 	if detail.Format == hailoModelFormat {
-		cap.SupportsTools = CapNo
+		engine = "hailo"
+		caps, _ := capsForEngine(engine)
+		cap.SupportsTools = caps.Tools
+		cap.SupportsEmbed = caps.Embed
 		// The same server rejects a prompt past a size that differs by model.
 		// Only llama3.2 has been measured; others stay unknown (0).
 		if strings.HasPrefix(detail.Family, "llama3.2") {
@@ -522,13 +547,15 @@ func FastProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability
 	// Embedding support: keyword in name is the primary signal.
 	// An empty template without a keyword match is ambiguous (could be a
 	// base model), so we require the keyword for a fast-probe CapYes.
-	if hasEmbedKeyword(name) {
+	if cap.SupportsEmbed != CapUnknown {
+		// decided by the engine's capability row
+	} else if hasEmbedKeyword(name) {
 		cap.SupportsEmbed = CapYes
 	} else {
 		cap.SupportsEmbed = CapNo
 	}
 
-	return cap, nil
+	return cap, engine, nil
 }
 
 /** ThoroughProbeModel runs FastProbeModel and then makes a live /api/embed
@@ -552,7 +579,7 @@ func FastProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability
  *   fmt.Printf("embed: %s\n", cap.SupportsEmbed)
  */
 func ThoroughProbeModel(ctx context.Context, baseURL, name string) (*ModelCapability, error) {
-	cap, err := FastProbeModel(ctx, baseURL, name)
+	cap, engine, err := fastProbe(ctx, baseURL, name)
 	if err != nil {
 		return nil, err
 	}
@@ -560,6 +587,7 @@ func ThoroughProbeModel(ctx context.Context, baseURL, name string) (*ModelCapabi
 	cap.ProbedAt = time.Now()
 
 	hc := &http.Client{Timeout: 30 * time.Second}
+	caps, known := capsForEngine(engine)
 
 	// ── Embedding probe ──────────────────────────────────────────────────────
 	type embedReq struct {
@@ -572,7 +600,10 @@ func ThoroughProbeModel(ctx context.Context, baseURL, name string) (*ModelCapabi
 
 	body, _ := json.Marshal(embedReq{Model: name, Input: "test"})
 	req, err2 := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/embed", bytes.NewReader(body))
-	if err2 != nil {
+	if known && caps.Embed == CapNo {
+		// the engine has no embed route: nothing to ask
+		cap.SupportsEmbed = CapNo
+	} else if err2 != nil {
 		cap.SupportsEmbed = CapNo
 	} else {
 		req.Header.Set("Content-Type", "application/json")
@@ -750,3 +781,28 @@ func (e *OllamaEmbedder) Embed(text string) ([]float64, error) {
 // characters (750 estimated tokens) succeed and 3,300 (825) fail with HTTP 500
 // "read failed". The seed sits just under the last size that worked.
 const hailoLlama32PromptTokens = 700
+
+/** CountTokensFor is CountTokens for a named engine: an engine whose
+ * capability row says it has no tokenizer is not asked, and gets the
+ * character estimate directly.
+ *
+ * Parameters:
+ *   ctx     (context.Context) — controls the HTTP request lifetime.
+ *   engine  (string)          — engine label, e.g. "hailo" or "ollama"; "" asks.
+ *   baseURL (string)          — server base URL.
+ *   model   (string)          — model name.
+ *   text    (string)          — text to count.
+ *
+ * Returns:
+ *   int  — number of tokens.
+ *   bool — true when the count came from the server's tokenizer.
+ *
+ * Example:
+ *   n, exact := CountTokensFor(ctx, "hailo", url, "llama3.2:3b", prompt) // estimate, false
+ */
+func CountTokensFor(ctx context.Context, engine, baseURL, model, text string) (int, bool) {
+	if caps, ok := capsForEngine(engine); ok && caps.Tokenize == CapNo {
+		return estimateTokens(text), false
+	}
+	return CountTokens(ctx, baseURL, model, text)
+}

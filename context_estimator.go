@@ -49,7 +49,7 @@ func estimateTokens(s string) int {
 func (a *Agent) contextUsage() (used, limit int, exact bool) {
 	limit = a.effectiveContextLimit()
 	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
-		n, ex := CountTokens(context.Background(), ac.BackendURL(), ac.ModelName(), HistoryText(a.History))
+		n, ex := CountTokensFor(context.Background(), a.activeEngine(), ac.BackendURL(), ac.ModelName(), HistoryText(a.History))
 		return n, limit, ex
 	}
 	return estimateTokens(HistoryText(a.History)), limit, false

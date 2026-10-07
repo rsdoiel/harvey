@@ -567,7 +567,9 @@ func (a *Agent) useOllamaClient(model string) {
 // server the client talks to, engine the label the switch is recorded under.
 func (a *Agent) useModelAt(engine, url, model string) {
 	a.Config.Ollama.Model = model
-	a.Client = wireDebugLog(newOllamaLLMClient(url, model, a.Config.Ollama.Timeout), a.DebugLog)
+	client := newOllamaLLMClient(url, model, a.Config.Ollama.Timeout)
+	client.SetEngine(engine)
+	a.Client = wireDebugLog(client, a.DebugLog)
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordModelSwitch(model, engine)
 	}
@@ -617,9 +619,17 @@ func (a *Agent) probeModelAndCache(url, model string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cap, err := FastProbeModel(ctx, url, model)
+	cap, engine, err := fastProbe(ctx, url, model)
 	if err != nil {
 		return
+	}
+	// A model in Hailo's format means the server is hailo-ollama even though
+	// Harvey was not told so (no card, no hailo.url, ollama.url pointed at it):
+	// the client takes the engine's capability row from here on.
+	if engine == "hailo" {
+		if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ModelName() == model {
+			ac.SetEngine(engine)
+		}
 	}
 	cap.Name = a.modelKey(model)
 	if existing, _ := a.ModelCache.Get(cap.Name); existing != nil {

@@ -99,7 +99,7 @@ func (a *Agent) listFamilyModels() []ModelSummary {
 		if url == "" || !ProbeOllama(url) {
 			return
 		}
-		summaries, err := NewOllamaClient(url, "").ModelSummaries(context.Background())
+		summaries, err := NewOllamaClientFor(engine, url, "").ModelSummaries(context.Background())
 		if err != nil {
 			return
 		}

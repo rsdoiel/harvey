@@ -470,6 +470,14 @@ check runs only when a card is present or `hailo.url` is set. The start-up
 picker lists both servers' models together, each labelled; with Ollama stopped
 and Hailo running it offers the Hailo models instead of asking to start Ollama.
 A resumed session's model that exists on both engines is not chosen for you.
+
+What hailo-ollama cannot do is stated once, in a table keyed by engine
+(`engine_caps.go`): structured tool calls, `/api/embed`, `/api/tokenize` and
+`/api/ps`. Harvey never sends a `tools` key to it (whatever the model cache or
+`/model mode` says), does not ask it to embed or tokenize (token counts are the
+chars/4 estimate), and does not ask it which models are running. A model in
+Hailo's `hef` format on a server Harvey was not told is Hailo is held to the same
+row once it is probed. Embeddings always use `ollama.url`.
 See `agents/projects/harvey/design/hailo-engine-detection-design.md`
 and DR-0030.
 

@@ -1215,6 +1215,9 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	if mode := a.modelToolMode(); mode == ToolModeProse || mode == ToolModeInject || mode == ToolModeNone {
 		useStructuredTools = false
 	}
+	if a.activeEngineLacksTools() {
+		useStructuredTools = false
+	}
 	if useStructuredTools {
 		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 		ex.DebugLog = a.DebugLog

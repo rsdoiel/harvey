@@ -377,6 +377,10 @@ func (a *Agent) toolsReliable() bool {
 	if !a.Config.ToolsEnabled || a.Tools == nil {
 		return false
 	}
+	// An engine that cannot take tools is not told otherwise by a cache row or a mode.
+	if a.activeEngineLacksTools() {
+		return false
+	}
 	// Explicit ToolMode overrides CapabilityStatus.
 	if mode := a.modelToolMode(); mode != ToolModeAuto {
 		return mode == ToolModeStructured

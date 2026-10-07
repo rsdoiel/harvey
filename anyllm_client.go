@@ -41,8 +41,16 @@ type AnyLLMClient struct {
 	provName   string
 	backendURL string
 	DebugLog   *DebugLog
-	maxTokens  int // 0 = no limit
+	maxTokens  int    // 0 = no limit
+	engine     string // engine label for the capability table (e.g. "hailo"); "" = none
 }
+
+// SetEngine records which engine's server this client talks to, so the
+// engine's capability row applies (a "hailo" client never sends tools).
+func (a *AnyLLMClient) SetEngine(engine string) { a.engine = engine }
+
+// Engine returns the label set by SetEngine; "" when none was set.
+func (a *AnyLLMClient) Engine() string { return a.engine }
 
 /** NewAnyLLMClient creates an AnyLLMClient wrapping provider.
  *
@@ -162,6 +170,11 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 	params := anyllm.CompletionParams{
 		Model:    a.modelName,
 		Messages: anyllmMsgs,
+	}
+	// An engine that cannot take a tools key (hailo-ollama answers HTTP 500 to
+	// any, even an empty array) is never sent one, whoever asks.
+	if caps, ok := capsForEngine(a.engine); ok && caps.Tools == CapNo {
+		tools = nil
 	}
 	if len(tools) > 0 {
 		params.Tools = tools

@@ -398,7 +398,7 @@ func skillSetLoad(a *Agent, name string, out io.Writer) error {
 	if a.Client != nil {
 		model = a.Client.Name()
 	}
-	tokens, exact := CountTokens(ctx, a.Config.Ollama.URL, model, combined.String())
+	tokens, exact := CountTokensFor(ctx, a.activeEngine(), a.chatURL(), model, combined.String())
 	contextLimit := a.effectiveContextLimit()
 
 	if contextLimit > 0 {

@@ -279,7 +279,7 @@ func runPipelineStep(
 	if ac, ok := a.Client.(*AnyLLMClient); ok && len(messages) > 0 {
 		var n int
 		if ac.ProviderName() == "ollama" {
-			n, _ = CountTokens(ctx, ac.BackendURL(), ac.ModelName(), HistoryText(messages))
+			n, _ = CountTokensFor(ctx, a.activeEngine(), ac.BackendURL(), ac.ModelName(), HistoryText(messages))
 		} else {
 			n = estimateTokens(HistoryText(messages))
 		}
