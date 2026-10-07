@@ -1,6 +1,47 @@
 
 ## Bugs
 
+- [ ] **A failed or truncated chat stream shows as an empty reply, not an
+  error.** Found on harvey.local 2026-10-06 (kb observation 367): when
+  hailo-ollama closes `/api/chat` with no data (llama3.2:3b past its prompt
+  limit), harvey prints nothing, records a 0-token reply, and the `--debug` log
+  shows `llm_response` with no error. Reproduce with an `httptest` server that
+  closes a chunked response early, through the real chat path; expect an error
+  the user sees and a recorded failure.
+- [ ] **`--ollama` and `-m/--model` are overridden by `agents/harvey.yaml`.**
+  `flagSpecs` in `cmd/harvey/main.go` sets `cfg.Ollama.URL`/`Model`, then `Run`
+  (`terminal.go:407`) calls `LoadHarveyYAML`, which overwrites both when
+  `ollama.url`/`ollama.model` are set (`config.go:850-855`). Seen: `harvey
+  --ollama http://localhost:8001` still connected to `:8000`, and `harvey -m
+  qwen2.5-coder:1.5b` ran llama3.2:3b (kb observations 368, 371). The command
+  line should win over the file.
+- [ ] **Tool support is read from the template, so hailo-ollama models get a
+  `tools` array they cannot take.** hailo-ollama returns HTTP 500 for any
+  `/api/chat` carrying `tools`. With llama3.2:3b in tool mode `auto`, harvey
+  sent `tools` and every prompt failed with `provider_error: 500` until
+  `/model mode prose` was set by hand (kb observations 365, 371). The likely
+  cause is `FastProbeModel` trusting the template's tool markers; confirm that
+  first, since the cached row showed `supports_tools` unknown. The probe should
+  catch this, either by recognising the server or by a live tool test, and
+  fall back to prose.
+- [ ] **Switching to an Ollama model mid-session leaves the transcript naming
+  the old model.** Seen 2026-10-06 (`harvey-session-20261006-204135.spmd`,
+  kb observation 372): the session started on llama3.2:3b and switched to
+  qwen2.5-coder:1.5b; the reply was attributed to LLAMA3.2 while the stats line
+  said qwen2.5-coder:1.5b, and no `[[model switch]]` note was written.
+  `useSelectedModel` (picker, and `/model use NAME`'s fallback match) calls
+  `Agent.setOllamaModel` (`backend_startup.go:530`), which replaces `a.Client`
+  but never calls `Recorder.RecordModelSwitch`. Test through `/model use` with a
+  name that only the fallback match finds.
+- [ ] **`--debug` stops logging LLM requests after an Ollama model switch.**
+  Same session: the JSONL log has only `session_start`, no `llm_request` or
+  `llm_response` (kb observation 372). `setOllamaModel` and both `ollama`
+  branches of `attemptModelSwitch` (`terminal.go:175-193`) build a new
+  `AnyLLMClient` and never copy `a.DebugLog` onto it, unlike
+  `useLlamafileEntry` (`backend_startup.go:60-62`). One helper that installs a
+  client (debug log, recorder note, label) would fix both bugs and keep the
+  paths from drifting again.
+
 - [x] **FIXED 2026-09-25.** `getting_started.md` was stale (21 registered commands missing, `/llamafile` and `/ollama` documented though no longer registered, `/kb` subcommands short). Command tables now come from the registry; the `/kb` registry entry itself omitted `learn`, `source`, `retract`, `cite`, `show` and `check-retractions` and is fixed (`kb_registry_test.go` keeps it in step with `cmdKB`).
 - [x] **FIXED 2026-09-25.** `/model use NAME` only searched the registry and aliases, so an Ollama model could be reached only through the picker. It now falls back to every model `/model list` shows: exact name (case-insensitive), then a unique prefix; an ambiguous prefix lists the candidates. Tests: `model_use_name_test.go`.
 - [x] **FIXED 2026-09-25.** (Original report below.) Cause: `nomic-embed-text` was not installed, and `MemoryStore.Save` wrote the memory file before embedding, so each failed save left an orphan `.fountain` file. `Save` now embeds first, writes nothing on failure, restores any prior file if the index write fails, and the error says to run `ollama pull MODEL`. Tests: `memory_save_atomic_test.go`. Two orphans from the report remain on disk in `agents/memories/tool_use/` (`tool_use_b39dd1.fountain`, `tool_use_760a04.fountain`); delete by hand.
@@ -123,6 +164,59 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   project `harvey`, observations 423 (original near-drop-in-backend idea),
   444 (unrelated dual-model arbitration hypothesis, same session), 445
   (book review this spike is drawn from), and 446 (parts list).
+
+  **Status 2026-10-06:** hardware arrived and set up as harvey.local. First
+  answer (kb observation 370): for chat, `backend_ollama.go` works unchanged
+  against hailo-ollama on `:8000`, so no `backend_hailo.go` is needed to get
+  started. The gaps (tools, embeddings, tokenize, prompt size, catalog) are
+  capability awareness inside the Ollama path, tracked in the items below and
+  under Bugs. DR-0029 stays proposed until those are settled.
+
+- [ ] **Confirm `/model` works end to end against hailo-ollama.** hailo-ollama
+  0.5.1 runs as a user systemd unit on `:8000`, and `agents/harvey.yaml` points
+  `ollama.url` at it. Chat works; the rest of `/model` has not been checked.
+  Walk every `/model` subcommand (`list`, `use`, `show`, `status`, `stop`,
+  `clean`, `mode`, `alias` and the picker) and record what works, what fails
+  and how. Known so far (kb observations 365, 367, 369):
+  - **Listing.** `/model list` shows only pulled models (`/api/tags`); see the
+    catalog item below.
+  - **Tools.** Any `/api/chat` carrying `tools` gets HTTP 500; see Bugs.
+  - **Embeddings, tokenize, ps.** `/api/embed`, `/api/tokenize` and
+    `POST /api/ps` return 404. Check what `/model status`, `stop` and
+    `CountTokens` do when these endpoints are missing.
+  - **Content type.** Every POST must carry `Content-Type: application/json`,
+    or oatpp returns 500 "No suitable mapper".
+  - **Prompt-size limit.** llama3.2:3b fails past about 3,300 characters of
+    system prompt; see Bugs and the prompt-size item below.
+  For each of the five curated models (deepseek_r1_distill_qwen:1.5b,
+  llama3.2:3b, qwen2.5-coder:1.5b, qwen2.5-instruct:1.5b, qwen2:1.5b), record
+  in the model cache whether it handles prose tools, tagged blocks and
+  embeddings, and measure its prompt-size limit. Bugs found go under Bugs,
+  test-first.
+
+- [ ] **Show and pull the Hailo catalog from `/model`.** hailo-ollama lists the
+  models the HAT can run at `GET /hailo/v1/list` and pulls them with
+  `POST /api/pull` (Ollama-style progress stream). Harvey only reads
+  `/api/tags`, so a model that is not yet pulled cannot be seen or fetched
+  from inside harvey (kb observation 369). Detect a hailo-ollama server (for
+  example by `/hailo/v1/list` answering), show unpulled catalog entries in
+  `/model list` and the picker marked as such, and decide whether
+  `/model pull NAME` belongs in harvey for both Ollama and hailo-ollama.
+
+- [ ] **Per-model prompt-size limits.** Hailo compiles each model with a fixed,
+  small context. llama3.2:3b breaks past about 3,300 characters of system
+  prompt, while harvey's assembled prompt is 6,249 (kb observation 367). Find
+  each model's limit (probe or table in the model cache), then trim the system
+  prompt to fit (drop the skills catalog first?) or refuse the model with a
+  clear message. Depends on the empty-reply bug being fixed so failures show.
+
+- [ ] **Embeddings on harvey.local.** hailo-ollama has no `/api/embed` and none
+  of the curated models embeds, so RAG and memory saves fail against it. Install
+  regular Ollama on `:11434` alongside, pull `nomic-embed-text`, and confirm
+  that RAG stores and the memory store can embed through it while chat goes to
+  the HAT. Today `NewEmbedderForEntry` is handed `cfg.Ollama.URL`, so this may
+  need a separate embedder URL in `harvey.yaml` (as `EmbedderURL` already
+  exists for encoderfile).
 
 ## Update next
 

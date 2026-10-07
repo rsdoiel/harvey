@@ -1,4 +1,4 @@
-%assay(1) user manual | version 0.0.18 db8fe9f
+%assay(1) user manual | version 0.0.18 760ab13
 % R. S. Doiel
 % 2026-10-02
 
