@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -74,6 +75,99 @@ func extractJSON(raw string) (string, bool) {
 	return raw[first : last+1], true
 }
 
+/** errBadReply marks a model reply the miner could not turn into a list of
+ * memories: no JSON array after one retry, or an array that does not parse.
+ * With ErrStreamTruncated it means "this model could not process this
+ * session", as opposed to a server that was unreachable.
+ *
+ * Example:
+ *   if errors.Is(err, errBadReply) {
+ *       fmt.Println("the model could not do it")
+ *   }
+ */
+var errBadReply = errors.New("reply was not a JSON list of memories")
+
+/** sessionIsEmpty reports whether a recorded session has no dialogue to mine:
+ * after the title page, only blank lines, FADE IN/OUT, THE END, scene
+ * headings and model-switch notes.
+ *
+ * Parameters:
+ *   text (string) — the full session file.
+ *
+ * Returns:
+ *   bool — true when there is nothing for a model to read.
+ *
+ * Example:
+ *   if sessionIsEmpty(string(data)) { fmt.Println("empty") }
+ */
+func sessionIsEmpty(text string) bool {
+	inTitle := true
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if inTitle {
+			// The title page is the leading run of "Key: value" lines.
+			if line == "" {
+				inTitle = false
+				continue
+			}
+			if k, _, ok := strings.Cut(line, ":"); ok && !strings.ContainsAny(k, ".[") {
+				continue
+			}
+			inTitle = false
+		}
+		switch {
+		case line == "":
+		case line == "FADE IN:", line == "FADE OUT.", line == "THE END.":
+		case strings.HasPrefix(line, "INT. "), strings.HasPrefix(line, "EXT. "):
+		case strings.HasPrefix(line, "[[model switch:"):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+/** minerModel returns the engine-qualified key of the model that will answer
+ * the agent's mining request, for remembering which model failed on a session.
+ *
+ * Parameters:
+ *   agent (*Agent) — the agent whose Client does the extraction.
+ *
+ * Returns:
+ *   string — "engine/model" (bare model for Ollama), or the client's Name().
+ *
+ * Example:
+ *   key := minerModel(agent) // "hailo/qwen2.5-coder:1.5b"
+ */
+func minerModel(agent *Agent) string {
+	if mn, ok := agent.Client.(interface{ ModelName() string }); ok && mn.ModelName() != "" {
+		return agent.modelKey(mn.ModelName())
+	}
+	return agent.Client.Name()
+}
+
+// unprocessed turns an extraction error into the report for a session the
+// model could not process. It records the failure and leaves the session
+// unmined. Errors that say nothing about the model (an unreachable server, a
+// cancelled context) are returned unchanged. The second result is false in
+// that case.
+func (m *Miner) unprocessed(sessionPath string, agent *Agent, err error) (error, bool) {
+	if !errors.Is(err, ErrStreamTruncated) && !errors.Is(err, errBadReply) {
+		return err, false
+	}
+	model := minerModel(agent)
+	reason := "the reply was cut off before it finished (the session may be too large for this model)"
+	if errors.Is(err, errBadReply) {
+		reason = "the reply was not a JSON list of memories"
+	}
+	m.manifest.RecordFailure(sessionPath, model, reason)
+	if saveErr := m.manifest.Save(m.store.Dir()); saveErr != nil {
+		reason += fmt.Sprintf(" (could not save the manifest: %v)", saveErr)
+	}
+	return Negativef("%s could not be processed by %s: %s. It is left unmined; "+
+		"use /model use to pick another model, then /memory mine", filepath.Base(sessionPath), model, reason), true
+}
+
 /** Miner drives the mining and interactive review pipeline for a Harvey
  * session file. It calls the LLM once to propose memories, then runs an
  * interactive REPL for the user to accept, edit, skip, or supersede each
@@ -139,9 +233,18 @@ func (m *Miner) Mine(ctx context.Context, sessionPath string, agent *Agent, embe
 		return fmt.Errorf("mine: read session: %w", err)
 	}
 
+	if sessionIsEmpty(string(sessionData)) {
+		fmt.Fprintf(out, "Session %s is empty (no dialogue); nothing to mine. Recorded as empty.\n", sessionPath)
+		m.manifest.RecordEmpty(sessionPath)
+		return m.manifest.Save(m.store.Dir())
+	}
+
 	fmt.Fprintf(out, "Extracting memories from %s …\n", sessionPath)
 	proposed, err := m.extract(ctx, string(sessionData), agent, out)
 	if err != nil {
+		if report, handled := m.unprocessed(sessionPath, agent, err); handled {
+			return report
+		}
 		return fmt.Errorf("mine: extract: %w", err)
 	}
 
@@ -201,13 +304,13 @@ func (m *Miner) extract(ctx context.Context, sessionText string, agent *Agent, o
 		raw = buf2.String()
 		jsonStr, ok = extractJSON(raw)
 		if !ok {
-			return nil, fmt.Errorf("extract: could not find JSON array in LLM response")
+			return nil, fmt.Errorf("extract: could not find JSON array in LLM response: %w", errBadReply)
 		}
 	}
 
 	var proposals []proposedMemory
 	if err := json.Unmarshal([]byte(jsonStr), &proposals); err != nil {
-		return nil, fmt.Errorf("extract: parse JSON: %w\nraw: %s", err, jsonStr)
+		return nil, fmt.Errorf("extract: parse JSON: %w: %w\nraw: %s", errBadReply, err, jsonStr)
 	}
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -429,8 +532,20 @@ func (m *Miner) MineAuto(ctx context.Context, sessionPath string, agent *Agent, 
 		return fmt.Errorf("auto-mine: read session: %w", err)
 	}
 
+	if sessionIsEmpty(string(sessionData)) {
+		fmt.Fprintln(out, dim("  [session is empty; nothing to mine]"))
+		m.manifest.RecordEmpty(sessionPath)
+		return m.manifest.Save(m.store.Dir())
+	}
+	if m.manifest.FailedOn(sessionPath, minerModel(agent)) {
+		return nil // this model already failed on it; /memory mine retries on request
+	}
+
 	proposed, err := m.extract(ctx, string(sessionData), agent, out)
 	if err != nil {
+		if report, handled := m.unprocessed(sessionPath, agent, err); handled {
+			return report
+		}
 		return fmt.Errorf("auto-mine: extract: %w", err)
 	}
 

@@ -11,6 +11,10 @@ import (
 
 const manifestFile = "manifest.yaml"
 
+// ManifestStatusEmpty marks a manifest entry for a session that had no
+// dialogue to mine. The model was never asked about it.
+const ManifestStatusEmpty = "empty"
+
 /** ManifestEntry records the result of mining a single session file.
  *
  * Fields:
@@ -18,6 +22,8 @@ const manifestFile = "manifest.yaml"
  *   MinedAt          (string)   — RFC3339 timestamp when review completed.
  *   MemoriesCreated  ([]string) — IDs of memories accepted during review.
  *   MemoriesSkipped  (int)      — count of proposed memories the user skipped.
+ *   Status           (string)   — "" for a session a model processed, or
+ *                                 ManifestStatusEmpty for one with no dialogue.
  *
  * Example:
  *   fmt.Printf("mined %s: created %d, skipped %d\n",
@@ -28,6 +34,27 @@ type ManifestEntry struct {
 	MinedAt         string   `yaml:"mined_at"`
 	MemoriesCreated []string `yaml:"memories_created"`
 	MemoriesSkipped int      `yaml:"memories_skipped"`
+	Status          string   `yaml:"status,omitempty"`
+}
+
+/** ManifestFailure records that a model could not process a session: the
+ * reply was cut off, or it was not the JSON the miner asked for. The session
+ * is not mined; the entry stops auto-mining from asking the same model again.
+ *
+ * Fields:
+ *   Path   (string) — the session file.
+ *   Model  (string) — the engine-qualified model key (see Agent.modelKey).
+ *   Reason (string) — why, in a sentence.
+ *   At     (string) — RFC3339 time of the most recent failure.
+ *
+ * Example:
+ *   m.RecordFailure("agents/sessions/foo.spmd", "hailo/qwen2.5-coder:1.5b", "reply truncated")
+ */
+type ManifestFailure struct {
+	Path   string `yaml:"path"`
+	Model  string `yaml:"model"`
+	Reason string `yaml:"reason"`
+	At     string `yaml:"at"`
 }
 
 /** Manifest tracks which session files have been fully reviewed for memory
@@ -45,7 +72,8 @@ type ManifestEntry struct {
  *   }
  */
 type Manifest struct {
-	Sessions []ManifestEntry `yaml:"sessions"`
+	Sessions []ManifestEntry   `yaml:"sessions"`
+	Failures []ManifestFailure `yaml:"failures,omitempty"`
 }
 
 /** LoadManifest reads the manifest from dir/manifest.yaml. If the file does
@@ -145,12 +173,87 @@ func (m *Manifest) Record(sessionPath string, created []string, skipped int) {
 	if created == nil {
 		created = []string{}
 	}
+	m.clearFailures(sessionPath)
 	m.Sessions = append(m.Sessions, ManifestEntry{
 		Path:            sessionPath,
 		MinedAt:         time.Now().UTC().Format(time.RFC3339),
 		MemoriesCreated: created,
 		MemoriesSkipped: skipped,
 	})
+}
+
+/** RecordEmpty appends an entry for a session with no dialogue, so it stops
+ * counting as unmined. Status is ManifestStatusEmpty.
+ *
+ * Parameters:
+ *   sessionPath (string) — path to the empty session file.
+ *
+ * Example:
+ *   m.RecordEmpty("agents/sessions/foo.spmd")
+ *   m.Save(store.Dir())
+ */
+func (m *Manifest) RecordEmpty(sessionPath string) {
+	m.Record(sessionPath, nil, 0)
+	m.Sessions[len(m.Sessions)-1].Status = ManifestStatusEmpty
+}
+
+/** RecordFailure remembers that model could not process sessionPath. The
+ * session stays unmined. One entry is kept per session and model; a repeat
+ * replaces the reason and time.
+ *
+ * Parameters:
+ *   sessionPath (string) — the session file.
+ *   model       (string) — engine-qualified model key.
+ *   reason      (string) — why the model could not process it.
+ *
+ * Example:
+ *   m.RecordFailure(path, "hailo/qwen2.5-coder:1.5b", "reply truncated")
+ */
+func (m *Manifest) RecordFailure(sessionPath, model, reason string) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	for i := range m.Failures {
+		if m.Failures[i].Path == sessionPath && m.Failures[i].Model == model {
+			m.Failures[i].Reason = reason
+			m.Failures[i].At = now
+			return
+		}
+	}
+	m.Failures = append(m.Failures, ManifestFailure{Path: sessionPath, Model: model, Reason: reason, At: now})
+}
+
+/** FailedOn reports whether model has already failed to process sessionPath.
+ *
+ * Parameters:
+ *   sessionPath (string) — the session file.
+ *   model       (string) — engine-qualified model key.
+ *
+ * Returns:
+ *   bool — true when a failure is recorded for that session and model.
+ *
+ * Example:
+ *   if m.FailedOn(path, key) {
+ *       fmt.Println("try another model")
+ *   }
+ */
+func (m *Manifest) FailedOn(sessionPath, model string) bool {
+	for _, f := range m.Failures {
+		if f.Path == sessionPath && f.Model == model {
+			return true
+		}
+	}
+	return false
+}
+
+// clearFailures drops every recorded failure for sessionPath; a session that
+// has been mined no longer needs them.
+func (m *Manifest) clearFailures(sessionPath string) {
+	kept := m.Failures[:0]
+	for _, f := range m.Failures {
+		if f.Path != sessionPath {
+			kept = append(kept, f)
+		}
+	}
+	m.Failures = kept
 }
 
 /** UnminedSessions returns all .spmd files under sessionsDir that do not

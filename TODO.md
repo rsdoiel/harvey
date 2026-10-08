@@ -245,7 +245,7 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   Related: a client that abandons a request wedges hailo-ollama until it is
   restarted (kb 378); a request that outlasts `ollama.timeout` does this.
 
-- [x] **DONE 2026-10-08 (RAG verified; memory saves not exercised).** `ollama.url` is now `:11434`, `hailo.url` is `:8000`, `nomic-embed-text` is pulled; a scratch `/rag new`, `/rag ingest` and `/rag query` embedded through Ollama while chat stayed on `hailo`. Original item: **Embeddings on harvey.local.** hailo-ollama has no `/api/embed` and none
+- [x] **DONE 2026-10-08 (RAG, a profile memory save and `/memory mine` verified).** `ollama.url` is now `:11434`, `hailo.url` is `:8000`, `nomic-embed-text` is pulled; a scratch `/rag new`, `/rag ingest` and `/rag query` embedded through Ollama while chat stayed on `hailo`; `/memory profile update` stored a 768-dim embedding. `/memory mine` verified on Ollama (mined, saved, embedded); see the miner fix below. Original item: **Embeddings on harvey.local.** hailo-ollama has no `/api/embed` and none
   of the curated models embeds, so RAG and memory saves fail against it. Install
   regular Ollama on `:11434` alongside, pull `nomic-embed-text`, and confirm
   that RAG stores and the memory store can embed through it while chat goes to

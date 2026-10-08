@@ -24,6 +24,15 @@ Fountain files in agents/memories/ inside the workspace.
         via one-shot JSON extraction; you review each interactively
         (accept / edit / replace / skip / quit). Use --force to re-mine
         sessions that have already been processed.
+        A session with no dialogue is reported as empty, recorded as empty
+        and never sent to the model. If the model cannot process a session
+        (its reply is cut off, often because the session is too large for
+        that model, or is not the JSON list asked for) the session is left
+        unmined, the failure is reported with the model's name and
+        remembered in manifest.yaml, and automatic mining at exit does not
+        ask the same model again. Switch model with /model use and run
+        /memory mine to retry; a model that answers with an empty list has
+        processed the session, which is recorded as mined.
 
   list [--type TYPE] [--kind KIND]
         List stored memories. Optional --type filters by memory type:
