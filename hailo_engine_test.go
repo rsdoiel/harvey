@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,7 +31,8 @@ func ollamaFamilyServer(t *testing.T, hailo bool, models ...string) (*httptest.S
 			}
 			fmt.Fprintf(w, `{"models":[%s]}`, strings.Join(parts, ","))
 		case r.URL.Path == "/hailo/v1/list" && hailo:
-			fmt.Fprint(w, hailoListBody)
+			b, _ := json.Marshal(map[string]any{"models": models})
+			w.Write(b)
 		case r.URL.Path == "/api/show" && hailo:
 			fmt.Fprint(w, strings.ReplaceAll(hailoShow, `"family":"qwen2.5"`, `"family":"llama3.2"`))
 		default:

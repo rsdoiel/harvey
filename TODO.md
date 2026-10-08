@@ -203,7 +203,7 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   embeddings, and measure its prompt-size limit. Bugs found go under Bugs,
   test-first.
 
-- [ ] **Show and pull the Hailo catalog from `/model`.** hailo-ollama lists the
+- [x] **DONE 2026-10-07 (DR-0030 step 4).** `/model list` and the pickers show the catalog as `not pulled`; `/model pull [--yes] NAME` pulls from it. Ollama pulls stay with the ollama CLI (DR-0022). Original item: **Show and pull the Hailo catalog from `/model`.** hailo-ollama lists the
   models the HAT can run at `GET /hailo/v1/list` and pulls them with
   `POST /api/pull` (Ollama-style progress stream). Harvey only reads
   `/api/tags`, so a model that is not yet pulled cannot be seen or fetched

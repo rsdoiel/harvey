@@ -406,7 +406,7 @@ func (a *Agent) registerCommands() {
 			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|limit [MODEL] N|alias ...]",
 			Description: "Unified model management across llamafile, llama.cpp, and Ollama backends",
 			Handler:     cmdModel,
-			Subcommands: []string{"list", "use", "show", "status", "stop", "clean", "mode", "limit", "alias"},
+			Subcommands: []string{"list", "use", "pull", "show", "status", "stop", "clean", "mode", "limit", "alias"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"use": func(a *Agent) []string { return allModelNames(a) },
 			},
@@ -810,6 +810,8 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 			}
 		}
 		return Negativef("model %q not found — see /model list, or /model use (no arg) for a picker", args[1])
+	case "pull":
+		return cmdModelPull(a, args[1:], out)
 	case "alias":
 		return cmdModelAlias(a, args[1:], out)
 	case "mode":
@@ -831,7 +833,7 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 	case "":
 		return cmdModelShowEntry(a, "", out)
 	default:
-		return Usagef("unknown model subcommand: %q  (usage: /model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...])", sub)
+		return Usagef("unknown model subcommand: %q  (usage: /model [list|use [NAME]|pull NAME|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...])", sub)
 	}
 }
 
@@ -971,7 +973,7 @@ func cmdModelList(a *Agent, out io.Writer) error {
 		if active {
 			marker = "→ "
 		}
-		fmt.Fprintf(out, "  %s%-30s (%s)\n", marker, m.Name, m.Engine)
+		fmt.Fprintf(out, "  %s%-30s (%s)\n", marker, m.Name, m.EngineLabel())
 	}
 	return nil
 }

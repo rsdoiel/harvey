@@ -75,6 +75,18 @@ type ModelSummary struct {
 	Engine    string
 	SizeBytes int64
 	Modified  time.Time
+	// NotPulled marks an entry from the Hailo catalog (what the card can run)
+	// that has not been pulled to the server yet.
+	NotPulled bool
+}
+
+// EngineLabel is the engine as shown to the user: "hailo", or "hailo, not
+// pulled" for a catalog entry that has not been pulled.
+func (m ModelSummary) EngineLabel() string {
+	if m.NotPulled {
+		return m.Engine + ", not pulled"
+	}
+	return m.Engine
 }
 
 /** BackendPID is the JSON payload written to agents/.harvey-backend.pid when

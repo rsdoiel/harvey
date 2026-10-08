@@ -20,15 +20,17 @@ import (
  *   OllamaURL  (string) — Ollama base URL; "" when ollama.url is really a Hailo server.
  *   HailoURL   (string) — hailo-ollama base URL; "" when no Hailo server answered.
  *   Relabelled (bool)   — the Hailo server was found at ollama.url.
+ *   HailoCatalog ([]string) — the models the Hailo server can run, pulled or not.
  *
  * Example:
  *   f := a.ollamaFamily()
  *   if f.HailoURL != "" { fmt.Println("Hailo at", f.HailoURL) }
  */
 type ServerFamily struct {
-	OllamaURL  string
-	HailoURL   string
-	Relabelled bool
+	OllamaURL    string
+	HailoURL     string
+	Relabelled   bool
+	HailoCatalog []string // what the Hailo server can run, pulled or not
 }
 
 // sameServerURL reports whether two base URLs name the same server.
@@ -57,8 +59,10 @@ func (a *Agent) ollamaFamily() ServerFamily {
 	}
 	if st.ServerUp {
 		f.HailoURL = st.URL
-	} else if fetchHailoCatalog(a.Config.Ollama.URL) != nil {
+		f.HailoCatalog = st.Catalog
+	} else if cat := fetchHailoCatalog(a.Config.Ollama.URL); cat != nil {
 		f.HailoURL = a.Config.Ollama.URL
+		f.HailoCatalog = cat
 	}
 	if sameServerURL(f.HailoURL, a.Config.Ollama.URL) {
 		f.Relabelled = true
@@ -111,6 +115,18 @@ func (a *Agent) listFamilyModels() []ModelSummary {
 	}
 	add(f.OllamaURL, "ollama")
 	add(f.HailoURL, "hailo")
+	// The Hailo catalog: what the card can run but has not been pulled.
+	have := map[string]bool{}
+	for _, m := range out {
+		if m.Engine == "hailo" {
+			have[strings.ToLower(m.Name)] = true
+		}
+	}
+	for _, name := range f.HailoCatalog {
+		if !have[strings.ToLower(name)] {
+			out = append(out, ModelSummary{Name: name, Engine: "hailo", NotPulled: true})
+		}
+	}
 	return out
 }
 
@@ -223,6 +239,9 @@ func hasEngine(models []ModelSummary, engine string) bool {
 func (a *Agent) pickFamilyModel(reader *bufio.Reader, out io.Writer, preferredModel string, models []ModelSummary) error {
 	use := func(m ModelSummary, note string) error {
 		if m.Engine == "hailo" {
+			if err := a.pullIfNeeded(m, out); err != nil {
+				return err
+			}
 			if err := a.setHailoModel(m.Name); err != nil {
 				return err
 			}
@@ -240,6 +259,9 @@ func (a *Agent) pickFamilyModel(reader *bufio.Reader, out io.Writer, preferredMo
 	if preferredModel != "" {
 		var matches []ModelSummary
 		for _, m := range models {
+			if m.NotPulled {
+				continue // a session's model is never pulled unasked
+			}
 			if strings.EqualFold(extractModelName(m.Name), preferredModel) || strings.EqualFold(m.Name, preferredModel) {
 				matches = append(matches, m)
 			}
@@ -256,7 +278,7 @@ func (a *Agent) pickFamilyModel(reader *bufio.Reader, out io.Writer, preferredMo
 
 	fmt.Fprintln(out, "  Available models:")
 	for i, m := range models {
-		fmt.Fprintf(out, "  [%d] %-40s %s\n", i+1, m.Name, dim("["+m.Engine+"]"))
+		fmt.Fprintf(out, "  [%d] %-40s %s\n", i+1, m.Name, dim("["+m.EngineLabel()+"]"))
 	}
 	fmt.Fprintf(out, "    Select model [1-%d, default=1]: ", len(models))
 	line, _ := reader.ReadString('\n')

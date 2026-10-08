@@ -200,6 +200,7 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 		name          string
 		path          string // resolved absolute path; llamafile/llamacpp options only
 		contextLength int
+		notPulled     bool // a Hailo catalog entry that is not pulled yet
 	}
 	var opts []option
 	seenPaths := make(map[string]bool)
@@ -275,9 +276,10 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 
 	for _, m := range a.listFamilyModels() {
 		opts = append(opts, option{
-			label: m.Name + dim(" ("+m.Engine+")"),
-			kind:  m.Engine,
-			name:  m.Name,
+			label:     m.Name + dim(" ("+m.EngineLabel()+")"),
+			kind:      m.Engine,
+			name:      m.Name,
+			notPulled: m.NotPulled,
 		})
 	}
 
@@ -318,6 +320,9 @@ func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel 
 		return startLlamaCppModelPath(a, chosen.path, out)
 	}
 	if chosen.kind == "hailo" {
+		if err := a.pullIfNeeded(ModelSummary{Name: chosen.name, Engine: "hailo", NotPulled: chosen.notPulled}, out); err != nil {
+			return err
+		}
 		if err := a.setHailoModel(chosen.name); err != nil {
 			return err
 		}

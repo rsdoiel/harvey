@@ -471,6 +471,12 @@ picker lists both servers' models together, each labelled; with Ollama stopped
 and Hailo running it offers the Hailo models instead of asking to start Ollama.
 A resumed session's model that exists on both engines is not chosen for you.
 
+`/model list` and the pickers also show the Hailo catalog, the models the card can
+run, marking those not pulled yet as `[hailo, not pulled]`. `/model pull [--yes]
+NAME` pulls one (it asks first, since a pull is 1 to 4 GB), and choosing one in a
+picker or with `/model use` offers the same pull. A session's remembered model is
+never pulled unasked. Ollama models are still pulled with the `ollama` CLI.
+
 What hailo-ollama cannot do is stated once, in a table keyed by engine
 (`engine_caps.go`): structured tool calls, `/api/embed`, `/api/tokenize` and
 `/api/ps`. Harvey never sends a `tools` key to it (whatever the model cache or

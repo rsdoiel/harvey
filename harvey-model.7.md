@@ -40,6 +40,14 @@ History is preserved — the switch is like a new character entering the scene.
     than one engine is never chosen for you: at a terminal Harvey lists the
     qualified forms and asks, and otherwise it exits 2 naming them.
 
+  /model pull [--yes] NAME
+    Pull a model from the Hailo catalog onto the hailo-ollama server; /model
+    list marks catalog entries not pulled yet as "(hailo, not pulled)". It asks
+    before downloading (1 to 4 GB); --yes answers for you, and without a
+    terminal or --yes it refuses. Choosing a not-pulled model with /model use
+    or in a picker offers the same pull. Ollama models are pulled with the
+    ollama CLI (! ollama pull NAME).
+
   /model status
     Show whether the active backend is reachable.
 

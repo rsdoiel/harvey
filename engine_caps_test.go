@@ -43,7 +43,7 @@ func newRecordingServer(t *testing.T, hailo bool) *recordingServer {
 			io.WriteString(w, body)
 		case "/hailo/v1/list":
 			if hailo {
-				io.WriteString(w, hailoListBody)
+				io.WriteString(w, `{"models":["llama3.2:3b"]}`)
 				return
 			}
 			http.NotFound(w, r)

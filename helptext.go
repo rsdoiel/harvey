@@ -442,6 +442,13 @@ the scene.
     marking the active entry with an arrow. Purpose tags are shown where
     defined.
 
+  /model pull [--yes] NAME
+    Pull a model from the Hailo catalog (what the AI HAT+ 2 can run) onto the
+    hailo-ollama server. /model list marks catalog entries that are not pulled
+    yet. Pulling downloads 1 to 4 GB, so it asks first; --yes answers for you.
+    Choosing a not-pulled model with /model use or in a picker offers the same
+    pull. Ollama models are pulled with the ollama CLI (! ollama pull NAME).
+
   /model use [NAME]
     Switch to the named model. If NAME is omitted, Harvey shows a combined
     numbered picker of all locally available models across all backends. On

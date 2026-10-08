@@ -94,7 +94,7 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
 	}
 
 	for i, m := range models {
-		label := fmt.Sprintf("%-40s [%s]", m.Name, m.Engine)
+		label := fmt.Sprintf("%-40s [%s]", m.Name, m.EngineLabel())
 		if m.Path != "" {
 			label = fmt.Sprintf("%-40s %-36s [%s]", m.Name, shortenPath(m.Path), m.Engine)
 		}
@@ -227,6 +227,9 @@ func useSelectedModel(a *Agent, selected ModelSummary, out io.Writer, offerAlias
 			}
 		}
 	case "hailo":
+		if err := a.pullIfNeeded(selected, out); err != nil {
+			return err
+		}
 		if err := a.setHailoModel(selected.Name); err != nil {
 			return err
 		}
