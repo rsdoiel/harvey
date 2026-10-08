@@ -1162,7 +1162,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		turnBudget = 4096 // context limit unknown — conservative default
 	}
 	tracker := NewBudgetTracker(turnBudget)
-	augmented, ragInfo := a.ragAugment(input, tracker)
+	augmented, ragInfo := a.ragAugmentTo(out, input, tracker)
 	a.LastRAGInfo = ragInfo
 
 	// File-reference injection — for models that don't reliably call read_file,

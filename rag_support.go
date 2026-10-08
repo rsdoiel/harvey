@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -598,10 +599,24 @@ func ragChunk(text string) []string {
 // results don't waste the limited context window of small models.
 const ragMinScore = 0.3
 
+// reportRagFailure tells the user that retrieval failed, once per distinct
+// cause for the life of the agent.
+func (a *Agent) reportRagFailure(out io.Writer, err error) {
+	msg := err.Error()
+	if a.ragWarned[msg] {
+		return
+	}
+	if a.ragWarned == nil {
+		a.ragWarned = map[string]bool{}
+	}
+	a.ragWarned[msg] = true
+	fmt.Fprintf(out, yellow("  ⚠")+" RAG: %v; this prompt went without retrieved context (reported once per session).\n", err)
+}
+
 // ragAugment prepends relevant RAG chunks to prompt when RAG is enabled.
 // Returns the original prompt unchanged when RAG is off, unconfigured, or
-// when no chunks are retrieved. Errors are silently swallowed so a RAG
-// failure never blocks the chat turn.
+// when no chunks are retrieved. A RAG failure never blocks the chat turn;
+// ragAugmentTo is the variant that reports it.
 //
 // tracker, when non-nil, is a shared per-turn BudgetTracker (see
 // budget_tracker.go). Chunks are kept in score-descending order until one
@@ -611,6 +626,27 @@ const ragMinScore = 0.3
 // "unconstrained" — every relevant chunk is included, matching pre-Direction-B
 // behavior.
 func (a *Agent) ragAugment(prompt string, tracker *BudgetTracker) (string, *RAGAugmentInfo) {
+	return a.ragAugmentTo(io.Discard, prompt, tracker)
+}
+
+/** ragAugmentTo is ragAugment that reports a retrieval failure to out. The
+ * prompt is still sent without context, but the user is told once per session
+ * (once per distinct cause) that retrieval did not work, so a missing embedder,
+ * for example Hailo with no Ollama beside it, is not silent.
+ *
+ * Parameters:
+ *   out     (io.Writer)      — where the failure report goes.
+ *   prompt  (string)         — the user's prompt.
+ *   tracker (*BudgetTracker) — shared per-turn budget; nil means unconstrained.
+ *
+ * Returns:
+ *   string          — the prompt, with context prepended when chunks were found.
+ *   *RAGAugmentInfo — what was injected; nil when nothing was.
+ *
+ * Example:
+ *   augmented, info := a.ragAugmentTo(out, input, tracker)
+ */
+func (a *Agent) ragAugmentTo(out io.Writer, prompt string, tracker *BudgetTracker) (string, *RAGAugmentInfo) {
 	if !a.RagOn || a.Rag == nil {
 		return prompt, nil
 	}
@@ -632,7 +668,11 @@ func (a *Agent) ragAugment(prompt string, tracker *BudgetTracker) (string, *RAGA
 
 	embedder := a.wrapEmbedder(NewOllamaEmbedder(a.Config.Ollama.URL, embedModel))
 	chunks, err := a.Rag.Query(prompt, embedder, 5)
-	if err != nil || len(chunks) == 0 {
+	if err != nil {
+		a.reportRagFailure(out, err)
+		return prompt, nil
+	}
+	if len(chunks) == 0 {
 		return prompt, nil
 	}
 

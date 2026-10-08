@@ -486,7 +486,7 @@ Hailo's `hef` format on a server Harvey was not told is Hailo is held to the sam
 row once it is probed. Embeddings always use `ollama.url`. When one fails on a machine where Hailo is in
 use and Ollama is not there, the error says so plainly (`Hailo cannot embed; no
 Ollama at http://localhost:11434`, or, when `ollama.url` is itself the Hailo
-server, how to separate the two URLs). On a machine with a card whose server is
+server, how to separate the two URLs). The per-prompt RAG lookup reports that failure too, once per session (once per distinct cause), and the prompt goes on without retrieved context. On a machine with a card whose server is
 not running, start-up prints one line, `AI HAT+ 2 found, hailo-ollama is not
 running at URL`, with `systemctl --user start hailo-ollama` when
 `~/.config/systemd/user/hailo-ollama.service` exists. Harvey does not start the
