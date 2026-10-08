@@ -649,7 +649,12 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// REPL
 	for {
-		input, err := le.Prompt(a.prompt())
+		input, err := "", error(nil)
+		if queued, ok := a.nextQueuedInput(); ok {
+			input = queued
+		} else {
+			input, err = le.Prompt(a.prompt())
+		}
 		if err == io.EOF || err == termlib.ErrInterrupted {
 			saveCmdHistory(a.Workspace, le)
 			fmt.Fprintln(out, dim("Goodbye."))
@@ -1392,8 +1397,15 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 					label += fmt.Sprintf(" %d/%d", i+1, len(blocks))
 				}
 				fmt.Fprintf(out, dim("\n[Write %s to file? Path (or Enter to skip)]: "), label)
-				pathLine, _ := reader.ReadString('\n')
+				pathLine, readErr := reader.ReadString('\n')
 				pathLine = strings.TrimSpace(pathLine)
+				if readErr != nil && pathLine == "" {
+					fmt.Fprintln(out, "\n  input ended; skipping the remaining write offers.")
+					break
+				}
+				if a.queueIfCommand(pathLine, out) {
+					break
+				}
 				if pathLine == "" {
 					continue
 				}
@@ -1444,7 +1456,8 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	// the response text may contain display-only code blocks (e.g. directory
 	// trees) that should not be offered as files to write. Interactive only,
 	// for the same stdin-blocking reason as the code-block-write offers above.
-	if interactive && noToolCalls {
+	// A command the user gave at an earlier offer ends the offers; it runs next.
+	if interactive && noToolCalls && len(a.pendingInput) == 0 {
 		a.autoExecuteReply(buf.String(), out, reader, ctx)
 	}
 

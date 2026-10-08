@@ -3611,10 +3611,11 @@ func aliasClashesWithModel(a *Agent, name string) bool {
 type actionChoice int
 
 const (
-	actionYes  actionChoice = iota // execute this action
-	actionNo                       // skip this action
-	actionAll                      // execute this and all remaining actions without prompting
-	actionQuit                     // skip this and all remaining actions
+	actionYes     actionChoice = iota // execute this action
+	actionNo                          // skip this action
+	actionAll                         // execute this and all remaining actions without prompting
+	actionQuit                        // skip this and all remaining actions
+	actionUnknown                     // an answer that is none of the above (see promptActionLine)
 )
 
 // promptAction displays a box-drawing preview of a proposed action and reads
@@ -3635,6 +3636,24 @@ const (
 //	               and nothing when input ended, so a caller that writes files
 //	               must treat ended as quit, never as the returned actionYes.
 func promptAction(r *bufio.Reader, out io.Writer, header, preview string) (actionChoice, bool) {
+	choice, ended, _ := promptActionLine(r, out, header, preview)
+	if choice == actionUnknown {
+		return actionNo, ended
+	}
+	return choice, ended
+}
+
+// promptActionLine is promptAction that also returns the line it read, and
+// reports an answer it does not recognise as actionUnknown instead of yes: only
+// Enter, "y" and "yes" approve. The caller decides what an unknown answer was,
+// a command to hand back to the REPL or just a misunderstanding.
+//
+// Returns:
+//
+//	actionChoice — the decision; actionUnknown for an unrecognised answer.
+//	bool         — true if input ended with nothing read.
+//	string       — the answer, trimmed.
+func promptActionLine(r *bufio.Reader, out io.Writer, header, preview string) (actionChoice, bool, string) {
 	const boxWidth = 56
 	const maxPreviewLines = 8
 
@@ -3664,15 +3683,18 @@ func promptAction(r *bufio.Reader, out io.Writer, header, preview string) (actio
 
 	line, err := r.ReadString('\n')
 	ended := err != nil && line == ""
-	switch strings.ToLower(strings.TrimSpace(line)) {
+	answer := strings.TrimSpace(line)
+	switch strings.ToLower(answer) {
 	case "n", "no":
-		return actionNo, ended
+		return actionNo, ended, answer
 	case "a", "all":
-		return actionAll, ended
+		return actionAll, ended, answer
 	case "q", "quit":
-		return actionQuit, ended
-	default: // "", "y", "yes" — Enter defaults to yes
-		return actionYes, ended
+		return actionQuit, ended, answer
+	case "", "y", "yes": // Enter defaults to yes
+		return actionYes, ended, answer
+	default:
+		return actionUnknown, ended, answer
 	}
 }
 
@@ -3719,11 +3741,21 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 		choice := actionYes
 		if !applyAll {
 			var ended bool
-			choice, ended = promptAction(reader, out, "Write: "+b.path, b.content)
+			var answer string
+			choice, ended, answer = promptActionLine(reader, out, "Write: "+b.path, b.content)
 			if ended {
 				fmt.Fprintln(out, "\n  input ended; aborted remaining actions.")
 				a.logAction("write", b.path, actionQuit, "aborted")
 				return
+			}
+			if choice == actionUnknown {
+				if a.queueIfCommand(answer, out) {
+					a.logAction("write", b.path, actionQuit, "aborted")
+					return
+				}
+				fmt.Fprintf(out, "  did not understand %q; skipped %s\n", answer, b.path)
+				a.logAction("write", b.path, actionNo, "skipped")
+				continue
 			}
 		}
 		switch choice {
@@ -3757,17 +3789,26 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 			if suggested := suggestPathFromHistory(a.History); suggested != "" {
 				// Path inferred from conversation — show the promptAction box
 				// (same UX as tagged blocks: Enter = yes, n = skip).
-				choice, ended := promptAction(reader, out, "Write: "+suggested, content)
+				choice, ended, answer := promptActionLine(reader, out, "Write: "+suggested, content)
 				if ended {
 					fmt.Fprintln(out, "\n  input ended; nothing written.")
+				} else if choice == actionUnknown {
+					if !a.queueIfCommand(answer, out) {
+						fmt.Fprintf(out, "  did not understand %q; nothing written.\n", answer)
+					}
 				} else if choice != actionNo && choice != actionQuit {
 					dest = suggested
 				}
 			} else {
 				// No path known — ask the user to supply one.
 				fmt.Fprint(out, "  Untagged code block found. Write to file? (enter path, or press Enter to skip)\n  Path: ")
-				line, _ := reader.ReadString('\n')
+				line, readErr := reader.ReadString('\n')
 				dest = strings.TrimSpace(line)
+				if readErr != nil && dest == "" {
+					fmt.Fprintln(out, "\n  input ended; nothing written.")
+				} else if a.queueIfCommand(dest, out) {
+					dest = ""
+				}
 			}
 			if dest != "" {
 				if !a.CheckWritePermission(dest) {

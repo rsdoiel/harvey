@@ -1,7 +1,18 @@
 
 ## Bugs
 
-- [ ] **The write-offer prompt takes the next input line as a file path and
+- [x] **FIXED 2026-10-08** (`write_offer_input.go`, tests in
+  `write_offer_input_test.go`): a line that is a command (`/exit`, `!ls`, any
+  registered `/name`) given at a write offer is handed back to the REPL through
+  `Agent.pendingInput` and ends all offers; end of input ends them; at the box
+  prompt only Enter, y and yes approve (any other text used to count as yes).
+  Decided with the author: an absolute path stays re-rooted inside the workspace
+  (`resolveWorkspacePath`: `/etc/x` is `<workspace>/etc/x`; `..` escapes and symlinks
+  are refused), which already keeps the real `/etc` and the workspace parent out of
+  reach, so no extra refusal is needed. Non-terminal sessions keep their write
+  offers, which is useful for automated tests; revisit when the Oberon-style
+  frontend lands (event-driven REPL brief). Original report: **The write-offer
+  prompt takes the next input line as a file path and
   writes it.** Found 2026-10-07 piping `Say hello...` then `/exit` into harvey:
   the reply held a fenced block tagged `bash:testout/hello.bash`; the "Write ...?
   Path (or Enter to skip)" prompt read `/exit` as the path and Harvey printed
