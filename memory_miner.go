@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // proposedMemory is the JSON shape the LLM returns for each proposed memory.
@@ -152,13 +153,17 @@ func minerModel(agent *Agent) string {
 // cancelled context) are returned unchanged. The second result is false in
 // that case.
 func (m *Miner) unprocessed(sessionPath string, agent *Agent, err error) (error, bool) {
-	if !errors.Is(err, ErrStreamTruncated) && !errors.Is(err, errBadReply) {
+	tooSmall := errors.Is(err, errPromptLimitTooSmall)
+	if !isPromptTooLargeFailure(err) && !errors.Is(err, errBadReply) && !tooSmall {
 		return err, false
 	}
 	model := minerModel(agent)
-	reason := "the reply was cut off before it finished (the session may be too large for this model)"
-	if errors.Is(err, errBadReply) {
+	reason := "the reply was cut off before it finished, even on the smallest parts it was given"
+	switch {
+	case errors.Is(err, errBadReply):
 		reason = "the reply was not a JSON list of memories"
+	case tooSmall:
+		reason = err.Error()
 	}
 	m.manifest.RecordFailure(sessionPath, model, reason)
 	if saveErr := m.manifest.Save(m.store.Dir()); saveErr != nil {
@@ -166,6 +171,161 @@ func (m *Miner) unprocessed(sessionPath string, agent *Agent, err error) (error,
 	}
 	return Negativef("%s could not be processed by %s: %s. It is left unmined; "+
 		"use /model use to pick another model, then /memory mine", filepath.Base(sessionPath), model, reason), true
+}
+
+// The smallest slice of dialogue worth asking a model about, in estimateTokens
+// units, and the room kept free beyond the instructions for the framing the
+// server adds.
+const (
+	minerMinChunkTokens = 150
+	minerPromptMargin   = 50
+)
+
+// minerContinuation opens every part of a session after the first.
+const minerContinuation = "(This is a later part of one session transcript; the earlier parts were read separately.)\n\n"
+
+/** errPromptLimitTooSmall marks a model whose prompt limit cannot hold the
+ * mining instructions plus a useful amount of dialogue. Like errBadReply it
+ * means this model cannot mine, whatever the session.
+ *
+ * Example:
+ *   if errors.Is(err, errPromptLimitTooSmall) { fmt.Println("pick a model with room") }
+ */
+var errPromptLimitTooSmall = errors.New("prompt limit too small to mine with")
+
+/** minerChunkTokens returns how many tokens of session text one mining request
+ * may carry for a model whose whole-prompt limit is limit: the limit less the
+ * mining instructions and a margin.
+ *
+ * Parameters:
+ *   limit (int) — the model's prompt limit in estimateTokens units; 0 when unknown.
+ *
+ * Returns:
+ *   int   — tokens of session text per request; 0 means no cap (limit unknown).
+ *   error — wrapping errPromptLimitTooSmall when less than a useful slice is left.
+ *
+ * Example:
+ *   n, err := minerChunkTokens(agent.promptTokenLimit())
+ */
+func minerChunkTokens(limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	n := limit - estimateTokens(minerSystemPrompt) - minerPromptMargin
+	if n < minerMinChunkTokens {
+		return 0, fmt.Errorf("%w: a limit of %d tokens leaves %d for dialogue after the instructions", errPromptLimitTooSmall, limit, n)
+	}
+	return n, nil
+}
+
+/** takeChunk cuts the front off text for one mining request of at most
+ * sizeTokens (4 bytes each). It packs whole paragraphs (blocks separated by a
+ * blank line, which in a recorded session are the turns and their
+ * continuations); a paragraph larger than the budget is cut at a line
+ * boundary, and a single line larger than it at a character boundary. The
+ * chunks always add up to the text, and the chunk is never empty.
+ *
+ * Parameters:
+ *   text       (string) — the session text still to read.
+ *   sizeTokens (int)    — budget in estimateTokens units; 0 or less means no cap.
+ *
+ * Returns:
+ *   chunk (string) — the front of text to send.
+ *   rest  (string) — the remainder, "" when chunk is all of it.
+ *
+ * Example:
+ *   chunk, rest := takeChunk(sessionText, 500)
+ */
+func takeChunk(text string, sizeTokens int) (chunk, rest string) {
+	maxBytes := sizeTokens * 4
+	if sizeTokens <= 0 || len(text) <= maxBytes {
+		return text, ""
+	}
+	cut := 0
+	for pos := 0; pos < len(text); {
+		end := len(text)
+		if i := strings.Index(text[pos:], "\n\n"); i >= 0 {
+			end = pos + i + 2
+			for end < len(text) && text[end] == '\n' {
+				end++
+			}
+		}
+		if end > maxBytes {
+			break
+		}
+		cut, pos = end, end
+	}
+	if cut == 0 {
+		cut = strings.LastIndexByte(text[:maxBytes], '\n') + 1
+	}
+	if cut == 0 {
+		cut = maxBytes
+		for cut > 0 && !utf8.RuneStart(text[cut]) {
+			cut--
+		}
+		if cut == 0 {
+			cut = maxBytes
+		}
+	}
+	return text[:cut], text[cut:]
+}
+
+// dedupeDocs drops proposals whose description repeats an earlier one's, so a
+// lesson that came up in several parts of a session is proposed once.
+func dedupeDocs(docs []MemoryDoc) []MemoryDoc {
+	seen := make(map[string]bool, len(docs))
+	var out []MemoryDoc
+	for _, d := range docs {
+		key := strings.ToLower(strings.Join(strings.Fields(d.Meta.Description), " "))
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, d)
+	}
+	return out
+}
+
+// extractAll proposes memories from the whole session. A session that fits the
+// model goes in one request. When the model's prompt limit is known the session
+// is read in parts that fit it; when it is not, the whole session is tried and
+// a request the model cannot take (truncated, too large, or answered with
+// something other than a JSON list, which small models do on long input) halves the size,
+// which then holds for the rest of the session. Proposals from all parts are
+// merged. Any part the model cannot process fails the whole session, so a
+// half-read session is never mined.
+func (m *Miner) extractAll(ctx context.Context, text string, agent *Agent, out io.Writer) ([]MemoryDoc, error) {
+	size, err := minerChunkTokens(agent.promptTokenLimit())
+	if err != nil {
+		return nil, err
+	}
+	var docs []MemoryDoc
+	announced := false
+	for part, rest := 0, text; rest != ""; {
+		chunk, next := takeChunk(rest, size)
+		if next != "" && !announced {
+			fmt.Fprintln(out, dim("  Session is large for this model; reading it in parts."))
+			announced = true
+		}
+		in := chunk
+		if part > 0 {
+			in = minerContinuation + chunk
+		}
+		got, err := m.extract(ctx, in, agent, out)
+		if err != nil {
+			if isPromptTooLargeFailure(err) || errors.Is(err, errBadReply) {
+				if half := estimateTokens(chunk) / 2; half >= minerMinChunkTokens && (size == 0 || half < size) {
+					size = half
+					continue
+				}
+			}
+			return nil, err
+		}
+		docs = append(docs, got...)
+		rest = next
+		part++
+	}
+	return dedupeDocs(docs), nil
 }
 
 /** Miner drives the mining and interactive review pipeline for a Harvey
@@ -240,7 +400,7 @@ func (m *Miner) Mine(ctx context.Context, sessionPath string, agent *Agent, embe
 	}
 
 	fmt.Fprintf(out, "Extracting memories from %s …\n", sessionPath)
-	proposed, err := m.extract(ctx, string(sessionData), agent, out)
+	proposed, err := m.extractAll(ctx, string(sessionData), agent, out)
 	if err != nil {
 		if report, handled := m.unprocessed(sessionPath, agent, err); handled {
 			return report
@@ -386,8 +546,13 @@ func (m *Miner) reviewInteractive(proposed []MemoryDoc, embedder Embedder, works
 		done := false
 		for !done {
 			fmt.Fprintf(out, "[a]ccept  [e]dit  [s]how similar  [r]eplace <id>  [f]ull view  [k]skip  [q]uit\n> ")
-			line, _ := reader.ReadString('\n')
+			line, readErr := reader.ReadString('\n')
 			line = strings.TrimSpace(line)
+			if readErr != nil && line == "" {
+				// Input ended (Ctrl-D, a closed pipe): treat it as quit, or the
+				// prompt would ask again for ever.
+				return accepted, skipped, true, nil
+			}
 
 			switch {
 			case line == "a" || line == "accept":
@@ -541,7 +706,7 @@ func (m *Miner) MineAuto(ctx context.Context, sessionPath string, agent *Agent, 
 		return nil // this model already failed on it; /memory mine retries on request
 	}
 
-	proposed, err := m.extract(ctx, string(sessionData), agent, out)
+	proposed, err := m.extractAll(ctx, string(sessionData), agent, out)
 	if err != nil {
 		if report, handled := m.unprocessed(sessionPath, agent, err); handled {
 			return report

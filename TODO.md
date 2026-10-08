@@ -192,6 +192,14 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   capability awareness inside the Ollama path, tracked in the items below and
   under Bugs. DR-0029 stays proposed until those are settled.
 
+- [ ] **Mining on small models.** `/memory mine` now reads a large session in parts (2026-10-08), but the
+  instructions (`minerSystemPrompt`, about 2.3 KB) alone exceed the 700 token seed for llama3.2 on Hailo, so that
+  model is reported as unable to mine. Write a compact instruction variant for models with a small known limit.
+  Also: hailo-ollama wedged (empty replies, even to "Say hi.") after a run of failed requests during the first live
+  chunking test and needed `systemctl --user restart hailo-ollama` (kb 378); check whether the miner's failed
+  whole-session attempt, or its request rate, triggers it, and consider remembering the size that worked per
+  model so the first attempt is not a known failure. `/memory mine` with no path still takes only the newest
+  unmined session per call.
 - [ ] **Confirm `/model` works end to end against hailo-ollama.** hailo-ollama
   0.5.1 runs as a user systemd unit on `:8000`, and `agents/harvey.yaml` points
   `ollama.url` at it. Chat works; the rest of `/model` has not been checked.

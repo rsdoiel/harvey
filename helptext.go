@@ -2724,6 +2724,16 @@ Fountain files in agents/memories/ inside the workspace.
         ask the same model again. Switch model with /model use and run
         /memory mine to retry; a model that answers with an empty list has
         processed the session, which is recorded as mined.
+        A session too large for the model is read in parts. With a known
+        prompt limit (see /model limit) the parts are sized to it up front;
+        otherwise the whole session is tried, and a request the model cannot
+        take (cut off, too large, or answered with prose instead of the JSON
+        list) halves the size for the rest of the session. Parts split at
+        paragraph boundaries, proposals from all parts are merged and
+        repeats dropped, and if any part cannot be processed the session is
+        left unmined. A model whose prompt limit cannot hold the mining
+        instructions is reported as unable to mine. If input ends during the
+        review, the review stops and the session is offered again.
 
   list [--type TYPE] [--kind KIND]
         List stored memories. Optional --type filters by memory type:
