@@ -1214,7 +1214,7 @@ type ModelAlias struct {
  *
  * Fields:
  *   ServerBin    (string)        — path to the llama-server binary; defaults to "llama-server" (PATH lookup).
- *   ModelsDir    (string)        — directory scanned for *.gguf model files; defaults to ~/Models.
+ *   ModelsDir    (string)        — directory scanned for *.gguf model files; defaults to llama.cpp's cache ($LLAMA_CACHE, else ~/.cache/llama.cpp).
  *   URL          (string)        — API base URL; defaults to http://127.0.0.1:8081.
  *   CtxSize      (int)           — --ctx-size passed to llama-server; 0 = server default.
  *   Threads      (int)           — --threads; 0 = server default.
@@ -1227,7 +1227,7 @@ type ModelAlias struct {
  */
 type LlamaCppConfig struct {
 	ServerBin    string        // path to llama-server binary; "" = "llama-server" (PATH lookup)
-	ModelsDir    string        // directory for *.gguf files; "" = llamafileDefaultModelsDir()
+	ModelsDir    string        // directory for *.gguf files; "" = llama.cpp's cache (llamaCppDefaultModelsDir)
 	URL          string        // API base URL; default http://127.0.0.1:8081
 	CtxSize      int           // --ctx-size; 0 = server default
 	Threads      int           // --threads; 0 = server default
@@ -1262,6 +1262,52 @@ func llamafileDefaultModelsDir() string {
 		return "."
 	}
 	return filepath.Join(home, "Models")
+}
+
+/** llamaCppDefaultModelsDir returns the directory llama.cpp keeps the models it
+ * downloads (llama-server -hf), which is where Harvey looks for .gguf files
+ * unless llama_cpp.models_dir is set. Order: $LLAMA_CACHE, then
+ * $XDG_CACHE_HOME/llama.cpp, then ~/.cache/llama.cpp.
+ *
+ * Returns:
+ *   string — the cache directory; it need not exist. "." when no home
+ *            directory can be determined and no variable is set.
+ *
+ * Example:
+ *   dir := llamaCppDefaultModelsDir() // "/home/me/.cache/llama.cpp"
+ */
+func llamaCppDefaultModelsDir() string {
+	if d := os.Getenv("LLAMA_CACHE"); d != "" {
+		return d
+	}
+	if d := os.Getenv("XDG_CACHE_HOME"); d != "" {
+		return filepath.Join(d, "llama.cpp")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return filepath.Join(home, ".cache", "llama.cpp")
+}
+
+/** llamaCppModelsDir resolves the directory scanned for llama.cpp .gguf files:
+ * llama_cpp.models_dir when set, otherwise llama.cpp's own cache. ~/Models is
+ * not consulted; that is the llamafile convention.
+ *
+ * Parameters:
+ *   cfg (*Config) — the loaded configuration.
+ *
+ * Returns:
+ *   string — the directory to scan.
+ *
+ * Example:
+ *   dir := llamaCppModelsDir(a.Config)
+ */
+func llamaCppModelsDir(cfg *Config) string {
+	if cfg.LlamaCpp.ModelsDir != "" {
+		return cfg.LlamaCpp.ModelsDir
+	}
+	return llamaCppDefaultModelsDir()
 }
 
 // expandTilde replaces a leading "~/" or bare "~" with the user's home directory.

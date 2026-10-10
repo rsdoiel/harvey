@@ -18,7 +18,8 @@ import (
  * It exposes an OpenAI-compatible API at BaseURL/v1, so the same LLM client
  * used for llamafile works here. Start launches llama-server with --model, --port,
  * and optional --ctx-size / --threads / --n-gpu-layers flags. ListModels scans
- * modelsDir for *.gguf files.
+ * modelsDir for *.gguf files; unless llama_cpp.models_dir is set that is
+ * llama.cpp's own download cache (see llamaCppDefaultModelsDir).
  *
  * Fields:
  *   serverBin     (string)        — path to llama-server binary; "" = "llama-server" (PATH lookup).
@@ -67,10 +68,7 @@ type LlamaCppBackend struct {
  *   b := NewLlamaCppBackend(cfg, filepath.Join(ws.Root, "agents"))
  */
 func NewLlamaCppBackend(cfg *Config, agentsDir string) *LlamaCppBackend {
-	modelsDir := cfg.LlamaCpp.ModelsDir
-	if modelsDir == "" {
-		modelsDir = llamafileDefaultModelsDir()
-	}
+	modelsDir := llamaCppModelsDir(cfg)
 	serverBin := cfg.LlamaCpp.ServerBin
 	if serverBin == "" {
 		serverBin = "llama-server"

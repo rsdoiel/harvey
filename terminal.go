@@ -163,11 +163,7 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 		full := entry.Model
 		switch entry.Engine {
 		case "llamacpp":
-			modelsDir := a.Config.LlamaCpp.ModelsDir
-			if modelsDir == "" {
-				modelsDir = llamafileDefaultModelsDir()
-			}
-			path, err := resolveLlamaCppModelPath(full, modelsDir)
+			path, err := resolveLlamaCppModelPath(full, llamaCppModelsDir(a.Config))
 			if err != nil {
 				return true, err
 			}
