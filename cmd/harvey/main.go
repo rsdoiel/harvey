@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	harvey "github.com/rsdoiel/harvey"
@@ -191,6 +192,9 @@ func runArgs(args []string, out, errOut io.Writer) error {
 				return err
 			}
 			return nil
+		case "completion":
+			// harvey completion bash|powershell [-install]
+			return runCompletion(args[i+1:], appName, out)
 		case "help":
 			// harvey help [TOPIC]
 			var topic string
@@ -279,4 +283,39 @@ func runArgs(args []string, out, errOut io.Writer) error {
 	}
 	agent := harvey.NewAgent(cfg, ws)
 	return agent.Run(out)
+}
+
+// runCompletion is `harvey completion SHELL [-install|--install]`: it writes
+// the completion script to out, or installs it and says where. The shell and
+// the install option may come in either order.
+func runCompletion(args []string, appName string, out io.Writer) error {
+	shell, install := "", false
+	for _, a := range args {
+		switch {
+		case a == "-install" || a == "--install":
+			install = true
+		case strings.HasPrefix(a, "-"):
+			return harvey.Usagef("Unknown flag: %s", a)
+		case shell != "":
+			return harvey.Usagef("unexpected argument: %s", a)
+		default:
+			shell = a
+		}
+	}
+	if shell == "" {
+		return harvey.Usagef("Usage: %s completion %s [-install]", appName, strings.Join(completionShells, "|"))
+	}
+	if !install {
+		return writeCompletion(out, appName, shell)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return harvey.IOf("cannot find the home directory to install into: %v", err)
+	}
+	path, err := installCompletion(appName, shell, home, os.Getenv("XDG_DATA_HOME"), runtime.GOOS)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Installed %s completion: %s\n", strings.ToLower(shell), path)
+	return nil
 }

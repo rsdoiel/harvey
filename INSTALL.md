@@ -61,6 +61,21 @@ chmod +x ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
 
 Harvey finds the llamafile automatically and connects.
 
+## Shell completion
+
+harvey can complete its own verbs, options and help topics in bash and
+PowerShell:
+
+```shell
+harvey completion bash --install        # bash-completion user directory
+harvey completion powershell -install   # beside your PowerShell profile
+```
+
+Without `-install` the script goes to standard output, for
+`source <(harvey completion bash)`. Open a new shell afterwards. `-install`
+never overwrites a file harvey did not write. This is separate from tab
+completion of `/commands` inside a session.
+
 ## Running harvey
 
 ```shell

@@ -143,7 +143,7 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
-- [ ] **Shell completion with an install option, as in antenna.** `harvey completion bash|powershell [-install]`,
+- [x] **DONE 2026-10-10 (`cmd/harvey/completion.go`, tests in `completion_test.go`, red first).** `harvey completion bash|powershell [-install|--install]`; the verb list is checked against the switch in `main.go`, every value flag is classified as path or free text, help topics come from the topic index, and the scripts were run (bash through `compgen`, PowerShell through `TabExpansion2`). Exit codes: unsupported or missing shell and surplus arguments 2, a file harvey did not write 73, a failed write 74/77. Original item: **Shell completion with an install option, as in antenna.** `harvey completion bash|powershell [-install]`,
   following `antennaApp/completion.go` (shipped 2026-10-05; `InstallCompletion` is the install half).
   This is the *shell* completion for the `harvey` binary's own verbs and flags (`init`, `help`, `-h`, ...
   in `cmd/harvey/main.go`). It is separate from the in-REPL `/command` tab completion in
