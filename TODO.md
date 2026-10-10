@@ -59,8 +59,8 @@
   `Restore` also wrote no `[[model switch]]` note. All four now go through
   `Agent.useOllamaClient`, which sets the model, wires the debug log and records
   the switch. Tests: `model_switch_ollama_test.go`, red first, through `/model use` and
-  `resolveDispatchTarget`. Not covered: `startLlamaCppModelPath` also installs a
-  client without the debug log or a switch note; untested and unchanged.
+  `resolveDispatchTarget`. **Fixed 2026-10-10:** `startLlamaCppModelPath` now keeps the
+  debug log and records the switch (`model_switch_llamacpp_test.go`, red first).
 
 - [x] **FIXED 2026-09-25.** `getting_started.md` was stale (21 registered commands missing, `/llamafile` and `/ollama` documented though no longer registered, `/kb` subcommands short). Command tables now come from the registry; the `/kb` registry entry itself omitted `learn`, `source`, `retract`, `cite`, `show` and `check-retractions` and is fixed (`kb_registry_test.go` keeps it in step with `cmdKB`).
 - [x] **FIXED 2026-09-25.** `/model use NAME` only searched the registry and aliases, so an Ollama model could be reached only through the picker. It now falls back to every model `/model list` shows: exact name (case-insensitive), then a unique prefix; an ambiguous prefix lists the candidates. Tests: `model_use_name_test.go`.
