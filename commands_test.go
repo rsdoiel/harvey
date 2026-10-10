@@ -25,6 +25,9 @@ func newTestAgent(t *testing.T) *Agent {
 	}
 	cfg := DefaultConfig()
 	cfg.Security.SafeMode = false // tests exercise command mechanics, not safe mode policy
+	// A test agent never scans this machine's ~/Models (harvey.local has llamafiles).
+	cfg.Llamafile.ModelsDir = t.TempDir()
+	cfg.LlamaCpp.ModelsDir = t.TempDir()
 	return &Agent{
 		Config:    cfg,
 		Workspace: ws,

@@ -58,11 +58,14 @@ func TestCmdModelList_ShowsEngineLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Listing is a disk scan of ModelsDir, so the llamafile must exist there.
+	if err := os.WriteFile(filepath.Join(dir, "phi4.llamafile"), []byte("stub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
 	a := newTestAgent(t)
 	a.Config.LlamaCpp.ModelsDir = dir
-	a.Config.Llamafile.Models = []LlamafileEntry{
-		{Name: "phi4", Path: "/models/phi4.llamafile"},
-	}
+	a.Config.Llamafile.ModelsDir = dir
 
 	var out strings.Builder
 	if err := cmdModelList(a, &out); err != nil {
