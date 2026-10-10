@@ -96,6 +96,12 @@ about.md: .FORCE
 test: $(PACKAGE)
 	go test
 
+# test-models runs the live model tests against whatever model systems this
+# machine has (Ollama, hailo-ollama, llama.cpp, llamafile). A missing system
+# skips its tests, and -v prints why.
+test-models: $(PACKAGE)
+	go test -count=1 -v -run '^TestLive' .
+
 website: clean-website .FORCE
 	make -f website.mak
 
