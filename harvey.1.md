@@ -1,6 +1,6 @@
-%harvey(1) user manual | version 0.0.18 7b4e0f5
+%harvey(1) user manual | version 0.0.19 f73e1d8
 % R. S. Doiel
-% 2026-10-02
+% 2026-10-10
 
 # NAME
 
@@ -50,6 +50,16 @@ init <source>
 : seed model aliases from another workspace directory or a .yaml file, then exit.
   SOURCE may be a workspace directory (reads agents/harvey.yaml inside it) or a
   standalone .yaml file with a model_aliases: map at the top level.
+
+completion SHELL [-install]
+: write a shell completion script for SHELL (bash or powershell) to standard
+  output, then exit. Load it with source <(harvey completion bash), or add
+  -install to put it where the shell loads it in every session: for bash the
+  bash-completion user directory ($XDG_DATA_HOME/bash-completion/completions,
+  else ~/.local/share/...), for PowerShell a file beside the profile and one
+  line in the profile, added once. A file there that harvey did not write is
+  never overwritten (exit 73). This completes the command line's verbs, options
+  and help topics, not the /commands inside a session.
 
 -m, --model MODEL
 : Ollama or Hailo model to use on startup. Write engine/model (hailo/llama3.2:3b,
@@ -122,7 +132,8 @@ went wrong from the number:
 
 0
 : The session ended normally (/exit, Ctrl-D or Ctrl-C at the prompt), or the
-  option printed its output and exited (--help, --version, --license, init).
+  option printed its output and exited (--help, --version, --license, init,
+  completion).
 
 2
 : The command line is wrong and nothing was attempted: an unknown option, an
@@ -147,8 +158,8 @@ went wrong from the number:
 : An internal error, or one nothing classified. Please report it.
 
 73
-: An output cannot be created: the --record-file path, or the workspace
-  directory.
+: An output cannot be created: the --record-file path, the workspace
+  directory, or a completion file that harvey did not write.
 
 74
 : A read or write failed part way.

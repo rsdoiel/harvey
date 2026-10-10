@@ -1,13 +1,77 @@
 # CHANGES
 
-## Unreleased
+## v0.0.19 (2026-10-10)
+
+Harvey now knows the Raspberry Pi AI HAT+ 2 (hailo-ollama) as a model engine beside Ollama,
+learns and respects each model's prompt-size limit, and finds models where each model system
+keeps them. Several behaviours change for existing setups; they come first.
+
+### Upgrade notes
+
+| If you... | What changed | What to do |
+|---|---|---|
+| keep `.gguf` files in `~/Models` for llama.cpp | llama.cpp models are now looked for in llama.cpp's own cache (`$LLAMA_CACHE`, else `$XDG_CACHE_HOME/llama.cpp`, else `~/.cache/llama.cpp`). `~/Models` is scanned for llamafiles only (harvey DR-0031, proposed). | Set `llama_cpp.models_dir: ~/Models` in `agents/harvey.yaml` to keep the old behaviour. An explicit `models_dir` is still honoured. |
+| relied on the skills catalog being in the system prompt | `skills.catalog` is `off` by default: skills still load and their commands still register, but the catalog is not sent (it cost about 38% of a typical prompt on every turn and the model cannot load a skill itself). | Set `skills: catalog: full` to restore it. A value other than `off` or `full` is a config error (exit 78). |
+| have a setting in `harvey.yaml` that you also pass on the command line | The command line now wins for `--ollama`, `-m/--model`, `--llamafile-url`, `--llamafile-dir`, `-r`, `--record-file`, `--resume`, `--continue`, `--replay`, `--replay-output` and `--replay-continue`; it used to lose to the file. `HARVEY_LLAMAFILE_DIR` now beats `llamafile.models_dir`, as CONFIGURATION.md always said. | Nothing, unless you depended on the file overriding a flag. |
+| script harvey against a server that closes the chat stream early | A stream that ends before its final chunk is now an error (`ErrStreamTruncated`, exit 74) instead of an empty reply recorded as a success. | Treat 74 as a failed turn. |
+| ask for a model name that two engines both have | `/model use`, `-m` and `ollama.model` accept `engine/model` (`hailo/llama3.2:3b`, `ollama/llama3.2:3b`). A bare name found on both Ollama and Hailo asks at a terminal and is a usage error (exit 2) when unattended. | Write `engine/model` in scripts. |
+| answer a "Write ...?" offer with anything but Enter, `y` or `yes` | Other text no longer counts as yes. A line that is a command (`/exit`, `!ls`, any `/name`) ends the offers and is run, and end of input ends them. | Nothing; this only removes accidental writes. |
+
+### Added
+
+- **Hailo (AI HAT+ 2) as an engine** (harvey DR-0030). `hailo-ollama` is an engine label over the Ollama
+  client, not a fourth backend, with its own `hailo:` section in `harvey.yaml` (`hailo.url`, default
+  `http://localhost:8000`) so chat and embeddings can use different servers. The card
+  (`/dev/hailo0`) and the server (`GET /hailo/v1/list`) are detected separately; a machine with
+  neither makes no request. A Hailo server found at `ollama.url` is relabelled `hailo` at start-up, with
+  one notice and an alias migration. `/model list` and the pickers show Hailo models beside
+  Ollama's and the catalog the HAT can run but has not pulled, marked `not pulled`; `/model pull [--yes] NAME`
+  pulls from it after a confirmation. Harvey never starts hailo-ollama; it prints the `systemctl --user`
+  command when the card's server is stopped. A capability table by engine stops harvey sending `tools`
+  (HTTP 500) or asking for embeddings, tokenize and `ps` where Hailo has none, and a failed embedding says
+  that Hailo cannot embed and names Ollama.
+- **Per-model prompt limits.** hailo-ollama fails with HTTP 500 once a whole prompt passes about 3,000
+  characters. `/model limit` sets a model's limit (seeded at 700 tokens for Hailo's llama3.2). With a limit
+  known, the system prompt is fitted to 60% of it (skills catalog first, then the tail of `HARVEY.md`, then a
+  compact preamble), the oldest whole turns are dropped before each send, and a turn over the limit is
+  refused before it is sent. A turn that fails like an oversize prompt is retried on 70%, 45% and 25% of its
+  size and the first success is remembered as the model's limit. The tool-loop path does not retry yet.
+- **`harvey completion bash|powershell [-install]`** writes shell completion for harvey's verbs, options
+  and help topics, or installs it where the shell loads it. `-install` never overwrites a file harvey
+  did not write (exit 73). It is separate from the in-session `/command` completion.
+- **`make test-models`** runs live model tests (`TestLive_*`) against whatever model systems the machine
+  has. A missing system skips its tests with the reason and how to start it.
+- **`make generate`** runs `cmt` over `codemeta.json`. `make build` no longer regenerates `version.go`,
+  `CITATION.cff` or `about.md`; `make release` runs `generate` first.
+
+### Changed
+
+- The model cache keys capability rows and learned prompt limits by engine and model, so the same
+  name on two engines no longer shares a row. Ollama keeps the bare name; other engines are prefixed.
+  llamafile and llama.cpp rows stored under a bare name are probed once more.
+- `/memory mine` reads a session too large for the model in parts (sized to the model's prompt limit when
+  known, halved when a request is cut off), merges and de-duplicates the proposals, and reports a model
+  whose limit is too small to hold the mining instructions as unable to mine. An empty session is recorded
+  as `empty` and never sent; a truncated or unparseable reply leaves the session unmined and is remembered
+  per session and model so auto-mine does not retry the same model. The review prompt quits at end of input.
+- A RAG retrieval failure (an embedder that is down) is reported once per distinct cause for the life of the
+  session; the prompt still goes on without context. It used to fail silently on every prompt.
+- `github.com/rsdoiel/knowledge` bumped from v0.0.15 to v0.0.20. Harvey's own code does not depend on the
+  behaviour changes; the library additions are additive.
 
 ### Fixed
 
-- Switching to an Ollama model mid-session (`/model use`, the picker, a model alias,
-  or returning from a step dispatched with `@name` or `[model: name]`) no longer drops
-  the `--debug` log, and the session transcript now records the switch and attributes
-  later replies to the new model instead of the previous one.
+- Switching model mid-session no longer drops the `--debug` log or leaves the transcript naming the
+  previous model. Ollama (`/model use`, the picker, an alias, or a step dispatched with `@name` or
+  `[model: name]`) was fixed first; the llama.cpp path was the last one left.
+- `--ollama` and `-m/--model` were overridden by `ollama.url` and `ollama.model` in `harvey.yaml`; see the
+  upgrade notes for the other flags fixed the same way.
+- hailo-ollama models were sent a `tools` array they cannot take: `/api/show` returns `"model_info": ""`,
+  which made the capability probe fail to decode, so tool mode stayed `auto`. The probe now tolerates it
+  and a `hef` model probes as no tool support.
+- A write offer took the next input line as the file path: piping `/exit` created an empty file named
+  `exit`.
+- Test agents no longer scan the machine's `~/Models`, so the suite gives the same result on every machine.
 
 ## v0.0.18 (2026-10-02)
 

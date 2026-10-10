@@ -79,17 +79,20 @@ Harvey runs on:
 
 ## Release Notes
 
-- version: 0.0.18
+- version: 0.0.19
 - status: active
-- released: 2026-10-02
+- released: 2026-10-10
 
-- Breaking for scripts: every slash command now returns a classed error instead of printing a failure and carrying on, so a non-interactive `harvey` session (piped stdin, or `--replay` without `--replay-continue`) exits with the class of its first failed command, where it used to exit 0 or 70. An unknown command is 2, a missing file or workspace 66, no matches or nothing to act on 1, a path or action refused by the permission rules 77, an unreachable backend 69, a file of the wrong kind 65, a setting that cannot be saved 74. `harvey/CHANGES.md` has the table for each command family. A session at a terminal is unaffected apart from the message now reading `Error: ...`. `/loop`, `/read`, `/format`, `/kb cite` and `/rag ingest` still try every item, then return the first failure
-- `/model` and `/security` with an unknown subcommand are now usage errors; `/model NAME` used to show the active model and ignore the name
-- Bug fix: `/workspace init FROM_PATH` never imported anything, because the handler read its subcommand from the wrong argument; `/workspace bogus` quietly showed the status
-- Bug fix: `/learn` found no hand-offs after the workspace moved them to `agents/projects/<project>/hand-off/`; it now scans each project's `hand-off/` directory and accepts Markdown hand-offs
-- `/profile use`'s automatic hand-off is now written as Markdown per `HANDOFF_FORMAT.md` instead of Fountain; `recallKB` retrieves through the knowledge library's `RecallByText`
-- Design briefs, plans, decision records and notes moved out of this repository into `agents/projects/harvey/` (harvey DR-0008); 21 earlier decisions from `DECISIONS.md` are now records DR-0009 to DR-0029
-- `knowledge` bumped to the released v0.0.15
+- Behaviour changes, see CHANGES.md upgrade notes: llama.cpp models are looked for in llama.cpp's cache (`$LLAMA_CACHE`, else `~/.cache/llama.cpp`) and `~/Models` is for llamafiles only, so set `llama_cpp.models_dir` to keep the old directory (harvey DR-0031, proposed); `skills.catalog` is off by default (set `skills: catalog: full` to restore it); the command line now beats `harvey.yaml` for `--llamafile-url`, `--llamafile-dir`, `-r`, `--record-file`, `--resume`, `--continue`, `--replay`, `--replay-output` and `--replay-continue` as well as `--ollama` and `-m`, and `HARVEY_LLAMAFILE_DIR` beats `llamafile.models_dir`
+- A chat stream that ends before its final chunk is an error (`ErrStreamTruncated`, exit 74) instead of an empty reply recorded as a success
+- Hailo (AI HAT+ 2) is an engine beside Ollama (harvey DR-0030): a `hailo:` section in `harvey.yaml`, card and server detected apart, `engine/model` names (a bare name on both engines asks, or is exit 2 unattended), the catalog shown as `not pulled` with `/model pull [--yes] NAME`, and a capability table so harvey stops sending `tools` or asking for embeddings where Hailo has none
+- Per-model prompt limits: `/model limit`, the system prompt and history fitted to the limit, a turn over it refused before sending, and a failed turn retried on smaller prompts that teaches the limit; the model cache is keyed by engine and model
+- `/memory mine` reads a session too large for the model in parts, records an empty session as `empty`, and remembers a model that failed on a session so auto-mine does not retry it; a RAG retrieval failure is reported once per session instead of silently
+- `harvey completion bash|powershell [-install]` for shell completion of verbs, options and help topics
+- A write offer no longer treats a command, end of input or arbitrary text as an answer; piping `/exit` used to create a file named `exit`
+- Switching to a llama.cpp model mid-session keeps the `--debug` log and records the switch, as the Ollama paths already did
+- `make test-models` runs live model tests and skips a missing model system with the reason; `make build` no longer runs `cmt`, `make generate` does
+- `knowledge` bumped to the released v0.0.20
 
 
 ### Authors
