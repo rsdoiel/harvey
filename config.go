@@ -228,6 +228,7 @@ type Config struct {
 	Routes         []RouteEndpoint // registered remote endpoints; persisted across sessions
 	RoutingEnabled bool            // when false, @mentions are rejected with a warning
 	ModelCacheDB   string          // path to model_cache.db; empty = harvey/model_cache.db
+	explicit       map[string]bool // settings the command line or environment gave; see MarkExplicit
 	// Grouped settings
 	Skills    SkillsConfig
 	Ollama    OllamaConfig
@@ -776,6 +777,40 @@ func parseDurationString(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
+/** MarkExplicit records that a setting was given on the command line or in
+ * the environment, so LoadHarveyYAML leaves it as it is: the command line
+ * beats harvey.yaml, and the environment beats it too. Keys are the setting's
+ * harvey.yaml path, for example "llamafile.url" or "session.record_path".
+ *
+ * Parameters:
+ *   keys (...string) — harvey.yaml paths of the settings now fixed.
+ *
+ * Example:
+ *   cfg.Llamafile.URL = "http://localhost:9090"
+ *   cfg.MarkExplicit("llamafile.url")
+ */
+func (c *Config) MarkExplicit(keys ...string) {
+	if c.explicit == nil {
+		c.explicit = map[string]bool{}
+	}
+	for _, k := range keys {
+		c.explicit[k] = true
+	}
+}
+
+/** IsExplicit reports whether a setting was fixed with MarkExplicit.
+ *
+ * Parameters:
+ *   key (string) — harvey.yaml path of the setting.
+ *
+ * Returns:
+ *   bool — true when the command line or environment gave it.
+ *
+ * Example:
+ *   if !cfg.IsExplicit("llamafile.models_dir") { cfg.Llamafile.ModelsDir = dir }
+ */
+func (c *Config) IsExplicit(key string) bool { return c.explicit[key] }
+
 /** LoadHarveyYAML reads agents/harvey.yaml from ws and applies any overrides
  * to cfg. Missing fields are left unchanged. The file is optional — its
  * absence is silently ignored.
@@ -817,25 +852,25 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.AgentsDir != "" {
 		cfg.AgentsDir = y.AgentsDir
 	}
-	if y.Session.AutoRecord != nil {
+	if y.Session.AutoRecord != nil && !cfg.IsExplicit("session.auto_record") {
 		cfg.Session.AutoRecord = *y.Session.AutoRecord
 	}
-	if y.Session.RecordPath != "" {
+	if y.Session.RecordPath != "" && !cfg.IsExplicit("session.record_path") {
 		cfg.Session.RecordPath = y.Session.RecordPath
 	}
-	if y.Session.ContinuePath != "" {
+	if y.Session.ContinuePath != "" && !cfg.IsExplicit("session.continue_path") {
 		cfg.Session.ContinuePath = y.Session.ContinuePath
 	}
-	if y.Session.ResumeLatest != nil {
+	if y.Session.ResumeLatest != nil && !cfg.IsExplicit("session.resume_latest") {
 		cfg.Session.ResumeLatest = *y.Session.ResumeLatest
 	}
-	if y.Session.ReplayPath != "" {
+	if y.Session.ReplayPath != "" && !cfg.IsExplicit("session.replay_path") {
 		cfg.Session.ReplayPath = y.Session.ReplayPath
 	}
-	if y.Session.ReplayOutputPath != "" {
+	if y.Session.ReplayOutputPath != "" && !cfg.IsExplicit("session.replay_output_path") {
 		cfg.Session.ReplayOutputPath = y.Session.ReplayOutputPath
 	}
-	if y.Session.ReplayContinue != nil {
+	if y.Session.ReplayContinue != nil && !cfg.IsExplicit("session.replay_continue") {
 		cfg.Session.ReplayContinue = *y.Session.ReplayContinue
 	}
 	if y.ModelCacheDB != "" {
@@ -935,13 +970,13 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 		}
 	}
 	// Load llamafile settings
-	if y.Llamafile.ModelsDir != "" {
+	if y.Llamafile.ModelsDir != "" && !cfg.IsExplicit("llamafile.models_dir") {
 		cfg.Llamafile.ModelsDir = expandTilde(y.Llamafile.ModelsDir)
 	}
 	// Blank slate: a persisted llamafile.active (legacy leftover or hand edit)
 	// must never auto-select a model at startup. Only an explicit --llamafile
 	// CLI flag (cmd/harvey/main.go) or a --continue/--resume session hint may.
-	if y.Llamafile.URL != "" {
+	if y.Llamafile.URL != "" && !cfg.IsExplicit("llamafile.url") {
 		cfg.Llamafile.URL = y.Llamafile.URL
 	}
 	if y.Llamafile.StartupTimeout != "" {

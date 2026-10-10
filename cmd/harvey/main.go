@@ -87,24 +87,57 @@ var flagSpecs = []flagSpec{
 		st.cfg.Llamafile.Active = harvey.LlamafileModelNameFromPath(v)
 		return nil
 	}},
-	{[]string{"--llamafile-url"}, true, func(st *startState, v string) error { st.cfg.Llamafile.URL = v; return nil }},
-	{[]string{"--llamafile-dir"}, true, func(st *startState, v string) error { st.cfg.Llamafile.ModelsDir = v; return nil }},
+	{[]string{"--llamafile-url"}, true, func(st *startState, v string) error {
+		st.cfg.Llamafile.URL = v
+		st.cfg.MarkExplicit("llamafile.url")
+		return nil
+	}},
+	{[]string{"--llamafile-dir"}, true, func(st *startState, v string) error {
+		st.cfg.Llamafile.ModelsDir = v
+		st.cfg.MarkExplicit("llamafile.models_dir")
+		return nil
+	}},
 	{[]string{"-w", "--workdir"}, true, func(st *startState, v string) error {
 		st.cfg.WorkDir = v
 		st.workDirExplicit = true
 		return nil
 	}},
-	{[]string{"-r", "--record"}, false, func(st *startState, _ string) error { st.cfg.Session.AutoRecord = true; return nil }},
+	{[]string{"-r", "--record"}, false, func(st *startState, _ string) error {
+		st.cfg.Session.AutoRecord = true
+		st.cfg.MarkExplicit("session.auto_record")
+		return nil
+	}},
 	{[]string{"--record-file"}, true, func(st *startState, v string) error {
 		st.cfg.Session.RecordPath = v
 		st.cfg.Session.AutoRecord = true
+		st.cfg.MarkExplicit("session.record_path", "session.auto_record")
 		return nil
 	}},
-	{[]string{"--resume"}, false, func(st *startState, _ string) error { st.cfg.Session.ResumeLatest = true; return nil }},
-	{[]string{"--continue"}, true, func(st *startState, v string) error { st.cfg.Session.ContinuePath = v; return nil }},
-	{[]string{"--replay"}, true, func(st *startState, v string) error { st.cfg.Session.ReplayPath = v; return nil }},
-	{[]string{"--replay-output"}, true, func(st *startState, v string) error { st.cfg.Session.ReplayOutputPath = v; return nil }},
-	{[]string{"--replay-continue"}, false, func(st *startState, _ string) error { st.cfg.Session.ReplayContinue = true; return nil }},
+	{[]string{"--resume"}, false, func(st *startState, _ string) error {
+		st.cfg.Session.ResumeLatest = true
+		st.cfg.MarkExplicit("session.resume_latest")
+		return nil
+	}},
+	{[]string{"--continue"}, true, func(st *startState, v string) error {
+		st.cfg.Session.ContinuePath = v
+		st.cfg.MarkExplicit("session.continue_path")
+		return nil
+	}},
+	{[]string{"--replay"}, true, func(st *startState, v string) error {
+		st.cfg.Session.ReplayPath = v
+		st.cfg.MarkExplicit("session.replay_path")
+		return nil
+	}},
+	{[]string{"--replay-output"}, true, func(st *startState, v string) error {
+		st.cfg.Session.ReplayOutputPath = v
+		st.cfg.MarkExplicit("session.replay_output_path")
+		return nil
+	}},
+	{[]string{"--replay-continue"}, false, func(st *startState, _ string) error {
+		st.cfg.Session.ReplayContinue = true
+		st.cfg.MarkExplicit("session.replay_continue")
+		return nil
+	}},
 	{[]string{"--debug"}, false, func(st *startState, _ string) error {
 		st.cfg.Debug = true
 		setDebugEnv()
@@ -251,11 +284,7 @@ func runArgs(args []string, out, errOut io.Writer) error {
 		}
 	}
 
-	// HARVEY_LLAMAFILE_DIR env var overrides the YAML default but is itself
-	// overridden by the --llamafile-dir flag (already applied above).
-	if v := os.Getenv("HARVEY_LLAMAFILE_DIR"); v != "" && cfg.Llamafile.ModelsDir == harvey.DefaultLlamafileModelsDir() {
-		cfg.Llamafile.ModelsDir = v
-	}
+	applyEnvironment(cfg)
 
 	if st.llamafile != "" {
 		if err := harvey.CheckLlamafileInput(st.llamafile); err != nil {
@@ -318,4 +347,14 @@ func runCompletion(args []string, appName string, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "Installed %s completion: %s\n", strings.ToLower(shell), path)
 	return nil
+}
+
+// applyEnvironment applies the environment variables that set configuration.
+// HARVEY_LLAMAFILE_DIR overrides llamafile.models_dir in harvey.yaml and is
+// itself overridden by --llamafile-dir (already applied by now).
+func applyEnvironment(cfg *harvey.Config) {
+	if v := os.Getenv("HARVEY_LLAMAFILE_DIR"); v != "" && !cfg.IsExplicit("llamafile.models_dir") {
+		cfg.Llamafile.ModelsDir = v
+		cfg.MarkExplicit("llamafile.models_dir")
+	}
 }
