@@ -79,6 +79,16 @@ CPU)</p>
 macOS):</p>
 <pre class="shell"><code>chmod +x ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile</code></pre>
 <p>Harvey finds the llamafile automatically and connects.</p>
+<h2 id="shell-completion">Shell completion</h2>
+<p>harvey can complete its own verbs, options and help topics in bash
+and PowerShell:</p>
+<pre class="shell"><code>harvey completion bash --install        # bash-completion user directory
+harvey completion powershell -install   # beside your PowerShell profile</code></pre>
+<p>Without <code>-install</code> the script goes to standard output, for
+<code>source &lt;(harvey completion bash)</code>. Open a new shell
+afterwards. <code>-install</code> never overwrites a file harvey did not
+write. This is separate from tab completion of <code>/commands</code>
+inside a session.</p>
 <h2 id="running-harvey">Running harvey</h2>
 <pre class="shell"><code>cd ~/myproject
 harvey</code></pre>

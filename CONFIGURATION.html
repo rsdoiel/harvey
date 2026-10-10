@@ -1000,232 +1000,164 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb11-1">
 <span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>Workspace files:</span>
 <span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- @files --&gt;</span></span>
 <span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a><span class="fu">## Conventions</span></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a><span class="fu">## Hailo (AI HAT+ 2)</span></span>
 <span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use Go 1.26+ features</span>
-<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Prefer stdlib over third-party packages</span>
-<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>All exported symbols need doc comments</span>
-<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Use <span class="in">`t.TempDir()`</span> in tests</span>
-<span id="cb11-20"><a href="#cb11-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-21"><a href="#cb11-21" aria-hidden="true" tabindex="-1"></a><span class="fu">## Available Tools</span></span>
-<span id="cb11-22"><a href="#cb11-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-23"><a href="#cb11-23" aria-hidden="true" tabindex="-1"></a>You have access to the following slash commands: /read, /write, /run, /search,</span>
-<span id="cb11-24"><a href="#cb11-24" aria-hidden="true" tabindex="-1"></a>/git, /clear, /summarize, /context, /kb, /rag, /model, /route, /skill.</span>
-<span id="cb11-25"><a href="#cb11-25" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-26"><a href="#cb11-26" aria-hidden="true" tabindex="-1"></a><span class="fu">## Rules</span></span>
-<span id="cb11-27"><a href="#cb11-27" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-28"><a href="#cb11-28" aria-hidden="true" tabindex="-1"></a><span class="ss">1. </span>Tag code blocks with file paths for auto-apply</span>
-<span id="cb11-29"><a href="#cb11-29" aria-hidden="true" tabindex="-1"></a><span class="ss">2. </span>Use /run to suggest shell commands</span>
-<span id="cb11-30"><a href="#cb11-30" aria-hidden="true" tabindex="-1"></a><span class="ss">3. </span>Never narrate fake command output</span></code></pre></div>
-<p><strong>Dynamic Markers:</strong> Harvey expands these before
-injecting the system prompt:</p>
-<table>
-<colgroup>
-<col style="width: 25%" />
-<col style="width: 46%" />
-<col style="width: 28%" />
-</colgroup>
-<thead>
-<tr>
-<th scope="col">Marker</th>
-<th scope="col">Replaced With</th>
-<th scope="col">Example</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>&lt;!-- @date --&gt;</code></td>
-<td>Current date (YYYY-MM-DD)</td>
-<td><code>2026-05-04</code></td>
-</tr>
-<tr>
-<td><code>&lt;!-- @files --&gt;</code></td>
-<td>Workspace file tree (hidden dirs excluded)</td>
-<td>Tree listing</td>
-</tr>
-<tr>
-<td><code>&lt;!-- @git-status --&gt;</code></td>
-<td>Output of <code>git status --short</code></td>
-<td><code>M README.md</code></td>
-</tr>
-</tbody>
-</table>
-<p><strong>Notes:</strong> - The prompt is re-injected after
-<code>/clear</code> - Pinned context (from <code>/context add</code>) is
-injected after the system prompt - Skills catalog can be injected into
-the prompt via configuration - <strong>Cloud privacy:</strong> When a
-cloud route (<code>@claude</code>, <code>@openrouter</code>, etc.) is
-active, HARVEY.md is sent to the remote provider verbatim. Avoid
-hardcoding absolute local paths in HARVEY.md. Use the
-<code>&lt;!-- @files --&gt;</code> dynamic marker instead — it injects a
-workspace-relative file tree without exposing your home directory
-layout.</p>
-<h2 id="environment-variables">Environment Variables</h2>
-<p>Harvey reads environment variables for cloud provider API keys. These
-are optional and only needed when using the corresponding route
-types.</p>
-<table>
-<colgroup>
-<col style="width: 23%" />
-<col style="width: 23%" />
-<col style="width: 32%" />
-<col style="width: 20%" />
-</colgroup>
-<thead>
-<tr>
-<th scope="col">Variable</th>
-<th scope="col">Provider</th>
-<th scope="col">Route Scheme</th>
-<th scope="col">Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ANTHROPIC_API_KEY</code></td>
-<td>Anthropic</td>
-<td><code>anthropic://</code></td>
-<td>Claude API key</td>
-</tr>
-<tr>
-<td><code>DEEPSEEK_API_KEY</code></td>
-<td>DeepSeek</td>
-<td><code>deepseek://</code></td>
-<td>DeepSeek API key</td>
-</tr>
-<tr>
-<td><code>GEMINI_API_KEY</code></td>
-<td>Google</td>
-<td><code>gemini://</code></td>
-<td>Gemini API key (primary)</td>
-</tr>
-<tr>
-<td><code>GOOGLE_API_KEY</code></td>
-<td>Google</td>
-<td><code>gemini://</code></td>
-<td>Gemini API key (fallback)</td>
-</tr>
-<tr>
-<td><code>MISTRAL_API_KEY</code></td>
-<td>Mistral</td>
-<td><code>mistral://</code></td>
-<td>Mistral API key</td>
-</tr>
-<tr>
-<td><code>OPENAI_API_KEY</code></td>
-<td>OpenAI</td>
-<td><code>openai://</code></td>
-<td>OpenAI API key</td>
-</tr>
-<tr>
-<td><code>OLLAMA_HOST</code></td>
-<td>Ollama</td>
-<td><code>ollama://</code></td>
-<td>Ollama server host (default: <code>localhost</code>)</td>
-</tr>
-<tr>
-<td><code>OLLAMA_ORIGINS</code></td>
-<td>Ollama</td>
-<td><code>ollama://</code></td>
-<td>CORS origins for Ollama</td>
-</tr>
-<tr>
-<td><code>OLLAMA_KEEP_ALIVE</code></td>
-<td>Ollama</td>
-<td><code>ollama://</code></td>
-<td>Keep-alive interval (default: <code>24h</code>)</td>
-</tr>
-<tr>
-<td><code>HARVEY_LLAMAFILE_DIR</code></td>
-<td>Llamafile</td>
-<td>—</td>
-<td>Override the llamafile discovery directory (takes precedence over
-<code>llamafile.models_dir</code> in <code>harvey.yaml</code>)</td>
-</tr>
-<tr>
-<td><code>SFTP_PASSWORD</code></td>
-<td>SFTP/SCP</td>
-<td><code>sftp://</code> <code>scp://</code></td>
-<td>Password for SFTP/SCP remote ingest
-(<code>/rag ingest sftp://…</code>)</td>
-</tr>
-<tr>
-<td><code>SFTP_KEY_PATH</code></td>
-<td>SFTP/SCP</td>
-<td><code>sftp://</code> <code>scp://</code></td>
-<td>Path to SSH private key for SFTP/SCP remote ingest</td>
-</tr>
-<tr>
-<td><code>HTTP_BEARER_TOKEN</code></td>
-<td>HTTP/HTTPS</td>
-<td><code>http://</code> <code>https://</code></td>
-<td>Bearer token for authenticated HTTP remote ingest</td>
-</tr>
-<tr>
-<td><code>HTTP_BASIC_USER</code></td>
-<td>HTTP/HTTPS</td>
-<td><code>http://</code> <code>https://</code></td>
-<td>Username for HTTP Basic Auth remote ingest</td>
-</tr>
-<tr>
-<td><code>HTTP_BASIC_PASSWORD</code></td>
-<td>HTTP/HTTPS</td>
-<td><code>http://</code> <code>https://</code></td>
-<td>Password for HTTP Basic Auth remote ingest</td>
-</tr>
-<tr>
-<td><code>AWS_ACCESS_KEY_ID</code></td>
-<td>S3</td>
-<td><code>s3://</code></td>
-<td>AWS access key for S3 remote ingest</td>
-</tr>
-<tr>
-<td><code>AWS_SECRET_ACCESS_KEY</code></td>
-<td>S3</td>
-<td><code>s3://</code></td>
-<td>AWS secret key for S3 remote ingest</td>
-</tr>
-<tr>
-<td><code>AWS_ENDPOINT_URL</code></td>
-<td>S3</td>
-<td><code>s3://</code></td>
-<td>S3-compatible endpoint URL (MinIO, Cloudflare R2, etc.)</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Security:</strong> All API keys and credential environment
-variables are stripped from the environment of every child process
-started by <code>!</code> or <code>/run</code>. They are never visible
-to commands Harvey executes on your behalf.</p>
-<p><strong>Note:</strong> For local Ollama, Harvey uses the
-<code>ollama</code> command-line tool’s configuration by default. The
-<code>OLLAMA_HOST</code> environment variable can override the default
-<code>http://localhost:11434</code>.</p>
-<h2 id="configuration-workflow">Configuration Workflow</h2>
-<h3 id="typical-setup-process">Typical Setup Process</h3>
-<div class="sourceCode" id="cb12"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Start Harvey for the first time (creates defaults)</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Register remote endpoints</span></span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /route <span class="ex">add</span> pi2 ollama://192.0.2.12:11434 llama3.1:8b</span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /route <span class="ex">on</span></span>
-<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Configure RAG (optional)</span></span>
-<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /rag <span class="ex">new</span> golang</span>
-<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /rag <span class="ex">use</span> golang</span>
-<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
-<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> /rag <span class="ex">on</span></span>
-<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Create workspace-specific config</span></span>
-<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> myproject/agents</span>
-<span id="cb12-20"><a href="#cb12-20" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&#39;knowledge_db: myproject/agents/knowledge.db&#39;</span> <span class="op">&gt;</span> myproject/agents/harvey.yaml</span>
-<span id="cb12-21"><a href="#cb12-21" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-22"><a href="#cb12-22" aria-hidden="true" tabindex="-1"></a><span class="co"># 5. Run Harvey in the project</span></span>
-<span id="cb12-23"><a href="#cb12-23" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">-w</span> myproject</span></code></pre></div>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a><span class="in">```yaml</span></span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a><span class="fu">hailo</span><span class="kw">:</span></span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">url</span><span class="kw">:</span><span class="at"> http://localhost:8000</span><span class="co">   # hailo-ollama; default shown</span></span></code></pre></div>
+<p><code>hailo.url</code> is the base URL of a <code>hailo-ollama</code>
+server, kept apart from <code>ollama.url</code> so chat can use the HAT
+while embeddings stay on Ollama.</p>
+<p>Harvey looks for the server only when it has a reason to:
+<code>hailo.url</code> is set in <code>harvey.yaml</code>, or a Hailo
+card (<code>/dev/hailo0</code>) is present, in which case it tries the
+default URL. With neither, Harvey makes no request and prints nothing,
+so a machine without the HAT pays no cost. A server is recognised by its
+<code>GET /hailo/v1/list</code> answer; regular Ollama does not have
+that route. Setting <code>hailo.url</code> is also how a
+<code>hailo-ollama</code> on another machine is used.</p>
+<p><code>/model list</code>, the model picker and
+<code>/model use</code> show Hailo models labelled <code>[hailo]</code>
+beside Ollama’s. A server at <code>ollama.url</code> that answers
+<code>/hailo/v1/list</code> is treated as engine <code>hailo</code>
+(there is then no Ollama server), and aliases with
+<code>engine: ollama</code> move to <code>engine: hailo</code> with a
+one-line notice; move the URL to <code>hailo.url</code> to get Ollama
+back for embeddings. This check runs only when a card is present or
+<code>hailo.url</code> is set. The start-up picker lists both servers’
+models together, each labelled; with Ollama stopped and Hailo running it
+offers the Hailo models instead of asking to start Ollama. A resumed
+session’s model that exists on both engines is not chosen for you.</p>
+<p><code>/model list</code> and the pickers also show the Hailo catalog,
+the models the card can run, marking those not pulled yet as
+<code>[hailo, not pulled]</code>. <code>/model pull [--yes] NAME</code>
+pulls one (it asks first, since a pull is 1 to 4 GB), and choosing one
+in a picker or with <code>/model use</code> offers the same pull. A
+session’s remembered model is never pulled unasked. Ollama models are
+still pulled with the <code>ollama</code> CLI.</p>
+<p>What hailo-ollama cannot do is stated once, in a table keyed by
+engine (<code>engine_caps.go</code>): structured tool calls,
+<code>/api/embed</code>, <code>/api/tokenize</code> and
+<code>/api/ps</code>. Harvey never sends a <code>tools</code> key to it
+(whatever the model cache or <code>/model mode</code> says), does not
+ask it to embed or tokenize (token counts are the chars/4 estimate), and
+does not ask it which models are running. A model in Hailo’s
+<code>hef</code> format on a server Harvey was not told is Hailo is held
+to the same row once it is probed. Embeddings always use
+<code>ollama.url</code>. When one fails on a machine where Hailo is in
+use and Ollama is not there, the error says so plainly
+(<code>Hailo cannot embed; no Ollama at http://localhost:11434</code>,
+or, when <code>ollama.url</code> is itself the Hailo server, how to
+separate the two URLs). The per-prompt RAG lookup reports that failure
+too, once per session (once per distinct cause), and the prompt goes on
+without retrieved context. On a machine with a card whose server is not
+running, start-up prints one line,
+<code>AI HAT+ 2 found, hailo-ollama is not running at URL</code>, with
+<code>systemctl --user start hailo-ollama</code> when
+<code>~/.config/systemd/user/hailo-ollama.service</code> exists. Harvey
+does not start the server itself. See
+<code>agents/projects/harvey/design/hailo-engine-detection-design.md</code>
+and DR-0030.</p>
+<h2 id="conventions">Conventions</h2>
+<ul>
+<li>Use Go 1.26+ features</li>
+<li>Prefer stdlib over third-party packages</li>
+<li>All exported symbols need doc comments</li>
+<li>Use <code>t.TempDir()</code> in tests</li>
+</ul>
+<h2 id="available-tools">Available Tools</h2>
+<p>You have access to the following slash commands: /read, /write, /run,
+/search, /git, /clear, /summarize, /context, /kb, /rag, /model, /route,
+/skill.</p>
+<h2 id="rules">Rules</h2>
+<ol type="1">
+<li>Tag code blocks with file paths for auto-apply</li>
+<li>Use /run to suggest shell commands</li>
+<li>Never narrate fake command output</li>
+</ol>
+<pre><code>
+**Dynamic Markers:** Harvey expands these before injecting the system prompt:
+
+| Marker | Replaced With | Example |
+|--------|---------------|---------|
+| `&lt;!-- @date --&gt;` | Current date (YYYY-MM-DD) | `2026-05-04` |
+| `&lt;!-- @files --&gt;` | Workspace file tree (hidden dirs excluded) | Tree listing |
+| `&lt;!-- @git-status --&gt;` | Output of `git status --short` | `M README.md` |
+
+**Notes:**
+- The prompt is re-injected after `/clear`
+- Pinned context (from `/context add`) is injected after the system prompt
+- The skills catalog is not in the prompt by default; set `skills: catalog: full` in `agents/harvey.yaml` to add it (about 180 characters per skill)
+- **Cloud privacy:** When a cloud route (`@claude`, `@openrouter`, etc.) is
+  active, HARVEY.md is sent to the remote provider verbatim. Avoid hardcoding
+  absolute local paths in HARVEY.md. Use the `&lt;!-- @files --&gt;` dynamic marker
+  instead — it injects a workspace-relative file tree without exposing your
+  home directory layout.
+
+
+## Environment Variables
+
+Harvey reads environment variables for cloud provider API keys. These are
+optional and only needed when using the corresponding route types.
+
+| Variable | Provider | Route Scheme | Purpose |
+|----------|----------|--------------|---------|
+| `ANTHROPIC_API_KEY` | Anthropic | `anthropic://` | Claude API key |
+| `DEEPSEEK_API_KEY` | DeepSeek | `deepseek://` | DeepSeek API key |
+| `GEMINI_API_KEY` | Google | `gemini://` | Gemini API key (primary) |
+| `GOOGLE_API_KEY` | Google | `gemini://` | Gemini API key (fallback) |
+| `MISTRAL_API_KEY` | Mistral | `mistral://` | Mistral API key |
+| `OPENAI_API_KEY` | OpenAI | `openai://` | OpenAI API key |
+| `OLLAMA_HOST` | Ollama | `ollama://` | Ollama server host (default: `localhost`) |
+| `OLLAMA_ORIGINS` | Ollama | `ollama://` | CORS origins for Ollama |
+| `OLLAMA_KEEP_ALIVE` | Ollama | `ollama://` | Keep-alive interval (default: `24h`) |
+| `HARVEY_LLAMAFILE_DIR` | Llamafile | — | Override the llamafile discovery directory (takes precedence over `llamafile.models_dir` in `harvey.yaml`) |
+| `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/rag ingest sftp://…`) |
+| `SFTP_KEY_PATH` | SFTP/SCP | `sftp://` `scp://` | Path to SSH private key for SFTP/SCP remote ingest |
+| `HTTP_BEARER_TOKEN` | HTTP/HTTPS | `http://` `https://` | Bearer token for authenticated HTTP remote ingest |
+| `HTTP_BASIC_USER` | HTTP/HTTPS | `http://` `https://` | Username for HTTP Basic Auth remote ingest |
+| `HTTP_BASIC_PASSWORD` | HTTP/HTTPS | `http://` `https://` | Password for HTTP Basic Auth remote ingest |
+| `AWS_ACCESS_KEY_ID` | S3 | `s3://` | AWS access key for S3 remote ingest |
+| `AWS_SECRET_ACCESS_KEY` | S3 | `s3://` | AWS secret key for S3 remote ingest |
+| `AWS_ENDPOINT_URL` | S3 | `s3://` | S3-compatible endpoint URL (MinIO, Cloudflare R2, etc.) |
+
+**Security:** All API keys and credential environment variables are stripped from
+the environment of every child process started by `!` or `/run`. They are never
+visible to commands Harvey executes on your behalf.
+
+**Note:** For local Ollama, Harvey uses the `ollama` command-line tool&#39;s
+configuration by default. The `OLLAMA_HOST` environment variable can override
+the default `http://localhost:11434`.
+
+
+## Configuration Workflow
+
+### Typical Setup Process
+
+```bash
+# 1. Start Harvey for the first time (creates defaults)
+harvey
+
+# 2. Register remote endpoints
+harvey
+&gt; /route add pi2 ollama://192.0.2.12:11434 llama3.1:8b
+harvey
+&gt; /route on
+
+# 3. Configure RAG (optional)
+harvey
+&gt; /rag new golang
+harvey
+&gt; /rag use golang
+harvey
+&gt; /rag on
+
+# 4. Create workspace-specific config
+mkdir -p myproject/agents
+echo &#39;knowledge_db: myproject/agents/knowledge.db&#39; &gt; myproject/agents/harvey.yaml
+
+# 5. Run Harvey in the project
+harvey -w myproject</code></pre>
 <h3 id="configuration-file-precedence-example">Configuration File
 Precedence Example</h3>
 <pre><code>Workspace (myproject/agents/harvey.yaml):

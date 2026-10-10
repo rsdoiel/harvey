@@ -20,6 +20,418 @@
 </nav>
 <section id="main-content">
 <h1 id="changes">CHANGES</h1>
+<h2 id="v0.0.19-2026-10-10">v0.0.19 (2026-10-10)</h2>
+<p>Harvey now knows the Raspberry Pi AI HAT+ 2 (hailo-ollama) as a model
+engine beside Ollama, learns and respects each model’s prompt-size
+limit, and finds models where each model system keeps them. Several
+behaviours change for existing setups; they come first.</p>
+<h3 id="upgrade-notes">Upgrade notes</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">If you…</th>
+<th scope="col">What changed</th>
+<th scope="col">What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>keep <code>.gguf</code> files in <code>~/Models</code> for
+llama.cpp</td>
+<td>llama.cpp models are now looked for in llama.cpp’s own cache
+(<code>$LLAMA_CACHE</code>, else <code>$XDG_CACHE_HOME/llama.cpp</code>,
+else <code>~/.cache/llama.cpp</code>). <code>~/Models</code> is scanned
+for llamafiles only (harvey DR-0031, proposed).</td>
+<td>Set <code>llama_cpp.models_dir: ~/Models</code> in
+<code>agents/harvey.yaml</code> to keep the old behaviour. An explicit
+<code>models_dir</code> is still honoured.</td>
+</tr>
+<tr>
+<td>relied on the skills catalog being in the system prompt</td>
+<td><code>skills.catalog</code> is <code>off</code> by default: skills
+still load and their commands still register, but the catalog is not
+sent (it cost about 38% of a typical prompt on every turn and the model
+cannot load a skill itself).</td>
+<td>Set <code>skills: catalog: full</code> to restore it. A value other
+than <code>off</code> or <code>full</code> is a config error (exit
+78).</td>
+</tr>
+<tr>
+<td>have a setting in <code>harvey.yaml</code> that you also pass on the
+command line</td>
+<td>The command line now wins for <code>--ollama</code>,
+<code>-m/--model</code>, <code>--llamafile-url</code>,
+<code>--llamafile-dir</code>, <code>-r</code>,
+<code>--record-file</code>, <code>--resume</code>,
+<code>--continue</code>, <code>--replay</code>,
+<code>--replay-output</code> and <code>--replay-continue</code>; it used
+to lose to the file. <code>HARVEY_LLAMAFILE_DIR</code> now beats
+<code>llamafile.models_dir</code>, as CONFIGURATION.md always said.</td>
+<td>Nothing, unless you depended on the file overriding a flag.</td>
+</tr>
+<tr>
+<td>script harvey against a server that closes the chat stream
+early</td>
+<td>A stream that ends before its final chunk is now an error
+(<code>ErrStreamTruncated</code>, exit 74) instead of an empty reply
+recorded as a success.</td>
+<td>Treat 74 as a failed turn.</td>
+</tr>
+<tr>
+<td>ask for a model name that two engines both have</td>
+<td><code>/model use</code>, <code>-m</code> and
+<code>ollama.model</code> accept <code>engine/model</code>
+(<code>hailo/llama3.2:3b</code>, <code>ollama/llama3.2:3b</code>). A
+bare name found on both Ollama and Hailo asks at a terminal and is a
+usage error (exit 2) when unattended.</td>
+<td>Write <code>engine/model</code> in scripts.</td>
+</tr>
+<tr>
+<td>answer a “Write …?” offer with anything but Enter, <code>y</code> or
+<code>yes</code></td>
+<td>Other text no longer counts as yes. A line that is a command
+(<code>/exit</code>, <code>!ls</code>, any <code>/name</code>) ends the
+offers and is run, and end of input ends them.</td>
+<td>Nothing; this only removes accidental writes.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="added">Added</h3>
+<ul>
+<li><strong>Hailo (AI HAT+ 2) as an engine</strong> (harvey DR-0030).
+<code>hailo-ollama</code> is an engine label over the Ollama client, not
+a fourth backend, with its own <code>hailo:</code> section in
+<code>harvey.yaml</code> (<code>hailo.url</code>, default
+<code>http://localhost:8000</code>) so chat and embeddings can use
+different servers. The card (<code>/dev/hailo0</code>) and the server
+(<code>GET /hailo/v1/list</code>) are detected separately; a machine
+with neither makes no request. A Hailo server found at
+<code>ollama.url</code> is relabelled <code>hailo</code> at start-up,
+with one notice and an alias migration. <code>/model list</code> and the
+pickers show Hailo models beside Ollama’s and the catalog the HAT can
+run but has not pulled, marked <code>not pulled</code>;
+<code>/model pull [--yes] NAME</code> pulls from it after a
+confirmation. Harvey never starts hailo-ollama; it prints the
+<code>systemctl --user</code> command when the card’s server is stopped.
+A capability table by engine stops harvey sending <code>tools</code>
+(HTTP 500) or asking for embeddings, tokenize and <code>ps</code> where
+Hailo has none, and a failed embedding says that Hailo cannot embed and
+names Ollama.</li>
+<li><strong>Per-model prompt limits.</strong> hailo-ollama fails with
+HTTP 500 once a whole prompt passes about 3,000 characters.
+<code>/model limit</code> sets a model’s limit (seeded at 700 tokens for
+Hailo’s llama3.2). With a limit known, the system prompt is fitted to
+60% of it (skills catalog first, then the tail of
+<code>HARVEY.md</code>, then a compact preamble), the oldest whole turns
+are dropped before each send, and a turn over the limit is refused
+before it is sent. A turn that fails like an oversize prompt is retried
+on 70%, 45% and 25% of its size and the first success is remembered as
+the model’s limit. The tool-loop path does not retry yet.</li>
+<li><strong><code>harvey completion bash|powershell [-install]</code></strong>
+writes shell completion for harvey’s verbs, options and help topics, or
+installs it where the shell loads it. <code>-install</code> never
+overwrites a file harvey did not write (exit 73). It is separate from
+the in-session <code>/command</code> completion.</li>
+<li><strong><code>make test-models</code></strong> runs live model tests
+(<code>TestLive_*</code>) against whatever model systems the machine
+has. A missing system skips its tests with the reason and how to start
+it.</li>
+<li><strong><code>make generate</code></strong> runs <code>cmt</code>
+over <code>codemeta.json</code>. <code>make build</code> no longer
+regenerates <code>version.go</code>, <code>CITATION.cff</code> or
+<code>about.md</code>; <code>make release</code> runs
+<code>generate</code> first.</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li>The model cache keys capability rows and learned prompt limits by
+engine and model, so the same name on two engines no longer shares a
+row. Ollama keeps the bare name; other engines are prefixed. llamafile
+and llama.cpp rows stored under a bare name are probed once more.</li>
+<li><code>/memory mine</code> reads a session too large for the model in
+parts (sized to the model’s prompt limit when known, halved when a
+request is cut off), merges and de-duplicates the proposals, and reports
+a model whose limit is too small to hold the mining instructions as
+unable to mine. An empty session is recorded as <code>empty</code> and
+never sent; a truncated or unparseable reply leaves the session unmined
+and is remembered per session and model so auto-mine does not retry the
+same model. The review prompt quits at end of input.</li>
+<li>A RAG retrieval failure (an embedder that is down) is reported once
+per distinct cause for the life of the session; the prompt still goes on
+without context. It used to fail silently on every prompt.</li>
+<li><code>github.com/rsdoiel/knowledge</code> bumped from v0.0.15 to
+v0.0.20. Harvey’s own code does not depend on the behaviour changes; the
+library additions are additive.</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li>Switching model mid-session no longer drops the <code>--debug</code>
+log or leaves the transcript naming the previous model. Ollama
+(<code>/model use</code>, the picker, an alias, or a step dispatched
+with <code>@name</code> or <code>[model: name]</code>) was fixed first;
+the llama.cpp path was the last one left.</li>
+<li><code>--ollama</code> and <code>-m/--model</code> were overridden by
+<code>ollama.url</code> and <code>ollama.model</code> in
+<code>harvey.yaml</code>; see the upgrade notes for the other flags
+fixed the same way.</li>
+<li>hailo-ollama models were sent a <code>tools</code> array they cannot
+take: <code>/api/show</code> returns <code>"model_info": ""</code>,
+which made the capability probe fail to decode, so tool mode stayed
+<code>auto</code>. The probe now tolerates it and a <code>hef</code>
+model probes as no tool support.</li>
+<li>A write offer took the next input line as the file path: piping
+<code>/exit</code> created an empty file named <code>exit</code>.</li>
+<li>Test agents no longer scan the machine’s <code>~/Models</code>, so
+the suite gives the same result on every machine.</li>
+</ul>
+<h2 id="v0.0.18-2026-10-02">v0.0.18 (2026-10-02)</h2>
+<h3 id="changed-1">Changed</h3>
+<ul>
+<li><code>/profile use</code>’s automatic hand-off
+(<code>WriteHandoff</code>) now writes Markdown per
+<code>HANDOFF_FORMAT.md</code> (frontmatter and a State Recap section)
+with a <code>.md</code> extension, instead of Fountain. It stays
+workspace-tier and does not touch <code>STATE.md</code>: it is a
+heuristic snapshot with no LLM pass.</li>
+<li><code>recallKB</code> retrieves through the knowledge library’s
+<code>RecallByText</code> (knowledge DR-0051) instead of its own
+matching.</li>
+<li><code>github.com/rsdoiel/knowledge</code> bumped from v0.0.14 to
+v0.0.15. This brings DR-0054 (<code>kb import</code> keeps an
+observation kind outside the vocabulary and warns) and DR-0055
+(<code>kb project add</code> on an existing name exits 1). Harvey’s own
+code does not depend on either behaviour, but a script that shells out
+to <code>kb project add</code> should read the knowledge v0.0.15
+notes.</li>
+</ul>
+<h3 id="fixed-1">Fixed</h3>
+<ul>
+<li><p>An unknown slash command is now a usage error (exit class 2)
+instead of a printed message that let a scripted session exit 0. At a
+terminal nothing changes except the message, which now reads
+<code>Error: unknown command: /name</code>. Inside <code>/loop</code>, a
+mistyped command is reported on every iteration as before, and
+<code>/loop</code> now returns the first failure when it finishes (see
+below). First step of reclassifying the command handlers’ errors (the
+DR-0006 follow-up).</p></li>
+<li><p>The file and workspace commands now return classed errors instead
+of printing a failure and succeeding, so a scripted session exits with
+the class of the first one that failed (harvey DR-0006 follow-up).
+<code>/files</code>, <code>/file-tree</code>, <code>/read</code>,
+<code>/read-dir</code>, <code>/read-pdf</code>,
+<code>/read-chunks</code>, <code>/attach</code>, <code>/write</code>,
+<code>/run</code>, <code>/search</code>, <code>/git</code>,
+<code>/format</code>, <code>/summarize</code>:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Failure</th>
+<th scope="col">Exit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>missing or surplus argument, bad flag value, <code>/search</code>
+pattern that does not compile, unknown option</td>
+<td>2</td>
+</tr>
+<tr>
+<td>no workspace; a named file or directory that does not exist; a
+program <code>/run</code> cannot start</td>
+<td>66</td>
+</tr>
+<tr>
+<td>no backend connected (<code>/read-chunks</code>,
+<code>/summarize</code>); a remote fetch that fails</td>
+<td>69</td>
+</tr>
+<tr>
+<td>read, write or exec refused by Harvey’s permission rules or safe
+mode; a path outside the workspace, through a symbolic link, in
+<code>agents/</code>, or matching a sensitive-file pattern</td>
+<td>77</td>
+</tr>
+<tr>
+<td>a file of the wrong kind: binary or too large for
+<code>/attach</code>, not a directory for <code>/read-dir</code>, not a
+PDF, a source file the formatter rejects</td>
+<td>65</td>
+</tr>
+<tr>
+<td>nothing found: <code>/search</code> with no matches,
+<code>/read-dir</code> with no readable files, <code>/write</code> with
+no reply to write, <code>/git</code> when git itself fails,
+<code>/format</code> for an extension with no formatter,
+<code>/summarize</code> with too little history</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p><code>/read</code> and <code>/format</code> still try every file,
+then report the first failure. <code>/run</code> does not fail when the
+command it ran exits non-zero: that output is the point. At a terminal
+nothing changes except that the message now appears as
+<code>Error: ...</code>.</p></li>
+<li><p>The same for the model, session and settings commands:
+<code>/model</code> (use, list, show, stop, mode, alias),
+<code>/inspect</code>, <code>/safemode</code>, <code>/record</code>,
+<code>/rename</code>, <code>/context</code>, <code>/session</code> (and
+<code>/resume</code>), <code>/workspace</code> and
+<code>/help TOPIC</code>. A failed <code>@name</code> model switch in a
+scripted session now counts as the turn’s failure too.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Failure</th>
+<th scope="col">Exit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>missing argument, unknown subcommand, unknown mode or help topic, a
+model name that matches several models</td>
+<td>2</td>
+</tr>
+<tr>
+<td>no workspace; no sessions directory; a session file that does not
+exist</td>
+<td>66</td>
+</tr>
+<tr>
+<td>no backend connected (<code>/session replay</code>),
+<code>/inspect</code> without an Ollama backend, a model that fails to
+start</td>
+<td>69</td>
+</tr>
+<tr>
+<td>a session file that does not parse</td>
+<td>65</td>
+</tr>
+<tr>
+<td>settings that could not be saved (<code>/safemode</code>,
+<code>/model alias</code>) or a recording that could not be renamed</td>
+<td>74</td>
+</tr>
+<tr>
+<td>a recording file that could not be created</td>
+<td>73</td>
+</tr>
+<tr>
+<td>no such model, alias, or llamafile; no models or sessions to pick
+from; a backend to stop that is not running; already recording or not
+recording; <code>/safemode deny</code> of a command not in the list; no
+model cache for <code>/model mode</code></td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p><code>/safemode</code> still applies the change in memory when saving
+fails, and now also exits 74.</p></li>
+<li><p>The same for the memory, knowledge-base, RAG, skill and route
+commands: <code>/memory</code> (and <code>/memory profile</code>),
+<code>/kb</code> (project, observe, concept, source, retract, cite,
+show, learn), <code>/rag</code>, <code>/skill</code>,
+<code>/skill-set</code> and <code>/route</code>.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Failure</th>
+<th scope="col">Exit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>missing argument, unknown subcommand, an ID that is not a number, an
+unrecognised route URL, an unknown route setting or value,
+<code>--limit</code> that is not a number</td>
+<td>2</td>
+</tr>
+<tr>
+<td>a profile document missing on disk</td>
+<td>66</td>
+</tr>
+<tr>
+<td>the knowledge base not open, no backend connected for
+<code>/skill</code> compile, an encoderfile server that cannot be
+reached, a model that cannot be used for <code>/kb learn draft</code>, a
+route whose models cannot be listed</td>
+<td>69</td>
+</tr>
+<tr>
+<td>settings that could not be saved (<code>/route</code>,
+<code>/rag on|off</code>, <code>/memory profile on|off</code>)</td>
+<td>74</td>
+</tr>
+<tr>
+<td>a skill-set that could not be created</td>
+<td>73</td>
+</tr>
+<tr>
+<td>no such memory, source, observation, route, skill, store or project;
+nothing to pick from; no current project; <code>/memory recall</code> or
+<code>/rag query</code> with no results; <code>/rag ingest</code> with
+no ingestable files; a skill-set that already exists; no skill-set
+loaded to unload</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p><code>/kb cite</code> tries every ID, then reports the first failure.
+<code>/rag ingest</code> does the same across all its sources, local and
+remote (<code>http://</code>, <code>https://</code>, <code>s3://</code>,
+<code>sftp://</code>, <code>scp://</code>): a list that cannot be read,
+a download that fails, an unsupported scheme, or a file the embedding
+server cannot embed does not stop the rest, and the first failure
+decides the exit status. Download, list and embedding failures are 69
+unless the underlying error already has a class; an unsupported scheme
+is 2; a temp file that cannot be created is 73; no RAG store (or no
+active one) for <code>/rag ingest</code> or <code>/rag query</code> is
+1.</p></li>
+</ul>
+<h3 id="fixed-continued">Fixed (continued)</h3>
+<ul>
+<li><p><code>/workspace init FROM_PATH</code> never imported anything:
+the handler read its subcommand from the second argument instead of the
+first, so through the real dispatcher the path was taken as an unknown
+subcommand, and <code>/workspace bogus</code> quietly showed the status.
+The old tests passed a stray <code>"workspace"</code> as the first
+argument, which hid it.</p></li>
+<li><p><code>/learn</code> found no hand-offs after the workspace moved
+them from <code>agents/hand-off/</code> to
+<code>agents/projects/&lt;project&gt;/hand-off/</code> (workspace
+DR-0004). <code>learnCandidates</code> now also scans each project’s
+<code>hand-off/</code> directory and accepts <code>.md</code> hand-offs
+(workspace DR-0005). Session recordings are still Fountain
+only.</p></li>
+</ul>
+<h3 id="project-layout">Project layout</h3>
+<ul>
+<li>Design briefs, plans, decision records and notes moved out of this
+repository into
+<code>~/Laboratory/agents/projects/harvey/{design,plans,decisions,notes}/</code>
+(harvey DR-0008, which supersedes DR-0002). <code>DECISIONS.md</code> is
+frozen at 2026-09-23 under <code>notes/</code>; new decisions are
+records. Code comments that cite <code>DECISIONS.md</code> by date are
+accurate history and were left as they were.
+<code>developer_guide.md</code> links point at the new locations.</li>
+</ul>
 <h2 id="v0.0.17-2026-09-27">v0.0.17 (2026-09-27)</h2>
 <h3 id="breaking-exit-codes">Breaking (exit codes)</h3>
 <p>Both <code>harvey</code> and <code>assay</code> now use the workspace

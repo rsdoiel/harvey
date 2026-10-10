@@ -38,7 +38,18 @@ model.</p>
 <p>/model list List all registered models across llamafile and Ollama,
 marking the active entry with an arrow.</p>
 <p>/model use NAME Switch to the named model. Harvey checks llamafile
-models first, then Ollama models.</p>
+models first, then Ollama and Hailo models. NAME may be written
+engine/model (hailo/llama3.2:3b, ollama/llama3.2:3b, llamacpp/…,
+llamafile/…) to name the engine; only those four prefixes are read as an
+engine. A bare name that exists on more than one engine is never chosen
+for you: at a terminal Harvey lists the qualified forms and asks, and
+otherwise it exits 2 naming them.</p>
+<p>/model pull [–yes] NAME Pull a model from the Hailo catalog onto the
+hailo-ollama server; /model list marks catalog entries not pulled yet as
+“(hailo, not pulled)”. It asks before downloading (1 to 4 GB); –yes
+answers for you, and without a terminal or –yes it refuses. Choosing a
+not-pulled model with /model use or in a picker offers the same pull.
+Ollama models are pulled with the ollama CLI (! ollama pull NAME).</p>
 <p>/model status Show whether the active backend is reachable.</p>
 <h1 id="at-mention-switching">AT-MENTION SWITCHING</h1>
 <p>Prefix any prompt with <span class="citation"

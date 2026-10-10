@@ -66,9 +66,24 @@ then exit. SOURCE may be a workspace directory (reads agents/harvey.yaml
 inside it) or a standalone .yaml file with a model_aliases: map at the
 top level.
 </dd>
+<dt>completion SHELL [-install]</dt>
+<dd>
+write a shell completion script for SHELL (bash or powershell) to
+standard output, then exit. Load it with source &lt;(harvey completion
+bash), or add -install to put it where the shell loads it in every
+session: for bash the bash-completion user directory
+($XDG_DATA_HOME/bash-completion/completions, else ~/.local/share/…), for
+PowerShell a file beside the profile and one line in the profile, added
+once. A file there that harvey did not write is never overwritten (exit
+73). This completes the command line’s verbs, options and help topics,
+not the /commands inside a session.
+</dd>
 <dt>-m, –model MODEL</dt>
 <dd>
-Ollama model to use on startup
+Ollama or Hailo model to use on startup. Write engine/model
+(hailo/llama3.2:3b, ollama/llama3.2:3b) to name the engine; a bare name
+that both servers have asks at a terminal and is a usage error (exit 2)
+otherwise
 </dd>
 <dt>–ollama URL</dt>
 <dd>
@@ -154,7 +169,7 @@ what went wrong from the number:</p>
 <dd>
 The session ended normally (/exit, Ctrl-D or Ctrl-C at the prompt), or
 the option printed its output and exited (–help, –version, –license,
-init).
+init, completion).
 </dd>
 <dt>2</dt>
 <dd>
@@ -185,8 +200,8 @@ An internal error, or one nothing classified. Please report it.
 </dd>
 <dt>73</dt>
 <dd>
-An output cannot be created: the –record-file path, or the workspace
-directory.
+An output cannot be created: the –record-file path, the workspace
+directory, or a completion file that harvey did not write.
 </dd>
 <dt>74</dt>
 <dd>

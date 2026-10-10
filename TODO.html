@@ -21,7 +21,102 @@
 <section id="main-content">
 <h2 id="bugs">Bugs</h2>
 <ul class="task-list">
-<li><label><input type="checkbox" checked="" /><strong>FIXED
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
+2026-10-08</strong> (<code>write_offer_input.go</code>, tests in
+<code>write_offer_input_test.go</code>): a line that is a command
+(<code>/exit</code>, <code>!ls</code>, any registered
+<code>/name</code>) given at a write offer is handed back to the REPL
+through <code>Agent.pendingInput</code> and ends all offers; end of
+input ends them; at the box prompt only Enter, y and yes approve (any
+other text used to count as yes). Decided with the author: an absolute
+path stays re-rooted inside the workspace
+(<code>resolveWorkspacePath</code>: <code>/etc/x</code> is
+<code>&lt;workspace&gt;/etc/x</code>; <code>..</code> escapes and
+symlinks are refused), which already keeps the real <code>/etc</code>
+and the workspace parent out of reach, so no extra refusal is needed.
+Non-terminal sessions keep their write offers, which is useful for
+automated tests; revisit when the Oberon-style frontend lands
+(event-driven REPL brief). Original report: <strong>The write-offer
+prompt takes the next input line as a file path and writes it.</strong>
+Found 2026-10-07 piping <code>Say hello...</code> then
+<code>/exit</code> into harvey: the reply held a fenced block tagged
+<code>bash:testout/hello.bash</code>; the “Write …? Path (or Enter to
+skip)” prompt read <code>/exit</code> as the path and Harvey printed
+<code>wrote 0 bytes to /exit</code>, creating an empty <code>exit</code>
+file in the workspace root (an absolute path was mapped inside the
+workspace). Two faults: a line meant as a command answered the prompt,
+and <code>/exit</code> was accepted as a path. Reproduce through the
+real prompt with piped stdin; expect no file written and a refusal of an
+absolute path. Also check the prompt’s non-interactive
+default.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
+2026-10-07</strong> (<code>ErrStreamTruncated</code>, exit class io;
+tests in <code>chat_stream_failure_test.go</code>). <strong>A failed or
+truncated chat stream shows as an empty reply, not an error.</strong>
+Found on harvey.local 2026-10-06 (kb observation 367): when hailo-ollama
+closes <code>/api/chat</code> with no data (llama3.2:3b past its prompt
+limit), harvey prints nothing, records a 0-token reply, and the
+<code>--debug</code> log shows <code>llm_response</code> with no error.
+Reproduce with an <code>httptest</code> server that closes a chunked
+response early, through the real chat path; expect an error the user
+sees and a recorded failure.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
+2026-10-07.</strong> <code>--ollama</code> and <code>-m/--model</code>
+were overridden by <code>agents/harvey.yaml</code>; the flags now set
+<code>Ollama.URLExplicit</code>/<code>ModelExplicit</code>, which
+<code>LoadHarveyYAML</code> honours. Tests:
+<code>cli_override_test.go</code>,
+<code>cmd/harvey/cli_override_test.go</code>. Original report:
+<code>flagSpecs</code> in <code>cmd/harvey/main.go</code> sets
+<code>cfg.Ollama.URL</code>/<code>Model</code>, then <code>Run</code>
+(<code>terminal.go:407</code>) calls <code>LoadHarveyYAML</code>, which
+overwrites both when <code>ollama.url</code>/<code>ollama.model</code>
+are set (<code>config.go:850-855</code>). Seen:
+<code>harvey --ollama http://localhost:8001</code> still connected to
+<code>:8000</code>, and <code>harvey -m qwen2.5-coder:1.5b</code> ran
+llama3.2:3b (kb observations 368, 371). The command line should win over
+the file.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
+2026-10-07.</strong> The real cause was not the template markers alone:
+hailo-ollama’s <code>/api/show</code> returns
+<code>"model_info": ""</code>, which made <code>ShowModel</code> fail to
+decode, so the probe never ran and the mode stayed <code>auto</code>
+with tools unknown. <code>ShowModel</code> now tolerates it, and
+<code>details.format == "hef"</code> probes as no tool support (the
+server 500s on any <code>tools</code> key, even <code>[]</code>). Tests:
+<code>hailo_probe_test.go</code>. Original report: <strong>Tool support
+is read from the template, so hailo-ollama models get a
+<code>tools</code> array they cannot take.</strong> hailo-ollama returns
+HTTP 500 for any <code>/api/chat</code> carrying <code>tools</code>.
+With llama3.2:3b in tool mode <code>auto</code>, harvey sent
+<code>tools</code> and every prompt failed with
+<code>provider_error: 500</code> until <code>/model mode prose</code>
+was set by hand (kb observations 365, 371). The likely cause is
+<code>FastProbeModel</code> trusting the template’s tool markers;
+confirm that first, since the cached row showed
+<code>supports_tools</code> unknown. The probe should catch this, either
+by recognising the server or by a live tool test, and fall back to
+prose.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
+2026-10-06.</strong> Switching to an Ollama model mid-session left the
+transcript naming the old model and stopped <code>--debug</code> logging
+LLM requests (kb observation 372; seen in
+<code>harvey-session-20261006-204135.spmd</code>). Cause:
+<code>setOllamaModel</code> (picker and <code>/model use NAME</code>’s
+fallback match), both <code>ollama</code> branches of
+<code>attemptModelSwitch</code>, and the Ollama <code>Restore</code>
+after a dispatched step each built a new client without the debug log;
+the picker path and <code>Restore</code> also wrote no
+<code>[[model switch]]</code> note. All four now go through
+<code>Agent.useOllamaClient</code>, which sets the model, wires the
+debug log and records the switch. Tests:
+<code>model_switch_ollama_test.go</code>, red first, through
+<code>/model use</code> and <code>resolveDispatchTarget</code>.
+<strong>Fixed 2026-10-10:</strong> <code>startLlamaCppModelPath</code>
+now keeps the debug log and records the switch
+(<code>model_switch_llamacpp_test.go</code>, red
+first).</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
 2026-09-25.</strong> <code>getting_started.md</code> was stale (21
 registered commands missing, <code>/llamafile</code> and
 <code>/ollama</code> documented though no longer registered,
@@ -30,15 +125,15 @@ registry; the <code>/kb</code> registry entry itself omitted
 <code>learn</code>, <code>source</code>, <code>retract</code>,
 <code>cite</code>, <code>show</code> and <code>check-retractions</code>
 and is fixed (<code>kb_registry_test.go</code> keeps it in step with
-<code>cmdKB</code>).</label></li>
-<li><label><input type="checkbox" checked="" /><strong>FIXED
+<code>cmdKB</code>).</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
 2026-09-25.</strong> <code>/model use NAME</code> only searched the
 registry and aliases, so an Ollama model could be reached only through
 the picker. It now falls back to every model <code>/model list</code>
 shows: exact name (case-insensitive), then a unique prefix; an ambiguous
 prefix lists the candidates. Tests:
-<code>model_use_name_test.go</code>.</label></li>
-<li><label><input type="checkbox" checked="" /><strong>FIXED
+<code>model_use_name_test.go</code>.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>FIXED
 2026-09-25.</strong> (Original report below.) Cause:
 <code>nomic-embed-text</code> was not installed, and
 <code>MemoryStore.Save</code> wrote the memory file before embedding, so
@@ -49,7 +144,7 @@ any prior file if the index write fails, and the error says to run
 <code>memory_save_atomic_test.go</code>. Two orphans from the report
 remain on disk in <code>agents/memories/tool_use/</code>
 (<code>tool_use_b39dd1.fountain</code>,
-<code>tool_use_760a04.fountain</code>); delete by hand.</label></li>
+<code>tool_use_760a04.fountain</code>); delete by hand.</label></p></li>
 </ul>
 <pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Connected: Apertus (llamafile)
@@ -188,13 +283,17 @@ with the class of its first failed slash command or chat turn instead of
 always 0. <code>plan_cmd.go</code>’s two unclassified errors
 reclassified (<code>Unavailablef</code>, <code>Negativef</code>) as the
 first command family this covers.</li>
-<li><strong>Follow-up, not done here:</strong> most other command
-handlers (<code>/read</code>, <code>/read-dir</code>, an unknown command
-name, most of
-<code>commands_rag.go</code>/<code>commands_skill.go</code>) still
-print-and-swallow a failure or return an unclassified
-<code>fmt.Errorf</code>, so a scripted session using them still exits 0
-or 70. Reclassifying each is its own pass, named but not started.</li>
+<li><strong>Follow-up DONE 2026-10-02:</strong> every slash command
+handler now returns a classed error (phases 1-5: dispatcher;
+file/workspace; model/session/settings; memory/KB/RAG/skills/routes; the
+rest), checked by <code>exitcode_handlers_test.go</code> including two
+guards (a registry walk for unknown subcommands, a source scan for
+print-and-continue). Upgrade table in <code>CHANGES.md</code>. Remote
+ingestion (<code>ragIngestHTTP</code>,
+<code>ragIngestRemotePrefix</code>, <code>ragIngestS3Prefix</code>) now
+returns its first failure too, so <code>/rag ingest</code> with any
+source exits non-zero when something could not be ingested. Nothing from
+this pass is open.</li>
 </ul></li>
 <li><p><label><input type="checkbox" checked="" /><strong>DONE
 2026-09-27: adopted the workspace exit-code convention</strong>
@@ -223,6 +322,47 @@ table.</label></p></li>
 </ul>
 <h2 id="action-items">Action Items</h2>
 <ul class="task-list">
+<li><p><label><input type="checkbox" checked="" /><strong>DONE
+2026-10-10 (<code>cmd/harvey/completion.go</code>, tests in
+<code>completion_test.go</code>, red first).</strong>
+<code>harvey completion bash|powershell [-install|--install]</code>; the
+verb list is checked against the switch in <code>main.go</code>, every
+value flag is classified as path or free text, help topics come from the
+topic index, and the scripts were run (bash through
+<code>compgen</code>, PowerShell through <code>TabExpansion2</code>).
+Exit codes: unsupported or missing shell and surplus arguments 2, a file
+harvey did not write 73, a failed write 74/77. Original item:
+<strong>Shell completion with an install option, as in antenna.</strong>
+<code>harvey completion bash|powershell [-install]</code>, following
+<code>antennaApp/completion.go</code> (shipped 2026-10-05;
+<code>InstallCompletion</code> is the install half). This is the
+<em>shell</em> completion for the <code>harvey</code> binary’s own verbs
+and flags (<code>init</code>, <code>help</code>, <code>-h</code>, … in
+<code>cmd/harvey/main.go</code>). It is separate from the in-REPL
+<code>/command</code> tab completion in
+<code>design/tab-completion-design.md</code>. Harvey follows the
+exit-code convention, so a bad shell name is 2 and a failed install
+write is 73/74. Document it and add a test that keeps the verb list in
+step with <code>main.go</code>. Tests first. Same behaviour as antenna:
+bash goes to the bash-completion user directory and never overwrites a
+file harvey did not write; PowerShell writes beside the profile and adds
+one dot-source line, once.</label></p></li>
+<li><p><label><input type="checkbox" checked="" /><strong>SUPERSEDED
+2026-09-28 (harvey DR-0007): not implemented.</strong> This item’s own
+reason for buffering to JSONL — that classifying a scene EXT
+(LLM-triggered shell) vs INT (REPL-contained) needs a look at the whole
+session — stopped holding up once picked up:
+<code>RecordExteriorTurn</code> (<code>recorder.go</code>) already ships
+<code>EXT.</code> for a different, existing meaning (remote-endpoint
+routing), and the LLM-triggered-vs-REPL-typed distinction this item
+wanted is already expressed live, per call, with no buffering:
+<code>RecordShellCommand</code> (the REPL <code>!</code> path) emits
+<code>INT. SHELL</code>; LLM-triggered actions emit
+<code>INT. AGENT MODE</code> via
+<code>StartAgentScene</code>/<code>RecordAgentAction</code>. See
+<code>harvey:DR-0007</code> for the full reasoning, including the other
+reasons (crash-safety, decoupling from Fountain) considered and
+declined.</label></p></li>
 <li><p><label><input type="checkbox" checked="" /><strong>DONE, shipped
 in v0.0.16.</strong> Fully integrate the updates to the knowledge model,
 Harvey should support a learning mode that integrates both human, model
@@ -267,12 +407,15 @@ refused before the prompt. 8 red-first tests in
 (“Empty input → Enter → yes”) and now sends a real
 Enter.</label></p></li>
 <li><p><label><input type="checkbox" /><strong>Design spike: AI HAT+ 2
-(Hailo-10H) as a fourth Harvey backend.</strong> Blocked on hardware — a
-Raspberry Pi 5 16GB + AI HAT+ 2 build is planned but not yet purchased
-(parts list: <code>../Harvey-Project-Parts-List.txt</code>).
-<code>hailo-ollama</code> (the HAT’s local server) exposes
-<code>/api/pull</code> and <code>/api/chat</code> on port 8000 with the
-same streaming JSON shape
+(Hailo-10H) as a fourth Harvey backend.</strong> Blocked on the hardware
+arriving — a Raspberry Pi 5 16GB, the AI HAT+ 2 and a 256GB SD card (OS
+and models) were ordered 2026-10-02 and have not yet arrived (parts
+list: <code>../Harvey-Project-Parts-List.txt</code>). When it does,
+start by testing the models listed in <em>AI Projects with Raspberry
+Pi</em> (Hattersley &amp; Jepson, 2026;
+<code>../AI_Pi_Projects_Lessons.md</code>). <code>hailo-ollama</code>
+(the HAT’s local server) exposes <code>/api/pull</code> and
+<code>/api/chat</code> on port 8000 with the same streaming JSON shape
 (<code>done</code>/<code>eval_count</code>/<code>done_reason</code>) as
 Ollama’s own API on 11434 — the spike is to confirm how close that
 compatibility actually is and whether it can reuse
@@ -287,7 +430,137 @@ upgrade. See <code>agents/knowledge.db</code> project
 <code>harvey</code>, observations 423 (original near-drop-in-backend
 idea), 444 (unrelated dual-model arbitration hypothesis, same session),
 445 (book review this spike is drawn from), and 446 (parts
-list).</label></p></li>
+list).</label></p>
+<p><strong>Status 2026-10-06:</strong> hardware arrived and set up as
+harvey.local. First answer (kb observation 370): for chat,
+<code>backend_ollama.go</code> works unchanged against hailo-ollama on
+<code>:8000</code>, so no <code>backend_hailo.go</code> is needed to get
+started. The gaps (tools, embeddings, tokenize, prompt size, catalog)
+are capability awareness inside the Ollama path, tracked in the items
+below and under Bugs. DR-0029 stays proposed until those are
+settled.</p></li>
+<li><p><label><input type="checkbox" /><strong>Mining on small
+models.</strong> <code>/memory mine</code> now reads a large session in
+parts (2026-10-08), but the instructions
+(<code>minerSystemPrompt</code>, about 2.3 KB) alone exceed the 700
+token seed for llama3.2 on Hailo, so that model is reported as unable to
+mine. Write a compact instruction variant for models with a small known
+limit. Also: hailo-ollama wedged (empty replies, even to “Say hi.”)
+after a run of failed requests during the first live chunking test and
+needed <code>systemctl --user restart hailo-ollama</code> (kb 378);
+check whether the miner’s failed whole-session attempt, or its request
+rate, triggers it, and consider remembering the size that worked per
+model so the first attempt is not a known failure.
+<code>/memory mine</code> with no path still takes only the newest
+unmined session per call.</label></p></li>
+<li><p><label><input type="checkbox" /><strong>Confirm
+<code>/model</code> works end to end against hailo-ollama.</strong>
+hailo-ollama 0.5.1 runs as a user systemd unit on <code>:8000</code>,
+and <code>agents/harvey.yaml</code> points <code>ollama.url</code> at
+it. Chat works; the rest of <code>/model</code> has not been checked.
+Walk every <code>/model</code> subcommand (<code>list</code>,
+<code>use</code>, <code>show</code>, <code>status</code>,
+<code>stop</code>, <code>clean</code>, <code>mode</code>,
+<code>alias</code> and the picker) and record what works, what fails and
+how. Known so far (kb observations 365, 367, 369):</label></p>
+<ul>
+<li><strong>Listing.</strong> <code>/model list</code> shows only pulled
+models (<code>/api/tags</code>); see the catalog item below.</li>
+<li><strong>Tools.</strong> Any <code>/api/chat</code> carrying
+<code>tools</code> gets HTTP 500; see Bugs.</li>
+<li><strong>Embeddings, tokenize, ps.</strong> <code>/api/embed</code>,
+<code>/api/tokenize</code> and <code>POST /api/ps</code> return 404.
+Check what <code>/model status</code>, <code>stop</code> and
+<code>CountTokens</code> do when these endpoints are missing.</li>
+<li><strong>Content type.</strong> Every POST must carry
+<code>Content-Type: application/json</code>, or oatpp returns 500 “No
+suitable mapper”.</li>
+<li><strong>Prompt-size limit.</strong> llama3.2:3b fails past about
+3,300 characters of system prompt; see Bugs and the prompt-size item
+below. For each of the five curated models
+(deepseek_r1_distill_qwen:1.5b, llama3.2:3b, qwen2.5-coder:1.5b,
+qwen2.5-instruct:1.5b, qwen2:1.5b), record in the model cache whether it
+handles prose tools, tagged blocks and embeddings, and measure its
+prompt-size limit. Bugs found go under Bugs, test-first.</li>
+</ul></li>
+<li><p><label><input type="checkbox" checked="" /><strong>DONE
+2026-10-07 (DR-0030 step 4).</strong> <code>/model list</code> and the
+pickers show the catalog as <code>not pulled</code>;
+<code>/model pull [--yes] NAME</code> pulls from it. Ollama pulls stay
+with the ollama CLI (DR-0022). Original item: <strong>Show and pull the
+Hailo catalog from <code>/model</code>.</strong> hailo-ollama lists the
+models the HAT can run at <code>GET /hailo/v1/list</code> and pulls them
+with <code>POST /api/pull</code> (Ollama-style progress stream). Harvey
+only reads <code>/api/tags</code>, so a model that is not yet pulled
+cannot be seen or fetched from inside harvey (kb observation 369).
+Detect a hailo-ollama server (for example by <code>/hailo/v1/list</code>
+answering), show unpulled catalog entries in <code>/model list</code>
+and the picker marked as such, and decide whether
+<code>/model pull NAME</code> belongs in harvey for both Ollama and
+hailo-ollama.</label></p></li>
+<li><p><label><input type="checkbox" /><strong>Per-model prompt-size
+limits.</strong> Measured 2026-10-07 (kb 377): the cap is on the WHOLE
+prompt (system + history + new message), not the system prompt;
+llama3.2:3b on hailo-ollama passes at 3,000 characters and fails at
+3,300 with HTTP 500 “read failed”. Harvey’s own prompt is 6,249. Three
+layers, in order:</label></p>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" /><strong>Layer 1,
+2026-10-07.</strong> <code>ModelCapability.MaxPromptTokens</code> in the
+model cache (chars/4 units, 0 = unknown), seeded at 700 for hailo
+llama3.2, kept across re-probes, set with <code>/model limit</code>.
+Startup warns (exit 65 when unattended) and each turn is refused before
+sending. Tests: <code>prompt_limit_test.go</code>.</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Layer 2,
+2026-10-07.</strong> The system prompt shrinks to 60% of the limit,
+least essential layer first: the skills catalog, then the tail of
+HARVEY.md (cut at a paragraph break and marked), then a compact
+preamble, then all of HARVEY.md (<code>prompt_fit.go</code>).
+<code>refreshSystemPrompt</code> runs at startup and every turn, so any
+model switch is covered, and <code>/clear</code> and the plan/pipeline
+commands use the same fitted text. Before each send,
+<code>trimHistoryToBudget</code> drops the oldest whole turns (never the
+latest, the system message or pinned context). Both print what they cut.
+Tests: <code>prompt_fit_test.go</code>. Side effect: <code>/clear</code>
+now expands HARVEY.md’s dynamic sections as startup does; it used to
+re-inject them unexpanded.</label></li>
+<li><label><input type="checkbox" checked="" /><strong>Layer 3,
+2026-10-07.</strong> A turn that fails like an oversize prompt (a cut
+stream, a context-length error, a provider HTTP 500; not a refused
+connection or a missing model) and whose prompt is at least 200 tokens
+is retried on smaller copies of the conversation, at 70%, 45% and 25% of
+the failed size (<code>retryWithSmallerPrompt</code>,
+<code>prompt_fit.go</code>). The first success replaces the history with
+the smaller copy and records its size as the model’s limit; if none
+succeeds nothing changes and the original error is shown. Failures on
+hailo-ollama are fast and only a success is slow, which is why a ladder
+is affordable. Not done: the tool-loop path (<code>RunToolLoop</code>)
+does not retry. Tests: <code>prompt_learn_test.go</code>. The tests
+caught a panic: a successful retry swaps in a shorter history, so
+<code>histLenBeforeChat</code> had to be re-captured. Related: a client
+that abandons a request wedges hailo-ollama until it is restarted (kb
+378); a request that outlasts <code>ollama.timeout</code> does
+this.</label></li>
+</ul></li>
+<li><p><label><input type="checkbox" checked="" /><strong>DONE
+2026-10-08 (RAG, a profile memory save and <code>/memory mine</code>
+verified).</strong> <code>ollama.url</code> is now <code>:11434</code>,
+<code>hailo.url</code> is <code>:8000</code>,
+<code>nomic-embed-text</code> is pulled; a scratch
+<code>/rag new</code>, <code>/rag ingest</code> and
+<code>/rag query</code> embedded through Ollama while chat stayed on
+<code>hailo</code>; <code>/memory profile update</code> stored a 768-dim
+embedding. <code>/memory mine</code> verified on Ollama (mined, saved,
+embedded); see the miner fix below. Original item: <strong>Embeddings on
+harvey.local.</strong> hailo-ollama has no <code>/api/embed</code> and
+none of the curated models embeds, so RAG and memory saves fail against
+it. Install regular Ollama on <code>:11434</code> alongside, pull
+<code>nomic-embed-text</code>, and confirm that RAG stores and the
+memory store can embed through it while chat goes to the HAT. Today
+<code>NewEmbedderForEntry</code> is handed <code>cfg.Ollama.URL</code>,
+so this may need a separate embedder URL in <code>harvey.yaml</code> (as
+<code>EmbedderURL</code> already exists for
+encoderfile).</label></p></li>
 </ul>
 <h2 id="update-next">Update next</h2>
 <ul class="task-list">
@@ -361,14 +634,13 @@ found. Full facts and options in <code>termlib-evaluation.md</code>
 (Harvey’s whole use is 6 lines in <code>terminal.go</code>; termlib is
 the author’s own small module with one dependency; Charm would add about
 30 packages and a rebuild of the line editor). RSDOIEL chose “keep
-termlib”; recorded as <code>decisions/0003-*.md</code>
-(<code>proposed</code>). <code>repl-charm-migration-design.md</code> had
-wrongly said the drop was already decided; corrected there.
-<strong>Optional, author’s step:</strong> termlib <code>main</code> is
-one commit ahead of <code>v0.0.9</code> (<code>354195d</code>, a
-wide/multi-row prompt fix that does not affect Harvey’s one-row prompt);
-tag <code>v0.0.10</code> and bump <code>go.mod</code> if wanted. Charm
-stays a later, separate effort.</label></p></li>
+termlib”; recorded as <code>decisions/0003-*.md</code> (accepted).
+<code>repl-charm-migration-design.md</code> had wrongly said the drop
+was already decided; corrected there. <strong>Update
+2026-09-29:</strong> termlib <code>v0.0.10</code> (which carries
+<code>354195d</code>, a wide/multi-row prompt fix that does not affect
+Harvey’s one-row prompt) is tagged and <code>go.mod</code> requires it.
+Charm stays a later, separate effort.</label></p></li>
 <li><p><label><input type="checkbox" checked="" />Release readiness —
 <strong>v0.0.16 is tagged and published (checked 2026-09-25); the tag is
 left as is and later fixes go forward into the next release.

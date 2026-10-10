@@ -151,12 +151,13 @@ class="sourceCode sql"><code class="sourceCode sql"><span id="cb3-1"><a href="#c
 <span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    supports_embed         <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="op">-</span><span class="dv">1</span>,</span>
 <span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    supports_tagged_blocks <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="op">-</span><span class="dv">1</span>,</span>
 <span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    tool_mode              TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span>,</span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    probe_level            TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;none&#39;</span>,</span>
-<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    probed_at              DATETIME <span class="kw">DEFAULT</span> <span class="fu">CURRENT_TIMESTAMP</span></span>
-<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>);</span>
-<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>PRAGMA foreign_keys <span class="op">=</span> <span class="kw">ON</span>;</span>
-<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>PRAGMA journal_mode <span class="op">=</span> WAL;</span></code></pre></div>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    max_prompt_tokens      <span class="dt">INTEGER</span> <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>,</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    probe_level            TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;none&#39;</span>,</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    probed_at              DATETIME <span class="kw">DEFAULT</span> <span class="fu">CURRENT_TIMESTAMP</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>PRAGMA foreign_keys <span class="op">=</span> <span class="kw">ON</span>;</span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>PRAGMA journal_mode <span class="op">=</span> WAL;</span></code></pre></div>
 <p>Columns added after the initial schema are migrated automatically via
 <code>ALTER TABLE … ADD COLUMN</code> when <code>OpenModelCache</code>
 is called. Existing rows receive the column default (<code>-1</code> for
@@ -230,6 +231,13 @@ integer capabilities, <code>''</code> for <code>tool_mode</code>).</p>
 <code>none</code></td>
 </tr>
 <tr>
+<td><code>max_prompt_tokens</code></td>
+<td>INTEGER</td>
+<td>Most the whole prompt may hold, in chars/4 tokens;
+<code>0</code>=unknown. Set with <code>/model limit</code>; a re-probe
+keeps it</td>
+</tr>
+<tr>
 <td><code>probe_level</code></td>
 <td>TEXT</td>
 <td>“none”, “fast”, or “thorough”</td>
@@ -293,6 +301,25 @@ strategy. The zero value (<code>""</code>) means auto.</p>
 <p>Set via <code>/model mode</code> inside Harvey. Re-probing a model
 does <strong>not</strong> overwrite a user-set <code>ToolMode</code> —
 only an explicit <code>/model mode</code> command changes it.</p>
+<p><code>MaxPromptTokens</code> is the most the whole prompt (system
+prompt, history and the new message) may hold, in
+<code>estimateTokens</code> units (chars/4); <code>0</code> means
+unknown. It is separate from <code>ContextLength</code>: hailo-ollama’s
+llama3.2:3b fails at about 750 though no window is advertised.
+<code>FastProbeModel</code> seeds it for llama3.2 models in hailo’s
+<code>hef</code> format (700); <code>/model limit</code> sets it. A
+re-probe keeps a non-zero value, as it does <code>ToolMode</code>.
+Harvey refuses a turn over the limit.</p>
+<p>With a limit known, Harvey fits the prompt to it
+(<code>prompt_fit.go</code>): the system prompt shrinks to 60% of the
+limit, dropping the skills catalog, then the end of HARVEY.md, then
+swapping the full preamble for a compact one; and the oldest whole turns
+of the history are dropped before each send. Each step is reported. A
+turn that still does not fit is refused, not sent.</p>
+<p>With no limit known, a turn that fails like an oversize prompt is
+retried on copies of the conversation at 70%, 45% and 25% of the failed
+size. The first retry that succeeds replaces the history and its size is
+stored as the limit.</p>
 <h4 id="modelcache"><code>ModelCache</code></h4>
 <p>The main handle for the model cache database.</p>
 <div class="sourceCode" id="cb7"><pre class="sourceCode go"><code class="sourceCode go"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> ModelCache <span class="kw">struct</span> <span class="op">{</span></span>
@@ -662,6 +689,15 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb20-1"><a href=
 <li>1000 models: ~200-500KB</li>
 <li>Memory: Only loaded entries are in memory</li>
 </ul>
+<h3 id="cache-key">Cache key</h3>
+<p>Rows are keyed by engine and model, because the same model name on
+two engines is two models (different weights, speed and prompt limits).
+<code>modelKey(engine, model)</code> builds the key: Ollama keeps the
+bare name (<code>llama3.2:3b</code>), so rows written before the engine
+was part of the key stay valid; every other engine is prefixed
+(<code>hailo/llama3.2:3b</code>, <code>llamacpp/phi4-Q4_K_M</code>).
+llamafile and llama.cpp rows written under a bare name are not found and
+are probed again once.</p>
 <h3 id="query-performance">Query Performance</h3>
 <ul>
 <li>Lookup by name: O(log n) via primary key index</li>

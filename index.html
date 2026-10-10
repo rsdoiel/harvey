@@ -148,60 +148,54 @@ Source code and issues</li>
 </ul>
 <h2 id="release-notes">Release Notes</h2>
 <ul>
-<li><p>version: 0.0.17</p></li>
+<li><p>version: 0.0.19</p></li>
 <li><p>status: active</p></li>
-<li><p>released: 2026-09-27</p></li>
-<li><p>Breaking: <code>harvey</code> and <code>assay</code> now use the
-workspace exit-code convention (workspace DR-0003; harvey
-DR-0005/DR-0006) instead of exiting only 0 or 1. Five cases that exited
-0 now fail (<code>--continue</code>/<code>--record-file</code> naming a
-bad path, a malformed <code>harvey.yaml</code> or no reachable backend
-in a non-interactive session, and <code>assay</code> when every model
-call fails); every other case exits a more specific code than a bare 1.
-See <code>harvey/CHANGES.md</code>’s v0.0.17 section for the full
-upgrade table</p></li>
-<li><p><code>-json</code>/<code>--json</code> on both binaries: a
-failing startup/flag-parsing error (or, for <code>harvey</code>, a
-failed non-interactive session) prints as
-<code>{"error","class","code"}</code> JSON on stderr instead of text,
-matching <code>kb</code>’s shape</p></li>
-<li><p>A non-interactive <code>harvey</code> session (piped stdin, or
-<code>--replay</code> without <code>--replay-continue</code>) now exits
-with the class of its first failed slash command or chat turn, instead
-of always 0; an interactive session at a terminal is unaffected.
-<code>/plan</code>’s errors are the first command family reclassified to
-give real signal here</p></li>
-<li><p><code>/rag setup</code>’s embedding-model auto-pick now confirms
-its keyword-based guess with one live <code>/api/embed</code> call
-before committing to it, falling back to another candidate (or warning)
-when the guess is wrong — <code>ThoroughProbeModel</code>’s first
-caller</p></li>
-<li><p>Ollama models are now probed on every selection, not just when a
-new alias is saved, so <code>/model use NAME</code> and the startup
-picker no longer silently degrade to file-injection instead of tool
-calls; a <code>/model mode</code> override survives re-probing
-(previously erased)</p></li>
-<li><p>Removed roughly 30 stale
-<code>/ollama</code>/<code>/llamafile</code> references across runtime
-messages, help text and generated docs; both commands were replaced by
-<code>/model</code> months ago. <code>stale_commands_test.go</code>
-guards against regressions</p></li>
-<li><p>Bug fix: closed stdin (Ctrl-D, a closed pipe) at a yes/no prompt
-no longer defaults to “yes” — affected <code>Start Ollama now?</code>,
-<code>Restart MODEL?</code>, and three skill prompts</p></li>
-<li><p>Bug fix: a failed memory-embed no longer leaves an orphaned
-<code>.fountain</code> file; the error now says to run
-<code>ollama pull MODEL</code></p></li>
-<li><p>Bug fix: <code>/model use NAME</code> now matches any registered
-model by exact name or unique prefix, not just the picker’s
-list</p></li>
-<li><p>Bug fix: the “1-byte” line reader actually buffered 16 bytes
-(<code>bufio</code>’s minimum) and could swallow piped multi-line input
-after a prompt</p></li>
-<li><p><code>knowledge</code> bumped to the released v0.0.14;
-<code>termlib</code> bumped to the released v0.0.10 (a
-display-corrupting bug fix for prompts wider than the terminal or
-containing an embedded newline)</p></li>
+<li><p>released: 2026-10-10</p></li>
+<li><p>Behaviour changes, see CHANGES.md upgrade notes: llama.cpp models
+are looked for in llama.cpp’s cache (<code>$LLAMA_CACHE</code>, else
+<code>~/.cache/llama.cpp</code>) and <code>~/Models</code> is for
+llamafiles only, so set <code>llama_cpp.models_dir</code> to keep the
+old directory (harvey DR-0031, proposed); <code>skills.catalog</code> is
+off by default (set <code>skills: catalog: full</code> to restore it);
+the command line now beats <code>harvey.yaml</code> for
+<code>--llamafile-url</code>, <code>--llamafile-dir</code>,
+<code>-r</code>, <code>--record-file</code>, <code>--resume</code>,
+<code>--continue</code>, <code>--replay</code>,
+<code>--replay-output</code> and <code>--replay-continue</code> as well
+as <code>--ollama</code> and <code>-m</code>, and
+<code>HARVEY_LLAMAFILE_DIR</code> beats
+<code>llamafile.models_dir</code></p></li>
+<li><p>A chat stream that ends before its final chunk is an error
+(<code>ErrStreamTruncated</code>, exit 74) instead of an empty reply
+recorded as a success</p></li>
+<li><p>Hailo (AI HAT+ 2) is an engine beside Ollama (harvey DR-0030): a
+<code>hailo:</code> section in <code>harvey.yaml</code>, card and server
+detected apart, <code>engine/model</code> names (a bare name on both
+engines asks, or is exit 2 unattended), the catalog shown as
+<code>not pulled</code> with <code>/model pull [--yes] NAME</code>, and
+a capability table so harvey stops sending <code>tools</code> or asking
+for embeddings where Hailo has none</p></li>
+<li><p>Per-model prompt limits: <code>/model limit</code>, the system
+prompt and history fitted to the limit, a turn over it refused before
+sending, and a failed turn retried on smaller prompts that teaches the
+limit; the model cache is keyed by engine and model</p></li>
+<li><p><code>/memory mine</code> reads a session too large for the model
+in parts, records an empty session as <code>empty</code>, and remembers
+a model that failed on a session so auto-mine does not retry it; a RAG
+retrieval failure is reported once per session instead of
+silently</p></li>
+<li><p><code>harvey completion bash|powershell [-install]</code> for
+shell completion of verbs, options and help topics</p></li>
+<li><p>A write offer no longer treats a command, end of input or
+arbitrary text as an answer; piping <code>/exit</code> used to create a
+file named <code>exit</code></p></li>
+<li><p>Switching to a llama.cpp model mid-session keeps the
+<code>--debug</code> log and records the switch, as the Ollama paths
+already did</p></li>
+<li><p><code>make test-models</code> runs live model tests and skips a
+missing model system with the reason; <code>make build</code> no longer
+runs <code>cmt</code>, <code>make generate</code> does</p></li>
+<li><p><code>knowledge</code> bumped to the released v0.0.20</p></li>
 </ul>
 <h3 id="authors">Authors</h3>
 <ul>
