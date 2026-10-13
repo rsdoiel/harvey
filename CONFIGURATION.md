@@ -91,6 +91,7 @@ rag:
 | `permissions` | object | No | Full access | Path-prefix permission map |
 | `model_aliases` | object | No | `{}` | Short name → full model identifier map |
 | `llamafile` | object | No | See below | Llamafile backend configuration |
+| `llamacpp` | object | No | See below | llama.cpp (`llama-server`) backend configuration |
 | `tools` | object | No | See below | Tool-calling behaviour |
 | `memory` | object | No | See below | Memory system and RAG configuration |
 
@@ -157,6 +158,56 @@ llamafile:
       context_length: 32768
     - name: phi-mini
       path: ~/Models/Phi-3.5-mini-instruct-Q4_K_M.llamafile
+```
+
+**llama.cpp Backend (`llamacpp:`):**
+
+Harvey starts and talks to a `llama-server` process (from [llama.cpp](https://github.com/ggml-org/llama.cpp))
+and lists the `.gguf` model files it finds in a directory. Every field is optional; an empty
+`llamacpp:` section, or none at all, uses the defaults below.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `server_bin` | string | No | `llama-server` | Path to the `llama-server` binary; the default is looked up on `PATH` |
+| `models_dir` | string | No | llama.cpp's cache (see below) | Directory scanned for `*.gguf` model files; `~/` is expanded |
+| `url` | string | No | `http://127.0.0.1:8081` | API base URL of the server |
+| `ctx_size` | integer | No | `0` | `--ctx-size` passed to `llama-server`; `0` = the server's default |
+| `threads` | integer | No | `0` | `--threads`; `0` = the server's default |
+| `gpu_layers` | integer | No | unset | `--n-gpu-layers`; `0` or unset = CPU only |
+| `pin_cpu` | boolean | No | `false` | Launch under `taskset -c 0-(threads-1)`; ignored when `threads` is `0` or `taskset` is missing |
+| `start_timeout` | string | No | `120s` | How long to wait for the server to answer after launch |
+
+**Where models are found.** When `models_dir` is not set, Harvey scans the directory
+llama.cpp itself downloads models into (`llama-server -hf …`), taking the first of:
+
+1. `$LLAMA_CACHE`
+2. `$XDG_CACHE_HOME/llama.cpp`
+3. `~/.cache/llama.cpp`
+
+The directory need not exist; a missing directory simply lists no models. `~/Models` is
+**not** scanned for llama.cpp: that directory belongs to the llamafile backend, which
+looks there for `.llamafile` executables only. To use `.gguf` files you keep elsewhere,
+set `models_dir`.
+
+> **Not yet verified.** Discovery is a directory scan only. Harvey does not ask
+> `llama-server --cache-list` or a running server's `/models` endpoint what it has, so
+> a model that llama.cpp resolves through some other store (for example the Hugging Face
+> hub cache, `~/.cache/huggingface/hub`) is not listed. This is tracked as an open
+> question in the v0.0.19 hand-off.
+
+`/model` commands label each model with its engine, so a `.gguf` file here shows as
+`llamacpp` and is kept apart from Ollama and llamafile entries.
+
+```yaml
+llamacpp:
+  server_bin: llama-server        # PATH lookup; give a full path to pin a build
+  models_dir: ~/Models/gguf       # omit to use $LLAMA_CACHE or ~/.cache/llama.cpp
+  url: http://127.0.0.1:8081
+  ctx_size: 8192
+  threads: 4
+  gpu_layers: 0                   # CPU only
+  pin_cpu: true                   # taskset -c 0-3
+  start_timeout: 180s
 ```
 
 **Security Configuration:**
@@ -549,6 +600,8 @@ optional and only needed when using the corresponding route types.
 | `OLLAMA_ORIGINS` | Ollama | `ollama://` | CORS origins for Ollama |
 | `OLLAMA_KEEP_ALIVE` | Ollama | `ollama://` | Keep-alive interval (default: `24h`) |
 | `HARVEY_LLAMAFILE_DIR` | Llamafile | — | Override the llamafile discovery directory (takes precedence over `llamafile.models_dir` in `harvey.yaml`) |
+| `LLAMA_CACHE` | llama.cpp | — | Directory scanned for `.gguf` files when `llamacpp.models_dir` is not set (llama.cpp's own variable; takes precedence over `XDG_CACHE_HOME`) |
+| `XDG_CACHE_HOME` | llama.cpp | — | When `LLAMA_CACHE` is unset, `.gguf` files are scanned in `$XDG_CACHE_HOME/llama.cpp` |
 | `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/rag ingest sftp://…`) |
 | `SFTP_KEY_PATH` | SFTP/SCP | `sftp://` `scp://` | Path to SSH private key for SFTP/SCP remote ingest |
 | `HTTP_BEARER_TOKEN` | HTTP/HTTPS | `http://` `https://` | Bearer token for authenticated HTTP remote ingest |
@@ -700,6 +753,17 @@ llamafile:
     - name: qwen-coding
       path: ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
       context_length: 32768       # optional; probed from server when omitted
+
+# ── llama.cpp backend ─────────────────────────────────────────────────────────
+llamacpp:
+  server_bin: llama-server        # PATH lookup by default
+  models_dir: ~/Models/gguf       # default: $LLAMA_CACHE, $XDG_CACHE_HOME/llama.cpp, ~/.cache/llama.cpp
+  url: http://127.0.0.1:8081      # this is the default
+  ctx_size: 8192                  # --ctx-size; 0 = server default
+  threads: 4                      # --threads; 0 = server default
+  gpu_layers: 0                   # --n-gpu-layers; 0 or unset = CPU only
+  pin_cpu: false                  # taskset -c 0-(threads-1); needs threads > 0
+  start_timeout: 120s             # time to wait for the server to answer
 
 # ── Model aliases ─────────────────────────────────────────────────────────────
 model_aliases:

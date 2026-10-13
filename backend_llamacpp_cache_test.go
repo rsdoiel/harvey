@@ -7,7 +7,7 @@ import (
 )
 
 // llama.cpp keeps the models it downloads (-hf) in its own cache, so that is
-// where Harvey looks unless llama_cpp.models_dir says otherwise. ~/Models is a
+// where Harvey looks unless llamacpp.models_dir says otherwise. ~/Models is a
 // llamafile convention and is not scanned for .gguf files by default.
 
 // isolateLlamaCppEnv points HOME at a fresh directory and clears the variables
@@ -112,7 +112,7 @@ func TestLlamaCppBackend_ListModels_MissingCacheIsEmpty(t *testing.T) {
 	}
 }
 
-// DefaultConfig must not bake ~/Models into llama_cpp.models_dir, or the
+// DefaultConfig must not bake ~/Models into llamacpp.models_dir, or the
 // default above could never take effect.
 func TestDefaultConfig_LlamaCppModelsDirUnset(t *testing.T) {
 	isolateLlamaCppEnv(t)

@@ -1301,7 +1301,7 @@ func llamafileDefaultModelsDir() string {
 
 /** llamaCppDefaultModelsDir returns the directory llama.cpp keeps the models it
  * downloads (llama-server -hf), which is where Harvey looks for .gguf files
- * unless llama_cpp.models_dir is set. Order: $LLAMA_CACHE, then
+ * unless llamacpp.models_dir is set. Order: $LLAMA_CACHE, then
  * $XDG_CACHE_HOME/llama.cpp, then ~/.cache/llama.cpp.
  *
  * Returns:
@@ -1326,7 +1326,7 @@ func llamaCppDefaultModelsDir() string {
 }
 
 /** llamaCppModelsDir resolves the directory scanned for llama.cpp .gguf files:
- * llama_cpp.models_dir when set, otherwise llama.cpp's own cache. ~/Models is
+ * llamacpp.models_dir when set, otherwise llama.cpp's own cache. ~/Models is
  * not consulted; that is the llamafile convention.
  *
  * Parameters:

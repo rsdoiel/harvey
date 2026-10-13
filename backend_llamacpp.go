@@ -18,7 +18,7 @@ import (
  * It exposes an OpenAI-compatible API at BaseURL/v1, so the same LLM client
  * used for llamafile works here. Start launches llama-server with --model, --port,
  * and optional --ctx-size / --threads / --n-gpu-layers flags. ListModels scans
- * modelsDir for *.gguf files; unless llama_cpp.models_dir is set that is
+ * modelsDir for *.gguf files; unless llamacpp.models_dir is set that is
  * llama.cpp's own download cache (see llamaCppDefaultModelsDir).
  *
  * Fields:
