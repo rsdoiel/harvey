@@ -10,8 +10,8 @@ require (
 	github.com/caltechlibrary/metadatatools v0.1.1
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/mozilla-ai/any-llm-go v0.9.0
-	github.com/rsdoiel/fountain v1.0.2
-	github.com/rsdoiel/knowledge v0.0.20
+	github.com/rsdoiel/fountain v1.0.3
+	github.com/rsdoiel/knowledge v0.0.25
 	github.com/rsdoiel/termlib v0.0.10
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -62,8 +62,8 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.51.0
 	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.43.0
 	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/genai v1.49.0 // indirect

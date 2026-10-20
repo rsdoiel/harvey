@@ -313,6 +313,7 @@ func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 			if content == "" {
 				continue
 			}
+			content += formatHitProvenance(h.HitProvenance)
 			out = append(out, UnifiedResult{
 				Source:  "kb",
 				ID:      fmt.Sprintf("kb:%s:%d", h.SourceType, h.ID),
@@ -367,6 +368,32 @@ func formatConceptMatch(m knowledge.ConceptMatch) string {
 	default:
 		return ""
 	}
+}
+
+// formatHitProvenance renders the works a recalled row cites as a trailing
+// line of injectable context, or "" when it cites none (knowledge DR-0080).
+// A retracted source is named as retracted, with its note, so the model does
+// not lean on it; the row is still returned, because the retraction is itself
+// something the user should hear about.
+func formatHitProvenance(p knowledge.HitProvenance) string {
+	if len(p.Sources) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\nCited:")
+	for _, s := range p.Sources {
+		b.WriteString("\n- " + s.Title)
+		if s.IdentifierValue != "" {
+			b.WriteString(" (" + s.IdentifierType + ": " + s.IdentifierValue + ")")
+		}
+		if s.Retracted {
+			b.WriteString(" — RETRACTED")
+			if s.RetractionNote != "" {
+				b.WriteString(": " + s.RetractionNote)
+			}
+		}
+	}
+	return b.String()
 }
 
 /** FormatContext formats a slice of UnifiedResults into a context injection

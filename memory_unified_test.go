@@ -436,6 +436,68 @@ func TestRecallKB_ConceptMatch_PrimaryPath(t *testing.T) {
 	}
 }
 
+func TestRecallKB_ConceptMatch_NamesTheCitedSource(t *testing.T) {
+	um, kb, pid := newTestUnifiedMemoryWithKB(t)
+
+	conceptID, _ := kb.AddConcept("chunking", "")
+	obsID, err := kb.AddObservation(pid, "finding", "map-reduce chunking is sound on CPU-only hardware")
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+	if err := kb.LinkObservationConcept(obsID, conceptID); err != nil {
+		t.Fatalf("LinkObservationConcept: %v", err)
+	}
+	srcID, err := kb.AddSource(knowledge.Source{Title: "Chunking on small machines", IdentifierType: "doi", IdentifierValue: "10.1234/chunk", PublishedDate: "2025"})
+	if err != nil {
+		t.Fatalf("AddSource: %v", err)
+	}
+	if err := kb.LinkObservationSource(obsID, srcID, "evidence"); err != nil {
+		t.Fatalf("LinkObservationSource: %v", err)
+	}
+
+	results, err := um.recallKB("how does chunking behave on a Pi?")
+	if err != nil || len(results) != 1 {
+		t.Fatalf("recallKB: %v, %d results", err, len(results))
+	}
+	c := results[0].Content
+	for _, want := range []string{"map-reduce chunking is sound", "Chunking on small machines", "10.1234/chunk"} {
+		if !strings.Contains(c, want) {
+			t.Errorf("Content = %q, want it to contain %q", c, want)
+		}
+	}
+	if strings.Contains(strings.ToLower(c), "retracted") {
+		t.Errorf("Content = %q, an intact source must not be called retracted", c)
+	}
+}
+
+func TestRecallKB_ConceptMatch_FlagsARetractedSource(t *testing.T) {
+	um, kb, pid := newTestUnifiedMemoryWithKB(t)
+
+	conceptID, _ := kb.AddConcept("chunking", "")
+	obsID, _ := kb.AddObservation(pid, "finding", "map-reduce chunking is sound on CPU-only hardware")
+	if err := kb.LinkObservationConcept(obsID, conceptID); err != nil {
+		t.Fatalf("LinkObservationConcept: %v", err)
+	}
+	srcID, err := kb.AddSource(knowledge.Source{Title: "Chunking on small machines", IdentifierType: "doi", IdentifierValue: "10.1234/chunk"})
+	if err != nil {
+		t.Fatalf("AddSource: %v", err)
+	}
+	if err := kb.LinkObservationSource(obsID, srcID, "evidence"); err != nil {
+		t.Fatalf("LinkObservationSource: %v", err)
+	}
+	if err := kb.RetractSource(srcID, "withdrawn by the publisher"); err != nil {
+		t.Fatalf("RetractSource: %v", err)
+	}
+
+	results, err := um.recallKB("how does chunking behave on a Pi?")
+	if err != nil || len(results) != 1 {
+		t.Fatalf("recallKB: %v, %d results", err, len(results))
+	}
+	if !strings.Contains(strings.ToLower(results[0].Content), "retracted") {
+		t.Errorf("Content = %q, want the retraction flagged so the model does not rely on it", results[0].Content)
+	}
+}
+
 func TestRecallKB_ConceptMatch_NotProjectScoped(t *testing.T) {
 	um, kb, _ := newTestUnifiedMemoryWithKB(t)
 
