@@ -272,6 +272,16 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   need a separate embedder URL in `harvey.yaml` (as `EmbedderURL` already
   exists for encoderfile).
 
+- [ ] **Support the standard `-help`, `-version` and `-license` options, as in the author's other Go
+  programs (`kb`, `fountain`, `fdx`, `osf`, `scripttool`).** `cmd/harvey/main.go` takes `-h`, `-help` and
+  `--help`, but for the other two only `-v`/`--version` and `-l`/`--license`: `-version` and `-license`
+  (single dash, long name) are rejected as `Unknown flag`. Accept `-help`, `--help`, `-version`,
+  `--version`, `-license` and `--license`, keep the short forms working, and make `harvey help`,
+  `harvey.1.md`, the help text and `completion.go` (`completionImmediateOptions`) list the same names.
+  Test first (DR-0007): drive the real `run` entry with each spelling and expect exit 0 and the
+  version/licence text; then check the exit codes against DR-0003. Also check `cmd/assay` for the same
+  options. Added 2026-10-20 at the author's request.
+
 ## Update next
 
 - [x] **Blocked on `knowledge`** — **resolved 2026-09-15.** Decided
