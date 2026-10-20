@@ -1,5 +1,19 @@
 # CHANGES
 
+## Unreleased
+
+### Added
+
+- **Recalled knowledge names what it rests on.** When `recallKB` injects an observation, record or document match from the
+  knowledge base, it now adds a `Cited:` list of the works that row cites (title and identifier). A retracted source is marked
+  `RETRACTED` with its note rather than dropped, so the model does not lean on it and the user hears about it. Rows that cite
+  nothing are unchanged.
+
+### Changed
+
+- **`knowledge` v0.0.20 to v0.0.25** (needed for the provenance above). This also takes `fountain` v1.0.3 and newer `x/sync`
+  and `x/sys`.
+
 ## v0.0.19 (2026-10-10)
 
 Harvey now knows the Raspberry Pi AI HAT+ 2 (hailo-ollama) as a model engine beside Ollama,
