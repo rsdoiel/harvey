@@ -11,7 +11,7 @@ require (
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/mozilla-ai/any-llm-go v0.9.0
 	github.com/rsdoiel/fountain v1.0.3
-	github.com/rsdoiel/knowledge v0.0.25
+	github.com/rsdoiel/knowledge v0.0.26
 	github.com/rsdoiel/termlib v0.0.10
 	gopkg.in/yaml.v3 v3.0.1
 )
