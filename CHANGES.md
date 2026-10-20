@@ -1,6 +1,8 @@
 # CHANGES
 
-## Unreleased
+## v0.0.20 (2026-10-20)
+
+Recalled knowledge now says which works it rests on, and flags a retracted one. No behaviour changes to existing setups.
 
 ### Added
 

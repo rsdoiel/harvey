@@ -12,8 +12,8 @@
     }
   ],
   "dateCreated": "2026-04-15",
-  "dateModified": "2026-10-10",
-  "datePublished": "2026-10-10",
+  "dateModified": "2026-10-20",
+  "datePublished": "2026-10-20",
   "description": "Harvey is an agent REPL written in Go and designed to use Llamafile models or Ollama server to access language models locally. It is a terminal based application.\n\nThe Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and my personal language model agent.  Many people think of agents only in the context of very big companies. I think small models running on small or tiny computers are an opportunity. Harvey, is a small agent for small and tiny computers and is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.",
   "name": "harvey",
   "license": "https://www.gnu.org/licenses/agpl-3.0.txt",
@@ -29,9 +29,9 @@
     "Pandoc >= 3.9",
     "GNU Make >= 3.8"
   ],
-  "version": "0.0.19",
+  "version": "0.0.20",
   "developmentStatus": "active",
   "issueTracker": "https://github.com/rsdoiel/harvey/issues",
-  "releaseNotes": "- Behaviour changes, see CHANGES.md upgrade notes: llama.cpp models are looked for in llama.cpp's cache (`$LLAMA_CACHE`, else `~/.cache/llama.cpp`) and `~/Models` is for llamafiles only, so set `llamacpp.models_dir` to keep the old directory (harvey DR-0031, proposed); `skills.catalog` is off by default (set `skills: catalog: full` to restore it); the command line now beats `harvey.yaml` for `--llamafile-url`, `--llamafile-dir`, `-r`, `--record-file`, `--resume`, `--continue`, `--replay`, `--replay-output` and `--replay-continue` as well as `--ollama` and `-m`, and `HARVEY_LLAMAFILE_DIR` beats `llamafile.models_dir`\n- A chat stream that ends before its final chunk is an error (`ErrStreamTruncated`, exit 74) instead of an empty reply recorded as a success\n- Hailo (AI HAT+ 2) is an engine beside Ollama (harvey DR-0030): a `hailo:` section in `harvey.yaml`, card and server detected apart, `engine/model` names (a bare name on both engines asks, or is exit 2 unattended), the catalog shown as `not pulled` with `/model pull [--yes] NAME`, and a capability table so harvey stops sending `tools` or asking for embeddings where Hailo has none\n- Per-model prompt limits: `/model limit`, the system prompt and history fitted to the limit, a turn over it refused before sending, and a failed turn retried on smaller prompts that teaches the limit; the model cache is keyed by engine and model\n- `/memory mine` reads a session too large for the model in parts, records an empty session as `empty`, and remembers a model that failed on a session so auto-mine does not retry it; a RAG retrieval failure is reported once per session instead of silently\n- `harvey completion bash|powershell [-install]` for shell completion of verbs, options and help topics\n- A write offer no longer treats a command, end of input or arbitrary text as an answer; piping `/exit` used to create a file named `exit`\n- Switching to a llama.cpp model mid-session keeps the `--debug` log and records the switch, as the Ollama paths already did\n- `make test-models` runs live model tests and skips a missing model system with the reason; `make build` no longer runs `cmt`, `make generate` does\n- `knowledge` bumped to the released v0.0.20",
+  "releaseNotes": "Recalled knowledge names what it rests on. When harvey injects an observation, record or document match from the knowledge base, it adds a `Cited:` list of the works that row cites (title and identifier); a retracted source is marked RETRACTED with its note, and the row is kept so the model does not lean on it and you hear about it. Rows that cite nothing are unchanged.\n\nharvey now requires knowledge v0.0.25 (was v0.0.20), which also takes fountain v1.0.3.",
   "copyrightHolder": "R. S. Doiel"
 }
