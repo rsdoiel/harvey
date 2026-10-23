@@ -122,7 +122,7 @@ Learning this vocabulary for one command teaches you all the others:
 
 ### Skills System
 
-- **[Skills Overview](SKILLS.md)** — Extend Harvey with custom skills, including SKILL.md format, discovery paths, compiled skills, triggers, and the skill wizard
+- **[Skills Overview](SKILLS.md)** — Extend Harvey with custom skills, including SKILL.md format, discovery paths, triggers, and the skill wizard
 - **[Skills Commands](harvey-skills.7.md)** — `/skill` slash command reference
 - **[Skill Sets](harvey-skill-set.7.md)** — Manage named bundles of skills for specific workflows
 

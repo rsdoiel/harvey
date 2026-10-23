@@ -18,10 +18,12 @@ tasks across different AI agents. Skills allow you to:
 A **Skill** is a **SKILL.md** file that contains:
 1. **Metadata** (YAML frontmatter) — name, description, variables
 2. **Instructions** (Markdown) — step-by-step guidance for the LLM
-3. **Optional scripts** — compiled executables for direct execution
+3. **Optional resources** — `scripts/`, `references/` and `assets/` files the instructions point at
 
 Skills are discovered automatically by Harvey at startup and can be invoked
-via the `/skill` command or automatically via triggers.
+via the `/skill` command, as `/NAME`, or automatically via triggers. A skill is used
+directly: its instructions are loaded into the conversation and the model follows them.
+Harvey does not compile skills to Bash or PowerShell (workspace DR-0008).
 
 ## Quick Start
 
@@ -32,7 +34,6 @@ harvey> /skill list
 
   Current model: llama3:latest
 
-  compile-skill           [project] - Compiles a target SKILL.md into correct compiled.bash and...
   fountain-analysis       [project] - Read and actively monitor a Harvey Fountain screenplay file...
   fountain-session        [project] - Write a well-formed Harvey session handoff summary as a...
   harvey-memory           [project] - Load Harvey's accumulated project memories before working...
@@ -66,15 +67,17 @@ harvey> /skill info fountain-analysis
   Compatibility: claude-code, harvey
 ```
 
-### Run a Compiled Skill
+### Use a Skill Directly
 
 ```
-harvey> /skill run fountain-analysis
+harvey> /fountain-analysis summarize session.spmd
 
-  Running skill: fountain-analysis
-  FOUNTAIN_FILE? session.spmd
-  ... (skill executes directly)
+  ✓ Skill "fountain-analysis" loaded into context (1234 chars).
+  ... (the model answers "summarize session.spmd" with the skill in context)
 ```
+
+`/NAME` loads the skill like `/skill load NAME`; any text after the name is sent to the
+model as your next message.
 
 ## Skill Discovery Paths
 
@@ -165,15 +168,6 @@ More instructions.
 |-----------|--------|
 | No files found | Report error |
 
-## Compiled Script Guidance
-
-> This section is for the LLM when generating compiled.bash/compiled.ps1.
-> Read it carefully before writing any code.
-
-**Script structure:**
-- Use `#!/usr/bin/env bash` and `set -euo pipefail`
-- ...
-```
 ```
 
 ### Variables Block
@@ -201,10 +195,9 @@ variables:
 - `integer` — Numeric input
 - `array` — List of values
 
-When a skill is invoked, variables can be passed:
-- Via HARVEY_PROMPT environment variable (for compiled skills)
-- Via command arguments (for `/skill run`)
-- Via interactive prompting (if not provided)
+Harvey does not fill variables itself. Text given after `/NAME`, or typed after
+`/skill load NAME`, reaches the model as ordinary text, and the skill's instructions
+say which variables to take from it and what to ask for when one is missing.
 
 ## Skill Types
 
@@ -222,56 +215,9 @@ an analysis report.
 3. LLM reads instructions and follows them
 4. LLM generates response based on skill guidance
 
-### Type 2: Compiled Skills
+### Type 2: Triggered Skills
 
-Skills with `scripts/compiled.bash` and/or `scripts/compiled.ps1` can be
-executed **directly** without LLM intervention. This is faster and more
-deterministic.
-
-**Structure:**
-```
-skill-name/
-├── SKILL.md              # Skill definition
-└── scripts/
-    ├── compiled.bash     # Linux/macOS script
-    └── compiled.ps1      # Windows PowerShell script
-```
-
-**When to compile:**
-- Tasks that are purely procedural (no creativity needed)
-- Tasks that benefit from direct shell execution
-- Tasks that need to run tools not available to the LLM
-
-**Compilation process:**
-1. Create the skill with clear instructions
-2. Use `/skill load compile-skill` to generate scripts
-3. Review the generated scripts
-4. Commit them alongside SKILL.md
-
-> **Security:** Compiled skills run as shell scripts with the full privileges of the
-> Harvey process. They are **not** sandboxed to the workspace directory — a compiled
-> skill can read, write, or delete any file accessible to the current user. Only run
-> compiled skills from trusted sources, and review generated scripts before invoking
-> `/skill run`.
->
-> **`HARVEY_PROMPT` safety:** The user's raw prompt is passed to compiled scripts
-> via the `HARVEY_PROMPT` environment variable. Never interpolate it unquoted into
-> a shell command — doing so enables code injection if the prompt contains shell
-> metacharacters. Always quote the variable:
->
-> ```bash
-> # Safe — value treated as a literal string
-> prompt="$HARVEY_PROMPT"
-> echo "User asked: $prompt"
->
-> # UNSAFE — shell interprets metacharacters in the prompt
-> eval $HARVEY_PROMPT        # never do this
-> sh -c "$HARVEY_PROMPT"    # never do this
-> ```
-
-### Type 3: Triggered Skills
-
-Skills with a `trigger:` field can be **auto-dispatched** when user input
+Skills with a `trigger:` field can be **loaded automatically** when user input
 matches the pattern.
 
 **Trigger types:**
@@ -283,13 +229,13 @@ matches the pattern.
 trigger: /\b(run|execute) tests?\b/
 ```
 
-When the user types "run tests" or "execute test", Harvey automatically invokes
-the skill (if it's compiled) or loads it into context.
+When the user types "run tests" or "execute test", Harvey loads the skill into
+context and then sends the message to the model.
 
 > **Prompt injection risk:** If a trigger pattern uses broad keywords that naturally
 > appear in code, documentation, or RAG-retrieved content, a skill may be activated by
 > injected text rather than by the user's explicit intent. Keep trigger patterns
-> specific to avoid unintentional dispatch.
+> specific to avoid unintentional loading.
 
 ## Commands Reference
 
@@ -302,7 +248,6 @@ description.
 ```
   Current model: llama3:latest
 
-  compile-skill           [project] Compiles a target SKILL.md...
   fountain-analysis       [project] Read and actively monitor...
   review-knowledge-base   [project] Queries knowledge_base.db...
   ...
@@ -371,78 +316,18 @@ harvey> /skill new
   Open in editor? [Y/n] y
 ```
 
-### `/skill run NAME [ARGS...]`
+### `/NAME [REQUEST...]`
 
-Run a **compiled skill** directly. The skill's compiled.bash or compiled.ps1
-script is executed with HARVEY_PROMPT set to the arguments.
+Every discovered skill is also a slash command. It loads the skill exactly as
+`/skill load NAME` does; if REQUEST is given it is sent to the model as your next
+message. A skill never replaces a built-in command of the same name.
 
 **Example:**
 ```
-harvey> /skill run fountain-analysis session.spmd
+harvey> /fountain-analysis session.spmd
 
-  Running skill: fountain-analysis
-  [Output from compiled.bash]
+  ✓ Skill "fountain-analysis" loaded into context (1234 chars).
 ```
-
-**Note:** This only works for skills with compiled scripts. For LLM-executed
-skills, use `/skill load` instead.
-
-## Compiled Scripts
-
-### Environment Variables
-
-When a compiled skill script runs, Harvey sets these environment variables:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `HARVEY_PROMPT` | The user's prompt/arguments | `session.spmd` |
-| `HARVEY_WORKDIR` | Absolute workspace root | `/home/user/project` |
-| `HARVEY_MODEL` | Current model name | `llama3:latest` |
-| `HARVEY_SESSION_ID` | Current session ID | `20260504-143000` |
-
-**Example compiled.bash:**
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Parse arguments from HARVEY_PROMPT
-read -ra _args <<< "${HARVEY_PROMPT:-}"
-FOUNTAIN_FILE="${_args[0]:-}"
-
-# Validate
-if [ -z "$FOUNTAIN_FILE" ]; then
-    read -rp "Fountain file path: " FOUNTAIN_FILE
-fi
-
-# Execute
-if [ ! -f "$FOUNTAIN_FILE" ]; then
-    echo "Error: File not found: $FOUNTAIN_FILE" >&2
-    exit 1
-fi
-
-echo "Analyzing: $FOUNTAIN_FILE"
-# ... rest of script
-```
-
-### Script Generation Rules
-
-When generating compiled scripts (via compile-skill), follow these rules:
-
-**For compiled.bash:**
-1. Shebang: `#!/usr/bin/env bash`
-2. Safety: `set -euo pipefail`
-3. Variable parsing: Use `read -ra _args <<< "${HARVEY_PROMPT:-}"`
-4. Safe defaults: Always use `${VAR:-}` or `${VAR:-default}`
-5. No functions, no subshells
-6. SQLite3: Call as command, never redirect into db file
-7. Heredocs: Use single-quoted delimiter (`<<'EOF'`) for literal content
-8. Tool checks: `command -v tool >/dev/null 2>&1 || { echo "error"; exit 1; }`
-
-**For compiled.ps1:**
-1. Error handling: `$ErrorActionPreference = 'Stop'`
-2. Variable parsing: `$promptArgs = ($env:HARVEY_PROMPT ?? '').Trim() -split '\s+', N`
-3. PowerShell-only syntax (no bash-isms)
-4. Tool checks: `Get-Command tool -ErrorAction SilentlyContinue`
 
 ## Skill Discovery & Loading
 
@@ -473,16 +358,6 @@ When you invoke `/skill load NAME`:
 
 **Note:** Skills are **not** loaded automatically. You must explicitly
 invoke `/skill load` or have a trigger match.
-
-### Staleness Checking
-
-For compiled skills, Harvey checks if SKILL.md is newer than the compiled
-scripts. If so, it warns:
-
-```
-  Warning: Skill "name" has been modified since compilation.
-  Recompile with: /skill compile name
-```
 
 ## Creating a New Skill
 
@@ -518,39 +393,6 @@ Follow the prompts to create a new skill with the wizard.
    Instructions for the LLM...
    ```
 
-3. (Optional) Create compiled scripts:
-   ```bash
-   mkdir -p agents/skills/my-skill/scripts
-   touch agents/skills/my-skill/scripts/compiled.bash
-   touch agents/skills/my-skill/scripts/compiled.ps1
-   ```
-
-4. (Optional) Compile the skill:
-   ```
-harvey> /skill compile my-skill
-   ```
-
-## Compiling a Skill
-
-Compile a SKILL.md into executable scripts using the LLM:
-
-```
-harvey> /skill compile my-skill
-  Compiling skill "my-skill"...
-  ✓ Compiled: scripts/compiled.bash and scripts/compiled.ps1
-  Tip: you can now run it as /skill run my-skill
-```
-
-**What happens:**
-1. Harvey uses the current LLM to generate scripts
-2. Reads the SKILL.md for variable definitions and instructions
-3. Generates `scripts/compiled.bash` for Linux/macOS/BSD
-4. Generates `scripts/compiled.ps1` for Windows
-5. Makes both scripts executable (where applicable)
-
-**Note:** Compilation requires a capable model. Small local models may not
-generate good scripts. Use Claude Code or a large cloud model for compilation.
-
 ## Best Practices
 
 ### Skill Design
@@ -576,7 +418,7 @@ generate good scripts. Use Claude Code or a large cloud model for compilation.
 | `review-code` | `code-review` | Verb-first is more natural |
 | `setup-experiment` | `experiment-setup` | Verb-first |
 | `fetch-pg-corpus` | `getPGData` | Hyphens, lowercase |
-| `compile-skill` | `CompileSkill` | Lowercase only |
+| `wrap-up-session` | `WrapUpSession` | Lowercase only |
 
 **Rules:**
 - Lowercase letters only
@@ -605,7 +447,7 @@ Test your skill by:
 1. Loading it: `/skill load my-skill`
 2. Following the instructions manually
 3. Verifying the LLM produces correct output
-4. For compiled skills: `/skill run my-skill arg1 arg2`
+4. Try the same request with `/my-skill arg1 arg2`
 
 ## Troubleshooting
 
@@ -653,36 +495,6 @@ name: My Skill  # bad (spaces, uppercase)
 name: my_skill  # bad (underscore)
 ```
 
-### Compiled skill not executing
-
-**Causes:**
-- Scripts not compiled yet
-- Scripts not executable
-- Missing shebang line
-- Syntax errors in script
-
-**Fix:**
-```
-# Compile the skill
-harvey> /skill compile my-skill
-
-# Check file permissions
-ls -la agents/skills/my-skill/scripts/
-
-# Make executable (if needed)
-chmod +x agents/skills/my-skill/scripts/compiled.bash
-```
-
-### Skill stale (warning)
-
-**Cause:** SKILL.md was modified after compilation.
-
-**Fix:**
-```
-# Recompile
-harvey> /skill compile my-skill
-```
-
 ## Skill Directory Structure
 
 A complete skill directory:
@@ -696,9 +508,7 @@ my-skill/
 │   └── guide.md
 ├── assets/                     # Optional: Templates, data files
 │   └── template.txt
-└── scripts/                    # Optional: Compiled scripts
-    ├── compiled.bash          # Linux/macOS/BSD script
-    └── compiled.ps1           # Windows PowerShell script
+└── scripts/                    # Optional: helper scripts the instructions refer to
 ```
 
 ## Cross-Agent Compatibility
@@ -765,7 +575,6 @@ Harvey includes these skills out of the box (in `agents/skills/`):
 
 | Skill | Purpose |
 |-------|---------|
-| **compile-skill** | Compiles a SKILL.md into `compiled.bash` and `compiled.ps1` scripts |
 | **fountain-analysis** | Reads and monitors Harvey Fountain session files (`.spmd`) |
 | **fountain-session** | Writes a well-formed session handoff summary in Fountain format |
 | **harvey-memory** | Loads Harvey's accumulated workspace memories before a session |
@@ -780,4 +589,3 @@ Harvey includes these skills out of the box (in `agents/skills/`):
 - [SKILL.md files in agents/skills/](agents/skills/) — Built-in skills
 - [fountain-analysis SKILL.md](agents/skills/fountain-analysis/SKILL.md) — Example of comprehensive skill
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Technical details on skill implementation
-- [compile-skill SKILL.md](agents/skills/compile-skill/SKILL.md) — Skill compilation guide

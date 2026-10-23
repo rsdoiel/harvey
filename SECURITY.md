@@ -58,11 +58,11 @@ accidentally expose them:
 
 Error messages reference variable names only, never their values.
 
-**`HARVEY_*` pass-through:** Harvey injects its own `HARVEY_*` session
-variables (workspace path, model name, API base URL) into child processes so
-that compiled skills can call the LLM API. Any `HARVEY_*` variable already
-present in the parent shell's environment is also forwarded. Avoid storing
-sensitive data in `HARVEY_`-prefixed variables.
+**`HARVEY_*` pass-through:** Any `HARVEY_*` variable already present in the
+parent shell's environment is forwarded to child processes. Harvey no longer
+sets `HARVEY_*` variables of its own: they were for compiled skill scripts, and
+skills are no longer compiled (workspace DR-0008). Avoid storing sensitive data
+in `HARVEY_`-prefixed variables.
 
 ### Safe Mode
 

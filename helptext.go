@@ -309,7 +309,7 @@ are also available from the shell: harvey --help TOPIC.
 
 **Skills**
 
-/skill <list|load NAME|info NAME|status|new|run NAME>
+/skill <list|load NAME|info NAME|status|new>
 : discover, load, and run agent skills
 
 /skill-set <list|load NAME|info NAME|create NAME|status|unload>
@@ -3093,59 +3093,30 @@ match the parent directory name.
   Then ask Harvey:    Please review cmd/harvey/main.go
 ~~~
 
-# COMPILED SKILLS
+# USING SKILLS
 
-A compiled skill has executable scripts (compiled.bash for Linux/macOS/BSD,
-compiled.ps1 for Windows) in the skill's scripts/ directory. When a compiled
-skill is invoked, Harvey runs the script directly — no LLM round-trip needed —
-and injects the output into context.
+A skill is used directly. Activating one puts its SKILL.md body into the
+conversation and the model answers with that guidance in context. There are
+three ways to activate a skill:
 
-Compiling a skill requires a large capable model (e.g. Claude or Mistral) that
-is not typically available on resource-constrained hardware. Compile skills on
-a capable system and commit the resulting scripts alongside SKILL.md.
+  /skill load NAME     load the skill, then type your request
+  /NAME [REQUEST]      load the skill; REQUEST, if given, is sent to the model
+                       as your next message
+  trigger field        load the skill automatically when your message matches
 
-Compiled skill directory layout:
+Skills are not compiled to Bash or PowerShell, and a scripts/compiled.bash or
+scripts/compiled.ps1 left in a skill directory from an earlier release is
+ignored: it is never run. A skill that needs a script should say so in its body
+and the model runs it with the usual tools.
 
-~~~
-  my-skill/
-  ├── SKILL.md
-  └── scripts/
-      ├── compiled.bash
-      └── compiled.ps1
-~~~
-
-HARVEY_* environment variables set before each script run:
-
-  HARVEY_PROMPT      the user's exact prompt text
-  HARVEY_WORKDIR     absolute path to the workspace root
-  HARVEY_MODEL       the name of the currently active LLM model
-  HARVEY_SESSION_ID  the current session ID as a string
-  HARVEY_API_BASE    base URL of the currently active LLM backend
-                     (e.g. http://localhost:11434 for Ollama,
-                     https://api.anthropic.com for Anthropic)
-                     Use this to make LLM API calls from a compiled
-                     script without hard-coding a provider URL.
-
-Staleness: if SKILL.md is modified after the scripts were compiled, Harvey
-warns you when the skill is invoked and runs the old compiled version.
-Recompile the skill on a capable system to pick up the changes.
-
-Dispatch fallback: if a compiled skill's script cannot be executed (e.g.
-the script was compiled on a different OS or was not committed), Harvey
-falls back to the LLM context-injection path — the skill body is injected
-into the conversation and the model is asked to respond — instead of
-erroring out. The fallback triggers a model response turn so the session
-continues without interruption.
-
-TRIGGER field: add an optional trigger field to SKILL.md frontmatter to enable
-automatic skill dispatch when user input matches:
+TRIGGER field: add an optional trigger field to SKILL.md frontmatter to load
+the skill automatically when user input matches:
 
   trigger: pdf extract document   (keyword mode — any word triggers)
   trigger: /\bpdf\b/              (regexp mode — wrap pattern in slashes)
 
-When Harvey receives a user prompt matching a trigger, it invokes the compiled
-skill directly instead of sending the prompt to the LLM. First alphabetically
-matching trigger wins.
+When Harvey receives a user prompt matching a trigger, it loads the skill and
+then sends the prompt to the model. First alphabetically matching trigger wins.
 
 
 ## DISCOVERY PATHS  (project overrides user on name collision)
@@ -3169,7 +3140,7 @@ that follows the Agent Skills specification (https://agentskills.io/home).
   /skill info NAME              alias for show
   /skill status                 count skills by scope
   /skill new                    interactive wizard to create a new skill
-  /skill run NAME               run a skill (dispatches compiled scripts if available)
+  /NAME [REQUEST]               load the skill NAME; REQUEST is sent to the model
   /skill suggest [SESSION]      mine a session recording for reusable workflow
                                 candidates; for each accepted candidate, writes a
                                 SKILL.md stub to agents/skills/<name>/. SESSION is
@@ -3190,8 +3161,7 @@ For each proposed skill you can:
 
 Accepted skills are written to the live agents/skills/ directory and are
 immediately available via /skill load. Review the generated SKILL.md and
-refine the instructions before committing it. Compile the skill with
-/skill run compile-skill to generate executable scripts.
+refine the instructions before committing it.
 
 # SEE ALSO
 

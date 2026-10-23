@@ -302,7 +302,7 @@ are also available from the shell: harvey --help TOPIC.
 
 **Skills**
 
-/skill <list|load NAME|info NAME|status|new|run NAME>
+/skill <list|load NAME|info NAME|status|new>
 : discover, load, and run agent skills
 
 /skill-set <list|load NAME|info NAME|create NAME|status|unload>

@@ -57,8 +57,7 @@ memory_enrichment_*.go      Design/plan documents (not compiled)
 
 --- Skills ---
 skills.go                   SkillCatalog, skill discovery and metadata
-skill_dispatch.go           Skill dispatch (compiled script path vs. LLM fallback)
-skill_compile.go            Compiled skill script generation via LLM
+skill_dispatch.go           Skill trigger matching and automatic loading
 skill_wizard.go             Interactive skill creation wizard (/skill new)
 skill_set.go                SkillSet — YAML bundles of multiple skills
 
@@ -295,7 +294,7 @@ The REPL calls `dispatch(input, out)` for any line beginning with `/`.
 
 | Command | Purpose |
 |---|---|
-| `/skill list\|load NAME\|info NAME\|status\|new\|run NAME` | Discover, load, and run skills |
+| `/skill list\|load NAME\|info NAME\|status\|new` | Discover and load skills |
 | `/skill-set list\|load NAME\|info NAME\|create NAME\|status\|unload` | Manage skill-set bundles |
 
 ### Pipelines and automation commands
@@ -352,7 +351,7 @@ are forwarded. The following variables are unconditionally stripped:
 - HTTP authentication: `HTTP_BEARER_TOKEN`, `HTTP_BASIC_PASSWORD`
 
 Note: all variables matching the `HARVEY_*` prefix are forwarded to child
-processes (including compiled skills). Avoid storing secrets in `HARVEY_`-prefixed
+processes. Avoid storing secrets in `HARVEY_`-prefixed
 variables.
 
 **Timeout configuration.** `Config.RunTimeout` (default 5 minutes) bounds every
@@ -481,20 +480,21 @@ Skills are `SKILL.md` files discovered at startup in:
 trigger, compatibility, license). The catalog summary is added to the system
 prompt so the model knows what skills are available.
 
-### Skill dispatch (`skill_dispatch.go`)
+### Skill activation (`skill_dispatch.go`, `commands_skill.go`)
 
-When `/skill run NAME` is called:
+A skill is used directly: `loadSkill` puts the SKILL.md body into the
+conversation as a user message (`[skill: NAME]`) and marks the skill active.
+Three things call it:
 
-1. **Compiled path** — if `scripts/compiled.bash` (Linux/macOS) or
-   `scripts/compiled.ps1` (Windows) exists, the script is executed directly.
-   Environment includes `HARVEY_PROMPT`, `HARVEY_WORKDIR`, `HARVEY_MODEL`,
-   `HARVEY_SESSION_ID`, and `HARVEY_API_BASE` (for compiled skills that call
-   the LLM API directly).
+1. `/skill load NAME`.
+2. `/NAME [REQUEST]`, registered for every skill by `registerSkillCommands`. A
+   non-empty REQUEST is queued on `Agent.pendingInput` and runs as the next chat
+   line, so the model answers it with the skill in context.
+3. A trigger match: `autoLoadSkill` loads the first skill, in name order, whose
+   `trigger:` matches the prompt, and the prompt then goes to the model.
 
-2. **LLM-fallback path** — if no compiled script, the full SKILL.md body is
-   injected into context and an LLM response turn is triggered.
-
-Compilation failure falls back to the LLM-fallback path rather than erroring.
+Skills are not compiled to Bash or PowerShell (workspace DR-0008). A
+`scripts/compiled.*` file left in a skill directory is ignored.
 Skill trigger regexes use `/pattern/flags` format; the trailing flag suffix is
 stripped before compilation.
 
@@ -676,8 +676,8 @@ Tests live alongside source files. Current test files:
 | `llamafile_service_test.go` | Port selection, server start/stop lifecycle |
 | `tools_test.go` | Tool schema definitions and registry construction |
 | `tool_executor_test.go` | RunToolLoop multi-turn execution, compaction |
-| `skill_dispatch_test.go` | Compiled vs. LLM-fallback dispatch paths |
-| `skill_compile_test.go` | Skill compilation prompt and output |
+| `skill_dispatch_test.go` | Trigger matching |
+| `skill_direct_test.go` | `/NAME` commands, automatic loading, leftover scripts ignored |
 | `skill_set_test.go` | SkillSet YAML loading and validation |
 | `skills_test.go` | Skill discovery and catalog |
 | `skill_wizard_test.go` | Wizard scaffolding output |
@@ -714,7 +714,7 @@ in this document are fully implemented as of v0.0.13:
 - ✓ Three-silo memory (RAG, experience store, knowledge base)
 - ✓ Tool registry and dual execution paths (structured + prose)
 - ✓ Multi-backend routing (Ollama, Llamafile, cloud providers)
-- ✓ Skills system (compiled and LLM-fallback)
+- ✓ Skills system (SKILL.md loaded directly)
 - ✓ Pipelines, plan execution, and loop automation
 - ✓ Scholarly identifier support (14 types) and scholarly PDF chunking
 - ✓ Remote I/O (S3, HTTP/S, SFTP/SCP)
