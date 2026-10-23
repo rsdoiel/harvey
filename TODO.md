@@ -144,7 +144,7 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 ## Action Items
 
 - [ ] **Stop supporting skills compiled to Bash/PowerShell; use skills per the skills spec.**
-  Decided 2026-10-23 (workspace DR-0008, proposed). The workspace no longer
+  Decided 2026-10-23 (workspace DR-0008, accepted). The workspace no longer
   compiles skills to `scripts/compiled.bash` / `scripts/compiled.ps1`, and the
   existing scripts and the `compile-skill` skill were removed from
   `agents/skills/`. Harvey will no longer support skills built on that approach.
