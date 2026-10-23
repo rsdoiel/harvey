@@ -2,8 +2,6 @@ package harvey
 
 import (
 	"bufio"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -36,55 +34,5 @@ func TestAskYesNo(t *testing.T) {
 				t.Errorf("askYesNo(%q, default %v) = %v, want %v", tc.input, tc.defaultYes, got, tc.want)
 			}
 		})
-	}
-}
-
-// skillDispatchFixture writes an uncompiled skill and returns it with an agent
-// whose model "compiles" it into a script that creates a marker file.
-func skillDispatchFixture(t *testing.T) (a *Agent, skill *SkillMeta, marker string) {
-	t.Helper()
-	dir := t.TempDir()
-	marker = filepath.Join(dir, "ran")
-	skillPath := filepath.Join(dir, "SKILL.md")
-	if err := os.WriteFile(skillPath, []byte("---\nname: demo\n---\nDo the thing.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	reply := "```bash scripts/compiled.bash\n#!/bin/bash\ntouch " + marker + "\n```\n\n" +
-		"```powershell scripts/compiled.ps1\nNew-Item " + marker + "\n```\n"
-	a = newTestAgent(t)
-	a.Client = &mockLLMClient{reply: reply}
-	return a, &SkillMeta{Name: "demo", Path: skillPath, Body: "Do the thing."}, marker
-}
-
-// After compiling, "Run now? [Y/n]" must not run the script when input ends.
-func TestDispatchSkill_RunNowIsNotAnsweredYesByEndOfInput(t *testing.T) {
-	a, skill, marker := skillDispatchFixture(t)
-	var out strings.Builder
-	// "\n" takes the yes default for "Compile now?"; then the input ends.
-	reader := bufio.NewReader(strings.NewReader("\n"))
-
-	if _, err := DispatchSkill(t.Context(), a, skill, "", reader, &out); err != nil {
-		t.Fatalf("DispatchSkill: %v\n%s", err, out.String())
-	}
-	if !strings.Contains(out.String(), "Compiled") {
-		t.Fatalf("the skill was not compiled; the test does not reach the Run prompt:\n%s", out.String())
-	}
-	if _, err := os.Stat(marker); err == nil {
-		t.Error("the compiled script ran although the input ended at \"Run now?\"")
-	}
-}
-
-// The same flow with an explicit yes does run it, so the test above is
-// checking the prompt and not a script that never runs.
-func TestDispatchSkill_RunNowYesRunsTheScript(t *testing.T) {
-	a, skill, marker := skillDispatchFixture(t)
-	var out strings.Builder
-	reader := bufio.NewReader(strings.NewReader("\n\n"))
-
-	if _, err := DispatchSkill(t.Context(), a, skill, "", reader, &out); err != nil {
-		t.Fatalf("DispatchSkill: %v\n%s", err, out.String())
-	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Errorf("the compiled script did not run after two Enters: %v\n%s", err, out.String())
 	}
 }

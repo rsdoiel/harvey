@@ -204,8 +204,7 @@ func (s *Suggestor) Suggest(ctx context.Context, sessionPath string, agent *Agen
 	return nil
 }
 
-/** writeSkillMD creates agents/skills/<name>/SKILL.md (and the scripts/
- * subdirectory) inside ws, rendering the candidate with renderSkillMD.
+/** writeSkillMD creates agents/skills/<name>/SKILL.md inside ws, rendering the candidate with renderSkillMD.
  *
  * Parameters:
  *   ws (Workspace)       — workspace that owns the skills directory.
@@ -219,7 +218,7 @@ func (s *Suggestor) Suggest(ctx context.Context, sessionPath string, agent *Agen
  */
 func writeSkillMD(ws *Workspace, c SkillCandidate) error {
 	skillDir := filepath.Join("agents", "skills", c.Name)
-	if err := ws.MkdirAll(filepath.Join(skillDir, "scripts")); err != nil {
+	if err := ws.MkdirAll(skillDir); err != nil {
 		return fmt.Errorf("create skill dir: %w", err)
 	}
 	content := renderSkillMD(c, gitAuthor())

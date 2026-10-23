@@ -187,9 +187,9 @@ func TestWriteSkillMD_ContainsName(t *testing.T) {
 	}
 }
 
-// TestWriteSkillMD_CreatesScriptsDir verifies that writeSkillMD also creates
-// the scripts/ subdirectory alongside SKILL.md.
-func TestWriteSkillMD_CreatesScriptsDir(t *testing.T) {
+// TestWriteSkillMD_NoScriptsDir verifies that writeSkillMD writes only SKILL.md:
+// skills are no longer compiled to scripts (workspace DR-0008).
+func TestWriteSkillMD_NoScriptsDir(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	c := SkillCandidate{
 		Name:        "test-skill",
@@ -199,13 +199,12 @@ func TestWriteSkillMD_CreatesScriptsDir(t *testing.T) {
 	if err := writeSkillMD(ws, c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	scriptsDir := filepath.Join(ws.Root, "agents", "skills", "test-skill", "scripts")
-	info, err := os.Stat(scriptsDir)
-	if err != nil {
-		t.Fatalf("expected scripts/ dir at %s, got: %v", scriptsDir, err)
+	skillDir := filepath.Join(ws.Root, "agents", "skills", "test-skill")
+	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err != nil {
+		t.Fatalf("expected SKILL.md: %v", err)
 	}
-	if !info.IsDir() {
-		t.Errorf("expected scripts/ to be a directory")
+	if _, err := os.Stat(filepath.Join(skillDir, "scripts")); err == nil {
+		t.Error("did not expect a scripts/ directory")
 	}
 }
 

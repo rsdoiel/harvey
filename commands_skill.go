@@ -37,7 +37,7 @@ import (
  */
 /** cmdSkill handles Agent Skills management and execution. Skills are
  * structured tasks defined in SKILL.md files that can be loaded into
- * context, executed directly, or triggered automatically.
+ * context, or triggered automatically.
  *
  * Subcommands:
  *   list    — List all discovered skills in the skills directory
@@ -45,7 +45,6 @@ import (
  *   info NAME — Show metadata (description, version, author, etc.) for a skill
  *   status  — Show skills directory paths and loaded skill status
  *   new     — Create a new skill interactively via the skill wizard
- *   run NAME — Execute a compiled skill directly
  *
  * Skills are discovered from the agents/skills/ directory tree on startup.
  * Each skill is defined in a SKILL.md file with YAML frontmatter containing
@@ -98,19 +97,6 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		return skillStatus(a, out)
 	case "new":
 		return skillNew(a, out)
-	case "run":
-		if len(args) < 2 {
-			names := skillNameCandidates(a)
-			if len(names) == 0 {
-				return Usagef("usage: /skill run NAME")
-			}
-			chosen, err := SelectFromStrings(names, fmt.Sprintf("Run which skill [1-%d] or Enter to cancel: ", len(names)), a.In, out)
-			if err != nil || chosen == "" {
-				return err
-			}
-			args = append(args, chosen)
-		}
-		return skillRun(a, args[1], out)
 	case "suggest":
 		sessionPath := ""
 		if len(args) > 1 {
@@ -119,7 +105,7 @@ func cmdSkill(a *Agent, args []string, out io.Writer) error {
 		sg := NewSuggestor(a.Workspace)
 		return sg.Suggest(context.Background(), sessionPath, a, out, a.In)
 	default:
-		return Usagef("unknown skill subcommand: %s  (usage: /skill <list|load NAME|info NAME|status|new|run NAME|suggest [SESSION]>)", args[0])
+		return Usagef("unknown skill subcommand: %s  (usage: /skill <list|load NAME|info NAME|status|new|suggest [SESSION]>)", args[0])
 	}
 }
 
@@ -163,15 +149,34 @@ func skillLoad(a *Agent, name string, out io.Writer) error {
 	if !ok {
 		return Negativef("skill %q not found. Use /skill list to see available skills", name)
 	}
+	return loadSkill(a, skill, out)
+}
+
+/** loadSkill puts a skill's SKILL.md body into the conversation as a user
+ * message and marks the skill active. It is the one way a skill is used:
+ * /skill load, /<skill-name> and a trigger match all end here.
+ *
+ * Parameters:
+ *   a     (*Agent)     — the running agent.
+ *   skill (*SkillMeta) — the skill to activate.
+ *   out   (io.Writer)  — destination for the confirmation line.
+ *
+ * Returns:
+ *   error — a negative-class error when the skill has no body.
+ *
+ * Example:
+ *   err := loadSkill(a, a.Skills["go-review"], os.Stdout)
+ */
+func loadSkill(a *Agent, skill *SkillMeta, out io.Writer) error {
 	if skill.Body == "" {
-		return Negativef("skill %q has no body content", name)
+		return Negativef("skill %q has no body content", skill.Name)
 	}
-	a.AddMessage("user", fmt.Sprintf("[skill: %s]\n\n%s", name, skill.Body))
-	a.ActiveSkill = name
+	a.AddMessage("user", fmt.Sprintf("[skill: %s]\n\n%s", skill.Name, skill.Body))
+	a.ActiveSkill = skill.Name
 	if a.Recorder != nil {
-		_ = a.Recorder.RecordSkillLoad(name, skill.Description, skill.Body)
+		_ = a.Recorder.RecordSkillLoad(skill.Name, skill.Description, skill.Body)
 	}
-	fmt.Fprintf(out, "  ✓ Skill %q loaded into context (%d chars).\n", name, len(skill.Body))
+	fmt.Fprintf(out, "  ✓ Skill %q loaded into context (%d chars).\n", skill.Name, len(skill.Body))
 	return nil
 }
 
@@ -238,54 +243,10 @@ func skillNew(a *Agent, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(out, green("✓")+" Skill created: %s\n", relPath)
-	fmt.Fprintln(out, "  To make it runnable, add compiled.bash / compiled.ps1 under scripts/.")
+	fmt.Fprintf(out, "  Use it with /%s or /skill load %s.\n", filepath.Base(filepath.Dir(relPath)), filepath.Base(filepath.Dir(relPath)))
 	a.Skills = ScanSkills(a.Workspace.Root, a.Config.AgentsDir)
 	a.registerSkillCommands()
 	return nil
-}
-
-// skillCompile compiles a named skill to compiled.bash and compiled.ps1.
-func skillCompile(a *Agent, name string, out io.Writer) error {
-	if a.Client == nil {
-		return errNoBackend()
-	}
-	skill, ok := a.Skills[name]
-	if !ok {
-		return Negativef("skill %q not found. Use /skill list to see available skills", name)
-	}
-	fmt.Fprintf(out, "  Compiling skill %q...\n", name)
-	sp := newSpinner(out, 0, a.spinnerLabel()+" · compiling")
-	err := CompileSkill(context.Background(), a.Client, skill, io.Discard)
-	sp.stop()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(out, green("✓")+" Compiled: scripts/compiled.bash and scripts/compiled.ps1")
-	a.Skills = ScanSkills(a.Workspace.Root, a.Config.AgentsDir)
-	a.registerSkillCommands()
-	fmt.Fprintf(out, "  Tip: you can now run it as /%s\n", name)
-	return nil
-}
-
-// skillRun dispatches a named skill using DispatchSkill.
-func skillRun(a *Agent, name string, out io.Writer) error {
-	skill, ok := a.Skills[name]
-	if !ok {
-		return Negativef("skill %q not found. Use /skill list to see available skills", name)
-	}
-	warnIfSkillStale(skill, out)
-	reader := newLineReader(a.In)
-	_, err := DispatchSkill(context.Background(), a, skill, "", reader, out)
-	return err
-}
-
-// warnIfSkillStale prints a warning when SKILL.md is newer than the compiled scripts.
-func warnIfSkillStale(skill *SkillMeta, out io.Writer) {
-	stale, err := IsStale(skill)
-	if err == nil && stale {
-		fmt.Fprintf(out, "  Warning: %s/SKILL.md has been updated since it was compiled.\n", skill.Name)
-		fmt.Fprintln(out, "  Running the old compiled version. Recompile on a capable system to pick up changes.")
-	}
 }
 
 // ─── /skill-set ──────────────────────────────────────────────────────────────

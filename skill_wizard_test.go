@@ -4,10 +4,8 @@ import (
 	"bufio"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // ─── ValidSkillName ──────────────────────────────────────────────────────────
@@ -24,115 +22,6 @@ func TestValidSkillName(t *testing.T) {
 		if ValidSkillName(name) {
 			t.Errorf("ValidSkillName(%q): want false, got true", name)
 		}
-	}
-}
-
-// ─── CompiledBashPath / CompiledPS1Path ──────────────────────────────────────
-
-func TestCompiledBashPath(t *testing.T) {
-	got := CompiledBashPath("/proj/agents/skills/my-skill/SKILL.md")
-	want := "/proj/agents/skills/my-skill/scripts/compiled.bash"
-	if got != want {
-		t.Errorf("want %q, got %q", want, got)
-	}
-}
-
-func TestCompiledPS1Path(t *testing.T) {
-	got := CompiledPS1Path("/proj/agents/skills/my-skill/SKILL.md")
-	want := "/proj/agents/skills/my-skill/scripts/compiled.ps1"
-	if got != want {
-		t.Errorf("want %q, got %q", want, got)
-	}
-}
-
-// ─── IsStale ─────────────────────────────────────────────────────────────────
-
-func TestIsStale_missingScripts(t *testing.T) {
-	dir := t.TempDir()
-	skillPath := filepath.Join(dir, "SKILL.md")
-	if err := os.WriteFile(skillPath, []byte("---\ndescription: test\n---\nbody"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	skill := &SkillMeta{Path: skillPath}
-	stale, err := IsStale(skill)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !stale {
-		t.Error("want stale=true when scripts missing")
-	}
-}
-
-func TestIsStale_upToDate(t *testing.T) {
-	dir := t.TempDir()
-	skillPath := filepath.Join(dir, "SKILL.md")
-	if err := os.WriteFile(skillPath, []byte("---\ndescription: test\n---\nbody"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	scriptsDir := filepath.Join(dir, "scripts")
-	if err := os.MkdirAll(scriptsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Write scripts with a timestamp 1 second in the future so they appear newer.
-	future := time.Now().Add(2 * time.Second)
-	for _, name := range []string{"compiled.bash", "compiled.ps1"} {
-		p := filepath.Join(scriptsDir, name)
-		if err := os.WriteFile(p, []byte("#!/bin/bash"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chtimes(p, future, future); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	skill := &SkillMeta{Path: skillPath}
-	stale, err := IsStale(skill)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if stale {
-		t.Error("want stale=false when scripts are newer than SKILL.md")
-	}
-}
-
-func TestIsStale_skillNewer(t *testing.T) {
-	dir := t.TempDir()
-	skillPath := filepath.Join(dir, "SKILL.md")
-	if err := os.WriteFile(skillPath, []byte("---\ndescription: test\n---\nbody"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	scriptsDir := filepath.Join(dir, "scripts")
-	if err := os.MkdirAll(scriptsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Write scripts with an old timestamp.
-	past := time.Now().Add(-2 * time.Second)
-	for _, name := range []string{"compiled.bash", "compiled.ps1"} {
-		p := filepath.Join(scriptsDir, name)
-		if err := os.WriteFile(p, []byte("#!/bin/bash"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chtimes(p, past, past); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// Make SKILL.md newer than the scripts.
-	now := time.Now()
-	if err := os.Chtimes(skillPath, now, now); err != nil {
-		t.Fatal(err)
-	}
-
-	skill := &SkillMeta{Path: skillPath}
-	stale, err := IsStale(skill)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !stale {
-		t.Error("want stale=true when SKILL.md is newer than scripts")
 	}
 }
 

@@ -1,12 +1,6 @@
 package harvey
 
 import (
-	"bufio"
-	"context"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 )
 
@@ -116,72 +110,5 @@ func TestSortedSkillNames(t *testing.T) {
 		if got[i] != w {
 			t.Errorf("SortedSkillNames[%d]: want %q, got %q", i, w, got[i])
 		}
-	}
-}
-
-// ─── runCompiledScript ───────────────────────────────────────────────────────
-
-func TestRunCompiledScript_setsEnvVars(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("bash not available on Windows")
-	}
-
-	dir := t.TempDir()
-	scriptPath := filepath.Join(dir, "compiled.bash")
-	// Script echoes HARVEY_PROMPT to stdout.
-	script := "#!/usr/bin/env bash\necho \"${HARVEY_PROMPT}\"\n"
-	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	a := newTestAgent(t)
-	a.Client = &mockLLMClient{}
-	skill := &SkillMeta{Name: "env-test", Path: filepath.Join(dir, "SKILL.md")}
-
-	var out strings.Builder
-	reader := bufio.NewReader(strings.NewReader(""))
-	_ = reader // runCompiledScript doesn't read from reader
-
-	err := runCompiledScript(context.Background(), a, skill, scriptPath, "hello world", &out)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if !strings.Contains(out.String(), "hello world") {
-		t.Errorf("want 'hello world' in output, got: %q", out.String())
-	}
-}
-
-func TestRunCompiledScript_injectsHistory(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("bash not available on Windows")
-	}
-
-	dir := t.TempDir()
-	scriptPath := filepath.Join(dir, "compiled.bash")
-	script := "#!/usr/bin/env bash\necho \"script output\"\n"
-	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	a := newTestAgent(t)
-	a.Client = &mockLLMClient{}
-	skill := &SkillMeta{Name: "hist-test", Path: filepath.Join(dir, "SKILL.md")}
-	initialLen := len(a.History)
-
-	var out strings.Builder
-	if err := runCompiledScript(context.Background(), a, skill, scriptPath, "", &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(a.History) != initialLen+1 {
-		t.Fatalf("want 1 new history message, got %d total", len(a.History)-initialLen)
-	}
-	msg := a.History[len(a.History)-1]
-	if !strings.Contains(msg.Content, "[skill:hist-test output]") {
-		t.Errorf("want '[skill:hist-test output]' in history, got: %q", msg.Content)
-	}
-	if !strings.Contains(msg.Content, "script output") {
-		t.Errorf("want 'script output' in history, got: %q", msg.Content)
 	}
 }

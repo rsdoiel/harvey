@@ -150,7 +150,7 @@ func filterCommandEnvironment(env []string) []string {
  * Fields:
  *   Usage          (string)   — short usage synopsis shown by /help.
  *   Description    (string)   — one-line description shown by /help.
- *   UserDefined    (bool)     — true for commands generated from compiled skills.
+ *   UserDefined    (bool)     — true for commands generated from skills.
  *   Handler        (func)     — called when the command is dispatched; nil for
  *                               commands handled directly in the REPL (exit, quit).
  *   Subcommands    ([]string) — valid second-token subcommand names; used by
@@ -350,15 +350,14 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdFileTree,
 		},
 		"skill": {
-			Usage:       "/skill <list|load NAME|show NAME|info NAME|status|new|run NAME|suggest [SESSION]>",
+			Usage:       "/skill <list|load NAME|show NAME|info NAME|status|new|suggest [SESSION]>",
 			Description: "List or load Agent Skills from the skill catalog",
 			Handler:     cmdSkill,
-			Subcommands: []string{"list", "load", "show", "info", "status", "new", "run", "suggest"},
+			Subcommands: []string{"list", "load", "show", "info", "status", "new", "suggest"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"load": skillNameCandidates,
 				"show": skillNameCandidates,
 				"info": skillNameCandidates,
-				"run":  skillNameCandidates,
 			},
 		},
 		"skill-set": {
@@ -469,13 +468,13 @@ func (a *Agent) registerCommands() {
 	}
 }
 
-/** registerSkillCommands registers each compiled skill in a.Skills as a
- * slash command, so users can invoke them as /skill-name [ARGS...] directly.
- * The full argument text after the command name is passed to the script as
- * HARVEY_PROMPT, so positional parameters map naturally to skill variables.
- * Built-in commands are never shadowed. Previously registered skill commands
- * are cleared before re-registering so this method is safe to call repeatedly
- * after compilation or after the skill catalog is refreshed.
+/** registerSkillCommands registers each skill in a.Skills as a slash command,
+ * so users can invoke them as /skill-name [REQUEST...] directly. The command
+ * loads the skill's SKILL.md body into the conversation; the text after the
+ * command name, if any, is queued as the next chat line, so the model answers
+ * it with the skill in context. Built-in commands are never shadowed.
+ * Previously registered skill commands are cleared before re-registering so
+ * this method is safe to call repeatedly after the skill catalog is refreshed.
  *
  * Parameters:
  *   (receiver) *Agent — agent whose Skills catalog and commands map are updated.
@@ -498,11 +497,6 @@ func (a *Agent) registerSkillCommands() {
 		if existing, ok := a.commands[s.Name]; ok && !existing.UserDefined {
 			continue
 		}
-		// Only register skills that have been compiled.
-		if _, err := os.Stat(CompiledBashPath(s.Path)); err != nil {
-			continue
-		}
-
 		// Build usage string: /name [VAR1] [VAR2] ...
 		usage := "/" + s.Name
 		for _, v := range s.Variables {
@@ -521,11 +515,15 @@ func (a *Agent) registerSkillCommands() {
 			Description: desc,
 			UserDefined: true,
 			Handler: func(ag *Agent, args []string, out io.Writer) error {
-				warnIfSkillStale(captured, out)
-				prompt := strings.Join(args, " ")
-				reader := newLineReader(ag.In)
-				_, err := DispatchSkill(context.Background(), ag, captured, prompt, reader, out)
-				return err
+				if err := loadSkill(ag, captured, out); err != nil {
+					return err
+				}
+				// The arguments are the request the skill is for: hand them
+				// back to the REPL as the next chat line.
+				if prompt := strings.TrimSpace(strings.Join(args, " ")); prompt != "" {
+					ag.pendingInput = append(ag.pendingInput, prompt)
+				}
+				return nil
 			},
 		}
 	}
@@ -605,7 +603,7 @@ func cmdHelp(a *Agent, args []string, out io.Writer) error {
 	}
 	if len(userDefined) > 0 {
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, "  User-defined commands (compiled skills):")
+		fmt.Fprintln(out, "  User-defined commands (skills):")
 		for _, cmd := range userDefined {
 			fmt.Fprintf(out, "  %-50s %s\n", cmd.Usage, cmd.Description)
 		}

@@ -946,31 +946,9 @@ func (a *Agent) Run(out io.Writer) error {
 			continue
 		}
 
-		// Auto-dispatch compiled skills whose trigger pattern matches the input.
-		// Iterate sorted names for deterministic first-match semantics.
-		skillWantsLLM := false
-		if len(a.Skills) > 0 {
-			triggered := false
-			for _, name := range SortedSkillNames(a.Skills) {
-				skill := a.Skills[name]
-				if MatchesTrigger(skill, input) {
-					fmt.Fprintf(out, dim("  (trigger matched skill %q)\n"), name)
-					triggerReader := newLineReader(a.In)
-					var err error
-					skillWantsLLM, err = DispatchSkill(context.Background(), a, skill, input, triggerReader, out)
-					if err != nil {
-						fmt.Fprintf(out, red("  ✗ skill dispatch error: ")+"%v\n", err)
-					}
-					triggered = true
-					break
-				}
-			}
-			// Compiled scripts are self-contained — skip the LLM call.
-			// LLM-fallback skills inject context and need the LLM to respond.
-			if triggered && !skillWantsLLM {
-				continue
-			}
-		}
+		// Load the first skill whose trigger pattern matches the input; the
+		// model then answers with the skill in context.
+		skillWantsLLM := len(a.Skills) > 0 && a.autoLoadSkill(input, out)
 
 		// Send the prompt through Harvey's shared chat pipeline. runChatTurn
 		// owns RAG augmentation, the tool-loop-or-plain-chat branch, display,
@@ -1018,7 +996,7 @@ func (a *Agent) Run(out io.Writer) error {
 			}
 		}
 
-		// When a skill used the LLM-fallback path and the model responded with a
+		// When a skill was loaded for this turn and the model responded with a
 		// parseable plan checklist, auto-save it to agents/plan.md so the user
 		// can immediately run /plan next without any extra steps.
 		if skillWantsLLM && reply != "" && a.Workspace != nil {
@@ -1761,8 +1739,8 @@ func (a *Agent) injectSkillCatalog(block string) {
 /** askYesNo prints prompt, reads a line, and returns true for "y"/"yes".
  * defaultYes controls what an empty (Enter) response means. End of input with
  * nothing typed (a closed pipe, /dev/null, Ctrl-D) is not an answer, so it
- * returns false whatever defaultYes is: a default-yes prompt starts servers and
- * runs compiled skills, and must not do that when nobody answered. A final
+ * returns false whatever defaultYes is: a default-yes prompt starts servers
+ * and must not do that when nobody answered. A final
  * answer with no trailing newline ("y" then end of input) still counts.
  *
  * Parameters:

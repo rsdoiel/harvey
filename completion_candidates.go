@@ -163,7 +163,7 @@ func routeNameCandidates(a *Agent) []string {
 }
 
 /** skillNameCandidates returns the names of all skills in the skill catalog.
- * Called by buildCompleter for /skill load, /skill run, /skill info.
+ * Called by buildCompleter for /skill load, /skill info.
  *
  * Parameters:
  *   a (*Agent) — current agent.
