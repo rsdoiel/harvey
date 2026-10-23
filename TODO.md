@@ -143,18 +143,19 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
-- [ ] **Stop supporting skills compiled to Bash/PowerShell; use skills per the skills spec.**
-  Decided 2026-10-23 (workspace DR-0008, accepted). The workspace no longer
-  compiles skills to `scripts/compiled.bash` / `scripts/compiled.ps1`, and the
-  existing scripts and the `compile-skill` skill were removed from
-  `agents/skills/`. Harvey will no longer support skills built on that approach.
-  Harvey supports skills as the skills specification defines them. The practice
-  of integrating a skill through a slash command that ran the Bash or PowerShell
-  script is to be changed so the skill is used directly as a skill. Code that
-  assumes the scripts: `skills.go` (the `compiled.bash` / `compiled.ps1` path
-  helpers), `commands_skill.go` (the "add compiled.bash / compiled.ps1" hint and
-  the compile and wizard flow), `skill_compile_test.go`, `skill_wizard_test.go`,
-  and `ask_yes_no_test.go`. Not started.
+- [x] **DONE 2026-10-23 (`skill_dispatch.go`, `commands.go` `registerSkillCommands`, `commands_skill.go` `loadSkill`; tests in `skill_direct_test.go`, red first).**
+  Harvey no longer supports skills compiled to Bash/PowerShell; it uses a skill directly. Every skill is now a
+  `/NAME [REQUEST]` command that loads the SKILL.md body (a non-empty REQUEST is queued as the next chat line), `/skill load`
+  and trigger matches (`autoLoadSkill`) go the same way, and a leftover `scripts/compiled.*` is ignored. Removed:
+  `skill_compile.go`, `DispatchSkill`, `runCompiledScript`, the `HARVEY_*` script environment and its filter, `IsStale`,
+  `CompiledBashPath`/`CompiledPS1Path`, `/skill run`, the stale warning, the `scripts/` directory the suggestor made. Docs and
+  help text rewritten (`SKILLS.md`, `ARCHITECTURE.md`, `SECURITY.md`, `harvey-skills.7.md`, `harvey.1.md`). Design brief:
+  `agents/projects/harvey/design/skills-without-compiled-scripts-design.md`; workspace DR-0008. Original item: **Stop
+  supporting skills compiled to Bash/PowerShell; use skills per the skills spec.** Decided 2026-10-23; the workspace stopped
+  compiling skills and removed the scripts and the `compile-skill` skill, and the slash command that ran the script was to
+  become the skill used directly.
+  Still open: compare `ScanSkills` with the current skills specification (brief Q5); a model-driven way to load a skill
+  (tool) is a later item; `ActionSkillRun` in the audit log is unused; `harvey-skills.7.html` and `TODO.html` are not regenerated.
 
 - [x] **DONE 2026-10-10 (`cmd/harvey/completion.go`, tests in `completion_test.go`, red first).** `harvey completion bash|powershell [-install|--install]`; the verb list is checked against the switch in `main.go`, every value flag is classified as path or free text, help topics come from the topic index, and the scripts were run (bash through `compgen`, PowerShell through `TabExpansion2`). Exit codes: unsupported or missing shell and surplus arguments 2, a file harvey did not write 73, a failed write 74/77. Original item: **Shell completion with an install option, as in antenna.** `harvey completion bash|powershell [-install]`,
   following `antennaApp/completion.go` (shipped 2026-10-05; `InstallCompletion` is the install half).
