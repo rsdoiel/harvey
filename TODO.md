@@ -143,6 +143,19 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
+- [ ] **Stop supporting skills compiled to Bash/PowerShell; use skills per the skills spec.**
+  Decided 2026-10-23 (workspace DR-0008, proposed). The workspace no longer
+  compiles skills to `scripts/compiled.bash` / `scripts/compiled.ps1`, and the
+  existing scripts and the `compile-skill` skill were removed from
+  `agents/skills/`. Harvey will no longer support skills built on that approach.
+  Harvey supports skills as the skills specification defines them. The practice
+  of integrating a skill through a slash command that ran the Bash or PowerShell
+  script is to be changed so the skill is used directly as a skill. Code that
+  assumes the scripts: `skills.go` (the `compiled.bash` / `compiled.ps1` path
+  helpers), `commands_skill.go` (the "add compiled.bash / compiled.ps1" hint and
+  the compile and wizard flow), `skill_compile_test.go`, `skill_wizard_test.go`,
+  and `ask_yes_no_test.go`. Not started.
+
 - [x] **DONE 2026-10-10 (`cmd/harvey/completion.go`, tests in `completion_test.go`, red first).** `harvey completion bash|powershell [-install|--install]`; the verb list is checked against the switch in `main.go`, every value flag is classified as path or free text, help topics come from the topic index, and the scripts were run (bash through `compgen`, PowerShell through `TabExpansion2`). Exit codes: unsupported or missing shell and surplus arguments 2, a file harvey did not write 73, a failed write 74/77. Original item: **Shell completion with an install option, as in antenna.** `harvey completion bash|powershell [-install]`,
   following `antennaApp/completion.go` (shipped 2026-10-05; `InstallCompletion` is the install half).
   This is the *shell* completion for the `harvey` binary's own verbs and flags (`init`, `help`, `-h`, ...
