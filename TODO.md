@@ -143,6 +143,13 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
+- [ ] **Bump `go.mod` to `knowledge` v0.0.27** (released 2026-10-25; harvey requires v0.0.26). A bug fix release with no
+  breaking API change. Two things to look at when bumping: `kb.IngestDocument` (used in `learn_ingest.go` and
+  `learn_concepts.go`) now returns `TagWarnings` for a wikilink or keyword it skipped, which `/kb learn ingest`
+  does not print yet (the field is new and optional, nothing breaks); and `kb.AddSource` (`commands_kb.go`) makes a
+  title one line and refuses a control character (an `ErrInvalid` error, as a blank title already was). Run `go mod tidy` and the suite.
+  See `knowledge/CHANGES.md` "v0.0.27" and knowledge DR-0087.
+
 - [x] **DONE 2026-10-23 (`skill_dispatch.go`, `commands.go` `registerSkillCommands`, `commands_skill.go` `loadSkill`; tests in `skill_direct_test.go`, red first).**
   Harvey no longer supports skills compiled to Bash/PowerShell; it uses a skill directly. Every skill is now a
   `/NAME [REQUEST]` command that loads the SKILL.md body (a non-empty REQUEST is queued as the next chat line), `/skill load`
