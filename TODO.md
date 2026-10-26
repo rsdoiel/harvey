@@ -143,6 +143,53 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
+- [ ] **Scriptable one-shot mode: run one prompt, get the reply, with controls a script needs.** *Blocks building `rl`
+  with small models* (`agents/projects/rl/plans/rl-small-model-build-plan.md`): a driver script must call a chosen model
+  per task, many times, unattended, and read the reply. Reviewed 2026-10-25 against `bin/harvey` 0.0.19 with `llama3`
+  in a scratch workspace. What works: piped stdin runs slash commands and chat turns, `/read FILE` then a one-line
+  prompt then `/write PATH` produced the file, and the session exits with the class of the first failure (DR-0006).
+  What does not, each a sub-item below (test-first, review exit codes against DR-0003):
+  - [ ] **A prompt of several lines is several turns.** Piped input is read line by line; a three-line spec sent three
+    chat turns. Workaround found: put the spec in a file, `/read` it, send a one-line prompt. Wanted: a prompt given
+    whole, `harvey --prompt-file FILE` (and `--prompt TEXT`, and `-` for stdin), one turn, then exit.
+  - [ ] **Output is built for a terminal.** Stdout carries the banner, rules, spinner frames, ANSI colour, the
+    "Pobble" waiting lines and the stats line, with the reply in the middle. Wanted: the reply alone on stdout
+    (`--quiet`, or implied by one-shot mode), everything else on stderr or suppressed. With `--json`, a success
+    object (`reply`, `model`, token counts, `eval_duration`) so tokens/second can be logged; `--json` today only
+    shapes errors.
+  - [ ] **Interactive prompts read the script's input.** On a workspace with no profile the first-run profile menu
+    took the first prompt line as its answer. The write-offer prompt took `/write add1.wat` (it now hands a command
+    back, 2026-10-08, but the offer still fires and the line is consumed first). Non-terminal sessions keep write
+    offers on purpose (see the 2026-10-08 fix); one-shot mode needs them off, plus a `--no-onboarding` or "skip when
+    not a terminal" for the profile menu.
+  - [ ] **No per-run model controls.** Wanted on the command line: `--tools=off` (config `tools.enabled: false`
+    works, but only through `agents/harvey.yaml`), `--system FILE` or `--no-system`, `--temperature`, `--seed`,
+    `--num-ctx`, `--num-predict`, `--keep-alive`. I found no setting for sampling options in the Ollama request
+    (verify), and the context window was 8192 (`316/8192 ctx`), small for a prompt that carries a contract file.
+    Needed for repeatable runs and for comparing models fairly.
+  - [ ] **A one-shot run should be bare.** No recording, no auto-mining, no RAG or `kb` injection, no memory
+    onboarding, unless asked (`--bare`). Each run starts with fresh context already; keep it that way and make it a
+    stated guarantee. A run that writes `agents/sessions/*.spmd` and nags "N session(s) unmined" is noise in a loop of
+    hundreds of calls.
+  - [ ] **Write the reply to a file directly.** `--write PATH` (first fenced block, as `/write` does) so a script
+    does not need a second command that fails when the reply has no block. `/write` on no reply exits 1, but a
+    failed chat turn and a failed `/write` in one session report only the first.
+  - [ ] **BUG: tool mode `auto` sends `tools` to a model that cannot take them, and the exit class is 70.**
+    `llama3:latest` on Ollama answers `400 ... does not support tools`; harvey sent the `tools` key anyway
+    (its own probe code reads `capabilities` for this) and the failed session exited 70 (internal), where DR-0003 says
+    70 is never the answer for a known condition. Reproduce: fresh workspace, `harvey -m ollama/llama3:latest`, any
+    prompt. Expect prose mode chosen automatically, or a classed error (not 70). Check whether the cached probe
+    row in a new `model_cache.db` is why the probe did not run.
+  - [ ] **BUG: the error text recommends `/tools off`, which is not a command.** `terminal.go:1239` and `:1343` say
+    "Try /tools off"; `/tools` answers `unknown command` (exit 2). Add the command or correct the text (`/model mode
+    prose` or `tools.enabled`).
+  - [ ] **Decide where retry-until-the-test-passes lives.** Recommended: not in harvey. A driver script calls the
+    one-shot mode, runs the gate, and re-calls with the failure appended, so harvey stays a single-turn tool and the
+    gate stays outside the model. Write the decision as a record before adding any retry feature to `/plan`.
+  - [ ] **Measure before trusting the speed.** The one `llama3` call took 2m31s for a 69-token reply (reported 0.5
+    tok/s). That included loading the model cold, so it is not a throughput figure; the one-shot mode's
+    `--json` stats should make the real numbers easy to log.
+
 - [ ] **Bump `go.mod` to `knowledge` v0.0.27** (released 2026-10-25; harvey requires v0.0.26). A bug fix release with no
   breaking API change. Two things to look at when bumping: `kb.IngestDocument` (used in `learn_ingest.go` and
   `learn_concepts.go`) now returns `TagWarnings` for a wikilink or keyword it skipped, which `/kb learn ingest`
