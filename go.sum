@@ -125,6 +125,8 @@ github.com/rsdoiel/fountain v1.0.3 h1:N5oz6MP/J5KAh5Dc7yPsnrT4TEiZz5TK8UXjR5BJnX
 github.com/rsdoiel/fountain v1.0.3/go.mod h1:qsWthDn7KviYlng5KTKOnGRHQSWojbxkv7Boq9roPYk=
 github.com/rsdoiel/knowledge v0.0.26 h1:UEBlRtqESGx0drK3dpHJTke9Ub2pA+Q1N1QhkRSlr0k=
 github.com/rsdoiel/knowledge v0.0.26/go.mod h1:YawUWQ19+HEqmDb+jzXGjc8cZAI1DQuujkY/acK1I2Y=
+github.com/rsdoiel/knowledge v0.0.28 h1:nlfyghi3yHfcC8ALna8U3RobSnFYYopwjTMsEPeDAr0=
+github.com/rsdoiel/knowledge v0.0.28/go.mod h1:YawUWQ19+HEqmDb+jzXGjc8cZAI1DQuujkY/acK1I2Y=
 github.com/rsdoiel/termlib v0.0.10 h1:ZNPgV/mQZ/lVNuIci5SNkAG8Cv9LbdC0uTOUXFpTfME=
 github.com/rsdoiel/termlib v0.0.10/go.mod h1:NfgwY5ndN2POnb1uvoupppxFOW/6gIFSdGzI88BVNj8=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
