@@ -66,6 +66,7 @@ func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordModelSwitch(name, "llamafile")
 	}
+	a.logModelSwitch(name, "llamafile")
 	probeLlamaCppAndCache(a, name, a.Config.Llamafile.URL)
 	return nil
 }
@@ -581,6 +582,7 @@ func (a *Agent) useModelAt(engine, url, model string) {
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordModelSwitch(model, engine)
 	}
+	a.logModelSwitch(model, engine)
 }
 
 // setOllamaModel wires Config.Ollama.Model, Client, and Backend for the given Ollama model name.

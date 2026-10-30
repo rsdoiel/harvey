@@ -131,7 +131,7 @@ func TestRun_WritesASessionLogBesideTheFountainFile(t *testing.T) {
 	want := []string{
 		"session_start",
 		"user_input", "model_request", "model_response",
-		"command", "model_switch",
+		"model_switch", "command",
 		"user_input", "model_request", "model_response",
 		"tool_call", "tool_result",
 		"command",
@@ -139,6 +139,38 @@ func TestRun_WritesASessionLogBesideTheFountainFile(t *testing.T) {
 	}
 	if strings.Join(kinds, " ") != strings.Join(want, " ") {
 		t.Fatalf("event kinds\n got: %v\nwant: %v", kinds, want)
+	}
+
+	// A command is written when it finishes, so its effects (here the switch)
+	// come first, and it carries its status. The line is what the author typed.
+	var cmds []struct{ Line, Status string }
+	for _, e := range events {
+		if e.Kind == KindCommand {
+			var d struct {
+				Line   string `json:"line"`
+				Status string `json:"status"`
+			}
+			_ = json.Unmarshal(e.Data, &d)
+			cmds = append(cmds, struct{ Line, Status string }{d.Line, d.Status})
+		}
+	}
+	if len(cmds) != 2 || cmds[0].Line != "/model use qwen2.5-coder:1.5b" || cmds[0].Status != "ok" ||
+		cmds[1].Line != "/exit" || cmds[1].Status != "ok" {
+		t.Errorf("command events = %+v", cmds)
+	}
+
+	// The switch names the model it leaves and the one it enters.
+	for _, e := range events {
+		if e.Kind == KindModelSwitch {
+			var d struct {
+				From struct{ Backend, Model string } `json:"from"`
+				To   struct{ Backend, Model string } `json:"to"`
+			}
+			_ = json.Unmarshal(e.Data, &d)
+			if d.From.Model != "llama3.2:3b" || d.To.Model != "qwen2.5-coder:1.5b" || d.To.Backend != "ollama" {
+				t.Errorf("model_switch = %s", e.Data)
+			}
+		}
 	}
 
 	// One response per request, naming the request it answers; the turn after

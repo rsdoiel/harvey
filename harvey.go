@@ -209,6 +209,8 @@ type Agent struct {
 	logLastID                  string         // id of the last event appended; the tail.to of a manifest
 	logFirstDialogID           string         // id of the first user_input; the tail.from of a manifest
 	sessionLogWarned           bool           // a failed log write has been reported once
+	logModel                   ModelRef       // backend and model last written to the log; the from of the next model_switch
+	logSystemID                string         // id of the system prompt text last written to the log
 	Backend                    ManagedBackend // active inference backend; nil when no backend is wired
 	hailoDevicePath            string         // Hailo card device node; "" = /dev/hailo0 (tests set it)
 	hailoUnitPath              string         // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service

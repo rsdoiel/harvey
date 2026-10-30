@@ -35,14 +35,7 @@ func (a *Agent) openSessionLog(recPath, replayOf string, out io.Writer) {
 	if a.Client != nil {
 		clientName = a.Client.Name()
 	}
-	system := ""
-	for _, m := range a.History {
-		if m.Role == "system" {
-			system = m.Content
-			break
-		}
-	}
-	sum := sha256.Sum256([]byte(system))
+	sysID, system := a.systemPromptVersion()
 	root := ""
 	if a.Workspace != nil {
 		root = a.Workspace.Root
@@ -56,7 +49,7 @@ func (a *Agent) openSessionLog(recPath, replayOf string, out io.Writer) {
 			Workspace:     root,
 			Backend:       backendFromClientName(clientName),
 			Model:         modelFromClientName(clientName),
-			System:        SystemPrompt{ID: "sys-" + hex.EncodeToString(sum[:4]), Text: system},
+			System:        SystemPrompt{ID: sysID, Text: system},
 			Window:        Window{N: a.effectiveContextLimit(), Source: "unknown"},
 		},
 	}
@@ -70,6 +63,8 @@ func (a *Agent) openSessionLog(recPath, replayOf string, out io.Writer) {
 	}
 	a.SessionLog = l
 	a.logTurn, a.logLastID, a.logFirstDialogID = 0, "", ""
+	a.logSystemID = sysID
+	a.logModel = ModelRef{Backend: backendFromClientName(clientName), Model: modelFromClientName(clientName)}
 }
 
 /** closeSessionLog writes session_end and closes the agent's log; it does
@@ -184,16 +179,12 @@ func (a *Agent) logModelRequest(used, limit int) string {
 	if a.Client != nil {
 		clientName = a.Client.Name()
 	}
-	sys := ""
-	if len(a.History) > 0 && a.History[0].Role == "system" {
-		sum := sha256.Sum256([]byte(a.History[0].Content))
-		sys = "sys-" + hex.EncodeToString(sum[:4])
-	}
-	return a.logEvent(KindModelRequest, LevelInfo, map[string]any{
+	sysID, sysText := a.systemPromptVersion()
+	data := map[string]any{
 		"form":          "assembled",
 		"policy":        "replay",
 		"turn":          a.logTurn,
-		"system":        sys,
+		"system":        sysID,
 		"pinned":        []string{},
 		"summaries":     []string{},
 		"kb":            []string{},
@@ -203,7 +194,15 @@ func (a *Agent) logModelRequest(used, limit int) string {
 		"backend":       backendFromClientName(clientName),
 		"model":         modelFromClientName(clientName),
 		"prompt_sha256": promptHash(a.History),
-	})
+	}
+	// The system prompt text is stored once per version (DR-0039). It can change
+	// without a model switch (a trimmed prompt, a skill catalog, /clear), so the
+	// request carries the text the first time it sees a new version.
+	if sysID != "" && sysID != a.logSystemID {
+		data["system_text"] = a.logContent(sysText)
+		a.logSystemID = sysID
+	}
+	return a.logEvent(KindModelRequest, LevelInfo, data)
 }
 
 /** logModelResponse records how a model call ended: its text, or why it
@@ -257,3 +256,68 @@ func modelFromClientName(name string) string {
 // isCancel reports whether err is a cancelled context: the author pressed
 // Ctrl-C, which the log records as status cancelled and not as a failure.
 func isCancel(err error) bool { return errors.Is(err, context.Canceled) }
+
+// ModelRef names a backend and a model, as the log writes them in model_switch.
+type ModelRef struct {
+	Backend string `json:"backend"`
+	Model   string `json:"model"`
+}
+
+// systemPromptVersion returns the id and text of the system prompt in the
+// history ("" and "" when there is none). The id is "sys-" and the first four
+// bytes of the text's SHA-256, so equal text always has the same id.
+func (a *Agent) systemPromptVersion() (id, text string) {
+	for _, m := range a.History {
+		if m.Role == "system" {
+			sum := sha256.Sum256([]byte(m.Content))
+			return "sys-" + hex.EncodeToString(sum[:4]), m.Content
+		}
+	}
+	return "", ""
+}
+
+/** logCommand records a slash command when it has finished, with its status:
+ * "ok", or the exit class name of the error (usage, negative, data, ...).
+ * The line is scrubbed, since a command can carry a secret.
+ *
+ * Parameters:
+ *   line (string) — the command as typed, with its leading slash.
+ *   err  (error)  — what the command returned; nil on success.
+ *
+ * Example:
+ *   defer func() { a.logCommand(input, err) }()
+ */
+func (a *Agent) logCommand(line string, err error) {
+	if a.SessionLog == nil {
+		return
+	}
+	a.logEvent(KindCommand, LevelInfo, map[string]any{
+		"line":   a.logContent(line),
+		"status": ExitCodeFor(err).Name,
+	})
+}
+
+/** logModelSwitch records a change of the active model, naming the one it
+ * leaves and the one it enters. Every path that changes the model calls it
+ * beside the recorder's note, so no path can leave the log naming the
+ * previous model (the bug behind DR-0036).
+ *
+ * Parameters:
+ *   model   (string) — the model switched to.
+ *   backend (string) — the backend or engine label, such as "ollama".
+ *
+ * Example:
+ *   a.logModelSwitch("qwen2.5-coder:1.5b", "ollama")
+ */
+func (a *Agent) logModelSwitch(model, backend string) {
+	if a.SessionLog == nil {
+		return
+	}
+	to := ModelRef{Backend: backend, Model: model}
+	a.logEvent(KindModelSwitch, LevelInfo, map[string]any{
+		"from":   a.logModel,
+		"to":     to,
+		"window": Window{N: a.effectiveContextLimit(), Source: "unknown"},
+	})
+	a.logModel = to
+}

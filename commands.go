@@ -544,7 +544,10 @@ func (a *Agent) registerSkillCommands() {
  * Example:
  *   exit, err := agent.dispatch("/kb status", os.Stdout)
  */
-func (a *Agent) dispatch(input string, out io.Writer) (bool, error) {
+func (a *Agent) dispatch(input string, out io.Writer) (quit bool, err error) {
+	// A command is logged when it finishes, so its effects come first and the
+	// event can carry its status (the exit class name, "ok" on success).
+	defer func() { a.logCommand(input, err) }()
 	parts := strings.Fields(strings.TrimPrefix(input, "/"))
 	if len(parts) == 0 {
 		return false, nil

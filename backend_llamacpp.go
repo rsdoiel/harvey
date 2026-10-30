@@ -491,6 +491,7 @@ func startLlamaCppModelPath(a *Agent, modelPath string, out io.Writer) error {
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordModelSwitch(b.ActiveModel(), "llamacpp")
 	}
+	a.logModelSwitch(b.ActiveModel(), "llamacpp")
 	a.Backend = b
 	// Clear stale llamafile Active so activeModelLabel and effectiveContextLimit
 	// use a.Backend instead of a stale config entry from the previous model.
