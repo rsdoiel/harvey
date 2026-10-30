@@ -133,7 +133,7 @@ func TestRun_WritesASessionLogBesideTheFountainFile(t *testing.T) {
 		"user_input", "model_request", "model_response",
 		"model_switch", "command",
 		"user_input", "model_request", "model_response",
-		"tool_call", "tool_result",
+		"tool_call", "tool_result", "injection",
 		"command",
 		"session_end",
 	}
@@ -234,6 +234,26 @@ func TestRun_WritesASessionLogBesideTheFountainFile(t *testing.T) {
 		}
 	}
 
+	// The shell output enters the prompt as an injection by the user that cites
+	// the tool_result it came from (DR-0040 item 4).
+	var resultID string
+	for _, e := range events {
+		if e.Kind == KindToolResult {
+			resultID = e.ID
+		}
+		if e.Kind == KindInjection {
+			var d struct {
+				Source string `json:"source"`
+				Origin string `json:"origin"`
+				From   string `json:"from"`
+			}
+			_ = json.Unmarshal(e.Data, &d)
+			if d.Source != "shell" || d.Origin != "user" || d.From != resultID || resultID == "" {
+				t.Errorf("shell injection = %s, want source shell, origin user, from %q", e.Data, resultID)
+			}
+		}
+	}
+
 	last := events[len(events)-1]
 	var end struct {
 		Reason string `json:"reason"`
@@ -273,5 +293,83 @@ func TestRun_DebugRaisesTheSessionLogsVerbosity(t *testing.T) {
 	}
 	if matches, _ := filepath.Glob(filepath.Join(filepath.Dir(dir), "logs", "*.jsonl")); len(matches) > 0 {
 		t.Errorf("--debug still wrote a separate log: %v", matches)
+	}
+}
+
+func shellEvents(t *testing.T, lines ...string) (calls, results []Event, dir string) {
+	t.Helper()
+	dir = scriptedRun(t, false, lines...)
+	logs, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if len(logs) != 1 {
+		t.Fatalf("want one session log, got %v", logs)
+	}
+	events, _, err := ReadSessionLog(logs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		switch e.Kind {
+		case KindToolCall:
+			calls = append(calls, e)
+		case KindToolResult:
+			results = append(results, e)
+		}
+	}
+	return calls, results, dir
+}
+
+func TestRun_ShellResultsRecordTheirOutcome(t *testing.T) {
+	calls, results, _ := shellEvents(t, "!false", "!nosuchprogram_xyz", "!echo fine", "/exit")
+	if len(calls) != 3 || len(results) != 3 {
+		t.Fatalf("%d calls and %d results, want 3 and 3 (every started command has a result)", len(calls), len(results))
+	}
+	type res struct {
+		CallID string `json:"call_id"`
+		Status string `json:"status"`
+		Exit   *int   `json:"exit"`
+	}
+	var r [3]res
+	for i := range results {
+		_ = json.Unmarshal(results[i].Data, &r[i])
+		if r[i].CallID != calls[i].ID {
+			t.Errorf("result %d names call %q, want %q", i, r[i].CallID, calls[i].ID)
+		}
+	}
+	if r[0].Status != "error" || r[0].Exit == nil || *r[0].Exit != 1 {
+		t.Errorf("!false = %+v, want status error, exit 1", r[0])
+	}
+	if r[1].Status != "error" || r[1].Exit != nil {
+		t.Errorf("a program that cannot start = %+v, want status error and no exit code", r[1])
+	}
+	if r[2].Status != "ok" || r[2].Exit == nil || *r[2].Exit != 0 {
+		t.Errorf("!echo fine = %+v, want ok, exit 0", r[2])
+	}
+}
+
+func TestRun_ShellCommandAndOutputAreScrubbed(t *testing.T) {
+	_, _, dir := shellEvents(t, "!echo API_KEY=sk-live-777", "/exit")
+	// The Fountain recorder is unchanged and keeps what was typed; the session
+	// log and its blobs are the new, scrubbed record.
+	var checked int
+	var redacted bool
+	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || strings.HasSuffix(path, ".spmd") {
+			return nil
+		}
+		checked++
+		raw, _ := os.ReadFile(path)
+		if strings.Contains(string(raw), "sk-live-777") {
+			t.Errorf("%s holds the secret", path)
+		}
+		if strings.Contains(string(raw), "[REDACTED:secret]") {
+			redacted = true
+		}
+		return nil
+	})
+	if checked == 0 {
+		t.Fatal("no session-log file was checked")
+	}
+	if !redacted {
+		t.Error("the command was never logged: no [REDACTED:secret] marker in the session log (a pass by omission)")
 	}
 }

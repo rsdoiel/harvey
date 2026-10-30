@@ -754,6 +754,7 @@ func (a *Agent) Run(out io.Writer) error {
 				a.AuditBuffer.Log(ActionCommand, program+" "+strings.Join(args, " "), StatusAllowed)
 			}
 
+			shellCallID := a.logShellCall(cmdLine)
 			var capBuf bytes.Buffer
 			mw := io.MultiWriter(out, &capBuf)
 
@@ -792,6 +793,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 			fmt.Fprintln(out)
 			if wasCancelled || errors.Is(runErr, context.Canceled) {
+				a.logShellResult(shellCallID, "cancelled", nil, cappedOutput(capBuf.Bytes()), len(capBuf.Bytes()) > maxRunOutput, nil)
 				fmt.Fprintln(out, dim("  Cancelled."))
 				continue
 			}
@@ -821,6 +823,17 @@ func (a *Agent) Run(out io.Writer) error {
 			sb.WriteString("\n```\n")
 			a.AddMessage("user", sb.String())
 			fmt.Fprintf(out, dim("  %d bytes added to context%s.\n"), len(output), exitNote)
+			{
+				var exitPtr *int
+				status := "ok"
+				if shCmd.ProcessState != nil {
+					exitPtr = &exitCode
+				}
+				if exitCode != 0 || runErr != nil {
+					status = "error"
+				}
+				a.logShellInjection(a.logShellResult(shellCallID, status, exitPtr, output, truncated, runErr))
+			}
 
 			if a.Recorder != nil {
 				if recErr := a.Recorder.RecordShellCommand(cmdLine, string(output), exitCode); recErr != nil {

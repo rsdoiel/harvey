@@ -321,3 +321,100 @@ func (a *Agent) logModelSwitch(model, backend string) {
 	})
 	a.logModel = to
 }
+
+/** logShellCall records a !cmd the author ran, just before the process
+ * starts. It is the author's act, so origin is "user" and there is no turn
+ * (DR-0040 item 4). The returned id doubles as the call_id that ties the
+ * result to it.
+ *
+ * Parameters:
+ *   cmdLine (string) — the command as typed, without the leading "!".
+ *
+ * Returns:
+ *   string — the tool_call event id; "" when no log is open.
+ *
+ * Example:
+ *   callID := a.logShellCall("go test ./...")
+ */
+func (a *Agent) logShellCall(cmdLine string) string {
+	if a.SessionLog == nil {
+		return ""
+	}
+	// A user-origin call has no provider call id: the result cites this
+	// event's own id.
+	return a.logEvent(KindToolCall, LevelInfo, map[string]any{
+		"tool":   "shell",
+		"origin": "user",
+		"args":   map[string]any{"cmd": a.logContent(cmdLine), "cwd": "<workspace>"},
+	})
+}
+
+/** logShellResult records how a !cmd ended. Every command that started has a
+ * result: it ran to the end, exited non-zero, could not start, or was
+ * cancelled. The output is what the author saw and the model is given, capped
+ * at maxRunOutput, so the log is as bounded as the context is.
+ *
+ * Parameters:
+ *   callID    (string) — the tool_call id from logShellCall.
+ *   status    (string) — ok, error or cancelled.
+ *   exit      (*int)   — the process exit code; nil when it never ran to one.
+ *   output    ([]byte) — combined stdout and stderr, already capped.
+ *   truncated (bool)   — the output was cut at the cap.
+ *   runErr    (error)  — the error from starting or waiting; nil if none.
+ *
+ * Returns:
+ *   string — the tool_result event id; "" when no log is open.
+ *
+ * Example:
+ *   resID := a.logShellResult(callID, "ok", &zero, out, false, nil)
+ */
+func (a *Agent) logShellResult(callID, status string, exit *int, output []byte, truncated bool, runErr error) string {
+	if a.SessionLog == nil || callID == "" {
+		return ""
+	}
+	data := map[string]any{
+		"call_id": callID,
+		"status":  status,
+		"output":  a.logContent(string(output)),
+	}
+	if exit != nil {
+		data["exit"] = *exit
+	}
+	if truncated {
+		data["truncated"] = true
+	}
+	if runErr != nil && exit == nil {
+		data["error"] = a.logContent(runErr.Error())
+	}
+	return a.logEvent(KindToolResult, LevelInfo, data)
+}
+
+/** logShellInjection records that the output of a !cmd entered the prompt. It
+ * holds no text: the output is already in the tool_result it cites, and the
+ * wrapper the model sees is a fixed template.
+ *
+ * Parameters:
+ *   resultID (string) — the tool_result id from logShellResult.
+ *
+ * Example:
+ *   a.logShellInjection(resID)
+ */
+func (a *Agent) logShellInjection(resultID string) {
+	if a.SessionLog == nil || resultID == "" {
+		return
+	}
+	a.logEvent(KindInjection, LevelInfo, map[string]any{
+		"source": "shell",
+		"origin": "user",
+		"from":   resultID,
+	})
+}
+
+// cappedOutput returns b cut to maxRunOutput bytes, the amount a !cmd shows
+// the model.
+func cappedOutput(b []byte) []byte {
+	if len(b) > maxRunOutput {
+		return b[:maxRunOutput]
+	}
+	return b
+}
