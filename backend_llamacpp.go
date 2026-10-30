@@ -487,7 +487,7 @@ func startLlamaCppModelPath(a *Agent, modelPath string, out io.Writer) error {
 	// Like useOllamaClient: carry the debug log and record the switch, so a
 	// mid-session switch cannot leave --debug silent or the transcript naming
 	// the previous model. At startup neither is open yet and both are no-ops.
-	a.Client = wireDebugLog(client, a.DebugLog)
+	a.Client = a.wireSessionLog(client)
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordModelSwitch(b.ActiveModel(), "llamacpp")
 	}

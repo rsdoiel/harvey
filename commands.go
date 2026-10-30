@@ -635,7 +635,11 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintf(out, "Backend:   %s%s\n", a.Client.Name(), tag)
 	}
 	if a.Config.Debug {
-		fmt.Fprintf(out, "Debug:     on (%s)\n", a.DebugLog.Path())
+		if a.SessionLog != nil {
+			fmt.Fprintf(out, "Debug:     on (level-debug events in %s)\n", a.SessionLog.Path())
+		} else {
+			fmt.Fprintln(out, "Debug:     on")
+		}
 	}
 	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
 	if _, ok := a.Client.(*AnyLLMClient); ok && len(a.History) > 0 {

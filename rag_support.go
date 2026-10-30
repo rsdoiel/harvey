@@ -689,7 +689,6 @@ func (a *Agent) ragAugmentTo(out io.Writer, prompt string, tracker *BudgetTracke
 	}
 
 	topScore := relevant[0].Score
-	a.DebugLog.LogRAGInject(entry.Name, prompt, len(relevant), topScore)
 
 	// Keep chunks in score-descending order until one doesn't fit the shared
 	// per-turn budget; that chunk and all lower-scored ones after it are

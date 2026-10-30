@@ -357,7 +357,7 @@ func (a *Agent) retryWithSmallerPrompt(ctx context.Context, err error, buf *stri
 		tried = size
 		fmt.Fprintf(out, yellow("  ⚠")+" The server failed on a prompt of about %d tokens; retrying with about %d.\n", failed, size)
 		buf.Reset()
-		stats, err2 := a.loggedChat(ctx, msgs, buf)
+		stats, err2 := a.Client.Chat(ctx, msgs, buf)
 		if err2 != nil {
 			buf.Reset()
 			if !isPromptTooLargeFailure(err2) {

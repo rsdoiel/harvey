@@ -270,6 +270,7 @@ type SessionLog struct {
 	debug     bool
 	spillCap  int
 	now       func() time.Time
+	path      string
 	seq       int
 	closed    bool
 }
@@ -304,7 +305,7 @@ func OpenSessionLog(opts SessionLogOptions) (*SessionLog, error) {
 		return nil, ClassedAs(ClassCantCreate, err)
 	}
 	l := &SessionLog{
-		f: f, dir: opts.Dir, session: opts.Session, workspace: opts.Start.Workspace,
+		f: f, path: path, dir: opts.Dir, session: opts.Session, workspace: opts.Start.Workspace,
 		debug: opts.Debug, spillCap: opts.SpillCap, now: opts.Now,
 	}
 	if l.spillCap <= 0 {
@@ -314,7 +315,7 @@ func OpenSessionLog(opts SessionLogOptions) (*SessionLog, error) {
 		l.now = time.Now
 	}
 	// The scrubber note is written after session_start, which is always event 1.
-	sys, sysRep, err := l.content(opts.Start.System.Text)
+	sys, sysRep, err := l.content(opts.Start.System.Text, false)
 	if err != nil {
 		f.Close()
 		return nil, err
@@ -426,7 +427,7 @@ func (l *SessionLog) appendLocked(kind EventKind, level EventLevel, data any) (s
  *   l.Append(KindToolResult, LevelInfo, map[string]any{"output": c})
  */
 func (l *SessionLog) Content(text string) (Content, error) {
-	c, rep, err := l.content(text)
+	c, rep, err := l.content(text, false)
 	if err != nil {
 		return Content{}, err
 	}
@@ -435,10 +436,10 @@ func (l *SessionLog) Content(text string) (Content, error) {
 
 // content scrubs text and spills it if large, without writing the scrubber
 // note, so OpenSessionLog can keep session_start first.
-func (l *SessionLog) content(text string) (Content, ScrubReport, error) {
+func (l *SessionLog) content(text string, forceBlob bool) (Content, ScrubReport, error) {
 	scrubbed, rep := ScrubEvent(text, l.workspace)
 	c := Content{Text: scrubbed, Flags: rep.Flags}
-	if len(scrubbed) > l.spillCap {
+	if forceBlob || len(scrubbed) > l.spillCap {
 		sum := sha256.Sum256([]byte(scrubbed))
 		c = Content{
 			Blob: hex.EncodeToString(sum[:]), Bytes: len(scrubbed),
@@ -465,6 +466,39 @@ func (l *SessionLog) noteRedactions(rep ScrubReport) error {
 	})
 	return err
 }
+
+/** ContentBlob is Content that always goes to a blob, however small: for a
+ * payload that is file content or a whole prompt, which the log should hold
+ * once and by hash (DR-0040 item 2). Scrubbing, hashing and the write order
+ * are the same as Content.
+ *
+ * Parameters:
+ *   text (string) — the raw payload text.
+ *
+ * Returns:
+ *   Content — a blob reference with a preview.
+ *   error   — if the blob cannot be written.
+ *
+ * Example:
+ *   c, err := l.ContentBlob(promptJSON)
+ */
+func (l *SessionLog) ContentBlob(text string) (Content, error) {
+	c, rep, err := l.content(text, true)
+	if err != nil {
+		return Content{}, err
+	}
+	return c, l.noteRedactions(rep)
+}
+
+/** Path returns the file the log is written to.
+ *
+ * Returns:
+ *   string — <dir>/<session>.jsonl.
+ *
+ * Example:
+ *   fmt.Println(l.Path())
+ */
+func (l *SessionLog) Path() string { return l.path }
 
 func preview(s string) string {
 	if utf8.RuneCountInString(s) <= blobPreviewRunes {

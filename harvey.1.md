@@ -104,9 +104,11 @@ completion SHELL [-install]
 
 --debug
 : enable diagnostic mode: sets OLLAMA_DEBUG=1 in the Ollama subprocess and
-  writes a JSONL event log to agents/logs/harvey-TIMESTAMP.jsonl covering
-  every LLM request/response, RAG injection, tool call, and skill dispatch.
-  Use "harvey --help status" to see the log path during a session.
+  adds level-debug events to the session log (agents/sessions/NAME.jsonl),
+  such as the exact messages sent with each request. The session log is
+  always written; --debug only makes it more detailed, and rendering and
+  kb ingest skip the debug events. Use "harvey --help status" to see the
+  log path during a session.
 
 --json
 : on a failing command line or session, print the error as

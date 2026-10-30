@@ -374,10 +374,6 @@ func (a *Agent) Run(out io.Writer) error {
 			a.Recorder = nil
 			fmt.Fprintf(out, dim("  Session saved to %s\n"), path)
 		}
-		if a.DebugLog != nil {
-			a.DebugLog.Close()
-			a.DebugLog = nil
-		}
 	}()
 	// reader is used only for startup yes/no prompts. newLineReader takes exactly what
 	// it is asked for, so it cannot consume bytes that the LineEditor needs for the REPL
@@ -498,30 +494,6 @@ func (a *Agent) Run(out io.Writer) error {
 	if err := a.checkSystemPromptBudget(out, interactive); err != nil {
 		fmt.Fprintf(out, red("  ✗ %v\n"), err)
 		return err
-	}
-
-	// Debug log — open after backend is known so session_start can record the model.
-	if a.Config.Debug && a.SessionsDir != "" {
-		logsDir := filepath.Join(filepath.Dir(a.SessionsDir), "logs")
-		if dl, err := OpenDebugLog(logsDir); err != nil {
-			fmt.Fprintf(out, yellow("  ✗")+" Debug log: %v\n", err)
-		} else {
-			a.DebugLog = dl
-			fmt.Fprintf(out, green("✓")+" Debug log: %s\n", dl.Path())
-			// Wire the debug log to the LLM client.
-			if ac, ok := a.Client.(*AnyLLMClient); ok {
-				ac.DebugLog = dl
-			}
-			modelID, modelDisplay, provider := "", "", ""
-			if a.Client != nil {
-				modelDisplay = a.Client.Name()
-				if ac, ok := a.Client.(*AnyLLMClient); ok {
-					modelID = ac.ModelName()
-					provider = ac.ProviderName()
-				}
-			}
-			dl.LogSessionStart(modelID, modelDisplay, provider, a.Workspace.Root, Version)
-		}
 	}
 
 	// Auto-start recording — skipped during replay to prevent both recorders
@@ -1132,6 +1104,10 @@ func keepFirstFailure(existing, candidate error) error {
  *   }
  */
 func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool, charName string) (string, ChatStats, error) {
+	// Every model call under this turn (the tool loop, the retries) is logged as
+	// part of the turn.
+	ctx = withCallPurpose(ctx, purposeTurn, nil)
+
 	// Fit the system prompt to the model in use now: a /model switch since the
 	// last turn may have changed its prompt limit, in either direction.
 	a.refreshSystemPrompt(out)
@@ -1216,7 +1192,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	}
 	if useStructuredTools {
 		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
-		ex.DebugLog = a.DebugLog
 		ex.Status = sp
 		ex.Events = a.toolEvents()
 		a.ActiveStatus = sp
@@ -1229,7 +1204,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 			toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
 		}
 	} else {
-		stats, chatErr = a.loggedChat(ctx, a.History, &buf)
+		stats, chatErr = a.Client.Chat(ctx, a.History, &buf)
 	}
 	sp.stop()
 	a.ActiveStatus = nil
@@ -1256,8 +1231,8 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		fmt.Fprintln(out, yellow("  ⚠")+" Model entered a tool-calling loop; retrying without tools.")
 		fmt.Fprintln(out, dim("  Tip: /tools off disables tools for this model permanently in this session."))
 		buf.Reset()
-		fallbackCtx, cancelFallback := context.WithCancel(context.Background())
-		stats, chatErr = a.loggedChat(fallbackCtx, a.History, &buf)
+		fallbackCtx, cancelFallback := context.WithCancel(withCallPurpose(context.Background(), purposeTurn, nil))
+		stats, chatErr = a.Client.Chat(fallbackCtx, a.History, &buf)
 		cancelFallback()
 		if chatErr != nil {
 			a.History = a.History[:len(a.History)-1]
@@ -1291,7 +1266,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 			if useStructuredTools {
 				retrySp := newSpinner(out, a.estimateDuration(), spLabel)
 				ex := NewToolExecutor(a.Tools, a.Client, a.Config)
-				ex.DebugLog = a.DebugLog
 				ex.Status = retrySp
 				ex.Events = a.toolEvents()
 				a.ActiveStatus = retrySp
@@ -1305,7 +1279,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 					toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
 				}
 			} else {
-				retryStats, chatErr = a.loggedChat(ctx, a.History, &buf)
+				retryStats, chatErr = a.Client.Chat(ctx, a.History, &buf)
 			}
 			if chatErr == nil {
 				stats = retryStats

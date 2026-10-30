@@ -106,7 +106,11 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, pa
 		}
 
 		var buf strings.Builder
-		_, err := client.Chat(ctx, messages, &buf)
+		chunkCtx := withCallPurpose(ctx, "chunk", map[string]any{
+			"path": params.Filename, "from_line": chunk.StartLine, "to_line": chunk.EndLine,
+			"chunk": chunkNum, "of": n,
+		})
+		_, err := client.Chat(chunkCtx, messages, &buf)
 
 		outcome := "ok"
 		var result string
@@ -138,7 +142,8 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, pa
 	}
 
 	var synBuf strings.Builder
-	_, err := client.Chat(ctx, messages, &synBuf)
+	synCtx := withCallPurpose(ctx, "synthesis", map[string]any{"path": params.Filename, "chunks": n})
+	_, err := client.Chat(synCtx, messages, &synBuf)
 	if err != nil {
 		if rec != nil {
 			_ = rec.RecordChunkSynthesis(params.Model, "", "error: "+firstLine(err.Error()))

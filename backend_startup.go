@@ -57,9 +57,7 @@ func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
 		client.SetMaxTokens(a.Config.Llamafile.MaxTokens)
 	}
 	a.Client = client
-	if ac, ok := a.Client.(*AnyLLMClient); ok && a.DebugLog != nil {
-		ac.DebugLog = a.DebugLog
-	}
+	a.wireSessionLog(a.Client)
 	// Keep Active in sync so activeModelLabel and effectiveContextLimit are correct.
 	a.Config.Llamafile.Active = name
 	fmt.Fprintf(out, "  Using model: %s\n", cyan(name))
@@ -578,7 +576,7 @@ func (a *Agent) useModelAt(engine, url, model string) {
 	a.Config.Ollama.Model = model
 	client := newOllamaLLMClient(url, model, a.Config.Ollama.Timeout)
 	client.SetEngine(engine)
-	a.Client = wireDebugLog(client, a.DebugLog)
+	a.Client = a.wireSessionLog(client)
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordModelSwitch(model, engine)
 	}

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -125,10 +127,10 @@ func TestModelRequest_CarriesTheSystemPromptWhenItsVersionChanges(t *testing.T) 
 	a.Client = newOllamaLLMClient("http://127.0.0.1:1", "llama3.2:3b", 0)
 	a.AddMessage("system", "You are Harvey.")
 	a.logUserInput("one")
-	a.logModelRequest(a.History)
-	a.logModelRequest(a.History) // unchanged: no text again
+	a.logModelRequest(withCallPurpose(context.Background(), purposeTurn, nil), a.History, 0)
+	a.logModelRequest(withCallPurpose(context.Background(), purposeTurn, nil), a.History, 0) // unchanged: no text again
 	a.History[0].Content = "You are Harvey, trimmed to fit."
-	a.logModelRequest(a.History)
+	a.logModelRequest(withCallPurpose(context.Background(), purposeTurn, nil), a.History, 0)
 	reqs := eventsOf(t, a, path, KindModelRequest)
 	if len(reqs) != 3 {
 		t.Fatalf("%d requests", len(reqs))
@@ -190,7 +192,7 @@ func infoKinds(events []Event) string {
 	return strings.Join(k, " ")
 }
 
-func TestToolLoop_LogsEachModelCallAndEachToolCall(t *testing.T) {
+func TestToolLoop_LogsEachToolCallAndItsResult(t *testing.T) {
 	a, path := agentWithLog(t)
 	reg := NewToolRegistry()
 	reg.RegisterTool("echo", "echoes", map[string]any{"type": "object"}, func(_ context.Context, args map[string]any) (string, error) {
@@ -215,26 +217,14 @@ func TestToolLoop_LogsEachModelCallAndEachToolCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Each call is logged when it is made, so its result follows before the
-	// next call starts: call, result, call, result.
-	want := "user_input model_request model_response tool_call tool_result tool_call tool_result model_request model_response"
-	if got := infoKinds(events); got != want {
+	// The model calls are logged by the client, which this scripted double is
+	// not; the loop logs the tools. Each call is logged when it is made, so its
+	// result follows before the next call starts.
+	if got, want := infoKinds(events), "user_input tool_call tool_result tool_call tool_result"; got != want {
 		t.Fatalf("kinds\n got: %s\nwant: %s", got, want)
 	}
-
-	var calls, results, reqs, resps []Event
-	for _, e := range events {
-		switch e.Kind {
-		case KindToolCall:
-			calls = append(calls, e)
-		case KindToolResult:
-			results = append(results, e)
-		case KindModelRequest:
-			reqs = append(reqs, e)
-		case KindModelResponse:
-			resps = append(resps, e)
-		}
-	}
+	calls := eventsOf(t, a, path, KindToolCall)
+	results := eventsOf(t, a, path, KindToolResult)
 	var c0 struct {
 		Tool   string `json:"tool"`
 		Origin string `json:"origin"`
@@ -253,55 +243,15 @@ func TestToolLoop_LogsEachModelCallAndEachToolCall(t *testing.T) {
 		CallID string `json:"call_id"`
 		Status string `json:"status"`
 		Output string `json:"output"`
+		MS     *int64 `json:"ms"`
 	}
 	_ = json.Unmarshal(results[0].Data, &r0)
 	_ = json.Unmarshal(results[1].Data, &r1)
-	if r0.Call != calls[0].ID || r0.CallID != "call_1" || r0.Status != "ok" || r0.Output != "echoed" {
+	if r0.Call != calls[0].ID || r0.CallID != "call_1" || r0.Status != "ok" || r0.Output != "echoed" || r0.MS == nil {
 		t.Errorf("first tool_result = %s", results[0].Data)
 	}
 	if r1.Call != calls[1].ID || r1.Status != "error" || !strings.Contains(r1.Output, "it broke") {
 		t.Errorf("a failing tool must be a result with status error: %s", results[1].Data)
-	}
-	// Each response names its request; the usage the backend reported is kept.
-	for i := range reqs {
-		var d struct {
-			Request string `json:"request"`
-			Status  string `json:"status"`
-			Usage   struct{ Prompt, Completion int }
-		}
-		_ = json.Unmarshal(resps[i].Data, &d)
-		if d.Request != reqs[i].ID || d.Status != "ok" || d.Usage.Prompt != 5 {
-			t.Errorf("response %d = %s", i, resps[i].Data)
-		}
-	}
-	// The second request's prompt includes the tool round: a different hash.
-	var q0, q1 struct {
-		Hash string `json:"prompt_sha256"`
-		Tail struct {
-			N int `json:"history_messages"`
-		} `json:"tail"`
-	}
-	_ = json.Unmarshal(reqs[0].Data, &q0)
-	_ = json.Unmarshal(reqs[1].Data, &q1)
-	if q0.Hash == "" || q0.Hash == q1.Hash || q1.Tail.N <= q0.Tail.N {
-		t.Errorf("requests should see a growing prompt: %s / %s", reqs[0].Data, reqs[1].Data)
-	}
-}
-
-func TestToolLoop_AFailedModelCallIsLogged(t *testing.T) {
-	a, path := agentWithLog(t)
-	client := &scriptedToolClient{steps: []toolStep{{err: errors.New("backend down")}}}
-	a.Client = client
-	reg := NewToolRegistry()
-	reg.RegisterTool("echo", "e", map[string]any{"type": "object"}, func(context.Context, map[string]any) (string, error) { return "", nil })
-	ex := NewToolExecutor(reg, client, a.Config)
-	ex.Events = a.toolEvents()
-	if _, _, err := ex.RunToolLoop(context.Background(), []Message{{Role: "user", Content: "x"}}, io.Discard); err == nil {
-		t.Fatal("want the backend error")
-	}
-	resps := eventsOf(t, a, path, KindModelResponse)
-	if len(resps) != 1 || !strings.Contains(string(resps[0].Data), `"status":"error"`) {
-		t.Errorf("responses = %v", resps)
 	}
 }
 
@@ -312,23 +262,147 @@ func TestToolEvents_NilWhenNoLogIsOpen(t *testing.T) {
 	}
 }
 
-func TestLoggedChat_OnePairPerCall(t *testing.T) {
+// ─── the client hook: every model call, whoever makes it ─────────────────────
+
+// wiredClient is a real *AnyLLMClient against the fake Ollama, reporting to a.
+func wiredClient(t *testing.T, a *Agent, url string) *AnyLLMClient {
+	t.Helper()
+	c := newOllamaLLMClient(url, "llama3.2:3b", 0)
+	a.Client = a.wireSessionLog(c)
+	return c
+}
+
+func TestClientHook_TurnCallsAreAssembledRequestsUnderPolicyReplay(t *testing.T) {
 	a, path := agentWithLog(t)
-	a.Client = &scriptedToolClient{steps: []toolStep{{text: "one"}, {err: errors.New("nope")}, {err: context.Canceled}}}
+	c := wiredClient(t, a, fakeOllamaChat(t).URL)
 	a.logUserInput("hi")
+	ctx := withCallPurpose(context.Background(), purposeTurn, nil)
 	var out strings.Builder
-	if _, err := a.loggedChat(context.Background(), []Message{{Role: "user", Content: "a"}}, &out); err != nil || out.String() != "one" {
-		t.Fatalf("first call: %v %q (output must still reach the caller's writer)", err, out.String())
+	if _, err := c.Chat(ctx, []Message{{Role: "user", Content: "hi"}}, &out); err != nil || out.String() != "hi" {
+		t.Fatalf("Chat: %v %q (the reply must still reach the caller)", err, out.String())
 	}
-	_, _ = a.loggedChat(context.Background(), []Message{{Role: "user", Content: "a"}, {Role: "user", Content: "b"}}, io.Discard)
-	_, _ = a.loggedChat(context.Background(), []Message{{Role: "user", Content: "c"}}, io.Discard)
+	reqs := eventsOf(t, a, path, KindModelRequest)
 	resps := eventsOf(t, a, path, KindModelResponse)
-	if n := len(eventsOf(t, a, path, KindModelRequest)); n != 3 || len(resps) != 3 {
-		t.Fatalf("%d requests and %d responses, want 3 and 3 (a retry is a call of its own)", n, len(resps))
+	if len(reqs) != 1 || len(resps) != 1 {
+		t.Fatalf("%d requests and %d responses, want 1 and 1", len(reqs), len(resps))
 	}
-	for i, want := range []string{"ok", "error", "cancelled"} {
-		if !strings.Contains(string(resps[i].Data), `"status":"`+want+`"`) {
-			t.Errorf("response %d = %s, want status %s", i, resps[i].Data, want)
+	var q struct {
+		Form, Policy, Model, Backend string
+		Turn                         int
+	}
+	_ = json.Unmarshal(reqs[0].Data, &q)
+	if q.Form != "assembled" || q.Policy != "replay" || q.Model != "llama3.2:3b" || q.Backend != "ollama" || q.Turn != 1 {
+		t.Errorf("request = %s", reqs[0].Data)
+	}
+	var r struct {
+		Request, Status, Text string
+		Usage                 struct{ Prompt, Completion int }
+	}
+	_ = json.Unmarshal(resps[0].Data, &r)
+	if r.Request != reqs[0].ID || r.Status != "ok" || r.Text != "hi" {
+		t.Errorf("response = %s", resps[0].Data)
+	}
+}
+
+func TestClientHook_ACallWithoutAPurposeIsAnAdHocRequestWithItsPromptKept(t *testing.T) {
+	a, path := agentWithLog(t)
+	c := wiredClient(t, a, fakeOllamaChat(t).URL)
+	src := map[string]any{"path": "main.go", "from_line": 1, "to_line": 80}
+	ctx := withCallPurpose(context.Background(), "chunk", src)
+	if _, err := c.Chat(ctx, []Message{{Role: "user", Content: "summarise lines 1-80 of main.go"}}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Chat(context.Background(), []Message{{Role: "user", Content: "something else"}}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	reqs := eventsOf(t, a, path, KindModelRequest)
+	if len(reqs) != 2 {
+		t.Fatalf("%d requests, want 2", len(reqs))
+	}
+	var q0, q1 struct {
+		Form, Purpose string
+		Source        map[string]any
+		Body          Content
+	}
+	_ = json.Unmarshal(reqs[0].Data, &q0)
+	_ = json.Unmarshal(reqs[1].Data, &q1)
+	if q0.Form != "adhoc" || q0.Purpose != "chunk" || q0.Source["path"] != "main.go" || q0.Source["to_line"] != float64(80) {
+		t.Errorf("chunk request = %s", reqs[0].Data)
+	}
+	if q1.Form != "adhoc" || q1.Purpose != "unspecified" {
+		t.Errorf("a call with no purpose must still be logged, as unspecified: %s", reqs[1].Data)
+	}
+	if q0.Body.Blob == "" {
+		t.Errorf("the prompt of an ad-hoc call is always kept as a blob: %s", reqs[0].Data)
+	}
+}
+
+func TestClientHook_AFailedCallIsAResponseWithStatusError(t *testing.T) {
+	a, path := agentWithLog(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"boom"}`, http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	c := wiredClient(t, a, srv.URL)
+	if _, err := c.Chat(withCallPurpose(context.Background(), purposeTurn, nil), []Message{{Role: "user", Content: "x"}}, io.Discard); err == nil {
+		t.Fatal("want the server error")
+	}
+	resps := eventsOf(t, a, path, KindModelResponse)
+	if len(resps) != 1 || !strings.Contains(string(resps[0].Data), `"status":"error"`) {
+		t.Errorf("responses = %v", resps)
+	}
+}
+
+func TestClientHook_ACancelledCallIsCancelled(t *testing.T) {
+	a, path := agentWithLog(t)
+	c := wiredClient(t, a, fakeOllamaChat(t).URL)
+	ctx, cancel := context.WithCancel(withCallPurpose(context.Background(), purposeTurn, nil))
+	cancel()
+	_, _ = c.Chat(ctx, []Message{{Role: "user", Content: "x"}}, io.Discard)
+	resps := eventsOf(t, a, path, KindModelResponse)
+	if len(resps) != 1 || !strings.Contains(string(resps[0].Data), `"status":"cancelled"`) {
+		t.Errorf("responses = %v", resps)
+	}
+}
+
+func TestClientHook_DebugKeepsTheExactMessagesAsALevelDebugEvent(t *testing.T) {
+	a, path := agentWithLog(t)
+	a.Config.Debug = true
+	// agentWithLog opens the log without Debug; reopen with it.
+	a.closeSessionLog("test")
+	opts := testLogOpts(t)
+	opts.Debug = true
+	opts.Session = "dbg"
+	l, err := OpenSessionLog(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SessionLog, path = l, logPath(opts)
+	defer a.closeSessionLog("test")
+	c := wiredClient(t, a, fakeOllamaChat(t).URL)
+	if _, err := c.Chat(withCallPurpose(context.Background(), purposeTurn, nil), []Message{{Role: "user", Content: "secret sauce"}}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	events, _, _ := ReadSessionLog(path)
+	var body *Event
+	for i := range events {
+		if events[i].Kind == KindModelRequest && events[i].Level == LevelDebug {
+			body = &events[i]
 		}
+	}
+	if body == nil {
+		t.Fatal("no level-debug model_request with the messages")
+	}
+	if !strings.Contains(string(body.Data), `"form":"body"`) {
+		t.Errorf("body event = %s", body.Data)
+	}
+}
+
+func TestClientHook_NoLogMeansNoEventsAndNoTrouble(t *testing.T) {
+	a := newTestAgent(t)
+	c := wiredClient(t, a, fakeOllamaChat(t).URL)
+	var out strings.Builder
+	if _, err := c.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, &out); err != nil || out.String() != "hi" {
+		t.Fatalf("Chat with a wired client and no log: %v %q", err, out.String())
 	}
 }

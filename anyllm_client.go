@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
@@ -40,7 +41,7 @@ type AnyLLMClient struct {
 	modelName  string
 	provName   string
 	backendURL string
-	DebugLog   *DebugLog
+	CallLog    ModelCallLog // optional: told of every model call for the session log
 	maxTokens  int    // 0 = no limit
 	engine     string // engine label for the capability table (e.g. "hailo"); "" = none
 }
@@ -183,7 +184,10 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 		params.MaxTokens = &a.maxTokens
 	}
 
-	a.DebugLog.LogLLMRequest(a.modelName, len(messages), len(tools))
+	// Every model call through this client is one request and one response in
+	// the session log, whoever made it (DR-0036): the client is the one place
+	// all callers meet, so a caller cannot forget to log.
+	out, text, end := a.beginCall(ctx, messages, len(tools), out)
 	start := time.Now()
 	chunks, errs := a.provider.CompletionStream(ctx, params)
 
@@ -225,17 +229,17 @@ func (a *AnyLLMClient) chatInternal(ctx context.Context, messages []Message, too
 	}
 
 	if err := <-errs; err != nil {
-		a.DebugLog.LogError("llm_stream", err.Error())
+		end(text(), ChatStats{}, err)
 		return ChatStats{}, nil, err
 	}
 
 	if !finished {
 		err := ClassedAs(ClassIO, fmt.Errorf("%w: the %s stream ended before the reply was complete", ErrStreamTruncated, a.provName))
-		a.DebugLog.LogError("llm_stream", err.Error())
+		end(text(), ChatStats{}, err)
 		return ChatStats{}, nil, err
 	}
 
-	a.DebugLog.LogLLMResponse(stats, len(accumulatedCalls))
+	end(text(), stats, nil)
 
 	if len(accumulatedCalls) == 0 {
 		return stats, nil, nil
@@ -573,4 +577,31 @@ func newOpenAILLMClient(model string) (*AnyLLMClient, error) {
 		return nil, fmt.Errorf("openai: %w (set OPENAI_API_KEY)", err)
 	}
 	return NewAnyLLMClient(p, model, "openai", ""), nil
+}
+
+/** ModelCallLog is told about each model call an AnyLLMClient makes, so the
+ * session log can record it (DR-0036, DR-0038). Agent implements it.
+ *
+ * Methods:
+ *   BeginModelCall(ctx, msgs, toolCount) — a call is about to be made; the
+ *     returned func is called once with the reply text, the usage as the
+ *     backend reported it, and the error (nil on success).
+ *
+ * Example:
+ *   client.CallLog = agent
+ */
+type ModelCallLog interface {
+	BeginModelCall(ctx context.Context, msgs []Message, toolCount int) func(text string, stats ChatStats, err error)
+}
+
+// beginCall brackets one model call for the session log. With no CallLog it
+// returns out unchanged; otherwise a writer that also captures the streamed
+// text, a func giving that text, and the func to call when the call ends.
+func (a *AnyLLMClient) beginCall(ctx context.Context, msgs []Message, toolCount int, out io.Writer) (io.Writer, func() string, func(string, ChatStats, error)) {
+	if a.CallLog == nil {
+		return out, func() string { return "" }, func(string, ChatStats, error) {}
+	}
+	end := a.CallLog.BeginModelCall(ctx, msgs, toolCount)
+	var captured strings.Builder
+	return io.MultiWriter(out, &captured), captured.String, end
 }

@@ -41,20 +41,25 @@ func fakeOllamaChat(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// switchAgent is a mid-session agent: on llama3.2:3b, recording, with --debug on.
+// switchAgent is a mid-session agent: on llama3.2:3b, recording, with --debug on
+// and a session log open.
 func switchAgent(t *testing.T) (*Agent, string) {
 	t.Helper()
 	a := selectAgent(t, fakeOllamaChat(t).URL)
 	a.Config.Ollama.Model = "llama3.2:3b"
-	a.Client = newOllamaLLMClient(a.Config.Ollama.URL, "llama3.2:3b", 0)
+	a.Config.Debug = true
+	a.Client = a.wireSessionLog(newOllamaLLMClient(a.Config.Ollama.URL, "llama3.2:3b", 0))
 	dir := t.TempDir()
-	dl, err := OpenDebugLog(filepath.Join(dir, "logs"))
+	l, err := OpenSessionLog(SessionLogOptions{
+		Dir: dir, Session: "switch", Debug: true,
+		Start: SessionStart{Backend: "ollama", Model: "llama3.2:3b", Workspace: a.Workspace.Root},
+	})
 	if err != nil {
-		t.Fatalf("OpenDebugLog: %v", err)
+		t.Fatalf("OpenSessionLog: %v", err)
 	}
-	t.Cleanup(func() { dl.Close() })
-	a.DebugLog = dl
-	wireDebugLog(a.Client, dl)
+	t.Cleanup(func() { l.Close("test") })
+	a.SessionLog = l
+	a.logModel = ModelRef{Backend: "ollama", Model: "llama3.2:3b"}
 	path := filepath.Join(dir, "session.spmd")
 	rec, err := NewRecorder(path, "ollama (llama3.2:3b)", dir)
 	if err != nil {
@@ -79,16 +84,49 @@ func chatOnce(t *testing.T, a *Agent) {
 }
 
 // assertSwitchedCleanly checks that the turn after the switch is logged and
-// attributed to the new model.
-func assertSwitchedCleanly(t *testing.T, a *Agent, transcript, wantSpeaker, wantNote string) {
+// attributed to the new model, in the session log and in the transcript.
+func assertSwitchedCleanly(t *testing.T, a *Agent, transcript, wantSpeaker, wantNote, wantModel string) {
 	t.Helper()
 	chatOnce(t, a)
-	log, err := os.ReadFile(a.DebugLog.Path())
+	events, _, err := ReadSessionLog(a.SessionLog.Path())
 	if err != nil {
-		t.Fatalf("read debug log: %v", err)
+		t.Fatalf("read session log: %v", err)
 	}
-	if !strings.Contains(string(log), `"event":"llm_request"`) {
-		t.Errorf("debug log has no llm_request after the switch:\n%s", log)
+	var reqs, resps, switches []Event
+	for _, e := range events {
+		switch e.Kind {
+		case KindModelRequest:
+			if e.Level == LevelInfo {
+				reqs = append(reqs, e)
+			}
+		case KindModelResponse:
+			resps = append(resps, e)
+		case KindModelSwitch:
+			switches = append(switches, e)
+		}
+	}
+	if len(reqs) == 0 || len(resps) != len(reqs) {
+		t.Fatalf("the session log has %d requests and %d responses after the switch", len(reqs), len(resps))
+	}
+	var req struct {
+		Model string `json:"model"`
+	}
+	_ = json.Unmarshal(reqs[len(reqs)-1].Data, &req)
+	if req.Model != wantModel {
+		t.Errorf("the turn after the switch was logged for model %q, want %q", req.Model, wantModel)
+	}
+	if !strings.Contains(string(resps[len(resps)-1].Data), `"status":"ok"`) {
+		t.Errorf("the turn after the switch has no ok response: %s", resps[len(resps)-1].Data)
+	}
+	var sw struct {
+		To ModelRef `json:"to"`
+	}
+	if len(switches) == 0 {
+		t.Fatalf("the session log has no model_switch")
+	}
+	_ = json.Unmarshal(switches[len(switches)-1].Data, &sw)
+	if sw.To.Model != wantModel {
+		t.Errorf("model_switch names %q, want %q", sw.To.Model, wantModel)
 	}
 	a.Recorder.Close()
 	rec, err := os.ReadFile(transcript)
@@ -106,40 +144,40 @@ func assertSwitchedCleanly(t *testing.T, a *Agent, transcript, wantSpeaker, want
 	}
 }
 
-func TestModelUse_PickerMatchKeepsDebugLogAndRecordsSwitch(t *testing.T) {
+func TestModelUse_PickerMatchKeepsSessionLogAndRecordsSwitch(t *testing.T) {
 	a, transcript := switchAgent(t)
 	withLocalModels(t, []ModelSummary{{Name: "qwen2.5-coder:1.5b", Engine: "ollama"}})
 	var out bytes.Buffer
 	if err := cmdModel(a, []string{"use", "qwen2.5-coder:1.5b"}, &out); err != nil {
 		t.Fatalf("/model use: %v", err)
 	}
-	assertSwitchedCleanly(t, a, transcript, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)")
+	assertSwitchedCleanly(t, a, transcript, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)", "qwen2.5-coder:1.5b")
 }
 
-func TestModelUse_OllamaAliasKeepsDebugLog(t *testing.T) {
+func TestModelUse_OllamaAliasKeepsSessionLog(t *testing.T) {
 	a, transcript := switchAgent(t)
 	a.Config.ModelAliases["coder"] = ModelAlias{Model: "qwen2.5-coder:1.5b", Engine: "ollama"}
 	var out bytes.Buffer
 	if err := cmdModel(a, []string{"use", "coder"}, &out); err != nil {
 		t.Fatalf("/model use: %v", err)
 	}
-	assertSwitchedCleanly(t, a, transcript, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)")
+	assertSwitchedCleanly(t, a, transcript, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)", "qwen2.5-coder:1.5b")
 }
 
-func TestModelUse_LegacyAliasFallingBackToOllamaKeepsDebugLog(t *testing.T) {
+func TestModelUse_LegacyAliasFallingBackToOllamaKeepsSessionLog(t *testing.T) {
 	a, transcript := switchAgent(t)
 	a.Config.ModelAliases["coder"] = ModelAlias{Model: "qwen2.5-coder:1.5b"}
 	var out bytes.Buffer
 	if err := cmdModel(a, []string{"use", "coder"}, &out); err != nil {
 		t.Fatalf("/model use: %v", err)
 	}
-	assertSwitchedCleanly(t, a, transcript, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)")
+	assertSwitchedCleanly(t, a, transcript, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)", "qwen2.5-coder:1.5b")
 }
 
 // A dispatched step (@coder, or a plan step's [model: coder]) switches to the
 // step's model and Restore switches back. The restored Ollama client was
 // rebuilt without the debug log, and the transcript kept the step's model.
-func TestDispatchRestore_OllamaKeepsDebugLogAndRecordsSwitchBack(t *testing.T) {
+func TestDispatchRestore_OllamaKeepsSessionLogAndRecordsSwitchBack(t *testing.T) {
 	a, transcript := switchAgent(t)
 	a.Config.ModelAliases["coder"] = ModelAlias{Model: "qwen2.5-coder:1.5b", Engine: "ollama"}
 	var out strings.Builder
@@ -152,12 +190,25 @@ func TestDispatchRestore_OllamaKeepsDebugLogAndRecordsSwitchBack(t *testing.T) {
 		t.Fatalf("Restore left the model at %q", a.Config.Ollama.Model)
 	}
 	chatOnce(t, a)
-	log, err := os.ReadFile(a.DebugLog.Path())
+	events, _, err := ReadSessionLog(a.SessionLog.Path())
 	if err != nil {
-		t.Fatalf("read debug log: %v", err)
+		t.Fatalf("read session log: %v", err)
 	}
-	if !strings.Contains(string(log), `"event":"llm_request"`) {
-		t.Errorf("debug log has no llm_request after Restore:\n%s", log)
+	var lastReq Event
+	var switchBack bool
+	for _, e := range events {
+		if e.Kind == KindModelRequest && e.Level == LevelInfo {
+			lastReq = e
+		}
+		if e.Kind == KindModelSwitch && strings.Contains(string(e.Data), `"to":{"backend":"ollama","model":"llama3.2:3b"}`) {
+			switchBack = true
+		}
+	}
+	if !strings.Contains(string(lastReq.Data), `"model":"llama3.2:3b"`) {
+		t.Errorf("the turn after Restore was not logged for the restored model: %s", lastReq.Data)
+	}
+	if !switchBack {
+		t.Error("the session log has no model_switch back to the restored model")
 	}
 	a.Recorder.Close()
 	rec, _ := os.ReadFile(transcript)

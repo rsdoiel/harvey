@@ -26,7 +26,8 @@ workspace.go                Sandboxed file I/O (Workspace)
 knowledge.go                SQLite knowledge base (KnowledgeBase)
 audit.go                    In-memory ring-buffer audit log (AuditBuffer)
 permissions.go              Permission check helpers (CheckReadPermission, etc.)
-debuglog.go                 JSONL diagnostic event log (DebugLog); written when --debug
+sessionlog.go              Append-only JSONL session log (SessionLog), scrubber in logscrub.go; --debug adds level-debug events
+sessionlog_agent.go        Agent wiring of the session log (events from Run, dispatch, the client hook, tool loop)
 lear_messages.go            Edward Lear-themed spinner waiting messages
 
 --- Backends ---
@@ -127,7 +128,7 @@ spinner.go                  Animated spinner: braille frames, Lear messages, liv
 | `ActiveSkillSet` | `string` | Currently loaded skill-set bundle name; `""` when none |
 | `Tools` | `*ToolRegistry` | Schema-based tool registry; nil when tools disabled |
 | `AuditBuffer` | `*AuditBuffer` | In-memory audit log ring buffer |
-| `DebugLog` | `*DebugLog` | JSONL diagnostic log; nil when `--debug` not set |
+| `SessionLog` | `*SessionLog` | Append-only JSONL record of this session (DR-0036); nil when none is open |
 | `OllamaStartedByHarvey` | `bool` | True when Harvey launched the Ollama subprocess |
 | `llamafileProc` | `*os.Process` | Non-nil when Harvey started the current llamafile server |
 | `sessionTurns` | `int` | Total completed user turns (used to trigger auto-mine) |

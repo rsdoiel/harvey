@@ -1,5 +1,22 @@
 # CHANGES
 
+## Unreleased
+
+### Changed
+
+- **`--debug` no longer writes `agents/logs/harvey-TIMESTAMP.jsonl`.** Harvey now records every session as an append-only JSONL
+  log, `agents/sessions/NAME.jsonl`, beside the Fountain file with the same name (workspace DRs 0036, 0038, 0039 and 0040). It is
+  written whether or not `--debug` is set; `--debug` only adds level-debug events, such as the exact messages sent with each
+  request, which rendering and kb ingest skip. Anything that read the old `agents/logs` file should read the session log instead.
+  The Fountain `.spmd` files are unchanged.
+
+### Added
+
+- **A complete record of each session.** The session log holds every user input, model request and response (with the usage the
+  backend reported), tool call and result, slash command and model switch, so a turn after a model switch is no longer lost.
+  Secret-shaped values (private keys, `Authorization` and `Bearer` values, `NAME=value` for names like `password` and
+  `api_key`) are redacted before anything is written; a bare word such as "token" is only flagged.
+
 ## v0.0.20 (2026-10-20)
 
 Recalled knowledge now says which works it rests on, and flags a retracted one. No behaviour changes to existing setups.

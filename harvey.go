@@ -203,7 +203,6 @@ type Agent struct {
 	commands                   map[string]*Command
 	statHistory                []ChatStats    // rolling window of recent turn stats
 	AuditBuffer                *AuditBuffer   // in-memory audit log ring buffer; nil until initialized
-	DebugLog                   *DebugLog      // JSONL diagnostic log; nil when --debug not set
 	SessionLog                 *SessionLog    // append-only JSONL record of this session (DR-0036); nil when none is open
 	logTurn                    int            // user turns logged this session; the turn field of the events
 	logLastID                  string         // id of the last event appended; the tail.to of a manifest

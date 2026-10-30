@@ -37,7 +37,7 @@ func fakeLlamaServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// llamaCppSwitchAgent is switchAgent (on llama3.2:3b, recording, --debug on)
+// llamaCppSwitchAgent is switchAgent (on llama3.2:3b, recording, with a session log open and --debug on)
 // pointed at a fake llama-server, with one .gguf in its models directory.
 func llamaCppSwitchAgent(t *testing.T) (*Agent, string, string) {
 	t.Helper()
@@ -52,31 +52,31 @@ func llamaCppSwitchAgent(t *testing.T) (*Agent, string, string) {
 	return a, transcript, path
 }
 
-func TestModelUse_LlamaCppAliasKeepsDebugLogAndRecordsSwitch(t *testing.T) {
+func TestModelUse_LlamaCppAliasKeepsSessionLogAndRecordsSwitch(t *testing.T) {
 	a, transcript, _ := llamaCppSwitchAgent(t)
 	a.Config.ModelAliases["tiny"] = ModelAlias{Model: "tinyllama-Q4_K_M", Engine: "llamacpp"}
 	var out bytes.Buffer
 	if err := cmdModel(a, []string{"use", "tiny"}, &out); err != nil {
 		t.Fatalf("/model use: %v\n%s", err, out.String())
 	}
-	assertSwitchedCleanly(t, a, transcript, "TINYLLAMA-Q4_K_M", "model switch: tinyllama-Q4_K_M (llamacpp)")
+	assertSwitchedCleanly(t, a, transcript, "TINYLLAMA-Q4_K_M", "model switch: tinyllama-Q4_K_M (llamacpp)", "tinyllama-Q4_K_M")
 }
 
-func TestModelUse_LlamaCppPickerMatchKeepsDebugLogAndRecordsSwitch(t *testing.T) {
+func TestModelUse_LlamaCppPickerMatchKeepsSessionLogAndRecordsSwitch(t *testing.T) {
 	a, transcript, path := llamaCppSwitchAgent(t)
 	withLocalModels(t, []ModelSummary{{Name: "tinyllama-Q4_K_M", Engine: "llamacpp", Path: path}})
 	var out bytes.Buffer
 	if err := cmdModel(a, []string{"use", "tinyllama-Q4_K_M"}, &out); err != nil {
 		t.Fatalf("/model use: %v\n%s", err, out.String())
 	}
-	assertSwitchedCleanly(t, a, transcript, "TINYLLAMA-Q4_K_M", "model switch: tinyllama-Q4_K_M (llamacpp)")
+	assertSwitchedCleanly(t, a, transcript, "TINYLLAMA-Q4_K_M", "model switch: tinyllama-Q4_K_M (llamacpp)", "tinyllama-Q4_K_M")
 }
 
 // The startup path has no debug log or recorder open yet; the same helper
 // must cope with both being nil.
-func TestStartLlamaCppModelPath_NoDebugLogOrRecorderIsFine(t *testing.T) {
+func TestStartLlamaCppModelPath_NoSessionLogOrRecorderIsFine(t *testing.T) {
 	a, _, path := llamaCppSwitchAgent(t)
-	a.DebugLog, a.Recorder = nil, nil
+	a.SessionLog, a.Recorder = nil, nil
 	if err := startLlamaCppModelPath(a, path, io.Discard); err != nil {
 		t.Fatalf("startLlamaCppModelPath: %v", err)
 	}

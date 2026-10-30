@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
 )
@@ -158,23 +159,85 @@ func promptHash(msgs []Message) string {
 	return hex.EncodeToString(sum[:])
 }
 
-/** logModelRequest records the manifest of one model call. Until the
- * assembler exists (plan item L7) every manifest has policy "replay": the
- * tail is the whole history sent, nothing is pinned or summarised, and
- * prompt_sha256 is still stored (DR-0040 item 5). The token figure is the
- * cheap estimate; asking the backend for an exact count on every call would
- * be a request of its own.
+// callPurposeKey is the context key under which a caller says what a model
+// call is for, so the client's hook can log it as the right kind of request.
+type callPurposeKey struct{}
+
+type callPurpose struct {
+	name   string
+	source any
+}
+
+// purposeTurn marks the calls of the turn pipeline: the user's turn, the tool
+// loop under it, and the retries. They are logged as assembled requests.
+const purposeTurn = "turn"
+
+/** withCallPurpose says what a model call is for. The purpose "turn" is the
+ * conversation itself; any other (chunk, synthesis, summary, ...) makes the
+ * call an ad-hoc request that carries the purpose and, where there is one, a
+ * source such as a file and line range (DR-0040 item 2).
  *
  * Parameters:
- *   msgs ([]Message) — the messages sent to the model in this call.
+ *   ctx    (context.Context) — the call's context.
+ *   name   (string)          — the purpose.
+ *   source (any)             — what the prompt was built from; nil if nothing.
  *
  * Returns:
- *   string — the request event id; "" when no log is open.
+ *   context.Context — ctx carrying the purpose.
  *
  * Example:
- *   reqID := a.logModelRequest(msgs)
+ *   ctx = withCallPurpose(ctx, "chunk", map[string]any{"path": "a.go", "from_line": 1, "to_line": 80})
  */
-func (a *Agent) logModelRequest(msgs []Message) string {
+func withCallPurpose(ctx context.Context, name string, source any) context.Context {
+	return context.WithValue(ctx, callPurposeKey{}, callPurpose{name, source})
+}
+
+func callPurposeOf(ctx context.Context) callPurpose {
+	if p, ok := ctx.Value(callPurposeKey{}).(callPurpose); ok {
+		return p
+	}
+	return callPurpose{}
+}
+
+/** BeginModelCall implements ModelCallLog: it writes the model_request for a
+ * call about to be made and returns the func that writes the model_response
+ * when it ends. With no log open it does nothing. A call whose context says
+ * it belongs to the turn is logged as an assembled request (policy replay
+ * until the assembler exists); every other call is an ad-hoc request that
+ * names its purpose.
+ *
+ * Parameters:
+ *   ctx       (context.Context) — carries the call's purpose, if any.
+ *   msgs      ([]Message)       — the messages sent.
+ *   toolCount (int)             — how many tool schemas are sent with them.
+ *
+ * Returns:
+ *   func(text string, stats ChatStats, err error) — call once when the call ends.
+ *
+ * Example:
+ *   end := a.BeginModelCall(ctx, msgs, 0)
+ *   end(reply, stats, err)
+ */
+func (a *Agent) BeginModelCall(ctx context.Context, msgs []Message, toolCount int) func(string, ChatStats, error) {
+	if a.SessionLog == nil {
+		return func(string, ChatStats, error) {}
+	}
+	reqID := a.logModelRequest(ctx, msgs, toolCount)
+	return func(text string, stats ChatStats, err error) { a.logModelResponse(reqID, text, stats, err) }
+}
+
+// wireSessionLog makes client tell this agent about each model call. It is
+// installed whether or not a log is open yet; the agent looks the log up at
+// call time, so a client built before the log opened still logs.
+func (a *Agent) wireSessionLog(client LLMClient) LLMClient {
+	if ac, ok := client.(*AnyLLMClient); ok {
+		ac.CallLog = a
+	}
+	return client
+}
+
+// logModelRequest writes the model_request for one call; see BeginModelCall.
+func (a *Agent) logModelRequest(ctx context.Context, msgs []Message, toolCount int) string {
 	if a.SessionLog == nil {
 		return ""
 	}
@@ -182,21 +245,41 @@ func (a *Agent) logModelRequest(msgs []Message) string {
 	if a.Client != nil {
 		clientName = a.Client.Name()
 	}
+	purpose := callPurposeOf(ctx)
 	sysID, sysText := systemPromptOf(msgs)
 	data := map[string]any{
-		"form":          "assembled",
-		"policy":        "replay",
 		"turn":          a.logTurn,
 		"system":        sysID,
-		"pinned":        []string{},
-		"summaries":     []string{},
-		"kb":            []string{},
-		"tail":          map[string]any{"from": a.logFirstDialogID, "to": a.logLastID, "history_messages": len(msgs)},
-		"budget":        map[string]any{"window": a.effectiveContextLimit(), "window_source": "unknown", "reserve": 0, "used_est": estimateTokens(HistoryText(msgs))},
-		"template":      "replay",
 		"backend":       backendFromClientName(clientName),
 		"model":         modelFromClientName(clientName),
 		"prompt_sha256": promptHash(msgs),
+	}
+	if purpose.name == purposeTurn {
+		data["form"] = "assembled"
+		data["policy"] = "replay"
+		data["pinned"] = []string{}
+		data["summaries"] = []string{}
+		data["kb"] = []string{}
+		data["tail"] = map[string]any{"from": a.logFirstDialogID, "to": a.logLastID, "history_messages": len(msgs)}
+		data["budget"] = map[string]any{"window": a.effectiveContextLimit(), "window_source": "unknown", "reserve": 0, "used_est": estimateTokens(HistoryText(msgs))}
+		data["template"] = "replay"
+	} else {
+		name := purpose.name
+		if name == "" {
+			name = "unspecified"
+		}
+		data["form"] = "adhoc"
+		data["purpose"] = name
+		data["messages"] = len(msgs)
+		if purpose.source != nil {
+			data["source"] = purpose.source
+		}
+		// The prompt of an ad-hoc call is built from content the log does not
+		// otherwise hold (a chunk of a file, a summary request), so it is kept,
+		// once and by hash.
+		if raw, err := json.Marshal(msgs); err == nil {
+			data["body"] = a.logContentBlob(string(raw))
+		}
 	}
 	// The system prompt text is stored once per version (DR-0039). It can change
 	// without a model switch (a trimmed prompt, a skill catalog, /clear), so the
@@ -205,35 +288,33 @@ func (a *Agent) logModelRequest(msgs []Message) string {
 		data["system_text"] = a.logContent(sysText)
 		a.logSystemID = sysID
 	}
-	return a.logEvent(KindModelRequest, LevelInfo, data)
+	id := a.logEvent(KindModelRequest, LevelInfo, data)
+	// With --debug the exact messages sent are kept too, as a level-debug event
+	// that rendering and kb ingest skip (DR-0038 item 5).
+	if id != "" && a.Config.Debug && purpose.name == purposeTurn {
+		if raw, err := json.Marshal(msgs); err == nil {
+			a.logEvent(KindModelRequest, LevelDebug, map[string]any{
+				"form": "body", "request": id, "tools": toolCount, "body": a.logContentBlob(string(raw)),
+			})
+		}
+	}
+	return id
 }
 
-/** loggedChat is a.Client.Chat bracketed by a model_request and a
- * model_response, so every direct model call (the turn itself, a retry on a
- * smaller prompt, the fallback after a tool loop) is a request of its own.
- * The text still streams to w as it did.
- *
- * Parameters:
- *   ctx  (context.Context) — cancels the call.
- *   msgs ([]Message)       — the messages to send.
- *   w    (io.Writer)       — where the reply streams.
- *
- * Returns:
- *   ChatStats — what the backend reported.
- *   error     — what Chat returned.
- *
- * Example:
- *   stats, err := a.loggedChat(ctx, a.History, &buf)
- */
-func (a *Agent) loggedChat(ctx context.Context, msgs []Message, w io.Writer) (ChatStats, error) {
+// logContentBlob is logContent for a payload that always goes to a blob.
+func (a *Agent) logContentBlob(text string) any {
 	if a.SessionLog == nil {
-		return a.Client.Chat(ctx, msgs, w)
+		return text
 	}
-	reqID := a.logModelRequest(msgs)
-	var captured strings.Builder
-	stats, err := a.Client.Chat(ctx, msgs, io.MultiWriter(w, &captured))
-	a.logModelResponse(reqID, captured.String(), stats, err)
-	return stats, err
+	c, err := a.SessionLog.ContentBlob(text)
+	if err != nil {
+		if !a.sessionLogWarned {
+			a.sessionLogWarned = true
+			fmt.Fprintf(os.Stderr, "harvey: session log: %v\n", err)
+		}
+		return "[content not logged]"
+	}
+	return c
 }
 
 // agentToolEvents adapts an Agent to ToolEvents.
@@ -256,12 +337,6 @@ func (a *Agent) toolEvents() ToolEvents {
 	return agentToolEvents{a}
 }
 
-func (t agentToolEvents) ModelRequest(msgs []Message) string { return t.a.logModelRequest(msgs) }
-
-func (t agentToolEvents) ModelResponse(request, text string, stats ChatStats, err error) {
-	t.a.logModelResponse(request, text, stats, err)
-}
-
 func (t agentToolEvents) ToolCall(tc anyllm.ToolCall) string {
 	return t.a.logEvent(KindToolCall, LevelInfo, map[string]any{
 		"turn":    t.a.logTurn,
@@ -272,7 +347,7 @@ func (t agentToolEvents) ToolCall(tc anyllm.ToolCall) string {
 	})
 }
 
-func (t agentToolEvents) ToolResult(call string, tc anyllm.ToolCall, output string, failed bool) {
+func (t agentToolEvents) ToolResult(call string, tc anyllm.ToolCall, output string, failed bool, elapsed time.Duration) {
 	status := "ok"
 	if failed {
 		status = "error"
@@ -283,6 +358,7 @@ func (t agentToolEvents) ToolResult(call string, tc anyllm.ToolCall, output stri
 		"call_id": tc.ID,
 		"status":  status,
 		"output":  t.a.logContent(output),
+		"ms":      elapsed.Milliseconds(),
 	})
 }
 

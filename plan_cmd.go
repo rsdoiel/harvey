@@ -176,7 +176,7 @@ func cmdPlanNext(a *Agent, out io.Writer) error {
 	defer cancel()
 
 	var buf strings.Builder
-	updatedHistory, _, err := runBoundedTurn(ctx, client, a.Tools, a.Config, a.Config.ToolsEnabled, freshHistory, a.DebugLog, &buf)
+	updatedHistory, _, err := runBoundedTurn(ctx, client, a.Tools, a.Config, a.Config.ToolsEnabled, freshHistory, a.toolEvents(), &buf)
 	if err != nil {
 		if restore != nil {
 			restore()

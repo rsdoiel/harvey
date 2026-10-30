@@ -127,16 +127,14 @@ func TestResolveDispatchTarget_UnknownName_ReturnsNotFound(t *testing.T) {
 	}
 }
 
-// TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog is the regression test
-// for a debug-logging gap found while fixing the chunk-analysis double-logging
-// bug (TODO.md): clientForEndpoint constructs a fresh *AnyLLMClient with no
-// DebugLog set, so its own chatInternal never logs anything unless
-// resolveDispatchTarget wires it explicitly.
-func TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog(t *testing.T) {
+// TestResolveDispatchTarget_RouteEndpoint_WiresSessionLog is the regression
+// test for a logging gap found while fixing the chunk-analysis double-logging
+// bug (TODO.md): clientForEndpoint constructs a fresh *AnyLLMClient, whose own
+// chatInternal logs nothing unless resolveDispatchTarget wires it to the
+// agent's session log explicitly.
+func TestResolveDispatchTarget_RouteEndpoint_WiresSessionLog(t *testing.T) {
 	a := newTestAgent(t)
 	a.Client = &mockLLMClient{reply: "orig"}
-	dbg := &DebugLog{}
-	a.DebugLog = dbg
 	a.Routes = NewRouteRegistry()
 	a.Routes.Add(&RouteEndpoint{Name: "remote", URL: "ollama://example:11434", Model: "llama3.1:8b", Kind: KindOllama})
 
@@ -152,24 +150,22 @@ func TestResolveDispatchTarget_RouteEndpoint_WiresDebugLog(t *testing.T) {
 	if !isAnyLLM {
 		t.Fatalf("expected *AnyLLMClient, got %T", target.Client)
 	}
-	if ac.DebugLog != dbg {
-		t.Error("expected the resolved route client's DebugLog to be wired to a.DebugLog")
+	if ac.CallLog != ModelCallLog(a) {
+		t.Error("expected the resolved route client to report its calls to the agent's session log")
 	}
 }
 
-// TestResolveDispatchTarget_LocalSwitch_WiresDebugLog covers the other branch
+// TestResolveDispatchTarget_LocalSwitch_WiresSessionLog covers the other branch
 // with the same gap: a real local model switch (attemptModelSwitch's Ollama
 // branch, simulated here via the override) also constructs a fresh
-// *AnyLLMClient with no DebugLog set.
-func TestResolveDispatchTarget_LocalSwitch_WiresDebugLog(t *testing.T) {
+// *AnyLLMClient that reports to no log.
+func TestResolveDispatchTarget_LocalSwitch_WiresSessionLog(t *testing.T) {
 	a := newTestAgent(t)
 	a.Config.Llamafile.Active = "original-model"
 	a.Client = &mockLLMClient{reply: "orig"}
-	dbg := &DebugLog{}
-	a.DebugLog = dbg
 	a.attemptModelSwitchOverride = func(name string, out io.Writer) (bool, error) {
 		a.Config.Llamafile.Active = name
-		a.Client = newOllamaLLMClient("http://127.0.0.1:1", name, 0) // fresh client, DebugLog unset
+		a.Client = newOllamaLLMClient("http://127.0.0.1:1", name, 0) // fresh client, no call log
 		return true, nil
 	}
 
@@ -185,7 +181,7 @@ func TestResolveDispatchTarget_LocalSwitch_WiresDebugLog(t *testing.T) {
 	if !isAnyLLM {
 		t.Fatalf("expected *AnyLLMClient, got %T", target.Client)
 	}
-	if ac.DebugLog != dbg {
-		t.Error("expected the freshly-switched client's DebugLog to be wired to a.DebugLog")
+	if ac.CallLog != ModelCallLog(a) {
+		t.Error("expected the freshly-switched client to report its calls to the agent's session log")
 	}
 }
