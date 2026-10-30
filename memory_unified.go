@@ -36,6 +36,9 @@ type UnifiedResult struct {
 	Content string
 	Score   float64
 	Tokens  int
+	// Retracted is whether the row rests on a retracted source; nil when the
+	// recall path cannot tell (the substring fallback looks up no provenance).
+	Retracted *bool
 }
 
 /** UnifiedMemory provides budget-aware retrieval across all memory silos:
@@ -314,11 +317,13 @@ func (u *UnifiedMemory) recallKB(query string) ([]UnifiedResult, error) {
 				continue
 			}
 			content += formatHitProvenance(h.HitProvenance)
+			retracted := h.HitProvenance.Retracted
 			out = append(out, UnifiedResult{
-				Source:  "kb",
-				ID:      fmt.Sprintf("kb:%s:%d", h.SourceType, h.ID),
-				Content: content,
-				Score:   0.6,
+				Source:    "kb",
+				ID:        fmt.Sprintf("kb:%s:%d", h.SourceType, h.ID),
+				Content:   content,
+				Score:     0.6,
+				Retracted: &retracted,
 			})
 		}
 		if len(out) > 0 {

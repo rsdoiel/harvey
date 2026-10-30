@@ -41,6 +41,18 @@ func cmdKB(a *Agent, args []string, out io.Writer) error {
 	if a.KB == nil {
 		return Unavailablef("the knowledge base is not open. This should not happen — please restart Harvey")
 	}
+	verb := "status"
+	if len(args) > 0 {
+		verb = strings.ToLower(args[0])
+	}
+	if !kbVerbs[verb] {
+		return kbDispatch(a, args, out) // a usage error: nothing is asked of the knowledge base
+	}
+	return a.loggedKB(verb, args, out, func(w io.Writer) error { return kbDispatch(a, args, w) })
+}
+
+// kbDispatch runs one /kb subcommand; cmdKB wraps it for the session log.
+func kbDispatch(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return kbStatus(a, out)
 	}
@@ -100,6 +112,7 @@ func kbSearch(a *Agent, args []string, out io.Writer) error {
 	}
 	fmt.Fprintln(out)
 	for _, r := range results {
+		a.noteKBItem(kbRefOf(r.SourceType, r.SourceID, r.Ref), r.SourceType, nil)
 		switch {
 		case r.Label != "" && r.Snippet != "":
 			fmt.Fprintf(out, "  [%-10s] %s — %s\n", r.Kind, r.Label, r.Snippet)
@@ -144,6 +157,11 @@ func kbInject(a *Agent, args []string, out io.Writer) error {
 		return nil
 	}
 
+	injectRef := "kb:all"
+	if projectID > 0 {
+		injectRef = fmt.Sprintf("kb:project:%d", projectID)
+	}
+	a.noteKBInjection(injectRef, "[knowledge base context]\n\n"+md)
 	a.AddMessage("user", "[knowledge base context]\n\n"+md)
 	fmt.Fprintf(out, green("✓")+" KB context for %s injected (%d bytes).\n", label, len(md))
 	return nil
@@ -512,6 +530,13 @@ func kbShow(a *Agent, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	anyRetracted := false
+	for _, s := range sources {
+		if s.Retracted {
+			anyRetracted = true
+		}
+	}
+	a.noteKBItem(kbRefOf("observation", obsID, ""), "observation", &anyRetracted)
 	if len(sources) == 0 {
 		fmt.Fprintln(out, "  (no sources linked)")
 		return nil

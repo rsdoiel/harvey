@@ -210,6 +210,7 @@ type Agent struct {
 	sessionLogWarned           bool           // a failed log write has been reported once
 	logModel                   ModelRef       // backend and model last written to the log; the from of the next model_switch
 	logSystemID                string         // id of the system prompt text last written to the log
+	kbRun                      *kbRun         // identities and injections the running /kb subcommand reports; nil outside a logged one
 	Backend                    ManagedBackend // active inference backend; nil when no backend is wired
 	hailoDevicePath            string         // Hailo card device node; "" = /dev/hailo0 (tests set it)
 	hailoUnitPath              string         // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service
@@ -394,7 +395,9 @@ func (a *Agent) injectMemoryContext(query string) {
 		budget = int(float64(a.Config.Ollama.ContextLength) * a.Config.Memory.BudgetPct)
 	}
 
+	recallCall := a.logKBRetrievalCall(query)
 	results, err := a.Memory.Unified.Recall(query, embedder, budget)
+	recallResult := a.logKBRetrievalResult(recallCall, results, err)
 	if err != nil || len(results) == 0 {
 		return
 	}
@@ -407,6 +410,7 @@ func (a *Agent) injectMemoryContext(query string) {
 	}
 	a.sessionInjectedTokens += totalTokens
 	a.AddMessage("user", FormatContext(results))
+	a.logKBInjections(recallResult, results)
 }
 
 /** WriteHandoff extracts a structural summary from the current conversation
