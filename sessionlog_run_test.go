@@ -20,7 +20,12 @@ import (
 // fakeOllamaTwoModels serves /api/tags with two models, /api/show, and a
 // streaming /api/chat that answers FIRST, SECOND, … and names the model that
 // was asked, so a test can see which model answered.
-func fakeOllamaTwoModels(t *testing.T) *httptest.Server {
+func fakeOllamaTwoModels(t *testing.T) *httptest.Server { return fakeOllama(t, false) }
+
+// fakeOllama is fakeOllamaTwoModels; with tools set the models advertise the
+// tools capability and the first chat of a turn asks for read_file note.txt, the
+// next (once a tool result is in the messages) answers TOOLDONE.
+func fakeOllama(t *testing.T, tools bool) *httptest.Server {
 	t.Helper()
 	var mu sync.Mutex
 	turn := 0
@@ -33,15 +38,42 @@ func fakeOllamaTwoModels(t *testing.T) *httptest.Server {
 				{"name": "qwen2.5-coder:1.5b", "model": "qwen2.5-coder:1.5b", "size": 1000000000},
 			}})
 		case "/api/show":
+			caps := []string{"completion"}
+			if tools {
+				caps = append(caps, "tools")
+			}
 			json.NewEncoder(w).Encode(map[string]any{
 				"details":      map[string]any{"family": "llama", "parameter_size": "3B"},
-				"capabilities": []string{"completion"},
+				"capabilities": caps,
 			})
 		case "/api/chat":
 			var req struct {
-				Model string `json:"model"`
+				Model    string `json:"model"`
+				Messages []struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"messages"`
+				Tools []any `json:"tools"`
 			}
 			json.NewDecoder(r.Body).Decode(&req)
+			if tools && len(req.Tools) > 0 {
+				w.Header().Set("Content-Type", "application/x-ndjson")
+				sawTool := false
+				for _, m := range req.Messages {
+					// With tool-result compaction on, the client sends the finished
+					// round as an assistant "[called: …]" note followed by the result.
+					if m.Role == "tool" || strings.HasPrefix(m.Content, "[called:") {
+						sawTool = true
+					}
+				}
+				if !sawTool {
+					io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"read_file","arguments":{"path":"note.txt"}}}]},"done":true,"done_reason":"stop","prompt_eval_count":11,"eval_count":3}`+"\n")
+				} else {
+					io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":"TOOLDONE"},"done":false}`+"\n")
+					io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":20,"eval_count":1}`+"\n")
+				}
+				return
+			}
 			mu.Lock()
 			word := words[turn%len(words)]
 			turn++
@@ -61,8 +93,18 @@ func fakeOllamaTwoModels(t *testing.T) *httptest.Server {
 // lines on stdin, against the fake Ollama, and returns the sessions directory.
 func scriptedRun(t *testing.T, debug bool, lines ...string) string {
 	t.Helper()
+	return scriptedRunWith(t, debug, nil, false, lines...)
+}
+
+// scriptedRunWith is scriptedRun with a hook that sees the workspace root
+// before the session starts, and the option of a model that calls tools.
+func scriptedRunWith(t *testing.T, debug bool, setup func(root string), tools bool, lines ...string) string {
+	t.Helper()
 	a, ws := runFixture(t, false)
-	a.Config.Ollama.URL = fakeOllamaTwoModels(t).URL
+	if setup != nil {
+		setup(ws.Root)
+	}
+	a.Config.Ollama.URL = fakeOllama(t, tools).URL
 	a.Config.Ollama.Model = "llama3.2:3b"
 	a.Config.Session.AutoRecord = true
 	a.Config.Security.SafeMode = false
@@ -371,5 +413,55 @@ func TestRun_ShellCommandAndOutputAreScrubbed(t *testing.T) {
 	}
 	if !redacted {
 		t.Error("the command was never logged: no [REDACTED:secret] marker in the session log (a pass by omission)")
+	}
+}
+
+// The structured tool loop, end to end: the model asks for read_file, the tool
+// runs, the model answers. Two model calls and one tool call for one user turn.
+func TestRun_ModelToolCallsAreLogged(t *testing.T) {
+	dir := scriptedRunWith(t, false, func(root string) {
+		if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte("the note says hello"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}, true, "read note.txt", "/exit")
+	logs, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if len(logs) != 1 {
+		t.Fatalf("want one session log, got %v", logs)
+	}
+	events, _, err := ReadSessionLog(logs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "user_input model_request model_response tool_call tool_result model_request model_response command"
+	if got := infoKinds(events[:len(events)-1]); got != want {
+		t.Fatalf("kinds\n got: %s\nwant: %s", got, want)
+	}
+	var call, result, last Event
+	for _, e := range events {
+		switch e.Kind {
+		case KindToolCall:
+			call = e
+		case KindToolResult:
+			result = e
+		case KindModelResponse:
+			last = e
+		}
+	}
+	var c struct {
+		Tool   string `json:"tool"`
+		Origin string `json:"origin"`
+	}
+	_ = json.Unmarshal(call.Data, &c)
+	var r struct {
+		Call   string `json:"call"`
+		Status string `json:"status"`
+		Output string `json:"output"`
+	}
+	_ = json.Unmarshal(result.Data, &r)
+	if c.Tool != "read_file" || c.Origin != "model" || r.Call != call.ID || r.Status != "ok" || !strings.Contains(r.Output, "the note says hello") {
+		t.Errorf("tool events = %s / %s", call.Data, result.Data)
+	}
+	if !strings.Contains(string(last.Data), "TOOLDONE") {
+		t.Errorf("final response = %s", last.Data)
 	}
 }

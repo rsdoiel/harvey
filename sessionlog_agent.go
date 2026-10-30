@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // Wiring of the session log (sessionlog.go) into Agent, item L3 of
@@ -156,22 +158,23 @@ func promptHash(msgs []Message) string {
 	return hex.EncodeToString(sum[:])
 }
 
-/** logModelRequest records the manifest of a model call. Until the assembler
- * exists (plan item L7) every manifest has policy "replay": the tail is the
- * whole history, nothing is pinned or summarised, and prompt_sha256 is still
- * stored (DR-0040 item 5).
+/** logModelRequest records the manifest of one model call. Until the
+ * assembler exists (plan item L7) every manifest has policy "replay": the
+ * tail is the whole history sent, nothing is pinned or summarised, and
+ * prompt_sha256 is still stored (DR-0040 item 5). The token figure is the
+ * cheap estimate; asking the backend for an exact count on every call would
+ * be a request of its own.
  *
  * Parameters:
- *   used  (int) — estimated tokens in the prompt.
- *   limit (int) — the context window in use; 0 when unknown.
+ *   msgs ([]Message) — the messages sent to the model in this call.
  *
  * Returns:
  *   string — the request event id; "" when no log is open.
  *
  * Example:
- *   reqID := a.logModelRequest(used, limit)
+ *   reqID := a.logModelRequest(msgs)
  */
-func (a *Agent) logModelRequest(used, limit int) string {
+func (a *Agent) logModelRequest(msgs []Message) string {
 	if a.SessionLog == nil {
 		return ""
 	}
@@ -179,7 +182,7 @@ func (a *Agent) logModelRequest(used, limit int) string {
 	if a.Client != nil {
 		clientName = a.Client.Name()
 	}
-	sysID, sysText := a.systemPromptVersion()
+	sysID, sysText := systemPromptOf(msgs)
 	data := map[string]any{
 		"form":          "assembled",
 		"policy":        "replay",
@@ -188,12 +191,12 @@ func (a *Agent) logModelRequest(used, limit int) string {
 		"pinned":        []string{},
 		"summaries":     []string{},
 		"kb":            []string{},
-		"tail":          map[string]any{"from": a.logFirstDialogID, "to": a.logLastID, "history_messages": len(a.History)},
-		"budget":        map[string]any{"window": limit, "window_source": "unknown", "reserve": 0, "used_est": used},
+		"tail":          map[string]any{"from": a.logFirstDialogID, "to": a.logLastID, "history_messages": len(msgs)},
+		"budget":        map[string]any{"window": a.effectiveContextLimit(), "window_source": "unknown", "reserve": 0, "used_est": estimateTokens(HistoryText(msgs))},
 		"template":      "replay",
 		"backend":       backendFromClientName(clientName),
 		"model":         modelFromClientName(clientName),
-		"prompt_sha256": promptHash(a.History),
+		"prompt_sha256": promptHash(msgs),
 	}
 	// The system prompt text is stored once per version (DR-0039). It can change
 	// without a model switch (a trimmed prompt, a skill catalog, /clear), so the
@@ -203,6 +206,84 @@ func (a *Agent) logModelRequest(used, limit int) string {
 		a.logSystemID = sysID
 	}
 	return a.logEvent(KindModelRequest, LevelInfo, data)
+}
+
+/** loggedChat is a.Client.Chat bracketed by a model_request and a
+ * model_response, so every direct model call (the turn itself, a retry on a
+ * smaller prompt, the fallback after a tool loop) is a request of its own.
+ * The text still streams to w as it did.
+ *
+ * Parameters:
+ *   ctx  (context.Context) — cancels the call.
+ *   msgs ([]Message)       — the messages to send.
+ *   w    (io.Writer)       — where the reply streams.
+ *
+ * Returns:
+ *   ChatStats — what the backend reported.
+ *   error     — what Chat returned.
+ *
+ * Example:
+ *   stats, err := a.loggedChat(ctx, a.History, &buf)
+ */
+func (a *Agent) loggedChat(ctx context.Context, msgs []Message, w io.Writer) (ChatStats, error) {
+	if a.SessionLog == nil {
+		return a.Client.Chat(ctx, msgs, w)
+	}
+	reqID := a.logModelRequest(msgs)
+	var captured strings.Builder
+	stats, err := a.Client.Chat(ctx, msgs, io.MultiWriter(w, &captured))
+	a.logModelResponse(reqID, captured.String(), stats, err)
+	return stats, err
+}
+
+// agentToolEvents adapts an Agent to ToolEvents.
+type agentToolEvents struct{ a *Agent }
+
+/** toolEvents returns the ToolEvents that write this agent's tool-loop events
+ * to its session log, or a nil interface when no log is open, so a
+ * ToolExecutor given the result records nothing.
+ *
+ * Returns:
+ *   ToolEvents — the adapter, or nil.
+ *
+ * Example:
+ *   ex.Events = a.toolEvents()
+ */
+func (a *Agent) toolEvents() ToolEvents {
+	if a.SessionLog == nil {
+		return nil
+	}
+	return agentToolEvents{a}
+}
+
+func (t agentToolEvents) ModelRequest(msgs []Message) string { return t.a.logModelRequest(msgs) }
+
+func (t agentToolEvents) ModelResponse(request, text string, stats ChatStats, err error) {
+	t.a.logModelResponse(request, text, stats, err)
+}
+
+func (t agentToolEvents) ToolCall(tc anyllm.ToolCall) string {
+	return t.a.logEvent(KindToolCall, LevelInfo, map[string]any{
+		"turn":    t.a.logTurn,
+		"tool":    tc.Function.Name,
+		"origin":  "model",
+		"call_id": tc.ID,
+		"args":    t.a.logContent(tc.Function.Arguments),
+	})
+}
+
+func (t agentToolEvents) ToolResult(call string, tc anyllm.ToolCall, output string, failed bool) {
+	status := "ok"
+	if failed {
+		status = "error"
+	}
+	t.a.logEvent(KindToolResult, LevelInfo, map[string]any{
+		"turn":    t.a.logTurn,
+		"call":    call,
+		"call_id": tc.ID,
+		"status":  status,
+		"output":  t.a.logContent(output),
+	})
 }
 
 /** logModelResponse records how a model call ended: its text, or why it
@@ -266,8 +347,11 @@ type ModelRef struct {
 // systemPromptVersion returns the id and text of the system prompt in the
 // history ("" and "" when there is none). The id is "sys-" and the first four
 // bytes of the text's SHA-256, so equal text always has the same id.
-func (a *Agent) systemPromptVersion() (id, text string) {
-	for _, m := range a.History {
+func (a *Agent) systemPromptVersion() (id, text string) { return systemPromptOf(a.History) }
+
+// systemPromptOf is systemPromptVersion for any list of messages.
+func systemPromptOf(msgs []Message) (id, text string) {
+	for _, m := range msgs {
 		if m.Role == "system" {
 			sum := sha256.Sum256([]byte(m.Content))
 			return "sys-" + hex.EncodeToString(sum[:4]), m.Content
@@ -373,6 +457,7 @@ func (a *Agent) logShellResult(callID, status string, exit *int, output []byte, 
 		return ""
 	}
 	data := map[string]any{
+		"call":    callID,
 		"call_id": callID,
 		"status":  status,
 		"output":  a.logContent(string(output)),

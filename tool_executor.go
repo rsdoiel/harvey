@@ -42,6 +42,26 @@ type ToolCapable interface {
 	ChatWithTools(ctx context.Context, messages []Message, tools []anyllm.Tool, out io.Writer) (ChatStats, []anyllm.ToolCall, error)
 }
 
+/** ToolEvents receives what happens inside a tool loop so a session log can
+ * record it: each model call and each tool call. It is optional; a nil
+ * Events on a ToolExecutor records nothing.
+ *
+ * Methods:
+ *   ModelRequest(msgs)                       — a model call is about to be made; returns the request id.
+ *   ModelResponse(request, text, stats, err) — that call ended.
+ *   ToolCall(tc)                             — a tool is about to run; returns the call id.
+ *   ToolResult(call, tc, output, failed)     — the tool finished.
+ *
+ * Example:
+ *   ex.Events = agent.toolEvents()
+ */
+type ToolEvents interface {
+	ModelRequest(msgs []Message) string
+	ModelResponse(request, text string, stats ChatStats, err error)
+	ToolCall(tc anyllm.ToolCall) string
+	ToolResult(call string, tc anyllm.ToolCall, output string, failed bool)
+}
+
 /** ToolExecutor drives the multi-turn tool call loop between the LLM and the
  * tool registry. It handles streaming, tool execution, and re-submission of
  * results until the LLM produces a final text response or the iteration limit
@@ -66,6 +86,7 @@ type ToolExecutor struct {
 	ToolResultCompaction bool           // when true, compact prior tool rounds before each new LLM turn
 	Status               StatusReporter // optional: receives transient status during tool calls
 	CharacterName        string         // ALL-CAPS model name for session attribution; "" = HARVEY (default)
+	Events               ToolEvents     // optional: receives each model call and tool call for the session log
 }
 
 /** NewToolExecutor creates a ToolExecutor from the agent's tool registry,
@@ -121,6 +142,10 @@ func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.
 		if e.Status != nil {
 			e.Status.ReportSensor(SensorEvent{Kind: "tool_call", Message: fmt.Sprintf("Calling %s…", tc.Function.Name), Class: Computational})
 		}
+		callEvent := ""
+		if e.Events != nil {
+			callEvent = e.Events.ToolCall(tc)
+		}
 		start := time.Now()
 		output, err := e.Registry.Dispatch(ctx, tc.Function.Name, tc.Function.Arguments, e.MaxOutputBytes)
 		elapsed := time.Since(start)
@@ -135,6 +160,9 @@ func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.
 			e.Status.ReportSensor(SensorEvent{Kind: "tool_call", Message: fmt.Sprintf("%s done", tc.Function.Name), Class: Computational})
 		}
 		e.DebugLog.LogToolCall(tc.Function.Name, len(output), elapsed, errStr)
+		if e.Events != nil {
+			e.Events.ToolResult(callEvent, tc, output, err != nil)
+		}
 		results = append(results, Message{
 			Role:       "tool",
 			Content:    output,
@@ -169,7 +197,9 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 	tc, ok := e.Client.(ToolCapable)
 	if !ok || e.Registry == nil || e.Registry.Len() == 0 {
 		// Fallback: client doesn't support tools or no tools registered.
-		stats, err := e.Client.Chat(ctx, messages, out)
+		w, text, done := e.recordCall(messages, out)
+		stats, err := e.Client.Chat(ctx, messages, w)
+		done(text(), stats, err)
 		return messages, stats, err
 	}
 
@@ -185,7 +215,9 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 			compactToolRound(history, prevRoundStart)
 		}
 
-		stats, calls, err := tc.ChatWithTools(ctx, history, schemas, out)
+		w, text, done := e.recordCall(history, out)
+		stats, calls, err := tc.ChatWithTools(ctx, history, schemas, w)
+		done(text(), stats, err)
 		if err != nil {
 			return history, stats, err
 		}
@@ -288,6 +320,7 @@ func executeAndReportToolCalls(a *Agent, calls []anyllm.ToolCall, out io.Writer)
 	defer cancel()
 	ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 	ex.DebugLog = a.DebugLog
+	ex.Events = a.toolEvents()
 	results, _ := ex.ExecuteToolCalls(ctx, calls)
 	for i, r := range results {
 		name := ""
@@ -342,4 +375,19 @@ func tryExecuteProseToolCalls(a *Agent, blocks []CodeBlock, out io.Writer) (disp
 		return false, nil
 	}
 	return executeAndReportToolCalls(a, calls, out)
+}
+
+// recordCall brackets one model call for the session log. With no Events it
+// returns out unchanged and a done that does nothing; otherwise it returns a
+// writer that also captures the streamed text, a func giving that text, and a
+// done to call with the call's outcome.
+func (e *ToolExecutor) recordCall(msgs []Message, out io.Writer) (io.Writer, func() string, func(text string, stats ChatStats, err error)) {
+	if e.Events == nil {
+		return out, func() string { return "" }, func(string, ChatStats, error) {}
+	}
+	request := e.Events.ModelRequest(msgs)
+	var captured strings.Builder
+	return io.MultiWriter(out, &captured), captured.String, func(text string, stats ChatStats, err error) {
+		e.Events.ModelResponse(request, text, stats, err)
+	}
 }

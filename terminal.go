@@ -1131,7 +1131,7 @@ func keepFirstFailure(existing, candidate error) error {
  *       fmt.Fprintln(out, reply)
  *   }
  */
-func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool, charName string) (reply string, retStats ChatStats, retErr error) {
+func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool, charName string) (string, ChatStats, error) {
 	// Fit the system prompt to the model in use now: a /model switch since the
 	// last turn may have changed its prompt limit, in either direction.
 	a.refreshSystemPrompt(out)
@@ -1199,13 +1199,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		}
 	}
 
-	// One request and one response per turn for now: the retries below (a smaller
-	// prompt, the tool-loop fallback, the file-content retry) are further model
-	// calls the log does not yet record as requests of their own.
-	if reqID := a.logModelRequest(used, limit); reqID != "" {
-		defer func() { a.logModelResponse(reqID, reply, retStats, retErr) }()
-	}
-
 	histLenBeforeChat := len(a.History)
 	var buf strings.Builder
 	sp := newSpinner(out, a.estimateDuration(), spLabel)
@@ -1225,6 +1218,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 		ex.DebugLog = a.DebugLog
 		ex.Status = sp
+		ex.Events = a.toolEvents()
 		a.ActiveStatus = sp
 		ex.CharacterName = charName
 		var updatedHistory []Message
@@ -1235,7 +1229,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 			toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
 		}
 	} else {
-		stats, chatErr = a.Client.Chat(ctx, a.History, &buf)
+		stats, chatErr = a.loggedChat(ctx, a.History, &buf)
 	}
 	sp.stop()
 	a.ActiveStatus = nil
@@ -1263,7 +1257,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		fmt.Fprintln(out, dim("  Tip: /tools off disables tools for this model permanently in this session."))
 		buf.Reset()
 		fallbackCtx, cancelFallback := context.WithCancel(context.Background())
-		stats, chatErr = a.Client.Chat(fallbackCtx, a.History, &buf)
+		stats, chatErr = a.loggedChat(fallbackCtx, a.History, &buf)
 		cancelFallback()
 		if chatErr != nil {
 			a.History = a.History[:len(a.History)-1]
@@ -1299,6 +1293,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 				ex := NewToolExecutor(a.Tools, a.Client, a.Config)
 				ex.DebugLog = a.DebugLog
 				ex.Status = retrySp
+				ex.Events = a.toolEvents()
 				a.ActiveStatus = retrySp
 				ex.CharacterName = charName
 				var updatedHistory []Message
@@ -1310,7 +1305,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 					toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
 				}
 			} else {
-				retryStats, chatErr = a.Client.Chat(ctx, a.History, &buf)
+				retryStats, chatErr = a.loggedChat(ctx, a.History, &buf)
 			}
 			if chatErr == nil {
 				stats = retryStats

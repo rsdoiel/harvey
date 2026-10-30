@@ -2,10 +2,15 @@ package harvey
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
+
+	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // agentWithLog is a test agent with a session log open in a temp directory.
@@ -120,10 +125,10 @@ func TestModelRequest_CarriesTheSystemPromptWhenItsVersionChanges(t *testing.T) 
 	a.Client = newOllamaLLMClient("http://127.0.0.1:1", "llama3.2:3b", 0)
 	a.AddMessage("system", "You are Harvey.")
 	a.logUserInput("one")
-	a.logModelRequest(10, 4096)
-	a.logModelRequest(10, 4096) // unchanged: no text again
+	a.logModelRequest(a.History)
+	a.logModelRequest(a.History) // unchanged: no text again
 	a.History[0].Content = "You are Harvey, trimmed to fit."
-	a.logModelRequest(10, 4096)
+	a.logModelRequest(a.History)
 	reqs := eventsOf(t, a, path, KindModelRequest)
 	if len(reqs) != 3 {
 		t.Fatalf("%d requests", len(reqs))
@@ -137,5 +142,193 @@ func TestModelRequest_CarriesTheSystemPromptWhenItsVersionChanges(t *testing.T) 
 	}
 	if !has(reqs[2]) || !strings.Contains(string(reqs[2].Data), "trimmed to fit") {
 		t.Errorf("a changed system prompt must be logged once: %s", reqs[2].Data)
+	}
+}
+
+// ─── the tool loop and every direct model call ───────────────────────────────
+
+type toolStep struct {
+	text  string
+	calls []anyllm.ToolCall
+	err   error
+}
+
+// scriptedToolClient is a ToolCapable LLMClient that plays a fixed script, one
+// step per model call.
+type scriptedToolClient struct {
+	steps []toolStep
+	i     int
+}
+
+func (c *scriptedToolClient) Name() string { return "mock (m1)" }
+func (c *scriptedToolClient) Chat(_ context.Context, _ []Message, out io.Writer) (ChatStats, error) {
+	st := c.steps[c.i]
+	c.i++
+	fmt.Fprint(out, st.text)
+	return ChatStats{}, st.err
+}
+func (c *scriptedToolClient) ChatWithTools(_ context.Context, _ []Message, _ []anyllm.Tool, out io.Writer) (ChatStats, []anyllm.ToolCall, error) {
+	st := c.steps[c.i]
+	c.i++
+	fmt.Fprint(out, st.text)
+	return ChatStats{PromptTokens: 5, ReplyTokens: 2}, st.calls, st.err
+}
+func (c *scriptedToolClient) Models(context.Context) ([]string, error) { return nil, nil }
+func (c *scriptedToolClient) Close() error                             { return nil }
+
+func toolCall(id, name, args string) anyllm.ToolCall {
+	return anyllm.ToolCall{ID: id, Type: "function", Function: anyllm.FunctionCall{Name: name, Arguments: args}}
+}
+
+func infoKinds(events []Event) string {
+	var k []string
+	for _, e := range events {
+		if e.Level == LevelInfo && e.Kind != KindSessionStart {
+			k = append(k, string(e.Kind))
+		}
+	}
+	return strings.Join(k, " ")
+}
+
+func TestToolLoop_LogsEachModelCallAndEachToolCall(t *testing.T) {
+	a, path := agentWithLog(t)
+	reg := NewToolRegistry()
+	reg.RegisterTool("echo", "echoes", map[string]any{"type": "object"}, func(_ context.Context, args map[string]any) (string, error) {
+		return "echoed", nil
+	})
+	reg.RegisterTool("boom", "fails", map[string]any{"type": "object"}, func(context.Context, map[string]any) (string, error) {
+		return "", errors.New("it broke")
+	})
+	client := &scriptedToolClient{steps: []toolStep{
+		{calls: []anyllm.ToolCall{toolCall("call_1", "echo", `{"x":"API_KEY=sk-tool-1"}`), toolCall("call_2", "boom", `{}`)}},
+		{text: "all done"},
+	}}
+	a.Client = client
+	a.logUserInput("use the tools")
+	ex := NewToolExecutor(reg, client, a.Config)
+	ex.Events = a.toolEvents()
+	if _, _, err := ex.RunToolLoop(context.Background(), []Message{{Role: "user", Content: "use the tools"}}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	events, _, err := ReadSessionLog(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Each call is logged when it is made, so its result follows before the
+	// next call starts: call, result, call, result.
+	want := "user_input model_request model_response tool_call tool_result tool_call tool_result model_request model_response"
+	if got := infoKinds(events); got != want {
+		t.Fatalf("kinds\n got: %s\nwant: %s", got, want)
+	}
+
+	var calls, results, reqs, resps []Event
+	for _, e := range events {
+		switch e.Kind {
+		case KindToolCall:
+			calls = append(calls, e)
+		case KindToolResult:
+			results = append(results, e)
+		case KindModelRequest:
+			reqs = append(reqs, e)
+		case KindModelResponse:
+			resps = append(resps, e)
+		}
+	}
+	var c0 struct {
+		Tool   string `json:"tool"`
+		Origin string `json:"origin"`
+		CallID string `json:"call_id"`
+		Turn   int    `json:"turn"`
+	}
+	_ = json.Unmarshal(calls[0].Data, &c0)
+	if c0.Tool != "echo" || c0.Origin != "model" || c0.CallID != "call_1" || c0.Turn != 1 {
+		t.Errorf("first tool_call = %s", calls[0].Data)
+	}
+	if bytes.Contains(calls[0].Data, []byte("sk-tool-1")) {
+		t.Errorf("tool arguments were not scrubbed: %s", calls[0].Data)
+	}
+	var r0, r1 struct {
+		Call   string `json:"call"`
+		CallID string `json:"call_id"`
+		Status string `json:"status"`
+		Output string `json:"output"`
+	}
+	_ = json.Unmarshal(results[0].Data, &r0)
+	_ = json.Unmarshal(results[1].Data, &r1)
+	if r0.Call != calls[0].ID || r0.CallID != "call_1" || r0.Status != "ok" || r0.Output != "echoed" {
+		t.Errorf("first tool_result = %s", results[0].Data)
+	}
+	if r1.Call != calls[1].ID || r1.Status != "error" || !strings.Contains(r1.Output, "it broke") {
+		t.Errorf("a failing tool must be a result with status error: %s", results[1].Data)
+	}
+	// Each response names its request; the usage the backend reported is kept.
+	for i := range reqs {
+		var d struct {
+			Request string `json:"request"`
+			Status  string `json:"status"`
+			Usage   struct{ Prompt, Completion int }
+		}
+		_ = json.Unmarshal(resps[i].Data, &d)
+		if d.Request != reqs[i].ID || d.Status != "ok" || d.Usage.Prompt != 5 {
+			t.Errorf("response %d = %s", i, resps[i].Data)
+		}
+	}
+	// The second request's prompt includes the tool round: a different hash.
+	var q0, q1 struct {
+		Hash string `json:"prompt_sha256"`
+		Tail struct {
+			N int `json:"history_messages"`
+		} `json:"tail"`
+	}
+	_ = json.Unmarshal(reqs[0].Data, &q0)
+	_ = json.Unmarshal(reqs[1].Data, &q1)
+	if q0.Hash == "" || q0.Hash == q1.Hash || q1.Tail.N <= q0.Tail.N {
+		t.Errorf("requests should see a growing prompt: %s / %s", reqs[0].Data, reqs[1].Data)
+	}
+}
+
+func TestToolLoop_AFailedModelCallIsLogged(t *testing.T) {
+	a, path := agentWithLog(t)
+	client := &scriptedToolClient{steps: []toolStep{{err: errors.New("backend down")}}}
+	a.Client = client
+	reg := NewToolRegistry()
+	reg.RegisterTool("echo", "e", map[string]any{"type": "object"}, func(context.Context, map[string]any) (string, error) { return "", nil })
+	ex := NewToolExecutor(reg, client, a.Config)
+	ex.Events = a.toolEvents()
+	if _, _, err := ex.RunToolLoop(context.Background(), []Message{{Role: "user", Content: "x"}}, io.Discard); err == nil {
+		t.Fatal("want the backend error")
+	}
+	resps := eventsOf(t, a, path, KindModelResponse)
+	if len(resps) != 1 || !strings.Contains(string(resps[0].Data), `"status":"error"`) {
+		t.Errorf("responses = %v", resps)
+	}
+}
+
+func TestToolEvents_NilWhenNoLogIsOpen(t *testing.T) {
+	a := newTestAgent(t)
+	if a.toolEvents() != nil {
+		t.Error("toolEvents must be a nil interface with no log, so the executor skips it")
+	}
+}
+
+func TestLoggedChat_OnePairPerCall(t *testing.T) {
+	a, path := agentWithLog(t)
+	a.Client = &scriptedToolClient{steps: []toolStep{{text: "one"}, {err: errors.New("nope")}, {err: context.Canceled}}}
+	a.logUserInput("hi")
+	var out strings.Builder
+	if _, err := a.loggedChat(context.Background(), []Message{{Role: "user", Content: "a"}}, &out); err != nil || out.String() != "one" {
+		t.Fatalf("first call: %v %q (output must still reach the caller's writer)", err, out.String())
+	}
+	_, _ = a.loggedChat(context.Background(), []Message{{Role: "user", Content: "a"}, {Role: "user", Content: "b"}}, io.Discard)
+	_, _ = a.loggedChat(context.Background(), []Message{{Role: "user", Content: "c"}}, io.Discard)
+	resps := eventsOf(t, a, path, KindModelResponse)
+	if n := len(eventsOf(t, a, path, KindModelRequest)); n != 3 || len(resps) != 3 {
+		t.Fatalf("%d requests and %d responses, want 3 and 3 (a retry is a call of its own)", n, len(resps))
+	}
+	for i, want := range []string{"ok", "error", "cancelled"} {
+		if !strings.Contains(string(resps[i].Data), `"status":"`+want+`"`) {
+			t.Errorf("response %d = %s, want status %s", i, resps[i].Data, want)
+		}
 	}
 }
