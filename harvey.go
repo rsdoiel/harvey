@@ -204,6 +204,11 @@ type Agent struct {
 	statHistory                []ChatStats    // rolling window of recent turn stats
 	AuditBuffer                *AuditBuffer   // in-memory audit log ring buffer; nil until initialized
 	DebugLog                   *DebugLog      // JSONL diagnostic log; nil when --debug not set
+	SessionLog                 *SessionLog    // append-only JSONL record of this session (DR-0036); nil when none is open
+	logTurn                    int            // user turns logged this session; the turn field of the events
+	logLastID                  string         // id of the last event appended; the tail.to of a manifest
+	logFirstDialogID           string         // id of the first user_input; the tail.from of a manifest
+	sessionLogWarned           bool           // a failed log write has been reported once
 	Backend                    ManagedBackend // active inference backend; nil when no backend is wired
 	hailoDevicePath            string         // Hailo card device node; "" = /dev/hailo0 (tests set it)
 	hailoUnitPath              string         // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service

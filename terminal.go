@@ -367,6 +367,7 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 	}
 	defer func() {
+		a.closeSessionLog("quit")
 		if a.Recorder != nil {
 			path := a.Recorder.Path()
 			a.Recorder.Close()
@@ -546,6 +547,7 @@ func (a *Agent) Run(out io.Writer) error {
 		} else {
 			a.Recorder = rec
 			fmt.Fprintf(out, green("✓")+" Recording to %s\n", recPath)
+			a.openSessionLog(recPath, "", out)
 		}
 	}
 
@@ -581,6 +583,7 @@ func (a *Agent) Run(out io.Writer) error {
 			} else {
 				a.Recorder = rec
 				fmt.Fprintf(out, green("✓")+" Recording continuation to %s\n", contRecPath)
+				a.openSessionLog(contRecPath, a.Config.Session.ReplayPath, out)
 			}
 		}
 		fmt.Fprintln(out, cyan(bold(sep)))
@@ -935,6 +938,7 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 
 		le.AppendHistory(input)
+		a.logUserInput(input)
 
 		// Intercept skill-related questions and answer directly from the
 		// catalog. Small models (e.g. tinyllama) reliably ignore the
@@ -1114,7 +1118,7 @@ func keepFirstFailure(existing, candidate error) error {
  *       fmt.Fprintln(out, reply)
  *   }
  */
-func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool, charName string) (string, ChatStats, error) {
+func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, reader *bufio.Reader, interactive bool, charName string) (reply string, retStats ChatStats, retErr error) {
 	// Fit the system prompt to the model in use now: a /model switch since the
 	// last turn may have changed its prompt limit, in either direction.
 	a.refreshSystemPrompt(out)
@@ -1180,6 +1184,13 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		if a.ActiveSkill != "" {
 			spLabel += " · " + a.ActiveSkill
 		}
+	}
+
+	// One request and one response per turn for now: the retries below (a smaller
+	// prompt, the tool-loop fallback, the file-content retry) are further model
+	// calls the log does not yet record as requests of their own.
+	if reqID := a.logModelRequest(used, limit); reqID != "" {
+		defer func() { a.logModelResponse(reqID, reply, retStats, retErr) }()
 	}
 
 	histLenBeforeChat := len(a.History)
