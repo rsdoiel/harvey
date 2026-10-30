@@ -338,16 +338,19 @@ func (a *Agent) toolEvents() ToolEvents {
 }
 
 func (t agentToolEvents) ToolCall(tc anyllm.ToolCall) string {
-	return t.a.logEvent(KindToolCall, LevelInfo, map[string]any{
+	id := t.a.logEvent(KindToolCall, LevelInfo, map[string]any{
 		"turn":    t.a.logTurn,
 		"tool":    tc.Function.Name,
 		"origin":  "model",
 		"call_id": tc.ID,
 		"args":    t.a.logContent(tc.Function.Arguments),
 	})
+	t.a.permCall = permissionCall{id: id, model: true}
+	return id
 }
 
 func (t agentToolEvents) ToolResult(call string, tc anyllm.ToolCall, output string, failed bool, elapsed time.Duration) {
+	t.a.permCall = permissionCall{}
 	status := "ok"
 	if failed {
 		status = "error"
@@ -501,12 +504,15 @@ func (a *Agent) logShellCall(cmdLine string) string {
 		return ""
 	}
 	// A user-origin call has no provider call id: the result cites this
-	// event's own id.
-	return a.logEvent(KindToolCall, LevelInfo, map[string]any{
+	// event's own id. It is the call in flight until its result is logged, so
+	// the permission decision that follows can name it.
+	id := a.logEvent(KindToolCall, LevelInfo, map[string]any{
 		"tool":   "shell",
 		"origin": "user",
 		"args":   map[string]any{"cmd": a.logContent(cmdLine), "cwd": "<workspace>"},
 	})
+	a.permCall = permissionCall{id: id}
+	return id
 }
 
 /** logShellResult records how a !cmd ended. Every command that started has a
@@ -529,6 +535,7 @@ func (a *Agent) logShellCall(cmdLine string) string {
  *   resID := a.logShellResult(callID, "ok", &zero, out, false, nil)
  */
 func (a *Agent) logShellResult(callID, status string, exit *int, output []byte, truncated bool, runErr error) string {
+	a.permCall = permissionCall{}
 	if a.SessionLog == nil || callID == "" {
 		return ""
 	}

@@ -721,12 +721,14 @@ func (a *Agent) Run(out io.Writer) error {
 				continue
 			}
 
+			// The call is logged first so the permission decision below can name it.
+			shellCallID := a.logShellCall(cmdLine)
+
 			// Log allowed command execution
 			if a.AuditBuffer != nil {
 				a.AuditBuffer.Log(ActionCommand, program+" "+strings.Join(args, " "), StatusAllowed)
 			}
 
-			shellCallID := a.logShellCall(cmdLine)
 			var capBuf bytes.Buffer
 			mw := io.MultiWriter(out, &capBuf)
 

@@ -85,6 +85,11 @@ type AuditBuffer struct {
 	capacity int      // maximum capacity
 	logFile  *os.File // optional persistent sink; nil = in-memory only
 	LogPath  string   // path of the open log file, empty when none
+
+	// OnEvent, when set, is told of each event written with Log, after it is
+	// recorded and outside the buffer's lock. The agent uses it to write the
+	// session log's permission events.
+	OnEvent func(AuditEvent)
 }
 
 // DefaultAuditBufferCapacity is the default size of the audit ring buffer.
@@ -178,12 +183,16 @@ func (b *AuditBuffer) CloseLogFile() {
 
 // Log is a convenience method that creates and adds an event in one call.
 func (b *AuditBuffer) Log(action AuditAction, details string, status AuditStatus) {
-	b.Add(AuditEvent{
+	e := AuditEvent{
 		Timestamp: time.Now(),
 		Action:    action,
 		Details:   details,
 		Status:    status,
-	})
+	}
+	b.Add(e)
+	if b.OnEvent != nil {
+		b.OnEvent(e)
+	}
 }
 
 // Get returns the last n events, most recent first.

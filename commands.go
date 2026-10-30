@@ -3730,6 +3730,7 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 	}
 
 	applyAll := false
+	defer func() { a.permScope = "" }()
 
 	// 1. Tagged code blocks — always offer to apply.
 	for _, b := range blocks {
@@ -3774,6 +3775,7 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 			return
 		case actionAll:
 			applyAll = true
+			a.permScope = "session" // the author's answer covers the writes that follow
 		}
 		if err := a.Workspace.WriteFile(b.path, []byte(b.content), 0o644); err != nil {
 			fmt.Fprintf(out, "  ✗ %s: %v\n", b.path, err)
@@ -3797,12 +3799,15 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 				choice, ended, answer := promptActionLine(reader, out, "Write: "+suggested, content)
 				if ended {
 					fmt.Fprintln(out, "\n  input ended; nothing written.")
+					a.logAuthorsChoice("write", suggested, actionQuit)
 				} else if choice == actionUnknown {
 					if !a.queueIfCommand(answer, out) {
 						fmt.Fprintf(out, "  did not understand %q; nothing written.\n", answer)
 					}
 				} else if choice != actionNo && choice != actionQuit {
 					dest = suggested
+				} else {
+					a.logAuthorsChoice("write", suggested, choice)
 				}
 			} else {
 				// No path known — ask the user to supply one.
@@ -3856,6 +3861,11 @@ func choiceStr(c actionChoice) string {
 
 // logAction records one agent action to the Recorder if one is active.
 func (a *Agent) logAction(kind, target string, choice actionChoice, outcome string) {
+	// "denied" is the permissions table refusing before anyone was asked; the
+	// audit buffer has already reported that as a rule decision.
+	if outcome != "denied" {
+		a.logAuthorsChoice(kind, target, choice)
+	}
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordAgentAction(kind, target, choiceStr(choice), outcome)
 	}

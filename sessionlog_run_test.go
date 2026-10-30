@@ -100,6 +100,12 @@ func scriptedRun(t *testing.T, debug bool, lines ...string) string {
 // before the session starts, and the option of a model that calls tools.
 func scriptedRunWith(t *testing.T, debug bool, setup func(root string), tools bool, lines ...string) string {
 	t.Helper()
+	return scriptedRunFull(t, debug, setup, tools, nil, lines...)
+}
+
+// scriptedRunFull is scriptedRunWith with a last look at the agent before Run.
+func scriptedRunFull(t *testing.T, debug bool, setup func(root string), tools bool, tweak func(*Agent), lines ...string) string {
+	t.Helper()
 	a, ws := runFixture(t, false)
 	if setup != nil {
 		setup(ws.Root)
@@ -110,6 +116,9 @@ func scriptedRunWith(t *testing.T, debug bool, setup func(root string), tools bo
 	a.Config.Security.SafeMode = false
 	if debug {
 		a.Config.Debug = true
+	}
+	if tweak != nil {
+		tweak(a)
 	}
 	// The first line answers the workspace-profile onboarding prompt (Enter
 	// picks Blank), which a fresh workspace shows before the first turn.
@@ -175,7 +184,7 @@ func TestRun_WritesASessionLogBesideTheFountainFile(t *testing.T) {
 		"user_input", "model_request", "model_response",
 		"model_switch", "command",
 		"user_input", "model_request", "model_response",
-		"tool_call", "tool_result", "injection",
+		"tool_call", "permission", "tool_result", "injection",
 		"command",
 		"session_end",
 	}
@@ -463,5 +472,48 @@ func TestRun_ModelToolCallsAreLogged(t *testing.T) {
 	}
 	if !strings.Contains(string(last.Data), "TOOLDONE") {
 		t.Errorf("final response = %s", last.Data)
+	}
+}
+
+// With safe mode on, a !cmd outside the allowlist is refused: the log shows the
+// refusal, and no process was started, so there is no tool_call or tool_result.
+func TestRun_ASafeModeDenialIsAPermissionEventAndNothingElse(t *testing.T) {
+	dir := scriptedRunFull(t, false, nil, false, func(a *Agent) { a.Config.Security.SafeMode = true },
+		"!nosuchprogram_xyz --flag", "/exit")
+	logs, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	events, _, err := ReadSessionLog(logs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k := infoKinds(events); k != "permission command session_end" {
+		t.Fatalf("kinds = %s, want permission command session_end", k)
+	}
+	var d permData
+	_ = json.Unmarshal(events[1].Data, &d)
+	if d.Action != "run" || d.Decision != "deny" || d.Scope != "rule" || d.OutcomeOf != "" || d.Target.Text != "nosuchprogram_xyz --flag" {
+		t.Errorf("permission = %s, want run/deny/rule with no call to gate", events[1].Data)
+	}
+}
+
+func TestRun_AShellCommandRunsUnderAPermissionDecision(t *testing.T) {
+	dir := scriptedRunWith(t, false, nil, false, "!echo hi", "/exit")
+	logs, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	events, _, err := ReadSessionLog(logs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var call, perm Event
+	for _, e := range events {
+		switch e.Kind {
+		case KindToolCall:
+			call = e
+		case KindPermission:
+			perm = e
+		}
+	}
+	var d permData
+	_ = json.Unmarshal(perm.Data, &d)
+	if d.Action != "run" || d.Decision != "auto" || d.Scope != "rule" || d.OutcomeOf != call.ID || d.Target.Text != "echo hi" {
+		t.Errorf("permission = %s, want run/auto/rule gating %s", perm.Data, call.ID)
 	}
 }
