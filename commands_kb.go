@@ -114,9 +114,9 @@ func (a *Agent) knowledgeDBPath() string {
 // runKB runs the installed kb. Options before the verb are kept in place, and
 // -db is added in front unless the arguments already name one.
 func (a *Agent) runKB(args []string, out io.Writer) error {
-	bin, err := exec.LookPath("kb")
+	bin, err := lookKB()
 	if err != nil {
-		return Unavailablef("kb is not installed (or not on PATH). Install it with: %s", kbInstallHint)
+		return err
 	}
 	full := args
 	hasDB := false
@@ -169,7 +169,7 @@ func kbExitError(code int, timedOut bool) error {
 // unreadably only harvey's own are returned.
 func kbVerbNames() []string {
 	names := map[string]bool{"inject": true, "learn": true}
-	if bin, err := exec.LookPath("kb"); err == nil {
+	if bin, err := lookKB(); err == nil {
 		if raw, err := exec.Command(bin, "-json", "verbs").Output(); err == nil {
 			var t struct {
 				Verbs []struct {

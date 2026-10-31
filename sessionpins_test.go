@@ -73,6 +73,7 @@ func fakeKB(t *testing.T) {
 	dir := t.TempDir()
 	script := `#!/bin/sh
 case "$*" in
+  "-version") echo "kb ` + kbMinVersion + ` test" ;;
   "record show harvey/DR-0048") echo "harvey/DR-0048 accepted: the log can rebuild the prompt" ;;
   "--json observation show 592") echo '{"ID":592,"Body":"index rebuilds in 16 ms"}' ;;
   *) echo "no such row" >&2; exit 1 ;;

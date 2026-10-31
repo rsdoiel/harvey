@@ -16,7 +16,7 @@ func recordingKB(t *testing.T) (record string, setResult func(code, stderr strin
 	t.Helper()
 	dir := t.TempDir()
 	record = filepath.Join(dir, "calls")
-	script := "#!/bin/sh\nd=$(dirname \"$0\")\n{ pwd; for a in \"$@\"; do printf '%s\\n' \"$a\"; done; } > " + record + "\necho \"kb says hi\"\n[ -f \"$d/err\" ] && cat \"$d/err\" >&2\n[ -f \"$d/exit\" ] && exit $(cat \"$d/exit\")\nexit 0\n"
+	script := "#!/bin/sh\nd=$(dirname \"$0\")\n[ \"$1\" = \"-version\" ] && { echo 'kb " + kbMinVersion + " test'; exit 0; }\n{ pwd; for a in \"$@\"; do printf '%s\\n' \"$a\"; done; } > " + record + "\necho \"kb says hi\"\n[ -f \"$d/err\" ] && cat \"$d/err\" >&2\n[ -f \"$d/exit\" ] && exit $(cat \"$d/exit\")\nexit 0\n"
 	if err := os.WriteFile(filepath.Join(dir, "kb"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestKBPassthrough_isLogged(t *testing.T) {
 // completion and /help.
 func TestKBRegistry_ListsKBVerbsAndHarveysOwn(t *testing.T) {
 	dir := t.TempDir()
-	script := "#!/bin/sh\n[ \"$1 $2\" = \"-json verbs\" ] && echo '{\"verbs\":[{\"name\":\"search\"},{\"name\":\"observation\"}]}'\n"
+	script := "#!/bin/sh\n[ \"$1\" = \"-version\" ] && { echo 'kb " + kbMinVersion + " test'; exit 0; }\n[ \"$1 $2\" = \"-json verbs\" ] && echo '{\"verbs\":[{\"name\":\"search\"},{\"name\":\"observation\"}]}'\n"
 	if err := os.WriteFile(filepath.Join(dir, "kb"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,11 @@
 
 ### Changed
 
+- **harvey pairs with a kb version.** Every call to the installed `kb` first checks `kb -version` (once per process) against
+  the oldest release harvey works with, 0.0.29 (`kbMinVersion` in `kbversion.go`). A kb that is older, or whose version
+  cannot be read, is treated as unavailable: `/kb`, recall and the `recall_knowledge` tool report it (exit 69) and do not run
+  it, and `/kb` completion offers only harvey's own verbs. Raise `kbMinVersion` together with a fixture and a contract test
+  when harvey comes to depend on something a newer kb added. `codemeta.json` lists kb under `softwareRequirements`.
 - Knowledge recall for the prompt (DR-0037 item 4) runs the installed `kb -json concept recall` instead of linking the
   `knowledge` library: it still names each cited work and flags a retracted one with its note. A recalled row's text is kb's
   shortened excerpt, not the full body. `kb` must be installed for recall to work; without it recall reports that kb is

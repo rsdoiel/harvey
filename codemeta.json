@@ -21,7 +21,8 @@
     "Go >= 1.26.4"
   ],
   "softwareRequirements": [
-    "Ollama plus Ollama models"
+    "Ollama plus Ollama models",
+    "kb (github.com/rsdoiel/knowledge) >= 0.0.29"
   ],
   "softwareSuggestions": [
     "Go >= 1.26.4",

@@ -209,9 +209,9 @@ const kbRecallTimeout = 15 * time.Second
  *   out, _, code, err := runKBJSON(root, db, 0, "project", "list")
  */
 func runKBJSON(dir, db string, timeout time.Duration, args ...string) (stdout, stderr []byte, exit int, err error) {
-	bin, lerr := exec.LookPath("kb")
+	bin, lerr := lookKB()
 	if lerr != nil {
-		return nil, nil, 0, Unavailablef("kb is not installed (or not on PATH). Install it with: %s", kbInstallHint)
+		return nil, nil, 0, lerr
 	}
 	if timeout <= 0 {
 		timeout = kbRecallTimeout

@@ -58,6 +58,7 @@ The Harvey name was inspired by the play of that name by Mary Chase. I saw paral
 ## Software Requirements
 
 - Ollama plus Ollama models
+- kb (github.com/rsdoiel/knowledge) >= 0.0.29
 
 
 ## Software Suggestions
