@@ -159,7 +159,14 @@ func TestRewriteOps_ApplyingThemGivesTheNewHistory(t *testing.T) {
 			}
 			raws = append(raws, b)
 		}
-		got := applyRewriteOps(tc.prev, raws, RenderOptions{})
+		var prevItems []PromptItem
+		for _, m := range tc.prev {
+			prevItems = append(prevItems, PromptItem{Msg: m})
+		}
+		var got []Message
+		for _, it := range applyRewriteOps(prevItems, raws, RenderOptions{}, "e") {
+			got = append(got, it.Msg)
+		}
 		if promptHash(got) != promptHash(tc.next) {
 			t.Errorf("%s: applying the ops gives %v, want %v", name, got, tc.next)
 		}
@@ -172,6 +179,7 @@ func TestRewriteOps_ApplyingThemGivesTheNewHistory(t *testing.T) {
 // events). A new direct write fails this test until it is logged and listed.
 func TestPromptAdditionsGoThroughTheLog(t *testing.T) {
 	allowed := map[string]int{
+		"assemble.go": 1, // assembleForTurn; logRewrite
 		// file -> number of lines that write the history directly
 		"builtin_tools.go":    2, // filter_context, summary_context; both logRewrite
 		"commands.go":         1, // /context clear; logRewrite
@@ -203,6 +211,84 @@ func TestPromptAdditionsGoThroughTheLog(t *testing.T) {
 		}
 		if n != allowed[f] {
 			t.Errorf("%s writes the history directly in %d place(s), the guard expects %d: log the change through addPrompt or logRewrite (DR-0048) and update the list", f, n, allowed[f])
+		}
+	}
+}
+
+func TestRebuildPrompts_AFailureInsideTheToolLoop(t *testing.T) {
+	scriptedFailAfterTool, scriptedTerminal = true, true
+	t.Cleanup(func() { scriptedFailAfterTool, scriptedTerminal = false, false })
+	dir := scriptedRunWith(t, true, writeNote, true, "read note.txt", "and again", "/exit")
+	reqs := checkRebuild(t, dir)
+	lp, _ := sessionPaths(t, dir)
+	events, _, _ := ReadSessionLog(lp)
+	var calls, failed int
+	for _, e := range events {
+		if e.Kind == KindToolCall {
+			calls++
+		}
+		if e.Kind == KindModelResponse && strings.Contains(string(e.Data), `"status":"error"`) {
+			failed++
+		}
+	}
+	if calls == 0 || failed == 0 {
+		t.Errorf("the scenario should make a tool call and then fail: %d calls, %d failed responses (%d requests)", calls, failed, len(reqs))
+	}
+}
+
+func TestRebuildPrompts_ARoutedTurnAndTheTurnsAroundIt(t *testing.T) {
+	dir := scriptedRunFull(t, true, nil, false, func(a *Agent) {
+		base := strings.TrimPrefix(a.Config.Ollama.URL, "http://")
+		a.Routes = NewRouteRegistry()
+		a.Routes.Add(&RouteEndpoint{Name: "pi2", URL: "ollama://" + base, Model: "llama3.2:3b", Kind: KindOllama})
+		a.Routes.Enabled = true
+	}, "hello", "@pi2 what is the weather there", "and now locally", "/exit")
+	checkRebuild(t, dir)
+}
+
+func TestRebuildPrompts_ChunkAnalysisThenAChatTurn(t *testing.T) {
+	scriptedTerminal = true
+	t.Cleanup(func() { scriptedTerminal = false })
+	dir := scriptedRunWith(t, true, func(root string) {
+		_ = os.WriteFile(filepath.Join(root, "doc.md"), []byte(chunkDoc()), 0o644)
+	}, false, "/read-chunks doc.md --chunk-size 300 summarise it", "and one more question", "/exit")
+	checkRebuild(t, dir)
+}
+
+func TestRebuildPrompts_PipelineThenAChatTurn(t *testing.T) {
+	scriptedReplies = []string{confident("Step one answer.", "0.9"), confident("Step two answer.", "0.95"), "plain reply"}
+	scriptedTerminal = true
+	t.Cleanup(func() { scriptedReplies, scriptedTerminal = nil, false })
+	dir := scriptedRunWith(t, true, func(root string) {
+		_ = os.WriteFile(filepath.Join(root, "s1.md"), []byte("First step: summarise the situation.\n"), 0o644)
+		_ = os.WriteFile(filepath.Join(root, "s2.md"), []byte("Second step: propose a fix.\n"), 0o644)
+	}, false, "/pipeline 70% s1.md s2.md", "and what next", "/exit")
+	reqs := checkRebuild(t, dir)
+	found := false
+	for _, m := range reqs[len(reqs)-1].Messages {
+		if m.Role == "assistant" && strings.Contains(m.Content, "Step two answer") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the pipeline's final answer should be in the next prompt: %+v", reqs[len(reqs)-1].Messages)
+	}
+}
+
+func TestRebuildPrompts_ARedactedSecretIsTheKnownGap(t *testing.T) {
+	dir := scriptedRun(t, true, "my password=hunter2secret is in use", "ok", "/exit")
+	lp, _ := sessionPaths(t, dir)
+	events, _, _ := ReadSessionLog(lp)
+	reqs := RebuildPrompts(events, RenderOptions{Blobs: BlobDir(lp)})
+	if len(reqs) == 0 {
+		t.Fatal("no requests")
+	}
+	if reqs[0].Stored == reqs[0].Rebuilt {
+		t.Errorf("the log is scrubbed and the hash is not, so a prompt holding a secret cannot rebuild to its hash (DR-0048 item 6)")
+	}
+	for _, m := range reqs[0].Messages {
+		if strings.Contains(m.Content, "hunter2secret") {
+			t.Errorf("the rebuilt prompt must not carry the secret: %q", m.Content)
 		}
 	}
 }

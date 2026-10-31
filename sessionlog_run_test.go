@@ -29,6 +29,9 @@ var scriptedTerminal bool
 // with an HTTP 500. Tests reset it with t.Cleanup.
 var scriptedFailOn int
 
+// scriptedFailAfterTool makes the model call that follows a tool result fail.
+var scriptedFailAfterTool bool
+
 // scriptedReplies, when set, gives the reply to the nth chat call of a scripted
 // run (it wins over scriptedReply for the calls it covers). Tests reset it with t.Cleanup.
 var scriptedReplies []string
@@ -84,6 +87,8 @@ func fakeOllama(t *testing.T, tools bool) *httptest.Server {
 				}
 				if !sawTool {
 					io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"read_file","arguments":{"path":"note.txt"}}}]},"done":true,"done_reason":"stop","prompt_eval_count":11,"eval_count":3}`+"\n")
+				} else if scriptedFailAfterTool {
+					http.Error(w, `{"error":"boom"}`, http.StatusInternalServerError)
 				} else {
 					io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":"TOOLDONE"},"done":false}`+"\n")
 					io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":20,"eval_count":1}`+"\n")

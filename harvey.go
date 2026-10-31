@@ -213,6 +213,7 @@ type Agent struct {
 	kbRun                      *kbRun            // identities and injections the running /kb subcommand reports; nil outside a logged one
 	permCall                   permissionCall    // the tool call in flight, so a permission event can name it
 	permScope                  string            // "session" once the author has answered all to a write offer; "" otherwise
+	lastManifest               *PromptManifest   // what assembleForTurn chose for the turn in progress; nil when it did not run
 	logInputText               string            // the line last logged as user_input, to tell a sent message that is the same
 	toolCallEvents             map[string]string // provider call id -> tool_call event id, for compaction sources
 	offerIndex, offerOf        int               // which of how many tagged blocks the running write offer is on; 0 outside one

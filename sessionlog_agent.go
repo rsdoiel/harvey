@@ -354,6 +354,11 @@ type callPurpose struct {
 // loop under it, and the retries. They are logged as assembled requests.
 const purposeTurn = "turn"
 
+// purposeRoute marks the call of a turn sent to a named route (@name). It is
+// logged like a turn request but names the route, and the prompt rebuilt from
+// the log does not include it: the history it sees is a window of the real one.
+const purposeRoute = "route"
+
 /** withCallPurpose says what a model call is for. The purpose "turn" is the
  * conversation itself; any other (chunk, synthesis, summary, ...) makes the
  * call an ad-hoc request that carries the purpose and, where there is one, a
@@ -436,8 +441,11 @@ func (a *Agent) logModelRequest(ctx context.Context, msgs []Message, toolCount i
 		"model":         modelFromClientName(clientName),
 		"prompt_sha256": promptHash(msgs),
 	}
-	if purpose.name == purposeTurn {
+	if purpose.name == purposeTurn || purpose.name == purposeRoute {
 		data["form"] = "assembled"
+		if purpose.name == purposeRoute {
+			data["route"] = purpose.source.(map[string]any)["route"]
+		}
 		data["policy"] = "replay"
 		data["pinned"] = []string{}
 		data["summaries"] = []string{}
@@ -445,6 +453,16 @@ func (a *Agent) logModelRequest(ctx context.Context, msgs []Message, toolCount i
 		data["tail"] = map[string]any{"from": a.logFirstDialogID, "to": a.logLastID, "history_messages": len(msgs)}
 		data["budget"] = map[string]any{"window": a.effectiveContextLimit(), "window_source": "unknown", "reserve": 0, "used_est": estimateTokens(HistoryText(msgs))}
 		data["template"] = "replay"
+		if m := a.lastManifest; m != nil {
+			// The assembler chose this prompt at the start of the turn (L7b); the
+			// request names what it is made of, by event, and what was left out.
+			data["policy"] = "assembled"
+			data["template"] = "assembled"
+			data["pinned"], data["summaries"], data["kb"] = nonNil(m.Pinned), nonNil(m.Summaries), nonNil(m.KB)
+			data["tail"] = map[string]any{"from": m.Tail.From, "to": a.logLastID, "turns": m.Tail.Turns, "history_messages": len(msgs)}
+			data["dropped"] = len(m.Dropped)
+			data["budget"] = map[string]any{"window": a.effectiveContextLimit(), "window_source": "unknown", "limit": m.Limit, "limit_source": m.LimitSource, "reserve": 0, "used_est": estimateTokens(HistoryText(msgs))}
+		}
 	} else {
 		name := purpose.name
 		if name == "" {
@@ -466,7 +484,10 @@ func (a *Agent) logModelRequest(ctx context.Context, msgs []Message, toolCount i
 	// The system prompt text is stored once per version (DR-0039). It can change
 	// without a model switch (a trimmed prompt, a skill catalog, /clear), so the
 	// request carries the text the first time it sees a new version.
-	if sysID != "" && sysID != a.logSystemID {
+	// An ad-hoc call has a system prompt of its own (a chunk analyser, a summary
+	// request) that is not the conversation's; its body holds it, and it must not
+	// change which version the log believes the conversation has.
+	if data["form"] == "assembled" && sysID != "" && sysID != a.logSystemID {
 		data["system_text"] = a.logContent(sysText)
 		a.logSystemID = sysID
 	}
@@ -871,4 +892,12 @@ func (a *Agent) logPipelineResult(callID, response string, score float64, err er
 		data["error"] = a.logContent(err.Error())
 	}
 	a.logEvent(KindToolResult, LevelInfo, data)
+}
+
+// nonNil returns s, or an empty list for nil, so the log writes [] and not null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

@@ -225,7 +225,10 @@ func DispatchToEndpointLogged(ctx context.Context, ep *RouteEndpoint, history []
 	}
 	if ac, ok := client.(*AnyLLMClient); ok && log != nil {
 		ac.CallLog = log
-		ctx = withCallPurpose(ctx, purposeTurn, nil)
+		// The routed prompt is a window of the history plus the line, sent to
+		// another server: part of the turn, but not the conversation's own
+		// prompt, so the request says which route it went to.
+		ctx = withCallPurpose(ctx, purposeRoute, map[string]any{"route": ep.Name})
 	}
 
 	var buf strings.Builder

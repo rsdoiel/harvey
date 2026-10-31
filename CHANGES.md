@@ -27,6 +27,15 @@
 - **`/rename` renames the whole session.** The `.spmd`, the session log and its `.blobs` directory move together; a name that
   is already taken is refused (exit 73) and nothing moves.
 
+- **The prompt for a turn is assembled from the session log.** When the active model's prompt limit is known and the
+  conversation is over it, the oldest whole turns are left out as before, but now the choice is made from the log and written
+  to it: the turn's `model_request` names the pinned items, the summaries, the recalled knowledge and the tail kept, how many
+  messages were left out and the limit. The prompt is ordered system prompt, pinned context, summaries, recalled knowledge,
+  then the turns, so a context pinned in the middle of a session moves to the front. When the log cannot reproduce the
+  history (a prompt that held a redacted secret) harvey falls back to the old trim. When the model's prompt limit is not known
+  but its context window is (`--context`, `ollama.context_length`, or probed), the prompt is kept to 85% of the window, which
+  leaves room for the reply; before, such a conversation was never trimmed. The `model_request` records which limit applied.
+
 ### Removed
 
 - **`/record` (`start`, `stop`, `status`) and `/help record`.** Every session is logged from the start, so there is nothing to

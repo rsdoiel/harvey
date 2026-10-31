@@ -1133,7 +1133,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	a.logTurnMessage(augmented)
 	a.AddMessage("user", augmented)
 
-	a.trimHistoryToBudget(out)
+	a.assembleForTurn(out)
 
 	// A model with a known prompt limit would answer HTTP 500, or stop
 	// responding, to a prompt past it. Refuse here with a message instead, and
