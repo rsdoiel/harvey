@@ -1,15 +1,13 @@
 package harvey
 
-// replay.go — ContinueFromFountain and ReplayFromFountain.
+// replay.go — parseFountainSession and ReplayFromSession.
 //
-// Both functions share parseFountainSession, which walks a Harvey-format
-// Fountain file and extracts ordered chat turns (user input + model reply).
-// Non-chat scenes (INT. AGENT MODE, INT. SKILL ...) are silently skipped.
-//
-// ContinueFromFountain pre-populates Agent history so the REPL resumes with
-// full context. ReplayFromFountain re-sends each user message to the current
-// backend, records fresh responses to a new Fountain file, and applies any
-// tagged code blocks with backup-before-overwrite protection.
+// parseFountainSession walks a Harvey-format Fountain file and extracts ordered
+// chat turns (user input + model reply); it is the reader of last resort for an
+// old session with no log (sessionload.go). ReplayFromSession re-sends each user
+// message of a past session to the current backend, logs fresh responses to a
+// new session log, and applies any tagged code blocks with
+// backup-before-overwrite protection.
 
 import (
 	"context"
@@ -144,39 +142,6 @@ func parseFountainSession(path string) (userName, modelName string, turns []Play
 	return userName, modelName, turns, nil
 }
 
-// ContinueFromFountain loads the chat history from a Harvey Fountain session
-// file and appends it to the Agent's current history so the conversation can
-// be resumed. Call this after the system prompt has been added to history.
-//
-// Parameters:
-//
-//	path (string) — path to a Harvey .fountain session file.
-//
-// Returns:
-//
-//	int   — number of chat turns loaded.
-//	error — if the file cannot be parsed.
-//
-// Example:
-//
-//	n, err := agent.ContinueFromFountain("session.fountain")
-//	fmt.Printf("Loaded %d turns\n", n)
-func (a *Agent) ContinueFromFountain(path string) (int, error) {
-	_, _, turns, err := parseFountainSession(path)
-	if err != nil {
-		return 0, err
-	}
-	for _, t := range turns {
-		if t.UserInput != "" {
-			a.AddMessage("user", t.UserInput)
-		}
-		if t.ModelReply != "" {
-			a.AddMessage("assistant", t.ModelReply)
-		}
-	}
-	return len(turns), nil
-}
-
 // ReplayFromSession re-sends each user message of a past session to the
 // current LLM backend and writes the answers to a new session: a log of its
 // own, marked as a replay of the source, and the Fountain file rendered from
@@ -249,6 +214,7 @@ func (a *Agent) ReplayFromSession(ctx context.Context, srcPath, outPath string, 
 		fmt.Fprintf(out, "  [%d/%d] %s\n\n", i+1, len(turns), preview)
 
 		a.logUserInputOrigin(turn.UserInput, "", "replay")
+		a.logTurnMessage(turn.UserInput)
 		a.AddMessage("user", turn.UserInput)
 
 		var buf strings.Builder

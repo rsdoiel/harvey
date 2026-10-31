@@ -162,7 +162,7 @@ func kbInject(a *Agent, args []string, out io.Writer) error {
 		injectRef = fmt.Sprintf("kb:project:%d", projectID)
 	}
 	a.noteKBInjection(injectRef, "[knowledge base context]\n\n"+md)
-	a.AddMessage("user", "[knowledge base context]\n\n"+md)
+	a.addPrompt("user", "kb-inject", "[knowledge base context]\n\n"+md)
 	fmt.Fprintf(out, green("✓")+" KB context for %s injected (%d bytes).\n", label, len(md))
 	return nil
 }

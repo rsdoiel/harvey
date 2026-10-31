@@ -59,6 +59,9 @@ type ToolCapable interface {
 type ToolEvents interface {
 	ToolCall(tc anyllm.ToolCall) string
 	ToolResult(call string, tc anyllm.ToolCall, output string, failed bool, elapsed time.Duration)
+	// Compacted tells the log that the round made by the tool calls with these
+	// ids was shortened in the history before the next model call (DR-0048).
+	Compacted(callIDs []string)
 }
 
 /** ToolExecutor drives the multi-turn tool call loop between the LLM and the
@@ -205,6 +208,13 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 		// We wait until the next iteration so the current round's full results are
 		// always available when the LLM needs them.
 		if e.ToolResultCompaction && prevRoundStart >= 0 {
+			if e.Events != nil && prevRoundStart < len(history) {
+				var ids []string
+				for _, tc := range history[prevRoundStart].ToolCalls {
+					ids = append(ids, tc.ID)
+				}
+				e.Events.Compacted(ids)
+			}
 			compactToolRound(history, prevRoundStart)
 		}
 

@@ -191,7 +191,7 @@ func loadSkillAs(a *Agent, skill *SkillMeta, out io.Writer, origin string) error
 	if skill.Body == "" {
 		return Negativef("skill %q has no body content", skill.Name)
 	}
-	a.AddMessage("user", fmt.Sprintf("[skill: %s]\n\n%s", skill.Name, skill.Body))
+	a.addPrompt("user", "skill", fmt.Sprintf("[skill: %s]\n\n%s", skill.Name, skill.Body))
 	a.ActiveSkill = skill.Name
 	a.logSkillLoad(skill, origin)
 	fmt.Fprintf(out, "  ✓ Skill %q loaded into context (%d chars).\n", skill.Name, len(skill.Body))

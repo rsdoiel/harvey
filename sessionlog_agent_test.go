@@ -218,9 +218,9 @@ func TestToolLoop_LogsEachToolCallAndItsResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The model calls are logged by the client, which this scripted double is
-	// not; the loop logs the tools. Each call is logged when it is made, so its
+	// not; the loop logs the tools and the shortening of a finished round. Each call is logged when it is made, so its
 	// result follows before the next call starts.
-	if got, want := infoKinds(events), "user_input tool_call tool_result tool_call tool_result"; got != want {
+	if got, want := infoKinds(events), "user_input tool_call tool_result tool_call tool_result compaction"; got != want {
 		t.Fatalf("kinds\n got: %s\nwant: %s", got, want)
 	}
 	calls := eventsOf(t, a, path, KindToolCall)

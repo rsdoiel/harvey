@@ -408,7 +408,7 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 	}
 
 	// All steps passed — append final response to history.
-	a.AddMessage("assistant", prevResponse)
+	a.addPrompt("assistant", "pipeline", prevResponse)
 
 	fmt.Fprintln(out, green("✓")+" Pipeline complete.")
 	return nil

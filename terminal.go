@@ -795,7 +795,7 @@ func (a *Agent) Run(out io.Writer) error {
 				sb.WriteString("\n... (output truncated)")
 			}
 			sb.WriteString("\n```\n")
-			a.AddMessage("user", sb.String())
+			a.addPrompt("user", "shell", sb.String())
 			fmt.Fprintf(out, dim("  %d bytes added to context%s.\n"), len(output), exitNote)
 			{
 				var exitPtr *int
@@ -1130,6 +1130,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	}
 
 	augmented += stmWarnNudge(a)
+	a.logTurnMessage(augmented)
 	a.AddMessage("user", augmented)
 
 	a.trimHistoryToBudget(out)
@@ -1138,7 +1139,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	// responding, to a prompt past it. Refuse here with a message instead, and
 	// take the message back out so the conversation stays usable.
 	if err := a.promptBudgetError(); err != nil {
-		a.History = a.History[:len(a.History)-1]
+		a.dropLastMessage("failed")
 		return "", ChatStats{}, err
 	}
 
@@ -1198,7 +1199,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	a.ActiveStatus = nil
 
 	if ctx.Err() != nil || errors.Is(chatErr, context.Canceled) {
-		a.History = a.History[:len(a.History)-1]
+		a.dropLastMessage("cancelled")
 		return "", ChatStats{}, context.Canceled
 	}
 	// A failure that looks like an oversize prompt gets one retry on a smaller
@@ -1223,12 +1224,12 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		stats, chatErr = a.Client.Chat(fallbackCtx, a.History, &buf)
 		cancelFallback()
 		if chatErr != nil {
-			a.History = a.History[:len(a.History)-1]
+			a.dropLastMessage("failed")
 			return "", ChatStats{}, fmt.Errorf("fallback: %w", chatErr)
 		}
 		// Fall through to the normal display and recording path.
 	} else if chatErr != nil {
-		a.History = a.History[:len(a.History)-1]
+		a.dropLastMessage("failed")
 		return "", ChatStats{}, chatErr
 	}
 
@@ -1247,8 +1248,8 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 			// Surgical rollback: remove only the assistant refusal; preserve
 			// any tool-call/result pairs RunToolLoop added before the refusal
 			// so the retry sees the full prior context.
-			a.History = a.History[:len(a.History)-1]
-			a.AddMessage("user", retryAugmented)
+			a.dropLastMessage("retry")
+			a.addPrompt("user", "retry", retryAugmented)
 			buf.Reset()
 			var retryStats ChatStats
 			if useStructuredTools {
@@ -1272,7 +1273,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 				stats = retryStats
 			} else {
 				// Retry failed — restore history and surface the error.
-				a.History = a.History[:len(a.History)-1]
+				a.dropLastMessage("failed")
 				return "", ChatStats{}, fmt.Errorf("retry: %w", chatErr)
 			}
 		}
@@ -1399,7 +1400,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 			" do not exist. Available tools: " +
 			strings.Join(availableToolNames(a), ", ") +
 			". Please retry using one of these exact tool names."
-		a.AddMessage("user", correction)
+		a.addPrompt("user", "correction", correction)
 	}
 	// Skip autoExecuteReply when the model already wrote files via tool calls —
 	// the response text may contain display-only code blocks (e.g. directory

@@ -201,23 +201,25 @@ type Agent struct {
 	sessionCompressed          bool   // true if rolling summary fired at least once this session
 	sessionTurns               int    // total completed user turns in this session (never rolls off)
 	commands                   map[string]*Command
-	statHistory                []ChatStats    // rolling window of recent turn stats
-	AuditBuffer                *AuditBuffer   // in-memory audit log ring buffer; nil until initialized
-	SessionLog                 *SessionLog    // append-only JSONL record of this session (DR-0036); nil when none is open
-	logTurn                    int            // user turns logged this session; the turn field of the events
-	logLastID                  string         // id of the last event appended; the tail.to of a manifest
-	logFirstDialogID           string         // id of the first user_input; the tail.from of a manifest
-	sessionLogWarned           bool           // a failed log write has been reported once
-	logModel                   ModelRef       // backend and model last written to the log; the from of the next model_switch
-	logSystemID                string         // id of the system prompt text last written to the log
-	kbRun                      *kbRun         // identities and injections the running /kb subcommand reports; nil outside a logged one
-	permCall                   permissionCall // the tool call in flight, so a permission event can name it
-	permScope                  string         // "session" once the author has answered all to a write offer; "" otherwise
-	offerIndex, offerOf        int            // which of how many tagged blocks the running write offer is on; 0 outside one
-	Backend                    ManagedBackend // active inference backend; nil when no backend is wired
-	hailoDevicePath            string         // Hailo card device node; "" = /dev/hailo0 (tests set it)
-	hailoUnitPath              string         // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service
-	ActiveRoute                string         // session-sticky route name; when set, prompts are auto-dispatched via @NAME
+	statHistory                []ChatStats       // rolling window of recent turn stats
+	AuditBuffer                *AuditBuffer      // in-memory audit log ring buffer; nil until initialized
+	SessionLog                 *SessionLog       // append-only JSONL record of this session (DR-0036); nil when none is open
+	logTurn                    int               // user turns logged this session; the turn field of the events
+	logLastID                  string            // id of the last event appended; the tail.to of a manifest
+	logFirstDialogID           string            // id of the first user_input; the tail.from of a manifest
+	sessionLogWarned           bool              // a failed log write has been reported once
+	logModel                   ModelRef          // backend and model last written to the log; the from of the next model_switch
+	logSystemID                string            // id of the system prompt text last written to the log
+	kbRun                      *kbRun            // identities and injections the running /kb subcommand reports; nil outside a logged one
+	permCall                   permissionCall    // the tool call in flight, so a permission event can name it
+	permScope                  string            // "session" once the author has answered all to a write offer; "" otherwise
+	logInputText               string            // the line last logged as user_input, to tell a sent message that is the same
+	toolCallEvents             map[string]string // provider call id -> tool_call event id, for compaction sources
+	offerIndex, offerOf        int               // which of how many tagged blocks the running write offer is on; 0 outside one
+	Backend                    ManagedBackend    // active inference backend; nil when no backend is wired
+	hailoDevicePath            string            // Hailo card device node; "" = /dev/hailo0 (tests set it)
+	hailoUnitPath              string            // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service
+	ActiveRoute                string            // session-sticky route name; when set, prompts are auto-dispatched via @NAME
 	// ActiveStatus is the current turn's StatusReporter, set by runChatTurn
 	// alongside the ToolExecutor's own Status field and cleared once the
 	// turn's spinner stops. Lets tool handlers (which capture *Agent via
@@ -332,8 +334,8 @@ func (a *Agent) AddMessage(role, content string) {
  *   a.foldBackTurn(input, reply)
  */
 func (a *Agent) foldBackTurn(userContent, assistantContent string) {
-	a.AddMessage("user", userContent)
-	a.AddMessage("assistant", assistantContent)
+	a.addPrompt("user", "fold", userContent)
+	a.addPrompt("assistant", "fold", assistantContent)
 }
 
 /** AddMessageParts appends a multimodal message to the conversation history.
@@ -361,17 +363,19 @@ func (a *Agent) AddMessageParts(role string, parts []anyllm.ContentPart) {
  *   agent.ClearHistory()
  */
 func (a *Agent) ClearHistory() {
+	before := a.historySnapshot()
 	if a.Config.SystemPrompt != "" {
 		text, _ := a.systemPromptText()
 		a.History = []Message{{Role: "system", Content: text}}
 	} else {
 		a.History = nil
 	}
+	a.logRewrite("clear", before) // the pinned context below is added, and logged, after it
 	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Memory.InjectOnStart {
 		a.memoryContextPending = true
 	}
 	if a.PinnedContext != "" {
-		a.AddMessage("user", "[pinned context]\n\n"+a.PinnedContext)
+		a.addPrompt("user", "pinned", "[pinned context]\n\n"+a.PinnedContext)
 	}
 	a.ActiveSkill = ""
 	a.LastRAGInfo = nil
@@ -410,7 +414,7 @@ func (a *Agent) injectMemoryContext(query string) {
 		totalTokens += r.Tokens
 	}
 	a.sessionInjectedTokens += totalTokens
-	a.AddMessage("user", FormatContext(results))
+	a.addPrompt("user", "memory", FormatContext(results))
 	a.logKBInjections(recallResult, results)
 }
 

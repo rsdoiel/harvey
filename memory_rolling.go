@@ -117,6 +117,8 @@ func CompressHistory(a *Agent, keepTurns int, out io.Writer) error {
 	}
 	newHistory = append(newHistory, synth)
 	newHistory = append(newHistory, recentTurns...)
+	before := a.historySnapshot()
 	a.History = newHistory
+	a.logRewrite("summary", before)
 	return nil
 }

@@ -292,10 +292,10 @@ func (a *Agent) ContinueFromSession(path string) (int, error) {
 	}
 	for _, t := range info.Turns {
 		if t.UserInput != "" {
-			a.AddMessage("user", t.UserInput)
+			a.addPrompt("user", "resume", t.UserInput)
 		}
 		if t.ModelReply != "" {
-			a.AddMessage("assistant", t.ModelReply)
+			a.addPrompt("assistant", "resume", t.ModelReply)
 		}
 	}
 	return len(info.Turns), nil

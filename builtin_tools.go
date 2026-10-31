@@ -1008,7 +1008,9 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				), nil
 			}
 
+			before := a.historySnapshot()
 			a.History = keep
+			a.logRewrite("filter", before)
 
 			return fmt.Sprintf("Filtered %d messages matching %q.", removed, criteria), nil
 		},
@@ -1187,7 +1189,9 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			}
 			newHistory = append(newHistory, summaryMsg)
 			newHistory = append(newHistory, keep...)
+			before := a.historySnapshot()
 			a.History = newHistory
+			a.logRewrite("summary", before)
 
 			return fmt.Sprintf("Summarised %d turns into 1 entry (~%d tokens saved).", n, tokensSaved), nil
 		},

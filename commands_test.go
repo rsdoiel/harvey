@@ -1172,7 +1172,7 @@ func TestSessionUse_aliasForContinue(t *testing.T) {
 
 // TestCmdResume_aliasForSessionUse verifies that /resume FILE behaves
 // identically to /session use FILE — /resume is a thin discoverability alias
-// (matching the --resume flag's name) over the same ContinueFromFountain path.
+// (matching the --resume flag's name) over the same ContinueFromSession path.
 func TestCmdResume_aliasForSessionUse(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/test.spmd"

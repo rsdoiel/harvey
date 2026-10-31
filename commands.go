@@ -1956,7 +1956,7 @@ func cmdRead(a *Agent, args []string, out io.Writer) error {
 	if ok == 0 {
 		return failed
 	}
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "read", sb.String())
 	fmt.Fprintf(out, "  %d file(s) added to context.\n", ok)
 	return failed
 }
@@ -2292,7 +2292,7 @@ func cmdReadDir(a *Agent, args []string, out io.Writer) error {
 		return Negativef("read-dir: no readable files found in %s", dirArg)
 	}
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "read-dir", sb.String())
 	if stopped {
 		fmt.Fprintf(out, "  %d file(s) added (%d bytes). Reached %d KB cap — narrow scope with a subdirectory path or --depth.\n",
 			ok, totalBytes, defaultMaxReadDirBytes/1024)
@@ -2418,7 +2418,7 @@ func cmdReadPDF(a *Agent, args []string, out io.Writer) error {
 	fmt.Fprintln(&sb)
 	sb.WriteString(result.Text)
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "read-pdf", sb.String())
 
 	// Count non-empty injected pages for the confirmation message.
 	injected := 0
@@ -2586,14 +2586,14 @@ func attachImage(a *Agent, filePath, base string, data []byte, mime string, out 
 				URL: "data:" + mime + ";base64," + encoded,
 			}},
 		}
-		a.AddMessageParts("user", parts)
+		a.addPromptParts("user", "attach", parts)
 		fmt.Fprintf(out, "  ✓ %s attached natively (%s, %s)\n",
 			base, mime, formatBytes(int64(len(data))))
 	} else {
 		text := fmt.Sprintf(
 			"[attached: %s — %s, %s — vision not available on current route; switch to a vision-capable route to process this image natively]",
 			base, mime, formatBytes(int64(len(data))))
-		a.AddMessage("user", text)
+		a.addPrompt("user", "attach", text)
 		fmt.Fprintf(out, "  ✓ %s attached as text description (route has no vision capability)\n", base)
 		fmt.Fprintln(out, "     Tip: use @name to route the next turn to a vision-capable endpoint.")
 	}
@@ -2621,7 +2621,7 @@ func attachText(a *Agent, filePath, base string, data []byte, mime string, out i
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "[attached: %s]\n\n", base)
 	sb.Write(data)
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "attach", sb.String())
 	fmt.Fprintf(out, "  ✓ %s attached as text (%s)\n", base, formatBytes(int64(len(data))))
 	return nil
 }
@@ -2849,7 +2849,7 @@ func cmdRun(a *Agent, args []string, out io.Writer) error {
 	}
 	sb.WriteString("\n```\n")
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "run", sb.String())
 	fmt.Fprintf(out, "  %d bytes of output added to context%s.\n", len(output), exitNote)
 	return nil
 }
@@ -2943,7 +2943,7 @@ func cmdSearch(a *Agent, args []string, out io.Writer) error {
 		sb.WriteString(fmt.Sprintf("... (results truncated at %d matches)\n", maxSearchMatches))
 	}
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "search", sb.String())
 	fmt.Fprintf(out, "  %d match(es) for %q added to context", len(matches), args[0])
 	if truncated {
 		fmt.Fprint(out, " (truncated)")
@@ -3032,7 +3032,7 @@ func cmdGit(a *Agent, args []string, out io.Writer) error {
 	}
 	sb.WriteString("\n```\n")
 
-	a.AddMessage("user", sb.String())
+	a.addPrompt("user", "git", sb.String())
 	fmt.Fprintf(out, "  %d bytes of output added to context.\n", len(output))
 	return gitFailed
 }
@@ -3154,7 +3154,7 @@ func cmdSummarize(a *Agent, args []string, out io.Writer) error {
 
 	// Replace history: system prompt + pinned context + summary.
 	a.ClearHistory()
-	a.AddMessage("user", "[Conversation summary]\n\n"+summary)
+	a.addPrompt("user", "summary", "[Conversation summary]\n\n"+summary)
 	fmt.Fprintf(out, "  History condensed to %d chars.\n", len(summary))
 	return nil
 }
@@ -3177,6 +3177,7 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
 	case "clear":
 		a.PinnedContext = ""
 		// Remove any existing pinned context message from history.
+		before := a.historySnapshot()
 		filtered := a.History[:0]
 		for _, m := range a.History {
 			if !(m.Role == "user" && strings.HasPrefix(m.Content, "[pinned context]")) {
@@ -3184,6 +3185,7 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
 			}
 		}
 		a.History = filtered
+		a.logRewrite("pinned", before)
 		fmt.Fprintln(out, "  Pinned context cleared.")
 
 	case "add":
@@ -3206,7 +3208,7 @@ func cmdContext(a *Agent, args []string, out io.Writer) error {
 			}
 		}
 		if !updated {
-			a.AddMessage("user", "[pinned context]\n\n"+a.PinnedContext)
+			a.addPrompt("user", "pinned", "[pinned context]\n\n"+a.PinnedContext)
 		}
 		fmt.Fprintf(out, "  Pinned context updated (%d chars).\n", len(a.PinnedContext))
 

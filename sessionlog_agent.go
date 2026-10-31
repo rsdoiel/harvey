@@ -150,6 +150,7 @@ func (a *Agent) logUserInputOrigin(input, route, origin string) {
 		return
 	}
 	a.logTurn++
+	a.logInputText = input
 	data := map[string]any{"text": a.logContent(input)}
 	if route != "" {
 		data["route"] = route
@@ -161,6 +162,171 @@ func (a *Agent) logUserInputOrigin(input, route, origin string) {
 	if a.logFirstDialogID == "" {
 		a.logFirstDialogID = id
 	}
+}
+
+/** addPrompt adds a message to the conversation history and records it in the
+ * session log as an injection with source "prompt", so the prompt can be
+ * rebuilt from the log alone (DR-0048). Every addition of a message that is
+ * not the model's own reply goes through here.
+ *
+ * Parameters:
+ *   role    (string) — "user", "system" or "assistant".
+ *   via     (string) — what added it: read, read-dir, read-pdf, attach, run,
+ *                      search, git, shell, summary, pinned, memory, kb-inject,
+ *                      skill, retry, correction, fold, resume, plan.
+ *   content (string) — the message text.
+ *
+ * Example:
+ *   a.addPrompt("user", "read", "[context: /read a.go]\n...")
+ */
+func (a *Agent) addPrompt(role, via, content string) {
+	a.logPromptMessage(role, via, content)
+	a.AddMessage(role, content)
+}
+
+// addPromptParts is addPrompt for a multimodal message. The parts, images
+// included, are kept as one blob of JSON.
+func (a *Agent) addPromptParts(role, via string, parts []anyllm.ContentPart) {
+	if a.SessionLog != nil {
+		if raw, err := json.Marshal(parts); err == nil {
+			a.logEvent(KindInjection, LevelInfo, map[string]any{
+				"source": "prompt", "via": via, "role": role, "turn": a.logTurn, "parts": a.logContentBlob(string(raw)),
+			})
+		}
+	}
+	a.AddMessageParts(role, parts)
+}
+
+// logPromptMessage writes the injection event for a message added to the history.
+func (a *Agent) logPromptMessage(role, via, content string) {
+	if a.SessionLog == nil {
+		return
+	}
+	a.logEvent(KindInjection, LevelInfo, map[string]any{
+		"source": "prompt", "via": via, "role": role, "turn": a.logTurn, "message": a.logContent(content),
+	})
+}
+
+// historySnapshot copies the history before a rewrite, so logRewrite can say
+// what the rewrite did. With no log open it returns nil and costs nothing.
+func (a *Agent) historySnapshot() []Message {
+	if a.SessionLog == nil {
+		return nil
+	}
+	return append([]Message(nil), a.History...)
+}
+
+/** logRewrite records that the history was rewritten, as a compaction event
+ * that says how to get the new list from the old one: ranges of the old list
+ * that were kept, and the messages that are new. A prompt rebuilt from the log
+ * applies it and gets the history exactly (DR-0048). Nothing is written if the
+ * history did not change.
+ *
+ * Parameters:
+ *   reason (string)    — trim, retry, summary, tool_result, clear, failed, cancelled, reset...
+ *   before ([]Message) — historySnapshot taken before the rewrite.
+ *
+ * Example:
+ *   before := a.historySnapshot()
+ *   a.History = trimmed
+ *   a.logRewrite("trim", before)
+ */
+func (a *Agent) logRewrite(reason string, before []Message) {
+	if a.SessionLog == nil {
+		return
+	}
+	ops, changed := rewriteOps(before, a.History)
+	if !changed {
+		return
+	}
+	for i, op := range ops {
+		if m, ok := op.(Message); ok { // a new message; its text is scrubbed like any logged text
+			ops[i] = map[string]any{"role": m.Role, "message": a.logContent(m.Content), "tool_call_id": m.ToolCallID, "tool_calls": m.ToolCalls, "parts": m.Parts}
+		}
+	}
+	a.logEvent(KindCompaction, LevelInfo, map[string]any{
+		"turn": a.logTurn, "reason": reason, "sources": []string{}, "through": a.logLastID, "ops": ops,
+	})
+}
+
+// dropLastMessage removes the last message of the history, the user message of
+// a turn that failed or was cancelled, and logs it.
+func (a *Agent) dropLastMessage(reason string) {
+	if len(a.History) == 0 {
+		return
+	}
+	before := a.historySnapshot()
+	a.History = a.History[:len(a.History)-1]
+	a.logRewrite(reason, before)
+}
+
+// rewriteOps describes next as a sequence of kept ranges of prev ([from, to),
+// as two-element arrays) and new messages, in order. It reports false when the
+// two lists are the same.
+func rewriteOps(prev, next []Message) (ops []any, changed bool) {
+	ops = []any{} // an empty list is a history emptied, not a missing field
+	key := func(m Message) string { b, _ := json.Marshal(m); return string(b) }
+	pk := make([]string, len(prev))
+	for i, m := range prev {
+		pk[i] = key(m)
+	}
+	cur := 0
+	run := [2]int{-1, -1}
+	flush := func() {
+		if run[0] >= 0 {
+			ops = append(ops, []int{run[0], run[1]})
+			run = [2]int{-1, -1}
+		}
+	}
+	for _, m := range next {
+		k := key(m)
+		found := -1
+		for i := cur; i < len(pk); i++ {
+			if pk[i] == k {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			flush()
+			ops = append(ops, m)
+			continue
+		}
+		if run[0] >= 0 && found == run[1] {
+			run[1] = found + 1
+		} else {
+			flush()
+			run = [2]int{found, found + 1}
+		}
+		cur = found + 1
+	}
+	flush()
+	changed = len(prev) != len(next)
+	if !changed {
+		for i := range prev {
+			if pk[i] != key(next[i]) {
+				changed = true
+				break
+			}
+		}
+	}
+	return ops, changed
+}
+
+// logTurnMessage records the user message of a chat turn as sent. It is the
+// line typed with whatever was prepended to it (file contents, recalled
+// context); when nothing was, the event says so instead of repeating the text.
+func (a *Agent) logTurnMessage(sent string) {
+	if a.SessionLog == nil {
+		return
+	}
+	data := map[string]any{"source": "prompt", "via": "turn", "role": "user", "turn": a.logTurn}
+	if sent == a.logInputText {
+		data["same"] = true
+	} else {
+		data["message"] = a.logContent(sent)
+	}
+	a.logEvent(KindInjection, LevelInfo, data)
 }
 
 // promptHash is the SHA-256 of the messages sent to the model. Under policy
@@ -362,7 +528,26 @@ func (t agentToolEvents) ToolCall(tc anyllm.ToolCall) string {
 		"args":    t.a.logContent(tc.Function.Arguments),
 	})
 	t.a.permCall = permissionCall{id: id, model: true}
+	if t.a.toolCallEvents == nil {
+		t.a.toolCallEvents = map[string]string{}
+	}
+	t.a.toolCallEvents[tc.ID] = id
 	return id
+}
+
+// Compacted logs the shortening of a finished tool round as a compaction event
+// naming the tool_call events it covers, so a prompt rebuilt from the log can
+// apply the same rewrite (DR-0048).
+func (t agentToolEvents) Compacted(callIDs []string) {
+	var sources []string
+	for _, c := range callIDs {
+		if id := t.a.toolCallEvents[c]; id != "" {
+			sources = append(sources, id)
+		}
+	}
+	t.a.logEvent(KindCompaction, LevelInfo, map[string]any{
+		"turn": t.a.logTurn, "reason": "tool_result", "sources": sources, "call_ids": callIDs,
+	})
 }
 
 func (t agentToolEvents) ToolResult(call string, tc anyllm.ToolCall, output string, failed bool, elapsed time.Duration) {

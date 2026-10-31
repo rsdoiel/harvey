@@ -212,10 +212,10 @@ func TestRun_WritesASessionLogBesideTheFountainFile(t *testing.T) {
 	}
 	want := []string{
 		"session_start",
-		"user_input", "model_request", "model_response",
+		"user_input", "injection", "model_request", "model_response",
 		"model_switch", "command",
-		"user_input", "model_request", "model_response",
-		"tool_call", "permission", "tool_result", "injection",
+		"user_input", "injection", "model_request", "model_response",
+		"tool_call", "permission", "injection", "tool_result", "injection",
 		"command",
 		"session_end",
 	}
@@ -330,6 +330,9 @@ func TestRun_WritesASessionLogBesideTheFountainFile(t *testing.T) {
 				From   string `json:"from"`
 			}
 			_ = json.Unmarshal(e.Data, &d)
+			if d.Source == "prompt" {
+				continue // a message added to the prompt (DR-0048), not the citation
+			}
 			if d.Source != "shell" || d.Origin != "user" || d.From != resultID || resultID == "" {
 				t.Errorf("shell injection = %s, want source shell, origin user, from %q", e.Data, resultID)
 			}
@@ -472,7 +475,7 @@ func TestRun_ModelToolCallsAreLogged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "user_input model_request model_response tool_call tool_result model_request model_response command"
+	want := "user_input injection model_request model_response tool_call tool_result compaction model_request model_response command"
 	if got := infoKinds(events[:len(events)-1]); got != want {
 		t.Fatalf("kinds\n got: %s\nwant: %s", got, want)
 	}

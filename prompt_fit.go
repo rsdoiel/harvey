@@ -247,7 +247,9 @@ func (a *Agent) trimHistoryToBudget(out io.Writer) {
 	if dropped == 0 {
 		return
 	}
+	before := a.historySnapshot()
 	a.History = trimmed
+	a.logRewrite("trim", before)
 	fmt.Fprintf(out, yellow("  ⚠")+" Trimmed %d earlier message(s) to fit the model's prompt limit (%d tokens).\n", dropped, limit)
 }
 
@@ -365,7 +367,9 @@ func (a *Agent) retryWithSmallerPrompt(ctx context.Context, err error, buf *stri
 			}
 			continue
 		}
+		before := a.historySnapshot()
 		a.History = msgs
+		a.logRewrite("retry", before)
 		a.learnPromptLimit(size, out)
 		return stats, true
 	}

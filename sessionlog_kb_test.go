@@ -48,7 +48,19 @@ type kbResultData struct {
 
 func kbEvents(t *testing.T, a *Agent, path string) (calls, results, injections []Event) {
 	t.Helper()
-	return eventsOf(t, a, path, KindKBCall), eventsOf(t, a, path, KindKBResult), eventsOf(t, a, path, KindInjection)
+	// The injection events that record a message added to the prompt (DR-0048)
+	// are the prompt's business, not the knowledge base's: skip them here.
+	var inj []Event
+	for _, e := range eventsOf(t, a, path, KindInjection) {
+		var d struct {
+			Source string `json:"source"`
+		}
+		_ = json.Unmarshal(e.Data, &d)
+		if d.Source != "prompt" {
+			inj = append(inj, e)
+		}
+	}
+	return eventsOf(t, a, path, KindKBCall), eventsOf(t, a, path, KindKBResult), inj
 }
 
 func TestKBCommand_SearchIsACallAndAResultNamingWhatItReturned(t *testing.T) {

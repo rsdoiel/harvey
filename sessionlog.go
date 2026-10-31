@@ -273,6 +273,8 @@ type SessionLog struct {
 	spillCap  int
 	now       func() time.Time
 	path      string
+	index     *SessionIndex
+	size      int64  // bytes written to the file; where the next line starts
 	stem      string // file and blobs-directory name; the session id until a rename
 	seq       int
 	closed    bool
@@ -308,7 +310,7 @@ func OpenSessionLog(opts SessionLogOptions) (*SessionLog, error) {
 		return nil, ClassedAs(ClassCantCreate, err)
 	}
 	l := &SessionLog{
-		f: f, path: path, stem: opts.Session, dir: opts.Dir, session: opts.Session, workspace: opts.Start.Workspace,
+		f: f, path: path, index: newSessionIndex(path), stem: opts.Session, dir: opts.Dir, session: opts.Session, workspace: opts.Start.Workspace,
 		debug: opts.Debug, spillCap: opts.SpillCap, now: opts.Now,
 	}
 	if l.spillCap <= 0 {
@@ -409,6 +411,8 @@ func (l *SessionLog) appendLocked(kind EventKind, level EventLevel, data any) (s
 		return "", ClassedAs(ClassIO, err)
 	}
 	l.seq++
+	l.index.add(Event{ID: id, Kind: kind, Level: level, Data: raw}, l.size, len(line))
+	l.size += int64(len(line)) + 1
 	return id, nil
 }
 
@@ -504,6 +508,16 @@ func (l *SessionLog) ContentBlob(text string) (Content, error) {
  */
 func (l *SessionLog) Path() string { return l.path }
 
+/** Index returns the live index of this log, updated by every append.
+ *
+ * Returns:
+ *   *SessionIndex — the index; never nil.
+ *
+ * Example:
+ *   last := log.Index().LastTurns(4)
+ */
+func (l *SessionLog) Index() *SessionIndex { return l.index }
+
 /** Rename moves the log, and its blobs directory if it has one, to a new stem
  * in the same directory while the session goes on. Event ids keep the session
  * id they were minted with: the id names the session, the stem names the files.
@@ -545,6 +559,7 @@ func (l *SessionLog) Rename(stem string) error {
 		}
 	}
 	l.path, l.stem = newPath, stem
+	l.index.setPath(newPath)
 	return nil
 }
 
