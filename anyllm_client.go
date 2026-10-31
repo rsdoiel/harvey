@@ -9,14 +9,8 @@ import (
 	"strings"
 	"time"
 
-	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	anyllm "github.com/mozilla-ai/any-llm-go"
-	"github.com/mozilla-ai/any-llm-go/providers/anthropic"
-	"github.com/mozilla-ai/any-llm-go/providers/deepseek"
-	"github.com/mozilla-ai/any-llm-go/providers/gemini"
-	"github.com/mozilla-ai/any-llm-go/providers/mistral"
 	"github.com/mozilla-ai/any-llm-go/providers/ollama"
-	"github.com/mozilla-ai/any-llm-go/providers/openai"
 )
 
 /** AnyLLMClient wraps an anyllm.Provider and implements Harvey's LLMClient
@@ -24,7 +18,7 @@ import (
  * io.Writer-based streaming, and maps anyllm.Usage to ChatStats.
  *
  * Fields:
- *   provider   (anyllm.Provider) — underlying provider (e.g. ollama, anthropic).
+ *   provider   (anyllm.Provider) — underlying provider (ollama).
  *   modelName  (string)          — model name sent in every completion request.
  *   provName   (string)          — provider identifier, e.g. "ollama".
  *   backendURL (string)          — base URL for local backends; empty for cloud.
@@ -40,8 +34,8 @@ type AnyLLMClient struct {
 	provName   string
 	backendURL string
 	CallLog    ModelCallLog // optional: told of every model call for the session log
-	maxTokens  int    // 0 = no limit
-	engine     string // engine label for the capability table (e.g. "hailo"); "" = none
+	maxTokens  int          // 0 = no limit
+	engine     string       // engine label for the capability table (e.g. "hailo"); "" = none
 }
 
 // SetEngine records which engine's server this client talks to, so the
@@ -97,7 +91,7 @@ func (a *AnyLLMClient) BackendURL() string { return a.backendURL }
 /** ProviderName returns the short provider identifier.
  *
  * Returns:
- *   string — e.g. "ollama", "anthropic", "openai".
+ *   string — e.g. "ollama".
  *
  * Example:
  *   fmt.Println(client.ProviderName()) // "ollama"
@@ -350,23 +344,6 @@ func (a *AnyLLMClient) ProviderCapabilities() anyllm.Capabilities {
 	return anyllm.Capabilities{Completion: true, CompletionStreaming: true}
 }
 
-// listAnthropicModels queries Anthropic's v1/models endpoint via the SDK.
-// The any-llm-go Anthropic provider does not implement ModelLister, so the
-// underlying SDK is called directly. Reads ANTHROPIC_API_KEY from the
-// environment; returns an auth error if the key is absent.
-func listAnthropicModels(ctx context.Context) ([]string, error) {
-	client := anthropicsdk.NewClient()
-	var names []string
-	iter := client.Models.ListAutoPaging(ctx, anthropicsdk.ModelListParams{})
-	for iter.Next() {
-		names = append(names, iter.Current().ID)
-	}
-	if err := iter.Err(); err != nil {
-		return nil, fmt.Errorf("anthropic models: %w", err)
-	}
-	return names, nil
-}
-
 // ─── AnyLLMEmbedder ──────────────────────────────────────────────────────────
 
 /** AnyLLMEmbedder wraps an anyllm.EmbeddingProvider and implements Harvey's
@@ -494,56 +471,6 @@ func newOllamaLLMClient(baseURL, model string, timeout time.Duration) *AnyLLMCli
  */
 func NewOllamaLLMClient(baseURL, model string, timeout time.Duration) *AnyLLMClient {
 	return newOllamaLLMClient(baseURL, model, timeout)
-}
-
-// newAnthropicLLMClient creates an AnyLLMClient backed by Anthropic's API.
-// Reads ANTHROPIC_API_KEY from the environment; returns an error if not set.
-func newAnthropicLLMClient(model string) (*AnyLLMClient, error) {
-	p, err := anthropic.New()
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: %w (set ANTHROPIC_API_KEY)", err)
-	}
-	return NewAnyLLMClient(p, model, "anthropic", ""), nil
-}
-
-// newDeepSeekLLMClient creates an AnyLLMClient backed by DeepSeek's API.
-// Reads DEEPSEEK_API_KEY from the environment; returns an error if not set.
-func newDeepSeekLLMClient(model string) (*AnyLLMClient, error) {
-	p, err := deepseek.New()
-	if err != nil {
-		return nil, fmt.Errorf("deepseek: %w (set DEEPSEEK_API_KEY)", err)
-	}
-	return NewAnyLLMClient(p, model, "deepseek", ""), nil
-}
-
-// newGeminiLLMClient creates an AnyLLMClient backed by Google Gemini's API.
-// Reads GEMINI_API_KEY or GOOGLE_API_KEY from the environment.
-func newGeminiLLMClient(model string) (*AnyLLMClient, error) {
-	p, err := gemini.New()
-	if err != nil {
-		return nil, fmt.Errorf("gemini: %w (set GEMINI_API_KEY or GOOGLE_API_KEY)", err)
-	}
-	return NewAnyLLMClient(p, model, "gemini", ""), nil
-}
-
-// newMistralLLMClient creates an AnyLLMClient backed by Mistral's API.
-// Reads MISTRAL_API_KEY from the environment; returns an error if not set.
-func newMistralLLMClient(model string) (*AnyLLMClient, error) {
-	p, err := mistral.New()
-	if err != nil {
-		return nil, fmt.Errorf("mistral: %w (set MISTRAL_API_KEY)", err)
-	}
-	return NewAnyLLMClient(p, model, "mistral", ""), nil
-}
-
-// newOpenAILLMClient creates an AnyLLMClient backed by OpenAI's API.
-// Reads OPENAI_API_KEY from the environment; returns an error if not set.
-func newOpenAILLMClient(model string) (*AnyLLMClient, error) {
-	p, err := openai.New()
-	if err != nil {
-		return nil, fmt.Errorf("openai: %w (set OPENAI_API_KEY)", err)
-	}
-	return NewAnyLLMClient(p, model, "openai", ""), nil
 }
 
 /** ModelCallLog is told about each model call an AnyLLMClient makes, so the

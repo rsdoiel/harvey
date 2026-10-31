@@ -17,10 +17,10 @@ import (
  *   List(ctx, prefix)   — enumerate objects under a prefix URI (trailing /)
  *
  * Example:
- *   r, err := NewRemoteReader("s3://mybucket/docs/spec.md")
+ *   r, err := NewRemoteReader("https://example.com/docs/spec.md")
  *   if err != nil { ... }
  *   var buf bytes.Buffer
- *   if err := r.Get(ctx, "s3://mybucket/docs/spec.md", &buf); err != nil { ... }
+ *   if err := r.Get(ctx, "https://example.com/docs/spec.md", &buf); err != nil { ... }
  */
 type RemoteReader interface {
 	Stat(ctx context.Context, uri string) (RemoteObjectInfo, error)
@@ -37,7 +37,7 @@ type RemoteReader interface {
  *   IsDir       (bool)   — true when the entry represents a prefix/directory
  *
  * Example:
- *   info, err := r.Stat(ctx, "s3://mybucket/file.md")
+ *   info, err := r.Stat(ctx, "https://example.com/file.md")
  *   fmt.Println(info.Size) // e.g. 4096
  */
 type RemoteObjectInfo struct {
@@ -54,10 +54,10 @@ type RemoteObjectInfo struct {
  *   uri (string) — the URI to inspect.
  *
  * Returns:
- *   string — lower-case scheme such as "s3", "http", "sftp", or "" for local paths.
+ *   string — lower-case scheme such as "http", "sftp", or "" for local paths.
  *
  * Example:
- *   parseURIScheme("s3://bucket/key") // "s3"
+ *   parseURIScheme("sftp://host/key") // "sftp"
  *   parseURIScheme("/local/path")     // ""
  *   parseURIScheme("https://x.com")  // "https"
  */
@@ -70,7 +70,7 @@ func parseURIScheme(uri string) string {
 }
 
 /** NewRemoteReader returns a RemoteReader appropriate for the URI scheme.
- * Supported schemes: s3, http, https, sftp, scp.
+ * Supported schemes: http, https, sftp, scp.
  * Returns an error when the scheme is unsupported or required credentials
  * are absent.
  *
@@ -89,8 +89,7 @@ func NewRemoteReader(uri string) (RemoteReader, error) {
 	scheme := parseURIScheme(uri)
 	switch scheme {
 	case "s3":
-		deprecationNotice(deprecationWriter, "remote:s3", "The s3:// reader is deprecated and will be removed in the next release (workspace DR-0042). Mount the bucket as a filesystem instead. See CHANGES.md.")
-		return newS3Reader()
+		return nil, fmt.Errorf("remote: the s3:// reader was removed (workspace DR-0042); mount the bucket as a filesystem and use its path")
 	case "http", "https":
 		return newHTTPReader(), nil
 	case "sftp", "scp":

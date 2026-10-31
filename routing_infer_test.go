@@ -18,11 +18,11 @@ func TestInferRouteKind(t *testing.T) {
 		{"https://ollama.example.com", harvey.KindOllama, false},
 		{"llamafile://localhost:8080", "", true}, // removed, DR-0033
 		{"llamacpp://127.0.0.1:9090", "", true},  // removed, DR-0033
-		{"anthropic://", harvey.KindAnthropic, false},
-		{"deepseek://", harvey.KindDeepSeek, false},
-		{"gemini://", harvey.KindGemini, false},
-		{"mistral://", harvey.KindMistral, false},
-		{"openai://", harvey.KindOpenAI, false},
+		{"anthropic://", "", true},               // removed, DR-0042
+		{"deepseek://", "", true},                // removed, DR-0042
+		{"gemini://", "", true},                  // removed, DR-0042
+		{"mistral://", "", true},                 // removed, DR-0042
+		{"openai://", "", true},                  // removed, DR-0042
 		{"unknown://foo", "", true},
 		{"", "", true},
 	}

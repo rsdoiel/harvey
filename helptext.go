@@ -32,7 +32,7 @@ distributes executables for Linux, macOS, and Windows on x86_64 and aarch64.
 {app_name} looks for HARVEY.md in the current directory and uses it as a
 system prompt. It connects to a local language model system — Ollama or
 hailo-ollama — and opens an interactive natural language programming session.
-Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI) can be
+Other Ollama-shaped servers on this machine or the local network can be
 added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
@@ -116,14 +116,9 @@ completion SHELL [-install]
 
 # ENVIRONMENT
 
-ANTHROPIC_API_KEY   API key for Anthropic Claude (optional, for /route add NAME anthropic://)
-DEEPSEEK_API_KEY    API key for DeepSeek (optional, for /route add NAME deepseek://)
-GEMINI_API_KEY      API key for Google Gemini (optional; GOOGLE_API_KEY also accepted)
-MISTRAL_API_KEY     API key for Mistral (optional, for /route add NAME mistral://)
-OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
-
-All of the above API key variables are filtered out of every child process
-environment — they are never passed to commands run via ! or /run.
+Common API key variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_* and
+similar) are filtered out of every child process environment — they are
+never passed to commands run via ! or /run. Harvey itself reads none of them.
 
 # EXIT STATUS
 
@@ -697,7 +692,7 @@ ROUTING
 # DESCRIPTION
 
 Harvey can dispatch individual prompts to remote LLM endpoints — other Ollama
-instances on a Pi cluster or cloud providers — using
+instances on a Pi cluster or elsewhere on your network — using
 @mention syntax. Prefix any prompt with @name to send it to the named endpoint instead
 of the local model. The reply is streamed back and lands in the local
 conversation history so future turns retain full context.
@@ -716,17 +711,11 @@ starting point and will be tuned over time.
 
 # ENDPOINT TYPES
 
-Local providers (no API key):
+  ollama://host:port    An Ollama or hailo-ollama server (also accepts http:// and https://).
 
-  ollama://host:port    A remote Ollama server (also accepts http:// and https://).
-
-Cloud providers (API key read from environment):
-
-  anthropic://  Anthropic Claude  (ANTHROPIC_API_KEY)
-  deepseek://   DeepSeek          (DEEPSEEK_API_KEY)
-  gemini://     Google Gemini     (GEMINI_API_KEY or GOOGLE_API_KEY)
-  mistral://    Mistral           (MISTRAL_API_KEY)
-  openai://     OpenAI            (OPENAI_API_KEY)
+The llamafile://, llamacpp:// and cloud kinds (anthropic://, deepseek://,
+gemini://, mistral://, openai://) were removed. A route of one in
+agents/routes.json is skipped with a warning (an error without a terminal).
 
 # EXAMPLE SESSION
 
@@ -734,17 +723,11 @@ Cloud providers (API key read from environment):
   # Register a Pi cluster node running Ollama
   /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
 
-  # Register the Anthropic cloud endpoint
-  /route add claude anthropic:// claude-sonnet-4-20250514
-
   # Enable routing
   /route on
 
   # Run a quick task on a Pi node
   @pi2 what does this error mean?
-
-  # Dispatch a complex task to the cloud
-  @claude refactor this module to use the repository pattern
 
   # Local model handles everything else (no @mention)
   what is the overall structure of this package?
@@ -755,7 +738,6 @@ Cloud providers (API key read from environment):
 ~~~
   /route add NAME URL [MODEL]        register a remote endpoint
                                        @pi2    ollama://192.168.1.12:11434 llama3.1:8b
-                                       @claude anthropic:// claude-sonnet-4-20250514
   /route remove NAME                 unregister an endpoint (alias: rm)
   /route rm NAME                     alias for remove
   /route use [NAME]                  set NAME as the sticky route so all prompts
@@ -780,7 +762,7 @@ Registered endpoints and the on/off state persist across sessions in
 
   /model use NAME        — backend-agnostic model switching
   /help model            — list, start, and switch local models
-  /help security         — API key filtering for cloud endpoints
+  /help security         — API key filtering for child processes
 
 `
 
@@ -1146,9 +1128,9 @@ restricted to the workspace.
 Attach an image to the next turn on a vision-capable route:
 
 ~~~
-  harvey > /route add claude https://api.anthropic.com claude-opus-4-7
+  harvey > /route add pi2 ollama://192.168.1.12:11434 llama3.2-vision
   harvey > /attach ~/screenshots/error.png
-  harvey > @claude What does this error message say?
+  harvey > @pi2 What does this error message say?
 ~~~
 
 Attach a PDF for the model to reason about:
@@ -2408,8 +2390,6 @@ are all low (< 0.3) for a question you expect the store to answer, consider:
   Re-ingest any file after it changes to keep the store current.
 
   Remote URIs are supported alongside local paths:
-    s3://bucket/prefix/     — list and ingest all ingestable objects (requires
-                              AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
     sftp://[user@]host/path/ — list and ingest via SFTP over SSH (reads
                               SFTP_PASSWORD or SFTP_KEY_PATH from environment)
     scp://[user@]host/path/  — alias for sftp://

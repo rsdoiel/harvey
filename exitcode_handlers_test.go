@@ -577,7 +577,7 @@ func withKB(t *testing.T, a *Agent) {
 
 func withRoutes(t *testing.T, a *Agent) {
 	a.Routes = NewRouteRegistry()
-	a.Routes.Add(&RouteEndpoint{Name: "claude", URL: "anthropic://", Model: "m", Kind: KindAnthropic})
+	a.Routes.Add(&RouteEndpoint{Name: "pi2", URL: "ollama://192.168.1.12:11434", Model: "m", Kind: KindOllama})
 }
 
 func TestHandlerErrors_Memory(t *testing.T) {
@@ -644,10 +644,10 @@ func TestHandlerErrors_Route(t *testing.T) {
 	runHandlerCases(t, []handlerCase{
 		{"rm: no such route", withRoutes, rt("rm", "ghost"), ClassNegative},
 		{"probe: no such route", withRoutes, rt("probe", "ghost"), ClassNegative},
-		{"set: missing arguments", withRoutes, rt("set", "claude"), ClassUsage},
+		{"set: missing arguments", withRoutes, rt("set", "pi2"), ClassUsage},
 		{"set: no such route", withRoutes, rt("set", "ghost", "tools", "on"), ClassNegative},
-		{"set: bad value", withRoutes, rt("set", "claude", "tools", "maybe"), ClassUsage},
-		{"set: unknown setting", withRoutes, rt("set", "claude", "bogus", "on"), ClassUsage},
+		{"set: bad value", withRoutes, rt("set", "pi2", "tools", "maybe"), ClassUsage},
+		{"set: unknown setting", withRoutes, rt("set", "pi2", "bogus", "on"), ClassUsage},
 		{"unknown subcommand", withRoutes, rt("bogus"), ClassUsage},
 	})
 }

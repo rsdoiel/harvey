@@ -144,16 +144,6 @@ func resolvePipelineClient(a *Agent, mention string) (LLMClient, error) {
 	switch ac.ProviderName() {
 	case "ollama":
 		return newOllamaLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout), nil
-	case "anthropic":
-		return newAnthropicLLMClient(mention)
-	case "deepseek":
-		return newDeepSeekLLMClient(mention)
-	case "gemini":
-		return newGeminiLLMClient(mention)
-	case "mistral":
-		return newMistralLLMClient(mention)
-	case "openai":
-		return newOpenAILLMClient(mention)
 	default:
 		return nil, fmt.Errorf("pipeline: @mention %q did not resolve to a known model", mention)
 	}

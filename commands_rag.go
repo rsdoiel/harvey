@@ -677,7 +677,7 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 		}
 	}
 
-	// Separate remote URIs from local paths. Remote S3 prefixes are ingested
+	// Separate remote URIs from local paths. Remote sftp:// prefixes are ingested
 	// directly (download → ingest → remove per object) without the large-file
 	// confirmation flow, since the user explicitly addressed them by URI.
 	var failed error // first failure from any source; every source is still tried
@@ -686,8 +686,6 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
 		switch parseURIScheme(p) {
 		case "":
 			localPaths = append(localPaths, p)
-		case "s3":
-			failed = keepFirstFailure(failed, ragIngestS3Prefix(a, p, embedder, out))
 		case "sftp", "scp":
 			r, err := NewRemoteReader(p)
 			if err != nil {
@@ -778,14 +776,14 @@ func ragIngest(a *Agent, paths []string, out io.Writer) error {
  * deleting the temp file immediately. This keeps peak disk usage bounded to a
  * single object regardless of prefix size.
  *
- * Works for any RemoteReader that implements List (s3://, sftp://, scp://).
+ * Works for any RemoteReader that implements List (sftp://, scp://).
  * HTTP/HTTPS callers should use ragIngestHTTP instead, as HTTP has no directory
  * listing protocol.
  *
  * Parameters:
  *   a       (*Agent)       — Harvey agent; a.Rag must be non-nil.
  *   r       (RemoteReader) — backend to use for List and Get.
- *   scheme  (string)       — URI scheme ("s3", "sftp", "scp"); used in progress messages.
+ *   scheme  (string)       — URI scheme ("sftp", "scp"); used in progress messages.
  *   uri     (string)       — prefix URI to list and ingest.
  *   embedder (Embedder)    — embedding model for the active store.
  *   out     (io.Writer)    — progress and error output.
@@ -858,16 +856,6 @@ func ragIngestRemotePrefix(a *Agent, r RemoteReader, scheme, uri string, embedde
 		fmt.Fprintf(out, "  %s: ingested %d chunk(s) from %s\n", scheme, ingested, uri)
 	}
 	return failed
-}
-
-// ragIngestS3Prefix is kept for backwards compatibility; delegates to ragIngestRemotePrefix.
-func ragIngestS3Prefix(a *Agent, uri string, embedder Embedder, out io.Writer) error {
-	s3r, err := newS3Reader()
-	if err != nil {
-		fmt.Fprintf(out, "  ✗ %s: %v\n", uri, err)
-		return defaultClass(ClassUnavailable, fmt.Errorf("%s: %w", uri, err))
-	}
-	return ragIngestRemotePrefix(a, s3r, "s3", uri, embedder, out)
 }
 
 /** ragIngestHTTP downloads a single HTTP or HTTPS resource, writes it to a

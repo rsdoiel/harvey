@@ -352,7 +352,9 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// PID re-adoption: if a prior Harvey session left a running backend, adopt it.
 	agentsDir := filepath.Join(a.Workspace.Root, "agents")
-	a.startupDeprecations(out)
+	if err := a.skippedRoutes(out, interactive); err != nil {
+		return err
+	}
 	adopted := a.tryAdoptPriorBackend(agentsDir, out)
 	if !adopted {
 		// Backend selection — use sessionModel as the preferred model hint.
@@ -1710,11 +1712,6 @@ func (a *Agent) buildCompleter() func(string) []string {
 					currentPos = len(tokens)
 				}
 				if currentPos >= pathStart {
-					if strings.HasPrefix(word, "s3://") {
-						candidates := remotePathCandidates(word)
-						sortStrings(candidates)
-						return candidates
-					}
 					matches := workspacePathCandidates(a.Workspace.Root, word, onlyDirs, extFilter)
 					sortStrings(matches)
 					return matches
@@ -1878,63 +1875,6 @@ func sessionMemoryDigest(a *Agent, out io.Writer) {
 }
 
 
-
-/** remotePathCandidates returns tab-completion candidates for a partial s3:// URI.
- * It lists objects under the directory portion of word using the S3 backend.
- * Returns nil silently when credentials are absent, the URI is malformed, or
- * the scheme is not s3://.
- *
- * Parameters:
- *   word (string) — the partial URI being typed, e.g. "s3://bucket/docs/".
- *
- * Returns:
- *   []string — full s3:// URIs of matching objects; nil when completion is unavailable.
- *
- * Example:
- *   candidates := remotePathCandidates("s3://mybucket/docs/")
- *   // returns ["s3://mybucket/docs/spec.md", "s3://mybucket/docs/guide.md"]
- */
-func remotePathCandidates(word string) []string {
-	if !strings.HasPrefix(word, "s3://") {
-		return nil
-	}
-	rest := word[5:] // after "s3://"
-	slashIdx := strings.IndexByte(rest, '/')
-	if slashIdx < 0 {
-		return nil // still typing the bucket name
-	}
-	bucket := rest[:slashIdx]
-	if bucket == "" {
-		return nil
-	}
-	keyPart := rest[slashIdx+1:] // everything after s3://bucket/
-
-	// List under the directory portion (up to the last '/').
-	dir := ""
-	base := keyPart
-	if lastSlash := strings.LastIndexByte(keyPart, '/'); lastSlash >= 0 {
-		dir = keyPart[:lastSlash+1]
-		base = keyPart[lastSlash+1:]
-	}
-	listURI := "s3://" + bucket + "/" + dir
-
-	s3r, err := newS3Reader()
-	if err != nil {
-		return nil
-	}
-	objects, err := s3r.List(context.Background(), listURI)
-	if err != nil {
-		return nil
-	}
-	var results []string
-	for _, obj := range objects {
-		key := strings.TrimPrefix(obj.URI, "s3://"+bucket+"/")
-		if base == "" || strings.HasPrefix(key, dir+base) {
-			results = append(results, obj.URI)
-		}
-	}
-	return results
-}
 
 /** isTerminal reports whether f is a terminal. It is a variable so tests can
  * stand in for a terminal or a pipe.

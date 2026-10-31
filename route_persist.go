@@ -29,7 +29,9 @@ type routeConfigFile struct {
 }
 
 /** LoadRouteConfig reads agents/routes.json from the workspace and populates
- * cfg.Routes and cfg.RoutingEnabled. Silently no-ops when the file does not
+ * cfg.Routes and cfg.RoutingEnabled. An endpoint whose kind was removed
+ * (llamafile, llamacpp, the cloud kinds) is left out of cfg.Routes and listed in
+ * cfg.RemovedRoutes. Silently no-ops when the file does not
  * exist or cannot be parsed, leaving cfg unchanged.
  *
  * Parameters:
@@ -53,7 +55,14 @@ func LoadRouteConfig(ws *Workspace, cfg *Config) {
 	if err := json.Unmarshal(data, &f); err != nil {
 		return
 	}
-	cfg.Routes = f.Endpoints
+	cfg.Routes = nil
+	for _, ep := range f.Endpoints {
+		if ep.Kind == KindOllama {
+			cfg.Routes = append(cfg.Routes, ep)
+		} else {
+			cfg.RemovedRoutes = append(cfg.RemovedRoutes, ep)
+		}
+	}
 	cfg.RoutingEnabled = f.Enabled
 }
 
@@ -102,28 +111,22 @@ func SaveRouteConfig(ws *Workspace, rr *RouteRegistry) error {
 
 /** InferRouteKind returns the RouteKind implied by rawURL.
  *
- * Local providers (no API key):
  *   ollama://host:port, http://, https://  → KindOllama
  *
- * Cloud providers (API key from environment):
- *   anthropic://  → KindAnthropic  (ANTHROPIC_API_KEY)
- *   deepseek://   → KindDeepSeek   (DEEPSEEK_API_KEY)
- *   gemini://     → KindGemini     (GEMINI_API_KEY or GOOGLE_API_KEY)
- *   mistral://    → KindMistral    (MISTRAL_API_KEY)
- *   openai://     → KindOpenAI     (OPENAI_API_KEY)
+ * The llamafile://, llamacpp:// and cloud schemes (anthropic://, deepseek://,
+ * gemini://, mistral://, openai://) were removed (workspace DR-0033, DR-0042)
+ * and are refused with a message that says so.
  *
  * Parameters:
  *   rawURL (string) — URL as typed by the user.
  *
  * Returns:
  *   RouteKind — inferred kind.
- *   error     — when the URL scheme is unrecognised.
+ *   error     — when the URL scheme is unrecognised or was removed.
  *
  * Example:
  *   kind, err := InferRouteKind("ollama://192.168.1.12:11434")
  *   // kind = KindOllama, err = nil
- *   kind, err = InferRouteKind("anthropic://")
- *   // kind = KindAnthropic, err = nil
  */
 func InferRouteKind(rawURL string) (RouteKind, error) {
 	switch {
@@ -133,22 +136,20 @@ func InferRouteKind(rawURL string) (RouteKind, error) {
 		return KindOllama, nil
 	case strings.HasPrefix(rawURL, "llamafile://"), strings.HasPrefix(rawURL, "llamacpp://"):
 		return "", fmt.Errorf("the llamafile:// and llamacpp:// route kinds were removed (workspace DR-0033); use ollama://host:port")
-	case strings.HasPrefix(rawURL, "anthropic://"):
-		return KindAnthropic, nil
-	case strings.HasPrefix(rawURL, "deepseek://"):
-		return KindDeepSeek, nil
-	case strings.HasPrefix(rawURL, "gemini://"):
-		return KindGemini, nil
-	case strings.HasPrefix(rawURL, "mistral://"):
-		return KindMistral, nil
-	case strings.HasPrefix(rawURL, "openai://"):
-		return KindOpenAI, nil
+	case removedCloudScheme(rawURL) != "":
+		return "", fmt.Errorf("the %s:// route kind was removed (workspace DR-0042): harvey reaches only Ollama-shaped servers on this machine or the local network; use ollama://host:port", removedCloudScheme(rawURL))
 	default:
-		return "", fmt.Errorf(
-			"unrecognised URL scheme in %q\n"+
-				"  Local:  ollama://host:port\n"+
-				"  Cloud:  anthropic://  deepseek://  gemini://  mistral://  openai://",
-			rawURL,
-		)
+		return "", fmt.Errorf("unrecognised URL scheme in %q\n  Use: ollama://host:port (or http:// or https://)", rawURL)
 	}
+}
+
+// removedCloudScheme returns the scheme of a cloud route URL that was removed
+// (workspace DR-0042), or "" when rawURL is not one.
+func removedCloudScheme(rawURL string) string {
+	for _, s := range []string{"anthropic", "deepseek", "gemini", "mistral", "openai"} {
+		if strings.HasPrefix(rawURL, s+"://") {
+			return s
+		}
+	}
+	return ""
 }

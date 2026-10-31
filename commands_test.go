@@ -703,16 +703,16 @@ func TestCmdReadDir_notADirectory(t *testing.T) {
 // ── route commands ────────────────────────────────────────────────────────────
 
 // newTestAgentWithRoutes returns a test agent with an initialised route
-// registry containing one Anthropic endpoint.
+// registry containing one Ollama endpoint.
 func newTestAgentWithRoutes(t *testing.T) *Agent {
 	t.Helper()
 	a := newTestAgent(t)
 	a.Routes = NewRouteRegistry()
 	a.Routes.Add(&RouteEndpoint{
-		Name:  "claude",
-		URL:   "anthropic://",
-		Model: "claude-3-5-sonnet",
-		Kind:  KindAnthropic,
+		Name:  "pi2",
+		URL:   "ollama://192.168.1.12:11434",
+		Model: "llama3.1:8b",
+		Kind:  KindOllama,
 	})
 	return a
 }
@@ -749,11 +749,11 @@ func TestRouteProbe_notFound(t *testing.T) {
 func TestRouteProbe_knownEndpoint(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	if err := routeProbe(a, "claude", &out); err != nil {
+	if err := routeProbe(a, "pi2", &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	body := out.String()
-	for _, want := range []string{"claude", "anthropic", "claude-3-5-sonnet"} {
+	for _, want := range []string{"pi2", "ollama", "llama3.1:8b"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("probe output missing %q:\n%s", want, body)
 		}
@@ -781,10 +781,10 @@ func TestRouteSet_notFound(t *testing.T) {
 func TestRouteSet_toolsOn(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	if err := routeSet(a, []string{"claude", "tools", "on"}, &out); err != nil {
+	if err := routeSet(a, []string{"pi2", "tools", "on"}, &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ep := a.Routes.Lookup("claude")
+	ep := a.Routes.Lookup("pi2")
 	if ep == nil || !ep.Tools {
 		t.Error("expected ep.Tools to be true after 'set tools on'")
 	}
@@ -793,11 +793,11 @@ func TestRouteSet_toolsOn(t *testing.T) {
 func TestRouteSet_toolsOff(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	// Enable first, then disable.
-	ep := a.Routes.Lookup("claude")
+	ep := a.Routes.Lookup("pi2")
 	ep.Tools = true
 
 	var out strings.Builder
-	if err := routeSet(a, []string{"claude", "tools", "off"}, &out); err != nil {
+	if err := routeSet(a, []string{"pi2", "tools", "off"}, &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if ep.Tools {
@@ -808,7 +808,7 @@ func TestRouteSet_toolsOff(t *testing.T) {
 func TestRouteSet_unknownKey(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	err := routeSet(a, []string{"claude", "badkey", "on"}, &out)
+	err := routeSet(a, []string{"pi2", "badkey", "on"}, &out)
 	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown setting") {
 		t.Errorf("expected a usage error naming the unknown setting, got: %v", err)
 	}
@@ -817,7 +817,7 @@ func TestRouteSet_unknownKey(t *testing.T) {
 func TestRouteSet_unknownValue(t *testing.T) {
 	a := newTestAgentWithRoutes(t)
 	var out strings.Builder
-	err := routeSet(a, []string{"claude", "tools", "maybe"}, &out)
+	err := routeSet(a, []string{"pi2", "tools", "maybe"}, &out)
 	if ExitCodeFor(err) != ClassUsage || !strings.Contains(err.Error(), "unknown value") {
 		t.Errorf("expected a usage error naming the unknown value, got: %v", err)
 	}

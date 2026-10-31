@@ -112,7 +112,7 @@ type Message struct {
 }
 
 /** LLMClient is the interface implemented by each LLM backend (Ollama,
- * Llamafile, Anthropic, OpenAI, etc.).
+ * hailo-ollama).
  *
  * Methods:
  *   Name()   string                                    — human-readable backend identifier.

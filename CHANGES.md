@@ -54,17 +54,17 @@
 - **`/context` shows what the model sees.** It prints the next prompt grouped as system prompt, pins, summaries, recalled
   knowledge and dialog, with sizes and shares of the prompt limit.
 
-### Deprecated
-
-- **The cloud route kinds and the S3 reader will be removed in the next release** (workspace DR-0042). Harvey will talk only
-  to Ollama-shaped servers on this machine or the local network. `anthropic://`, `deepseek://`, `gemini://`, `mistral://` and
-  `openai://` routes, their API-key environment variables and the `s3://` document reader go; `ollama://`, `http(s)://` and
-  `sftp://` stay. Harvey prints a notice once when a route of a retiring kind is loaded, added or dispatched to, and when an
-  `s3://` URI is opened. To keep a cloud model, put an Ollama-compatible gateway on your network and point an `ollama://`
-  route at it; to keep S3, mount the bucket as a filesystem. A persisted route of a removed kind will be skipped with a
-  warning. The `any-llm-go` client layer is replaced by a native Ollama client after that (DR-0046).
-
 ### Removed
+
+- **The cloud route kinds and the S3 reader** (workspace DR-0042). Harvey talks only to Ollama-shaped servers on this machine or the
+  local network. Gone: `anthropic://`, `deepseek://`, `gemini://`, `mistral://` and `openai://` routes, their API-key environment
+  variables, the `s3://` document reader and its AWS credentials (`/read`, `/attach`, `/rag ingest` and tab completion), and the
+  `anthropic-sdk-go`, AWS SDK and other provider modules from `go.mod`. `ollama://`, `http(s)://` and `sftp://` stay. A route of a
+  removed kind in `agents/routes.json` is skipped with a warning at a terminal and stops the run with exit 78 without one; re-add
+  it as an `ollama://` route (a skipped route is dropped from the file the next time routes are saved). An `s3://` URI is refused
+  with a message that says so. To keep a cloud model, put an Ollama-compatible gateway on your network and point an `ollama://`
+  route at it; to keep S3, mount the bucket as a filesystem. The `any-llm-go` client layer goes when the native Ollama client
+  lands (DR-0046).
 
 - **llama.cpp and llamafile support** (workspace DR-0033). Harvey supports Ollama and hailo-ollama only. Gone: the two backends and
   their launch, probe and model-scan code, the `--llamafile`, `--llamafile-url` and `--llamafile-dir` options,

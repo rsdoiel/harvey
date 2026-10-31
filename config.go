@@ -197,6 +197,7 @@ type Config struct {
 	AgentsDir      string          // agents/skills tree root; empty = agents/
 	SystemPrompt   string          // contents of HARVEY.md, injected as the system prompt
 	Routes         []RouteEndpoint // registered remote endpoints; persisted across sessions
+	RemovedRoutes  []RouteEndpoint // endpoints in routes.json of a removed kind (DR-0033, DR-0042); skipped
 	RoutingEnabled bool            // when false, @mentions are rejected with a warning
 	ModelCacheDB   string          // path to model_cache.db; empty = harvey/model_cache.db
 	explicit       map[string]bool // settings the command line or environment gave; see MarkExplicit
