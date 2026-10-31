@@ -3,13 +3,8 @@ package harvey
 import (
 	"fmt"
 	"io"
-	"os"
 	"sync"
 )
-
-// deprecationWriter receives notices raised where no output writer is at hand
-// (a model tool call).
-var deprecationWriter io.Writer = os.Stderr
 
 var (
 	deprecationMu   sync.Mutex
@@ -54,7 +49,7 @@ func deprecationNotice(out io.Writer, key, msg string) {
 
 // memoryRetiringNotice is the one notice for everything DR-0037 retires.
 const memoryRetiringNotice = "The memory store is deprecated and will be removed in a following release (DR-0037): " +
-	"/memory, agents/memories/, onboarding profiles, mining and the add_memory, update_memory and delete_memory tools. " +
+	"/memory, agents/memories/, onboarding profiles and mining. " +
 	"Files already in agents/memories/ stay on disk but will not be read. " +
 	"Keep what you want with: /kb observation add --project NAME KIND BODY. See CHANGES.md."
 

@@ -756,19 +756,20 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 		},
 	)
 
-	// ── retrieve_memory ───────────────────────────────────────────────────────
+	// ── recall_knowledge ─────────────────────────────────────────────────────
 	r.RegisterTool(
-		"retrieve_memory",
-		"Search the memory silos (memory store, knowledge base) for entries "+
-			"relevant to a query and return the top-k most relevant results. "+
-			"Use this mid-session to look up information that was not injected at startup, "+
-			"such as past decisions, tool-use patterns, or workspace facts.",
+		"recall_knowledge",
+		"Look up what the knowledge base (kb) holds that is relevant to a query: observations, decision records "+
+			"and reviewed document summaries linked to the concepts named in the query. "+
+			"Each result starts with its reference (kb:<kind>:<id>), names the works it cites, and says when a cited "+
+			"work has been retracted. Use this mid-session for past decisions, findings and project history that "+
+			"were not injected at the start. It only reads; it cannot add or change anything.",
 		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"query": map[string]any{
 					"type":        "string",
-					"description": "Natural-language retrieval query describing what to look for",
+					"description": "Text naming the concepts to look up, such as \"ollama context window\"",
 				},
 				"top_k": map[string]any{
 					"type":        "integer",
@@ -778,149 +779,35 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			"required": []string{"query"},
 		},
 		func(_ context.Context, args map[string]any) (string, error) {
-			if a.Memory == nil || a.Memory.Unified == nil {
-				return "retrieve_memory: memory system is not available in this session.", nil
-			}
 			query, ok := args["query"].(string)
 			if !ok || strings.TrimSpace(query) == "" {
-				return "", fmt.Errorf("retrieve_memory: query must be a non-empty string")
+				return "", fmt.Errorf("recall_knowledge: query must be a non-empty string")
 			}
 			topK := 3
 			if v, ok := args["top_k"].(float64); ok && int(v) > 0 {
 				topK = int(v)
 			}
-
-			var embedder Embedder = a.memoryEmbedder()
-
-			budget := topK * 300
-			if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
-				budget = int(float64(a.Config.Ollama.ContextLength) * a.Config.Memory.BudgetPct)
-			}
-
-			results, err := a.Memory.Unified.Recall(query, embedder, budget)
+			// Ask for more than topK: rows with nothing to show (unreviewed
+			// documents) are skipped.
+			res, err := a.kbRecall(query, topK*2)
 			if err != nil {
-				return fmt.Sprintf("retrieve_memory: recall error: %v", err), nil
+				return fmt.Sprintf("recall_knowledge: %v", err), nil
 			}
-			if len(results) > topK {
-				results = results[:topK]
+			var blocks []string
+			for _, h := range res.Hits {
+				text := FormatKBRecallHit(h)
+				if text == "" {
+					continue
+				}
+				blocks = append(blocks, "["+h.Ref()+"] "+text)
+				if len(blocks) >= topK {
+					break
+				}
 			}
-			if len(results) == 0 {
-				return "retrieve_memory: no matching memories found.", nil
+			if len(blocks) == 0 {
+				return "recall_knowledge: nothing in the knowledge base matched.", nil
 			}
-			return FormatContext(results), nil
-		},
-	)
-
-	// ── update_memory ────────────────────────────────────────────────────────
-	r.RegisterTool(
-		"update_memory",
-		"Update the content of an existing memory by ID. "+
-			"Replaces the description, summary, and Fountain body with new content and refreshes the timestamp.",
-		map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"id": map[string]any{
-					"type":        "string",
-					"description": "ID of the memory to update (e.g. tool_use_a3f891)",
-				},
-				"content": map[string]any{
-					"type":        "string",
-					"description": "New content to replace the existing description and summary",
-				},
-			},
-			"required": []string{"id", "content"},
-		},
-		func(_ context.Context, args map[string]any) (string, error) {
-			noteMemoryRetiring(deprecationWriter)
-			if a.Memory == nil || a.Memory.Store == nil {
-				return "update_memory: memory store is not available in this session.", nil
-			}
-			id, ok := args["id"].(string)
-			if !ok || strings.TrimSpace(id) == "" {
-				return "", fmt.Errorf("update_memory: id must be a non-empty string")
-			}
-			content, ok := args["content"].(string)
-			if !ok || strings.TrimSpace(content) == "" {
-				return "", fmt.Errorf("update_memory: content must be a non-empty string")
-			}
-
-			doc, err := a.Memory.Store.ByID(id)
-			if err != nil {
-				return "", fmt.Errorf("update_memory: %w", err)
-			}
-			if doc == nil {
-				return fmt.Sprintf("update_memory: memory %q not found.", id), nil
-			}
-
-			// Safe-mode guard: describe without modifying.
-			if a.Config.Security.SafeMode {
-				return fmt.Sprintf(
-					"update_memory [safe mode]: would update %q with new content — disable safe mode to apply.",
-					id,
-				), nil
-			}
-
-			now := time.Now().UTC()
-			doc.Meta.Description = content
-			doc.Meta.Summary = content
-			doc.Meta.UpdatedAt = now.Format(time.RFC3339)
-			doc.FountainBody = BuildFountainBody(now.UTC().Format("2006-01-02 15:04:05"), [][2]string{{"HARVEY", content}})
-
-			if err := a.Memory.Store.Save(doc, nil); err != nil {
-				return "", fmt.Errorf("update_memory: %w", err)
-			}
-
-			return "Memory updated: " + id, nil
-		},
-	)
-
-	// ── delete_memory ─────────────────────────────────────────────────────────
-	r.RegisterTool(
-		"delete_memory",
-		"Archive a memory by ID, removing it from active retrieval. "+
-			"Matches /memory forget semantics: the file is moved to the archive directory.",
-		map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"id": map[string]any{
-					"type":        "string",
-					"description": "ID of the memory to archive (e.g. tool_use_a3f891)",
-				},
-			},
-			"required": []string{"id"},
-		},
-		func(_ context.Context, args map[string]any) (string, error) {
-			noteMemoryRetiring(deprecationWriter)
-			if a.Memory == nil || a.Memory.Store == nil {
-				return "delete_memory: memory store is not available in this session.", nil
-			}
-			id, ok := args["id"].(string)
-			if !ok || strings.TrimSpace(id) == "" {
-				return "", fmt.Errorf("delete_memory: id must be a non-empty string")
-			}
-
-			// Check existence before safe-mode so we can report "not found" early.
-			doc, err := a.Memory.Store.ByID(id)
-			if err != nil {
-				return "", fmt.Errorf("delete_memory: %w", err)
-			}
-			if doc == nil {
-				return fmt.Sprintf("delete_memory: memory %q not found.", id), nil
-			}
-
-			// Safe-mode guard: describe without archiving.
-			if a.Config.Security.SafeMode {
-				return fmt.Sprintf(
-					"delete_memory [safe mode]: would archive %q — disable safe mode to apply.",
-					id,
-				), nil
-			}
-
-			if err := a.Memory.Store.Archive(id); err != nil {
-				return "", fmt.Errorf("delete_memory: %w", err)
-			}
-
-			return "Memory archived: " + id, nil
+			return strings.Join(blocks, "\n\n"), nil
 		},
 	)
 
@@ -1008,88 +895,6 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			a.logRewrite("filter", before)
 
 			return fmt.Sprintf("Filtered %d messages matching %q.", removed, criteria), nil
-		},
-	)
-
-	// ── add_memory ───────────────────────────────────────────────────────────
-	r.RegisterTool(
-		"add_memory",
-		"Save a new memory to the persistent memory store. "+
-			"Use this to record important findings, decisions, preferences, or facts that should persist across sessions. "+
-			"memory_type must be one of: tool_use, workflow, user_preference, workspace_profile, project_fact.",
-		map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"content": map[string]any{
-					"type":        "string",
-					"description": "The memory content to save (used as description and summary)",
-				},
-				"memory_type": map[string]any{
-					"type":        "string",
-					"description": "Memory type: tool_use, workflow, user_preference, workspace_profile, or project_fact",
-					"enum":        []string{"tool_use", "workflow", "user_preference", "workspace_profile", "project_fact"},
-				},
-				"tags": map[string]any{
-					"type":        "array",
-					"items":       map[string]any{"type": "string"},
-					"description": "Optional keyword tags for filtering",
-				},
-			},
-			"required": []string{"content", "memory_type"},
-		},
-		func(_ context.Context, args map[string]any) (string, error) {
-			noteMemoryRetiring(deprecationWriter)
-			if a.Memory == nil || a.Memory.Store == nil {
-				return "add_memory: memory store is not available in this session.", nil
-			}
-			content, ok := args["content"].(string)
-			if !ok || strings.TrimSpace(content) == "" {
-				return "", fmt.Errorf("add_memory: content must be a non-empty string")
-			}
-			memTypeStr, ok := args["memory_type"].(string)
-			if !ok || memTypeStr == "" {
-				return "", fmt.Errorf("add_memory: memory_type must be a non-empty string")
-			}
-			if !isValidMemoryType(MemoryType(memTypeStr)) {
-				valid := make([]string, len(ValidMemoryTypes))
-				for i, vt := range ValidMemoryTypes {
-					valid[i] = string(vt)
-				}
-				return fmt.Sprintf("add_memory: invalid memory_type %q; must be one of: %s",
-					memTypeStr, strings.Join(valid, ", ")), nil
-			}
-
-			// Parse optional tags from the JSON array (arrives as []interface{}).
-			var tags []string
-			if raw, hasTag := args["tags"]; hasTag && raw != nil {
-				if arr, ok := raw.([]interface{}); ok {
-					for _, item := range arr {
-						if s, ok := item.(string); ok {
-							tags = append(tags, s)
-						}
-					}
-				}
-			}
-
-			// Safe-mode guard: describe without writing.
-			if a.Config.Security.SafeMode {
-				return fmt.Sprintf(
-					"add_memory [safe mode]: would save %q as %s — disable safe mode to apply.",
-					content, memTypeStr,
-				), nil
-			}
-
-			memType := MemoryType(memTypeStr)
-			id := GenerateMemoryID(memType)
-			doc := NewMemoryDoc(id, memType, content, content, tags)
-			ts := time.Now().UTC().Format("2006-01-02 15:04:05")
-			doc.FountainBody = BuildFountainBody(ts, [][2]string{{"HARVEY", content}})
-
-			if err := a.Memory.Store.Save(doc, nil); err != nil {
-				return "", fmt.Errorf("add_memory: %w", err)
-			}
-
-			return "Memory saved: " + id, nil
 		},
 	)
 

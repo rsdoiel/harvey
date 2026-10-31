@@ -61,14 +61,18 @@
 
 ### Deprecated
 
-- **The memory store (DR-0037).** `/memory`, `agents/memories/`, onboarding profiles, session mining and the `add_memory`,
-  `update_memory` and `delete_memory` tools are deprecated and will be removed in a following release. Harvey prints one
-  notice per session when the store holds memories, when `/memory` or a memory-writing tool is used, or when first-run
-  onboarding starts. Keep what is worth keeping as a kb observation (`/kb observation add --project NAME KIND BODY`); files
+- **The memory store (DR-0037).** `/memory`, `agents/memories/`, onboarding profiles, and session mining are deprecated
+  and will be removed in a following release. Harvey prints one notice per session when the store holds memories, when
+  `/memory` is used, or when first-run onboarding starts. Keep what is worth keeping as a kb observation (`/kb observation add --project NAME KIND BODY`); files
   already in `agents/memories/` stay on disk but will not be read after the removal. Recall for the prompt already comes
   from the installed `kb`.
 
 ### Removed
+
+- **The model's memory tools (DR-0037 item 5).** `add_memory`, `update_memory`, `delete_memory` and `retrieve_memory` are no
+  longer offered to the model, so a model can no longer write what later becomes context. `recall_knowledge(query, top_k)`
+  replaces `retrieve_memory`: it only reads, through `kb -json concept recall`, and each result carries its `kb:<kind>:<id>`
+  reference, the works it cites and any retraction. A model may draft an observation only once kb has draft-then-promote.
 
 - **`/rag` code (fourth and last slice of DR-0035).** The code behind `/rag` is gone: `rag_support.go` (`RagStore`, ingest and
   query), `commands_rag.go` (the remote and HTTP ingest helpers), the language chunkers and doc extractors (`code_chunkers.go`,

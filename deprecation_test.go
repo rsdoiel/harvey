@@ -67,23 +67,3 @@ func TestMemoryNotice_StartupOnlyWhenTheStoreHoldsMemories(t *testing.T) {
 		t.Errorf("a store with a memory must be announced, got %q", out.String())
 	}
 }
-
-func TestMemoryNotice_WriteToolsUseTheDeprecationWriter(t *testing.T) {
-	resetDeprecationNotices()
-	var sink strings.Builder
-	old := deprecationWriter
-	deprecationWriter = &sink
-	t.Cleanup(func() { deprecationWriter = old })
-
-	a, reg := newToolAgent(t, nil)
-	ms, err := OpenMemory(a.Workspace, &a.Config.Memory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { ms.Close() })
-	a.Memory = ms
-	_, _ = dispatch(t, reg, "add_memory", map[string]any{"content": "x", "memory_type": "tool_use"})
-	if !strings.Contains(sink.String(), "memory store is deprecated") {
-		t.Errorf("add_memory should raise the notice, got %q", sink.String())
-	}
-}

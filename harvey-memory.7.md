@@ -17,7 +17,7 @@ The memory store is deprecated and will be removed in a following release
 observation: `/kb observation add --project NAME KIND BODY`. Recall for the
 prompt already comes from `kb`. Files in agents/memories/ stay on disk but
 will not be read after the removal. Harvey prints a notice once per session
-when the store holds memories or when `/memory` or a memory tool is used.
+when the store holds memories or when `/memory` is used.
 
 # DESCRIPTION
 
