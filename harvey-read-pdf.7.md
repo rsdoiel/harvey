@@ -37,7 +37,7 @@ vector-diagram pages. Those pages cannot be extracted by any text tool; the
 output will note them so you can follow up with a vision-capable model.
 
 The injected content is ephemeral — it is added to the current conversation
-and is not written to disk or stored in the RAG database. Use /rag ingest
+and is not written to disk. To make a document searchable, ingest it with kb document ingest.
 if you want to index a PDF for retrieval.
 
 # EXAMPLES
@@ -64,7 +64,7 @@ Read a short PDF (≤ 20 pages) in full:
 # SEE ALSO
 
   /read FILE...       — inject plain-text workspace files into context
-  /rag ingest PATH    — index a file into the RAG store for retrieval
+  /kb document ingest — make a document searchable (the installed kb)
   /status             — check remaining context window space
   /help read
   /help rag

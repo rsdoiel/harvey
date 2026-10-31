@@ -20,8 +20,7 @@ capable desktop and server machines.
 | Feature | Benefit |
 |---|---|
 | **Ollama & hailo-ollama backends** | Run language model systems locally with no cloud dependency. Ollama manages a model registry; hailo-ollama serves the Raspberry Pi AI HAT+ 2. Switch models with `/model use`. |
-| **Unified command set** (`/read`, `/write`, `/run`, `/attach`, `/search`, `/git`, `/rag`, `/memory`, `/kb`, etc.) | Direct the language model and manage your workspace without leaving the REPL. |
-| **RAG integration** | Inject context from local files, PDFs, SFTP/SCP servers, or HTTP/HTTPS URLs into your prompts. Create and query SQLite-backed vector stores with `/rag` commands. |
+| **Unified command set** (`/read`, `/write`, `/run`, `/attach`, `/search`, `/git`, `/memory`, `/kb`, etc.) | Direct the language model and manage your workspace without leaving the REPL. |
 | **Tool calling** | Built-in tools (`read_file`, `write_file`, `run_command`, etc.) with validated schemas let capable language models act directly on your workspace. |
 | **Multi-model routing** | Dispatch prompts to specific models (`@model_name`) or route to remote Ollama endpoints via `/route add`. |
 | **Session recording** | Every session is recorded as a Fountain `.spmd` file — a structured, human-readable transcript you can review, replay against a different model, or mine for reusable memories. |

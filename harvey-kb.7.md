@@ -133,6 +133,6 @@ answer questions about it, suggest next steps, or help resolve open questions.
 # SEE ALSO
 
   /memory recall         — search all knowledge silos including the KB
-  /rag ingest            — embed documents for semantic retrieval
+  /kb document ingest    — make a document searchable (the installed kb)
   /help learn            — overview of all three memory silos
 

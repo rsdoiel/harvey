@@ -122,12 +122,10 @@ probe itself always reports auto</li>
 <li>Store results in cache with timestamp; a failed probe changes
 nothing</li>
 <li><code>ThoroughProbeModel()</code> (adds an <code>/api/embed</code>
-request) is wired into <code>/rag setup</code>’s embedder auto-pick only
-(<code>confirmEmbedder</code> in <code>commands_rag.go</code>),
-confirming or correcting the keyword guess with one live call before
-committing to it. Nothing else calls it — a full
-<code>setOllamaModel</code>-wide swap would cost an extra request on
-every model switch for a signal most selections never use</li>
+request) was wired into <code>/rag setup</code>’s embedder auto-pick
+only (removed with <code>/rag</code>, DR-0035). Nothing calls it now — a
+full <code>setOllamaModel</code>-wide swap would cost an extra request
+on every model switch for a signal most selections never use</li>
 </ul></li>
 <li><strong>Cache Query:</strong>
 <ul>
@@ -638,8 +636,7 @@ override</td>
 <tr class="even">
 <td>Incorrect embed support</td>
 <td>Keyword detection failed</td>
-<td><code>/rag setup</code> confirms live before committing; elsewhere,
-not fixable from Harvey today</td>
+<td>Not fixable from Harvey today</td>
 </tr>
 <tr class="odd">
 <td>Model ignores tools schema</td>

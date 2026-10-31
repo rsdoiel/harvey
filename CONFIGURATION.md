@@ -27,7 +27,7 @@ environment variables supply the few credentials harvey reads.
 ### 1. Configuration (`<workspace>/agents/harvey.yaml`)
 
 **Purpose:** Workspace-level configuration for Harvey's subsystems: knowledge
-base, sessions, skills, RAG stores, and model cache.
+base, sessions, skills, and model cache.
 
 **Locations:** Workspace: `<workspace>/agents/harvey.yaml`
 
@@ -54,23 +54,6 @@ auto_record: true
 # Model capability cache
 model_cache_db: "agents/model_cache.db"
 
-# RAG configuration
-rag:
-  enabled: true
-  active: "default"
-  stores:
-    - name: "default"
-      db_path: "agents/rag/default.db"
-      embedding_model: "nomic-embed-text"
-      model_map:
-        "llama3.1:latest": "nomic-embed-text"
-        "granite-code:3b": "nomic-embed-text"
-        "mistral:latest": "nomic-embed-text"
-    - name: "deno_typescript"
-      db_path: "agents/rag/deno_typescript.db"
-      embedding_model: "nomic-embed-text"
-      model_map:
-        "llama3.1:latest": "nomic-embed-text"
 ```
 
 **Top-Level Fields:**
@@ -91,33 +74,12 @@ rag:
 | `permissions` | object | No | Full access | Path-prefix permission map |
 | `model_aliases` | object | No | `{}` | Short name → full model identifier map |
 | `tools` | object | No | See below | Tool-calling behaviour |
-| `memory` | object | No | See below | Memory system and RAG configuration |
+| `memory` | object | No | See below | Memory system configuration |
 
-**RAG Configuration (`rag:`):**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `enabled` | boolean | No | `false` | Whether RAG is enabled |
-| `active` | string | No | `""` | Name of active RAG store |
-| `stores` | array | No | `[]` | Array of named RAG stores |
-
-**RAG Store Fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Unique store identifier |
-| `db_path` | string | Yes | Path to SQLite database file |
-| `embedding_model` | string | Yes | Embedding model name (e.g., `nomic-embed-text`) |
-| `model_map` | object | No | Mapping of generation model → embedding model |
-| `embedder_kind` | string | No | `"ollama"` | Either `"ollama"` or `"encoderfile"` |
-| `embedder_url` | string | No | Base URL for encoderfile embedder |
-| `per_prompt` | boolean | No | `true` | When `false`, skips automatic RAG injection each turn; the model uses `retrieve_memory` instead |
-
-**Important Notes:**
-- Paths are relative to the workspace root
-- The `model_map` ensures each generation model uses the correct embedding model
-- Embedding model binding is enforced: you cannot mix embeddings from different models in the same store
-- Set `per_prompt: false` on the active store when using the `retrieve_memory` tool — this avoids redundant per-turn retrieval and lets the model decide when to fetch context
+**Removed: RAG (`memory.rag:`).** `/rag` was removed (workspace DR-0035); retrieval over documents is the knowledge
+base (`kb document ingest`, then `/kb search`). A `harvey.yaml` whose `memory.rag:` section names an active store or turns
+RAG on fails to load with a configuration error (exit 78); one that only lists stores loads with a note, and the section is
+dropped the next time the configuration is saved. The store files stay on disk.
 
 **Removed backends.** llama.cpp and llamafile were removed (workspace DR-0033). A `harvey.yaml` that still
 has a `llamafile:` or `llamacpp:` section fails to load with a configuration error (exit 78); delete the
@@ -186,10 +148,8 @@ tools:
 
 **Memory System (`memory:`):**
 
-Controls Harvey's three-silo memory architecture: experience memories, RAG
-retrieval, and knowledge base. The `memory:` block in `harvey.yaml` also houses
-RAG store configuration (previously at the top level as `rag:`; old single-store
-`rag:` configs are automatically migrated on first load).
+Controls Harvey's memory architecture: experience memories and the knowledge
+base.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -198,7 +158,6 @@ RAG store configuration (previously at the top level as `rag:`; old single-store
 | `inject_on_start` | boolean/null | No | `true` | Inject memory context block into history on start |
 | `budget_pct` | float | No | `0.25` | Fraction of context window reserved for memory injection |
 | `rolling_summary` | object | No | See below | Automatic working-memory compression settings |
-| `rag` | object | No | See RAG section | RAG stores (nested here in v0.0.14+) |
 | `knowledge_base.path` | string | No | `"agents/knowledge.db"` | Path to the SQLite knowledge base |
 
 **Rolling Summary (`memory.rolling_summary:`):**
@@ -224,13 +183,6 @@ memory:
     keep_turns: 6
   knowledge_base:
     path: agents/knowledge.db
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: agents/rag/golang.db
-        embedding_model: nomic-embed-text
 ```
 
 **Behaviour Fields (`syntax_highlight`, `auto_format`):**
@@ -287,13 +239,6 @@ memory:
     enabled: true
     warn_at_pct: 0.80
     keep_turns: 6
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: agents/rag/golang.db
-        embedding_model: nomic-embed-text
 ```
 
 ### 2. Route configuration (`<workspace>/agents/routes.json`)
@@ -426,7 +371,7 @@ Hailo's `hef` format on a server Harvey was not told is Hailo is held to the sam
 row once it is probed. Embeddings always use `ollama.url`. When one fails on a machine where Hailo is in
 use and Ollama is not there, the error says so plainly (`Hailo cannot embed; no
 Ollama at http://localhost:11434`, or, when `ollama.url` is itself the Hailo
-server, how to separate the two URLs). The per-prompt RAG lookup reports that failure too, once per session (once per distinct cause), and the prompt goes on without retrieved context. On a machine with a card whose server is
+server, how to separate the two URLs). On a machine with a card whose server is
 not running, start-up prints one line, `AI HAT+ 2 found, hailo-ollama is not
 running at URL`, with `systemctl --user start hailo-ollama` when
 `~/.config/systemd/user/hailo-ollama.service` exists. Harvey does not start the
@@ -444,7 +389,7 @@ and DR-0030.
 ## Available Tools
 
 You have access to the following slash commands: /read, /write, /run, /search,
-/git, /clear, /summarize, /context, /kb, /rag, /model, /route, /skill.
+/git, /clear, /summarize, /context, /kb, /model, /route, /skill.
 
 ## Rules
 
@@ -479,7 +424,7 @@ Harvey reads no model-provider API keys. These variables are optional.
 |----------|----------|--------------|---------|
 | `OLLAMA_ORIGINS` | Ollama | `ollama://` | CORS origins for Ollama |
 | `OLLAMA_KEEP_ALIVE` | Ollama | `ollama://` | Keep-alive interval (default: `24h`) |
-| `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/rag ingest sftp://…`) |
+| `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/read sftp://…`) |
 | `SFTP_KEY_PATH` | SFTP/SCP | `sftp://` `scp://` | Path to SSH private key for SFTP/SCP remote ingest |
 | `HTTP_BEARER_TOKEN` | HTTP/HTTPS | `http://` `https://` | Bearer token for authenticated HTTP remote ingest |
 | `HTTP_BASIC_USER` | HTTP/HTTPS | `http://` `https://` | Username for HTTP Basic Auth remote ingest |
@@ -508,35 +453,12 @@ harvey
 harvey
 > /route on
 
-# 3. Configure RAG (optional)
-harvey
-> /rag new golang
-harvey
-> /rag use golang
-harvey
-> /rag on
-
-# 4. Create workspace-specific config
+# 3. Create workspace-specific config
 mkdir -p myproject/agents
 echo 'knowledge_db: myproject/agents/knowledge.db' > myproject/agents/harvey.yaml
 
-# 5. Run Harvey in the project
+# 4. Run Harvey in the project
 harvey -w myproject
-```
-
-### Configuration File Precedence Example
-
-```
-Workspace (myproject/agents/harvey.yaml):
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: myproject/agents/rag/golang.db
-        embedding_model: nomic-embed-text
-
-Result: In myproject/, the golang store is active.
 ```
 
 ## Troubleshooting
@@ -558,11 +480,6 @@ Result: In myproject/, the golang store is active.
 - Check `agents/model_cache.db` exists
 - Save an alias for a model in `/model use`; that probes an Ollama model and fills the cache
 
-**"RAG store not found"**
-- Run `/rag new NAME` to create a store
-- Run `/rag use NAME` to activate it
-- Verify the database file exists at the specified path
-
 ### Verification Commands
 
 > **Reminder:** Add `agents/` to `.gitignore` before committing. These files
@@ -580,9 +497,6 @@ sqlite3 agents/knowledge.db ".tables"
 
 # Check model cache
 sqlite3 agents/model_cache.db "SELECT count(*) FROM models;"
-
-# Check RAG stores
-ls -la agents/rag/*.db
 ```
 
 ## Reference: All Configuration Options
@@ -686,21 +600,9 @@ memory:
     keep_turns: 6                 # recent turns kept verbatim after compression
   knowledge_base:
     path: agents/knowledge.db
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: agents/rag/golang.db
-        embedding_model: nomic-embed-text
-        model_map:
-          qwen2.5-coder:7b: nomic-embed-text
-        embedder_kind: ollama     # or "encoderfile" for a local encoderfile binary
-        embedder_url: ""          # base URL when embedder_kind = "encoderfile"
 ```
 
 *For more details on specific subsystems, see:*
 - [ROUTING.md](ROUTING.md) — Remote endpoint routing
 - [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) — Knowledge base schema
-- [RAG_Support_Design.md](RAG_Support_Design.md) — RAG implementation details
 - [SESSIONS.md](SESSIONS.md) — Session recording format

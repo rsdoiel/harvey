@@ -182,4 +182,4 @@ Write results to a custom directory:
 
 # SEE ALSO
 
-harvey(1), harvey-rag(7)
+harvey(1)

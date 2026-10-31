@@ -54,52 +54,46 @@ manages a model registry; hailo-ollama serves the Raspberry Pi AI HAT+
 <tr class="even">
 <td><strong>Unified command set</strong> (<code>/read</code>,
 <code>/write</code>, <code>/run</code>, <code>/attach</code>,
-<code>/search</code>, <code>/git</code>, <code>/rag</code>,
-<code>/memory</code>, <code>/kb</code>, etc.)</td>
+<code>/search</code>, <code>/git</code>, <code>/memory</code>,
+<code>/kb</code>, etc.)</td>
 <td>Direct the language model and manage your workspace without leaving
 the REPL.</td>
 </tr>
 <tr class="odd">
-<td><strong>RAG integration</strong></td>
-<td>Inject context from local files, PDFs, SFTP/SCP servers, or
-HTTP/HTTPS URLs into your prompts. Create and query SQLite-backed vector
-stores with <code>/rag</code> commands.</td>
-</tr>
-<tr class="even">
 <td><strong>Tool calling</strong></td>
 <td>Built-in tools (<code>read_file</code>, <code>write_file</code>,
 <code>run_command</code>, etc.) with validated schemas let capable
 language models act directly on your workspace.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><strong>Multi-model routing</strong></td>
 <td>Dispatch prompts to specific models (<code>@model_name</code>) or
 route to remote Ollama endpoints via <code>/route add</code>.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><strong>Session recording</strong></td>
 <td>Every session is recorded as a Fountain <code>.spmd</code> file — a
 structured, human-readable transcript you can review, replay against a
 different model, or mine for reusable memories.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><strong>Knowledge base &amp; memory</strong></td>
 <td>Persistent SQLite knowledge base (<code>agents/knowledge.db</code>)
 plus a unified memory system with rolling summaries, typed experience
 records, and token-budget tracking.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><strong>Secure safe mode</strong></td>
 <td>Execution is gated by a command allowlist; workspace permissions
 give fine-grained read/write/exec/delete control per path prefix; API
 keys are stripped from every child process.</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><strong>Extensible skill system</strong></td>
 <td>Load specialised skills via <code>/skill load &lt;name&gt;</code> to
 inject domain-specific instructions and compiled scripts.</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><strong>Installer scripts</strong></td>
 <td>Pre-built installers for Linux (x86_64/aarch64/armv7l), macOS, and
 Windows.</td>

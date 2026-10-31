@@ -41,7 +41,7 @@ PAGES for a specific range. Diagram-only pages are flagged as
 incomplete.</p>
 <p>Text and source-code files (≤ 256 KB) The file content is injected as
 plain text, identical to /read. Files larger than 256 KB are rejected;
-use /rag ingest for large text corpora.</p>
+ingest large text with kb document ingest; text corpora.</p>
 <p>Binary files Rejected with a clear error. Use an appropriate
 converter first.</p>
 <p>FILE may be an absolute path, a home-relative path (~/…), or a path
@@ -60,8 +60,8 @@ restricted to the workspace.</p>
   harvey &gt; What does the main function do?</code></pre>
 <h1 id="see-also">SEE ALSO</h1>
 <p>/read FILE… — inject workspace text files (workspace-scoped)
-/read-pdf FILE PAGES — inject a specific page range from a PDF /rag
-ingest PATH — index a file into the RAG store for retrieval /route —
+/read-pdf FILE PAGES — inject a specific page range from a PDF /kb
+document ingest — make a document searchable (the installed kb) /route —
 manage named remote endpoints /help read-pdf /help rag</p>
 </section>
 </body>

@@ -32,7 +32,7 @@ route can accept:
 
   Text and source-code files (≤ 256 KB)
     The file content is injected as plain text, identical to /read.
-    Files larger than 256 KB are rejected; use /rag ingest for large
+    Files larger than 256 KB are rejected; ingest large text with kb document ingest;
     text corpora.
 
   Binary files
@@ -70,7 +70,7 @@ Attach a local source file:
 
   /read FILE...       — inject workspace text files (workspace-scoped)
   /read-pdf FILE PAGES — inject a specific page range from a PDF
-  /rag ingest PATH    — index a file into the RAG store for retrieval
+  /kb document ingest — make a document searchable (the installed kb)
   /route              — manage named remote endpoints
   /help read-pdf
   /help rag

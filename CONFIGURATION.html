@@ -40,8 +40,7 @@ Environment variables</p>
 <h3 id="configuration-workspaceagentsharvey.yaml">1. Configuration
 (<code>&lt;workspace&gt;/agents/harvey.yaml</code>)</h3>
 <p><strong>Purpose:</strong> Workspace-level configuration for Harvey’s
-subsystems: knowledge base, sessions, skills, RAG stores, and model
-cache.</p>
+subsystems: knowledge base, sessions, skills, and model cache.</p>
 <p><strong>Locations:</strong> Workspace:
 <code>&lt;workspace&gt;/agents/harvey.yaml</code></p>
 <blockquote>
@@ -66,25 +65,7 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="
 <span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="fu">auto_record</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
 <span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Model capability cache</span></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="fu">model_cache_db</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents/model_cache.db&quot;</span></span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="co"># RAG configuration</span></span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="fu">rag</span><span class="kw">:</span></span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">active</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;default&quot;</span></span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stores</span><span class="kw">:</span></span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;default&quot;</span></span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents/rag/default.db&quot;</span></span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
-<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">model_map</span><span class="kw">:</span></span>
-<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">&quot;llama3.1:latest&quot;</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
-<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">&quot;granite-code:3b&quot;</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
-<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">&quot;mistral:latest&quot;</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
-<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;deno_typescript&quot;</span></span>
-<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents/rag/deno_typescript.db&quot;</span></span>
-<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span>
-<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">model_map</span><span class="kw">:</span></span>
-<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">&quot;llama3.1:latest&quot;</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;nomic-embed-text&quot;</span></span></code></pre></div>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="fu">model_cache_db</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;agents/model_cache.db&quot;</span></span></code></pre></div>
 <p><strong>Top-Level Fields:</strong></p>
 <table style="width:100%;">
 <colgroup>
@@ -207,113 +188,18 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="
 <td>object</td>
 <td>No</td>
 <td>See below</td>
-<td>Memory system and RAG configuration</td>
+<td>Memory system configuration</td>
 </tr>
 </tbody>
 </table>
-<p><strong>RAG Configuration (<code>rag:</code>):</strong></p>
-<table>
-<thead>
-<tr class="header">
-<th scope="col">Field</th>
-<th scope="col">Type</th>
-<th scope="col">Required</th>
-<th scope="col">Default</th>
-<th scope="col">Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>enabled</code></td>
-<td>boolean</td>
-<td>No</td>
-<td><code>false</code></td>
-<td>Whether RAG is enabled</td>
-</tr>
-<tr class="even">
-<td><code>active</code></td>
-<td>string</td>
-<td>No</td>
-<td><code>""</code></td>
-<td>Name of active RAG store</td>
-</tr>
-<tr class="odd">
-<td><code>stores</code></td>
-<td>array</td>
-<td>No</td>
-<td><code>[]</code></td>
-<td>Array of named RAG stores</td>
-</tr>
-</tbody>
-</table>
-<p><strong>RAG Store Fields:</strong></p>
-<table>
-<colgroup>
-<col style="width: 19%" />
-<col style="width: 16%" />
-<col style="width: 27%" />
-<col style="width: 36%" />
-</colgroup>
-<thead>
-<tr class="header">
-<th scope="col">Field</th>
-<th scope="col">Type</th>
-<th scope="col">Required</th>
-<th scope="col">Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>name</code></td>
-<td>string</td>
-<td>Yes</td>
-<td>Unique store identifier</td>
-</tr>
-<tr class="even">
-<td><code>db_path</code></td>
-<td>string</td>
-<td>Yes</td>
-<td>Path to SQLite database file</td>
-</tr>
-<tr class="odd">
-<td><code>embedding_model</code></td>
-<td>string</td>
-<td>Yes</td>
-<td>Embedding model name (e.g., <code>nomic-embed-text</code>)</td>
-</tr>
-<tr class="even">
-<td><code>model_map</code></td>
-<td>object</td>
-<td>No</td>
-<td>Mapping of generation model → embedding model</td>
-</tr>
-<tr class="odd">
-<td><code>embedder_kind</code></td>
-<td>string</td>
-<td>No</td>
-<td><code>"ollama"</code></td>
-</tr>
-<tr class="even">
-<td><code>embedder_url</code></td>
-<td>string</td>
-<td>No</td>
-<td>Base URL for encoderfile embedder</td>
-</tr>
-<tr class="odd">
-<td><code>per_prompt</code></td>
-<td>boolean</td>
-<td>No</td>
-<td><code>true</code></td>
-</tr>
-</tbody>
-</table>
-<p><strong>Important Notes:</strong> - Paths are relative to the
-workspace root - The <code>model_map</code> ensures each generation
-model uses the correct embedding model - Embedding model binding is
-enforced: you cannot mix embeddings from different models in the same
-store - Set <code>per_prompt: false</code> on the active store when
-using the <code>retrieve_memory</code> tool — this avoids redundant
-per-turn retrieval and lets the model decide when to fetch context</p>
+<p><strong>Removed: RAG (<code>memory.rag:</code>).</strong>
+<code>/rag</code> was removed (workspace DR-0035); retrieval over
+documents is the knowledge base (<code>kb document ingest</code>, then
+<code>/kb search</code>). A <code>harvey.yaml</code> whose
+<code>memory.rag:</code> section names an active store or turns RAG on
+fails to load with a configuration error (exit 78); one that only lists
+stores loads with a note, and the section is dropped the next time the
+configuration is saved. The store files stay on disk.</p>
 <p><strong>Removed backends.</strong> llama.cpp and llamafile were
 removed (workspace DR-0033). A <code>harvey.yaml</code> that still has a
 <code>llamafile:</code> or <code>llamacpp:</code> section fails to load
@@ -419,11 +305,8 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb5-1"><a href="
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_output_bytes</span><span class="kw">:</span><span class="at"> </span><span class="dv">65536</span></span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">tool_result_compaction</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span></code></pre></div>
 <p><strong>Memory System (<code>memory:</code>):</strong></p>
-<p>Controls Harvey’s three-silo memory architecture: experience
-memories, RAG retrieval, and knowledge base. The <code>memory:</code>
-block in <code>harvey.yaml</code> also houses RAG store configuration
-(previously at the top level as <code>rag:</code>; old single-store
-<code>rag:</code> configs are automatically migrated on first load).</p>
+<p>Controls Harvey’s memory architecture: experience memories and the
+knowledge base.</p>
 <table style="width:100%;">
 <colgroup>
 <col style="width: 15%" />
@@ -478,13 +361,6 @@ block in <code>harvey.yaml</code> also houses RAG store configuration
 <td>Automatic working-memory compression settings</td>
 </tr>
 <tr class="even">
-<td><code>rag</code></td>
-<td>object</td>
-<td>No</td>
-<td>See RAG section</td>
-<td>RAG stores (nested here in v0.0.14+)</td>
-</tr>
-<tr class="odd">
 <td><code>knowledge_base.path</code></td>
 <td>string</td>
 <td>No</td>
@@ -550,14 +426,7 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="
 <span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">warn_at_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span></span>
 <span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">keep_turns</span><span class="kw">:</span><span class="at"> </span><span class="dv">6</span></span>
 <span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">knowledge_base</span><span class="kw">:</span></span>
-<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">path</span><span class="kw">:</span><span class="at"> agents/knowledge.db</span></span>
-<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rag</span><span class="kw">:</span></span>
-<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">active</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">stores</span><span class="kw">:</span></span>
-<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/golang.db</span></span>
-<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span></code></pre></div>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">path</span><span class="kw">:</span><span class="at"> agents/knowledge.db</span></span></code></pre></div>
 <p><strong>Behaviour Fields (<code>syntax_highlight</code>,
 <code>auto_format</code>):</strong></p>
 <table style="width:100%;">
@@ -638,14 +507,7 @@ class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb8-1"><a href="
 <span id="cb8-36"><a href="#cb8-36" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rolling_summary</span><span class="kw">:</span></span>
 <span id="cb8-37"><a href="#cb8-37" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
 <span id="cb8-38"><a href="#cb8-38" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">warn_at_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span></span>
-<span id="cb8-39"><a href="#cb8-39" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">keep_turns</span><span class="kw">:</span><span class="at"> </span><span class="dv">6</span></span>
-<span id="cb8-40"><a href="#cb8-40" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rag</span><span class="kw">:</span></span>
-<span id="cb8-41"><a href="#cb8-41" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb8-42"><a href="#cb8-42" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">active</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb8-43"><a href="#cb8-43" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">stores</span><span class="kw">:</span></span>
-<span id="cb8-44"><a href="#cb8-44" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb8-45"><a href="#cb8-45" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/golang.db</span></span>
-<span id="cb8-46"><a href="#cb8-46" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span></code></pre></div>
+<span id="cb8-39"><a href="#cb8-39" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">keep_turns</span><span class="kw">:</span><span class="at"> </span><span class="dv">6</span></span></code></pre></div>
 <h3 id="route-configuration-workspaceagentsroutes.json">2. Route
 configuration (<code>&lt;workspace&gt;/agents/routes.json</code>)</h3>
 <p><strong>Purpose:</strong> Persists routing endpoints and routing
@@ -859,9 +721,7 @@ to the same row once it is probed. Embeddings always use
 use and Ollama is not there, the error says so plainly
 (<code>Hailo cannot embed; no Ollama at http://localhost:11434</code>,
 or, when <code>ollama.url</code> is itself the Hailo server, how to
-separate the two URLs). The per-prompt RAG lookup reports that failure
-too, once per session (once per distinct cause), and the prompt goes on
-without retrieved context. On a machine with a card whose server is not
+separate the two URLs). On a machine with a card whose server is not
 running, start-up prints one line,
 <code>AI HAT+ 2 found, hailo-ollama is not running at URL</code>, with
 <code>systemctl --user start hailo-ollama</code> when
@@ -878,7 +738,7 @@ and DR-0030.</p>
 </ul>
 <h2 id="available-tools">Available Tools</h2>
 <p>You have access to the following slash commands: /read, /write, /run,
-/search, /git, /clear, /summarize, /context, /kb, /rag, /model, /route,
+/search, /git, /clear, /summarize, /context, /kb, /model, /route,
 /skill.</p>
 <h2 id="rules">Rules</h2>
 <ol type="1">
@@ -913,7 +773,7 @@ Harvey reads no model-provider API keys. These variables are optional.
 |----------|----------|--------------|---------|
 | `OLLAMA_ORIGINS` | Ollama | `ollama://` | CORS origins for Ollama |
 | `OLLAMA_KEEP_ALIVE` | Ollama | `ollama://` | Keep-alive interval (default: `24h`) |
-| `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/rag ingest sftp://…`) |
+| `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/read sftp://…`) |
 | `SFTP_KEY_PATH` | SFTP/SCP | `sftp://` `scp://` | Path to SSH private key for SFTP/SCP remote ingest |
 | `HTTP_BEARER_TOKEN` | HTTP/HTTPS | `http://` `https://` | Bearer token for authenticated HTTP remote ingest |
 | `HTTP_BASIC_USER` | HTTP/HTTPS | `http://` `https://` | Username for HTTP Basic Auth remote ingest |
@@ -942,32 +802,12 @@ harvey
 harvey
 &gt; /route on
 
-# 3. Configure RAG (optional)
-harvey
-&gt; /rag new golang
-harvey
-&gt; /rag use golang
-harvey
-&gt; /rag on
-
-# 4. Create workspace-specific config
+# 3. Create workspace-specific config
 mkdir -p myproject/agents
 echo &#39;knowledge_db: myproject/agents/knowledge.db&#39; &gt; myproject/agents/harvey.yaml
 
-# 5. Run Harvey in the project
+# 4. Run Harvey in the project
 harvey -w myproject</code></pre>
-<h3 id="configuration-file-precedence-example">Configuration File
-Precedence Example</h3>
-<pre><code>Workspace (myproject/agents/harvey.yaml):
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: myproject/agents/rag/golang.db
-        embedding_model: nomic-embed-text
-
-Result: In myproject/, the golang store is active.</code></pre>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <h3 id="common-issues">Common Issues</h3>
 <p><strong>“No routes configured”</strong> - Run
@@ -982,147 +822,127 @@ directory</p>
 automatically - Check <code>agents/model_cache.db</code> exists - Save
 an alias for a model in <code>/model use</code>; that probes an Ollama
 model and fills the cache</p>
-<p><strong>“RAG store not found”</strong> - Run
-<code>/rag new NAME</code> to create a store - Run
-<code>/rag use NAME</code> to activate it - Verify the database file
-exists at the specified path</p>
 <h3 id="verification-commands">Verification Commands</h3>
 <blockquote>
 <p><strong>Reminder:</strong> Add <code>agents/</code> to
 <code>.gitignore</code> before committing. These files contain endpoint
 URLs, model names, and database state that should stay local.</p>
 </blockquote>
-<div class="sourceCode" id="cb13"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check workspace routes</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--help</span> routing  <span class="co"># or: cat agents/routes.json</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Check workspace config</span></span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> agents/harvey.yaml</span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Check knowledge base</span></span>
-<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/knowledge.db <span class="st">&quot;.tables&quot;</span></span>
-<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Check model cache</span></span>
-<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/model_cache.db <span class="st">&quot;SELECT count(*) FROM models;&quot;</span></span>
-<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Check RAG stores</span></span>
-<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> <span class="at">-la</span> agents/rag/<span class="pp">*</span>.db</span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check workspace routes</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--help</span> routing  <span class="co"># or: cat agents/routes.json</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Check workspace config</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> agents/harvey.yaml</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Check knowledge base</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/knowledge.db <span class="st">&quot;.tables&quot;</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Check model cache</span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> agents/model_cache.db <span class="st">&quot;SELECT count(*) FROM models;&quot;</span></span></code></pre></div>
 <h2 id="reference-all-configuration-options">Reference: All
 Configuration Options</h2>
 <h3 id="routes-workspaceagentsroutes.json">Routes
 (<code>&lt;workspace&gt;/agents/routes.json</code>)</h3>
-<div class="sourceCode" id="cb14"><pre
-class="sourceCode json"><code class="sourceCode json"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;enabled&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="er">/</span><span class="kw">false</span><span class="fu">,</span></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;endpoints&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;string (required)&quot;</span><span class="fu">,</span></span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;string (required)&quot;</span><span class="fu">,</span></span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;string (optional)&quot;</span><span class="fu">,</span></span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;string (optional, auto-detected)&quot;</span></span>
-<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
-<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
-<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;enabled&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="er">/</span><span class="kw">false</span><span class="fu">,</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;endpoints&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;string (required)&quot;</span><span class="fu">,</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;string (required)&quot;</span><span class="fu">,</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;string (optional)&quot;</span><span class="fu">,</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;string (optional, auto-detected)&quot;</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
 <h3 id="workspace-agents-workspaceagentsharvey.yaml">Workspace Agents
 (<code>&lt;workspace&gt;/agents/harvey.yaml</code>)</h3>
-<div class="sourceCode" id="cb15"><pre
-class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Paths ────────────────────────────────────────────────────────────────────</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sessions_dir</span><span class="kw">:</span><span class="at"> agents/sessions</span><span class="co">          # default</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="fu">agents_dir</span><span class="kw">:</span><span class="at"> agents</span><span class="co">                     # default</span></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="fu">model_cache_db</span><span class="kw">:</span><span class="at"> agents/model_cache.db</span><span class="co">  # default</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Behaviour ────────────────────────────────────────────────────────────────</span></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="fu">auto_record</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">          # false to disable session auto-recording</span></span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="fu">syntax_highlight</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">     # false to disable ANSI colour in code blocks</span></span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a><span class="fu">auto_format</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">          # false to disable auto-formatting after write_file</span></span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Model aliases ─────────────────────────────────────────────────────────────</span></span>
-<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a><span class="fu">model_aliases</span><span class="kw">:</span></span>
-<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">coder</span><span class="kw">:</span><span class="at"> qwen2.5-coder:7b</span><span class="co">         # short name → full Ollama model ID</span></span>
-<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">phi</span><span class="kw">:</span><span class="at"> phi4:latest</span></span>
-<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Security ──────────────────────────────────────────────────────────────────</span></span>
-<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a><span class="fu">safe_mode</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a><span class="fu">allowed_commands</span><span class="kw">:</span></span>
-<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> ls</span></span>
-<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> cat</span></span>
-<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> grep</span></span>
-<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> git</span></span>
-<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a><span class="fu">run_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;5m&quot;</span></span>
-<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a><span class="fu">ollama_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">                # empty = no timeout (recommended for local hardware)</span></span>
-<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a><span class="fu">permissions</span><span class="kw">:</span></span>
-<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">&quot;.&quot;</span><span class="kw">:</span><span class="at">      </span><span class="kw">[</span><span class="at">read</span><span class="kw">,</span><span class="at"> write</span><span class="kw">,</span><span class="at"> exec</span><span class="kw">,</span><span class="at"> delete</span><span class="kw">]</span></span>
-<span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">&quot;docs/&quot;</span><span class="kw">:</span><span class="at">  </span><span class="kw">[</span><span class="at">read</span><span class="kw">]</span></span>
-<span id="cb15-28"><a href="#cb15-28" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-29"><a href="#cb15-29" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Knowledge-base learning mode ─────────────────────────────────────────────</span></span>
-<span id="cb15-30"><a href="#cb15-30" aria-hidden="true" tabindex="-1"></a><span class="co"># The model `/kb learn draft` uses to write summaries of ingested documents</span></span>
-<span id="cb15-31"><a href="#cb15-31" aria-hidden="true" tabindex="-1"></a><span class="co"># (sessions and hand-offs). A route name or a local model name. Leave it unset</span></span>
-<span id="cb15-32"><a href="#cb15-32" aria-hidden="true" tabindex="-1"></a><span class="co"># to use the active model. An @name on the command overrides it for one run:</span></span>
-<span id="cb15-33"><a href="#cb15-33" aria-hidden="true" tabindex="-1"></a><span class="co">#   /kb learn draft @granite --limit 10</span></span>
-<span id="cb15-34"><a href="#cb15-34" aria-hidden="true" tabindex="-1"></a><span class="co"># Kept separate from any retrieval-time model on purpose: the model that</span></span>
-<span id="cb15-35"><a href="#cb15-35" aria-hidden="true" tabindex="-1"></a><span class="co"># drafts a summary should not be the one that later matches against it, and a</span></span>
-<span id="cb15-36"><a href="#cb15-36" aria-hidden="true" tabindex="-1"></a><span class="co"># small, cheap model is usually enough for drafting because a human accepts</span></span>
-<span id="cb15-37"><a href="#cb15-37" aria-hidden="true" tabindex="-1"></a><span class="co"># or edits every draft before it is trusted.</span></span>
-<span id="cb15-38"><a href="#cb15-38" aria-hidden="true" tabindex="-1"></a><span class="fu">learn_model</span><span class="kw">:</span><span class="at"> granite</span></span>
-<span id="cb15-39"><a href="#cb15-39" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-40"><a href="#cb15-40" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Chunked document analysis ────────────────────────────────────────────────</span></span>
-<span id="cb15-41"><a href="#cb15-41" aria-hidden="true" tabindex="-1"></a><span class="fu">chunking</span><span class="kw">:</span></span>
-<span id="cb15-42"><a href="#cb15-42" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">                    # when false, read_file reads files without any size check</span></span>
-<span id="cb15-43"><a href="#cb15-43" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">threshold</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span><span class="co">                  # alert fires when file exceeds this fraction of remaining context</span></span>
-<span id="cb15-44"><a href="#cb15-44" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">chunk_size_bytes</span><span class="kw">:</span><span class="at"> </span><span class="dv">6000</span><span class="co">           # target size of each chunk in bytes (~1500 tokens)</span></span>
-<span id="cb15-45"><a href="#cb15-45" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_chunks</span><span class="kw">:</span><span class="at"> </span><span class="dv">20</span><span class="co">                   # warn when a document would produce more than this many chunks</span></span>
-<span id="cb15-46"><a href="#cb15-46" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">overlap</span><span class="kw">:</span><span class="at"> paragraph</span><span class="co">               # &quot;paragraph&quot; (repeat last unit), &quot;none&quot;; default &quot;paragraph&quot;</span></span>
-<span id="cb15-47"><a href="#cb15-47" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stm_warn_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.20</span><span class="co">               # nudge model to invoke summary_context when &lt;20% context remains; 0 disables</span></span>
-<span id="cb15-48"><a href="#cb15-48" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-49"><a href="#cb15-49" aria-hidden="true" tabindex="-1"></a><span class="co"># When `chunking.enabled` is true and a file would overflow the remaining</span></span>
-<span id="cb15-50"><a href="#cb15-50" aria-hidden="true" tabindex="-1"></a><span class="co"># context window, Harvey prints an alert and prompts for chunk instructions:</span></span>
-<span id="cb15-51"><a href="#cb15-51" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
-<span id="cb15-52"><a href="#cb15-52" aria-hidden="true" tabindex="-1"></a><span class="co">#   Context overflow: report.md is approximately 8000 tokens; 3600 tokens remain.</span></span>
-<span id="cb15-53"><a href="#cb15-53" aria-hidden="true" tabindex="-1"></a><span class="co">#   Enter instructions to process each chunk in turn, or &quot;no&quot; to return.</span></span>
-<span id="cb15-54"><a href="#cb15-54" aria-hidden="true" tabindex="-1"></a><span class="co">#   [read report.md and extract all section headings]</span></span>
-<span id="cb15-55"><a href="#cb15-55" aria-hidden="true" tabindex="-1"></a><span class="co">#   &gt;</span></span>
-<span id="cb15-56"><a href="#cb15-56" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
-<span id="cb15-57"><a href="#cb15-57" aria-hidden="true" tabindex="-1"></a><span class="co"># The pre-filled suggestion (in brackets) is the last user message. Pressing</span></span>
-<span id="cb15-58"><a href="#cb15-58" aria-hidden="true" tabindex="-1"></a><span class="co"># Enter accepts it; typing a new instruction replaces it; typing &quot;no&quot; cancels.</span></span>
-<span id="cb15-59"><a href="#cb15-59" aria-hidden="true" tabindex="-1"></a><span class="co"># The instruction may begin with @model to route chunk processing to a specific</span></span>
-<span id="cb15-60"><a href="#cb15-60" aria-hidden="true" tabindex="-1"></a><span class="co"># endpoint, e.g. &quot;@phi extract the key findings from each section&quot;.</span></span>
-<span id="cb15-61"><a href="#cb15-61" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-62"><a href="#cb15-62" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Tool calling ──────────────────────────────────────────────────────────────</span></span>
-<span id="cb15-63"><a href="#cb15-63" aria-hidden="true" tabindex="-1"></a><span class="fu">tools</span><span class="kw">:</span></span>
-<span id="cb15-64"><a href="#cb15-64" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb15-65"><a href="#cb15-65" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_tool_calls_per_turn</span><span class="kw">:</span><span class="at"> </span><span class="dv">10</span><span class="co">     # hard limit per user turn</span></span>
-<span id="cb15-66"><a href="#cb15-66" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_output_bytes</span><span class="kw">:</span><span class="at"> </span><span class="dv">65536</span><span class="co">         # cap on tool output injected into context (64 KiB)</span></span>
-<span id="cb15-67"><a href="#cb15-67" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">tool_result_compaction</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">    # compact prior tool-call rounds before new calls</span></span>
-<span id="cb15-68"><a href="#cb15-68" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-69"><a href="#cb15-69" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Memory system ─────────────────────────────────────────────────────────────</span></span>
-<span id="cb15-70"><a href="#cb15-70" aria-hidden="true" tabindex="-1"></a><span class="fu">memory</span><span class="kw">:</span></span>
-<span id="cb15-71"><a href="#cb15-71" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb15-72"><a href="#cb15-72" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">top_k</span><span class="kw">:</span><span class="at"> </span><span class="dv">5</span><span class="co">                        # experience memories retrieved at session start</span></span>
-<span id="cb15-73"><a href="#cb15-73" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">inject_on_start</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb15-74"><a href="#cb15-74" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">budget_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.25</span><span class="co">                # fraction of context window reserved for memory</span></span>
-<span id="cb15-75"><a href="#cb15-75" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rolling_summary</span><span class="kw">:</span></span>
-<span id="cb15-76"><a href="#cb15-76" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb15-77"><a href="#cb15-77" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">warn_at_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span><span class="co">             # compression triggers at 80% context usage</span></span>
-<span id="cb15-78"><a href="#cb15-78" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">keep_turns</span><span class="kw">:</span><span class="at"> </span><span class="dv">6</span><span class="co">                 # recent turns kept verbatim after compression</span></span>
-<span id="cb15-79"><a href="#cb15-79" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">knowledge_base</span><span class="kw">:</span></span>
-<span id="cb15-80"><a href="#cb15-80" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">path</span><span class="kw">:</span><span class="at"> agents/knowledge.db</span></span>
-<span id="cb15-81"><a href="#cb15-81" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rag</span><span class="kw">:</span></span>
-<span id="cb15-82"><a href="#cb15-82" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb15-83"><a href="#cb15-83" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">active</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb15-84"><a href="#cb15-84" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">stores</span><span class="kw">:</span></span>
-<span id="cb15-85"><a href="#cb15-85" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> golang</span></span>
-<span id="cb15-86"><a href="#cb15-86" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">db_path</span><span class="kw">:</span><span class="at"> agents/rag/golang.db</span></span>
-<span id="cb15-87"><a href="#cb15-87" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedding_model</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
-<span id="cb15-88"><a href="#cb15-88" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">model_map</span><span class="kw">:</span></span>
-<span id="cb15-89"><a href="#cb15-89" aria-hidden="true" tabindex="-1"></a><span class="at">          qwen2.5-coder</span><span class="fu">:7b</span><span class="kw">:</span><span class="at"> nomic-embed-text</span></span>
-<span id="cb15-90"><a href="#cb15-90" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedder_kind</span><span class="kw">:</span><span class="at"> ollama</span><span class="co">     # or &quot;encoderfile&quot; for a local encoderfile binary</span></span>
-<span id="cb15-91"><a href="#cb15-91" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">embedder_url</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">          # base URL when embedder_kind = &quot;encoderfile&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Paths ────────────────────────────────────────────────────────────────────</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sessions_dir</span><span class="kw">:</span><span class="at"> agents/sessions</span><span class="co">          # default</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="fu">agents_dir</span><span class="kw">:</span><span class="at"> agents</span><span class="co">                     # default</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="fu">model_cache_db</span><span class="kw">:</span><span class="at"> agents/model_cache.db</span><span class="co">  # default</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Behaviour ────────────────────────────────────────────────────────────────</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="fu">auto_record</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">          # false to disable session auto-recording</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="fu">syntax_highlight</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">     # false to disable ANSI colour in code blocks</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a><span class="fu">auto_format</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">          # false to disable auto-formatting after write_file</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Model aliases ─────────────────────────────────────────────────────────────</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a><span class="fu">model_aliases</span><span class="kw">:</span></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">coder</span><span class="kw">:</span><span class="at"> qwen2.5-coder:7b</span><span class="co">         # short name → full Ollama model ID</span></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">phi</span><span class="kw">:</span><span class="at"> phi4:latest</span></span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Security ──────────────────────────────────────────────────────────────────</span></span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a><span class="fu">safe_mode</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a><span class="fu">allowed_commands</span><span class="kw">:</span></span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> ls</span></span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> cat</span></span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> grep</span></span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> git</span></span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a><span class="fu">run_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;5m&quot;</span></span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a><span class="fu">ollama_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">                # empty = no timeout (recommended for local hardware)</span></span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a><span class="fu">permissions</span><span class="kw">:</span></span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">&quot;.&quot;</span><span class="kw">:</span><span class="at">      </span><span class="kw">[</span><span class="at">read</span><span class="kw">,</span><span class="at"> write</span><span class="kw">,</span><span class="at"> exec</span><span class="kw">,</span><span class="at"> delete</span><span class="kw">]</span></span>
+<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">&quot;docs/&quot;</span><span class="kw">:</span><span class="at">  </span><span class="kw">[</span><span class="at">read</span><span class="kw">]</span></span>
+<span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Knowledge-base learning mode ─────────────────────────────────────────────</span></span>
+<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a><span class="co"># The model `/kb learn draft` uses to write summaries of ingested documents</span></span>
+<span id="cb14-31"><a href="#cb14-31" aria-hidden="true" tabindex="-1"></a><span class="co"># (sessions and hand-offs). A route name or a local model name. Leave it unset</span></span>
+<span id="cb14-32"><a href="#cb14-32" aria-hidden="true" tabindex="-1"></a><span class="co"># to use the active model. An @name on the command overrides it for one run:</span></span>
+<span id="cb14-33"><a href="#cb14-33" aria-hidden="true" tabindex="-1"></a><span class="co">#   /kb learn draft @granite --limit 10</span></span>
+<span id="cb14-34"><a href="#cb14-34" aria-hidden="true" tabindex="-1"></a><span class="co"># Kept separate from any retrieval-time model on purpose: the model that</span></span>
+<span id="cb14-35"><a href="#cb14-35" aria-hidden="true" tabindex="-1"></a><span class="co"># drafts a summary should not be the one that later matches against it, and a</span></span>
+<span id="cb14-36"><a href="#cb14-36" aria-hidden="true" tabindex="-1"></a><span class="co"># small, cheap model is usually enough for drafting because a human accepts</span></span>
+<span id="cb14-37"><a href="#cb14-37" aria-hidden="true" tabindex="-1"></a><span class="co"># or edits every draft before it is trusted.</span></span>
+<span id="cb14-38"><a href="#cb14-38" aria-hidden="true" tabindex="-1"></a><span class="fu">learn_model</span><span class="kw">:</span><span class="at"> granite</span></span>
+<span id="cb14-39"><a href="#cb14-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-40"><a href="#cb14-40" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Chunked document analysis ────────────────────────────────────────────────</span></span>
+<span id="cb14-41"><a href="#cb14-41" aria-hidden="true" tabindex="-1"></a><span class="fu">chunking</span><span class="kw">:</span></span>
+<span id="cb14-42"><a href="#cb14-42" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">                    # when false, read_file reads files without any size check</span></span>
+<span id="cb14-43"><a href="#cb14-43" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">threshold</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span><span class="co">                  # alert fires when file exceeds this fraction of remaining context</span></span>
+<span id="cb14-44"><a href="#cb14-44" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">chunk_size_bytes</span><span class="kw">:</span><span class="at"> </span><span class="dv">6000</span><span class="co">           # target size of each chunk in bytes (~1500 tokens)</span></span>
+<span id="cb14-45"><a href="#cb14-45" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_chunks</span><span class="kw">:</span><span class="at"> </span><span class="dv">20</span><span class="co">                   # warn when a document would produce more than this many chunks</span></span>
+<span id="cb14-46"><a href="#cb14-46" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">overlap</span><span class="kw">:</span><span class="at"> paragraph</span><span class="co">               # &quot;paragraph&quot; (repeat last unit), &quot;none&quot;; default &quot;paragraph&quot;</span></span>
+<span id="cb14-47"><a href="#cb14-47" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">stm_warn_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.20</span><span class="co">               # nudge model to invoke summary_context when &lt;20% context remains; 0 disables</span></span>
+<span id="cb14-48"><a href="#cb14-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-49"><a href="#cb14-49" aria-hidden="true" tabindex="-1"></a><span class="co"># When `chunking.enabled` is true and a file would overflow the remaining</span></span>
+<span id="cb14-50"><a href="#cb14-50" aria-hidden="true" tabindex="-1"></a><span class="co"># context window, Harvey prints an alert and prompts for chunk instructions:</span></span>
+<span id="cb14-51"><a href="#cb14-51" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb14-52"><a href="#cb14-52" aria-hidden="true" tabindex="-1"></a><span class="co">#   Context overflow: report.md is approximately 8000 tokens; 3600 tokens remain.</span></span>
+<span id="cb14-53"><a href="#cb14-53" aria-hidden="true" tabindex="-1"></a><span class="co">#   Enter instructions to process each chunk in turn, or &quot;no&quot; to return.</span></span>
+<span id="cb14-54"><a href="#cb14-54" aria-hidden="true" tabindex="-1"></a><span class="co">#   [read report.md and extract all section headings]</span></span>
+<span id="cb14-55"><a href="#cb14-55" aria-hidden="true" tabindex="-1"></a><span class="co">#   &gt;</span></span>
+<span id="cb14-56"><a href="#cb14-56" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb14-57"><a href="#cb14-57" aria-hidden="true" tabindex="-1"></a><span class="co"># The pre-filled suggestion (in brackets) is the last user message. Pressing</span></span>
+<span id="cb14-58"><a href="#cb14-58" aria-hidden="true" tabindex="-1"></a><span class="co"># Enter accepts it; typing a new instruction replaces it; typing &quot;no&quot; cancels.</span></span>
+<span id="cb14-59"><a href="#cb14-59" aria-hidden="true" tabindex="-1"></a><span class="co"># The instruction may begin with @model to route chunk processing to a specific</span></span>
+<span id="cb14-60"><a href="#cb14-60" aria-hidden="true" tabindex="-1"></a><span class="co"># endpoint, e.g. &quot;@phi extract the key findings from each section&quot;.</span></span>
+<span id="cb14-61"><a href="#cb14-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-62"><a href="#cb14-62" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Tool calling ──────────────────────────────────────────────────────────────</span></span>
+<span id="cb14-63"><a href="#cb14-63" aria-hidden="true" tabindex="-1"></a><span class="fu">tools</span><span class="kw">:</span></span>
+<span id="cb14-64"><a href="#cb14-64" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb14-65"><a href="#cb14-65" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_tool_calls_per_turn</span><span class="kw">:</span><span class="at"> </span><span class="dv">10</span><span class="co">     # hard limit per user turn</span></span>
+<span id="cb14-66"><a href="#cb14-66" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_output_bytes</span><span class="kw">:</span><span class="at"> </span><span class="dv">65536</span><span class="co">         # cap on tool output injected into context (64 KiB)</span></span>
+<span id="cb14-67"><a href="#cb14-67" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">tool_result_compaction</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span><span class="co">    # compact prior tool-call rounds before new calls</span></span>
+<span id="cb14-68"><a href="#cb14-68" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-69"><a href="#cb14-69" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Memory system ─────────────────────────────────────────────────────────────</span></span>
+<span id="cb14-70"><a href="#cb14-70" aria-hidden="true" tabindex="-1"></a><span class="fu">memory</span><span class="kw">:</span></span>
+<span id="cb14-71"><a href="#cb14-71" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb14-72"><a href="#cb14-72" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">top_k</span><span class="kw">:</span><span class="at"> </span><span class="dv">5</span><span class="co">                        # experience memories retrieved at session start</span></span>
+<span id="cb14-73"><a href="#cb14-73" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">inject_on_start</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb14-74"><a href="#cb14-74" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">budget_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.25</span><span class="co">                # fraction of context window reserved for memory</span></span>
+<span id="cb14-75"><a href="#cb14-75" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">rolling_summary</span><span class="kw">:</span></span>
+<span id="cb14-76"><a href="#cb14-76" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb14-77"><a href="#cb14-77" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">warn_at_pct</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.80</span><span class="co">             # compression triggers at 80% context usage</span></span>
+<span id="cb14-78"><a href="#cb14-78" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">keep_turns</span><span class="kw">:</span><span class="at"> </span><span class="dv">6</span><span class="co">                 # recent turns kept verbatim after compression</span></span>
+<span id="cb14-79"><a href="#cb14-79" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">knowledge_base</span><span class="kw">:</span></span>
+<span id="cb14-80"><a href="#cb14-80" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">path</span><span class="kw">:</span><span class="at"> agents/knowledge.db</span></span></code></pre></div>
 <p><em>For more details on specific subsystems, see:</em> - <a
 href="ROUTING.html">ROUTING.md</a> — Remote endpoint routing - <a
 href="KNOWLEDGE_BASE.html">KNOWLEDGE_BASE.md</a> — Knowledge base schema
-- <a href="RAG_Support_Design.html">RAG_Support_Design.md</a> — RAG
-implementation details - <a href="SESSIONS.html">SESSIONS.md</a> —
-Session recording format</p>
+- <a href="SESSIONS.html">SESSIONS.md</a> — Session recording format</p>
 </section>
 </body>
 </html>

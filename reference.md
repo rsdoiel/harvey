@@ -34,7 +34,6 @@ All Harvey commands are organized into logical categories. Each command has its 
 
 ### RAG (Retrieval-Augmented Generation)
 
-- **[harvey-rag.7.md](harvey-rag.7.md)** — Manage retrieval-augmented generation stores
 - **[harvey-learn.7.md](harvey-learn.7.md)** — Learn from context and build knowledge
 - **[harvey-inspect.7.md](harvey-inspect.7.md)** — Inspect model capabilities and metadata
 
@@ -181,13 +180,6 @@ See **[harvey.1.md](harvey.1.md#environment)** for complete list:
 
 | Task | Command |
 |------|---------|
-| Create RAG store | `/rag new <name>` |
-| List RAG stores | `/rag list` |
-| Use RAG store | `/rag use <name>` |
-| Ingest files | `/rag ingest <path>` |
-| Enable RAG | `/rag on` |
-| Disable RAG | `/rag off` |
-| Query RAG | `/rag query <text>` |
 
 ### Knowledge Base
 

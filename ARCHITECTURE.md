@@ -264,7 +264,6 @@ pins survive `/clear` and `/summarize`. `/unpin` removes the message (a logged r
 | Command | Purpose |
 |---|---|
 | `/kb VERB ...` | Run the installed `kb`; `inject`, `learn` and `project use` are harvey's own |
-| `/rag list\|new\|use\|drop\|ingest\|status\|query\|on\|off` | Manage RAG stores |
 | `/memory mine\|list\|show\|flag\|forget\|status\|recall\|profile` | Manage session-experience memory store |
 | `/recall QUERY` | Search all knowledge silos (alias for `/memory recall`) |
 

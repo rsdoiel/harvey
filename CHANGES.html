@@ -111,6 +111,23 @@ limit.</p></li>
 </ul>
 <h3 id="removed">Removed</h3>
 <ul>
+<li><p><strong><code>/rag</code> (first slice of DR-0035).</strong> The
+<code>/rag</code> command, per-prompt RAG injection
+(<code>ragAugment</code>), <code>/help rag</code> and
+<code>harvey-rag.7</code>, and <code>Using_RAGs_with_Harvey.md</code>
+are gone. Retrieval over documents is the knowledge base:
+<code>kb document ingest</code>, then <code>/kb search</code>. A
+<code>harvey.yaml</code> whose <code>memory.rag:</code> section names an
+active store or turns RAG on is a configuration error (exit 78); one
+that only lists stores loads with a note at startup, and the section is
+dropped the next time the configuration is saved. Existing store files
+stay on disk and are not converted (their vectors are bound to an
+embedding model). The last release that carries <code>/rag</code> is
+v0.0.20. Still there until the next slices: the RAG parts of
+<code>/memory</code>, <code>/status</code>, <code>/hint</code>, the
+memory tools and recall, and <code>assay -rag-db</code>; they find no
+store, so they do nothing. The scholarly-document designs moved to
+<code>agents/projects/knowledge/notes/</code>.</p></li>
 <li><p><strong><code>/kb</code> runs the installed
 <code>kb</code></strong> (workspace DR-0034). <code>/kb ARGS</code> runs
 <code>kb -db &lt;workspace db&gt; ARGS</code> in the workspace, shows

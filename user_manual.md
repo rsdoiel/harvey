@@ -55,7 +55,7 @@ The `add` vs `new` distinction: `add` registers something you already have;
 `new` creates something Harvey manages from scratch.
 
 Learning this vocabulary for one command teaches you all the others:
-`/model`, `/rag`, `/route`, `/session`, `/skill`, `/skill-set`, and
+`/model`, `/route`, `/session`, `/skill`, `/skill-set`, and
 `/memory profile` all follow the same pattern.
 
 ---
@@ -64,8 +64,6 @@ Learning this vocabulary for one command teaches you all the others:
 
 ### Retrieval-Augmented Generation
 
-- **[RAG Setup & Usage](Using_RAGs_with_Harvey.md)** — Complete guide to retrieval-augmented generation, including named stores, ingest commands, and configuration
-- **[RAG Commands](harvey-rag.7.md)** — Detailed reference for all RAG-related slash commands
 
 ### Knowledge Management
 

@@ -364,9 +364,6 @@ the same as <code>show</code>, which displays item content.</p>
 /model show qwen-coding                  — show model details
 /model alias add qc qwen2.5-coder:7b     — define a short alias
 
-/rag new my-docs                         — create a new RAG database
-/rag use my-docs                         — activate it
-/rag remove my-docs                      — delete it
 
 /session list                            — show all recorded sessions
 /session show session.spmd               — show metadata for one session
@@ -622,18 +619,14 @@ gating</td>
 base commands</a></td>
 </tr>
 <tr class="odd">
-<td><code>/rag &lt;list\|new\|use\|show\|remove\|drop\|ingest\|status\|query\|on\|off&gt;</code></td>
-<td>Named RAG knowledge stores</td>
-</tr>
-<tr class="even">
 <td><code>/skill &lt;list\|load\|show\|info\|status\|new\|run\|suggest&gt;</code></td>
 <td>List, load, create, and run Agent Skills</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>/skill-set &lt;list\|load\|show\|info\|new\|create\|status\|unload&gt;</code></td>
 <td>Load named bundles of skills</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>/workspace &lt;init [FROM_PATH]\|status&gt;</code></td>
 <td>Workspace settings; <code>init</code> copies aliases from another
 workspace</td>

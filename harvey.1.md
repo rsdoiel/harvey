@@ -281,9 +281,6 @@ are also available from the shell: harvey --help TOPIC.
 /kb learn concepts [--limit N]
 : suggest new concepts from the ingested documents; you pick which become concepts, then see each affected document as a diff of changed lines and choose whether to write it. Writes obey the permissions table; Fountain documents (sessions, hand-offs) are never rewritten
 
-/rag <list|new NAME|use NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
-: manage retrieval-augmented generation stores
-
 /memory <mine|list|show|forget|status|recall|profile> [args...]
 : manage the session-experience memory store; mine and recall typed patterns
 

@@ -244,9 +244,6 @@ content.
 /model show qwen-coding                  — show model details
 /model alias add qc qwen2.5-coder:7b     — define a short alias
 
-/rag new my-docs                         — create a new RAG database
-/rag use my-docs                         — activate it
-/rag remove my-docs                      — delete it
 
 /session list                            — show all recorded sessions
 /session show session.spmd               — show metadata for one session
@@ -329,7 +326,6 @@ See [Model Commands](harvey-model.7.md) and [Routing](harvey-routing.7.md).
 | `/recall QUERY` | Alias for `/memory recall` |
 | `/profile <list\|show\|edit\|use\|rename\|on\|off>` | Alias for `/memory profile` |
 | `/kb ...` | The knowledge base; see [Knowledge base commands](#knowledge-base-commands) |
-| `/rag <list\|new\|use\|show\|remove\|drop\|ingest\|status\|query\|on\|off>` | Named RAG knowledge stores |
 | `/skill <list\|load\|show\|info\|status\|new\|run\|suggest>` | List, load, create, and run Agent Skills |
 | `/skill-set <list\|load\|show\|info\|new\|create\|status\|unload>` | Load named bundles of skills |
 | `/workspace <init [FROM_PATH]\|status>` | Workspace settings; `init` copies aliases from another workspace |
