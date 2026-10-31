@@ -279,9 +279,8 @@ func cmdMemoryStatus(a *Agent, args []string, out io.Writer, store *MemoryStore)
 		modelName = a.Client.Name()
 	}
 	if contextLen > 0 {
-		budget := int(float64(contextLen) * budgetPct)
 		fmt.Fprintf(out, "Memory budget:   %.0f%% of context (%d tokens on %s)\n",
-			budgetPct*100, budget, modelName)
+			budgetPct*100, a.memoryBudget(), modelName)
 	} else {
 		fmt.Fprintf(out, "Memory budget:   %.0f%% of context (context window unknown)\n",
 			budgetPct*100)

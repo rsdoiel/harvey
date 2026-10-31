@@ -920,11 +920,7 @@ func (a *Agent) Run(out io.Writer) error {
 		if a.Recorder != nil {
 			sessionID = filepath.Base(a.Recorder.Path())
 		}
-		budget := 512
-		if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
-			budget = int(float64(a.Config.Ollama.ContextLength) * a.Config.Memory.BudgetPct)
-		}
-		_ = a.Memory.Store.RecordSessionStats(sessionID, budget, a.sessionInjectedTokens,
+		_ = a.Memory.Store.RecordSessionStats(sessionID, a.memoryBudget(), a.sessionInjectedTokens,
 			a.sessionCompressed, a.avgToksPerSec())
 	}
 

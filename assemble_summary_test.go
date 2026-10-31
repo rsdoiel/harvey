@@ -1,10 +1,6 @@
 package harvey
 
-import (
-	"context"
-	"io"
-	"testing"
-)
+import "testing"
 
 // ── ShouldCompress ────────────────────────────────────────────────────────────
 
@@ -54,21 +50,4 @@ func TestShouldCompress_ZeroTokens(t *testing.T) {
 	if ShouldCompress(0, 100, 0.80) {
 		t.Error("zero historyTokens at 80% should NOT trigger compression")
 	}
-}
-
-// ── CompressHistory ───────────────────────────────────────────────────────────
-
-// mockSummaryClient is a minimal LLMClient that returns a fixed summary.
-type mockSummaryClient struct {
-	summary string
-}
-
-func (m *mockSummaryClient) Name() string { return "mock" }
-func (m *mockSummaryClient) Models(_ context.Context) ([]string, error) {
-	return nil, nil
-}
-func (m *mockSummaryClient) Close() error { return nil }
-func (m *mockSummaryClient) Chat(_ context.Context, _ []Message, out io.Writer) (ChatStats, error) {
-	_, _ = io.WriteString(out, m.summary)
-	return ChatStats{}, nil
 }

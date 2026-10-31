@@ -368,9 +368,33 @@ func (a *Agent) ClearHistory() {
 	a.LastObservationID = 0
 }
 
+// defaultMemoryBudget is the recall budget, in tokens, when the active model's
+// context window or the memory share is not known.
+const defaultMemoryBudget = 512
+
+/** memoryBudget returns the most tokens recalled knowledge may take: the
+ * configured share (memory.budget_pct) of the active model's context window,
+ * the one figure effectiveContextLimit gives every other caller (the explicit
+ * window, else the model cache's). It is defaultMemoryBudget when the window
+ * or the share is unknown.
+ *
+ * Returns:
+ *   int — tokens.
+ *
+ * Example:
+ *   budget := a.memoryBudget()
+ */
+func (a *Agent) memoryBudget() int {
+	w := a.effectiveContextLimit()
+	if w <= 0 || a.Config.Memory.BudgetPct <= 0 {
+		return defaultMemoryBudget
+	}
+	return int(float64(w) * a.Config.Memory.BudgetPct)
+}
+
 // injectMemoryContext retrieves memories from all silos via UnifiedMemory and
 // injects the formatted context block as a user message. The token budget is
-// derived from OllamaContextLength * BudgetPct (fallback 512 when unconfigured).
+// a.memoryBudget().
 func (a *Agent) injectMemoryContext(query string) {
 	if !a.Config.Memory.Enabled || !a.Config.Memory.InjectOnStart || a.Workspace == nil {
 		return
@@ -381,10 +405,7 @@ func (a *Agent) injectMemoryContext(query string) {
 
 	var embedder Embedder = a.memoryEmbedder()
 
-	budget := 512
-	if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
-		budget = int(float64(a.Config.Ollama.ContextLength) * a.Config.Memory.BudgetPct)
-	}
+	budget := a.memoryBudget()
 
 	recallCall := a.logKBRetrievalCall(query)
 	results, err := a.Memory.Unified.Recall(query, embedder, budget)
