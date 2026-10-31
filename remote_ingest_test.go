@@ -361,14 +361,3 @@ func TestRagIngestHTTP_FailuresAreReturned(t *testing.T) {
 		t.Fatalf("embedder failure: err = %v, want unavailable", err)
 	}
 }
-
-// ragIngest as a whole: every source is tried, then the first failure is
-// returned, whether it came from a remote object, an unsupported scheme or a
-// local file.
-func ragIngestFixture(t *testing.T) (*Agent, *RagStore) {
-	a, store := ingestAgent(t)
-	a.Config.Memory.RagStores = []RagStoreEntry{{Name: "s", EmbeddingModel: "stub"}}
-	a.Config.Memory.RagActive = "s"
-	a.Config.Ollama.URL = "http://127.0.0.1:1" // the embedder cannot be reached
-	return a, store
-}

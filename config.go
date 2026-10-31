@@ -185,7 +185,7 @@ type SkillsConfig struct {
  *   Ollama       (OllamaConfig)   — Ollama connection and model settings.
  *   Security     (SecurityConfig) — safe-mode and permission settings.
  *   Session      (SessionConfig)  — recording and replay settings.
- *   Memory       (MemoryConfig)   — unified memory system settings, including RAG and knowledge base.
+ *   Memory       (MemoryConfig)   — unified memory system settings, including the knowledge base.
  *
  * Example:
  *   cfg := DefaultConfig()
@@ -227,7 +227,7 @@ type Config struct {
 	// low-severity, so token cost isn't spent on them unless requested. See
 	// computational-sensors-design.md.
 	SensorInjectFormatFindings bool
-	// Memory system: RAG stores, knowledge base, and retrieval settings
+	// Memory system: knowledge base and retrieval settings
 	Memory MemoryConfig
 	// Chunking: context-overflow detection and chunked document analysis settings.
 	Chunking ChunkConfig
@@ -597,9 +597,7 @@ func (c *Config) PermissionString(prefix string) string {
  *                                             injection (default 0.25); falls back to 512 tokens when
  *                                             OllamaContextLength is unknown.
  *   RollingSummary    (RollingSummaryConfig) — working-memory compression settings.
- *   RagStores         ([]RagStoreEntry)      — all registered named RAG stores.
- *   RagActive         (string)              — name of the currently active RAG store; "" = none.
- *   RagEnabled        (bool)               — when true, inject top-K chunks before each Chat call.
+ *   RagRemoved        (bool)               — harvey.yaml still has a memory.rag section; /rag was removed (DR-0035).
  *   KnowledgeDB       (string)             — path to knowledge.db; empty = agents/knowledge.db.
  *   CurrentProjectID  (int64)              — in-session active knowledge-base project ID (0 = none).
  *
@@ -612,9 +610,6 @@ type MemoryConfig struct {
 	InjectOnStart    bool
 	BudgetPct        float64              // fraction of model context window for memory injection
 	RollingSummary   RollingSummaryConfig // working-memory compression settings
-	RagStores        []RagStoreEntry      // all registered named RAG stores
-	RagActive        string               // name of the currently active RAG store; "" = none
-	RagEnabled       bool                 // when true, inject top-K chunks before each Chat call
 	RagRemoved       bool                 // harvey.yaml still had a memory.rag section; /rag was removed (DR-0035)
 	KnowledgeDB      string               // path to knowledge.db; empty = agents/knowledge.db
 	CurrentProjectID int64                // in-session active knowledge-base project ID (0 = none)
@@ -640,85 +635,6 @@ type RollingSummaryConfig struct {
 	Enabled   bool
 	WarnAtPct float64
 	KeepTurns int
-}
-
-/** ActiveRagStore returns a pointer to the active RagStoreEntry in the memory
- * config, or nil when no store is configured.
- *
- * Returns:
- *   *RagStoreEntry — the active entry, or nil.
- *
- * Example:
- *   if e := cfg.Memory.ActiveRagStore(); e != nil {
- *       fmt.Println(e.DBPath)
- *   }
- */
-func (m *MemoryConfig) ActiveRagStore() *RagStoreEntry {
-	if m.RagActive == "" {
-		return nil
-	}
-	return m.RagStoreByName(m.RagActive)
-}
-
-/** RagStoreByName returns a pointer to the named store entry in the memory
- * config, or nil when not found.
- *
- * Parameters:
- *   name (string) — store name to look up.
- *
- * Returns:
- *   *RagStoreEntry — matching entry, or nil.
- *
- * Example:
- *   if e := cfg.Memory.RagStoreByName("golang"); e != nil {
- *       fmt.Println(e.EmbeddingModel)
- *   }
- */
-func (m *MemoryConfig) RagStoreByName(name string) *RagStoreEntry {
-	for i := range m.RagStores {
-		if m.RagStores[i].Name == name {
-			return &m.RagStores[i]
-		}
-	}
-	return nil
-}
-
-/** AddOrUpdateRagStore inserts e into the memory config registry if its name
- * is new, or replaces the existing entry if one with the same name exists.
- *
- * Parameters:
- *   e (RagStoreEntry) — the entry to add or replace.
- *
- * Example:
- *   cfg.Memory.AddOrUpdateRagStore(RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db"})
- */
-func (m *MemoryConfig) AddOrUpdateRagStore(e RagStoreEntry) {
-	for i := range m.RagStores {
-		if m.RagStores[i].Name == e.Name {
-			m.RagStores[i] = e
-			return
-		}
-	}
-	m.RagStores = append(m.RagStores, e)
-}
-
-/** RemoveRagStore removes the store with the given name from the memory config
- * registry. It is a no-op when no store with that name exists.
- *
- * Parameters:
- *   name (string) — name of the store to remove.
- *
- * Example:
- *   cfg.Memory.RemoveRagStore("research-llm")
- */
-func (m *MemoryConfig) RemoveRagStore(name string) {
-	out := m.RagStores[:0]
-	for _, e := range m.RagStores {
-		if e.Name != name {
-			out = append(out, e)
-		}
-	}
-	m.RagStores = out
 }
 
 // parseDurationString parses a duration from a YAML string value. It accepts:
@@ -1003,25 +919,7 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	if data, err := os.ReadFile(yamlPath); err == nil {
 		_ = yaml.Unmarshal(data, &y)
 	}
-	var stores []ragStoreYAML
-	if len(cfg.Memory.RagStores) > 0 {
-		stores = make([]ragStoreYAML, len(cfg.Memory.RagStores))
-		for i, e := range cfg.Memory.RagStores {
-			stores[i] = ragStoreYAML{
-				Name:           e.Name,
-				DBPath:         e.DBPath,
-				EmbeddingModel: e.EmbeddingModel,
-				ModelMap:       e.ModelMap,
-				EmbedderKind:   e.EmbedderKind,
-				EmbedderURL:    e.EmbedderURL,
-			}
-		}
-	}
-	y.Memory.RAG = ragYAML{
-		Active:  cfg.Memory.RagActive,
-		Stores:  stores,
-		Enabled: cfg.Memory.RagEnabled,
-	}
+	y.Memory.RAG = ragYAML{} // /rag was removed (DR-0035); the section is dropped on save
 	if cfg.Memory.KnowledgeDB != "" {
 		y.Memory.KnowledgeBase.Path = cfg.Memory.KnowledgeDB
 	}

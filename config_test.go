@@ -198,75 +198,6 @@ func TestResolveModelAlias_nilMap(t *testing.T) {
 
 // ─── MemoryConfig RAG methods ─────────────────────────────────────────────────
 
-func TestMemoryConfig_RagStoreByName_hit(t *testing.T) {
-	m := &MemoryConfig{
-		RagStores: []RagStoreEntry{
-			{Name: "docs", DBPath: "agents/rag/docs.db", EmbeddingModel: "nomic"},
-		},
-	}
-	e := m.RagStoreByName("docs")
-	if e == nil {
-		t.Fatal("expected entry, got nil")
-	}
-	if e.DBPath != "agents/rag/docs.db" {
-		t.Errorf("DBPath: got %q, want %q", e.DBPath, "agents/rag/docs.db")
-	}
-}
-
-func TestMemoryConfig_RagStoreByName_miss(t *testing.T) {
-	m := &MemoryConfig{}
-	if e := m.RagStoreByName("nope"); e != nil {
-		t.Errorf("expected nil, got %+v", e)
-	}
-}
-
-func TestMemoryConfig_ActiveRagStore_set(t *testing.T) {
-	m := &MemoryConfig{
-		RagStores: []RagStoreEntry{{Name: "main", DBPath: "agents/rag/main.db"}},
-		RagActive: "main",
-	}
-	e := m.ActiveRagStore()
-	if e == nil || e.Name != "main" {
-		t.Errorf("expected main, got %v", e)
-	}
-}
-
-func TestMemoryConfig_ActiveRagStore_empty(t *testing.T) {
-	m := &MemoryConfig{}
-	if e := m.ActiveRagStore(); e != nil {
-		t.Errorf("expected nil, got %+v", e)
-	}
-}
-
-func TestMemoryConfig_AddOrUpdateRagStore(t *testing.T) {
-	m := &MemoryConfig{}
-	m.AddOrUpdateRagStore(RagStoreEntry{Name: "a", DBPath: "a.db"})
-	if len(m.RagStores) != 1 {
-		t.Fatalf("expected 1 store, got %d", len(m.RagStores))
-	}
-	m.AddOrUpdateRagStore(RagStoreEntry{Name: "a", DBPath: "updated.db"})
-	if len(m.RagStores) != 1 {
-		t.Errorf("expected 1 store after update, got %d", len(m.RagStores))
-	}
-	if m.RagStores[0].DBPath != "updated.db" {
-		t.Errorf("DBPath after update: got %q, want %q", m.RagStores[0].DBPath, "updated.db")
-	}
-}
-
-func TestMemoryConfig_RemoveRagStore(t *testing.T) {
-	m := &MemoryConfig{
-		RagStores: []RagStoreEntry{{Name: "a"}, {Name: "b"}},
-	}
-	m.RemoveRagStore("a")
-	if len(m.RagStores) != 1 || m.RagStores[0].Name != "b" {
-		t.Errorf("unexpected stores after remove: %+v", m.RagStores)
-	}
-	m.RemoveRagStore("nonexistent")
-	if len(m.RagStores) != 1 {
-		t.Errorf("unexpected stores after no-op remove: %+v", m.RagStores)
-	}
-}
-
 // ─── LoadHarveyYAML memory.rag ───────────────────────────────────────────────
 
 // ─── SaveMemoryConfig and SaveRAGConfig ───────────────────────────────────────
@@ -618,8 +549,8 @@ func TestLoadHarveyYAML_RagSectionAfterTheRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a section that only lists stores should load: %v", err)
 	}
-	if !cfg.Memory.RagRemoved || len(cfg.Memory.RagStores) != 0 {
-		t.Errorf("RagRemoved %v, stores %v: want the note flagged and no store loaded", cfg.Memory.RagRemoved, cfg.Memory.RagStores)
+	if !cfg.Memory.RagRemoved {
+		t.Errorf("RagRemoved %v: want the note flagged", cfg.Memory.RagRemoved)
 	}
 	cfg, err = load(t, "ollama:\n  url: http://localhost:11434\n")
 	if err != nil || cfg.Memory.RagRemoved {

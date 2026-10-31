@@ -136,19 +136,7 @@ func (u *UnifiedMemory) Recall(query string, embedder Embedder, budget int) ([]U
 		}
 	}
 
-	// 3. RAG chunks.
-	if u.cfg.RagEnabled && query != "" && u.ws != nil {
-		ragResults, err := u.recallRAG(query, embedder)
-		if err == nil {
-			for _, r := range ragResults {
-				if !add(r) {
-					return results, nil
-				}
-			}
-		}
-	}
-
-	// 4. KB observations.
+	// 3. KB observations.
 	if u.cfg.KnowledgeDB != "" && u.cfg.CurrentProjectID > 0 && query != "" && u.ws != nil {
 		kbResults, _ := u.recallKB(query)
 		for _, r := range kbResults {
@@ -237,42 +225,6 @@ func experientialContent(doc MemoryDoc) string {
 		return string(doc.Meta.Type) + ": " + doc.Meta.Description + ". " + doc.Meta.Summary
 	}
 	return string(doc.Meta.Type) + ": " + doc.Meta.Description
-}
-
-// recallRAG queries the active RAG store using the provided embedder.
-func (u *UnifiedMemory) recallRAG(query string, embedder Embedder) ([]UnifiedResult, error) {
-	entry := u.cfg.ActiveRagStore()
-	if entry == nil || embedder == nil {
-		return nil, nil
-	}
-	topK := u.cfg.TopK
-	if topK <= 0 {
-		topK = 5
-	}
-	dbPath, err := u.ws.AbsPath(entry.DBPath)
-	if err != nil {
-		return nil, err
-	}
-	ragStore, err := NewRagStore(dbPath, entry.EmbeddingModel)
-	if err != nil {
-		return nil, err
-	}
-	defer ragStore.Close()
-
-	chunks, err := ragStore.Query(query, embedder, topK)
-	if err != nil {
-		return nil, err
-	}
-	var out []UnifiedResult
-	for _, c := range chunks {
-		out = append(out, UnifiedResult{
-			Source:  "rag",
-			ID:      fmt.Sprintf("rag:%d", c.ID),
-			Content: c.Content,
-			Score:   c.Score,
-		})
-	}
-	return out, nil
 }
 
 // kbConceptRecallLimit caps both the concept-tag primary path and the
@@ -444,8 +396,6 @@ func sourceHeader(source string) string {
 		return "project facts"
 	case "experiential":
 		return "relevant experience"
-	case "rag":
-		return "knowledge"
 	case "kb":
 		return "project knowledge"
 	default:

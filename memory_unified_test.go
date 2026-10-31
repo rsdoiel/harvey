@@ -37,10 +37,10 @@ func TestFormatContext_MultiSource(t *testing.T) {
 	results := []UnifiedResult{
 		{Source: string(MemoryTypeWorkspaceProfile), ID: "wp1", Content: "workspace info", Score: 1.0},
 		{Source: "experiential", ID: "exp1", Content: "tool_use: git tip", Score: 0.9},
-		{Source: "rag", ID: "rag:1", Content: "some chunk text", Score: 0.8},
+		{Source: "kb", ID: "kb:1", Content: "some observation text", Score: 0.8},
 	}
 	got := FormatContext(results)
-	for _, want := range []string{"[workspace profile]", "[relevant experience]", "[knowledge]"} {
+	for _, want := range []string{"[workspace profile]", "[relevant experience]", "[project knowledge]"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in output:\n%s", want, got)
 		}
@@ -51,7 +51,7 @@ func TestFormatContext_GroupsBySource(t *testing.T) {
 	results := []UnifiedResult{
 		{Source: "experiential", ID: "a", Content: "first"},
 		{Source: "experiential", ID: "b", Content: "second"},
-		{Source: "rag", ID: "rag:1", Content: "chunk"},
+		{Source: "kb", ID: "kb:1", Content: "chunk"},
 	}
 	got := FormatContext(results)
 	// [relevant experience] should appear exactly once.
@@ -234,7 +234,6 @@ func TestSourceHeader(t *testing.T) {
 		{string(MemoryTypeWorkspaceProfile), "workspace profile"},
 		{string(MemoryTypeProjectFact), "project facts"},
 		{"experiential", "relevant experience"},
-		{"rag", "knowledge"},
 		{"kb", "project knowledge"},
 		{"unknown", "unknown"},
 	}

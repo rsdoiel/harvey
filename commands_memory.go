@@ -126,10 +126,7 @@ func cmdMemoryMine(a *Agent, args []string, out io.Writer, store *MemoryStore) e
 		manifest.Sessions = filtered
 	}
 
-	var embedder Embedder
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = a.embedderFor(entry)
-	}
+	var embedder Embedder = a.memoryEmbedder()
 
 	miner := NewMiner(store, manifest, a.Workspace)
 	return miner.Mine(context.Background(), sessionPath, a, embedder, out, a.In)
@@ -321,10 +318,7 @@ func cmdMemoryRecall(a *Agent, args []string, out io.Writer, store *MemoryStore)
 	}
 	query := strings.Join(args, " ")
 
-	var embedder Embedder
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = a.embedderFor(entry)
-	}
+	var embedder Embedder = a.memoryEmbedder()
 
 	results, err := a.Memory.Unified.Recall(query, embedder, 0)
 	if err != nil {
@@ -428,20 +422,6 @@ func cmdMemoryProfileShowContent(a *Agent, out io.Writer, store *MemoryStore) er
 	fmt.Fprintln(out, strings.TrimSpace(doc.FountainBody))
 	fmt.Fprintln(out, strings.Repeat("─", 60))
 
-	// RAG context summary — shown when a store is active and has chunks.
-	if a.Rag != nil {
-		if n, err := a.Rag.Count(); err == nil && n > 0 {
-			storeName := ""
-			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				storeName = entry.Name
-			}
-			if a.RagOn {
-				fmt.Fprintf(out, "\nRAG context: %s (%d chunk(s), on)\n", storeName, n)
-			} else {
-				fmt.Fprintf(out, "\nRAG context: %s (%d chunk(s), off — /rag on to enable)\n", storeName, n)
-			}
-		}
-	}
 	return nil
 }
 
@@ -465,10 +445,7 @@ func cmdMemoryProfileRename(a *Agent, args []string, out io.Writer, store *Memor
 	}
 	doc.Meta.Description = newName
 	doc.FountainBody = rewriteProfileTitle(doc.FountainBody, newName)
-	var embedder Embedder
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = a.embedderFor(entry)
-	}
+	var embedder Embedder = a.memoryEmbedder()
 	if err := store.Save(doc, embedder); err != nil {
 		return fmt.Errorf("profile rename: %w", err)
 	}
@@ -533,10 +510,7 @@ func cmdMemoryProfileUse(a *Agent, args []string, out io.Writer, store *MemorySt
 	}
 	chosen, templateName := profileSelectTemplate(a, args, wsRoot, out)
 
-	var embedder Embedder
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = a.embedderFor(entry)
-	}
+	var embedder Embedder = a.memoryEmbedder()
 
 	wsName := filepath.Base(wsRoot)
 	if wsName == "" || wsName == "." {
@@ -670,10 +644,7 @@ func cmdMemoryProfileUpdate(a *Agent, out io.Writer, store *MemoryStore) error {
 	if err != nil {
 		return fmt.Errorf("profile update: editor: %w", err)
 	}
-	var embedder Embedder
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = a.embedderFor(entry)
-	}
+	var embedder Embedder = a.memoryEmbedder()
 	if err := store.Save(edited, embedder); err != nil {
 		return fmt.Errorf("profile update: save: %w", err)
 	}

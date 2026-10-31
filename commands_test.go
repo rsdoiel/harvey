@@ -1234,19 +1234,6 @@ func newTestAgentWithKB(t *testing.T) (*Agent, int64) {
 	return a, pid
 }
 
-func TestClearHistory_ClearsLastRAGInfo(t *testing.T) {
-	a := newTestAgent(t)
-	a.LastRAGInfo = &RAGAugmentInfo{StoreName: "docs.db", Chunks: 1, TopScore: 0.9}
-	a.LastObservationID = 42
-	a.ClearHistory()
-	if a.LastRAGInfo != nil {
-		t.Error("expected LastRAGInfo to be nil after ClearHistory")
-	}
-	if a.LastObservationID != 0 {
-		t.Error("expected LastObservationID to be 0 after ClearHistory")
-	}
-}
-
 // ─── /model mode ──────────────────────────────────────────────────────────────
 
 func newTestAgentWithCache(t *testing.T, modelName string) (*Agent, *ModelCache) {

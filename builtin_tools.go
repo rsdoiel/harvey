@@ -759,7 +759,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 	// ── retrieve_memory ───────────────────────────────────────────────────────
 	r.RegisterTool(
 		"retrieve_memory",
-		"Search all memory silos (memory store, RAG store, knowledge base) for entries "+
+		"Search the memory silos (memory store, knowledge base) for entries "+
 			"relevant to a query and return the top-k most relevant results. "+
 			"Use this mid-session to look up information that was not injected at startup, "+
 			"such as past decisions, tool-use patterns, or workspace facts.",
@@ -790,10 +790,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				topK = int(v)
 			}
 
-			var embedder Embedder
-			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				embedder = a.embedderFor(entry)
-			}
+			var embedder Embedder = a.memoryEmbedder()
 
 			budget := topK * 300
 			if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {
@@ -933,8 +930,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 	r.RegisterTool(
 		"filter_context",
 		"Remove conversation history messages that match a given criteria. "+
-			"When a RAG store is active, matching uses cosine similarity (threshold 0.6). "+
-			"Otherwise falls back to case-insensitive keyword matching. "+
+			"Matching is by case-insensitive keyword. "+
 			"System messages are never removed.",
 		map[string]any{
 			"type": "object",
@@ -956,11 +952,8 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				return "filter_context: nothing to filter.", nil
 			}
 
-			// Try to get a vector embedder from the active RAG store.
-			var embedder Embedder
-			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				embedder = a.embedderFor(entry)
-			}
+			// No embedder is available since /rag was removed (DR-0035).
+			var embedder Embedder = a.memoryEmbedder()
 
 			// Embed the criteria once (fails silently → keyword fallback).
 			var criteriaVec []float64

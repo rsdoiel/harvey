@@ -413,7 +413,7 @@ func (a *Agent) registerCommands() {
 		},
 		"hint": {
 			Usage:       "/hint",
-			Description: "Show suggestions for improving results (RAG, memory, KB)",
+			Description: "Show suggestions for improving results (memory, KB)",
 			Handler:     cmdHint,
 		},
 		"recall": {
@@ -699,24 +699,6 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 				fmt.Fprintln(out, "Profile:   (none — run /profile use to set one)")
 			}
 		}
-	}
-	// RAG summary
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		ragState := "off"
-		if a.RagOn {
-			ragState = "on"
-		}
-		if a.Rag != nil {
-			if n, err := a.Rag.Count(); err == nil {
-				fmt.Fprintf(out, "RAG:       %s — store %q, %d chunk(s)\n", ragState, entry.Name, n)
-			} else {
-				fmt.Fprintf(out, "RAG:       %s — store %q\n", ragState, entry.Name)
-			}
-		} else {
-			fmt.Fprintf(out, "RAG:       %s — store %q (not open)\n", ragState, entry.Name)
-		}
-	} else {
-		fmt.Fprintln(out, "RAG:       not configured")
 	}
 	if a.Config.Security.SafeMode {
 		fmt.Fprintln(out, "Safe mode: on")
@@ -1159,40 +1141,6 @@ func cmdHint(a *Agent, _ []string, out io.Writer) error {
 				hints++
 			}
 		}
-	}
-
-	// --- RAG store ---
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		if a.Rag != nil {
-			if n, err := a.Rag.Count(); err == nil {
-				if n == 0 {
-					fmt.Fprintf(out, "  RAG store %q is empty.\n", entry.Name)
-					fmt.Fprintln(out, "    Ingest reference documents to give Harvey topic-specific knowledge.")
-					fmt.Fprintln(out, "    Run: /rag ingest <file>   (PDF, .md, .txt, .go, .ts, ...)")
-					fmt.Fprintln(out, "    See: /help rag")
-					fmt.Fprintln(out)
-					hints++
-				} else if !a.RagOn {
-					fmt.Fprintf(out, "  RAG is off but store %q has %d chunk(s).\n", entry.Name, n)
-					fmt.Fprintln(out, "    Enabling RAG prepends relevant chunks to each prompt.")
-					fmt.Fprintln(out, "    Run: /rag on")
-					fmt.Fprintln(out)
-					hints++
-				}
-			}
-		} else {
-			fmt.Fprintf(out, "  RAG store %q is configured but not open.\n", entry.Name)
-			fmt.Fprintln(out, "    Run: /rag status")
-			fmt.Fprintln(out)
-			hints++
-		}
-	} else {
-		fmt.Fprintln(out, "  No RAG store configured.")
-		fmt.Fprintln(out, "    Create one to give Harvey access to reference documents.")
-		fmt.Fprintln(out, "    Run: /rag new NAME   then   /rag ingest <file>")
-		fmt.Fprintln(out, "    See: /help learn")
-		fmt.Fprintln(out)
-		hints++
 	}
 
 	// --- Knowledge base ---

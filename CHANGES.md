@@ -61,8 +61,10 @@
   then `/kb search`. A `harvey.yaml` whose `memory.rag:` section names an active store or turns RAG on is a configuration error
   (exit 78); one that only lists stores loads with a note at startup, and the section is dropped the next time the configuration
   is saved. Existing store files stay on disk and are not converted (their vectors are bound to an embedding model). The last
-  release that carries `/rag` is v0.0.20. Still there until the next slices: the RAG parts of `/memory`, `/status`, `/hint`, the
-  memory tools and recall; they find no store, so they do nothing. `assay` lost `-rag-db`, `-rag-top-k`, `-rag-embed-model` and
+  release that carries `/rag` is v0.0.20. The RAG parts of `/memory`, `/status`, `/hint`, `/clear`, the startup digest, the memory tools and
+  `UnifiedMemory.Recall()` are gone, and `/hint` no longer checks a RAG store. **Memory recall is now by keyword only**: the
+  embedder the memory system used came from the active RAG store's configuration, so with no RAG store memory has no embedder
+  (`Agent.memoryEmbedder` returns nil) until the memory store is replaced (DR-0037). `assay` lost `-rag-db`, `-rag-top-k`, `-rag-embed-model` and
   `-rag-compare` (an old command line using them is now a usage error), and its report and `results.json` no longer carry RAG fields;
   `-guide-compare` is unchanged. The scholarly-document designs moved to
   `agents/projects/knowledge/notes/`.

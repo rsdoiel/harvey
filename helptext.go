@@ -261,7 +261,7 @@ are also available from the shell: harvey --help TOPIC.
 : show active backend, token usage, routing, recording, and debug state
 
 /hint
-: show actionable suggestions for improving results (RAG, memory, KB)
+: show actionable suggestions for improving results (memory, KB)
 
 **Sessions**
 
@@ -1609,7 +1609,6 @@ The model has no memory of the previous conversation after /clear.
                     visible to the model across topic changes.
   Recording       — the session log keeps running; the cleared conversation
                     stays in it, as the record of what was said.
-  RAG             — the RAG store and its on/off state are unaffected.
   Skills          — the skill catalog remains loaded; /skill load must be
                     re-run to activate a skill in the new context.
 
@@ -1809,7 +1808,6 @@ command does nothing.
 
   System prompt    — re-injected automatically.
   Pins             — re-injected as the first user messages.
-  RAG state        — unaffected.
   Recording        — the running session continues; summary is not
                      written back to the Fountain file.
 
@@ -1903,7 +1901,7 @@ STATUS — show Harvey's current runtime state
 
 /status prints a snapshot of the active Harvey session. It is the fastest
 way to confirm what model you are talking to, how full the context window is,
-and whether optional subsystems (RAG, routing, recording) are active.
+and whether optional subsystems (routing, recording) are active.
 
 # OUTPUT FIELDS
 
@@ -1987,8 +1985,8 @@ HINT — show actionable suggestions for improving Harvey's results
 
 # DESCRIPTION
 
-/hint inspects the three memory silos — the session-experience memory
-store, the active RAG store, and the knowledge base — and prints a short
+/hint inspects the two memory silos — the session-experience memory
+store and the knowledge base — and prints a short
 list of suggestions for things that would help Harvey give better answers
 in this workspace. It takes no arguments and makes no changes; it only
 reports what it finds and suggests a command to run next.
@@ -2002,28 +2000,6 @@ Unmined sessions
 
     Run: /memory mine
 
-RAG store
-  No store configured
-    Suggests creating one and ingesting reference documents:
-
-      Run: /rag new NAME   then   /rag ingest <file>
-      See: /help learn
-
-  Store configured but empty
-    Suggests ingesting documents into the active store:
-
-      Run: /rag ingest <file>   (PDF, .md, .txt, .go, .ts, ...)
-
-  Store has chunks but RAG is off
-    Suggests turning RAG on so chunks are prepended to prompts:
-
-      Run: /rag on
-
-  Store configured but not open
-    Suggests checking its status:
-
-      Run: /rag status
-
 Knowledge base
   If no SQLite knowledge base is open, suggests recording experiment
   findings so they persist across sessions:
@@ -2032,7 +2008,7 @@ Knowledge base
 
 # OUTPUT
 
-If every check passes — RAG is on with chunks, sessions are mined, and the
+If every check passes — sessions are mined and the
 knowledge base is open — /hint prints a single confirmation line and
 points to /help learn for the full memory overview.
 
@@ -2044,22 +2020,20 @@ points to /help learn for the full memory overview.
       Harvey can extract learnings from these sessions.
       Run: /memory mine
 
-    RAG is off but store "default" has 142 chunk(s).
-      Enabling RAG prepends relevant chunks to each prompt.
-      Run: /rag on
+    Knowledge base not open.
+      See: /help kb
 ~~~
 
 ~~~
   harvey > /hint
-    Everything looks good — RAG is on with chunks, sessions are mined, KB is open.
+    Everything looks good — sessions are mined, KB is open.
     Use /help learn for the full memory overview.
 ~~~
 
 # SEE ALSO
 
-  /help learn     — overview of all three memory silos
+  /help learn     — overview of the memory silos
   /memory status  — summary of the experiential memory store
-  /rag status     — summary of the active RAG store
   /kb stats       — summary of the knowledge base
 `
 
@@ -2238,9 +2212,7 @@ kb must be installed:
   go install github.com/rsdoiel/knowledge/cmd/kb@latest
 ~~~
 
-The knowledge base is independent of the RAG store (/help rag). KB holds
-hand-authored structured records; RAG holds embedded chunks from ingested
-documents.
+KB holds hand-authored structured records and ingested documents.
 
 Add -json before the verb for machine-readable output. harvey does not add it.
 
@@ -2249,7 +2221,7 @@ Add -json before the verb for machine-readable output. harvey does not add it.
 ~~~
   /kb search "context window"
   /kb project list
-  /kb observation add --project harvey finding "RAG threshold 0.3 removes noise"
+  /kb observation add --project harvey finding "chunk size 500 removes noise"
   /kb record show harvey/DR-0048
   /kb stats
 ~~~
@@ -2343,7 +2315,7 @@ answer questions about it, suggest next steps, or help resolve open questions.
 
   /memory recall         — search all knowledge silos including the KB
   /kb document ingest    — make a document searchable (the installed kb)
-  /help learn            — overview of all three memory silos
+  /help learn            — overview of the memory silos
 
 `
 
@@ -2420,9 +2392,8 @@ Fountain files in agents/memories/ inside the workspace.
 
   recall QUERY
         Query all memory silos (workspace profile, project facts, experiential
-        memories, RAG chunks, and KB observations) and print grouped results.
-        Uses FTS5 full-text search plus cosine similarity when a RAG store is
-        configured. No token budget is applied — all matching results are shown.
+        memories, and KB observations) and print grouped results.
+        Uses FTS5 full-text search. No token budget is applied — all matching results are shown.
 
   profile show|update|use [name]
         Manage the workspace profile.
@@ -2478,7 +2449,7 @@ When a session starts, Harvey injects a [memory context] block into the
 conversation. Factual types (workspace_profile, project_fact) always appear
 first. Experiential memories (tool_use, workflow, user_preference) are ranked
 by FTS5 full-text search and optionally cosine similarity weighted by the
-memory's confidence score. RAG chunks and KB observations follow if token
+memory's confidence score. KB observations follow if token
 budget permits.
 
 The budget is controlled by memory.budget_pct in harvey.yaml (default 0.25 of
@@ -2543,7 +2514,7 @@ memory before the review card is displayed.
 
   /profile               — alias for /memory profile
   /recall QUERY          — alias for /memory recall
-  /help learn            — overview of all three memory silos
+  /help learn            — overview of the memory silos
   /help kb               — knowledge base management
 
 `
@@ -2560,7 +2531,7 @@ LEARN — how Harvey accumulates and retrieves knowledge
 
 # DESCRIPTION
 
-Harvey stores knowledge in three independent silos that are unified at
+Harvey stores knowledge in two independent silos that are unified at
 retrieval time. Understanding which silo to use for which kind of content
 is the key to getting consistently good results.
 
@@ -2569,28 +2540,25 @@ is the key to getting consistently good results.
 
   Have a text file or document?        →  /kb document ingest <file>
   Something useful happened in a session? →  /memory mine
-  Making an observation about an experiment? →  /kb observe
+  Making an observation about an experiment? →  /kb observation add
 
 
-# THE THREE SILOS
+# THE SILOS
 
   Silo            What belongs here          How to add       How it arrives
   ─────────────── ─────────────────────────  ───────────────  ─────────────────────
-  RAG store       Reference docs, API specs, /rag ingest      Per-prompt via
-                  code examples, PDF papers  <file>           /rag on (context)
-
   Memory store    Patterns observed during   /memory mine     Session-start via
                   sessions: what worked,     (interactive)    /memory recall
                   what the model got wrong,  auto-mines on
                   user preferences           session exit
 
-  Knowledge base  Research notes, named      /kb observe      On-demand via
-                  experiments, cross-project /kb project      /memory recall
-                  concepts and hypotheses    /kb concept
+  Knowledge base  Reference documents,       /kb document     On-demand via
+                  research notes, named      ingest, /kb      /memory recall
+                  experiments, concepts      observation add  and /kb search
 
-Retrieval from all three silos is unified:
+Retrieval from both silos is unified:
 
-  /memory recall <query>   — search all three silos, print ranked results
+  /memory recall <query>   — search both silos, print ranked results
   /recall <query>          — alias for /memory recall
 
   /profile <list|show|edit|use|rename> [args...]
@@ -2605,18 +2573,16 @@ Retrieval from all three silos is unified:
 
 # CHECKING WHAT YOU HAVE
 
-  /status          — shows active memories, unmined sessions, RAG chunk count
+  /status          — shows active memories and unmined sessions
   /hint            — prints actionable suggestions for improving results
   /memory status   — detailed memory store stats and budget advice
-  /rag status      — RAG store details: active store, chunk count, on/off
 
 
 # COMMON WORKFLOWS
 
-Ingest a PDF reference before starting a coding session:
+Ingest a reference document before starting a coding session:
 
-  /rag ingest Reference/papers/oberon2.pdf
-  /rag on
+  /kb document ingest Reference/papers/oberon2.md
 
 Mine learnings from last session before starting the next:
 
@@ -3269,7 +3235,7 @@ then returns to the Harvey prompt.
                 Default: 10.
 
   PROMPT        Free text sent as a chat turn each iteration. The same
-                RAG augmentation, tool-loop execution, and recording
+                tool-loop execution and recording
                 that apply to normal chat apply here.
 
   /COMMAND      A slash command dispatched each iteration, exactly as if
@@ -3280,8 +3246,8 @@ then returns to the Harvey prompt.
 
 # ITERATION BEHAVIOUR
 
-Chat iterations use the same model call as normal chat — same RAG
-augmentation, same tool-loop-or-plain-chat branch, same stats recording
+Chat iterations use the same model call as normal chat — same
+tool-loop-or-plain-chat branch, same stats recording
 and Fountain recording — so looping a prompt behaves identically to
 typing it by hand repeatedly. Two things are deliberately excluded:
 

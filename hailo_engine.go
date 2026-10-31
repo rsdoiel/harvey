@@ -451,3 +451,16 @@ func (a *Agent) hailoHint(out io.Writer) {
 		fmt.Fprintln(out, dim("  "+line))
 	}
 }
+
+/** memoryEmbedder returns the embedder the memory system uses. It is nil: the
+ * embedder used to come from the active RAG store's configuration, and /rag was
+ * removed (workspace DR-0035), so memory recall is by keyword until the memory
+ * store itself is replaced (DR-0037).
+ *
+ * Returns:
+ *   Embedder — nil.
+ *
+ * Example:
+ *   embedder := a.memoryEmbedder() // nil
+ */
+func (a *Agent) memoryEmbedder() Embedder { return nil }

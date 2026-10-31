@@ -159,7 +159,6 @@ type Agent struct {
 	KB                *knowledge.KnowledgeBase
 	ModelCache        *ModelCache  // capability cache for installed Ollama models; nil until initModelCache runs
 	Rag               *RagStore    // RAG chunk store; nil when RAG is not configured
-	RagOn             bool         // when true, top-K chunks are injected before each Chat call
 	SessionsDir       string       // absolute path to the sessions directory
 	Skills            SkillCatalog // skills discovered at startup; nil until loadSkills runs
 	Recorder          *Recorder
@@ -174,7 +173,6 @@ type Agent struct {
 	ActiveSkillSet    string          // name of the currently loaded skill-set bundle; "" when none
 	Tools             *ToolRegistry   // schema-based tool registry; nil when tools are disabled
 	Memory            *MemorySystem   // session-scoped memory subsystems; nil until initMemory runs
-	LastRAGInfo       *RAGAugmentInfo // set after each chat turn that fires RAG; cleared by ClearHistory
 	LastObservationID int64           // ID of the most recently recorded /kb observe; cleared by ClearHistory
 	// toolsReliableOverride, when non-nil, overrides the capability-based logic
 	// in toolsReliable(). Set in tests to simulate a known-reliable or
@@ -368,7 +366,6 @@ func (a *Agent) ClearHistory() {
 		a.addPrompt("user", "pinned", p.Message)
 	}
 	a.ActiveSkill = ""
-	a.LastRAGInfo = nil
 	a.LastObservationID = 0
 }
 
@@ -383,10 +380,7 @@ func (a *Agent) injectMemoryContext(query string) {
 		return
 	}
 
-	var embedder Embedder
-	if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-		embedder = a.embedderFor(entry)
-	}
+	var embedder Embedder = a.memoryEmbedder()
 
 	budget := 512
 	if a.Config.Ollama.ContextLength > 0 && a.Config.Memory.BudgetPct > 0 {

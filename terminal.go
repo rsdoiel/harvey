@@ -311,7 +311,6 @@ func (a *Agent) Run(out io.Writer) error {
 	a.initModelCache(out)
 
 	// RAG store (optional — only when configured in harvey.yaml)
-	a.initRag(out)
 
 	// Memory subsystems (session-scoped; opened once, closed on exit)
 	a.initMemory(out)
@@ -511,10 +510,7 @@ func (a *Agent) Run(out io.Writer) error {
 	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Session.ReplayPath == "" &&
 		a.Memory != nil && a.Memory.Store != nil {
 		if NeedsOnboarding(a.Memory.Store) {
-			var onboardEmbedder Embedder
-			if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-				onboardEmbedder = a.embedderFor(entry)
-			}
+			var onboardEmbedder Embedder = a.memoryEmbedder()
 			if onboardErr := RunOnboarding(a, a.Memory.Store, onboardEmbedder, out, reader); onboardErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Onboarding: %v\n", onboardErr)
 			}
@@ -907,10 +903,7 @@ func (a *Agent) Run(out io.Writer) error {
 		if a.Memory != nil && a.Memory.Store != nil {
 			manifest, mErr := LoadManifest(a.Memory.Store.Dir())
 			if mErr == nil && !manifest.IsMined(sessionPath) {
-				var embedder Embedder
-				if entry := a.Config.Memory.ActiveRagStore(); entry != nil {
-					embedder = a.embedderFor(entry)
-				}
+				var embedder Embedder = a.memoryEmbedder()
 				miner := NewMiner(a.Memory.Store, manifest, a.Workspace)
 				if mineErr := miner.MineAuto(context.Background(), sessionPath, a, embedder, out); mineErr != nil {
 					fmt.Fprintf(out, "%s Auto-mine: %v\n", yellow("  ✗"), mineErr)
@@ -1443,32 +1436,6 @@ func (a *Agent) initModelCache(out io.Writer) {
 	fmt.Fprintf(out, green("✓")+" Model cache: %s\n", mc.Path())
 }
 
-// initRag opens the active RAG store when one is configured in harvey.yaml.
-// Failures are non-fatal. RagOn is set to match cfg.Memory.RagEnabled.
-func (a *Agent) initRag(out io.Writer) {
-	entry := a.Config.Memory.ActiveRagStore()
-	if entry == nil {
-		return
-	}
-	dbPath, err := a.Workspace.AbsPath(entry.DBPath)
-	if err != nil {
-		fmt.Fprintf(out, yellow("  ✗")+" RAG store unavailable: %v\n", err)
-		return
-	}
-	store, err := NewRagStore(dbPath, entry.EmbeddingModel)
-	if err != nil {
-		fmt.Fprintf(out, yellow("  ✗")+" RAG store unavailable: %v\n", err)
-		return
-	}
-	a.Rag = store
-	a.RagOn = a.Config.Memory.RagEnabled
-	status := "off"
-	if a.RagOn {
-		status = "on"
-	}
-	fmt.Fprintf(out, green("✓")+" RAG store: %s (%s) [%s]\n", entry.Name, entry.DBPath, status)
-}
-
 // initMemory opens the session-scoped MemorySystem. Failures are non-fatal —
 // memory features degrade gracefully when the store cannot be opened.
 func (a *Agent) initMemory(out io.Writer) {
@@ -1855,24 +1822,6 @@ func sessionMemoryDigest(a *Agent, out io.Writer) {
 				fmt.Fprint(out, dim(fmt.Sprintf("  %d session(s) unmined — /memory mine to extract learnings\n", len(unmined))))
 			}
 		}
-	}
-
-	// RAG store hints.
-	entry := a.Config.Memory.ActiveRagStore()
-	if entry == nil {
-		return
-	}
-	if a.Rag == nil {
-		return
-	}
-	n, err := a.Rag.Count()
-	if err != nil {
-		return
-	}
-	if n == 0 {
-		fmt.Fprint(out, dim(fmt.Sprintf("  RAG store %q is empty — /rag ingest <files> to add knowledge\n", entry.Name)))
-	} else if !a.RagOn {
-		fmt.Fprint(out, dim(fmt.Sprintf("  RAG has %d chunk(s) but is off — /rag on to enable context injection\n", n)))
 	}
 }
 

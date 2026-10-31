@@ -28,7 +28,7 @@ func HelpTopicsText() string {
   getting-started Installation walkthrough and first session guide
   git             Read-only git commands injected into context
   hint            Inject a one-off hint into the LLM context
-  inspect         Inspect RAG stores, memory records, and model details
+  inspect         Inspect memory records and model details
   kb              Knowledge base — experiments, observations, and concepts
   learn           Overview of Harvey's three-silo memory architecture
   model           Unified model management across all backends (list, use, show, status, stop, clean)

@@ -22,7 +22,7 @@ type MemorySystem struct {
  *
  * Parameters:
  *   ws  (*Workspace)   — workspace whose agents/memories directory is used.
- *   cfg (*MemoryConfig) — memory configuration (top-K, budget, RAG settings).
+ *   cfg (*MemoryConfig) — memory configuration (top-K, budget).
  *
  * Returns:
  *   *MemorySystem — never nil.
