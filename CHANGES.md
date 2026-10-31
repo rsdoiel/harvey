@@ -18,6 +18,21 @@
   failed is shown with the failure. Anything that reads the *current* session's `.spmd` while it is running will see only the
   title page; read the session log (`agents/sessions/NAME.jsonl`) instead.
 
+- **Resume, replay and the session list read the session log.** `--continue`/`--resume`, `/session use`, `/session show`,
+  `--replay` and `/session list` rebuild from `agents/sessions/NAME.jsonl`, not from the Fountain file. A turn that failed or
+  went to a named `@route` is no longer loaded into a resumed conversation, and a replay skips routed turns. A replay writes a
+  session log of its own (marked `replay_of`, its inputs `origin: replay`) and renders its `.spmd` from it. An older `.spmd`
+  with no log still loads, through the old reader, for one more release.
+
+- **`/rename` renames the whole session.** The `.spmd`, the session log and its `.blobs` directory move together; a name that
+  is already taken is refused (exit 73) and nothing moves.
+
+### Removed
+
+- **`/record` (`start`, `stop`, `status`) and `/help record`.** Every session is logged from the start, so there is nothing to
+  start or stop, and the log's file name is chosen with `--record-file` or `/rename NAME`. `--record` and `--record-file` stay.
+  The `harvey-record.7` manual page is gone; `harvey-session.7` covers sessions.
+
 ### Added
 
 - **A complete record of each session.** The session log holds every user input, model request and response (with the usage the

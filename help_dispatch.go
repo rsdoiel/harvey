@@ -42,7 +42,6 @@ func HelpTopicsText() string {
   read            Read workspace files into conversation context
   read-dir        Read a directory tree into conversation context
   read-pdf        Extract and inject PDF text (requires poppler)
-  record          Session recording in Fountain screenplay format
   rename          Rename a file in the workspace
   routing         Route prompts to remote model endpoints via @mention
   run             Run a shell command and inject its output into context
@@ -61,7 +60,7 @@ func HelpTopicsText() string {
            filetree → file-tree   install, setup → getting-started
            knowledge → kb         pdf, pdftools → pdf-tools
            profile, recall → memory   readdir → read-dir
-           recording → record     route → routing
+           route → routing
            skill → skills         tools, builtins → builtin-tools
 
 `
@@ -145,8 +144,6 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(ReadDirHelpText)
 	case "read-pdf", "readpdf":
 		f(ReadPDFHelpText)
-	case "record", "recording":
-		f(RecordHelpText)
 	case "rename":
 		f(RenameHelpText)
 	case "routing", "route", "router":

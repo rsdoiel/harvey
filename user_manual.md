@@ -88,7 +88,6 @@ Learning this vocabulary for one command teaches you all the others:
 
 - **[Sessions](SESSIONS.md)** — Session recording, file structure, replay functionality, and programmatic access
 - **[Session Commands](harvey-session.7.md)** — `/session list|show|use|continue|replay` reference
-- **[Record Commands](harvey-record.7.md)** — `/record start|stop|status` reference
 - **[Fountain Format](FOUNTAIN_FORMAT.md)** — Fountain screenplay format specification for conversation recordings
 
 ### File & Workspace Operations

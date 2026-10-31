@@ -537,7 +537,7 @@ func (a *Agent) Run(out io.Writer) error {
 		fmt.Fprintf(out, "  Replay mode: %s\n", a.Config.Session.ReplayPath)
 		fmt.Fprintln(out, cyan(bold(sep)))
 		fmt.Fprintln(out)
-		if err := a.ReplayFromFountain(replayCtx, a.Config.Session.ReplayPath, outPath, out); err != nil {
+		if err := a.ReplayFromSession(replayCtx, a.Config.Session.ReplayPath, outPath, out); err != nil {
 			return err
 		}
 		if !a.Config.Session.ReplayContinue {
@@ -579,7 +579,7 @@ func (a *Agent) Run(out io.Writer) error {
 				fmt.Fprintln(out, dim("  Use /model use NAME to switch."))
 			}
 		}
-		n, contErr := a.ContinueFromFountain(a.Config.Session.ContinuePath)
+		n, contErr := a.ContinueFromSession(a.Config.Session.ContinuePath)
 		if contErr != nil {
 			fmt.Fprintf(out, yellow("  ✗")+" Continue failed: %v\n", contErr)
 		} else {
@@ -1485,46 +1485,6 @@ func saveCmdHistory(ws *Workspace, le *termlib.LineEditor) {
 	}
 	data := []byte(strings.Join(entries, "\n") + "\n")
 	_ = ws.WriteFile(cmdHistoryFile, data, 0o600)
-}
-
-// toolCallsFromHistory extracts ToolCallRecords from a slice of history
-// messages. It pairs each tool call from assistant turns with its result
-// status from the corresponding tool-role message. charName is stamped onto
-// every record's Character field; pass "" for HARVEY (default, no prefix).
-func toolCallsFromHistory(msgs []Message, charName string) []ToolCallRecord {
-	// Build a map from ToolCallID to result status derived from tool-role messages.
-	resultByID := make(map[string]string)
-	for _, m := range msgs {
-		if m.Role != "tool" || m.ToolCallID == "" {
-			continue
-		}
-		content := strings.TrimSpace(m.Content)
-		first := strings.SplitN(content, "\n", 2)[0]
-		if strings.HasPrefix(first, "error:") {
-			resultByID[m.ToolCallID] = first
-		} else {
-			resultByID[m.ToolCallID] = "ok"
-		}
-	}
-	var out []ToolCallRecord
-	for _, m := range msgs {
-		if m.Role != "assistant" || len(m.ToolCalls) == 0 {
-			continue
-		}
-		for _, tc := range m.ToolCalls {
-			result := resultByID[tc.ID]
-			if result == "" {
-				result = "ok"
-			}
-			out = append(out, ToolCallRecord{
-				Name:      tc.Function.Name,
-				Args:      tc.Function.Arguments,
-				Result:    result,
-				Character: charName,
-			})
-		}
-	}
-	return out
 }
 
 // routeSpinnerLabel returns the spinner label for an @mention dispatch turn.

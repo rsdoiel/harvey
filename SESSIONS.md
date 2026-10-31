@@ -32,11 +32,6 @@ harvey
 
 # Explicit recording path
 harvey --record-file mysession.spmd
-
-# In REPL, check recording status
-harvey> /record
-  Recording: ON
-  File: /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
 ```
 
 ### Continue a Previous Session
@@ -407,28 +402,6 @@ harvey --sessions-dir custom/sessions
 
 
 ## Session Commands
-
-### `/record` — Manage Recording
-
-| Command | Description |
-|---------|-------------|
-| `/record` | Show current recording status |
-| `/record on` | Start recording (default at startup) |
-| `/record off` | Stop recording current session |
-| `/record file <path>` | Change recording file path |
-
-**Examples:**
-```
-harvey> /record
-  Recording: ON
-  File: /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
-
-harvey> /record off
-  Recording stopped.
-
-harvey> /record on
-  Recording resumed to /home/user/project/agents/sessions/harvey-session-20260504-142300.spmd
-```
 
 ### `/session` — Session Operations
 

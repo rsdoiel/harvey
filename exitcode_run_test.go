@@ -132,9 +132,9 @@ func TestLoadHarveyYAML_ParseErrorIsConfig(t *testing.T) {
 
 // The replay file is checked before the backend: a missing file is 66 whether
 // or not a model is connected, and with a good file and no model it is 69.
-func TestReplayFromFountain_ChecksTheFileBeforeTheBackend(t *testing.T) {
+func TestReplayFromSession_ChecksTheFileBeforeTheBackend(t *testing.T) {
 	a := newTestAgent(t)
-	err := a.ReplayFromFountain(t.Context(), filepath.Join(t.TempDir(), "missing.spmd"), "", io.Discard)
+	err := a.ReplayFromSession(t.Context(), filepath.Join(t.TempDir(), "missing.spmd"), "", io.Discard)
 	if got := ExitCodeFor(err); got != ClassNoInput {
 		t.Errorf("missing replay file, no backend = %v (%v), want no_input", got, err)
 	}
@@ -143,7 +143,7 @@ func TestReplayFromFountain_ChecksTheFileBeforeTheBackend(t *testing.T) {
 	if err := os.WriteFile(good, []byte("Title: t\n\nINT. SESSION - NOW\n\nHARVEY\nhello\n\nUSER\nhi\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err = a.ReplayFromFountain(t.Context(), good, "", io.Discard)
+	err = a.ReplayFromSession(t.Context(), good, "", io.Discard)
 	if got := ExitCodeFor(err); got != ClassUnavailable {
 		t.Errorf("good replay file, no backend = %v (%v), want unavailable", got, err)
 	}

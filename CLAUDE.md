@@ -87,15 +87,14 @@ Harvey has three independent knowledge stores, unified at retrieval time by `Uni
 
 **RagStore embedding consistency:** The store is bound to one embedding model at creation. `Query` and `Ingest` both reject an `Embedder` whose `Name()` differs from the stored model.
 
-## Session recording — Fountain format
+## Session recording — the session log
 
-Sessions are recorded as `.spmd` files (Fountain screenplay dialect) in `agents/sessions/`. **Not** plain Markdown. The format is documented in `FOUNTAIN_FORMAT.md`. Key recorder calls:
+Each session writes an append-only JSONL log, `agents/sessions/<stem>.jsonl` (schema: `notes/session-log-schema-as-built.md`, DR-0038 to DR-0041), with large payloads spilled to `<stem>.blobs/`. The `.spmd` Fountain file beside it holds only the title page during the session; at close `finishSession` renders it from the log (`sessionrender.go`, `sessionfile.go`), and `RecoverSessionFiles` renders any left by a crash at startup. `FOUNTAIN_FORMAT.md` documents the output.
 
-- `RecordTurnWithStats` — normal chat turn
-- `RecordAgentAction` — file write confirmation (generates `HARVEY` / `RSDOIEL` dialogue + `[[write: path — ok]]` note)
-- `RecordShellCommand` — `!` command execution
-
-When adding features that write files or run commands, call the appropriate recorder method so the session transcript stays accurate.
+- Log an event through the `Agent.log*` helpers (`sessionlog_agent.go`, `sessionlog_permission.go`, `sessionlog_kb.go`); they are safe with no log open. Do not write Fountain from feature code.
+- `--continue`, `/session use`, `--replay` and the session list read the log (`sessionload.go`: `LoadSessionInfo`, `ListSessions`, `ContinueFromSession`); an old `.spmd` with no log falls back to `parseFountainSession` for one release.
+- A feature that writes files or runs commands records the author's answer with `logAuthorsAnswer`; model calls are logged by the client hook (`BeginModelCall`), with `withCallPurpose` saying what a call is for.
+- Rendering changes need the golden files in `testdata/fountain/` regenerated (`UPDATE_GOLDEN=1 go test`).
 
 ## Assay evaluation tool (`cmd/assay/`)
 

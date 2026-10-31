@@ -27,6 +27,7 @@ import (
 type PlaybackTurn struct {
 	UserInput  string // USER's message text
 	ModelReply string // model's original response (kept for comparison in replay)
+	Route      string // the route the line was sent to with @name; "" for an ordinary turn
 }
 
 // parseFountainSession walks a Harvey Fountain session file and returns the
@@ -176,38 +177,47 @@ func (a *Agent) ContinueFromFountain(path string) (int, error) {
 	return len(turns), nil
 }
 
-// ReplayFromFountain re-sends each user message from srcPath to the current
-// LLM backend, records fresh responses to a new Fountain file at outPath,
-// and streams progress to out.
+// ReplayFromSession re-sends each user message of a past session to the
+// current LLM backend and writes the answers to a new session: a log of its
+// own, marked as a replay of the source, and the Fountain file rendered from
+// it at the end. The source may be a session log, its Fountain file, or an old
+// Fountain file with no log. Turns that went to a named route are skipped,
+// since the current backend is not that route.
 //
 // Tagged code blocks in replies are applied with backup protection: if a
 // target file already exists it is renamed to <path>.bak.<YYYYMMDD-HHMMSS>
 // before the new content is written. Files that cannot be backed up or
-// written are noted as skipped in the new Fountain recording.
+// written are logged as skipped.
 //
 // Parameters:
 //
 //	ctx     (context.Context) — cancellable context for LLM calls.
-//	srcPath (string)          — Harvey Fountain session file to replay.
-//	outPath (string)          — destination for the new session recording.
+//	srcPath (string)          — the session to replay.
+//	outPath (string)          — the new session's Fountain path; its log sits beside it.
 //	out     (io.Writer)       — progress and streaming output.
 //
 // Returns:
 //
-//	error — on parse failure, recorder creation failure, or unrecoverable LLM error.
+//	error — on a missing or malformed source, a failed recorder, or an unrecoverable LLM error.
 //
 // Example:
 //
-//	err := agent.ReplayFromFountain(ctx, "old.fountain", "new.fountain", os.Stdout)
-func (a *Agent) ReplayFromFountain(ctx context.Context, srcPath, outPath string, out io.Writer) error {
-	// The file is checked before the backend, so a missing or malformed replay
-	// file is reported as that and not as "no backend".
-	_, _, turns, err := parseFountainSession(srcPath)
+//	err := agent.ReplayFromSession(ctx, "old.jsonl", "new.spmd", os.Stdout)
+func (a *Agent) ReplayFromSession(ctx context.Context, srcPath, outPath string, out io.Writer) error {
+	// The source is checked before the backend, so a missing or malformed
+	// replay file is reported as that and not as "no backend".
+	src, err := LoadSessionInfo(srcPath)
 	if err != nil {
 		return err
 	}
 	if a.Client == nil {
 		return Unavailablef("replay: no backend connected")
+	}
+	var turns []PlaybackTurn
+	for _, t := range src.Turns {
+		if t.Route == "" {
+			turns = append(turns, t)
+		}
 	}
 	if len(turns) == 0 {
 		fmt.Fprintf(out, "  No chat turns found in %s\n", srcPath)
@@ -218,11 +228,19 @@ func (a *Agent) ReplayFromFountain(ctx context.Context, srcPath, outPath string,
 	if err != nil {
 		return fmt.Errorf("replay: create recorder: %w", err)
 	}
-	defer rec.Close()
+
+	// The replay has its own recorder and log; the running session's are put
+	// back when it ends.
+	saved := *a.replayState()
+	defer a.restoreReplayState(saved)
+	a.Recorder, a.SessionLog = rec, nil
+	a.openSessionLog(outPath, src.Path, out)
+	defer a.finishSession(io.Discard)
 
 	fmt.Fprintf(out, "  Replaying %d turns from %s\n", len(turns), srcPath)
 	fmt.Fprintf(out, "  Recording to %s\n\n", outPath)
 
+	turnCtx := withCallPurpose(ctx, purposeTurn, nil)
 	for i, turn := range turns {
 		preview := turn.UserInput
 		if len(preview) > 60 {
@@ -230,21 +248,21 @@ func (a *Agent) ReplayFromFountain(ctx context.Context, srcPath, outPath string,
 		}
 		fmt.Fprintf(out, "  [%d/%d] %s\n\n", i+1, len(turns), preview)
 
+		a.logUserInputOrigin(turn.UserInput, "", "replay")
 		a.AddMessage("user", turn.UserInput)
 
 		var buf strings.Builder
-		stats, chatErr := a.Client.Chat(ctx, a.History, io.MultiWriter(out, &buf))
+		stats, chatErr := a.Client.Chat(turnCtx, a.History, io.MultiWriter(out, &buf))
 		if chatErr != nil {
 			return fmt.Errorf("replay turn %d: %w", i+1, chatErr)
 		}
 		reply := strings.TrimSpace(buf.String())
 		a.AddMessage("assistant", reply)
-		_ = rec.RecordTurnWithStats(turn.UserInput, reply, stats, []string{a.Client.Name()}, "", nil, nil)
 
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, dim("  "+stats.Format()))
 
-		a.replayWriteBlocks(reply, rec, out)
+		a.replayWriteBlocks(reply, out)
 		fmt.Fprintln(out)
 	}
 
@@ -252,26 +270,41 @@ func (a *Agent) ReplayFromFountain(ctx context.Context, srcPath, outPath string,
 	return nil
 }
 
+// replayState is the part of the agent that belongs to one session's records.
+type replayState struct {
+	rec                          *Recorder
+	log                          *SessionLog
+	turn                         int
+	lastID, firstDialogID, sysID string
+	model                        ModelRef
+}
+
+func (a *Agent) replayState() *replayState {
+	return &replayState{a.Recorder, a.SessionLog, a.logTurn, a.logLastID, a.logFirstDialogID, a.logSystemID, a.logModel}
+}
+
+func (a *Agent) restoreReplayState(s replayState) {
+	a.Recorder, a.SessionLog, a.logTurn = s.rec, s.log, s.turn
+	a.logLastID, a.logFirstDialogID, a.logSystemID, a.logModel = s.lastID, s.firstDialogID, s.sysID, s.model
+}
+
 // replayWriteBlocks applies tagged code blocks found in a replay reply,
-// backing up existing files and noting failures as Fountain notes.
-func (a *Agent) replayWriteBlocks(reply string, rec *Recorder, out io.Writer) {
+// backing up existing files and logging each outcome as a write permission.
+func (a *Agent) replayWriteBlocks(reply string, out io.Writer) {
 	blocks := findTaggedBlocks(reply)
 	if len(blocks) == 0 {
 		return
 	}
+	a.offerOf = len(blocks)
+	defer func() { a.offerIndex, a.offerOf = 0, 0 }()
 
 	ts := time.Now().Format("20060102-150405")
-	if rec != nil {
-		_ = rec.StartAgentScene(fmt.Sprintf("Harvey proposes to write %d file(s).", len(blocks)))
-	}
-
-	for _, b := range blocks {
+	for i, b := range blocks {
+		a.offerIndex = i + 1
 		abs, err := resolveWorkspacePath(a.Workspace.Root, b.path)
 		if err != nil {
 			fmt.Fprintf(out, "  ✗ skipped %s: %v\n", b.path, err)
-			if rec != nil {
-				_ = rec.RecordAgentAction("write", b.path, "all", "skipped: "+err.Error())
-			}
+			a.logAuthorsAnswer("write", b.path, actionAll, "skipped: "+err.Error())
 			continue
 		}
 
@@ -280,9 +313,7 @@ func (a *Agent) replayWriteBlocks(reply string, rec *Recorder, out io.Writer) {
 			bakPath := abs + ".bak." + ts
 			if renErr := os.Rename(abs, bakPath); renErr != nil {
 				fmt.Fprintf(out, "  ✗ skipped %s: cannot backup: %v\n", b.path, renErr)
-				if rec != nil {
-					_ = rec.RecordAgentAction("write", b.path, "all", "skipped: cannot backup")
-				}
+				a.logAuthorsAnswer("write", b.path, actionAll, "skipped: cannot backup")
 				continue
 			}
 			fmt.Fprintf(out, "  ↩ backed up %s → %s\n", b.path, filepath.Base(bakPath))
@@ -295,14 +326,10 @@ func (a *Agent) replayWriteBlocks(reply string, rec *Recorder, out io.Writer) {
 			return os.WriteFile(abs, []byte(b.content), 0o644)
 		}(); err != nil {
 			fmt.Fprintf(out, "  ✗ %s: %v\n", b.path, err)
-			if rec != nil {
-				_ = rec.RecordAgentAction("write", b.path, "all", "error: "+err.Error())
-			}
+			a.logAuthorsAnswer("write", b.path, actionAll, "error: "+err.Error())
 		} else {
 			fmt.Fprintf(out, "  ✓ wrote %s (%d bytes)\n", b.path, len(b.content))
-			if rec != nil {
-				_ = rec.RecordAgentAction("write", b.path, "all", "ok")
-			}
+			a.logAuthorsAnswer("write", b.path, actionAll, "ok")
 		}
 	}
 }

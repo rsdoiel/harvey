@@ -264,9 +264,6 @@ are also available from the shell: harvey --help TOPIC.
 
 **Sessions**
 
-/record <start [FILE]|stop|status>
-: start or stop Fountain session recording
-
 /rename NAME
 : rename the active session file without interrupting recording
 

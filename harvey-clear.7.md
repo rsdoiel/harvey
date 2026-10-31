@@ -25,8 +25,8 @@ The model has no memory of the previous conversation after /clear.
   Pinned context  — any text set with /context add is re-injected as the
                     first user message, keeping persistent constraints
                     visible to the model across topic changes.
-  Recording       — an active /record session keeps running; the cleared
-                    conversation is not written to the session file.
+  Recording       — the session log keeps running; the cleared conversation
+                    stays in it, as the record of what was said.
   RAG             — the RAG store and its on/off state are unaffected.
   Skills          — the skill catalog remains loaded; /skill load must be
                     re-run to activate a skill in the new context.

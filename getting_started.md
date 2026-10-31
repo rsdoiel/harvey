@@ -341,7 +341,6 @@ See [Model Commands](harvey-model.7.md) and [Routing](harvey-routing.7.md).
 
 | Command | Description |
 |---|---|
-| `/record <start [FILE]\|stop\|status>` | Record the session to a Fountain file |
 | `/rename NAME` | Rename the active recording |
 | `/session <list\|show\|use\|continue\|replay>` | List, inspect, load, or replay recordings |
 | `/resume [FILE]` | Alias for `/session use` |
@@ -654,28 +653,19 @@ Harvey can record sessions to [Fountain](https://fountain.io) screenplay files.
 Fountain recordings capture every exchange in a structured, human-readable
 format that Harvey can replay or resume later.
 
-### Starting a recording
+### Recording is always on
 
-| Command | Description |
-|---|---|
-| `/record start [FILE]` | Begin recording; FILE defaults to a timestamped path in the workspace |
-| `/record stop` | Close the recording file |
-| `/record status` | Show the current recording path or "not recording" |
-
-```
-harvey > /record start
-Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.spmd
-
-harvey > /record stop
-Recording stopped. Session saved to harvey-session-20260415-142300.spmd
-```
-
-You can also start recording automatically at launch:
+There is no command to start or stop a recording. Harvey logs every session to
+`agents/sessions/NAME.jsonl` and renders the Fountain `.spmd` file from the log
+when the session ends. To choose the session's name, or turn the automatic
+naming off, use the command-line flags:
 
 ```bash
 harvey --record                          # auto-named timestamped file
 harvey --record-file mysession.spmd  # explicit path
 ```
+
+`/rename NAME` renames the running session.
 
 ### Resuming or replaying a Fountain file
 

@@ -141,7 +141,11 @@ func (a *Agent) logUserInput(input string) { a.logUserInputVia(input, "") }
 
 // logUserInputVia is logUserInput for a line sent to a named route; the route
 // is recorded so the Fountain scene can say where the line went.
-func (a *Agent) logUserInputVia(input, route string) {
+func (a *Agent) logUserInputVia(input, route string) { a.logUserInputOrigin(input, route, "") }
+
+// logUserInputOrigin is logUserInputVia with the origin of the line; "" means
+// the author typed it and "replay" means it was re-sent from an earlier session.
+func (a *Agent) logUserInputOrigin(input, route, origin string) {
 	if a.SessionLog == nil {
 		return
 	}
@@ -149,6 +153,9 @@ func (a *Agent) logUserInputVia(input, route string) {
 	data := map[string]any{"text": a.logContent(input)}
 	if route != "" {
 		data["route"] = route
+	}
+	if origin != "" {
+		data["origin"] = origin
 	}
 	id := a.logEvent(KindUserInput, LevelInfo, data)
 	if a.logFirstDialogID == "" {

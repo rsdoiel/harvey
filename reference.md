@@ -40,7 +40,6 @@ All Harvey commands are organized into logical categories. Each command has its 
 ### Session Management
 
 - **[harvey-session.7.md](harvey-session.7.md)** — Session management commands
-- **[harvey-record.7.md](harvey-record.7.md)** — Start, stop, and manage session recordings
 - **[harvey-rename.7.md](harvey-rename.7.md)** — Rename the active session file
 - **[harvey-summarize.7.md](harvey-summarize.7.md)** — Condense conversation history to free context window space
 - **[harvey-clear.7.md](harvey-clear.7.md)** — Reset conversation history

@@ -317,12 +317,6 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdSecurity,
 			Subcommands: []string{"status"},
 		},
-		"record": {
-			Usage:       "/record <start [FILE]|stop|status>",
-			Description: "Record session exchanges to a Markdown file",
-			Handler:     cmdRecord,
-			Subcommands: []string{"start", "stop", "status"},
-		},
 		"session": {
 			Usage:       "/session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>",
 			Description: "List, inspect, load, or replay .spmd/.fountain session recordings",
@@ -1700,13 +1694,14 @@ func ollamaTruncateName(s string, max int) string {
 
 // ─── /rename ─────────────────────────────────────────────────────────────────
 
-/** cmdRename renames the active session recording file without ending the
- * session. The new name is placed in the same directory as the current file.
- * A .spmd extension is added automatically when omitted.
+/** cmdRename renames the active session without ending it: the Fountain file,
+ * the session log beside it, and the log's blobs directory move together. The
+ * new name is placed in the same directory; a .spmd extension is stripped if
+ * given.
  *
  * Parameters:
  *   a    (*Agent)    — Harvey agent with an active Recorder.
- *   args ([]string)  — [0] new filename (path components are stripped).
+ *   args ([]string)  — [0] new name (path components are stripped).
  *   out  (io.Writer) — destination for command output.
  *
  * Returns:
@@ -1717,17 +1712,25 @@ func ollamaTruncateName(s string, max int) string {
  */
 func cmdRename(a *Agent, args []string, out io.Writer) error {
 	if a.Recorder == nil {
-		return Negativef("no active recording. Start one with /record start")
+		return Negativef("no active session file to rename")
 	}
 	if len(args) == 0 {
 		return Usagef("usage: /rename NAME")
 	}
 	name := filepath.Base(args[0])
-	if !strings.HasSuffix(name, ".spmd") && !strings.HasSuffix(name, ".fountain") {
-		name += ".spmd"
+	stem := strings.TrimSuffix(strings.TrimSuffix(name, ".spmd"), ".fountain")
+	newPath := filepath.Join(filepath.Dir(a.Recorder.Path()), stem+".spmd")
+	// The log moves first: it is the record, and it refuses a name already taken.
+	if a.SessionLog != nil {
+		if err := a.SessionLog.Rename(stem); err != nil {
+			return fmt.Errorf("rename: %w", err)
+		}
 	}
-	newPath := filepath.Join(filepath.Dir(a.Recorder.Path()), name)
 	if err := a.Recorder.Rename(newPath); err != nil {
+		if a.SessionLog != nil {
+			old := strings.TrimSuffix(filepath.Base(a.Recorder.Path()), ".spmd")
+			_ = a.SessionLog.Rename(old)
+		}
 		return defaultClass(ClassIO, fmt.Errorf("rename: %w", err))
 	}
 	fmt.Fprintf(out, "Session renamed to: %s\n", newPath)
@@ -1809,87 +1812,6 @@ func ollamaFormatCtx(tokens int) string {
 		return fmt.Sprintf("%dk", tokens/1024)
 	}
 	return fmt.Sprintf("%d", tokens)
-}
-
-// ─── /record ─────────────────────────────────────────────────────────────────
-
-/** cmdRecord manages session recording to Fountain screenplay files. Harvey
- * records all conversations to .spmd files for auditability and resumption.
- *
- * Subcommands:
- *   start [FILE]  — Begin recording to specified file (or auto-generated path)
- *   stop         — Stop current recording session
- *   status       — Show current recording status and file path
- *
- * Recording is enabled by default on startup. Sessions are saved to
- * agents/sessions/ by default, with filenames like:
- *   harvey-session-YYYYMMDD-HHMMSS.spmd
- *
- * The Fountain format (.spmd) captures all chat turns, file operations,
- * shell commands, and skill executions with proper character attribution
- * (HARVEY, USER, MODEL_NAME, etc.).
- *
- * Parameters:
- *   a    (*Agent)    — Harvey agent with recording state.
- *   args ([]string)  — Command arguments from user input.
- *   out  (io.Writer) — Destination for command output.
- *
- * Returns:
- *   error — On command execution failure.
- */
-func cmdRecord(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return Usagef("usage: /record <start [FILE]|stop|status>")
-	}
-	switch strings.ToLower(args[0]) {
-	case "start":
-		if a.Recorder != nil {
-			return Negativef("already recording to %s. Use /record stop first", a.Recorder.Path())
-		}
-		path := ""
-		if len(args) >= 2 {
-			path = args[1]
-		} else {
-			sessDir := a.SessionsDir
-			if sessDir == "" {
-				sessDir = "."
-			}
-			path = DefaultSessionPath(sessDir)
-		}
-		model := "none"
-		if a.Client != nil {
-			model = a.Client.Name()
-		}
-		ws := "."
-		if a.Workspace != nil {
-			ws = a.Workspace.Root
-		}
-		r, err := NewRecorder(path, model, ws)
-		if err != nil {
-			return AsCreate(err)
-		}
-		a.Recorder = r
-		fmt.Fprintf(out, "Recording started: %s\n", path)
-	case "stop":
-		if a.Recorder == nil {
-			return Negativef("not currently recording")
-		}
-		path := a.Recorder.Path()
-		if err := a.Recorder.Close(); err != nil {
-			return err
-		}
-		a.Recorder = nil
-		fmt.Fprintf(out, "Recording stopped. Session saved to %s\n", path)
-	case "status":
-		if a.Recorder != nil {
-			fmt.Fprintf(out, "Recording to: %s\n", a.Recorder.Path())
-		} else {
-			fmt.Fprintln(out, "Not recording.")
-		}
-	default:
-		return Usagef("unknown record subcommand: %s  (usage: /record <start [FILE]|stop|status>)", args[0])
-	}
-	return nil
 }
 
 // ─── /files ──────────────────────────────────────────────────────────────────
@@ -3371,7 +3293,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		if sessDir == "" {
 			return NoInputf("no sessions directory configured")
 		}
-		files, err := ListSessionFiles(sessDir)
+		files, err := ListSessions(sessDir)
 		if err != nil {
 			return err
 		}
@@ -3392,17 +3314,14 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		} else {
 			return Usagef("usage: /session show FILE")
 		}
-		info, err := os.Stat(path)
+		si, err := LoadSessionInfo(path)
 		if err != nil {
 			return err
 		}
-		_, model, turns, err := parseFountainSession(path)
-		if err != nil {
-			return defaultClass(ClassData, fmt.Errorf("could not parse session: %w", err))
-		}
-		fmt.Fprintf(out, "  File:    %s\n", path)
-		fmt.Fprintf(out, "  Date:    %s\n", info.ModTime().Format("2006-01-02 15:04"))
-		fmt.Fprintf(out, "  Model:   %s\n", model)
+		turns := si.Turns
+		fmt.Fprintf(out, "  File:    %s\n", si.Path)
+		fmt.Fprintf(out, "  Date:    %s\n", si.Date.Format("2006-01-02 15:04"))
+		fmt.Fprintf(out, "  Model:   %s\n", si.Model)
 		fmt.Fprintf(out, "  Turns:   %d\n", len(turns))
 		if len(turns) > 0 {
 			preview := turns[0].UserInput
@@ -3416,7 +3335,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 			if a.SessionsDir == "" {
 				return NoInputf("no sessions directory configured")
 			}
-			files, err := ListSessionFiles(a.SessionsDir)
+			files, err := ListSessions(a.SessionsDir)
 			if err != nil {
 				return err
 			}
@@ -3436,7 +3355,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 			}
 			args = append(args, chosen)
 		}
-		n, err := a.ContinueFromFountain(args[1])
+		n, err := a.ContinueFromSession(args[1])
 		if err != nil {
 			return defaultClass(ClassData, fmt.Errorf("%s: %w", args[1], err))
 		}
@@ -3455,7 +3374,7 @@ func cmdSession(a *Agent, args []string, out io.Writer) error {
 		if a.Client == nil {
 			return errNoBackend()
 		}
-		return a.ReplayFromFountain(context.Background(), src, outPath, out)
+		return a.ReplayFromSession(context.Background(), src, outPath, out)
 	default:
 		return Usagef("unknown session subcommand: %s  (usage: /session <list|show [FILE]|use FILE|continue FILE|replay FILE [OUTPUT]>)", args[0])
 	}

@@ -1157,14 +1157,7 @@ func TestSessionUse_aliasForContinue(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/test.spmd"
 	// Create a properly-formatted session using NewRecorder.
-	rec, err := NewRecorder(path, "ollama (mock)", dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rec.RecordTurn("Hello.", "Hi!"); err != nil {
-		t.Fatal(err)
-	}
-	rec.Close()
+	writeLegacyFountain(t, path, "ollama (mock)", dir, "Hello.", "Hi!")
 
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
@@ -1183,14 +1176,7 @@ func TestSessionUse_aliasForContinue(t *testing.T) {
 func TestCmdResume_aliasForSessionUse(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/test.spmd"
-	rec, err := NewRecorder(path, "ollama (mock)", dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rec.RecordTurn("Hello.", "Hi!"); err != nil {
-		t.Fatal(err)
-	}
-	rec.Close()
+	writeLegacyFountain(t, path, "ollama (mock)", dir, "Hello.", "Hi!")
 
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
@@ -1209,14 +1195,7 @@ func TestCmdResume_aliasForSessionUse(t *testing.T) {
 func TestCmdResume_noArgsShowsPicker(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/test.spmd"
-	rec, err := NewRecorder(path, "ollama (mock)", dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rec.RecordTurn("Hello.", "Hi!"); err != nil {
-		t.Fatal(err)
-	}
-	rec.Close()
+	writeLegacyFountain(t, path, "ollama (mock)", dir, "Hello.", "Hi!")
 
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
@@ -1416,12 +1395,7 @@ func TestSessionUse_noArg_showsPicker(t *testing.T) {
 
 	// Write two minimal session files.
 	for _, name := range []string{"alpha.spmd", "beta.spmd"} {
-		rec, err := NewRecorder(sessDir+"/"+name, "mock", sessDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = rec.RecordTurn("hello", "hi")
-		rec.Close()
+		writeLegacyFountain(t, sessDir+"/"+name, "mock", sessDir, "hello", "hi")
 	}
 
 	a := newTestAgent(t)
@@ -1440,12 +1414,7 @@ func TestSessionUse_noArg_showsPicker(t *testing.T) {
 
 func TestSessionContinue_noArg_showsPicker(t *testing.T) {
 	sessDir := t.TempDir()
-	rec, err := NewRecorder(sessDir+"/session.spmd", "mock", sessDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = rec.RecordTurn("hello", "hi")
-	rec.Close()
+	writeLegacyFountain(t, sessDir+"/session.spmd", "mock", sessDir, "hello", "hi")
 
 	a := newTestAgent(t)
 	a.SessionsDir = sessDir

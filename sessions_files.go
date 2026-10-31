@@ -72,12 +72,12 @@ func ListSessionFiles(dir string) ([]SessionFileInfo, error) {
 	return files, nil
 }
 
-/** ExtractModelFromSession parses a .spmd or .fountain session file and
- * returns the model name recorded as a CHARACTER element. Returns an empty
+/** ExtractModelFromSession reads a past session (its log, or an old Fountain
+ * file) and returns the model it ended with. Returns an empty
  * string when no model character can be identified.
  *
  * Parameters:
- *   path (string) — path to a Harvey session file (.spmd or .fountain).
+ *   path (string) — a session log, its .spmd file, or an old .fountain file.
  *
  * Returns:
  *   string — ALL-CAPS model name (e.g. "GEMMA4"), or "" if not found.
@@ -88,11 +88,14 @@ func ListSessionFiles(dir string) ([]SessionFileInfo, error) {
  *   // model == "GEMMA4"
  */
 func ExtractModelFromSession(path string) (string, error) {
-	_, model, _, err := parseFountainSession(path)
+	info, err := LoadSessionInfo(path)
 	if err != nil {
 		return "", err
 	}
-	return model, nil
+	if info.Source == "log" {
+		return extractModelName(info.LastModel), nil // the same hint the Fountain header gave
+	}
+	return info.LastModel, nil
 }
 
 /** MostRecentSession returns the path of the most recently modified .spmd or
@@ -109,7 +112,7 @@ func ExtractModelFromSession(path string) (string, error) {
  *   path := MostRecentSession("/workspace/agents/sessions")
  */
 func MostRecentSession(sessDir string) string {
-	files, err := ListSessionFiles(sessDir)
+	files, err := ListSessions(sessDir)
 	if err != nil || len(files) == 0 {
 		return ""
 	}

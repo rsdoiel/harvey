@@ -437,10 +437,7 @@ func TestHandlerErrors_SafeMode(t *testing.T) {
 	})
 }
 
-func TestHandlerErrors_RecordAndRename(t *testing.T) {
-	rec := func(args ...string) func(*Agent, io.Writer) error {
-		return func(a *Agent, o io.Writer) error { return cmdRecord(a, args, o) }
-	}
+func TestHandlerErrors_Rename(t *testing.T) {
 	recording := func(t *testing.T, a *Agent) {
 		r, err := NewRecorder(filepath.Join(a.Workspace.Root, "s.spmd"), "m", a.Workspace.Root)
 		if err != nil {
@@ -450,12 +447,6 @@ func TestHandlerErrors_RecordAndRename(t *testing.T) {
 		a.Recorder = r
 	}
 	runHandlerCases(t, []handlerCase{
-		{"record: no arguments", nil, rec(), ClassUsage},
-		{"record: unknown subcommand", nil, rec("bogus"), ClassUsage},
-		{"record stop: not recording", nil, rec("stop"), ClassNegative},
-		{"record start: already recording", recording, rec("start"), ClassNegative},
-		{"record start: cannot create the file", nil, rec("start", "/nonexistent-dir/x/s.spmd"), ClassCantCreate},
-		{"record status", nil, rec("status"), ClassOK},
 		{"rename: not recording", nil, func(a *Agent, o io.Writer) error { return cmdRename(a, []string{"n"}, o) }, ClassNegative},
 		{"rename: no name", recording, func(a *Agent, o io.Writer) error { return cmdRename(a, nil, o) }, ClassUsage},
 	})

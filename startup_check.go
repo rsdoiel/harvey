@@ -36,7 +36,7 @@ func CheckStartupInputs(cfg *Config) error {
 		}
 	}
 	if p := cfg.Session.ReplayPath; p != "" {
-		if _, _, _, err := parseFountainSession(p); err != nil {
+		if _, err := LoadSessionInfo(p); err != nil {
 			return err
 		}
 	}

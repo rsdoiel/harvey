@@ -273,6 +273,7 @@ type SessionLog struct {
 	spillCap  int
 	now       func() time.Time
 	path      string
+	stem      string // file and blobs-directory name; the session id until a rename
 	seq       int
 	closed    bool
 }
@@ -307,7 +308,7 @@ func OpenSessionLog(opts SessionLogOptions) (*SessionLog, error) {
 		return nil, ClassedAs(ClassCantCreate, err)
 	}
 	l := &SessionLog{
-		f: f, path: path, dir: opts.Dir, session: opts.Session, workspace: opts.Start.Workspace,
+		f: f, path: path, stem: opts.Session, dir: opts.Dir, session: opts.Session, workspace: opts.Start.Workspace,
 		debug: opts.Debug, spillCap: opts.SpillCap, now: opts.Now,
 	}
 	if l.spillCap <= 0 {
@@ -503,6 +504,50 @@ func (l *SessionLog) ContentBlob(text string) (Content, error) {
  */
 func (l *SessionLog) Path() string { return l.path }
 
+/** Rename moves the log, and its blobs directory if it has one, to a new stem
+ * in the same directory while the session goes on. Event ids keep the session
+ * id they were minted with: the id names the session, the stem names the files.
+ *
+ * Parameters:
+ *   stem (string) — the new file name without extension.
+ *
+ * Returns:
+ *   error — usage (2) for a bad stem, cant_create (73) if the log or blobs
+ *           directory already exists under it, io (74) if the move fails.
+ *
+ * Example:
+ *   err := log.Rename("my-feature")
+ */
+func (l *SessionLog) Rename(stem string) error {
+	if stem == "" || stem != filepath.Base(stem) || strings.HasPrefix(stem, ".") {
+		return Usagef("bad session name %q", stem)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if stem == l.stem {
+		return nil
+	}
+	newPath := filepath.Join(l.dir, stem+".jsonl")
+	newBlobs := filepath.Join(l.dir, stem+".blobs")
+	oldBlobs := filepath.Join(l.dir, l.stem+".blobs")
+	for _, p := range []string{newPath, newBlobs} {
+		if _, err := os.Lstat(p); err == nil {
+			return ClassedAs(ClassCantCreate, fmt.Errorf("%s: %w", p, fs.ErrExist))
+		}
+	}
+	if err := os.Rename(l.path, newPath); err != nil {
+		return ClassedAs(ClassIO, err)
+	}
+	if _, err := os.Stat(oldBlobs); err == nil {
+		if err := os.Rename(oldBlobs, newBlobs); err != nil {
+			_ = os.Rename(newPath, l.path)
+			return ClassedAs(ClassIO, err)
+		}
+	}
+	l.path, l.stem = newPath, stem
+	return nil
+}
+
 func preview(s string) string {
 	if utf8.RuneCountInString(s) <= blobPreviewRunes {
 		return s
@@ -518,7 +563,7 @@ func preview(s string) string {
 }
 
 func (l *SessionLog) writeBlob(name, text string) error {
-	dir := filepath.Join(l.dir, l.session+".blobs")
+	dir := filepath.Join(l.dir, l.stem+".blobs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ClassedAs(ClassCantCreate, err)
 	}

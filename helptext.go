@@ -271,9 +271,6 @@ are also available from the shell: harvey --help TOPIC.
 
 **Sessions**
 
-/record <start [FILE]|stop|status>
-: start or stop Fountain session recording
-
 /rename NAME
 : rename the active session file without interrupting recording
 
@@ -1659,8 +1656,8 @@ The model has no memory of the previous conversation after /clear.
   Pinned context  — any text set with /context add is re-injected as the
                     first user message, keeping persistent constraints
                     visible to the model across topic changes.
-  Recording       — an active /record session keeps running; the cleared
-                    conversation is not written to the session file.
+  Recording       — the session log keeps running; the cleared conversation
+                    stays in it, as the record of what was said.
   RAG             — the RAG store and its on/off state are unaffected.
   Skills          — the skill catalog remains loaded; /skill load must be
                     re-run to activate a skill in the new context.
@@ -2056,71 +2053,6 @@ points to /help learn for the full memory overview.
 
 	// ─── Session management ─────────────────────────────────────────────────────
 
-	// RecordHelpText is shown by /help record and harvey --help record.
-	// Generates harvey-record.7.md.
-	RecordHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
-% R. S. Doiel
-% {release_date}
-
-# NAME
-
-RECORD — record session exchanges to a Fountain file
-
-# SYNOPSIS
-
-/record start [FILE]
-/record stop
-/record status
-
-# DESCRIPTION
-
-/record saves each user prompt and assistant reply to a plain-text Fountain
-.spmd file as the conversation progresses. Recording is on by default: Harvey
-starts recording automatically at startup and prints "Recording to …" in the
-startup banner.
-
-Recorded files can be loaded later with /session continue (to resume) or
-/session replay (to re-run against a different model).
-
-# AUTO-RECORD
-
-Harvey records automatically unless auto-record is disabled. The session
-file is created in <workdir>/agents/sessions/ with a timestamped name:
-
-  harvey-session-YYYYMMDD-HHMMSS.spmd
-
-The path is shown in the startup banner. When you exit Harvey the banner
-confirms the file was saved:
-
-  Session saved to agents/sessions/harvey-session-20260501-143200.spmd
-
-# SUBCOMMANDS
-
-/record start [FILE]
-  Begin recording to FILE. If FILE is omitted, Harvey generates a
-  timestamped name in the sessions directory. Returns an error if a
-  recording is already active — use /record stop first.
-
-/record stop
-  Close the current recording file. The path is printed on exit.
-  Harvey continues running; only the recording ends.
-
-/record status
-  Show the path of the active recording, or report that no recording
-  is in progress.
-
-# CLI FLAGS
-
-  harvey --record             auto-record with a generated filename
-  harvey --record-file FILE   auto-record to a specific path
-
-# SEE ALSO
-
-  /session   — continue or replay a recorded session
-  /help session
-
-`
-
 	// RenameHelpText is shown by /help rename and harvey --help rename.
 	// Generates harvey-rename.7.md.
 	RenameHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
@@ -2157,7 +2089,6 @@ my-feature-session.spmd in agents/sessions/.
 
 # SEE ALSO
 
-  /record   — start or stop session recording
   /session  — continue or replay a recorded session
   /help record
   /help session
@@ -2255,7 +2186,6 @@ The same operations are available as startup flags:
 
 # SEE ALSO
 
-  /record          — start or stop session recording manually
   harvey --resume  — resume the most recent session at startup (no path needed)
   harvey --help    — full CLI flag reference
 

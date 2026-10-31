@@ -12,8 +12,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // makeTestTree creates a temporary directory tree for completion tests:
@@ -591,12 +589,7 @@ func TestSelectBackend_extractsModelHintFromContinuePath(t *testing.T) {
 	// Write a minimal session file that records "llamafile (qwen-coding)" as the model.
 	dir := t.TempDir()
 	sessionPath := filepath.Join(dir, "session.fountain")
-	rec, err := NewRecorder(sessionPath, "llamafile (qwen-coding)", dir)
-	if err != nil {
-		t.Fatalf("NewRecorder: %v", err)
-	}
-	_ = rec.RecordTurnWithStats("hello", "world", ChatStats{}, nil, "", nil, nil)
-	rec.Close()
+	writeLegacyFountain(t, sessionPath, "llamafile (qwen-coding)", dir, "hello", "world")
 
 	// Set up agent with qwen-coding registered but no active model.
 	// Point LlamafileURL at a fake server so pickBackend can auto-select.
@@ -620,64 +613,6 @@ func TestSelectBackend_extractsModelHintFromContinuePath(t *testing.T) {
 	// The auto-selection path connects the client.
 	if a.Client == nil {
 		t.Error("expected Client to be set after auto-selection from session hint")
-	}
-}
-
-// ─── toolCallsFromHistory ─────────────────────────────────────────────────────
-
-func TestToolCallsFromHistory_ResultExtraction(t *testing.T) {
-	msgs := []Message{
-		{
-			Role: "assistant",
-			ToolCalls: []anyllm.ToolCall{
-				{ID: "tc1", Function: anyllm.FunctionCall{Name: "read_file", Arguments: `{"path":"harvey.go"}`}},
-				{ID: "tc2", Function: anyllm.FunctionCall{Name: "run_shell", Arguments: `{"cmd":"go build ./..."}`}},
-			},
-		},
-		{Role: "tool", Content: "file contents here", ToolCallID: "tc1"},
-		{Role: "tool", Content: "error: exit status 1\nmore detail", ToolCallID: "tc2"},
-	}
-
-	records := toolCallsFromHistory(msgs, "")
-	if len(records) != 2 {
-		t.Fatalf("expected 2 records, got %d", len(records))
-	}
-	if records[0].Result != "ok" {
-		t.Errorf("tc1 result: got %q, want %q", records[0].Result, "ok")
-	}
-	if records[1].Result != "error: exit status 1" {
-		t.Errorf("tc2 result: got %q, want %q", records[1].Result, "error: exit status 1")
-	}
-}
-
-func TestToolCallsFromHistory_WithCharName(t *testing.T) {
-	msgs := []Message{
-		{
-			Role: "assistant",
-			ToolCalls: []anyllm.ToolCall{
-				{ID: "tc1", Function: anyllm.FunctionCall{Name: "list_files", Arguments: ""}},
-			},
-		},
-		{Role: "tool", Content: "file1.go\nfile2.go", ToolCallID: "tc1"},
-	}
-
-	records := toolCallsFromHistory(msgs, "LLAMA3")
-	if len(records) != 1 {
-		t.Fatalf("expected 1 record, got %d", len(records))
-	}
-	if records[0].Character != "LLAMA3" {
-		t.Errorf("Character: got %q, want %q", records[0].Character, "LLAMA3")
-	}
-}
-
-func TestToolCallsFromHistory_NoToolCalls(t *testing.T) {
-	msgs := []Message{
-		{Role: "user", Content: "hello"},
-		{Role: "assistant", Content: "world"},
-	}
-	records := toolCallsFromHistory(msgs, "")
-	if len(records) != 0 {
-		t.Errorf("expected 0 records for history with no tool calls, got %d", len(records))
 	}
 }
 

@@ -278,7 +278,6 @@ The REPL calls `dispatch(input, out)` for any line beginning with `/`.
 
 | Command | Purpose |
 |---|---|
-| `/record start [FILE]\|stop\|status` | Start or stop Fountain session recording |
 | `/rename NAME` | Rename the active session file without interrupting recording |
 | `/session continue FILE\|replay FILE [OUTPUT]` | Load or replay a prior session |
 
