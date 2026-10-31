@@ -62,7 +62,9 @@
   (exit 78); one that only lists stores loads with a note at startup, and the section is dropped the next time the configuration
   is saved. Existing store files stay on disk and are not converted (their vectors are bound to an embedding model). The last
   release that carries `/rag` is v0.0.20. Still there until the next slices: the RAG parts of `/memory`, `/status`, `/hint`, the
-  memory tools and recall, and `assay -rag-db`; they find no store, so they do nothing. The scholarly-document designs moved to
+  memory tools and recall; they find no store, so they do nothing. `assay` lost `-rag-db`, `-rag-top-k`, `-rag-embed-model` and
+  `-rag-compare` (an old command line using them is now a usage error), and its report and `results.json` no longer carry RAG fields;
+  `-guide-compare` is unchanged. The scholarly-document designs moved to
   `agents/projects/knowledge/notes/`.
 
 - **`/kb` runs the installed `kb`** (workspace DR-0034). `/kb ARGS` runs `kb -db <workspace db> ARGS` in the workspace, shows its

@@ -62,7 +62,7 @@ func TestBuildGuideMessages_EmptyGuideTextFallsBackToPlain(t *testing.T) {
 // ─── writeReport (guide-compare) ──────────────────────────────────────────────
 
 // TestWriteReport_GuideCompare_RendersDeltaTable is the first direct test of
-// writeReport's rendering logic (none existed before this, for RagCompare
+// writeReport's rendering logic (none existed before this, for the compare
 // either). It constructs a base/guide result pair where the guide variant
 // fixes a failing check, and asserts the summary table shows the pass-count
 // delta.
@@ -150,13 +150,10 @@ func TestMainRun_UsageErrorsExitTwoWithNothingOnStdout(t *testing.T) {
 	}{
 		{"unknown flag", []string{"--bogus"}, "bogus"},
 		{"flag missing its value", []string{"--corpus"}, "corpus"},
-		{"bad integer value", []string{"--rag-top-k", "many"}, "rag-top-k"},
+		{"unknown option", []string{"--rag-db", "x"}, "rag-db"},
 		{"surplus positional argument", []string{"extra"}, "unexpected argument: extra"},
 		{"surplus after flags", []string{"--models", "m", "extra"}, "unexpected argument: extra"},
-		{"--rag-compare needs --rag-db", []string{"--rag-compare"}, "--rag-compare requires --rag-db"},
 		{"--guide-compare needs --guide-file", []string{"--guide-compare"}, "--guide-compare requires --guide-file"},
-		{"the two compares conflict", []string{"--rag-compare", "--rag-db", "x", "--guide-compare", "--guide-file", "y"},
-			"--guide-compare and --rag-compare are mutually exclusive"},
 	} {
 		code, out, errOut := runAssay(t, tc.args...)
 		if code != 2 {
@@ -185,7 +182,7 @@ func TestMainRun_JSONFlagPrintsTheErrorEnvelope(t *testing.T) {
 		{"unrecognised flag", []string{"--json", "--bogus"}, "usage", 2},
 		{"single-dash spelling", []string{"-json", "--bogus"}, "usage", 2},
 		{"json after the bad flag", []string{"--bogus", "--json"}, "usage", 2},
-		{"hand-checked usage", []string{"--json", "--rag-compare"}, "usage", 2},
+		{"hand-checked usage", []string{"--json", "--guide-compare"}, "usage", 2},
 		{"corpus missing", []string{"--json", "--corpus", "/nonexistent/zzz.yaml"}, "no_input", 66},
 	} {
 		code, out, errOut := runAssay(t, tc.args...)
@@ -316,19 +313,6 @@ func TestMainRun_InputsAndAvailabilityByClass(t *testing.T) {
 		if code != tc.want {
 			t.Errorf("%s: exit %d, want %d\nstderr: %.300s", tc.name, code, tc.want, errOut)
 		}
-	}
-}
-
-// A RAG store that cannot be opened is a classified failure, never 70.
-func TestMainRun_RagStoreThatCannotBeOpenedIsClassified(t *testing.T) {
-	dir := t.TempDir()
-	corpus := writeFile(t, dir, "corpus.yaml", oneCheckCorpus)
-	file := writeFile(t, dir, "afile", "x")
-	up := fakeModelServer(t, nil)
-	code, _, errOut := runAssay(t, "--corpus", corpus, "--models", "m", "--ollama", up.URL,
-		"--rag-db", filepath.Join(file, "sub", "r.db"), "--output", filepath.Join(dir, "out"))
-	if code == 0 || code == 70 {
-		t.Errorf("exit %d, want a classified failure\nstderr: %.300s", code, errOut)
 	}
 }
 

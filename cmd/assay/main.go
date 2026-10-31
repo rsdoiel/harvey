@@ -65,8 +65,8 @@ type CheckResult struct {
 }
 
 // PromptResult holds the outcome of running one prompt against one model.
-// Variant is "base" (no RAG), "rag" (RAG context injected), or "" (RAG not
-// configured for this run).
+// Variant is "base" (no guide), "guide" (the guide file as a system message), or ""
+// (not a comparison run).
 type PromptResult struct {
 	PromptID     string        `json:"prompt_id"`
 	Category     string        `json:"category"`
@@ -79,16 +79,12 @@ type PromptResult struct {
 	TokensPerSec float64       `json:"tokens_per_sec"`
 	Checks       []CheckResult `json:"checks"`
 	AutoPass     bool          `json:"auto_pass"`
-	RagChunks    int           `json:"rag_chunks,omitempty"` // chunks injected; 0 = no RAG
 }
 
 type AssayResults struct {
 	RunAt         time.Time      `json:"run_at"`
 	Backend       string         `json:"backend"`                  // always "Ollama"
 	OllamaURL     string         `json:"ollama_url,omitempty"`
-	RagDB         string         `json:"rag_db,omitempty"`
-	RagEmbedModel string         `json:"rag_embed_model,omitempty"`
-	RagCompare    bool           `json:"rag_compare,omitempty"`
 	GuideFile     string         `json:"guide_file,omitempty"`
 	GuideCompare  bool           `json:"guide_compare,omitempty"`
 	Results       []PromptResult `json:"results"`
@@ -151,43 +147,6 @@ func listOllamaModels(baseURL string) ([]string, error) {
 		names = append(names, m.Name)
 	}
 	return names, nil
-}
-
-// ─── RAG helpers ─────────────────────────────────────────────────────────────
-
-// ragMinScore is the minimum cosine similarity for a chunk to be injected.
-// Matches the threshold used by Harvey's interactive chat loop.
-const ragMinScore = 0.3
-
-// buildRAGContext queries the RAG store for chunks relevant to promptText and
-// returns a formatted context prefix ready to prepend to the prompt, plus the
-// number of chunks included. Returns ("", 0) when no relevant chunks are found
-// or the store cannot be queried.
-func buildRAGContext(store *harvey.RagStore, embedder harvey.Embedder, promptText string, topK int) (string, int) {
-	chunks, err := store.Query(promptText, embedder, topK)
-	if err != nil || len(chunks) == 0 {
-		return "", 0
-	}
-	var relevant []harvey.Chunk
-	for _, c := range chunks {
-		if c.Score >= ragMinScore {
-			relevant = append(relevant, c)
-		}
-	}
-	if len(relevant) == 0 {
-		return "", 0
-	}
-	var sb strings.Builder
-	sb.WriteString("### Context (from knowledge base)\n\n")
-	for i, c := range relevant {
-		if c.Source != "" {
-			fmt.Fprintf(&sb, "[%d] (source: %s)\n%s\n\n", i+1, c.Source, c.Content)
-		} else {
-			fmt.Fprintf(&sb, "[%d] %s\n\n", i+1, c.Content)
-		}
-	}
-	sb.WriteString("---\n\n")
-	return sb.String(), len(relevant)
 }
 
 // ─── Guide-compare helpers ────────────────────────────────────────────────────
@@ -430,46 +389,10 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 		fmt.Fprintf(&sb, "URL: %s  \n", ar.OllamaURL)
 	}
 	fmt.Fprintln(&sb)
-	if ar.RagDB != "" {
-		fmt.Fprintf(&sb, "RAG store: `%s` (embed: %s)\n\n", ar.RagDB, ar.RagEmbedModel)
-	}
 
 	// Summary table.
 	fmt.Fprintf(&sb, "## Summary\n\n")
-	if ar.RagCompare {
-		fmt.Fprintf(&sb, "| Model | Base pass | RAG pass | Δ | Avg tok/s |\n")
-		fmt.Fprintf(&sb, "|---|---|---|---|---|\n")
-		for _, model := range modelOrder {
-			basePass, ragPass, total := 0, 0, 0
-			var totalTPS float64
-			count := 0
-			for _, pid := range promptIDOrder {
-				base, hasBase := byVariant[variantKey{model, pid, "base"}]
-				rag, hasRag := byVariant[variantKey{model, pid, "rag"}]
-				if hasBase {
-					total++
-					if base.AutoPass {
-						basePass++
-					}
-					totalTPS += base.TokensPerSec
-					count++
-				}
-				if hasRag && hasBase {
-					if rag.AutoPass {
-						ragPass++
-					}
-				}
-			}
-			delta := ragPass - basePass
-			deltaStr := fmt.Sprintf("%+d", delta)
-			avgTPS := 0.0
-			if count > 0 {
-				avgTPS = totalTPS / float64(count)
-			}
-			fmt.Fprintf(&sb, "| %s | %d/%d | %d/%d | %s | %.1f |\n",
-				model, basePass, total, ragPass, total, deltaStr, avgTPS)
-		}
-	} else if ar.GuideCompare {
+	if ar.GuideCompare {
 		fmt.Fprintf(&sb, "| Model | Base pass | Guide pass | Δ | Avg tok/s |\n")
 		fmt.Fprintf(&sb, "|---|---|---|---|---|\n")
 		for _, model := range modelOrder {
@@ -540,75 +463,7 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 				continue
 			}
 
-			if ar.RagCompare {
-				base, hasBase := byVariant[variantKey{model, pid, "base"}]
-				rag, hasRag := byVariant[variantKey{model, pid, "rag"}]
-				if !hasBase && !hasRag {
-					continue
-				}
-				fmt.Fprintf(&sb, "### %s\n\n", pid)
-				fmt.Fprintf(&sb, "**%s**\n\n", p.Description)
-				fmt.Fprintf(&sb, "| | Base | RAG |\n|---|---|---|\n")
-				baseLabel, ragLabel := "—", "—"
-				if hasBase {
-					if base.AutoPass {
-						baseLabel = "✓ PASS"
-					} else {
-						baseLabel = "✗ FAIL"
-					}
-				}
-				if hasRag {
-					if rag.AutoPass {
-						ragLabel = "✓ PASS"
-					} else {
-						ragLabel = "✗ FAIL"
-					}
-				}
-				fmt.Fprintf(&sb, "| Auto checks | %s | %s |\n", baseLabel, ragLabel)
-				if hasBase && hasRag {
-					fmt.Fprintf(&sb, "| Chunks injected | — | %d |\n", rag.RagChunks)
-					fmt.Fprintf(&sb, "| Tokens/s | %.1f | %.1f |\n", base.TokensPerSec, rag.TokensPerSec)
-					fmt.Fprintf(&sb, "| Elapsed | %s | %s |\n",
-						base.Elapsed.Round(time.Millisecond),
-						rag.Elapsed.Round(time.Millisecond))
-				}
-				sb.WriteString("\n")
-
-				// Per-check delta table.
-				if hasBase && hasRag && len(base.Checks) > 0 {
-					fmt.Fprintf(&sb, "| Check | Base | RAG |\n|---|---|---|\n")
-					for i, cr := range base.Checks {
-						baseMark := "✓"
-						if !cr.Passed {
-							baseMark = "✗"
-						}
-						ragMark := "—"
-						if i < len(rag.Checks) {
-							if rag.Checks[i].Passed {
-								ragMark = "✓"
-							} else {
-								ragMark = "✗"
-							}
-						}
-						fmt.Fprintf(&sb, "| %s | %s | %s |\n", cr.Name, baseMark, ragMark)
-					}
-					sb.WriteString("\n")
-				}
-
-				// Collapsed responses.
-				lang := p.Language
-				if lang == "" {
-					lang = "text"
-				}
-				if hasBase {
-					fmt.Fprintf(&sb, "<details><summary>Base response</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
-						lang, strings.TrimSpace(base.Response))
-				}
-				if hasRag {
-					fmt.Fprintf(&sb, "<details><summary>RAG response (%d chunks)</summary>\n\n```%s\n%s\n```\n\n</details>\n\n",
-						rag.RagChunks, lang, strings.TrimSpace(rag.Response))
-				}
-			} else if ar.GuideCompare {
+			if ar.GuideCompare {
 				base, hasBase := byVariant[variantKey{model, pid, "base"}]
 				guide, hasGuide := byVariant[variantKey{model, pid, "guide"}]
 				if !hasBase && !hasGuide {
@@ -696,9 +551,6 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 				fmt.Fprintf(&sb, "**%s**  \n", p.Description)
 
 				variantNote := ""
-				if r.Variant == "rag" {
-					variantNote = fmt.Sprintf(" · RAG (%d chunks)", r.RagChunks)
-				}
 				elapsed := r.Elapsed.Round(time.Millisecond)
 				fmt.Fprintf(&sb, "**Timing**: %d prompt + %d reply tokens · %s · %.1f tok/s%s  \n",
 					r.PromptTokens, r.ReplyTokens, elapsed, r.TokensPerSec, variantNote)
@@ -802,10 +654,6 @@ type assayFlags struct {
 	category *string
 	ollamaURL *string
 	outputDir *string
-	ragDB *string
-	ragEmbedModel *string
-	ragTopK *int
-	ragCompare *bool
 	guideFile *string
 	guideCompare *bool
 }
@@ -820,13 +668,9 @@ func defineAssayFlags(fs *flag.FlagSet) assayFlags {
 	ollamaURL     := fs.String("ollama", "http://localhost:11434", "Ollama base URL")
 	outputDir     := fs.String("output", defaultOutputDir(),
 		"write report and results to PATH\n\t\t\t(default: $WORKSPACE/assay-results/assay-TIMESTAMP/\n\t\t\t or assay-results/assay-TIMESTAMP/ if not in a workspace)")
-	ragDB         := fs.String("rag-db", "", "RAG store SQLite path; enables RAG context injection when set")
-	ragEmbedModel := fs.String("rag-embed-model", "nomic-embed-text", "embedding model for RAG queries")
-	ragTopK       := fs.Int("rag-top-k", 3, "number of RAG chunks to retrieve per prompt")
-	ragCompare    := fs.Bool("rag-compare", false, "run each prompt twice (base + RAG) and show delta; requires --rag-db")
 	guideFile     := fs.String("guide-file", "", "path to a text file whose content becomes the system message for the 'guide' variant")
 	guideCompare  := fs.Bool("guide-compare", false, "run each prompt twice (base + guide) and show delta; requires --guide-file")
-	return assayFlags{corpusPath: corpusPath, modelsFlag: modelsFlag, category: category, ollamaURL: ollamaURL, outputDir: outputDir, ragDB: ragDB, ragEmbedModel: ragEmbedModel, ragTopK: ragTopK, ragCompare: ragCompare, guideFile: guideFile, guideCompare: guideCompare}
+	return assayFlags{corpusPath: corpusPath, modelsFlag: modelsFlag, category: category, ollamaURL: ollamaURL, outputDir: outputDir, guideFile: guideFile, guideCompare: guideCompare}
 }
 
 // mainRun is the whole of assay's command line, with the process's arguments and
@@ -872,10 +716,6 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	category := f.category
 	ollamaURL := f.ollamaURL
 	outputDir := f.outputDir
-	ragDB := f.ragDB
-	ragEmbedModel := f.ragEmbedModel
-	ragTopK := f.ragTopK
-	ragCompare := f.ragCompare
 	guideFile := f.guideFile
 	guideCompare := f.guideCompare
 	if err := fs.Parse(args[1:]); err != nil {
@@ -888,14 +728,8 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		return usageFail(fmt.Sprintf("unexpected argument: %s", fs.Arg(0)))
 	}
 
-	if *ragCompare && *ragDB == "" {
-		return usageFail("--rag-compare requires --rag-db")
-	}
 	if *guideCompare && *guideFile == "" {
 		return usageFail("--guide-compare requires --guide-file")
-	}
-	if *guideCompare && *ragCompare {
-		return usageFail("--guide-compare and --rag-compare are mutually exclusive")
 	}
 
 	// A run does everything it can, then exits with the class of the first
@@ -947,25 +781,6 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		return fail(harvey.Negativef("no prompts match category %q", *category))
 	}
 
-	// Open RAG store when requested.
-	var ragStore *harvey.RagStore
-	var ragEmbedder harvey.Embedder
-	if *ragDB != "" {
-		ragStore, err = harvey.NewRagStore(*ragDB, *ragEmbedModel)
-		if err != nil {
-			e := fmt.Errorf("open RAG store: %w", err)
-			if _, ok := harvey.ExitClassOf(e); !ok {
-				e = harvey.ClassedAs(harvey.ClassData, e) // e.g. a store bound to another embedding model
-			}
-			return fail(e)
-		}
-		ragEmbedder = harvey.NewOllamaEmbedder(*ollamaURL, *ragEmbedModel)
-		fmt.Fprintf(out, "RAG store: %s (embed: %s, top-k: %d)\n", *ragDB, *ragEmbedModel, *ragTopK)
-		if *ragCompare {
-			fmt.Fprintln(out, "Compare mode: each prompt runs twice (base + RAG)")
-		}
-	}
-
 	// Create output directory.
 	outDir := *outputDir
 	if err := os.MkdirAll(outDir, 0755); err != nil {
@@ -976,33 +791,22 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		RunAt:         time.Now(),
 		Backend:       "Ollama",
 		OllamaURL:     *ollamaURL,
-		RagDB:         *ragDB,
-		RagEmbedModel: *ragEmbedModel,
-		RagCompare:    *ragCompare,
 		GuideFile:     *guideFile,
 		GuideCompare:  *guideCompare,
 	}
 
-	// Determine which variants to run per prompt.
-	// In compare mode: ["base", "rag"] or ["base", "guide"]. RAG-only:
-	// ["rag"]. Base-only: [""]. --guide-compare and --rag-compare are
-	// mutually exclusive (validated above), so useRAG/useGuide never both
-	// need to be true for the same variant.
+	// Determine which variants to run per prompt: base and guide in compare
+	// mode, otherwise one unnamed run.
 	type variant struct {
 		name     string
-		useRAG   bool
 		useGuide bool
 	}
 	var variants []variant
 	switch {
-	case *ragCompare:
-		variants = []variant{{"base", false, false}, {"rag", true, false}}
 	case *guideCompare:
-		variants = []variant{{"base", false, false}, {"guide", false, true}}
-	case *ragDB != "":
-		variants = []variant{{"rag", true, false}}
+		variants = []variant{{"base", false}, {"guide", true}}
 	default:
-		variants = []variant{{"", false, false}}
+		variants = []variant{{"", false}}
 	}
 
 	// Load the guide file's content once, when configured.
@@ -1039,16 +843,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				}
 				fmt.Fprintf(out, "[%d/%d] %s%s · %s ... ", done, total, variantLabel, model, p.ID)
 
-				// Build prompt text, injecting RAG context when requested.
 				promptText := p.PromptText
-				ragChunks := 0
-				if v.useRAG && ragStore != nil {
-					ctx, n := buildRAGContext(ragStore, ragEmbedder, promptText, *ragTopK)
-					if n > 0 {
-						promptText = ctx + promptText
-						ragChunks = n
-					}
-				}
 
 				messages := buildGuideMessages(guideText, promptText, v.useGuide)
 
@@ -1088,7 +883,6 @@ func mainRun(args []string, out, errOut io.Writer) int {
 					TokensPerSec: stats.TokensPerSec,
 					Checks:       checks,
 					AutoPass:     allPassed(checks),
-					RagChunks:    ragChunks,
 				}
 				ar.Results = append(ar.Results, pr)
 
@@ -1096,12 +890,8 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				if !pr.AutoPass {
 					passLabel = "FAIL"
 				}
-				chunkNote := ""
-				if ragChunks > 0 {
-					chunkNote = fmt.Sprintf(" · %d RAG chunks", ragChunks)
-				}
-				fmt.Fprintf(out, "%s · %s · %.1f tok/s%s\n",
-					passLabel, elapsed.Round(time.Millisecond), stats.TokensPerSec, chunkNote)
+				fmt.Fprintf(out, "%s · %s · %.1f tok/s\n",
+					passLabel, elapsed.Round(time.Millisecond), stats.TokensPerSec)
 			}
 		}
 
