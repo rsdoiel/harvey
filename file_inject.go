@@ -224,7 +224,7 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer,
 		}
 		client := a.Client
 		model := a.Client.Name()
-		if ac, ok := a.Client.(*AnyLLMClient); ok {
+		if ac, ok := a.Client.(*OllamaChatClient); ok {
 			model = ac.ModelName()
 		}
 		var restore func()
@@ -329,7 +329,7 @@ func looksLikeCantReadFile(response string) bool {
 }
 
 /** modelToolMode returns the explicit ToolMode for the active model from the
- * model cache, or ToolModeAuto when no entry exists or no AnyLLMClient is active.
+ * model cache, or ToolModeAuto when no entry exists or no OllamaChatClient is active.
  *
  * Returns:
  *   string — one of the ToolMode* constants; ToolModeAuto ("") when unknown.
@@ -341,7 +341,7 @@ func (a *Agent) modelToolMode() string {
 	if a.ModelCache == nil {
 		return ToolModeAuto
 	}
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok {
 		return ToolModeAuto
 	}
@@ -388,7 +388,7 @@ func (a *Agent) toolsReliable() bool {
 	if a.ModelCache == nil {
 		return false
 	}
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok {
 		return false
 	}

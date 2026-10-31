@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
-
-	anyllmerrors "github.com/mozilla-ai/any-llm-go/errors"
 )
 
 // promptSystemShare is the part of a model's prompt limit the system prompt
@@ -164,7 +163,7 @@ func (a *Agent) refreshSystemPrompt(out io.Writer) {
 	a.promptFitNote = note
 	if note != "" {
 		name := "this model"
-		if ac, ok := a.Client.(*AnyLLMClient); ok {
+		if ac, ok := a.Client.(*OllamaChatClient); ok {
 			name = ac.ModelName()
 		}
 		fmt.Fprintf(out, yellow("  ⚠")+" To fit %s's prompt limit (%d tokens), Harvey %s.\n", name, a.promptTokenLimit(), note)
@@ -278,17 +277,14 @@ func isPromptTooLargeFailure(err error) bool {
 	if errors.Is(err, ErrStreamTruncated) {
 		return true
 	}
-	var cl *anyllmerrors.ContextLengthError
-	if errors.As(err, &cl) {
-		return true
-	}
-	var pe *anyllmerrors.ProviderError
-	if errors.As(err, &pe) {
-		msg := err.Error()
-		if strings.Contains(msg, "not running") || strings.Contains(msg, "refused") {
-			return false
+	var se *ChatStatusError
+	if errors.As(err, &se) {
+		switch se.Status {
+		case http.StatusInternalServerError:
+			return true
+		case http.StatusBadRequest, 0:
+			return strings.Contains(strings.ToLower(se.Message), "context")
 		}
-		return strings.Contains(msg, "500") || strings.Contains(msg, "Internal Server Error")
 	}
 	return false
 }
@@ -379,7 +375,7 @@ func (a *Agent) retryWithSmallerPrompt(ctx context.Context, err error, buf *stri
 // learnPromptLimit records n as the active model's prompt limit when no limit
 // is known or n is lower, and says so.
 func (a *Agent) learnPromptLimit(n int, out io.Writer) {
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok || a.ModelCache == nil {
 		return
 	}

@@ -162,7 +162,7 @@ func TestUseSelectedModel_Hailo(t *testing.T) {
 	if a.Backend == nil || a.Backend.Name() != "hailo" || a.Backend.BaseURL() != hl.URL {
 		t.Fatalf("backend = %v, want hailo at %s", a.Backend, hl.URL)
 	}
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok || ac.ModelName() != "llama3.2:3b" {
 		t.Fatalf("client = %T", a.Client)
 	}

@@ -256,6 +256,7 @@ func (a *Agent) useModelAt(engine, url, model string) {
 	a.Config.Ollama.Model = model
 	client := newOllamaLLMClient(url, model, a.Config.Ollama.Timeout)
 	client.SetEngine(engine)
+	client.SetWindow(a.effectiveContextLimit)
 	a.Client = a.wireSessionLog(client)
 	a.logModelSwitch(model, engine)
 }
@@ -312,7 +313,7 @@ func (a *Agent) probeModelAndCache(url, model string) {
 	// Harvey was not told so (no card, no hailo.url, ollama.url pointed at it):
 	// the client takes the engine's capability row from here on.
 	if engine == "hailo" {
-		if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ModelName() == model {
+		if ac, ok := a.Client.(*OllamaChatClient); ok && ac.ModelName() == model {
 			ac.SetEngine(engine)
 		}
 	}

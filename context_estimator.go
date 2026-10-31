@@ -48,7 +48,7 @@ func estimateTokens(s string) int {
  */
 func (a *Agent) contextUsage() (used, limit int, exact bool) {
 	limit = a.effectiveContextLimit()
-	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.ProviderName() == "ollama" {
+	if ac, ok := a.Client.(*OllamaChatClient); ok && ac.ProviderName() == "ollama" {
 		n, ex := CountTokensFor(context.Background(), a.activeEngine(), ac.BackendURL(), ac.ModelName(), HistoryText(a.History))
 		return n, limit, ex
 	}
@@ -269,7 +269,7 @@ func (a *Agent) promptTokenLimit() int {
 	if a.ModelCache == nil {
 		return 0
 	}
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok {
 		return 0
 	}
@@ -302,7 +302,7 @@ func (a *Agent) promptBudgetError() error {
 		return nil
 	}
 	name := ""
-	if ac, ok := a.Client.(*AnyLLMClient); ok {
+	if ac, ok := a.Client.(*OllamaChatClient); ok {
 		name = ac.ModelName()
 	}
 	if sys := a.systemPromptTokens(); sys >= limit {

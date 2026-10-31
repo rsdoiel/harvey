@@ -24,9 +24,9 @@ FIRST
 
 LLAMA3.2
 (chunk 2/4)
-[chunk 2 failed: [ollama] provider_error: 500 Internal Server Error: boom]
+[chunk 2 failed: ollama chat: 500 Internal Server Error: boom]
 
-[[chunk-result: 2/4 — error: [ollama] provider_error: 500 Internal Server Error: boom]]
+[[chunk-result: 2/4 — error: ollama chat: 500 Internal Server Error: boom]]
 
 LLAMA3.2
 (chunk 3/4)

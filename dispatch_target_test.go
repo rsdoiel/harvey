@@ -127,7 +127,7 @@ func TestResolveDispatchTarget_UnknownName_ReturnsNotFound(t *testing.T) {
 
 // TestResolveDispatchTarget_RouteEndpoint_WiresSessionLog is the regression
 // test for a logging gap found while fixing the chunk-analysis double-logging
-// bug (TODO.md): clientForEndpoint constructs a fresh *AnyLLMClient, whose own
+// bug (TODO.md): clientForEndpoint constructs a fresh *OllamaChatClient, whose own
 // chatInternal logs nothing unless resolveDispatchTarget wires it to the
 // agent's session log explicitly.
 func TestResolveDispatchTarget_RouteEndpoint_WiresSessionLog(t *testing.T) {
@@ -144,9 +144,9 @@ func TestResolveDispatchTarget_RouteEndpoint_WiresSessionLog(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
-	ac, isAnyLLM := target.Client.(*AnyLLMClient)
-	if !isAnyLLM {
-		t.Fatalf("expected *AnyLLMClient, got %T", target.Client)
+	ac, isChatClient := target.Client.(*OllamaChatClient)
+	if !isChatClient {
+		t.Fatalf("expected *OllamaChatClient, got %T", target.Client)
 	}
 	if ac.CallLog != ModelCallLog(a) {
 		t.Error("expected the resolved route client to report its calls to the agent's session log")
@@ -156,7 +156,7 @@ func TestResolveDispatchTarget_RouteEndpoint_WiresSessionLog(t *testing.T) {
 // TestResolveDispatchTarget_LocalSwitch_WiresSessionLog covers the other branch
 // with the same gap: a real local model switch (attemptModelSwitch's Ollama
 // branch, simulated here via the override) also constructs a fresh
-// *AnyLLMClient that reports to no log.
+// *OllamaChatClient that reports to no log.
 func TestResolveDispatchTarget_LocalSwitch_WiresSessionLog(t *testing.T) {
 	a := newTestAgent(t)
 	a.Config.Ollama.Model = "original-model"
@@ -175,9 +175,9 @@ func TestResolveDispatchTarget_LocalSwitch_WiresSessionLog(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
-	ac, isAnyLLM := target.Client.(*AnyLLMClient)
-	if !isAnyLLM {
-		t.Fatalf("expected *AnyLLMClient, got %T", target.Client)
+	ac, isChatClient := target.Client.(*OllamaChatClient)
+	if !isChatClient {
+		t.Fatalf("expected *OllamaChatClient, got %T", target.Client)
 	}
 	if ac.CallLog != ModelCallLog(a) {
 		t.Error("expected the freshly-switched client to report its calls to the agent's session log")

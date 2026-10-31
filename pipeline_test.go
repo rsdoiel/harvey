@@ -255,7 +255,7 @@ func TestCmdPipeline_failAtStep2(t *testing.T) {
 
 func TestCmdPipeline_mentionUnresolved(t *testing.T) {
 	a, dir := newPipelineTestAgent(t)
-	// Use a pipelineMockClient (not *AnyLLMClient) so same-provider override fails.
+	// Use a pipelineMockClient (not *OllamaChatClient) so same-provider override fails.
 	a.Client = newPipelineMock("anything")
 	writeStepFile(t, dir, "s1.md", "Use @unknown-model for this step.")
 

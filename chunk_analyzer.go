@@ -48,7 +48,7 @@ type ChunkAnalysisParams struct {
  * in partialResults and synthesis runs over all available results. A synthesis
  * failure is unrecoverable and is returned as an error.
  *
- * The client (an *AnyLLMClient, in production) reports each of its calls to the
+ * The client (an *OllamaChatClient, in production) reports each of its calls to the
  * session log itself, as ad-hoc requests with the purposes chunk and synthesis
  * that the context here sets, so this function writes no record of its own.
  *
@@ -152,7 +152,7 @@ func firstLine(s string) string {
  * reachable, for backends with a known local health-check endpoint (ollama).
  * checked is false for backends with no local
  * reachability probe (cloud providers, or any client that isn't an
- * *AnyLLMClient, e.g. a test double) — callers should treat checked=false as
+ * *OllamaChatClient, e.g. a test double) — callers should treat checked=false as
  * "nothing to verify, proceed as usual," not as a failure.
  *
  * Parameters:
@@ -168,7 +168,7 @@ func firstLine(s string) string {
  *   }
  */
 func probeClientReachable(client LLMClient) (reachable, checked bool) {
-	ac, ok := client.(*AnyLLMClient)
+	ac, ok := client.(*OllamaChatClient)
 	if !ok {
 		return false, false
 	}

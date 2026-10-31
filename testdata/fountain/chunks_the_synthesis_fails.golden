@@ -46,7 +46,7 @@ Synthesizing results.
 LLAMA3.2
 (synthesis)
 
-[[synthesis: model=llama3.2:3b — error: [ollama] provider_error: 500 Internal Server Error: boom]]
+[[synthesis: model=llama3.2:3b — error: ollama chat: 500 Internal Server Error: boom]]
 
 
 THE END.

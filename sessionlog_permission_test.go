@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // permAgent is an agent with a session log open and its audit buffer wired to
@@ -83,7 +81,7 @@ func TestPermission_AModelToolCallIsTheOutcomeOfItsPermission(t *testing.T) {
 	a, path := permAgent(t)
 	a.logUserInput("write it")
 	ev := a.toolEvents()
-	tc := anyllm.ToolCall{ID: "call_7", Function: anyllm.FunctionCall{Name: "write_file", Arguments: `{}`}}
+	tc := ToolCall{ID: "call_7", Function: FunctionCall{Name: "write_file", Arguments: `{}`}}
 	callID := ev.ToolCall(tc)
 	a.AuditBuffer.Log(ActionFileWrite, "out.txt", StatusSuccess)
 	ev.ToolResult(callID, tc, "wrote", false, 0)

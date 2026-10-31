@@ -56,6 +56,15 @@
 
 ### Removed
 
+- **A native Ollama client replaces `any-llm-go`** (workspace DR-0046). Harvey speaks `/api/chat` itself, in `ollama_chat.go`, and the
+  `any-llm-go` module and the `ollama/ollama` packages it pulled in are gone from `go.mod`. Visible changes: harvey sends
+  `options.num_ctx` set to the window it believes for the model (from `ollama.context_length`, `--context`, the model cache or the
+  server), and sends none when the window is unknown; the library always sent 32,000, which cost about 1 GB of memory on a small
+  model. A tool result is sent with role `tool` and the tool's name, as Ollama's API defines, where the library sent it as a `user`
+  message; llama3.2:3b and qwen2.5:3b answer correctly from it. A tool's full parameter schema is sent, not only each property's type
+  and description. Error messages lose the library's `[ollama] provider_error:` prefix and read `ollama chat: 500 Internal Server
+  Error: ...`.
+
 - **The cloud route kinds and the S3 reader** (workspace DR-0042). Harvey talks only to Ollama-shaped servers on this machine or the
   local network. Gone: `anthropic://`, `deepseek://`, `gemini://`, `mistral://` and `openai://` routes, their API-key environment
   variables, the `s3://` document reader and its AWS credentials (`/read`, `/attach`, `/rag ingest` and tab completion), and the
@@ -63,8 +72,7 @@
   removed kind in `agents/routes.json` is skipped with a warning at a terminal and stops the run with exit 78 without one; re-add
   it as an `ollama://` route (a skipped route is dropped from the file the next time routes are saved). An `s3://` URI is refused
   with a message that says so. To keep a cloud model, put an Ollama-compatible gateway on your network and point an `ollama://`
-  route at it; to keep S3, mount the bucket as a filesystem. The `any-llm-go` client layer goes when the native Ollama client
-  lands (DR-0046).
+  route at it; to keep S3, mount the bucket as a filesystem. The `any-llm-go` client layer is gone too (next entry).
 
 - **llama.cpp and llamafile support** (workspace DR-0033). Harvey supports Ollama and hailo-ollama only. Gone: the two backends and
   their launch, probe and model-scan code, the `--llamafile`, `--llamafile-url` and `--llamafile-dir` options,

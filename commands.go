@@ -17,8 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // sensitiveCmdEnvVars contains environment variable names that should be
@@ -630,7 +628,7 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		fmt.Fprintln(out, "Backend:   none")
 	} else {
 		tag := ""
-		if ac, ok := a.Client.(*AnyLLMClient); ok {
+		if ac, ok := a.Client.(*OllamaChatClient); ok {
 			switch ac.ProviderName() {
 			case "ollama":
 				if a.Backend != nil && a.Backend.StartedByHarvey() {
@@ -650,7 +648,7 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		}
 	}
 	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
-	if _, ok := a.Client.(*AnyLLMClient); ok && len(a.History) > 0 {
+	if _, ok := a.Client.(*OllamaChatClient); ok && len(a.History) > 0 {
 		n, limit, exact := a.contextUsage()
 		qualifier := "~"
 		if exact {
@@ -999,7 +997,7 @@ func cmdModelMode(a *Agent, args []string, out io.Writer) error {
 	}
 
 	activeModelName := func() (string, error) {
-		ac, ok := a.Client.(*AnyLLMClient)
+		ac, ok := a.Client.(*OllamaChatClient)
 		if !ok {
 			return "", Negativef("no active Ollama model")
 		}
@@ -1092,7 +1090,7 @@ func cmdModelLimit(a *Agent, args []string, out io.Writer) error {
 		return Usagef("usage: /model limit [MODEL] {N|auto}")
 	}
 	activeModelName := func() (string, error) {
-		ac, ok := a.Client.(*AnyLLMClient)
+		ac, ok := a.Client.(*OllamaChatClient)
 		if !ok {
 			return "", Negativef("no active Ollama model")
 		}
@@ -1366,7 +1364,7 @@ func safeModeReset(a *Agent, out io.Writer) error {
 }
 
 func cmdInspect(a *Agent, args []string, out io.Writer) error {
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok || ac.ProviderName() != "ollama" {
 		return Unavailablef("/inspect requires an Ollama backend. Use /model use to pick an Ollama model")
 	}
@@ -1528,7 +1526,7 @@ func ollamaModelTable(a *Agent, summaries []OllamaModelSummary, out io.Writer, n
 
 	activeName := ""
 	if !numbered {
-		if ac, ok := a.Client.(*AnyLLMClient); ok {
+		if ac, ok := a.Client.(*OllamaChatClient); ok {
 			activeName = ac.ModelName()
 		}
 	}
@@ -1998,7 +1996,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 
 	client := a.Client
 	model := a.Client.Name()
-	if ac, ok := a.Client.(*AnyLLMClient); ok {
+	if ac, ok := a.Client.(*OllamaChatClient); ok {
 		model = ac.ModelName()
 	}
 	if mentionName, rest, ok := ParseAtMention(instruction); ok {
@@ -2480,9 +2478,9 @@ func attachImage(a *Agent, filePath, base string, data []byte, mime string, out 
 
 	if attachClientSupportsVision(a) {
 		encoded := base64.StdEncoding.EncodeToString(data)
-		parts := []anyllm.ContentPart{
+		parts := []ContentPart{
 			{Type: "text", Text: fmt.Sprintf("[attached: %s]", base)},
-			{Type: "image_url", ImageURL: &anyllm.ImageURL{
+			{Type: "image_url", ImageURL: &ImageURL{
 				URL: "data:" + mime + ";base64," + encoded,
 			}},
 		}
@@ -2554,7 +2552,7 @@ func attachIsImageMIME(mime string) bool {
 // attachClientSupportsVision reports whether the current LLM client declares
 // image completion capability.
 func attachClientSupportsVision(a *Agent) bool {
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok {
 		return false
 	}

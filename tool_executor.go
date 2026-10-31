@@ -7,8 +7,6 @@ import (
 	"io"
 	"strings"
 	"time"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // ErrToolLoopExceeded is returned by RunToolLoop when the LLM exceeds the
@@ -30,7 +28,7 @@ type StatusReporter interface {
 }
 
 /** ToolCapable is satisfied by LLM clients that support schema-based tool
- * calling. AnyLLMClient implements this interface; other backends that do not
+ * calling. OllamaChatClient implements this interface; other backends that do not
  * support tools do not need to implement it.
  *
  * Example:
@@ -39,7 +37,7 @@ type StatusReporter interface {
  *   }
  */
 type ToolCapable interface {
-	ChatWithTools(ctx context.Context, messages []Message, tools []anyllm.Tool, out io.Writer) (ChatStats, []anyllm.ToolCall, error)
+	ChatWithTools(ctx context.Context, messages []Message, tools []Tool, out io.Writer) (ChatStats, []ToolCall, error)
 }
 
 /** ToolEvents receives what happens inside a tool loop so a session log can
@@ -57,8 +55,8 @@ type ToolCapable interface {
  *   ex.Events = agent.toolEvents()
  */
 type ToolEvents interface {
-	ToolCall(tc anyllm.ToolCall) string
-	ToolResult(call string, tc anyllm.ToolCall, output string, failed bool, elapsed time.Duration)
+	ToolCall(tc ToolCall) string
+	ToolResult(call string, tc ToolCall, output string, failed bool, elapsed time.Duration)
 	// Compacted tells the log that the round made by the tool calls with these
 	// ids was shortened in the history before the next model call (DR-0048).
 	Compacted(callIDs []string)
@@ -128,7 +126,7 @@ func NewToolExecutor(registry *ToolRegistry, client LLMClient, cfg *Config) *Too
  *
  * Parameters:
  *   ctx       (context.Context)    — controls the request lifetime.
- *   toolCalls ([]anyllm.ToolCall)  — tool calls from the LLM's response.
+ *   toolCalls ([]ToolCall)  — tool calls from the LLM's response.
  *
  * Returns:
  *   []Message — one tool-role message per call.
@@ -137,7 +135,7 @@ func NewToolExecutor(registry *ToolRegistry, client LLMClient, cfg *Config) *Too
  * Example:
  *   results, err := ex.ExecuteToolCalls(ctx, calls)
  */
-func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []anyllm.ToolCall) ([]Message, error) {
+func (e *ToolExecutor) ExecuteToolCalls(ctx context.Context, toolCalls []ToolCall) ([]Message, error) {
 	results := make([]Message, 0, len(toolCalls))
 	for _, tc := range toolCalls {
 		if e.Status != nil {
@@ -305,7 +303,7 @@ func availableToolNames(a *Agent) []string {
  *
  * Parameters:
  *   a     (*Agent)            — provides the tool registry, client, and config.
- *   calls ([]anyllm.ToolCall) — already-parsed tool calls to execute.
+ *   calls ([]ToolCall) — already-parsed tool calls to execute.
  *   out   (io.Writer)         — destination for the per-call and warning lines.
  *
  * Returns:
@@ -316,7 +314,7 @@ func availableToolNames(a *Agent) []string {
  * Example:
  *   dispatched, unknown := executeAndReportToolCalls(a, calls, out)
  */
-func executeAndReportToolCalls(a *Agent, calls []anyllm.ToolCall, out io.Writer) (dispatched bool, unknownNames []string) {
+func executeAndReportToolCalls(a *Agent, calls []ToolCall, out io.Writer) (dispatched bool, unknownNames []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ex := NewToolExecutor(a.Tools, a.Client, a.Config)

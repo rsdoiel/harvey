@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // defaultMaxOutputBytes is the default cap on tool output injected into context.
@@ -36,9 +34,9 @@ const defaultMaxToolCallsPerTurn = 10
  */
 type ToolHandler func(ctx context.Context, args map[string]any) (string, error)
 
-// toolEntry pairs an anyllm.Tool schema with its local handler.
+// toolEntry pairs an Tool schema with its local handler.
 type toolEntry struct {
-	schema  anyllm.Tool
+	schema  Tool
 	handler ToolHandler
 }
 

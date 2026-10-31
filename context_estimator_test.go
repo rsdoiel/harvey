@@ -42,7 +42,7 @@ func TestContextUsage_ollamaExactPath(t *testing.T) {
 
 	a := newTestAgent(t)
 	a.Config.Ollama.ContextLength = 2048
-	a.Client = NewAnyLLMClient(nil, "llama3", "ollama", srv.URL)
+	a.Client = newOllamaLLMClient(srv.URL, "llama3", 0)
 	a.AddMessage("user", "hello")
 
 	used, limit, exact := a.contextUsage()
@@ -72,7 +72,7 @@ func TestContextUsage_ollamaUsesEffectiveContextLimit(t *testing.T) {
 
 	a, mc := newTestAgentWithCache(t, "")
 	a.Config.Ollama.ContextLength = 0 // deliberately unset
-	a.Client = NewAnyLLMClient(nil, "llama3", "ollama", srv.URL)
+	a.Client = newOllamaLLMClient(srv.URL, "llama3", 0)
 	_ = mc.Set(&ModelCapability{Name: a.modelKey("llama3"), ContextLength: 9999})
 
 	_, limit, _ := a.contextUsage()

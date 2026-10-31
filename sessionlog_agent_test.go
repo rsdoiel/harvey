@@ -11,8 +11,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // agentWithLog is a test agent with a session log open in a temp directory.
@@ -151,7 +149,7 @@ func TestModelRequest_CarriesTheSystemPromptWhenItsVersionChanges(t *testing.T) 
 
 type toolStep struct {
 	text  string
-	calls []anyllm.ToolCall
+	calls []ToolCall
 	err   error
 }
 
@@ -169,7 +167,7 @@ func (c *scriptedToolClient) Chat(_ context.Context, _ []Message, out io.Writer)
 	fmt.Fprint(out, st.text)
 	return ChatStats{}, st.err
 }
-func (c *scriptedToolClient) ChatWithTools(_ context.Context, _ []Message, _ []anyllm.Tool, out io.Writer) (ChatStats, []anyllm.ToolCall, error) {
+func (c *scriptedToolClient) ChatWithTools(_ context.Context, _ []Message, _ []Tool, out io.Writer) (ChatStats, []ToolCall, error) {
 	st := c.steps[c.i]
 	c.i++
 	fmt.Fprint(out, st.text)
@@ -178,8 +176,8 @@ func (c *scriptedToolClient) ChatWithTools(_ context.Context, _ []Message, _ []a
 func (c *scriptedToolClient) Models(context.Context) ([]string, error) { return nil, nil }
 func (c *scriptedToolClient) Close() error                             { return nil }
 
-func toolCall(id, name, args string) anyllm.ToolCall {
-	return anyllm.ToolCall{ID: id, Type: "function", Function: anyllm.FunctionCall{Name: name, Arguments: args}}
+func toolCall(id, name, args string) ToolCall {
+	return ToolCall{ID: id, Type: "function", Function: FunctionCall{Name: name, Arguments: args}}
 }
 
 func infoKinds(events []Event) string {
@@ -202,7 +200,7 @@ func TestToolLoop_LogsEachToolCallAndItsResult(t *testing.T) {
 		return "", errors.New("it broke")
 	})
 	client := &scriptedToolClient{steps: []toolStep{
-		{calls: []anyllm.ToolCall{toolCall("call_1", "echo", `{"x":"API_KEY=sk-tool-1"}`), toolCall("call_2", "boom", `{}`)}},
+		{calls: []ToolCall{toolCall("call_1", "echo", `{"x":"API_KEY=sk-tool-1"}`), toolCall("call_2", "boom", `{}`)}},
 		{text: "all done"},
 	}}
 	a.Client = client
@@ -264,8 +262,8 @@ func TestToolEvents_NilWhenNoLogIsOpen(t *testing.T) {
 
 // ─── the client hook: every model call, whoever makes it ─────────────────────
 
-// wiredClient is a real *AnyLLMClient against the fake Ollama, reporting to a.
-func wiredClient(t *testing.T, a *Agent, url string) *AnyLLMClient {
+// wiredClient is a real *OllamaChatClient against the fake Ollama, reporting to a.
+func wiredClient(t *testing.T, a *Agent, url string) *OllamaChatClient {
 	t.Helper()
 	c := newOllamaLLMClient(url, "llama3.2:3b", 0)
 	a.Client = a.wireSessionLog(c)

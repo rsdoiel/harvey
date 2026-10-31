@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // registryWithEcho returns a ToolRegistry with a single "echo" tool that
@@ -36,8 +34,8 @@ func toolAgent(t *testing.T, reg *ToolRegistry) *Agent {
 
 func TestExecuteAndReportToolCalls_dispatchesKnownTool(t *testing.T) {
 	a := toolAgent(t, registryWithEcho())
-	calls := []anyllm.ToolCall{
-		{ID: "c1", Function: anyllm.FunctionCall{Name: "echo", Arguments: `{"msg":"hi"}`}},
+	calls := []ToolCall{
+		{ID: "c1", Function: FunctionCall{Name: "echo", Arguments: `{"msg":"hi"}`}},
 	}
 	var out strings.Builder
 	dispatched, unknown := executeAndReportToolCalls(a, calls, &out)
@@ -58,8 +56,8 @@ func TestExecuteAndReportToolCalls_dispatchesKnownTool(t *testing.T) {
 
 func TestExecuteAndReportToolCalls_unknownToolWarnsWithAvailableList(t *testing.T) {
 	a := toolAgent(t, registryWithEcho())
-	calls := []anyllm.ToolCall{
-		{ID: "c1", Function: anyllm.FunctionCall{Name: "does_not_exist", Arguments: `{}`}},
+	calls := []ToolCall{
+		{ID: "c1", Function: FunctionCall{Name: "does_not_exist", Arguments: `{}`}},
 	}
 	var out strings.Builder
 	dispatched, unknown := executeAndReportToolCalls(a, calls, &out)
@@ -153,8 +151,8 @@ func TestTryExecuteApertusToolCalls_unknownToolWarns(t *testing.T) {
 func TestCompactToolRound_basic(t *testing.T) {
 	history := []Message{
 		{Role: "user", Content: "create a file"},
-		{Role: "assistant", ToolCalls: []anyllm.ToolCall{
-			{ID: "c1", Function: anyllm.FunctionCall{Name: "write_file"}},
+		{Role: "assistant", ToolCalls: []ToolCall{
+			{ID: "c1", Function: FunctionCall{Name: "write_file"}},
 		}},
 		{Role: "tool", Content: "wrote 512 bytes to demo/app.js", ToolCallID: "c1"},
 	}
@@ -182,9 +180,9 @@ func TestCompactToolRound_basic(t *testing.T) {
 func TestCompactToolRound_multipleTools(t *testing.T) {
 	history := []Message{
 		{Role: "user", Content: "create files"},
-		{Role: "assistant", ToolCalls: []anyllm.ToolCall{
-			{ID: "c1", Function: anyllm.FunctionCall{Name: "create_dir"}},
-			{ID: "c2", Function: anyllm.FunctionCall{Name: "write_file"}},
+		{Role: "assistant", ToolCalls: []ToolCall{
+			{ID: "c1", Function: FunctionCall{Name: "create_dir"}},
+			{ID: "c2", Function: FunctionCall{Name: "write_file"}},
 		}},
 		{Role: "tool", Content: "created directory demo", ToolCallID: "c1"},
 		{Role: "tool", Content: "wrote 200 bytes to demo/index.html", ToolCallID: "c2"},
@@ -205,13 +203,13 @@ func TestCompactToolRound_multipleTools(t *testing.T) {
 
 func TestCompactToolRound_onlyCompactsTargetRound(t *testing.T) {
 	history := []Message{
-		{Role: "assistant", ToolCalls: []anyllm.ToolCall{
-			{ID: "c1", Function: anyllm.FunctionCall{Name: "write_file"}},
+		{Role: "assistant", ToolCalls: []ToolCall{
+			{ID: "c1", Function: FunctionCall{Name: "write_file"}},
 		}},
 		{Role: "tool", Content: "wrote 100 bytes to a.txt", ToolCallID: "c1"},
 		// Second round — must NOT be touched.
-		{Role: "assistant", ToolCalls: []anyllm.ToolCall{
-			{ID: "c2", Function: anyllm.FunctionCall{Name: "write_file"}},
+		{Role: "assistant", ToolCalls: []ToolCall{
+			{ID: "c2", Function: FunctionCall{Name: "write_file"}},
 		}},
 		{Role: "tool", Content: "wrote 200 bytes to b.txt", ToolCallID: "c2"},
 	}
@@ -251,8 +249,8 @@ func TestCompactToolRound_noopOnBadIndex(t *testing.T) {
 func TestCompactToolRound_preservesReadFileResult(t *testing.T) {
 	history := []Message{
 		{Role: "user", Content: "review this file"},
-		{Role: "assistant", ToolCalls: []anyllm.ToolCall{
-			{ID: "c1", Function: anyllm.FunctionCall{Name: "read_file"}},
+		{Role: "assistant", ToolCalls: []ToolCall{
+			{ID: "c1", Function: FunctionCall{Name: "read_file"}},
 		}},
 		{Role: "tool", Content: "the actual 12 KB file content goes here", ToolCallID: "c1"},
 	}
@@ -281,9 +279,9 @@ func TestCompactToolRound_preservesReadFileResult(t *testing.T) {
 func TestCompactToolRound_mixedContentAndActionTools(t *testing.T) {
 	history := []Message{
 		{Role: "user", Content: "read then write"},
-		{Role: "assistant", ToolCalls: []anyllm.ToolCall{
-			{ID: "c1", Function: anyllm.FunctionCall{Name: "read_file"}},
-			{ID: "c2", Function: anyllm.FunctionCall{Name: "write_file"}},
+		{Role: "assistant", ToolCalls: []ToolCall{
+			{ID: "c1", Function: FunctionCall{Name: "read_file"}},
+			{ID: "c2", Function: FunctionCall{Name: "write_file"}},
 		}},
 		{Role: "tool", Content: "file contents that must survive", ToolCallID: "c1"},
 		{Role: "tool", Content: "wrote 100 bytes to output.txt", ToolCallID: "c2"},

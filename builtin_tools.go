@@ -139,7 +139,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 					// and injectOrChunk (subagent-dispatch-design.md, Bug 1).
 					client := a.Client
 					model := a.Client.Name()
-					if ac, ok := a.Client.(*AnyLLMClient); ok {
+					if ac, ok := a.Client.(*OllamaChatClient); ok {
 						model = ac.ModelName()
 					}
 					if mentionName, rest, mentionOK := ParseAtMention(instruction); mentionOK {

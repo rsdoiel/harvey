@@ -12,8 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // Wiring of the session log (sessionlog.go) into Agent, item L3 of
@@ -186,7 +184,7 @@ func (a *Agent) addPrompt(role, via, content string) {
 
 // addPromptParts is addPrompt for a multimodal message. The parts, images
 // included, are kept as one blob of JSON.
-func (a *Agent) addPromptParts(role, via string, parts []anyllm.ContentPart) {
+func (a *Agent) addPromptParts(role, via string, parts []ContentPart) {
 	if a.SessionLog != nil {
 		if raw, err := json.Marshal(parts); err == nil {
 			a.logEvent(KindInjection, LevelInfo, map[string]any{
@@ -425,7 +423,7 @@ func (a *Agent) BeginModelCall(ctx context.Context, msgs []Message, toolCount in
 // installed whether or not a log is open yet; the agent looks the log up at
 // call time, so a client built before the log opened still logs.
 func (a *Agent) wireSessionLog(client LLMClient) LLMClient {
-	if ac, ok := client.(*AnyLLMClient); ok {
+	if ac, ok := client.(*OllamaChatClient); ok {
 		ac.CallLog = a
 	}
 	return client
@@ -548,7 +546,7 @@ func (a *Agent) toolEvents() ToolEvents {
 	return agentToolEvents{a}
 }
 
-func (t agentToolEvents) ToolCall(tc anyllm.ToolCall) string {
+func (t agentToolEvents) ToolCall(tc ToolCall) string {
 	id := t.a.logEvent(KindToolCall, LevelInfo, map[string]any{
 		"turn":    t.a.logTurn,
 		"tool":    tc.Function.Name,
@@ -579,7 +577,7 @@ func (t agentToolEvents) Compacted(callIDs []string) {
 	})
 }
 
-func (t agentToolEvents) ToolResult(call string, tc anyllm.ToolCall, output string, failed bool, elapsed time.Duration) {
+func (t agentToolEvents) ToolResult(call string, tc ToolCall, output string, failed bool, elapsed time.Duration) {
 	t.a.permCall = permissionCall{}
 	status := "ok"
 	if failed {

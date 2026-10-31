@@ -137,7 +137,7 @@ func resolvePipelineClient(a *Agent, mention string) (LLMClient, error) {
 			return clientForEndpoint(ep, a.Config)
 		}
 	}
-	ac, ok := a.Client.(*AnyLLMClient)
+	ac, ok := a.Client.(*OllamaChatClient)
 	if !ok {
 		return nil, fmt.Errorf("pipeline: @mention %q did not resolve to a known model", mention)
 	}
@@ -261,7 +261,7 @@ func runPipelineStep(
 	// Build spinner label with context percentage when available.
 	// Ollama: use the exact tokenizer API. All other backends: character estimate.
 	label := fmt.Sprintf("[%d/%d] %s", stepNum, total, filename)
-	if ac, ok := a.Client.(*AnyLLMClient); ok && len(messages) > 0 {
+	if ac, ok := a.Client.(*OllamaChatClient); ok && len(messages) > 0 {
 		var n int
 		if ac.ProviderName() == "ollama" {
 			n, _ = CountTokensFor(ctx, a.activeEngine(), ac.BackendURL(), ac.ModelName(), HistoryText(messages))

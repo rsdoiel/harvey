@@ -215,7 +215,7 @@ func DispatchToEndpointLogged(ctx context.Context, ep *RouteEndpoint, history []
 	if err != nil {
 		return "", err
 	}
-	if ac, ok := client.(*AnyLLMClient); ok && log != nil {
+	if ac, ok := client.(*OllamaChatClient); ok && log != nil {
 		ac.CallLog = log
 		// The routed prompt is a window of the history plus the line, sent to
 		// another server: part of the turn, but not the conversation's own

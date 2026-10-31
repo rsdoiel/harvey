@@ -214,7 +214,7 @@ func TestReplayFromSession_WritesALogMarkedAsAReplay(t *testing.T) {
 }
 
 // loggingMock answers REPLAYED and reports each call to the agent's log the way
-// AnyLLMClient does, so the replayed turn is logged as a model call.
+// OllamaChatClient does, so the replayed turn is logged as a model call.
 type loggingMock struct{ a *Agent }
 
 func (m *loggingMock) Name() string { return "mock" }

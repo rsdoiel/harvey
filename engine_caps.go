@@ -58,7 +58,7 @@ func capsForEngine(engine string) (EngineCaps, bool) {
  *   if c, ok := capsForEngine(a.activeEngine()); ok && c.Tools == CapNo { ... }
  */
 func (a *Agent) activeEngine() string {
-	if ac, ok := a.Client.(*AnyLLMClient); ok && ac.Engine() != "" {
+	if ac, ok := a.Client.(*OllamaChatClient); ok && ac.Engine() != "" {
 		return ac.Engine()
 	}
 	if a.Backend != nil {

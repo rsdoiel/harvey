@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	anyllm "github.com/mozilla-ai/any-llm-go"
 	knowledge "github.com/rsdoiel/knowledge"
 )
 
@@ -95,20 +94,20 @@ func (s ChatStats) FormatWithModels(models []string) string {
  * Fields:
  *   Role       (string)              — "system", "user", or "assistant".
  *   Content    (string)              — message body; ignored when Parts is non-empty.
- *   Parts      ([]anyllm.ContentPart) — multimodal content parts (e.g. image + text);
+ *   Parts      ([]ContentPart) — multimodal content parts (e.g. image + text);
  *                                      when non-empty, overrides Content.
- *   ToolCalls  ([]anyllm.ToolCall)  — tool call requests from the assistant.
+ *   ToolCalls  ([]ToolCall)  — tool call requests from the assistant.
  *   ToolCallID (string)             — correlates a tool-result message to its request.
  *
  * Example:
  *   msg := Message{Role: "user", Content: "Hello!"}
  */
 type Message struct {
-	Role       string               `json:"role"`
-	Content    string               `json:"content"`
-	Parts      []anyllm.ContentPart `json:"parts,omitempty"`
-	ToolCalls  []anyllm.ToolCall    `json:"tool_calls,omitempty"`
-	ToolCallID string               `json:"tool_call_id,omitempty"`
+	Role       string        `json:"role"`
+	Content    string        `json:"content"`
+	Parts      []ContentPart `json:"parts,omitempty"`
+	ToolCalls  []ToolCall    `json:"tool_calls,omitempty"`
+	ToolCallID string        `json:"tool_call_id,omitempty"`
 }
 
 /** LLMClient is the interface implemented by each LLM backend (Ollama,
@@ -179,7 +178,7 @@ type Agent struct {
 	LastObservationID int64           // ID of the most recently recorded /kb observe; cleared by ClearHistory
 	// toolsReliableOverride, when non-nil, overrides the capability-based logic
 	// in toolsReliable(). Set in tests to simulate a known-reliable or
-	// known-unreliable model without requiring a real AnyLLMClient.
+	// known-unreliable model without requiring a real OllamaChatClient.
 	toolsReliableOverride func() bool
 	// learnDrafterOverride, when non-nil, replaces how `/kb learn` resolves its
 	// drafting model. Set in tests to supply a fake Drafter without a real
@@ -245,7 +244,7 @@ func (a *Agent) effectiveContextLimit() int {
 		return a.Config.Ollama.ContextLength
 	}
 	if a.ModelCache != nil {
-		if ac, ok := a.Client.(*AnyLLMClient); ok {
+		if ac, ok := a.Client.(*OllamaChatClient); ok {
 			if cap, _ := a.ModelCache.Get(a.modelKey(ac.ModelName())); cap != nil && cap.ContextLength > 0 {
 				return cap.ContextLength
 			}
@@ -335,15 +334,15 @@ func (a *Agent) foldBackTurn(userContent, assistantContent string) {
  *
  * Parameters:
  *   role  (string)              — "user" (multimodal messages are always user-role).
- *   parts ([]anyllm.ContentPart) — ordered content parts (text, image_url, etc.).
+ *   parts ([]ContentPart) — ordered content parts (text, image_url, etc.).
  *
  * Example:
- *   agent.AddMessageParts("user", []anyllm.ContentPart{
+ *   agent.AddMessageParts("user", []ContentPart{
  *       {Type: "text", Text: "[attached: photo.jpg]"},
- *       {Type: "image_url", ImageURL: &anyllm.ImageURL{URL: "data:image/jpeg;base64,..."}},
+ *       {Type: "image_url", ImageURL: &ImageURL{URL: "data:image/jpeg;base64,..."}},
  *   })
  */
-func (a *Agent) AddMessageParts(role string, parts []anyllm.ContentPart) {
+func (a *Agent) AddMessageParts(role string, parts []ContentPart) {
 	a.History = append(a.History, Message{Role: role, Parts: parts})
 }
 

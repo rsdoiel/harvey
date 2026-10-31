@@ -9,8 +9,6 @@ import (
 	"net"
 	"sort"
 	"strings"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 /** cmdRoute handles remote endpoint routing configuration for multi-model
@@ -251,7 +249,7 @@ func routeStatus(a *Agent, out io.Writer) error {
 }
 
 // formatCapabilities returns a compact one-line capability summary.
-func formatCapabilities(caps anyllm.Capabilities) string {
+func formatCapabilities(caps Capabilities) string {
 	f := func(b bool) string {
 		if b {
 			return "✓"
@@ -285,7 +283,7 @@ func routeModels(a *Agent, args []string, out io.Writer) error {
 	// Show static capabilities (no network call needed).
 	ep := &RouteEndpoint{Kind: kind, URL: rawURL}
 	if client, cerr := clientForEndpoint(ep, a.Config); cerr == nil {
-		if ac, ok := client.(*AnyLLMClient); ok {
+		if ac, ok := client.(*OllamaChatClient); ok {
 			fmt.Fprintf(out, "  Capabilities: %s\n", formatCapabilities(ac.ProviderCapabilities()))
 		}
 	}
@@ -348,7 +346,7 @@ func routeProbe(a *Agent, name string, out io.Writer) error {
 
 	if reach {
 		if client, err := clientForEndpoint(ep, a.Config); err == nil {
-			if ac, ok := client.(*AnyLLMClient); ok {
+			if ac, ok := client.(*OllamaChatClient); ok {
 				fmt.Fprintf(out, "  Caps:     %s\n", formatCapabilities(ac.ProviderCapabilities()))
 			}
 		}

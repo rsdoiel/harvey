@@ -3,8 +3,6 @@ package harvey
 import (
 	"encoding/json"
 	"strings"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // promptrebuild.go — rebuilds the messages sent to the model from the session
@@ -199,7 +197,7 @@ func (r *rebuilder) apply(e Event) {
 			return
 		}
 		if len(d.Parts) > 0 {
-			var parts []anyllm.ContentPart
+			var parts []ContentPart
 			if json.Unmarshal([]byte(opts.contentOf(d.Parts)), &parts) == nil {
 				r.add(Message{Role: d.Role, Parts: parts}, d.Via, e.ID, false)
 			}
@@ -303,11 +301,11 @@ func applyRewriteOps(prev []PromptItem, ops []json.RawMessage, opts RenderOption
 			continue
 		}
 		var m struct {
-			Role       string               `json:"role"`
-			Message    json.RawMessage      `json:"message"`
-			ToolCallID string               `json:"tool_call_id"`
-			ToolCalls  []anyllm.ToolCall    `json:"tool_calls"`
-			Parts      []anyllm.ContentPart `json:"parts"`
+			Role       string          `json:"role"`
+			Message    json.RawMessage `json:"message"`
+			ToolCallID string          `json:"tool_call_id"`
+			ToolCalls  []ToolCall      `json:"tool_calls"`
+			Parts      []ContentPart   `json:"parts"`
 		}
 		if json.Unmarshal(raw, &m) == nil {
 			msg := Message{Role: m.Role, Content: opts.contentOf(m.Message), ToolCallID: m.ToolCallID, ToolCalls: m.ToolCalls, Parts: m.Parts}
@@ -325,10 +323,10 @@ func applyRewriteOps(prev []PromptItem, ops []json.RawMessage, opts RenderOption
 type anyToolCall struct{ id, name, args string }
 
 // toLibCalls converts logged tool calls to the message form.
-func toLibCalls(cs []anyToolCall) []anyllm.ToolCall {
-	out := make([]anyllm.ToolCall, len(cs))
+func toLibCalls(cs []anyToolCall) []ToolCall {
+	out := make([]ToolCall, len(cs))
 	for i, c := range cs {
-		out[i] = anyllm.ToolCall{ID: c.id, Type: "function", Function: anyllm.FunctionCall{Name: c.name, Arguments: c.args}}
+		out[i] = ToolCall{ID: c.id, Type: "function", Function: FunctionCall{Name: c.name, Arguments: c.args}}
 	}
 	return out
 }

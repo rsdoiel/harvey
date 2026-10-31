@@ -7,8 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // skipIfNoPopplerTools skips the test when any poppler utility is missing.
@@ -566,9 +564,9 @@ func TestAttachDetectMIME_png(t *testing.T) {
 
 func TestAddMessageParts_roundtrip(t *testing.T) {
 	a := newTestAgent(t)
-	parts := []anyllm.ContentPart{
+	parts := []ContentPart{
 		{Type: "text", Text: "[attached: img.png]"},
-		{Type: "image_url", ImageURL: &anyllm.ImageURL{URL: "data:image/png;base64,abc"}},
+		{Type: "image_url", ImageURL: &ImageURL{URL: "data:image/png;base64,abc"}},
 	}
 	a.AddMessageParts("user", parts)
 	if len(a.History) != 1 {
@@ -581,12 +579,9 @@ func TestAddMessageParts_roundtrip(t *testing.T) {
 	if len(msg.Parts) != 2 {
 		t.Errorf("parts len = %d, want 2", len(msg.Parts))
 	}
-	// harvestMessagesToAnyllm should pass Parts as Content.
-	anyllmMsgs := harvestMessagesToAnyllm(a.History)
-	if anyllmMsgs[0].ContentString() != "" {
-		t.Error("expected empty ContentString when Parts are set")
-	}
-	if anyllmMsgs[0].ContentParts() == nil {
-		t.Error("expected ContentParts to be non-nil")
+	// The wire conversion turns the image part into an images entry.
+	wire := toWireMessages(a.History)
+	if len(wire[0].Images) == 0 {
+		t.Error("expected the image part to be sent in images")
 	}
 }

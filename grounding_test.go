@@ -2,8 +2,6 @@ package harvey
 
 import (
 	"testing"
-
-	anyllm "github.com/mozilla-ai/any-llm-go"
 )
 
 // ─── extractQuotedStrings ─────────────────────────────────────────────────────
@@ -47,8 +45,8 @@ func makeHistory(toolName, resultContent string) []Message {
 	return []Message{
 		{
 			Role: "assistant",
-			ToolCalls: []anyllm.ToolCall{
-				{ID: "tc1", Function: anyllm.FunctionCall{Name: toolName}},
+			ToolCalls: []ToolCall{
+				{ID: "tc1", Function: FunctionCall{Name: toolName}},
 			},
 		},
 		{
