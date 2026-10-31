@@ -366,15 +366,7 @@ func (a *Agent) Run(out io.Writer) error {
 			a.Config.Ollama.ContextLength = n
 		}
 	}
-	defer func() {
-		a.closeSessionLog("quit")
-		if a.Recorder != nil {
-			path := a.Recorder.Path()
-			a.Recorder.Close()
-			a.Recorder = nil
-			fmt.Fprintf(out, dim("  Session saved to %s\n"), path)
-		}
-	}()
+	defer func() { a.finishSession(out) }()
 	// reader is used only for startup yes/no prompts. newLineReader takes exactly what
 	// it is asked for, so it cannot consume bytes that the LineEditor needs for the REPL
 	// loop (bufio's smallest buffer is 16 bytes, so a "1-byte" bufio reader did).
@@ -494,6 +486,14 @@ func (a *Agent) Run(out io.Writer) error {
 	if err := a.checkSystemPromptBudget(out, interactive); err != nil {
 		fmt.Fprintf(out, red("  ✗ %v\n"), err)
 		return err
+	}
+
+	// A session that died leaves a log with no end; render its Fountain file now,
+	// before this session's own files exist.
+	if a.SessionsDir != "" {
+		if names, _ := RecoverSessionFiles(a.SessionsDir, time.Local); len(names) > 0 {
+			fmt.Fprintf(out, yellow("  ⚠")+" Recovered %d session(s) that ended without closing: %s\n", len(names), strings.Join(names, ", "))
+		}
 	}
 
 	// Auto-start recording — skipped during replay to prevent both recorders
@@ -825,6 +825,7 @@ func (a *Agent) Run(out io.Writer) error {
 			if a.Routes != nil && a.Routes.Enabled {
 				if ep := a.Routes.Lookup(name); ep != nil {
 					le.AppendHistory(input)
+					a.logUserInputVia(input, name)
 					fmt.Fprintf(out, dim("  → dispatching to @%s\n"), name)
 					fmt.Fprintln(out)
 
@@ -845,7 +846,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 					sp := newSpinner(out, 0, routeSpinnerLabel(name, ep))
 					sp.UpdateStatus("routed → " + name)
-					reply, dispErr := DispatchToEndpoint(dispCtx, ep, a.History, prompt, a.Config, a.Tools, io.Discard)
+					reply, dispErr := DispatchToEndpointLogged(dispCtx, ep, a.History, prompt, a.Config, a.Tools, io.Discard, a)
 					sp.stop()
 					close(watchDone)
 					cancelDisp()
@@ -1030,9 +1031,7 @@ func (a *Agent) Run(out io.Writer) error {
 	if a.Config.Memory.Enabled && a.Workspace != nil &&
 		a.Recorder != nil && a.sessionTurns >= autoMineTurnThreshold {
 		sessionPath := a.Recorder.Path()
-		a.Recorder.Close()
-		a.Recorder = nil
-		fmt.Fprintf(out, dim("  Session saved to %s\n"), sessionPath)
+		a.finishSession(out)
 
 		fmt.Fprintln(out, dim("  [auto-mining session for memories — use /memory mine to review manually]"))
 		if a.Memory != nil && a.Memory.Store != nil {

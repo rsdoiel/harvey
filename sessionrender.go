@@ -259,7 +259,8 @@ func turnEnd(events []Event, i int) int {
 
 func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspace, modelName, label string, at func(Event) string) {
 	var input struct {
-		Text json.RawMessage `json:"text"`
+		Text  json.RawMessage `json:"text"`
+		Route string          `json:"route"`
 	}
 	_ = json.Unmarshal(turn[0].Data, &input)
 
@@ -358,6 +359,25 @@ func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspa
 	// turn's own scene.
 	for k, inj := range skills {
 		renderSkill(out, opts, skillEvents[k], inj, at)
+	}
+	if input.Route != "" {
+		endpoint := strings.ToUpper(input.Route)
+		out.sceneHeading(fmt.Sprintf("EXT. %s AND %s %s", endpoint, user, at(turn[0])))
+		out.action(fmt.Sprintf("Harvey routing to %s. Workspace: %s.", endpoint, workspace))
+		out.dialogue(user, "", opts.contentOf(input.Text))
+		out.dialogue("HARVEY", "", fmt.Sprintf("Forwarding to %s.", endpoint))
+		switch {
+		case last != nil:
+			out.dialogue(endpoint, "", opts.contentOf(last.Text))
+		case failure != nil && failure.Status == "cancelled":
+			out.note("model response cancelled")
+		case failure != nil:
+			out.note("model error: " + strings.TrimSpace(opts.contentOf(failure.Error)))
+		}
+		for _, o := range offers {
+			renderOffer1(out, opts, user, o, at)
+		}
+		return
 	}
 	out.sceneHeading(fmt.Sprintf("INT. HARVEY AND %s TALKING %s", user, at(turn[0])))
 	out.action(fmt.Sprintf("Harvey and %s are in chat mode. Model: %s. Workspace: %s.", user, modelName, workspace))

@@ -137,12 +137,20 @@ func (a *Agent) logContent(text string) any {
  * Example:
  *   a.logUserInput("explain this function")
  */
-func (a *Agent) logUserInput(input string) {
+func (a *Agent) logUserInput(input string) { a.logUserInputVia(input, "") }
+
+// logUserInputVia is logUserInput for a line sent to a named route; the route
+// is recorded so the Fountain scene can say where the line went.
+func (a *Agent) logUserInputVia(input, route string) {
 	if a.SessionLog == nil {
 		return
 	}
 	a.logTurn++
-	id := a.logEvent(KindUserInput, LevelInfo, map[string]any{"text": a.logContent(input)})
+	data := map[string]any{"text": a.logContent(input)}
+	if route != "" {
+		data["route"] = route
+	}
+	id := a.logEvent(KindUserInput, LevelInfo, data)
 	if a.logFirstDialogID == "" {
 		a.logFirstDialogID = id
 	}

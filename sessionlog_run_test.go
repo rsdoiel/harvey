@@ -29,6 +29,10 @@ var scriptedTerminal bool
 // with an HTTP 500. Tests reset it with t.Cleanup.
 var scriptedFailOn int
 
+// scriptedRender makes a scripted run render its Fountain file from the log at
+// close, as harvey does. Off by default so the live recording stays for comparison.
+var scriptedRender bool
+
 // fakeOllamaTwoModels serves /api/tags with two models, /api/show, and a
 // streaming /api/chat that answers FIRST, SECOND, … and names the model that
 // was asked, so a test can see which model answered.
@@ -127,6 +131,11 @@ func scriptedRunWith(t *testing.T, debug bool, setup func(root string), tools bo
 // scriptedRunFull is scriptedRunWith with a last look at the agent before Run.
 func scriptedRunFull(t *testing.T, debug bool, setup func(root string), tools bool, tweak func(*Agent), lines ...string) string {
 	t.Helper()
+	// By default the live recording is kept, for the tests that compare it with the
+	// rendering; scriptedRender turns the close-time rendering on.
+	prev := renderAtClose
+	renderAtClose = scriptedRender
+	t.Cleanup(func() { renderAtClose = prev })
 	a, ws := runFixture(t, scriptedTerminal)
 	if setup != nil {
 		setup(ws.Root)

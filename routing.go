@@ -197,12 +197,35 @@ func recentHistory(history []Message, n int) []Message {
  *   reply, err := DispatchToEndpoint(ctx, ep, agent.History, "write a parser", cfg, agent.Tools, os.Stdout)
  */
 func DispatchToEndpoint(ctx context.Context, ep *RouteEndpoint, history []Message, prompt string, cfg *Config, registry *ToolRegistry, out io.Writer) (string, error) {
+	return DispatchToEndpointLogged(ctx, ep, history, prompt, cfg, registry, out, nil)
+}
+
+/** DispatchToEndpointLogged is DispatchToEndpoint with a session log: the
+ * endpoint's client reports its call to log (an *Agent), as part of the turn,
+ * so the routed turn is in the record. A nil log records nothing.
+ *
+ * Parameters:
+ *   ctx, ep, history, prompt, cfg, registry, out — as for DispatchToEndpoint.
+ *   log (ModelCallLog) — told of the model call; nil is accepted.
+ *
+ * Returns:
+ *   string — the endpoint's reply.
+ *   error  — if the client cannot be built or the call fails.
+ *
+ * Example:
+ *   reply, err := DispatchToEndpointLogged(ctx, ep, a.History, prompt, a.Config, a.Tools, io.Discard, a)
+ */
+func DispatchToEndpointLogged(ctx context.Context, ep *RouteEndpoint, history []Message, prompt string, cfg *Config, registry *ToolRegistry, out io.Writer, log ModelCallLog) (string, error) {
 	msgs := recentHistory(history, RecentContextN)
 	msgs = append(msgs, Message{Role: "user", Content: prompt})
 
 	client, err := clientForEndpoint(ep, cfg)
 	if err != nil {
 		return "", err
+	}
+	if ac, ok := client.(*AnyLLMClient); ok && log != nil {
+		ac.CallLog = log
+		ctx = withCallPurpose(ctx, purposeTurn, nil)
 	}
 
 	var buf strings.Builder
