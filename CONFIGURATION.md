@@ -90,8 +90,6 @@ rag:
 | `allowed_commands` | string list | No | See Security section | Commands allowed when `safe_mode` is true |
 | `permissions` | object | No | Full access | Path-prefix permission map |
 | `model_aliases` | object | No | `{}` | Short name → full model identifier map |
-| `llamafile` | object | No | See below | Llamafile backend configuration |
-| `llamacpp` | object | No | See below | llama.cpp (`llama-server`) backend configuration |
 | `tools` | object | No | See below | Tool-calling behaviour |
 | `memory` | object | No | See below | Memory system and RAG configuration |
 
@@ -121,94 +119,9 @@ rag:
 - Embedding model binding is enforced: you cannot mix embeddings from different models in the same store
 - Set `per_prompt: false` on the active store when using the `retrieve_memory` tool — this avoids redundant per-turn retrieval and lets the model decide when to fetch context
 
-**Llamafile Backend (`llamafile:`):**
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `models_dir` | string | No | `~/Models` | Directory scanned for `.llamafile` executables |
-| `active` | string | No | `""` | Name of the registered model to connect at startup |
-| `url` | string | No | `http://localhost:8080` | API base URL for the llamafile server |
-| `gpu_layers` | integer | No | `99` | Transformer layers to offload via `-ngl`; `99` = maximise GPU, `-1` = CPU only |
-| `startup_timeout` | string | No | `120s` | How long to wait for the server to become ready |
-| `models` | array | No | `[]` | Registered llamafile model entries |
-
-**Llamafile Model Entry Fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Short identifier used by `/model use` and `@mention` |
-| `path` | string | Yes | Absolute or `~/`-relative path to the `.llamafile` executable |
-| `context_length` | integer | No | Context window in tokens; probed from the server when omitted |
-
-`context_length` is used for the rolling-summary trigger and context-utilisation hints.
-When omitted Harvey probes the server's `/v1/models` endpoint at startup and caches
-the result in memory (not persisted to `harvey.yaml`). Set it explicitly when the
-probe is unavailable or you want a fixed value.
-
-```yaml
-llamafile:
-  models_dir: ~/Models
-  active: qwen-coding
-  url: http://localhost:8080
-  gpu_layers: 99
-  startup_timeout: 120s
-  models:
-    - name: qwen-coding
-      path: ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
-      context_length: 32768
-    - name: phi-mini
-      path: ~/Models/Phi-3.5-mini-instruct-Q4_K_M.llamafile
-```
-
-**llama.cpp Backend (`llamacpp:`):**
-
-Harvey starts and talks to a `llama-server` process (from [llama.cpp](https://github.com/ggml-org/llama.cpp))
-and lists the `.gguf` model files it finds in a directory. Every field is optional; an empty
-`llamacpp:` section, or none at all, uses the defaults below.
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `server_bin` | string | No | `llama-server` | Path to the `llama-server` binary; the default is looked up on `PATH` |
-| `models_dir` | string | No | llama.cpp's cache (see below) | Directory scanned for `*.gguf` model files; `~/` is expanded |
-| `url` | string | No | `http://127.0.0.1:8081` | API base URL of the server |
-| `ctx_size` | integer | No | `0` | `--ctx-size` passed to `llama-server`; `0` = the server's default |
-| `threads` | integer | No | `0` | `--threads`; `0` = the server's default |
-| `gpu_layers` | integer | No | unset | `--n-gpu-layers`; `0` or unset = CPU only |
-| `pin_cpu` | boolean | No | `false` | Launch under `taskset -c 0-(threads-1)`; ignored when `threads` is `0` or `taskset` is missing |
-| `start_timeout` | string | No | `120s` | How long to wait for the server to answer after launch |
-
-**Where models are found.** When `models_dir` is not set, Harvey scans the directory
-llama.cpp itself downloads models into (`llama-server -hf …`), taking the first of:
-
-1. `$LLAMA_CACHE`
-2. `$XDG_CACHE_HOME/llama.cpp`
-3. `~/.cache/llama.cpp`
-
-The directory need not exist; a missing directory simply lists no models. `~/Models` is
-**not** scanned for llama.cpp: that directory belongs to the llamafile backend, which
-looks there for `.llamafile` executables only. To use `.gguf` files you keep elsewhere,
-set `models_dir`.
-
-> **Not yet verified.** Discovery is a directory scan only. Harvey does not ask
-> `llama-server --cache-list` or a running server's `/models` endpoint what it has, so
-> a model that llama.cpp resolves through some other store (for example the Hugging Face
-> hub cache, `~/.cache/huggingface/hub`) is not listed. This is tracked as an open
-> question in the v0.0.19 hand-off.
-
-`/model` commands label each model with its engine, so a `.gguf` file here shows as
-`llamacpp` and is kept apart from Ollama and llamafile entries.
-
-```yaml
-llamacpp:
-  server_bin: llama-server        # PATH lookup; give a full path to pin a build
-  models_dir: ~/Models/gguf       # omit to use $LLAMA_CACHE or ~/.cache/llama.cpp
-  url: http://127.0.0.1:8081
-  ctx_size: 8192
-  threads: 4
-  gpu_layers: 0                   # CPU only
-  pin_cpu: true                   # taskset -c 0-3
-  start_timeout: 180s
-```
+**Removed backends.** llama.cpp and llamafile were removed (workspace DR-0033). A `harvey.yaml` that still
+has a `llamafile:` or `llamacpp:` section fails to load with a configuration error (exit 78); delete the
+section. Harvey supports Ollama and hailo-ollama.
 
 **Security Configuration:**
 
@@ -250,7 +163,7 @@ Short names that expand to full model identifiers in `@mention` switching and
 ```yaml
 model_aliases:
   coder: qwen2.5-coder:7b
-  phi: phi-mini          # registered llamafile name
+  phi: phi4:latest
   claude: claude-sonnet-4-6
 ```
 
@@ -341,21 +254,10 @@ agents_dir: agents
 model_cache_db: agents/model_cache.db
 auto_record: true
 
-# Llamafile backend (primary)
-llamafile:
-  models_dir: ~/Models
-  active: qwen-coding
-  startup_timeout: 120s
-  gpu_layers: 99
-  models:
-    - name: qwen-coding
-      path: ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
-      context_length: 32768
-
 # Model short-name aliases
 model_aliases:
-  coder: qwen-coding
-  phi: phi-mini
+  coder: qwen2.5-coder:7b
+  phi: phi4:latest
 
 # Behaviour
 syntax_highlight: true
@@ -444,7 +346,7 @@ sessions.
 | `name` | string | Yes | Unique identifier for the endpoint |
 | `url` | string | Yes | URL including scheme (e.g., `ollama://host:port`) |
 | `model` | string | No | Default model to use with this endpoint |
-| `kind` | string | No | Inferred from URL scheme | One of: `ollama`, `llamafile`, `llamacpp`, `anthropic`, `deepseek`, `gemini`, `mistral`, `openai` |
+| `kind` | string | No | Inferred from URL scheme | One of: `ollama`, `anthropic`, `deepseek`, `gemini`, `mistral`, `openai` |
 
 **URL Schemes:**
 
@@ -453,8 +355,6 @@ sessions.
 | `ollama://host:port` | ollama | Ollama server | Local or remote |
 | `http://host:port` | ollama | Ollama server | HTTP (insecure) |
 | `https://host:port` | ollama | Ollama server | HTTPS (secure) |
-| `llamafile://host:port` | llamafile | Llamafile server | OpenAI-compatible |
-| `llamacpp://host:port` | llamacpp | llama.cpp server | OpenAI-compatible |
 | `anthropic://` | anthropic | Anthropic Claude | Uses `ANTHROPIC_API_KEY` |
 | `deepseek://` | deepseek | DeepSeek API | Uses `DEEPSEEK_API_KEY` |
 | `gemini://` | gemini | Google Gemini | Uses `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
@@ -599,9 +499,6 @@ optional and only needed when using the corresponding route types.
 | `OLLAMA_HOST` | Ollama | `ollama://` | Ollama server host (default: `localhost`) |
 | `OLLAMA_ORIGINS` | Ollama | `ollama://` | CORS origins for Ollama |
 | `OLLAMA_KEEP_ALIVE` | Ollama | `ollama://` | Keep-alive interval (default: `24h`) |
-| `HARVEY_LLAMAFILE_DIR` | Llamafile | — | Override the llamafile discovery directory (takes precedence over `llamafile.models_dir` in `harvey.yaml`) |
-| `LLAMA_CACHE` | llama.cpp | — | Directory scanned for `.gguf` files when `llamacpp.models_dir` is not set (llama.cpp's own variable; takes precedence over `XDG_CACHE_HOME`) |
-| `XDG_CACHE_HOME` | llama.cpp | — | When `LLAMA_CACHE` is unset, `.gguf` files are scanned in `$XDG_CACHE_HOME/llama.cpp` |
 | `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/rag ingest sftp://…`) |
 | `SFTP_KEY_PATH` | SFTP/SCP | `sftp://` `scp://` | Path to SSH private key for SFTP/SCP remote ingest |
 | `HTTP_BEARER_TOKEN` | HTTP/HTTPS | `http://` `https://` | Bearer token for authenticated HTTP remote ingest |
@@ -742,33 +639,10 @@ auto_record: true          # false to disable session auto-recording
 syntax_highlight: true     # false to disable ANSI colour in code blocks
 auto_format: true          # false to disable auto-formatting after write_file
 
-# ── Llamafile backend ─────────────────────────────────────────────────────────
-llamafile:
-  models_dir: ~/Models            # discovery directory; $HOME/Models is the default
-  active: qwen-coding             # name of the active registered model
-  url: http://localhost:8080      # API base URL; this is the default
-  gpu_layers: 99                  # -ngl value; 99 = maximise GPU, -1 = CPU only
-  startup_timeout: 120s           # time to wait for the server to become ready
-  models:
-    - name: qwen-coding
-      path: ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
-      context_length: 32768       # optional; probed from server when omitted
-
-# ── llama.cpp backend ─────────────────────────────────────────────────────────
-llamacpp:
-  server_bin: llama-server        # PATH lookup by default
-  models_dir: ~/Models/gguf       # default: $LLAMA_CACHE, $XDG_CACHE_HOME/llama.cpp, ~/.cache/llama.cpp
-  url: http://127.0.0.1:8081      # this is the default
-  ctx_size: 8192                  # --ctx-size; 0 = server default
-  threads: 4                      # --threads; 0 = server default
-  gpu_layers: 0                   # --n-gpu-layers; 0 or unset = CPU only
-  pin_cpu: false                  # taskset -c 0-(threads-1); needs threads > 0
-  start_timeout: 120s             # time to wait for the server to answer
-
 # ── Model aliases ─────────────────────────────────────────────────────────────
 model_aliases:
-  coder: qwen2.5-coder:7b         # short name → full Ollama model ID or llamafile name
-  phi: phi-mini
+  coder: qwen2.5-coder:7b         # short name → full Ollama model ID
+  phi: phi4:latest
 
 # ── Security ──────────────────────────────────────────────────────────────────
 safe_mode: true

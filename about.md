@@ -1,7 +1,7 @@
 ---
 title: harvey
 abstract: |-
-  Harvey is an agent REPL written in Go and designed to use Llamafile models or Ollama server to access language models locally. It is a terminal based application.
+  Harvey is an agent REPL written in Go and designed to use an Ollama (or hailo-ollama) server to access language models locally. It is a terminal based application.
 
   The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and my personal language model agent.  Many people think of agents only in the context of very big companies. I think small models running on small or tiny computers are an opportunity. Harvey, is a small agent for small and tiny computers and is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.
 authors:
@@ -40,7 +40,7 @@ harvey now requires knowledge v0.0.25 (was v0.0.20), which also takes fountain v
 
 
 
-Harvey is an agent REPL written in Go and designed to use Llamafile models or Ollama server to access language models locally. It is a terminal based application.
+Harvey is an agent REPL written in Go and designed to use an Ollama (or hailo-ollama) server to access language models locally. It is a terminal based application.
 
 The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and my personal language model agent.  Many people think of agents only in the context of very big companies. I think small models running on small or tiny computers are an opportunity. Harvey, is a small agent for small and tiny computers and is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.
 
@@ -57,7 +57,7 @@ The Harvey name was inspired by the play of that name by Mary Chase. I saw paral
 
 ## Software Requirements
 
-- Llamafile v0.10 models or Ollama plus Ollama models
+- Ollama plus Ollama models
 
 
 ## Software Suggestions

@@ -13,7 +13,7 @@ assay [OPTIONS]
 # DESCRIPTION
 
 assay is an LLM evaluation harness for Harvey. It runs a corpus of prompts
-against one or more Ollama models (or a llamafile binary) and produces a
+against one or more Ollama models and produces a
 Markdown report plus a JSON results file for human review and automated
 checking.
 
@@ -49,21 +49,8 @@ failure mode. Mutually exclusive with -rag-compare.
 -category NAME
 : Run only prompts in the named category. Omit to run all categories.
 
--llamafile PATH
-: Path to a llamafile binary to evaluate. assay starts the llamafile
-  server automatically before the run and stops it when finished.
-  The model name is derived from the binary filename.
-  Mutually exclusive with -llamacpp.
-
--llamacpp URL
-: Base URL of a running llama-server instance, e.g. http://localhost:8081.
-  The user is responsible for starting and stopping llama-server.
-  If -models is not set, assay queries GET /v1/models to discover
-  the loaded model. Mutually exclusive with -llamafile.
-
 -ollama URL
-: Base URL of the Ollama server (also used for RAG embeddings when
-  -rag-db is set with --llamafile or --llamacpp).
+: Base URL of the Ollama server (also used for RAG embeddings).
   Default: http://localhost:11434
 
 -output PATH
@@ -124,18 +111,18 @@ thing that failed, using the workspace's exit codes:
 2
 : The command line is wrong: an unknown option, an option without its value, a
   surplus argument, or options that conflict (-rag-compare without -rag-db,
-  -guide-compare without -guide-file, -llamafile with -llamacpp).
+  -guide-compare without -guide-file).
 
 65
 : A file assay read is wrong: a corpus that will not parse or has no
   prompts, or a RAG store it cannot use.
 
 66
-: A named input is missing: the -corpus, -guide-file or -llamafile file.
+: A named input is missing: the -corpus or -guide-file file.
 
 69
-: A service cannot be reached: Ollama or llama-server while listing models, a
-  llamafile that will not start, or a model call that failed. The run still
+: A service cannot be reached: Ollama while listing models, or a model call
+  that failed. The run still
   finishes, writes its report, and says how many calls failed.
 
 70
@@ -179,12 +166,6 @@ Run only the go-crosswalk category against a specific model:
 
 ~~~
   assay -models qwen2.5-coder:7b -category go-crosswalk
-~~~
-
-Evaluate a llamafile binary:
-
-~~~
-  assay -llamafile ~/models/qwen2.5-coder-7b.llamafile
 ~~~
 
 Run with RAG context injection and comparison:

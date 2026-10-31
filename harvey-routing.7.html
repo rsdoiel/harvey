@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -27,13 +26,12 @@ NAME tools on|off|list|on|off|status&gt;</p>
 <p><span class="citation" data-cites="name">@name</span> prompt text</p>
 <h1 id="description">DESCRIPTION</h1>
 <p>Harvey can dispatch individual prompts to remote LLM endpoints —
-other Ollama instances on a Pi cluster, Llamafile servers, or cloud
-providers — using <span class="citation"
-data-cites="mention">@mention</span> syntax. Prefix any prompt with
-<span class="citation" data-cites="name">@name</span> to send it to the
-named endpoint instead of the local model. The reply is streamed back
-and lands in the local conversation history so future turns retain full
-context.</p>
+other Ollama instances on a Pi cluster or cloud providers — using <span
+class="citation" data-cites="mention">@mention</span> syntax. Prefix any
+prompt with <span class="citation" data-cites="name">@name</span> to
+send it to the named endpoint instead of the local model. The reply is
+streamed back and lands in the local conversation history so future
+turns retain full context.</p>
 <p>Routing is explicitly user-driven: there is no automatic
 classification. You choose which endpoint handles each prompt by using
 (or omitting) an <span class="citation"
@@ -47,9 +45,7 @@ window size is a starting point and will be tuned over time.</p>
 <h1 id="endpoint-types">ENDPOINT TYPES</h1>
 <p>Local providers (no API key):</p>
 <p>ollama://host:port A remote Ollama server (also accepts http:// and
-https://). llamafile://host:port A Llamafile binary server
-(OpenAI-compatible, port 8080). llamacpp://host:port A llama.cpp server
-(OpenAI-compatible, port 8080).</p>
+https://).</p>
 <p>Cloud providers (API key read from environment):</p>
 <p>anthropic:// Anthropic Claude (ANTHROPIC_API_KEY) deepseek://
 DeepSeek (DEEPSEEK_API_KEY) gemini:// Google Gemini (GEMINI_API_KEY or

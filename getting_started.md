@@ -10,16 +10,15 @@ See [man page](harvey.1.md)
 How it starts:
 
 Harvey looks for HARVEY.md in the workspace root and uses it as a system
-prompt. It then connects to a local language model system — either a llamafile
-executable or an Ollama server — and opens an interactive natural language
+prompt. It then connects to a local language model system — an Ollama or
+hailo-ollama server — and opens an interactive natural language
 programming session. Language model systems are commonly called "AI models"
 or "AI"; Harvey treats them as a programmable interface for deliberate,
 documented work.
 
-> **Tip:** The easiest way to get started is to download a llamafile from the
-> [Mozilla AI pre-built llamafiles page](https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles),
-> place it in `~/Models/`, and run `harvey`. Harvey will find and connect to
-> it automatically. Ollama and llama.cpp servers are also supported. Use
+> **Tip:** The easiest way to get started is to install [Ollama](https://ollama.com),
+> run `ollama pull qwen2.5-coder:7b`, and run `harvey`. Harvey will find and
+> connect to the server automatically. Use
 > `/model list` to see every model Harvey can reach and `/model use NAME` to
 > switch; see [Model Commands](harvey-model.7.md).
 
@@ -40,11 +39,8 @@ created automatically on first run. Session recordings are stored in
 # Change to project directory
 cd $HOME/myproject
 
-# Start Harvey — auto-detects llamafile or Ollama
+# Start Harvey — auto-detects Ollama or hailo-ollama
 harvey
-
-# Use a specific llamafile for this session (not persisted)
-harvey --llamafile ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile
 
 # Use a specific Ollama model
 harvey --model qwen2.5-coder:7b
@@ -62,11 +58,10 @@ When Harvey starts it:
    used is pre-selected in the next step.
 5. Reads `HARVEY.md` from the workspace root, expands any
    [dynamic markers](#dynamic-markers), and injects it as the system prompt.
-6. Detects available model backends: scans `~/Models/` (or the configured
-   `llamafile.models_dir`) for registered llamafile executables and probes
-   the Ollama server. Llamafile models are offered first; Ollama models follow.
-7. Selects the model — from the resumed session, from `--llamafile` or
-   `--model` flags, or via an interactive picker.
+6. Detects available model backends: probes the Ollama server (and the
+   hailo-ollama server when one is configured).
+7. Selects the model — from the resumed session, from the
+   `--model` flag, or via an interactive picker.
 8. If no model is reachable, prints the first-run guide with download
    instructions and exits.
 9. Begins recording the session to a new `.spmd` file in `agents/sessions/`.
@@ -132,10 +127,10 @@ $ harvey
 ✓ Knowledge base: agents/knowledge.db
 ✓ Loaded HARVEY.md as system prompt
 
-  Starting qwen-coding (llamafile)...
-  ✓ Ready at http://localhost:8080
+  ✓ Ollama is running
+  Using model: qwen2.5-coder:7b
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Connected: llamafile (qwen-coding)
+  Connected: ollama (qwen2.5-coder:7b)
   /help for commands · /exit to quit
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -244,7 +239,7 @@ content.
 **Examples across command families:**
 
 ```
-/model list                              — models across llamafile, llama.cpp, Ollama
+/model list                              — models across Ollama and hailo-ollama
 /model use qwen-coding                   — activate one (name, alias, or unique prefix)
 /model show qwen-coding                  — show model details
 /model alias add qc qwen2.5-coder:7b     — define a short alias
@@ -286,11 +281,11 @@ list is in [harvey(1)](harvey.1.md).
 
 | Command | Description |
 |---|---|
-| `/model list` | List models across llamafile, llama.cpp, and Ollama |
+| `/model list` | List models across Ollama and hailo-ollama |
 | `/model use [NAME]` | Switch to a model by name, alias, or unique prefix; a picker is shown when NAME is omitted |
 | `/model show [NAME]` | Show the active (or named) model's details |
 | `/model status` | Check whether the active backend is reachable |
-| `/model stop` | Stop the active llamafile or llama.cpp server, if Harvey started it |
+| `/model stop` | Stop the active model server, if Harvey started it |
 | `/model clean` | Remove aliases whose model is no longer installed |
 | `/model mode [MODEL] [MODE]` | Show or set how a model gets tools: `structured`, `prose`, `inject`, or `none` |
 | `/model alias add ALIAS FULLNAME` | Define a short alias for a long model name (`alias list` shows them) |
@@ -500,9 +495,6 @@ live in `agents/harvey.yaml`:
 ```yaml
 run_timeout: "5m"             # timeout for ! and /run commands
 ollama_timeout: ""            # empty = no timeout (recommended on a Pi)
-
-llamafile:
-  startup_timeout: 120s       # how long to wait for llamafile server ready
 ```
 
 ## Code assistance

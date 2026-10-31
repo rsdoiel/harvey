@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -41,16 +40,14 @@ all subsequent turns:</p>
 summarise this function in one sentence</p>
 <p><span class="citation" data-cites="qwen-coding">@qwen-coding</span>
 rewrite the loop to avoid the allocation</p>
-<p>If NAME matches a registered llamafile model, Harvey stops the
-current server and starts the new one. If NAME matches an Ollama model,
-Harvey switches the Ollama client. If NAME is not recognised, the @
-prefix is treated as part of the normal prompt — no error, no
-switch.</p>
+<p>If NAME matches an Ollama model, Harvey switches the Ollama client.
+If NAME is not recognised, the @ prefix is treated as part of the normal
+prompt — no error, no switch.</p>
 <p>Conversation history is preserved unchanged across a switch. The
 model switch is recorded in the session file as:</p>
 <p>[[model switch: NAME (BACKEND) at TIMESTAMP]]</p>
 <p>The session title page also records the starting backend:</p>
-<p>Backend: llamafile</p>
+<p>Backend: ollama</p>
 <p>Use <span class="citation" data-cites="NAME">@NAME</span> with no
 trailing text to switch model without sending a prompt:</p>
 <p><span class="citation" data-cites="phi-mini">@phi-mini</span></p>
@@ -67,9 +64,8 @@ this function</p>
 <p>/model alias list List all defined aliases and their full model
 names.</p>
 <p>/model alias add ALIAS FULLNAME Define a new alias. FULLNAME is an
-Ollama model identifier or a registered llamafile name. <code>add</code>
-is the preferred form; <code>set</code> is also accepted for
-compatibility.</p>
+Ollama model identifier. <code>add</code> is the preferred form;
+<code>set</code> is also accepted for compatibility.</p>
 <p>/model alias set ALIAS FULLNAME Alias for <code>add</code>.</p>
 <p>/model alias remove ALIAS Remove an alias. Also accepted: rm,
 delete.</p>

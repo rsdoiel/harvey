@@ -31,9 +31,7 @@ all subsequent turns:
 
   @qwen-coding rewrite the loop to avoid the allocation
 
-If NAME matches a registered llamafile model, Harvey stops the current
-server and starts the new one. If NAME matches an Ollama model, Harvey
-switches the Ollama client. If NAME is not recognised, the @ prefix is
+If NAME matches an Ollama model, Harvey switches the Ollama client. If NAME is not recognised, the @ prefix is
 treated as part of the normal prompt — no error, no switch.
 
 Conversation history is preserved unchanged across a switch. The model
@@ -43,7 +41,7 @@ switch is recorded in the session file as:
 
 The session title page also records the starting backend:
 
-  Backend: llamafile
+  Backend: ollama
 
 Use @NAME with no trailing text to switch model without sending a prompt:
 
@@ -67,8 +65,7 @@ is equivalent to switching to qwen2.5-coder:7b.
     List all defined aliases and their full model names.
 
   /model alias add ALIAS FULLNAME
-    Define a new alias. FULLNAME is an Ollama model identifier or a
-    registered llamafile name. `add` is the preferred form; `set` is
+    Define a new alias. FULLNAME is an Ollama model identifier. `add` is the preferred form; `set` is
     also accepted for compatibility.
 
   /model alias set ALIAS FULLNAME

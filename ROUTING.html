@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -26,8 +25,8 @@ Harvey</em></p>
 <h2 id="overview">Overview</h2>
 <p>Harvey’s <strong>routing system</strong> allows you to dispatch
 prompts to <strong>remote LLM endpoints</strong> — other Ollama
-instances on your network, Llamafile servers, or cloud providers
-(Anthropic, DeepSeek, Gemini, Mistral, OpenAI). This enables:</p>
+instances on your network, or cloud providers (Anthropic, DeepSeek,
+Gemini, Mistral, OpenAI). This enables:</p>
 <ul>
 <li><strong>Multi-model workflows</strong>: Use different models for
 different tasks</li>
@@ -86,7 +85,7 @@ Required)</h3>
 <col style="width: 15%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Type</th>
 <th scope="col">Scheme</th>
 <th scope="col">Backend</th>
@@ -95,40 +94,26 @@ Required)</h3>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>Ollama</td>
 <td><code>ollama://host:port</code></td>
 <td>Ollama</td>
 <td>11434</td>
 <td>Official Ollama server</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Ollama</td>
 <td><code>http://host:port</code></td>
 <td>Ollama</td>
 <td>11434</td>
 <td>HTTP — prompts transmitted in plaintext</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Ollama</td>
 <td><code>https://host:port</code></td>
 <td>Ollama</td>
 <td>11434</td>
 <td>HTTPS (secure)</td>
-</tr>
-<tr>
-<td>Llamafile</td>
-<td><code>llamafile://host:port</code></td>
-<td>Llamafile</td>
-<td>8080</td>
-<td>OpenAI-compatible</td>
-</tr>
-<tr>
-<td>llama.cpp</td>
-<td><code>llamacpp://host:port</code></td>
-<td>llama.cpp</td>
-<td>8080</td>
-<td>OpenAI-compatible</td>
 </tr>
 </tbody>
 </table>
@@ -150,7 +135,7 @@ Required)</h3>
 <col style="width: 14%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Type</th>
 <th scope="col">Scheme</th>
 <th scope="col">Backend</th>
@@ -159,42 +144,42 @@ Required)</h3>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>Anthropic</td>
 <td><code>anthropic://</code></td>
 <td>Claude</td>
 <td><code>ANTHROPIC_API_KEY</code></td>
 <td>All Claude models</td>
 </tr>
-<tr>
+<tr class="even">
 <td>DeepSeek</td>
 <td><code>deepseek://</code></td>
 <td>DeepSeek</td>
 <td><code>DEEPSEEK_API_KEY</code></td>
 <td>All DeepSeek models</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Gemini</td>
 <td><code>gemini://</code></td>
 <td>Google</td>
 <td><code>GEMINI_API_KEY</code></td>
 <td>Primary</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Gemini</td>
 <td><code>gemini://</code></td>
 <td>Google</td>
 <td><code>GOOGLE_API_KEY</code></td>
 <td>Fallback</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Mistral</td>
 <td><code>mistral://</code></td>
 <td>Mistral</td>
 <td><code>MISTRAL_API_KEY</code></td>
 <td>All Mistral models</td>
 </tr>
-<tr>
+<tr class="even">
 <td>OpenAI</td>
 <td><code>openai://</code></td>
 <td>OpenAI</td>
@@ -391,29 +376,29 @@ Sent to CLAUDE:
 <col style="width: 42%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Good</th>
 <th scope="col">Bad</th>
 <th scope="col">Reason</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>pi2</code>, <code>pi3</code>, <code>pi4</code></td>
 <td><code>node2</code>, <code>server2</code></td>
 <td>Consistent with role</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>claude</code>, <code>mistral</code></td>
 <td><code>model1</code>, <code>api1</code></td>
 <td>Descriptive of model</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>gpu-box</code>, <code>big-iron</code></td>
 <td><code>machine</code>, <code>computer</code></td>
 <td>Descriptive of hardware</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>dev</code>, <code>prod</code>, <code>test</code></td>
 <td><code>d</code>, <code>p</code>, <code>t</code></td>
 <td>Clear purpose</td>

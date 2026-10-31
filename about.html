@@ -14,65 +14,26 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
 <section id="main-content">
 <h1 id="about-this-software">About this software</h1>
-<h2 id="harvey-0.0.19">harvey 0.0.19</h2>
-<ul>
-<li>Behaviour changes, see CHANGES.md upgrade notes: llama.cpp models
-are looked for in llama.cpp’s cache (<code>$LLAMA_CACHE</code>, else
-<code>~/.cache/llama.cpp</code>) and <code>~/Models</code> is for
-llamafiles only, so set <code>llamacpp.models_dir</code> to keep the
-old directory (harvey DR-0031, proposed); <code>skills.catalog</code> is
-off by default (set <code>skills: catalog: full</code> to restore it);
-the command line now beats <code>harvey.yaml</code> for
-<code>--llamafile-url</code>, <code>--llamafile-dir</code>,
-<code>-r</code>, <code>--record-file</code>, <code>--resume</code>,
-<code>--continue</code>, <code>--replay</code>,
-<code>--replay-output</code> and <code>--replay-continue</code> as well
-as <code>--ollama</code> and <code>-m</code>, and
-<code>HARVEY_LLAMAFILE_DIR</code> beats
-<code>llamafile.models_dir</code></li>
-<li>A chat stream that ends before its final chunk is an error
-(<code>ErrStreamTruncated</code>, exit 74) instead of an empty reply
-recorded as a success</li>
-<li>Hailo (AI HAT+ 2) is an engine beside Ollama (harvey DR-0030): a
-<code>hailo:</code> section in <code>harvey.yaml</code>, card and server
-detected apart, <code>engine/model</code> names (a bare name on both
-engines asks, or is exit 2 unattended), the catalog shown as
-<code>not pulled</code> with <code>/model pull [--yes] NAME</code>, and
-a capability table so harvey stops sending <code>tools</code> or asking
-for embeddings where Hailo has none</li>
-<li>Per-model prompt limits: <code>/model limit</code>, the system
-prompt and history fitted to the limit, a turn over it refused before
-sending, and a failed turn retried on smaller prompts that teaches the
-limit; the model cache is keyed by engine and model</li>
-<li><code>/memory mine</code> reads a session too large for the model in
-parts, records an empty session as <code>empty</code>, and remembers a
-model that failed on a session so auto-mine does not retry it; a RAG
-retrieval failure is reported once per session instead of silently</li>
-<li><code>harvey completion bash|powershell [-install]</code> for shell
-completion of verbs, options and help topics</li>
-<li>A write offer no longer treats a command, end of input or arbitrary
-text as an answer; piping <code>/exit</code> used to create a file named
-<code>exit</code></li>
-<li>Switching to a llama.cpp model mid-session keeps the
-<code>--debug</code> log and records the switch, as the Ollama paths
-already did</li>
-<li><code>make test-models</code> runs live model tests and skips a
-missing model system with the reason; <code>make build</code> no longer
-runs <code>cmt</code>, <code>make generate</code> does</li>
-<li><code>knowledge</code> bumped to the released v0.0.20</li>
-</ul>
+<h2 id="harvey-0.0.20">harvey 0.0.20</h2>
+<p>Recalled knowledge names what it rests on. When harvey injects an
+observation, record or document match from the knowledge base, it adds a
+<code>Cited:</code> list of the works that row cites (title and
+identifier); a retracted source is marked RETRACTED with its note, and
+the row is kept so the model does not lean on it and you hear about it.
+Rows that cite nothing are unchanged.</p>
+<p>harvey now requires knowledge v0.0.25 (was v0.0.20), which also takes
+fountain v1.0.3.</p>
 <h2 id="authors">Authors</h2>
 <ul>
 <li><a href="https://orcid.org/0000-0003-0900-6903">R. S. Doiel</a></li>
 </ul>
-<p>Harvey is an agent REPL written in Go and designed to use Llamafile
-models or Ollama server to access language models locally. It is a
+<p>Harvey is an agent REPL written in Go and designed to use an Ollama
+(or hailo-ollama) server to access language models locally. It is a
 terminal based application.</p>
 <p>The Harvey name was inspired by the play of that name by Mary Chase.
 I saw parallels between the story Harvey and my personal language model
@@ -96,7 +57,7 @@ Tracker</a></li>
 </ul>
 <h2 id="software-requirements">Software Requirements</h2>
 <ul>
-<li>Llamafile v0.10 models or Ollama plus Ollama models</li>
+<li>Ollama plus Ollama models</li>
 </ul>
 <h2 id="software-suggestions">Software Suggestions</h2>
 <ul>

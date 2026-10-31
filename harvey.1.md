@@ -17,14 +17,14 @@ It was inspired by Claude Code but designed for local language model systems
 running on small computers like a Raspberry Pi. Language model systems are
 commonly called "AI models" or "AI"; harvey treats them as a programmable
 interface for deliberate, documented work. harvey supports language model
-systems via llamafile (self-contained executables from Mozilla) and Ollama,
+systems via Ollama and hailo-ollama,
 and scales from resource-constrained hardware to more capable computers.
 harvey can be compiled to run on any system supported by Go. The project
 distributes executables for Linux, macOS, and Windows on x86_64 and aarch64.
 
 harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It connects to a local language model system — llamafile or
-Ollama — and opens an interactive natural language programming session.
+system prompt. It connects to a local language model system — Ollama or
+hailo-ollama — and opens an interactive natural language programming session.
 Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI) can be
 added as named routes via /route add.
 
@@ -68,15 +68,6 @@ completion SHELL [-install]
 
 --ollama URL
 : Ollama base URL (default: http://localhost:11434)
-
---llamafile PATH
-: connect to PATH for this session (not persisted to harvey.yaml)
-
---llamafile-url URL
-: override the llamafile API base URL (default: http://localhost:8080)
-
---llamafile-dir PATH
-: override the llamafile discovery directory (default: ~/Models)
 
 -w, --workdir DIR
 : workspace directory (default: current directory)
@@ -149,12 +140,12 @@ went wrong from the number:
 
 66
 : A named input is missing or is the wrong kind of thing: the -w directory, the
-  --continue or --replay file, the init source, or the --llamafile file. These
+  --continue or --replay file, or the init source. These
   are checked before a model is started.
 
 69
 : A service cannot be reached: no model is connected and nobody is at a
-  terminal to choose one, or a llamafile will not start.
+  terminal to choose one.
 
 70
 : An internal error, or one nothing classified. Please report it.
@@ -232,9 +223,8 @@ are also available from the shell: harvey --help TOPIC.
 **Model and backend**
 
 /model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...]
-: unified model management across llamafile, Ollama, and llama.cpp backends;
-  place .llamafile or .gguf files in ~/Models/ — Harvey discovers them automatically;
-  Ollama models are listed live when Ollama is running; use ollama CLI for pull/rm
+: unified model management across Ollama and hailo-ollama;
+  models are listed live when the server is running; use the ollama CLI for pull/rm
 
 /workspace <status|init [PATH]>
 : show workspace root, alias count and profile; seed aliases from another workspace

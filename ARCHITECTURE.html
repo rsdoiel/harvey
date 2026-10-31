@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -43,14 +42,13 @@ workspace.go                Sandboxed file I/O (Workspace)
 knowledge.go                SQLite knowledge base (KnowledgeBase)
 audit.go                    In-memory ring-buffer audit log (AuditBuffer)
 permissions.go              Permission check helpers (CheckReadPermission, etc.)
-debuglog.go                 JSONL diagnostic event log (DebugLog); written when --debug
+sessionlog.go              Append-only JSONL session log (SessionLog), scrubber in logscrub.go; --debug adds level-debug events
+sessionlog_agent.go        Agent wiring of the session log (events from Run, dispatch, the client hook, tool loop)
 lear_messages.go            Edward Lear-themed spinner waiting messages
 
 --- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
 anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go for cloud providers
-llamafile.go                llamafile model registration and discovery (reached through /model)
-llamafile_service.go        Llamafile server lifecycle (start, probe, port selection)
 model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
 route_persist.go            Persistence helpers for routes.json
@@ -74,8 +72,7 @@ memory_enrichment_*.go      Design/plan documents (not compiled)
 
 --- Skills ---
 skills.go                   SkillCatalog, skill discovery and metadata
-skill_dispatch.go           Skill dispatch (compiled script path vs. LLM fallback)
-skill_compile.go            Compiled skill script generation via LLM
+skill_dispatch.go           Skill trigger matching and automatic loading
 skill_wizard.go             Interactive skill creation wizard (/skill new)
 skill_set.go                SkillSet — YAML bundles of multiple skills
 
@@ -128,132 +125,128 @@ together for one session:</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Field</th>
 <th scope="col">Type</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>Client</code></td>
 <td><code>LLMClient</code></td>
-<td>Current backend (Ollama, Llamafile, cloud provider)</td>
+<td>Current backend (Ollama, hailo-ollama, cloud provider)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Config</code></td>
 <td><code>*Config</code></td>
 <td>Runtime configuration</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>History</code></td>
 <td><code>[]Message</code></td>
 <td>Full conversation sent to the LLM on every turn</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Workspace</code></td>
 <td><code>*Workspace</code></td>
 <td>Sandboxed root for all file operations</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>KB</code></td>
 <td><code>*KnowledgeBase</code></td>
 <td>SQLite knowledge base (<code>agents/knowledge.db</code>)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>ModelCache</code></td>
 <td><code>*ModelCache</code></td>
 <td>Capability cache for installed Ollama models</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>Rag</code></td>
 <td><code>*RagStore</code></td>
 <td>Active RAG chunk store; nil when not configured</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>RagOn</code></td>
 <td><code>bool</code></td>
 <td>When true, top-K chunks are prepended before each Chat call</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>SessionsDir</code></td>
 <td><code>string</code></td>
 <td>Absolute path to the sessions directory</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Skills</code></td>
 <td><code>SkillCatalog</code></td>
 <td>Skills discovered at startup</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>Recorder</code></td>
 <td><code>*Recorder</code></td>
 <td>Optional Fountain .spmd session log</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>In</code></td>
 <td><code>io.Reader</code></td>
 <td>Interactive prompt source (default <code>os.Stdin</code>; injectable
 for tests)</td>
 </tr>
-<tr>
-<td><code>PinnedContext</code></td>
-<td><code>string</code></td>
-<td>Text that survives <code>/clear</code>; re-injected after system
-prompt</td>
+<tr class="odd">
+<td><code>Pins</code></td>
+<td><code>[]Pin</code></td>
+<td>Kept in front of the model for the session; re-injected after
+<code>/clear</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Routes</code></td>
 <td><code>*RouteRegistry</code></td>
 <td>Registered remote endpoints; nil when routing not configured</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>ActiveSkill</code></td>
 <td><code>string</code></td>
 <td>Most recently loaded skill name; <code>""</code> when none</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>ActiveSkillSet</code></td>
 <td><code>string</code></td>
 <td>Currently loaded skill-set bundle name; <code>""</code> when
 none</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>Tools</code></td>
 <td><code>*ToolRegistry</code></td>
 <td>Schema-based tool registry; nil when tools disabled</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>AuditBuffer</code></td>
 <td><code>*AuditBuffer</code></td>
 <td>In-memory audit log ring buffer</td>
 </tr>
-<tr>
-<td><code>DebugLog</code></td>
-<td><code>*DebugLog</code></td>
-<td>JSONL diagnostic log; nil when <code>--debug</code> not set</td>
+<tr class="odd">
+<td><code>SessionLog</code></td>
+<td><code>*SessionLog</code></td>
+<td>Append-only JSONL record of this session (DR-0036); nil when none is
+open</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>OllamaStartedByHarvey</code></td>
 <td><code>bool</code></td>
 <td>True when Harvey launched the Ollama subprocess</td>
 </tr>
-<tr>
-<td><code>llamafileProc</code></td>
-<td><code>*os.Process</code></td>
-<td>Non-nil when Harvey started the current llamafile server</td>
-</tr>
-<tr>
+<tr class="odd">
 <td><code>sessionTurns</code></td>
 <td><code>int</code></td>
 <td>Total completed user turns (used to trigger auto-mine)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>sessionInjectedTokens</code></td>
 <td><code>int</code></td>
 <td>Tokens injected via UnifiedMemory this session</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>sessionCompressed</code></td>
 <td><code>bool</code></td>
 <td>True if rolling summary fired at least once this session</td>
@@ -312,7 +305,7 @@ is created automatically and holds <code>knowledge.db</code>,
 <h3 id="history-lifecycle">History lifecycle</h3>
 <pre><code>startup
   └─ system message  ← HARVEY.md (after ExpandDynamicSections)
-  └─ user message    ← [pinned context] if PinnedContext != &quot;&quot;
+  └─ user message    ← [pinned context] messages, one per pin
   └─ user message    ← [memory context] from UnifiedMemory.Recall()
 
 each turn
@@ -332,110 +325,71 @@ each turn
   └─ History + summarizePrompt → LLM
   └─ ClearHistory()             ← re-injects system + pinned
   └─ AddMessage(&quot;user&quot;, &quot;[Conversation summary]\n\n&quot;+summary)</code></pre>
-<h3 id="pinned-context-pinnedcontext">Pinned context
-(<code>PinnedContext</code>)</h3>
-<p><code>PinnedContext</code> is a free-form string managed by
-<code>/context add|show|clear</code>. <code>add</code> appends
-(newline-separated); there is always at most one
-<code>[pinned context]</code> message in <code>History</code> —
-subsequent <code>add</code> calls update it in-place.
-<code>ClearHistory</code> re-injects it automatically, so it survives
-<code>/summarize</code>.</p>
-<h3 id="dynamic-system-prompt-expanddynamicsections">Dynamic system
-prompt (<code>ExpandDynamicSections</code>)</h3>
-<p><code>LoadHarveyMD</code> reads <code>HARVEY.md</code> from the
-process working directory. <code>ExpandDynamicSections</code> is called
-before the system message is injected, replacing these markers with live
-data:</p>
+<h3 id="pins">Pins</h3>
+<p>A pin (<code>sessionpins.go</code>) is a <code>Pin</code> in
+<code>Agent.Pins</code>, a <code>pin</code> event in the session log and
+a <code>[pinned context]</code> message in the history.
+<code>/pin</code> takes text, a session event id or a <code>kb:</code>
+identity; the pins may take a quarter of the prompt limit. The assembler
+keeps pins ahead of the dialog (system prompt, pins, summaries, recalled
+knowledge, tail). <code>ClearHistory</code> adds each pin’s message
+again, so pins survive <code>/clear</code> and <code>/summarize</code>.
+<code>/unpin</code> removes the message (a logged rewrite) and writes an
+<code>unpin</code> event.</p>
 <table>
 <colgroup>
 <col style="width: 50%" />
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
-<th scope="col">Marker</th>
-<th scope="col">Replaced with</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>&lt;!-- @date --&gt;</code></td>
-<td>Current date (<code>YYYY-MM-DD</code>)</td>
-</tr>
-<tr>
-<td><code>&lt;!-- @files --&gt;</code></td>
-<td>Workspace file tree (hidden dirs excluded)</td>
-</tr>
-<tr>
-<td><code>&lt;!-- @git-status --&gt;</code></td>
-<td><code>git status --short</code>, or
-<code>(not a git repository)</code></td>
-</tr>
-</tbody>
-</table>
-<h2 id="slash-command-system-commands.go">Slash-command system
-(<code>commands.go</code>)</h2>
-<p>Commands are registered in <code>registerCommands()</code> as
-<code>map[string]*Command</code>. Each <code>Command</code> has a
-<code>Handler func(a *Agent, args []string, out io.Writer) error</code>.
-The REPL calls <code>dispatch(input, out)</code> for any line beginning
-with <code>/</code>.</p>
-<h3 id="workspace-commands">Workspace commands</h3>
-<table>
-<colgroup>
-<col style="width: 50%" />
-<col style="width: 50%" />
-</colgroup>
-<thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/files [PATH]</code></td>
 <td>List workspace directory contents</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/read FILE [FILE...]</code></td>
 <td>Inject file contents into context</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/attach FILE</code></td>
 <td>Attach image, PDF, or text; selects best representation for
 route</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/read-pdf FILE [PAGES]</code></td>
 <td>Extract PDF text via poppler; inject into context</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/write PATH</code></td>
 <td>Save last assistant reply (or first code block) to a file</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/read-dir [PATH] [--depth N]</code></td>
 <td>Read all eligible files in a directory tree into context</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/file-tree [PATH]</code></td>
 <td>Display recursive directory tree</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/search PATTERN [PATH]</code></td>
 <td>Regex search across workspace files</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/run COMMAND [ARGS...]</code></td>
 <td>Run shell command; subject to safe mode and timeout</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/git status\|diff\|log\|show\|blame [ARGS...]</code></td>
 <td>Read-only git commands</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/format FILE [FILE...]</code></td>
 <td>Detect and apply language-appropriate formatters</td>
 </tr>
@@ -448,21 +402,21 @@ route</td>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/model list\|use\|show\|status\|stop\|clean\|mode\|alias</code></td>
-<td>Manage models across llamafile, llama.cpp and Ollama</td>
+<td>Manage models across Ollama and hailo-ollama</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/inspect [MODEL]</code></td>
 <td>Show detailed model capability information</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/route add\|rm\|models\|probe\|set\|list\|on\|off\|status</code></td>
 <td>Manage named remote endpoints</td>
 </tr>
@@ -475,32 +429,37 @@ route</td>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><code>/context add TEXT...\|show\|clear</code></td>
-<td>Manage pinned context that survives <code>/clear</code></td>
+<tr class="odd">
+<td><code>/pin ...</code>, <code>/pins</code>,
+<code>/unpin N</code></td>
+<td>Keep something in front of the model for the session; list;
+remove</td>
 </tr>
-<tr>
+<tr class="even">
+<td><code>/context</code></td>
+<td>Show what the model sees on the next turn</td>
+</tr>
+<tr class="odd">
 <td><code>/clear</code></td>
-<td>Reset conversation history (system prompt + pinned context
-survive)</td>
+<td>Reset conversation history (system prompt + pins survive)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/summarize</code></td>
 <td>Condense history to a summary; <code>/compact</code> is an
 alias</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/status</code></td>
 <td>Show backend, token usage, routing, recording, memory, debug
 state</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/hint</code></td>
 <td>Actionable suggestions (unmined sessions, empty RAG, empty KB)</td>
 </tr>
@@ -513,21 +472,17 @@ state</td>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><code>/record start [FILE]\|stop\|status</code></td>
-<td>Start or stop Fountain session recording</td>
-</tr>
-<tr>
+<tr class="odd">
 <td><code>/rename NAME</code></td>
 <td>Rename the active session file without interrupting recording</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/session continue FILE\|replay FILE [OUTPUT]</code></td>
 <td>Load or replay a prior session</td>
 </tr>
@@ -540,25 +495,25 @@ state</td>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/kb status\|search\|inject\|project\|observe\|concept</code></td>
 <td>Query and update SQLite knowledge base</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/rag list\|new\|use\|drop\|ingest\|status\|query\|on\|off</code></td>
 <td>Manage RAG stores</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/memory mine\|list\|show\|flag\|forget\|status\|recall\|profile</code></td>
 <td>Manage session-experience memory store</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/recall QUERY</code></td>
 <td>Search all knowledge silos (alias for
 <code>/memory recall</code>)</td>
@@ -572,17 +527,17 @@ state</td>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><code>/skill list\|load NAME\|info NAME\|status\|new\|run NAME</code></td>
-<td>Discover, load, and run skills</td>
+<tr class="odd">
+<td><code>/skill list\|load NAME\|info NAME\|status\|new</code></td>
+<td>Discover and load skills</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/skill-set list\|load NAME\|info NAME\|create NAME\|status\|unload</code></td>
 <td>Manage skill-set bundles</td>
 </tr>
@@ -596,21 +551,21 @@ commands</h3>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/pipeline CONFIDENCE% FILE [FILE...]</code></td>
 <td>Chain Markdown prompt files as confidence-gated steps</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/plan TASK\|next\|status\|show\|clear</code></td>
 <td>Generate a GFM checklist plan; execute each step</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/loop INTERVAL [--count N] PROMPT\|/COMMAND</code></td>
 <td>Run a prompt or command repeatedly on an interval</td>
 </tr>
@@ -623,29 +578,29 @@ commands</h3>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/safemode on\|off\|status\|allow CMD\|deny CMD\|reset</code></td>
 <td>Command allowlist; persisted to harvey.yaml</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/safe</code></td>
 <td>Alias for <code>/safemode</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/permissions list\|set PATH PERMS\|reset</code></td>
 <td>Path-prefix read/write/exec/delete control</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/audit show [N]\|clear\|status</code></td>
 <td>In-memory ring-buffer audit log (1000 events)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/security status</code></td>
 <td>Unified view of safe mode, permissions, and audit state</td>
 </tr>
@@ -700,8 +655,8 @@ unconditionally stripped:</p>
 <code>HTTP_BASIC_PASSWORD</code></li>
 </ul>
 <p>Note: all variables matching the <code>HARVEY_*</code> prefix are
-forwarded to child processes (including compiled skills). Avoid storing
-secrets in <code>HARVEY_</code>-prefixed variables.</p>
+forwarded to child processes. Avoid storing secrets in
+<code>HARVEY_</code>-prefixed variables.</p>
 <p><strong>Timeout configuration.</strong>
 <code>Config.RunTimeout</code> (default 5 minutes) bounds every
 <code>!</code> and <code>/run</code> subprocess via
@@ -721,34 +676,34 @@ extended in v0.0.11 for scholarly identifiers:</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Table</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>projects</code></td>
 <td>One row per named project with status (<code>active</code>,
 <code>paused</code>, <code>concluded</code>)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>observations</code></td>
 <td>Timestamped notes per project; kind:
 <code>note</code>/<code>finding</code>/<code>decision</code>/<code>question</code>/<code>hypothesis</code>;
 <code>source_doi</code> column for scholarly citations</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>concepts</code></td>
 <td>Named terms spanning projects; <code>identifier_type</code> and
 <code>identifier_value</code> columns for scholarly entities (people,
 papers, institutions, funders)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>project_concepts</code></td>
 <td>M:N link between projects and concepts</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>observation_concepts</code></td>
 <td>M:N link between observations and concepts</td>
 </tr>
@@ -769,7 +724,7 @@ retrieval time by <code>UnifiedMemory.Recall()</code>
 <col style="width: 25%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Silo</th>
 <th scope="col">Files</th>
 <th scope="col">Content</th>
@@ -777,20 +732,20 @@ retrieval time by <code>UnifiedMemory.Recall()</code>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><strong>RAG store</strong></td>
 <td><code>rag_support.go</code>, <code>agents/rag/*.db</code></td>
 <td>Vector-embedded document chunks</td>
 <td>Per-prompt via <code>ragAugment()</code> when RAG is on</td>
 </tr>
-<tr>
+<tr class="even">
 <td><strong>Memory store</strong></td>
 <td><code>memory_store.go</code>, <code>memory_miner.go</code>,
 <code>memory_manifest.go</code>, <code>agents/memories/</code></td>
 <td>Typed experience records extracted from sessions</td>
 <td>Session start via <code>UnifiedMemory.Recall()</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td><strong>Knowledge base</strong></td>
 <td><code>knowledge.go</code>, <code>agents/knowledge.db</code></td>
 <td>Hand-authored experiments/observations/concepts (relational)</td>
@@ -885,39 +840,39 @@ so it must be read first.</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Tool</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>read_file</code></td>
 <td>Read a workspace file; supports PDF (via poppler) and images (vision
 routes)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>write_file</code></td>
 <td>Write to a workspace file; applies auto-formatters when
 <code>auto_format</code> is on</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>list_files</code></td>
 <td>List workspace directory contents</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>run_command</code></td>
 <td>Run a shell command (subject to safe mode)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>git</code></td>
 <td>Read-only git operations</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>create_dir</code></td>
 <td>Create a directory inside the workspace</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>get_user_info</code></td>
 <td>Return OS username, git user name/email, hostname</td>
 </tr>
@@ -931,23 +886,26 @@ routes)</td>
 to <code>SkillMeta</code> (path, description, trigger, compatibility,
 license). The catalog summary is added to the system prompt so the model
 knows what skills are available.</p>
-<h3 id="skill-dispatch-skill_dispatch.go">Skill dispatch
-(<code>skill_dispatch.go</code>)</h3>
-<p>When <code>/skill run NAME</code> is called:</p>
+<h3 id="skill-activation-skill_dispatch.go-commands_skill.go">Skill
+activation (<code>skill_dispatch.go</code>,
+<code>commands_skill.go</code>)</h3>
+<p>A skill is used directly: <code>loadSkill</code> puts the SKILL.md
+body into the conversation as a user message
+(<code>[skill: NAME]</code>) and marks the skill active. Three things
+call it:</p>
 <ol type="1">
-<li><p><strong>Compiled path</strong> — if
-<code>scripts/compiled.bash</code> (Linux/macOS) or
-<code>scripts/compiled.ps1</code> (Windows) exists, the script is
-executed directly. Environment includes <code>HARVEY_PROMPT</code>,
-<code>HARVEY_WORKDIR</code>, <code>HARVEY_MODEL</code>,
-<code>HARVEY_SESSION_ID</code>, and <code>HARVEY_API_BASE</code> (for
-compiled skills that call the LLM API directly).</p></li>
-<li><p><strong>LLM-fallback path</strong> — if no compiled script, the
-full SKILL.md body is injected into context and an LLM response turn is
-triggered.</p></li>
+<li><code>/skill load NAME</code>.</li>
+<li><code>/NAME [REQUEST]</code>, registered for every skill by
+<code>registerSkillCommands</code>. A non-empty REQUEST is queued on
+<code>Agent.pendingInput</code> and runs as the next chat line, so the
+model answers it with the skill in context.</li>
+<li>A trigger match: <code>autoLoadSkill</code> loads the first skill,
+in name order, whose <code>trigger:</code> matches the prompt, and the
+prompt then goes to the model.</li>
 </ol>
-<p>Compilation failure falls back to the LLM-fallback path rather than
-erroring. Skill trigger regexes use <code>/pattern/flags</code> format;
+<p>Skills are not compiled to Bash or PowerShell (workspace DR-0008). A
+<code>scripts/compiled.*</code> file left in a skill directory is
+ignored. Skill trigger regexes use <code>/pattern/flags</code> format;
 the trailing flag suffix is stripped before compilation.</p>
 <h3 id="skill-sets-skill_set.go">Skill sets
 (<code>skill_set.go</code>)</h3>
@@ -1021,37 +979,6 @@ library’s default 120 s timeout.</p>
 <p>Named remote endpoints are managed by <code>RouteRegistry</code>
 (<code>routing.go</code>). The <code>@name</code> prefix in a prompt
 dispatches that turn to the named endpoint.</p>
-<h3 id="llamafile-backend-llamafile.go-llamafile_service.go">Llamafile
-backend (<code>llamafile.go</code>,
-<code>llamafile_service.go</code>)</h3>
-<p>Llamafile binaries are registered via <code>/model use</code> and
-stored in <code>Config.LlamafileModels</code>.
-<code>llamafile_service.go</code> handles the server lifecycle:
-<code>FindFreePort</code> selects an available TCP port,
-<code>StartLlamafileServer</code> launches the binary via
-<code>/bin/sh</code> (required on macOS for APE format binaries), and
-probes the health endpoint before returning. Key config fields:</p>
-<table>
-<thead>
-<tr>
-<th scope="col">Field</th>
-<th scope="col">Default</th>
-<th scope="col">Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>startup_timeout</code></td>
-<td>120s</td>
-<td>Fast-fail if server does not become ready</td>
-</tr>
-<tr>
-<td><code>gpu_layers</code></td>
-<td>99</td>
-<td><code>-ngl</code> flag for Metal/CUDA layer offload</td>
-</tr>
-</tbody>
-</table>
 <h3 id="backend-selection-at-startup-terminal.go">Backend selection at
 startup (<code>terminal.go</code>)</h3>
 <ol type="1">
@@ -1071,26 +998,26 @@ Retrieval-Augmented Generation (<code>rag_support.go</code>)</h2>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Type</th>
 <th scope="col">Purpose</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>Embedder</code></td>
 <td>Interface: <code>Embed(text) ([]float64, error)</code> +
 <code>Name() string</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>RagStore</code></td>
 <td>SQLite-backed chunk store; enforces single-embedder consistency</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>Chunk</code></td>
 <td>Retrieved result: ID, Content, Score, Source</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>RagStoreEntry</code></td>
 <td>Registry entry: Name, DBPath, EmbeddingModel, ModelMap</td>
 </tr>
@@ -1147,231 +1074,224 @@ assignable to <code>ToolExecutor.Status</code>.</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">File</th>
 <th scope="col">Covers</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>workspace_test.go</code></td>
 <td>Path sandboxing, escape detection, file I/O</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>harvey_test.go</code></td>
 <td><code>ChatStats.Format</code>, rolling stats, duration estimation,
 <code>AddMessage</code>, <code>ClearHistory</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>spinner_test.go</code></td>
 <td><code>timerLabel</code> boundary conditions</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>recorder_test.go</code></td>
 <td>Session recorder round-trip</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>sessions_files_test.go</code></td>
 <td>Session file listing, <code>MostRecentSession</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>knowledge_test.go</code></td>
 <td>Full KB CRUD, duplicate handling, links, <code>Summary</code>,
 scholarly fields</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>commands_test.go</code></td>
 <td>Core slash-command handlers</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>tier2_test.go</code></td>
 <td>Helpers (<code>isBinary</code>, <code>looksLikePath</code>),
 <code>/search</code>, <code>/git</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>tier3_test.go</code></td>
 <td>Mock client, <code>/summarize</code>, <code>/context</code>,
 <code>ExpandDynamicSections</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>rag_support_test.go</code></td>
 <td><code>RagStore</code> ingest, query, source round-trip, semantic
 ranking</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>anyllm_client_test.go</code></td>
 <td>AnyLLMClient construction and routing</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>codeblock_test.go</code></td>
 <td>Fenced code block parser</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>code_chunkers_test.go</code></td>
 <td>Symbol-aware chunking for multiple languages</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>code_formatters_test.go</code></td>
 <td>Auto-formatter detection and dispatch</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>doc_extractors_test.go</code></td>
 <td>Comment/docstring extraction</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>language_detector_test.go</code></td>
 <td>Language detection from filename and content</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>language_registry_test.go</code></td>
 <td>Extension → language mapping</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>syntax_highlighters_test.go</code></td>
 <td>ANSI highlighting output</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>memory_store_test.go</code></td>
 <td>MemoryStore CRUD, enrichment fields, archiving</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>memory_miner_test.go</code></td>
 <td>Miner extraction and scrub</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>memory_rolling_test.go</code></td>
 <td>Rolling summary trigger and compression</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>memory_unified_test.go</code></td>
 <td>UnifiedMemory.Recall() priority ordering</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>memory_onboarding_test.go</code></td>
 <td>Workspace-profile onboarding flow</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>memory_test.go</code></td>
 <td>Integration across memory subsystems</td>
 </tr>
-<tr>
-<td><code>llamafile_test.go</code></td>
-<td>Llamafile command parsing and model name derivation</td>
-</tr>
-<tr>
-<td><code>llamafile_service_test.go</code></td>
-<td>Port selection, server start/stop lifecycle</td>
-</tr>
-<tr>
+<tr class="odd">
 <td><code>tools_test.go</code></td>
 <td>Tool schema definitions and registry construction</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>tool_executor_test.go</code></td>
 <td>RunToolLoop multi-turn execution, compaction</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>skill_dispatch_test.go</code></td>
-<td>Compiled vs. LLM-fallback dispatch paths</td>
+<td>Trigger matching</td>
 </tr>
-<tr>
-<td><code>skill_compile_test.go</code></td>
-<td>Skill compilation prompt and output</td>
+<tr class="even">
+<td><code>skill_direct_test.go</code></td>
+<td><code>/NAME</code> commands, automatic loading, leftover scripts
+ignored</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>skill_set_test.go</code></td>
 <td>SkillSet YAML loading and validation</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>skills_test.go</code></td>
 <td>Skill discovery and catalog</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>skill_wizard_test.go</code></td>
 <td>Wizard scaffolding output</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>pipeline_test.go</code></td>
 <td>Confidence extraction and pipeline step gating</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>plan_test.go</code></td>
 <td>Plan parsing, step state transitions</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>loop_test.go</code></td>
 <td>Loop interval parsing and execution</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>routing_test.go</code></td>
 <td>RouteRegistry CRUD and <span class="citation"
 data-cites="mention">@mention</span> dispatch</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>routing_phase4_test.go</code></td>
 <td>Routing phase 4 integration scenarios</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>config_test.go</code></td>
 <td>Config load, YAML migration, model alias resolution</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>remote_test.go</code></td>
 <td>RemoteReader scheme selection</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>remote_sftp_test.go</code></td>
 <td>SFTP packet size limits and string length caps</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>scholarly_identifiers_test.go</code></td>
 <td>14-type identifier extraction and normalization</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>scholarly_pdf_test.go</code></td>
 <td>Section-aware PDF chunking</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>pdf_extract_test.go</code></td>
 <td>Poppler-based text extraction</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>ollama_probe_test.go</code></td>
 <td>Ollama server health probing</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>agent_integration_test.go</code></td>
 <td>Full agent lifecycle integration tests</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>profile_use_test.go</code></td>
 <td>Profile template loading and <code>/profile use</code> flow</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>phase_d_test.go</code></td>
 <td>Phase D feature integration tests</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>phase_e_test.go</code></td>
 <td>Phase E feature integration tests</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>ui_test.go</code></td>
 <td>Terminal line editor and completion</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>terminal_test.go</code></td>
 <td>REPL startup sequence and backend selection</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>model_cache_test.go</code></td>
 <td>ModelCache capability lookup and expiry</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>encoderfile_embedder_test.go</code></td>
 <td>Embedder interface and embedding consistency</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>templates_test.go</code></td>
 <td>Workspace profile template rendering</td>
 </tr>
@@ -1386,8 +1306,8 @@ described in this document are fully implemented as of v0.0.13:</p>
 <ul>
 <li>✓ Three-silo memory (RAG, experience store, knowledge base)</li>
 <li>✓ Tool registry and dual execution paths (structured + prose)</li>
-<li>✓ Multi-backend routing (Ollama, Llamafile, cloud providers)</li>
-<li>✓ Skills system (compiled and LLM-fallback)</li>
+<li>✓ Multi-backend routing (Ollama, cloud providers)</li>
+<li>✓ Skills system (SKILL.md loaded directly)</li>
 <li>✓ Pipelines, plan execution, and loop automation</li>
 <li>✓ Scholarly identifier support (14 types) and scholarly PDF
 chunking</li>

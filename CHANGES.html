@@ -14,12 +14,181 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
 <section id="main-content">
 <h1 id="changes">CHANGES</h1>
+<h2 id="unreleased">Unreleased</h2>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><p><strong><code>--debug</code> no longer writes
+<code>agents/logs/harvey-TIMESTAMP.jsonl</code>.</strong> Harvey now
+records every session as an append-only JSONL log,
+<code>agents/sessions/NAME.jsonl</code>, beside the Fountain file with
+the same name (workspace DRs 0036, 0038, 0039 and 0040). It is written
+whether or not <code>--debug</code> is set; <code>--debug</code> only
+adds level-debug events, such as the exact messages sent with each
+request, which rendering and kb ingest skip. Anything that read the old
+<code>agents/logs</code> file should read the session log instead. The
+Fountain <code>.spmd</code> files are unchanged.</p></li>
+<li><p><strong>The Fountain <code>.spmd</code> file is rendered from the
+session log when the session closes.</strong> It used to be written
+live, scene by scene. During a session the file now holds only the title
+page; the whole screenplay appears at close, or at the next start if the
+session died (harvey says so). The format is the same, and nothing the
+live recording wrote is lost: <code>@name</code> routed turns, skill
+loads, write offers, chunk analysis and <code>/pipeline</code> runs all
+render from the log. Two differences: tool calls are now shown as
+<code>[[tool: …]]</code> notes in the turn (the live recorder lost them
+after tool-result compaction), and a turn that failed is shown with the
+failure. Anything that reads the <em>current</em> session’s
+<code>.spmd</code> while it is running will see only the title page;
+read the session log (<code>agents/sessions/NAME.jsonl</code>)
+instead.</p></li>
+<li><p><strong>Resume, replay and the session list read the session
+log.</strong> <code>--continue</code>/<code>--resume</code>,
+<code>/session use</code>, <code>/session show</code>,
+<code>--replay</code> and <code>/session list</code> rebuild from
+<code>agents/sessions/NAME.jsonl</code>, not from the Fountain file. A
+turn that failed or went to a named <code>@route</code> is no longer
+loaded into a resumed conversation, and a replay skips routed turns. A
+replay writes a session log of its own (marked <code>replay_of</code>,
+its inputs <code>origin: replay</code>) and renders its
+<code>.spmd</code> from it. An older <code>.spmd</code> with no log
+still loads, through the old reader, for one more release.</p></li>
+<li><p><strong><code>/rename</code> renames the whole session.</strong>
+The <code>.spmd</code>, the session log and its <code>.blobs</code>
+directory move together; a name that is already taken is refused (exit
+73) and nothing moves.</p></li>
+<li><p><strong>The prompt for a turn is assembled from the session
+log.</strong> When the active model’s prompt limit is known and the
+conversation is over it, the oldest whole turns are left out as before,
+but now the choice is made from the log and written to it: the turn’s
+<code>model_request</code> names the pinned items, the summaries, the
+recalled knowledge and the tail kept, how many messages were left out
+and the limit. The prompt is ordered system prompt, pinned context,
+summaries, recalled knowledge, then the turns, so a context pinned in
+the middle of a session moves to the front. When the log cannot
+reproduce the history (a prompt that held a redacted secret) harvey
+falls back to the old trim. When the model’s prompt limit is not known
+but its context window is (<code>--context</code>,
+<code>ollama.context_length</code>, or probed), the prompt is kept to
+85% of the window, which leaves room for the reply; before, such a
+conversation was never trimmed. The <code>model_request</code> records
+which limit applied.</p></li>
+<li><p><strong>Summaries name what they stand for.</strong> The rolling
+summary is now made by the context assembler: after a reply, when the
+conversation reaches <code>rolling_summary.warn_at_pct</code> of the
+prompt limit, every turn but the last <code>keep_turns</code> is
+summarised by the active model and replaced by one summary, and the
+session log records the summary with the ids of the events it replaces
+(a later summary absorbs the earlier one). <code>keep_turns</code> now
+counts turns, not messages, and <code>warn_at_pct</code> is a share of
+the prompt limit, not of the window. If the call fails, harvey says so
+once, leaves the history alone, does not try again for three turns, and
+the oldest turns are left out as before.</p></li>
+<li><p><strong>Pins: <code>/pin</code>, <code>/unpin</code>,
+<code>/pins</code>.</strong> <code>/pin --text TEXT</code> keeps text in
+front of the model for the rest of the session;
+<code>/pin EVENT_ID</code> pins an event of the session log (the line
+you typed, a reply); <code>/pin kb:record:PROJECT/DR-NNNN</code> and
+<code>kb:observation:ID</code> pin a knowledge-base row, read with the
+installed <code>kb</code>. Pins stay ahead of the dialog however long
+the conversation gets, survive <code>/clear</code> and
+<code>/summarize</code>, and may take a quarter of the prompt limit
+together: a pin over that is refused (exit 1) with the existing pins
+listed by cost. A pin is a <code>pin</code> event in the session log (an
+<code>unpin</code> event when removed), and each turn’s
+<code>model_request</code> names the pins. A pinned event is still in
+the dialog while it is recent, so it is in the prompt twice for a while.
+<code>/pins</code> lists them with their cost and share of the limit.
+Pins belong to the session.</p></li>
+<li><p><strong><code>/context</code> shows what the model sees.</strong>
+It prints the next prompt grouped as system prompt, pins, summaries,
+recalled knowledge and dialog, with sizes and shares of the prompt
+limit.</p></li>
+</ul>
+<h3 id="deprecated">Deprecated</h3>
+<ul>
+<li><strong>The cloud route kinds and the S3 reader will be removed in
+the next release</strong> (workspace DR-0042). Harvey will talk only to
+Ollama-shaped servers on this machine or the local network.
+<code>anthropic://</code>, <code>deepseek://</code>,
+<code>gemini://</code>, <code>mistral://</code> and
+<code>openai://</code> routes, their API-key environment variables and
+the <code>s3://</code> document reader go; <code>ollama://</code>,
+<code>http(s)://</code> and <code>sftp://</code> stay. Harvey prints a
+notice once when a route of a retiring kind is loaded, added or
+dispatched to, and when an <code>s3://</code> URI is opened. To keep a
+cloud model, put an Ollama-compatible gateway on your network and point
+an <code>ollama://</code> route at it; to keep S3, mount the bucket as a
+filesystem. A persisted route of a removed kind will be skipped with a
+warning. The <code>any-llm-go</code> client layer is replaced by a
+native Ollama client after that (DR-0046).</li>
+</ul>
+<h3 id="removed">Removed</h3>
+<ul>
+<li><p><strong>llama.cpp and llamafile support</strong> (workspace
+DR-0033). Harvey supports Ollama and hailo-ollama only. Gone: the two
+backends and their launch, probe and model-scan code, the
+<code>--llamafile</code>, <code>--llamafile-url</code> and
+<code>--llamafile-dir</code> options, <code>HARVEY_LLAMAFILE_DIR</code>,
+the <code>llamafile://</code> and <code>llamacpp://</code> route kinds,
+<code>assay -llamafile</code> and <code>assay -llamacpp</code>, and the
+llamafile registry (<code>/model</code> no longer lists, shows or starts
+them; <code>/model stop</code> and the restart-on-crash prompt for a
+llamafile are gone). A <code>harvey.yaml</code> with a
+<code>llamafile:</code> or <code>llamacpp:</code> section is a
+configuration error (exit 78): delete the section. A persisted route of
+either kind fails with a message that says it was removed. The last
+release that carries them is the one before this. <code>assay</code> now
+talks to Ollama’s native API, not its OpenAI-compatible one.</p></li>
+<li><p><strong><code>/context add</code>, <code>/context show</code> and
+<code>/context clear</code>.</strong> Pin text with
+<code>/pin --text TEXT</code>, list with <code>/pins</code>, remove with
+<code>/unpin N</code>. The single “pinned context” string is now a list
+of pins. <code>/context</code> with no argument is the new
+view.</p></li>
+<li><p><strong><code>/record</code> (<code>start</code>,
+<code>stop</code>, <code>status</code>) and
+<code>/help record</code>.</strong> Every session is logged from the
+start, so there is nothing to start or stop, and the log’s file name is
+chosen with <code>--record-file</code> or <code>/rename NAME</code>.
+<code>--record</code> and <code>--record-file</code> stay. The
+<code>harvey-record.7</code> manual page is gone;
+<code>harvey-session.7</code> covers sessions.</p></li>
+</ul>
+<h3 id="added">Added</h3>
+<ul>
+<li><strong>A complete record of each session.</strong> The session log
+holds every user input, model request and response (with the usage the
+backend reported), tool call and result, slash command and model switch,
+so a turn after a model switch is no longer lost. Secret-shaped values
+(private keys, <code>Authorization</code> and <code>Bearer</code>
+values, <code>NAME=value</code> for names like <code>password</code> and
+<code>api_key</code>) are redacted before anything is written; a bare
+word such as “token” is only flagged.</li>
+</ul>
+<h2 id="v0.0.20-2026-10-20">v0.0.20 (2026-10-20)</h2>
+<p>Recalled knowledge now says which works it rests on, and flags a
+retracted one. No behaviour changes to existing setups.</p>
+<h3 id="added-1">Added</h3>
+<ul>
+<li><strong>Recalled knowledge names what it rests on.</strong> When
+<code>recallKB</code> injects an observation, record or document match
+from the knowledge base, it now adds a <code>Cited:</code> list of the
+works that row cites (title and identifier). A retracted source is
+marked <code>RETRACTED</code> with its note rather than dropped, so the
+model does not lean on it and the user hears about it. Rows that cite
+nothing are unchanged.</li>
+</ul>
+<h3 id="changed-1">Changed</h3>
+<ul>
+<li><strong><code>knowledge</code> v0.0.20 to v0.0.25</strong> (needed
+for the provenance above). This also takes <code>fountain</code> v1.0.3
+and newer <code>x/sync</code> and <code>x/sys</code>.</li>
+</ul>
 <h2 id="v0.0.19-2026-10-10">v0.0.19 (2026-10-10)</h2>
 <p>Harvey now knows the Raspberry Pi AI HAT+ 2 (hailo-ollama) as a model
 engine beside Ollama, learns and respects each model’s prompt-size
@@ -33,14 +202,14 @@ behaviours change for existing setups; they come first.</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">If you…</th>
 <th scope="col">What changed</th>
 <th scope="col">What to do</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>keep <code>.gguf</code> files in <code>~/Models</code> for
 llama.cpp</td>
 <td>llama.cpp models are now looked for in llama.cpp’s own cache
@@ -51,7 +220,7 @@ for llamafiles only (harvey DR-0031, proposed).</td>
 <code>agents/harvey.yaml</code> to keep the old behaviour. An explicit
 <code>models_dir</code> is still honoured.</td>
 </tr>
-<tr>
+<tr class="even">
 <td>relied on the skills catalog being in the system prompt</td>
 <td><code>skills.catalog</code> is <code>off</code> by default: skills
 still load and their commands still register, but the catalog is not
@@ -61,7 +230,7 @@ cannot load a skill itself).</td>
 than <code>off</code> or <code>full</code> is a config error (exit
 78).</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>have a setting in <code>harvey.yaml</code> that you also pass on the
 command line</td>
 <td>The command line now wins for <code>--ollama</code>,
@@ -74,7 +243,7 @@ to lose to the file. <code>HARVEY_LLAMAFILE_DIR</code> now beats
 <code>llamafile.models_dir</code>, as CONFIGURATION.md always said.</td>
 <td>Nothing, unless you depended on the file overriding a flag.</td>
 </tr>
-<tr>
+<tr class="even">
 <td>script harvey against a server that closes the chat stream
 early</td>
 <td>A stream that ends before its final chunk is now an error
@@ -82,7 +251,7 @@ early</td>
 recorded as a success.</td>
 <td>Treat 74 as a failed turn.</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>ask for a model name that two engines both have</td>
 <td><code>/model use</code>, <code>-m</code> and
 <code>ollama.model</code> accept <code>engine/model</code>
@@ -91,7 +260,7 @@ bare name found on both Ollama and Hailo asks at a terminal and is a
 usage error (exit 2) when unattended.</td>
 <td>Write <code>engine/model</code> in scripts.</td>
 </tr>
-<tr>
+<tr class="even">
 <td>answer a “Write …?” offer with anything but Enter, <code>y</code> or
 <code>yes</code></td>
 <td>Other text no longer counts as yes. A line that is a command
@@ -101,7 +270,7 @@ offers and is run, and end of input ends them.</td>
 </tr>
 </tbody>
 </table>
-<h3 id="added">Added</h3>
+<h3 id="added-2">Added</h3>
 <ul>
 <li><strong>Hailo (AI HAT+ 2) as an engine</strong> (harvey DR-0030).
 <code>hailo-ollama</code> is an engine label over the Ollama client, not
@@ -147,7 +316,7 @@ regenerates <code>version.go</code>, <code>CITATION.cff</code> or
 <code>about.md</code>; <code>make release</code> runs
 <code>generate</code> first.</li>
 </ul>
-<h3 id="changed">Changed</h3>
+<h3 id="changed-2">Changed</h3>
 <ul>
 <li>The model cache keys capability rows and learned prompt limits by
 engine and model, so the same name on two engines no longer shares a
@@ -190,7 +359,7 @@ model probes as no tool support.</li>
 the suite gives the same result on every machine.</li>
 </ul>
 <h2 id="v0.0.18-2026-10-02">v0.0.18 (2026-10-02)</h2>
-<h3 id="changed-1">Changed</h3>
+<h3 id="changed-3">Changed</h3>
 <ul>
 <li><code>/profile use</code>’s automatic hand-off
 (<code>WriteHandoff</code>) now writes Markdown per
@@ -233,40 +402,40 @@ the class of the first one that failed (harvey DR-0006 follow-up).
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Failure</th>
 <th scope="col">Exit</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>missing or surplus argument, bad flag value, <code>/search</code>
 pattern that does not compile, unknown option</td>
 <td>2</td>
 </tr>
-<tr>
+<tr class="even">
 <td>no workspace; a named file or directory that does not exist; a
 program <code>/run</code> cannot start</td>
 <td>66</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>no backend connected (<code>/read-chunks</code>,
 <code>/summarize</code>); a remote fetch that fails</td>
 <td>69</td>
 </tr>
-<tr>
+<tr class="even">
 <td>read, write or exec refused by Harvey’s permission rules or safe
 mode; a path outside the workspace, through a symbolic link, in
 <code>agents/</code>, or matching a sensitive-file pattern</td>
 <td>77</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>a file of the wrong kind: binary or too large for
 <code>/attach</code>, not a directory for <code>/read-dir</code>, not a
 PDF, a source file the formatter rejects</td>
 <td>65</td>
 </tr>
-<tr>
+<tr class="even">
 <td>nothing found: <code>/search</code> with no matches,
 <code>/read-dir</code> with no readable files, <code>/write</code> with
 no reply to write, <code>/git</code> when git itself fails,
@@ -294,42 +463,42 @@ scripted session now counts as the turn’s failure too.</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Failure</th>
 <th scope="col">Exit</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>missing argument, unknown subcommand, unknown mode or help topic, a
 model name that matches several models</td>
 <td>2</td>
 </tr>
-<tr>
+<tr class="even">
 <td>no workspace; no sessions directory; a session file that does not
 exist</td>
 <td>66</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>no backend connected (<code>/session replay</code>),
 <code>/inspect</code> without an Ollama backend, a model that fails to
 start</td>
 <td>69</td>
 </tr>
-<tr>
+<tr class="even">
 <td>a session file that does not parse</td>
 <td>65</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>settings that could not be saved (<code>/safemode</code>,
 <code>/model alias</code>) or a recording that could not be renamed</td>
 <td>74</td>
 </tr>
-<tr>
+<tr class="even">
 <td>a recording file that could not be created</td>
 <td>73</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>no such model, alias, or llamafile; no models or sessions to pick
 from; a backend to stop that is not running; already recording or not
 recording; <code>/safemode deny</code> of a command not in the list; no
@@ -351,39 +520,39 @@ show, learn), <code>/rag</code>, <code>/skill</code>,
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Failure</th>
 <th scope="col">Exit</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>missing argument, unknown subcommand, an ID that is not a number, an
 unrecognised route URL, an unknown route setting or value,
 <code>--limit</code> that is not a number</td>
 <td>2</td>
 </tr>
-<tr>
+<tr class="even">
 <td>a profile document missing on disk</td>
 <td>66</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>the knowledge base not open, no backend connected for
 <code>/skill</code> compile, an encoderfile server that cannot be
 reached, a model that cannot be used for <code>/kb learn draft</code>, a
 route whose models cannot be listed</td>
 <td>69</td>
 </tr>
-<tr>
+<tr class="even">
 <td>settings that could not be saved (<code>/route</code>,
 <code>/rag on|off</code>, <code>/memory profile on|off</code>)</td>
 <td>74</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>a skill-set that could not be created</td>
 <td>73</td>
 </tr>
-<tr>
+<tr class="even">
 <td>no such memory, source, observation, route, skill, store or project;
 nothing to pick from; no current project; <code>/memory recall</code> or
 <code>/rag query</code> with no results; <code>/rag ingest</code> with
@@ -444,37 +613,37 @@ cant_create, 74 io, 75 temp_fail, 77 no_permission, 78 config — see
 exit 0 now fail:</p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Case</th>
 <th scope="col">Was</th>
 <th scope="col">Now</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>harvey --continue</code> names a session that does not
 exist</td>
 <td>0</td>
 <td>66</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>harvey --record-file</code> names a path that cannot be
 created</td>
 <td>0</td>
 <td>73</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>harvey.yaml</code> is malformed, in a non-interactive
 session</td>
 <td>0</td>
 <td>78</td>
 </tr>
-<tr>
+<tr class="even">
 <td>No backend reachable, in a non-interactive session</td>
 <td>0</td>
 <td>69</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>assay</code>: every model call fails (the backend is
 down)</td>
 <td>0</td>

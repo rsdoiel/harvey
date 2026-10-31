@@ -5,7 +5,7 @@
 ## Overview
 
 Harvey's **routing system** allows you to dispatch prompts to **remote LLM
-endpoints** — other Ollama instances on your network, Llamafile servers, or
+endpoints** — other Ollama instances on your network, or
 cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI). This enables:
 
 - **Multi-model workflows**: Use different models for different tasks
@@ -72,8 +72,6 @@ Harvey supports **10 endpoint types** across local and cloud providers:
 | Ollama | `ollama://host:port` | Ollama | 11434 | Official Ollama server |
 | Ollama | `http://host:port` | Ollama | 11434 | HTTP — prompts transmitted in plaintext |
 | Ollama | `https://host:port` | Ollama | 11434 | HTTPS (secure) |
-| Llamafile | `llamafile://host:port` | Llamafile | 8080 | OpenAI-compatible |
-| llama.cpp | `llamacpp://host:port` | llama.cpp | 8080 | OpenAI-compatible |
 
 > **Network privacy:** When using `http://` for a remote Ollama server, all
 > prompts and responses travel in plaintext and can be intercepted on the

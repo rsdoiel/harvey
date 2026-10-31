@@ -3,7 +3,7 @@
 
 ![Harvey, a six foot six invisible rabbit](media/harvey.svg "project mascot, a Púca")
 
-Harvey is an agent REPL written in Go and designed to use Llamafile models or Ollama server to access language models locally. It is a terminal based application.
+Harvey is an agent REPL written in Go and designed to use an Ollama (or hailo-ollama) server to access language models locally. It is a terminal based application.
 
 The Harvey name was inspired by the play of that name by Mary Chase. I saw parallels between the story Harvey and my personal language model agent.  Many people think of agents only in the context of very big companies. I think small models running on small or tiny computers are an opportunity. Harvey, is a small agent for small and tiny computers and is a play on a mythic creature. Harvey is a Púca, a software Púca. Harvey can be fun for those who take time for it. It runs on a little computers. Have an adventure and some fun with Harvey.
 
@@ -14,8 +14,8 @@ Harvey is **experimental** — a **working proof of concept**, not production-re
 ## Features
 
 ### Language Model Support
-- **Llamafile** (primary): register and run local model binaries — no server required
-- **Ollama**: connect to a local Ollama server for broader model selection
+- **Ollama** (primary): connect to an Ollama server on this machine or your local network
+- **hailo-ollama**: the Ollama-shaped server for the Raspberry Pi AI HAT+ 2
 - **Cloud routes**: Anthropic, DeepSeek, Gemini, Mistral, and OpenAI via configured routes
 - Multi-model dispatch via `@mention` and model aliasing; routing feedback shown in spinner
 
@@ -44,7 +44,7 @@ Harvey is **experimental** — a **working proof of concept**, not production-re
 
 ## Quick Start
 
-1. **Download a llamafile** from the [Mozilla AI pre-built models page](https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles) and make it executable
+1. **Install Ollama** from <https://ollama.com> and pull a model, for example `ollama pull qwen2.5-coder:7b`
 2. **Install Harvey**: run the installer for your platform
    - Linux/macOS: `./installer.sh`
    - Windows: run `installer.ps1` in PowerShell
@@ -103,7 +103,7 @@ Harvey runs on:
 
 ## Software Requirements
 
-- Llamafile v0.10 models or Ollama plus Ollama models
+- Ollama plus Ollama models
 
 ### Software Suggestions
 

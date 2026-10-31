@@ -575,8 +575,10 @@ Rows are keyed by engine and model, because the same model name on two engines
 is two models (different weights, speed and prompt limits). `modelKey(engine,
 model)` builds the key: Ollama keeps the bare name (`llama3.2:3b`), so rows
 written before the engine was part of the key stay valid; every other engine is
-prefixed (`hailo/llama3.2:3b`, `llamacpp/phi4-Q4_K_M`). llamafile and llama.cpp
-rows written under a bare name are not found and are probed again once.
+prefixed (`hailo/llama3.2:3b`). Rows written before the engine was part of the
+key, under a bare name, are not found and are probed again once. Rows keyed
+`llamacpp/…` or `llamafile/…` belong to the removed backends (DR-0033) and are
+never read.
 
 ### Query Performance
 

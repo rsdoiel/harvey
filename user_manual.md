@@ -2,7 +2,7 @@
 
 ![Harvey, a six foot six invisible rabbit](media/harvey.svg "project mascot, a Púca")
 
-Harvey is a tool for scholarly work via natural language programming. It provides an interactive REPL backed by a local language model system — running via [llamafile](https://github.com/mozilla-ai/llamafile) or [Ollama](https://ollama.com) — where you direct the model to read files, run commands, search code, and apply changes inside a sandboxed workspace. Individual prompts can be routed to cloud providers via named routes. Language model systems are commonly called "AI models" or "AI"; Harvey treats them as a programmable interface for deliberate, documented work rather than a chat assistant.
+Harvey is a tool for scholarly work via natural language programming. It provides an interactive REPL backed by a local language model system — running via [Ollama](https://ollama.com) or hailo-ollama — where you direct the model to read files, run commands, search code, and apply changes inside a sandboxed workspace. Individual prompts can be routed to cloud providers via named routes. Language model systems are commonly called "AI models" or "AI"; Harvey treats them as a programmable interface for deliberate, documented work rather than a chat assistant.
 
 ---
 
@@ -77,7 +77,7 @@ Learning this vocabulary for one command teaches you all the others:
 
 ### Model Management
 
-- **[Unified /model Command](harvey-model.7.md)** — `/model list|use|show|status` works across llamafile, llama.cpp and Ollama
+- **[Unified /model Command](harvey-model.7.md)** — `/model list|use|show|status` works across Ollama and hailo-ollama
 - **[Model & Alias Commands](harvey-model-alias.7.md)** — `@mention` inline model switching and `/model alias` short names
 - **[Routing](ROUTING.md)** — Connect to remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI, remote Ollama) via @mention syntax
 - **[Routing Commands](harvey-routing.7.md)** — `/route` slash command reference

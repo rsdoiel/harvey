@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -29,14 +28,14 @@ programming. It was inspired by Claude Code but designed for local
 language model systems running on small computers like a Raspberry Pi.
 Language model systems are commonly called “AI models” or “AI”; harvey
 treats them as a programmable interface for deliberate, documented work.
-harvey supports language model systems via llamafile (self-contained
-executables from Mozilla) and Ollama, and scales from
-resource-constrained hardware to more capable computers. harvey can be
-compiled to run on any system supported by Go. The project distributes
-executables for Linux, macOS, and Windows on x86_64 and aarch64.</p>
+harvey supports language model systems via Ollama and hailo-ollama, and
+scales from resource-constrained hardware to more capable computers.
+harvey can be compiled to run on any system supported by Go. The project
+distributes executables for Linux, macOS, and Windows on x86_64 and
+aarch64.</p>
 <p>harvey looks for HARVEY.md in the current directory and uses it as a
-system prompt. It connects to a local language model system — llamafile
-or Ollama — and opens an interactive natural language programming
+system prompt. It connects to a local language model system — Ollama or
+hailo-ollama — and opens an interactive natural language programming
 session. Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI)
 can be added as named routes via /route add.</p>
 <p>All file I/O is constrained to the workspace directory (–workdir or
@@ -89,18 +88,6 @@ otherwise
 <dd>
 Ollama base URL (default: http://localhost:11434)
 </dd>
-<dt>–llamafile PATH</dt>
-<dd>
-connect to PATH for this session (not persisted to harvey.yaml)
-</dd>
-<dt>–llamafile-url URL</dt>
-<dd>
-override the llamafile API base URL (default: http://localhost:8080)
-</dd>
-<dt>–llamafile-dir PATH</dt>
-<dd>
-override the llamafile discovery directory (default: ~/Models)
-</dd>
 <dt>-w, –workdir DIR</dt>
 <dd>
 workspace directory (default: current directory)
@@ -138,10 +125,11 @@ implies –replay)
 <dt>–debug</dt>
 <dd>
 enable diagnostic mode: sets OLLAMA_DEBUG=1 in the Ollama subprocess and
-writes a JSONL event log to agents/logs/harvey-TIMESTAMP.jsonl covering
-every LLM request/response, RAG injection, tool call, and skill
-dispatch. Use “harvey –help status” to see the log path during a
-session.
+adds level-debug events to the session log (agents/sessions/NAME.jsonl),
+such as the exact messages sent with each request. The session log is
+always written; –debug only makes it more detailed, and rendering and kb
+ingest skip the debug events. Use “harvey –help status” to see the log
+path during a session.
 </dd>
 <dt>–json</dt>
 <dd>
@@ -186,13 +174,13 @@ model’s context window.
 <dt>66</dt>
 <dd>
 A named input is missing or is the wrong kind of thing: the -w
-directory, the –continue or –replay file, the init source, or the
-–llamafile file. These are checked before a model is started.
+directory, the –continue or –replay file, or the init source. These are
+checked before a model is started.
 </dd>
 <dt>69</dt>
 <dd>
 A service cannot be reached: no model is connected and nobody is at a
-terminal to choose one, or a llamafile will not start.
+terminal to choose one.
 </dd>
 <dt>70</dt>
 <dd>
@@ -292,10 +280,8 @@ files
 <dt>/model [list|use <a href="#name">NAME</a>|show <a
 href="#name">NAME</a>|status|stop|clean|mode [MODEL] MODE|alias …]</dt>
 <dd>
-unified model management across llamafile, Ollama, and llama.cpp
-backends; place .llamafile or .gguf files in ~/Models/ — Harvey
-discovers them automatically; Ollama models are listed live when Ollama
-is running; use ollama CLI for pull/rm
+unified model management across Ollama and hailo-ollama; models are
+listed live when the server is running; use the ollama CLI for pull/rm
 </dd>
 <dt>/workspace &lt;status|init [PATH]&gt;</dt>
 <dd>
@@ -315,13 +301,26 @@ data-cites="mention">@mention</span> routing)
 </dl>
 <p><strong>Context and history</strong></p>
 <dl>
-<dt>/context &lt;show|add TEXT…|clear&gt;</dt>
+<dt>/context</dt>
 <dd>
-manage pinned context that survives /clear
+show what the model sees on the next turn
+</dd>
+<dt>/pin &lt;EVENT_ID|kb:TYPE:ID|–text TEXT…&gt;</dt>
+<dd>
+keep text, a session event or a knowledge-base row in front of the model
+for this session
+</dd>
+<dt>/pins</dt>
+<dd>
+list the pins with their cost and share of the prompt limit
+</dd>
+<dt>/unpin &lt;N|PIN_ID|REF&gt;</dt>
+<dd>
+stop keeping a pin in front of the model
 </dd>
 <dt>/clear</dt>
 <dd>
-reset conversation history (system prompt and pinned context survive)
+reset conversation history (system prompt and pins survive)
 </dd>
 <dt>/summarize</dt>
 <dd>
@@ -339,10 +338,6 @@ show actionable suggestions for improving results (RAG, memory, KB)
 </dl>
 <p><strong>Sessions</strong></p>
 <dl>
-<dt>/record &lt;start [FILE]|stop|status&gt;</dt>
-<dd>
-start or stop Fountain session recording
-</dd>
 <dt>/rename NAME</dt>
 <dd>
 rename the active session file without interrupting recording
@@ -410,7 +405,7 @@ manage the workspace profile (alias for /memory profile)
 </dl>
 <p><strong>Skills</strong></p>
 <dl>
-<dt>/skill &lt;list|load NAME|info NAME|status|new|run NAME&gt;</dt>
+<dt>/skill &lt;list|load NAME|info NAME|status|new&gt;</dt>
 <dd>
 discover, load, and run agent skills
 </dd>

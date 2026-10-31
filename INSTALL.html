@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -26,9 +25,8 @@ models locally. No cloud account or API key required.</p>
 <ul>
 <li>Go &gt;= 1.26.3</li>
 <li>Git</li>
-<li>A running model backend — either <a
-href="https://ollama.com">Ollama</a> or a <a
-href="https://github.com/Mozilla-Ocho/llamafile">llamafile</a></li>
+<li>A running model backend — <a href="https://ollama.com">Ollama</a> or
+hailo-ollama</li>
 </ul>
 <h2 id="hardware-requirements">Hardware requirements</h2>
 <p>Harvey runs entirely on local hardware, so the practical limits are
@@ -36,15 +34,13 @@ RAM (to hold the model) and storage (for the model files themselves),
 not just raw compute.</p>
 <ul>
 <li><strong>RAM</strong> — 8 GB minimum for models up to ~7B parameters
-(matches the default <code>Qwen2.5-Coder-7B</code> recommendation
-below); 16 GB or more gives headroom for larger models, or lets a
-7B-class model run while leaving RAM free for the rest of your
-work.</li>
+(matches the <code>qwen2.5-coder:7b</code> recommendation below); 16 GB
+or more gives headroom for larger models, or lets a 7B-class model run
+while leaving RAM free for the rest of your work.</li>
 <li><strong>Storage</strong> — at least 64 GB free if you expect to try
-more than one model. Individual llamafiles and Ollama models routinely
-run several GB each (the <code>Qwen2.5-Coder-7B-Q5_K_S.llamafile</code>
-below is ~5 GB), and Harvey’s RAG stores and session recordings add up
-over time.</li>
+more than one model. Individual Ollama models routinely run several GB
+each (<code>qwen2.5-coder:7b</code> is ~5 GB), and Harvey’s RAG stores
+and session recordings add up over time.</li>
 <li><strong>Raspberry Pi</strong> — a Raspberry Pi 5 (8 GB or more) runs
 Harvey fine with CPU-only inference; expect roughly 2–10 tokens/s
 depending on model size and quantization without dedicated AI
@@ -66,19 +62,6 @@ make install</code></pre>
 class="uri">https://ollama.com/download</a>, then pull a model:</p>
 <pre class="shell"><code>ollama pull qwen2.5-coder:7b</code></pre>
 <p>Harvey detects Ollama automatically on startup.</p>
-<h3 id="llamafile-self-contained-no-install">Llamafile (self-contained,
-no install)</h3>
-<p>Download a pre-built llamafile from: <a
-href="https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles"
-class="uri">https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles</a></p>
-<p>Recommended: - <code>Qwen2.5-Coder-7B-Q5_K_S.llamafile</code> (~5 GB,
-good for most hardware) -
-<code>Phi-3.5-mini-instruct-Q4_K_M.llamafile</code> (~2 GB, low-VRAM /
-CPU)</p>
-<p>Place it in <code>~/Models/</code> and make it executable (Linux /
-macOS):</p>
-<pre class="shell"><code>chmod +x ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile</code></pre>
-<p>Harvey finds the llamafile automatically and connects.</p>
 <h2 id="shell-completion">Shell completion</h2>
 <p>harvey can complete its own verbs, options and help topics in bash
 and PowerShell:</p>

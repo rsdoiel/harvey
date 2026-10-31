@@ -104,7 +104,7 @@ execution via `exec.CommandContext`, preventing runaway processes.
 
 Harvey connects to:
 
-- **Local LLM servers** (`ollama://`, `llamafile://`, `llamacpp://`) over
+- **Local LLM servers** (`ollama://`) over
   HTTP by default. If the server is on a remote host, prompts and model
   responses travel unencrypted. Use a VPN or SSH tunnel on untrusted
   networks, or configure the server to support TLS and register the endpoint

@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -25,9 +24,8 @@
 <p>assay <a href="#options">OPTIONS</a></p>
 <h1 id="description">DESCRIPTION</h1>
 <p>assay is an LLM evaluation harness for Harvey. It runs a corpus of
-prompts against one or more Ollama models (or a llamafile binary) and
-produces a Markdown report plus a JSON results file for human review and
-automated checking.</p>
+prompts against one or more Ollama models and produces a Markdown report
+plus a JSON results file for human review and automated checking.</p>
 <p>The prompt corpus is defined in a YAML file (default:
 agents/assay/corpus.yaml). Each entry specifies a category, a prompt,
 automated checks (contains, not_contains, compiles, go_vet), and
@@ -59,24 +57,10 @@ models currently available on the Ollama server.
 <dd>
 Run only prompts in the named category. Omit to run all categories.
 </dd>
-<dt>-llamafile PATH</dt>
-<dd>
-Path to a llamafile binary to evaluate. assay starts the llamafile
-server automatically before the run and stops it when finished. The
-model name is derived from the binary filename. Mutually exclusive with
--llamacpp.
-</dd>
-<dt>-llamacpp URL</dt>
-<dd>
-Base URL of a running llama-server instance, e.g. http://localhost:8081.
-The user is responsible for starting and stopping llama-server. If
--models is not set, assay queries GET /v1/models to discover the loaded
-model. Mutually exclusive with -llamafile.
-</dd>
 <dt>-ollama URL</dt>
 <dd>
-Base URL of the Ollama server (also used for RAG embeddings when -rag-db
-is set with –llamafile or –llamacpp). Default: http://localhost:11434
+Base URL of the Ollama server (also used for RAG embeddings). Default:
+http://localhost:11434
 </dd>
 <dt>-output PATH</dt>
 <dd>
@@ -149,8 +133,7 @@ Nothing to run: no prompts match -category, or the server has no models.
 <dd>
 The command line is wrong: an unknown option, an option without its
 value, a surplus argument, or options that conflict (-rag-compare
-without -rag-db, -guide-compare without -guide-file, -llamafile with
--llamacpp).
+without -rag-db, -guide-compare without -guide-file).
 </dd>
 <dt>65</dt>
 <dd>
@@ -159,14 +142,13 @@ prompts, or a RAG store it cannot use.
 </dd>
 <dt>66</dt>
 <dd>
-A named input is missing: the -corpus, -guide-file or -llamafile file.
+A named input is missing: the -corpus or -guide-file file.
 </dd>
 <dt>69</dt>
 <dd>
-A service cannot be reached: Ollama or llama-server while listing
-models, a llamafile that will not start, or a model call that failed.
-The run still finishes, writes its report, and says how many calls
-failed.
+A service cannot be reached: Ollama while listing models, or a model
+call that failed. The run still finishes, writes its report, and says
+how many calls failed.
 </dd>
 <dt>70</dt>
 <dd>
@@ -209,8 +191,6 @@ model response, individual check outcomes, and timing data.
 <pre><code>  assay</code></pre>
 <p>Run only the go-crosswalk category against a specific model:</p>
 <pre><code>  assay -models qwen2.5-coder:7b -category go-crosswalk</code></pre>
-<p>Evaluate a llamafile binary:</p>
-<pre><code>  assay -llamafile ~/models/qwen2.5-coder-7b.llamafile</code></pre>
 <p>Run with RAG context injection and comparison:</p>
 <pre><code>  assay -models llama3.1:8b -rag-db agents/rag/harvey.db -rag-compare</code></pre>
 <p>Write results to a custom directory:</p>

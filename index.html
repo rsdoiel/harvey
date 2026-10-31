@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -26,8 +25,8 @@ alt="Harvey, a six foot six invisible rabbit" />
 <figcaption aria-hidden="true">Harvey, a six foot six invisible
 rabbit</figcaption>
 </figure>
-<p>Harvey is an agent REPL written in Go and designed to use Llamafile
-models or Ollama server to access language models locally. It is a
+<p>Harvey is an agent REPL written in Go and designed to use an Ollama
+(or hailo-ollama) server to access language models locally. It is a
 terminal based application.</p>
 <p>The Harvey name was inspired by the play of that name by Mary Chase.
 I saw parallels between the story Harvey and my personal language model
@@ -49,10 +48,10 @@ href="SECURITY.html">SECURITY.md</a> for details.</p>
 <h2 id="features">Features</h2>
 <h3 id="language-model-support">Language Model Support</h3>
 <ul>
-<li><strong>Llamafile</strong> (primary): register and run local model
-binaries — no server required</li>
-<li><strong>Ollama</strong>: connect to a local Ollama server for
-broader model selection</li>
+<li><strong>Ollama</strong> (primary): connect to an Ollama server on
+this machine or your local network</li>
+<li><strong>hailo-ollama</strong>: the Ollama-shaped server for the
+Raspberry Pi AI HAT+ 2</li>
 <li><strong>Cloud routes</strong>: Anthropic, DeepSeek, Gemini, Mistral,
 and OpenAI via configured routes</li>
 <li>Multi-model dispatch via <code>@mention</code> and model aliasing;
@@ -104,9 +103,9 @@ pipelines</li>
 </ul>
 <h2 id="quick-start">Quick Start</h2>
 <ol type="1">
-<li><p><strong>Download a llamafile</strong> from the <a
-href="https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles">Mozilla
-AI pre-built models page</a> and make it executable</p></li>
+<li><p><strong>Install Ollama</strong> from <a href="https://ollama.com"
+class="uri">https://ollama.com</a> and pull a model, for example
+<code>ollama pull qwen2.5-coder:7b</code></p></li>
 <li><p><strong>Install Harvey</strong>: run the installer for your
 platform</p>
 <ul>
@@ -154,10 +153,10 @@ Source code and issues</li>
 <li><p>Behaviour changes, see CHANGES.md upgrade notes: llama.cpp models
 are looked for in llama.cpp’s cache (<code>$LLAMA_CACHE</code>, else
 <code>~/.cache/llama.cpp</code>) and <code>~/Models</code> is for
-llamafiles only, so set <code>llamacpp.models_dir</code> to keep the
-old directory (harvey DR-0031, proposed); <code>skills.catalog</code> is
-off by default (set <code>skills: catalog: full</code> to restore it);
-the command line now beats <code>harvey.yaml</code> for
+llamafiles only, so set <code>llamacpp.models_dir</code> to keep the old
+directory (harvey DR-0031, proposed); <code>skills.catalog</code> is off
+by default (set <code>skills: catalog: full</code> to restore it); the
+command line now beats <code>harvey.yaml</code> for
 <code>--llamafile-url</code>, <code>--llamafile-dir</code>,
 <code>-r</code>, <code>--record-file</code>, <code>--resume</code>,
 <code>--continue</code>, <code>--replay</code>,
@@ -203,7 +202,7 @@ runs <code>cmt</code>, <code>make generate</code> does</p></li>
 </ul>
 <h2 id="software-requirements">Software Requirements</h2>
 <ul>
-<li>Llamafile v0.10 models or Ollama plus Ollama models</li>
+<li>Ollama plus Ollama models</li>
 </ul>
 <h3 id="software-suggestions">Software Suggestions</h3>
 <ul>

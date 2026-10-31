@@ -131,7 +131,6 @@ See **[harvey.1.md](harvey.1.md#environment)** for complete list:
 
 - **[models.md](models.md)** — Models in use and evaluation status
 - **[model_guide.md](model_guide.md)** — Model selection guide based on capability probing results
-- **[Llamafile_notes.md](Llamafile_notes.md)** — Mozilla AI's single-file runnable models (note: not currently integrated with Harvey)
 
 ### Development
 

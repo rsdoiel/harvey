@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -26,18 +25,16 @@ programming.</p>
 <p>See <a href="harvey.1.html">man page</a></p>
 <p>How it starts:</p>
 <p>Harvey looks for HARVEY.md in the workspace root and uses it as a
-system prompt. It then connects to a local language model system —
-either a llamafile executable or an Ollama server — and opens an
-interactive natural language programming session. Language model systems
-are commonly called “AI models” or “AI”; Harvey treats them as a
-programmable interface for deliberate, documented work.</p>
+system prompt. It then connects to a local language model system — an
+Ollama or hailo-ollama server — and opens an interactive natural
+language programming session. Language model systems are commonly called
+“AI models” or “AI”; Harvey treats them as a programmable interface for
+deliberate, documented work.</p>
 <blockquote>
-<p><strong>Tip:</strong> The easiest way to get started is to download a
-llamafile from the <a
-href="https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles">Mozilla
-AI pre-built llamafiles page</a>, place it in <code>~/Models/</code>,
-and run <code>harvey</code>. Harvey will find and connect to it
-automatically. Ollama and llama.cpp servers are also supported. Use
+<p><strong>Tip:</strong> The easiest way to get started is to install <a
+href="https://ollama.com">Ollama</a>, run
+<code>ollama pull qwen2.5-coder:7b</code>, and run <code>harvey</code>.
+Harvey will find and connect to the server automatically. Use
 <code>/model list</code> to see every model Harvey can reach and
 <code>/model use NAME</code> to switch; see <a
 href="harvey-model.7.html">Model Commands</a>.</p>
@@ -58,14 +55,11 @@ overridden in <code>&lt;workspace&gt;/agents/harvey.yaml</code>.</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Change to project directory</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> <span class="va">$HOME</span>/myproject</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start Harvey — auto-detects llamafile or Ollama</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start Harvey — auto-detects Ollama or hailo-ollama</span></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Use a specific llamafile for this session (not persisted)</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--llamafile</span> ~/Models/Qwen2.5-Coder-7B-Q5_K_S.llamafile</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Use a specific Ollama model</span></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--model</span> qwen2.5-coder:7b</span></code></pre></div>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Use a specific Ollama model</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--model</span> qwen2.5-coder:7b</span></code></pre></div>
 <h2 id="startup-sequence">Startup sequence</h2>
 <p>When Harvey starts it:</p>
 <ol type="1">
@@ -80,13 +74,10 @@ chosen, the model it used is pre-selected in the next step.</li>
 <li>Reads <code>HARVEY.md</code> from the workspace root, expands any <a
 href="#dynamic-markers">dynamic markers</a>, and injects it as the
 system prompt.</li>
-<li>Detects available model backends: scans <code>~/Models/</code> (or
-the configured <code>llamafile.models_dir</code>) for registered
-llamafile executables and probes the Ollama server. Llamafile models are
-offered first; Ollama models follow.</li>
-<li>Selects the model — from the resumed session, from
-<code>--llamafile</code> or <code>--model</code> flags, or via an
-interactive picker.</li>
+<li>Detects available model backends: probes the Ollama server (and the
+hailo-ollama server when one is configured).</li>
+<li>Selects the model — from the resumed session, from the
+<code>--model</code> flag, or via an interactive picker.</li>
 <li>If no model is reachable, prints the first-run guide with download
 instructions and exits.</li>
 <li>Begins recording the session to a new <code>.spmd</code> file in
@@ -113,21 +104,21 @@ an up-to-date picture of the project:</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Marker</th>
 <th scope="col">Replaced with</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>&lt;!-- @date --&gt;</code></td>
 <td>Today’s date (<code>YYYY-MM-DD</code>)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>&lt;!-- @files --&gt;</code></td>
 <td>Workspace file tree (hidden directories excluded)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>&lt;!-- @git-status --&gt;</code></td>
 <td>Output of <code>git status --short</code>, or
 <code>(not a git repository)</code></td>
@@ -163,10 +154,10 @@ class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb4-1"><
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>✓ Knowledge base: agents/knowledge.db</span>
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>✓ Loaded HARVEY.md as system prompt</span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  Starting qwen-coding (llamafile)...</span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>  ✓ Ready at http://localhost:8080</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  ✓ Ollama is running</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>  Using model: qwen2.5-coder:7b</span>
 <span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
-<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>  Connected: llamafile (qwen-coding)</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>  Connected: ollama (qwen2.5-coder:7b)</span>
 <span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>  /help for commands · /exit to quit</span>
 <span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
 <span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a></span>
@@ -216,25 +207,25 @@ time keeps the terminal alive.</p>
 <h3 id="navigation">Navigation</h3>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Key</th>
 <th scope="col">Action</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>←</code> / <code>→</code></td>
 <td>Move cursor one character</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Home</code> / <code>Ctrl+A</code></td>
 <td>Jump to beginning of line</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>End</code> / <code>Ctrl+E</code></td>
 <td>Jump to end of line</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>↑</code> / <code>↓</code></td>
 <td>Cycle through command history</td>
 </tr>
@@ -243,21 +234,21 @@ time keeps the terminal alive.</p>
 <h3 id="editing">Editing</h3>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Key</th>
 <th scope="col">Action</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>Backspace</code></td>
 <td>Delete character before cursor</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Ctrl+D</code></td>
 <td>Delete character under cursor (or EOF on an empty line)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>Ctrl+K</code></td>
 <td>Delete from cursor to end of line</td>
 </tr>
@@ -270,17 +261,17 @@ time keeps the terminal alive.</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Key</th>
 <th scope="col">Action</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>Ctrl+C</code></td>
 <td>Cancel current input and return to prompt</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Ctrl+X</code> then <code>Ctrl+E</code></td>
 <td>Open <code>$EDITOR</code> (falling back to <code>$VISUAL</code>,
 then <code>vi</code>) to compose a multi-line prompt; the file’s content
@@ -304,54 +295,54 @@ family.</p>
 <col style="width: 33%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Verb</th>
 <th scope="col">Meaning</th>
 <th scope="col">When to use</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>list</code></td>
 <td>Show all registered items</td>
 <td>Always available</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>add</code></td>
 <td>Register an <strong>existing</strong> external resource</td>
 <td>Registering a file path, URL, or endpoint</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>new</code></td>
 <td>Create a <strong>fresh</strong> internal item</td>
 <td>Creating a database, skill, or plan</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>use [NAME]</code></td>
 <td>Activate an item; shows a picker when NAME is omitted</td>
 <td>Switching the active model, store, or route</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>show [NAME]</code></td>
 <td>Display item content or details</td>
 <td>Inspecting what something contains</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>edit [NAME]</code></td>
 <td>Open an item in <code>$EDITOR</code></td>
 <td>Modifying a profile or skill</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>remove [NAME]</code></td>
 <td>Delete or unregister an item; picker when NAME is omitted</td>
 <td>Cleaning up</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>rename OLD NEW</code></td>
 <td>Rename an item</td>
 <td>Renaming a workspace or session</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>status</code></td>
 <td>Health/connection state of a <em>service</em></td>
 <td>Backend and store health checks</td>
@@ -368,7 +359,7 @@ registered.</p>
 <code>status</code> checks whether the server is reachable — it is not
 the same as <code>show</code>, which displays item content.</p>
 <p><strong>Examples across command families:</strong></p>
-<pre><code>/model list                              — models across llamafile, llama.cpp, Ollama
+<pre><code>/model list                              — models across Ollama and hailo-ollama
 /model use qwen-coding                   — activate one (name, alias, or unique prefix)
 /model show qwen-coding                  — show model details
 /model alias add qc qwen2.5-coder:7b     — define a short alias
@@ -396,40 +387,48 @@ href="harvey.1.html">harvey(1)</a>.</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/help</code></td>
 <td>List all available slash commands</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/status</code></td>
 <td>Show backend, history length, workspace, KB state, and recording
 status</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/hint</code></td>
 <td>Show suggestions for improving results (RAG, memory, KB)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/clear</code></td>
 <td>Reset conversation history (system prompt and pinned context are
 kept)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/summarize</code> <code>/compact</code></td>
 <td>Ask the model to summarize the history and replace it with the
 summary</td>
 </tr>
-<tr>
-<td><code>/context &lt;show\|add TEXT...\|clear&gt;</code></td>
-<td>Manage pinned context that survives <code>/clear</code></td>
+<tr class="even">
+<td><code>/context</code></td>
+<td>Show what the model sees on the next turn</td>
 </tr>
-<tr>
+<tr class="odd">
+<td><code>/pin &lt;EVENT_ID\|kb:TYPE:ID\|--text TEXT...&gt;</code></td>
+<td>Keep something in front of the model for this session</td>
+</tr>
+<tr class="even">
+<td><code>/pins</code>, <code>/unpin N</code></td>
+<td>List the pins; remove one</td>
+</tr>
+<tr class="odd">
 <td><code>/exit</code> <code>/quit</code> <code>/bye</code></td>
 <td>End the session</td>
 </tr>
@@ -442,58 +441,57 @@ summary</td>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/model list</code></td>
-<td>List models across llamafile, llama.cpp, and Ollama</td>
+<td>List models across Ollama and hailo-ollama</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/model use [NAME]</code></td>
 <td>Switch to a model by name, alias, or unique prefix; a picker is
 shown when NAME is omitted</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/model show [NAME]</code></td>
 <td>Show the active (or named) model’s details</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/model status</code></td>
 <td>Check whether the active backend is reachable</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/model stop</code></td>
-<td>Stop the active llamafile or llama.cpp server, if Harvey started
-it</td>
+<td>Stop the active model server, if Harvey started it</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/model clean</code></td>
 <td>Remove aliases whose model is no longer installed</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/model mode [MODEL] [MODE]</code></td>
 <td>Show or set how a model gets tools: <code>structured</code>,
 <code>prose</code>, <code>inject</code>, or <code>none</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/model alias add ALIAS FULLNAME</code></td>
 <td>Define a short alias for a long model name (<code>alias list</code>
 shows them)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/inspect [MODEL]</code></td>
 <td>Show capability details for installed Ollama models</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/route add NAME URL [MODEL]</code></td>
 <td>Register a remote endpoint, then address it with <code>@NAME</code>
 in a prompt</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/route &lt;list\|use\|rm\|models\|probe\|set\|on\|off\|status&gt;</code></td>
 <td>Manage registered routes</td>
 </tr>
@@ -511,53 +509,53 @@ href="harvey-routing.7.html">Routing</a>.</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/read FILE [FILE...]</code></td>
 <td>Inject workspace files into the conversation</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/read-dir [PATH] [--depth N]</code></td>
 <td>Read all eligible files in a directory into context</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/read-pdf FILE [PAGES]</code></td>
 <td>Extract text from a PDF (requires poppler)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/read-chunks PATH [--chunk-size N] ...</code></td>
 <td>Run chunked map-reduce analysis on a large file</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/attach FILE</code></td>
 <td>Attach an image, PDF, or text file to the next turn</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/write PATH</code></td>
 <td>Write the last reply (or its first code block) to a file</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/files [PATH]</code> <code>/file-tree [PATH]</code></td>
 <td>List files, or show a tree</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/search PATTERN [PATH]</code></td>
 <td>Search workspace files and inject the matches</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/run COMMAND [ARGS...]</code></td>
 <td>Run a command in the workspace and inject its output</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/git &lt;status\|diff\|log\|show\|blame&gt;</code></td>
 <td>Run a read-only git command and inject the output</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/format FILE [FILE...]</code></td>
 <td>Format source files in place</td>
 </tr>
@@ -570,23 +568,23 @@ href="harvey-routing.7.html">Routing</a>.</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/plan &lt;TASK\|next\|status\|show\|clear&gt;</code></td>
 <td>Generate a step-by-step plan and run it with bounded context per
 step</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/loop INTERVAL [--count N] PROMPT</code></td>
 <td>Repeat a prompt or command on an interval (default 10 times, max
 100)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/pipeline CONFIDENCE% FILE...</code></td>
 <td>Chain Markdown prompt files through models with confidence
 gating</td>
@@ -600,42 +598,42 @@ gating</td>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/memory &lt;mine\|list\|show\|flag\|forget\|status\|recall\|profile&gt;</code></td>
 <td>Mine sessions for memories and manage the memory store</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/recall QUERY</code></td>
 <td>Alias for <code>/memory recall</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/profile &lt;list\|show\|edit\|use\|rename\|on\|off&gt;</code></td>
 <td>Alias for <code>/memory profile</code></td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb ...</code></td>
 <td>The knowledge base; see <a href="#knowledge-base-commands">Knowledge
 base commands</a></td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/rag &lt;list\|new\|use\|show\|remove\|drop\|ingest\|status\|query\|on\|off&gt;</code></td>
 <td>Named RAG knowledge stores</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/skill &lt;list\|load\|show\|info\|status\|new\|run\|suggest&gt;</code></td>
 <td>List, load, create, and run Agent Skills</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/skill-set &lt;list\|load\|show\|info\|new\|create\|status\|unload&gt;</code></td>
 <td>Load named bundles of skills</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/workspace &lt;init [FROM_PATH]\|status&gt;</code></td>
 <td>Workspace settings; <code>init</code> copies aliases from another
 workspace</td>
@@ -649,25 +647,21 @@ workspace</td>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><code>/record &lt;start [FILE]\|stop\|status&gt;</code></td>
-<td>Record the session to a Fountain file</td>
-</tr>
-<tr>
+<tr class="odd">
 <td><code>/rename NAME</code></td>
 <td>Rename the active recording</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/session &lt;list\|show\|use\|continue\|replay&gt;</code></td>
 <td>List, inspect, load, or replay recordings</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/resume [FILE]</code></td>
 <td>Alias for <code>/session use</code></td>
 </tr>
@@ -680,26 +674,26 @@ workspace</td>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/safemode &lt;on\|off\|status\|allow CMD\|deny CMD\|reset&gt;</code>
 <code>/safe</code></td>
 <td>Safe mode and the command allowlist</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/permissions &lt;list\|set PATH PERMS\|reset&gt;</code></td>
 <td>Per-path read, write, exec, and delete permissions</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/audit &lt;show [n]\|clear\|status&gt;</code></td>
 <td>View or clear the audit log</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/security status</code></td>
 <td>Overview of safe mode, permissions, and audit</td>
 </tr>
@@ -817,10 +811,7 @@ query timeouts default to no limit, which is appropriate for slow
 hardware. Settings live in <code>agents/harvey.yaml</code>:</p>
 <div class="sourceCode" id="cb13"><pre
 class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">run_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;5m&quot;</span><span class="co">             # timeout for ! and /run commands</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ollama_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">            # empty = no timeout (recommended on a Pi)</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="fu">llamafile</span><span class="kw">:</span></span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">startup_timeout</span><span class="kw">:</span><span class="at"> 120s</span><span class="co">       # how long to wait for llamafile server ready</span></span></code></pre></div>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ollama_timeout</span><span class="kw">:</span><span class="at"> </span><span class="st">&quot;&quot;</span><span class="co">            # empty = no timeout (recommended on a Pi)</span></span></code></pre></div>
 <h2 id="code-assistance">Code assistance</h2>
 <h3 id="search-pattern-path"><code>/search PATTERN [PATH]</code></h3>
 <p>Searches workspace files for a regular expression. Results are capped
@@ -875,28 +866,37 @@ model’s context window.</p>
   History condensed to 312 chars.</code></pre>
 <p>The summary is stored as a <code>[Conversation summary]</code> user
 message. The system prompt and any pinned context are preserved.</p>
-<h3 id="context-addshowclear"><code>/context add|show|clear</code></h3>
-<p>Manages <em>pinned context</em> — text that is automatically
-re-injected into the conversation history after every
-<code>/clear</code> or <code>/summarize</code>, keeping persistent facts
-in front of the model throughout the session.</p>
-<pre><code>harvey &gt; /context add Target platform: macOS arm64. Prefer stdlib over third-party.
-  Pinned context updated (57 chars).
+<h3 id="pin-pins-unpin-and-context"><code>/pin</code>,
+<code>/pins</code>, <code>/unpin</code> and <code>/context</code></h3>
+<p>A <em>pin</em> keeps something in front of the model for the rest of
+the session, however long the conversation gets and across
+<code>/clear</code> and <code>/summarize</code>. A pin can be text you
+type, an event of the session log, or a knowledge-base row.</p>
+<pre><code>harvey &gt; /pin --text Target platform: macOS arm64. Prefer stdlib over third-party.
+✓ Pinned text, ~21 tokens (1%). The pins keep to 25% of the prompt limit; /pins lists them.
 
-harvey &gt; /context add The project uses semantic versioning via codemeta.json.
-  Pinned context updated (106 chars).
+harvey &gt; /pin kb:record:harvey/DR-0048
+✓ Pinned kb:record:harvey/DR-0048, ~310 tokens (9%). ...
 
-harvey &gt; /context show
-  Pinned context (106 chars):
+harvey &gt; /pins
+  1  text                         ~21 tokens (1%)  Target platform: macOS arm64. Prefer stdlib over...
+  2  kb:record:harvey/DR-0048     ~310 tokens (9%)  harvey/DR-0048 accepted ...
+  total ~331 tokens (10%) of the 850 the pins may take
 
-  Target platform: macOS arm64. Prefer stdlib over third-party.
-  The project uses semantic versioning via codemeta.json.
+harvey &gt; /unpin 2
+✓ Unpinned kb:record:harvey/DR-0048.
 
-harvey &gt; /context clear
-  Pinned context cleared.</code></pre>
-<p>Multiple <code>/context add</code> calls append to the existing
-pinned context, separated by newlines. To replace it entirely,
-<code>/context clear</code> then <code>/context add</code>.</p>
+harvey &gt; /context
+  What the model sees on the next turn (limit ~3400 tokens, from window):
+    system prompt            1 item(s)  ~212 tokens (6%)
+    pinned                   1 item(s)  ~21 tokens (0%)
+    ...</code></pre>
+<p>Pins belong to the session (a new session starts with none) and may
+take a quarter of the prompt limit; a pin over that is refused and the
+existing pins are listed by cost. <code>/context</code> shows what the
+next prompt is made of. The old <code>/context add|show|clear</code>
+were removed: use <code>/pin --text</code>, <code>/pins</code>,
+<code>/unpin</code>.</p>
 <h2 id="knowledge-base-commands">Knowledge base commands</h2>
 <p>Harvey maintains a SQLite knowledge base at
 <code>agents/knowledge.db</code> in the workspace. It is independent of
@@ -907,70 +907,70 @@ conversation history and persists across sessions.</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/kb status</code></td>
 <td>Show all projects with recent observations</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb search TERM...</code></td>
 <td>Full-text search (quote phrases, <code>*</code> for a prefix)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb inject [PROJECT]</code></td>
 <td>Add the current (or named) project’s knowledge to the conversation
 context</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb project list</code></td>
 <td>List projects with ID and status</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb project add NAME [DESC]</code></td>
 <td>Create a project and set it as current</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb project use ID</code></td>
 <td>Set the active project by ID</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb observe [KIND] TEXT</code></td>
 <td>Record an observation against the active project</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb show OBS_ID</code></td>
 <td>Show one observation in full</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb concept list</code></td>
 <td>List all concepts</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb concept add NAME [DESC]</code></td>
 <td>Add a named concept</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb source &lt;list\|add\|show ID\|remove ID&gt;</code></td>
 <td>Manage cited sources (papers, pages, datasets)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb cite SOURCE_ID...</code></td>
 <td>Link sources to the most recently recorded observation</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb retract SOURCE_ID [--note NOTE]</code></td>
 <td>Mark a source as retracted</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb check-retractions</code></td>
 <td>Check every source’s DOI against Retraction Watch and mark hits</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb learn &lt;ingest\|draft\|review&gt;</code></td>
 <td>Turn recorded sessions and hand-off notes into reviewed documents;
 see <a href="harvey-learn.7.html">the learn manual</a></td>
@@ -999,43 +999,16 @@ harvey &gt; /kb status
 href="https://fountain.io">Fountain</a> screenplay files. Fountain
 recordings capture every exchange in a structured, human-readable format
 that Harvey can replay or resume later.</p>
-<h3 id="starting-a-recording">Starting a recording</h3>
-<table>
-<colgroup>
-<col style="width: 50%" />
-<col style="width: 50%" />
-</colgroup>
-<thead>
-<tr>
-<th scope="col">Command</th>
-<th scope="col">Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>/record start [FILE]</code></td>
-<td>Begin recording; FILE defaults to a timestamped path in the
-workspace</td>
-</tr>
-<tr>
-<td><code>/record stop</code></td>
-<td>Close the recording file</td>
-</tr>
-<tr>
-<td><code>/record status</code></td>
-<td>Show the current recording path or “not recording”</td>
-</tr>
-</tbody>
-</table>
-<pre><code>harvey &gt; /record start
-Recording started: /home/user/myproject/agents/harvey-session-20260415-142300.spmd
-
-harvey &gt; /record stop
-Recording stopped. Session saved to harvey-session-20260415-142300.spmd</code></pre>
-<p>You can also start recording automatically at launch:</p>
-<div class="sourceCode" id="cb22"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record</span>                          <span class="co"># auto-named timestamped file</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.spmd  <span class="co"># explicit path</span></span></code></pre></div>
+<h3 id="recording-is-always-on">Recording is always on</h3>
+<p>There is no command to start or stop a recording. Harvey logs every
+session to <code>agents/sessions/NAME.jsonl</code> and renders the
+Fountain <code>.spmd</code> file from the log when the session ends. To
+choose the session’s name, or turn the automatic naming off, use the
+command-line flags:</p>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record</span>                          <span class="co"># auto-named timestamped file</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--record-file</span> mysession.spmd  <span class="co"># explicit path</span></span></code></pre></div>
+<p><code>/rename NAME</code> renames the running session.</p>
 <h3 id="resuming-or-replaying-a-fountain-file">Resuming or replaying a
 Fountain file</h3>
 <p>There are two ways to use a recorded <code>.spmd</code> file in a
@@ -1043,17 +1016,17 @@ later session:</p>
 <p><strong>Continue</strong> — loads the Fountain file’s conversation
 history into context and drops you into the interactive REPL, so you can
 pick up exactly where you left off:</p>
-<div class="sourceCode" id="cb23"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> mysession.spmd</span></code></pre></div>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--continue</span> mysession.spmd</span></code></pre></div>
 <p>Or from inside a running Harvey session:</p>
 <pre><code>harvey &gt; /session continue mysession.spmd</code></pre>
 <p><strong>Replay</strong> — re-sends every user turn from the Fountain
 file to the currently connected model and records the fresh responses to
 a new file. Useful for re-running a session against a different
 model:</p>
-<div class="sourceCode" id="cb25"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd</span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd <span class="at">--replay-output</span> newresponses.spmd</span></code></pre></div>
+<div class="sourceCode" id="cb24"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span> <span class="at">--replay</span> mysession.spmd <span class="at">--replay-output</span> newresponses.spmd</span></code></pre></div>
 <p>Or from inside a running Harvey session:</p>
 <pre><code>harvey &gt; /session replay mysession.spmd
 harvey &gt; /session replay mysession.spmd newresponses.spmd</code></pre>
@@ -1063,21 +1036,21 @@ harvey &gt; /session replay mysession.spmd newresponses.spmd</code></pre>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Startup flag</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>--continue FILE</code></td>
 <td>Load history from FILE and open the REPL</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>--replay FILE</code></td>
 <td>Re-run all turns from FILE against the current model</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>--replay-output FILE</code></td>
 <td>Write replay responses to FILE (default: auto-named)</td>
 </tr>
@@ -1110,8 +1083,8 @@ harvey &gt; Please write a conventional commit message for these changes.
 harvey &gt; /write .git/COMMIT_EDITMSG</code></pre>
 <h3 id="keep-context-focused-on-a-long-refactor">Keep context focused on
 a long refactor</h3>
-<pre><code>harvey &gt; /context add We are migrating from the old auth middleware to the new JWT-based one.
-harvey &gt; /context add All session tokens must be stored as httpOnly cookies, not localStorage.
+<pre><code>harvey &gt; /pin --text We are migrating from the old auth middleware to the new JWT-based one.
+harvey &gt; /pin --text All session tokens must be stored as httpOnly cookies, not localStorage.
 harvey &gt; /read internal/auth/middleware.go
 harvey &gt; ...several turns of back and forth...
 harvey &gt; /summarize

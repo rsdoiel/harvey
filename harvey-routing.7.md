@@ -15,7 +15,7 @@ ROUTING
 # DESCRIPTION
 
 Harvey can dispatch individual prompts to remote LLM endpoints — other Ollama
-instances on a Pi cluster, Llamafile servers, or cloud providers — using
+instances on a Pi cluster or cloud providers — using
 @mention syntax. Prefix any prompt with @name to send it to the named endpoint instead
 of the local model. The reply is streamed back and lands in the local
 conversation history so future turns retain full context.
@@ -37,8 +37,6 @@ starting point and will be tuned over time.
 Local providers (no API key):
 
   ollama://host:port    A remote Ollama server (also accepts http:// and https://).
-  llamafile://host:port A Llamafile binary server (OpenAI-compatible, port 8080).
-  llamacpp://host:port  A llama.cpp server (OpenAI-compatible, port 8080).
 
 Cloud providers (API key read from environment):
 

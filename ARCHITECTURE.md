@@ -33,8 +33,6 @@ lear_messages.go            Edward Lear-themed spinner waiting messages
 --- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
 anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go for cloud providers
-llamafile.go                llamafile model registration and discovery (reached through /model)
-llamafile_service.go        Llamafile server lifecycle (start, probe, port selection)
 model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
 route_persist.go            Persistence helpers for routes.json
@@ -110,7 +108,7 @@ spinner.go                  Animated spinner: braille frames, Lear messages, liv
 
 | Field | Type | Purpose |
 |---|---|---|
-| `Client` | `LLMClient` | Current backend (Ollama, Llamafile, cloud provider) |
+| `Client` | `LLMClient` | Current backend (Ollama, hailo-ollama, cloud provider) |
 | `Config` | `*Config` | Runtime configuration |
 | `History` | `[]Message` | Full conversation sent to the LLM on every turn |
 | `Workspace` | `*Workspace` | Sandboxed root for all file operations |
@@ -130,7 +128,6 @@ spinner.go                  Animated spinner: braille frames, Lear messages, liv
 | `AuditBuffer` | `*AuditBuffer` | In-memory audit log ring buffer |
 | `SessionLog` | `*SessionLog` | Append-only JSONL record of this session (DR-0036); nil when none is open |
 | `OllamaStartedByHarvey` | `bool` | True when Harvey launched the Ollama subprocess |
-| `llamafileProc` | `*os.Process` | Non-nil when Harvey started the current llamafile server |
 | `sessionTurns` | `int` | Total completed user turns (used to trigger auto-mine) |
 | `sessionInjectedTokens` | `int` | Tokens injected via UnifiedMemory this session |
 | `sessionCompressed` | `bool` | True if rolling summary fired at least once this session |
@@ -240,7 +237,7 @@ pins survive `/clear` and `/summarize`. `/unpin` removes the message (a logged r
 
 | Command | Purpose |
 |---|---|
-| `/model list\|use\|show\|status\|stop\|clean\|mode\|alias` | Manage models across llamafile, llama.cpp and Ollama |
+| `/model list\|use\|show\|status\|stop\|clean\|mode\|alias` | Manage models across Ollama and hailo-ollama |
 | `/inspect [MODEL]` | Show detailed model capability information |
 | `/route add\|rm\|models\|probe\|set\|list\|on\|off\|status` | Manage named remote endpoints |
 
@@ -550,19 +547,6 @@ to remove the library's default 120 s timeout.
 Named remote endpoints are managed by `RouteRegistry` (`routing.go`). The
 `@name` prefix in a prompt dispatches that turn to the named endpoint.
 
-### Llamafile backend (`llamafile.go`, `llamafile_service.go`)
-
-Llamafile binaries are registered via `/model use` and stored in
-`Config.LlamafileModels`. `llamafile_service.go` handles the server lifecycle:
-`FindFreePort` selects an available TCP port, `StartLlamafileServer` launches the
-binary via `/bin/sh` (required on macOS for APE format binaries), and probes the
-health endpoint before returning. Key config fields:
-
-| Field | Default | Purpose |
-|---|---|---|
-| `startup_timeout` | 120s | Fast-fail if server does not become ready |
-| `gpu_layers` | 99 | `-ngl` flag for Metal/CUDA layer offload |
-
 ### Backend selection at startup (`terminal.go`)
 
 1. Probe Ollama at the configured URL.
@@ -653,8 +637,6 @@ Tests live alongside source files. Current test files:
 | `memory_unified_test.go` | UnifiedMemory.Recall() priority ordering |
 | `memory_onboarding_test.go` | Workspace-profile onboarding flow |
 | `memory_test.go` | Integration across memory subsystems |
-| `llamafile_test.go` | Llamafile command parsing and model name derivation |
-| `llamafile_service_test.go` | Port selection, server start/stop lifecycle |
 | `tools_test.go` | Tool schema definitions and registry construction |
 | `tool_executor_test.go` | RunToolLoop multi-turn execution, compaction |
 | `skill_dispatch_test.go` | Trigger matching |
@@ -694,7 +676,7 @@ in this document are fully implemented as of v0.0.13:
 
 - ✓ Three-silo memory (RAG, experience store, knowledge base)
 - ✓ Tool registry and dual execution paths (structured + prose)
-- ✓ Multi-backend routing (Ollama, Llamafile, cloud providers)
+- ✓ Multi-backend routing (Ollama, cloud providers)
 - ✓ Skills system (SKILL.md loaded directly)
 - ✓ Pipelines, plan execution, and loop automation
 - ✓ Scholarly identifier support (14 types) and scholarly PDF chunking

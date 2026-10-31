@@ -1,6 +1,9 @@
 
 ## Bugs
 
+> Entries below that mention llamafile or llama.cpp (their code, tests and `backend_*` files) are history: both backends were
+> removed (workspace DR-0033), and the files and tests they name no longer exist.
+
 - [x] **FIXED 2026-10-08** (`write_offer_input.go`, tests in
   `write_offer_input_test.go`): a line that is a command (`/exit`, `!ls`, any
   registered `/name`) given at a write offer is handed back to the REPL through

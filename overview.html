@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -24,14 +23,12 @@ Natural Language Programming for Scholarly Work</h1>
 <h2 id="what-harvey-is">What Harvey Is</h2>
 <p>Harvey is an open-source, cross-platform terminal tool for scholarly
 work using natural language programming. It connects a local language
-model system — running via <a
-href="https://github.com/mozilla-ai/llamafile">llamafile</a> or <a
-href="https://ollama.com">Ollama</a> — to your workspace, giving you a
-programmable interface for reading files, running commands, searching
-code, managing knowledge, and recording your work. Language model
-systems are commonly called “AI models” or “AI”; Harvey treats them as a
-programmable substrate for deliberate, documented work rather than a
-chat assistant.</p>
+model system — running via <a href="https://ollama.com">Ollama</a> or
+hailo-ollama — to your workspace, giving you a programmable interface
+for reading files, running commands, searching code, managing knowledge,
+and recording your work. Language model systems are commonly called “AI
+models” or “AI”; Harvey treats them as a programmable substrate for
+deliberate, documented work rather than a chat assistant.</p>
 <p>Harvey runs on any platform supported by Go and is designed to work
 well on resource-constrained hardware such as a Raspberry Pi, as well as
 on more capable desktop and server machines.</p>
@@ -42,20 +39,19 @@ on more capable desktop and server machines.</p>
 <col style="width: 50%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Feature</th>
 <th scope="col">Benefit</th>
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><strong>Llamafile &amp; Ollama backends</strong></td>
-<td>Run language model systems locally with no cloud dependency.
-Llamafile bundles a model and server into a single executable; Ollama
-manages a model registry. Switch between them with
-<code>/model use</code>.</td>
+<tr class="odd">
+<td><strong>Ollama &amp; hailo-ollama backends</strong></td>
+<td>Run language model systems locally with no cloud dependency. Ollama
+manages a model registry; hailo-ollama serves the Raspberry Pi AI HAT+
+2. Switch models with <code>/model use</code>.</td>
 </tr>
-<tr>
+<tr class="even">
 <td><strong>Unified command set</strong> (<code>/read</code>,
 <code>/write</code>, <code>/run</code>, <code>/attach</code>,
 <code>/search</code>, <code>/git</code>, <code>/rag</code>,
@@ -63,48 +59,48 @@ manages a model registry. Switch between them with
 <td>Direct the language model and manage your workspace without leaving
 the REPL.</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><strong>RAG integration</strong></td>
 <td>Inject context from local files, PDFs, S3 objects, SFTP/SCP servers,
 or HTTP/HTTPS URLs into your prompts. Create and query SQLite-backed
 vector stores with <code>/rag</code> commands.</td>
 </tr>
-<tr>
+<tr class="even">
 <td><strong>Tool calling</strong></td>
 <td>Built-in tools (<code>read_file</code>, <code>write_file</code>,
 <code>run_command</code>, etc.) with validated schemas let capable
 language models act directly on your workspace.</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><strong>Multi-model routing</strong></td>
 <td>Dispatch prompts to specific models (<code>@model_name</code>) or
 route to remote endpoints (Ollama, Anthropic, DeepSeek, Gemini, Mistral,
 OpenAI) via <code>/route add</code>.</td>
 </tr>
-<tr>
+<tr class="even">
 <td><strong>Session recording</strong></td>
 <td>Every session is recorded as a Fountain <code>.spmd</code> file — a
 structured, human-readable transcript you can review, replay against a
 different model, or mine for reusable memories.</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><strong>Knowledge base &amp; memory</strong></td>
 <td>Persistent SQLite knowledge base (<code>agents/knowledge.db</code>)
 plus a unified memory system with rolling summaries, typed experience
 records, and token-budget tracking.</td>
 </tr>
-<tr>
+<tr class="even">
 <td><strong>Secure safe mode</strong></td>
 <td>Execution is gated by a command allowlist; workspace permissions
 give fine-grained read/write/exec/delete control per path prefix; API
 keys are stripped from every child process.</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><strong>Extensible skill system</strong></td>
 <td>Load specialised skills via <code>/skill load &lt;name&gt;</code> to
 inject domain-specific instructions and compiled scripts.</td>
 </tr>
-<tr>
+<tr class="even">
 <td><strong>Installer scripts</strong></td>
 <td>Pre-built installers for Linux (x86_64/aarch64/armv7l), macOS, and
 Windows.</td>
@@ -116,10 +112,10 @@ Windows.</td>
 <li><p><strong>Install Harvey</strong> — Run the installer script for
 your OS (<code>installer.sh</code> for Linux/macOS,
 <code>installer.ps1</code> for Windows).</p></li>
-<li><p><strong>Get a model</strong> — Download a llamafile from the <a
-href="https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles">Mozilla
-AI pre-built llamafiles page</a> and place it in <code>~/Models/</code>.
-Harvey finds and connects to it automatically at startup.</p></li>
+<li><p><strong>Get a model</strong> — Install <a
+href="https://ollama.com">Ollama</a> and <code>ollama pull</code> a
+model. Harvey finds and connects to the server automatically at
+startup.</p></li>
 <li><p><strong>Launch Harvey</strong></p>
 <div class="sourceCode" id="cb1"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> <span class="va">$HOME</span>/myproject</span>

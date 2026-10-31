@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -37,31 +36,31 @@ at <code>resolveWorkspacePath()</code> using
 of workspace position:</p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Pattern</th>
 <th scope="col">Reason</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>.env</code>, <code>.env.*</code></td>
 <td>Environment variable files</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>.pem</code>, <code>.key</code>, <code>.p12</code>,
 <code>.pfx</code></td>
 <td>TLS/crypto keys</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>id_rsa</code>, <code>id_ed25519</code>,
 <code>authorized_keys</code></td>
 <td>SSH keys</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>harvey.yaml</code></td>
 <td>Runtime configuration (API keys, permissions)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>agents/</code> subtree</td>
 <td>Skills, sessions, knowledge base</td>
 </tr>
@@ -100,12 +99,12 @@ change cannot accidentally expose them:</p>
 <code>SFTP_PASSWORD</code>, <code>HTTP_BEARER_TOKEN</code>,
 <code>HTTP_BASIC_PASSWORD</code></p>
 <p>Error messages reference variable names only, never their values.</p>
-<p><strong><code>HARVEY_*</code> pass-through:</strong> Harvey injects
-its own <code>HARVEY_*</code> session variables (workspace path, model
-name, API base URL) into child processes so that compiled skills can
-call the LLM API. Any <code>HARVEY_*</code> variable already present in
-the parent shell’s environment is also forwarded. Avoid storing
-sensitive data in <code>HARVEY_</code>-prefixed variables.</p>
+<p><strong><code>HARVEY_*</code> pass-through:</strong> Any
+<code>HARVEY_*</code> variable already present in the parent shell’s
+environment is forwarded to child processes. Harvey no longer sets
+<code>HARVEY_*</code> variables of its own: they were for compiled skill
+scripts, and skills are no longer compiled (workspace DR-0008). Avoid
+storing sensitive data in <code>HARVEY_</code>-prefixed variables.</p>
 <h3 id="safe-mode">Safe Mode</h3>
 <p><code>/safemode on</code> restricts <code>/run</code> and
 <code>!</code> to a configurable command allowlist (default:
@@ -146,12 +145,11 @@ with <code>/audit clear</code>.</p>
 <h2 id="network-security">Network security</h2>
 <p>Harvey connects to:</p>
 <ul>
-<li><p><strong>Local LLM servers</strong> (<code>ollama://</code>,
-<code>llamafile://</code>, <code>llamacpp://</code>) over HTTP by
-default. If the server is on a remote host, prompts and model responses
-travel unencrypted. Use a VPN or SSH tunnel on untrusted networks, or
-configure the server to support TLS and register the endpoint with
-<code>https://</code>. Harvey warns when a non-localhost
+<li><p><strong>Local LLM servers</strong> (<code>ollama://</code>) over
+HTTP by default. If the server is on a remote host, prompts and model
+responses travel unencrypted. Use a VPN or SSH tunnel on untrusted
+networks, or configure the server to support TLS and register the
+endpoint with <code>https://</code>. Harvey warns when a non-localhost
 <code>http://</code> URL is registered.</p></li>
 <li><p><strong>Cloud providers</strong> (<code>anthropic://</code>,
 <code>deepseek://</code>, <code>gemini://</code>,
@@ -167,27 +165,27 @@ and are never written to disk by Harvey.</p></li>
 <col style="width: 38%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Limitation</th>
 <th scope="col">Notes</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>No OS-level sandboxing</td>
 <td>Harvey uses pure Go isolation. Linux namespaces or seccomp require
 OS support. True isolation requires containers.</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Audit log is append-only</td>
 <td><code>agents/audit.jsonl</code> grows without bound; no automatic
 rotation.</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>No rate limiting</td>
 <td>No per-turn cap on tool invocations from the model.</td>
 </tr>
-<tr>
+<tr class="even">
 <td>No tool input size limits</td>
 <td>No maximum length validation on tool string inputs.</td>
 </tr>

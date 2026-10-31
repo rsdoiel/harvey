@@ -5,8 +5,7 @@
 
 Harvey is an open-source, cross-platform terminal tool for scholarly work using
 natural language programming. It connects a local language model system —
-running via [llamafile](https://github.com/mozilla-ai/llamafile) or
-[Ollama](https://ollama.com) — to your workspace, giving you a programmable
+running via [Ollama](https://ollama.com) or hailo-ollama — to your workspace, giving you a programmable
 interface for reading files, running commands, searching code, managing
 knowledge, and recording your work. Language model systems are commonly called
 "AI models" or "AI"; Harvey treats them as a programmable substrate for
@@ -20,7 +19,7 @@ capable desktop and server machines.
 
 | Feature | Benefit |
 |---|---|
-| **Llamafile & Ollama backends** | Run language model systems locally with no cloud dependency. Llamafile bundles a model and server into a single executable; Ollama manages a model registry. Switch between them with `/model use`. |
+| **Ollama & hailo-ollama backends** | Run language model systems locally with no cloud dependency. Ollama manages a model registry; hailo-ollama serves the Raspberry Pi AI HAT+ 2. Switch models with `/model use`. |
 | **Unified command set** (`/read`, `/write`, `/run`, `/attach`, `/search`, `/git`, `/rag`, `/memory`, `/kb`, etc.) | Direct the language model and manage your workspace without leaving the REPL. |
 | **RAG integration** | Inject context from local files, PDFs, S3 objects, SFTP/SCP servers, or HTTP/HTTPS URLs into your prompts. Create and query SQLite-backed vector stores with `/rag` commands. |
 | **Tool calling** | Built-in tools (`read_file`, `write_file`, `run_command`, etc.) with validated schemas let capable language models act directly on your workspace. |
@@ -35,7 +34,7 @@ capable desktop and server machines.
 
 1. **Install Harvey** — Run the installer script for your OS (`installer.sh` for Linux/macOS, `installer.ps1` for Windows).
 
-2. **Get a model** — Download a llamafile from the [Mozilla AI pre-built llamafiles page](https://docs.mozilla.ai/llamafile/getting-started/pre-built-llamafiles) and place it in `~/Models/`. Harvey finds and connects to it automatically at startup.
+2. **Get a model** — Install [Ollama](https://ollama.com) and `ollama pull` a model. Harvey finds and connects to the server automatically at startup.
 
 3. **Launch Harvey**
 
