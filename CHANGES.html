@@ -111,6 +111,24 @@ limit.</p></li>
 </ul>
 <h3 id="removed">Removed</h3>
 <ul>
+<li><p><strong><code>/rag</code> code (fourth and last slice of
+DR-0035).</strong> The code behind <code>/rag</code> is gone:
+<code>rag_support.go</code> (<code>RagStore</code>, ingest and query),
+<code>commands_rag.go</code> (the remote and HTTP ingest helpers), the
+language chunkers and doc extractors (<code>code_chunkers.go</code>,
+<code>doc_extractors.go</code> and the
+<code>CodeChunker</code>/<code>DocExtractor</code> registry slots),
+<code>scholarly_pdf.go</code> (section-aware PDF chunking),
+<code>encoderfile_embedder.go</code>, <code>OllamaEmbedder</code>, the
+Hailo embed-error wrapper and <code>ThoroughProbeModel</code>, with
+their tests. Kept: the <code>Embedder</code> interface, cosine
+similarity and vector (de)serialisation for memory
+(<code>embedding.go</code>), <code>scholarly_identifiers.go</code> (the
+first thing to port to knowledge), <code>chunker.go</code> and
+<code>chunk_analyzer.go</code> (<code>/read-chunks</code>),
+<code>pdf_extract.go</code> (<code>/read</code> of a PDF), and the
+remote readers (<code>/read</code>, <code>/attach</code>). Everything
+removed is one <code>git show v0.0.20:FILE</code> away.</p></li>
 <li><p><strong><code>/rag</code> (first slice of DR-0035).</strong> The
 <code>/rag</code> command, per-prompt RAG injection
 (<code>ragAugment</code>), <code>/help rag</code> and

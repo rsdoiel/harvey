@@ -625,6 +625,5 @@ No manual migration needed.
 - [CONFIGURATION.md](CONFIGURATION.md) — Configuration file reference
 - [OLLAMA.md](OLLAMA.md) — Ollama integration guide (if exists)
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Technical architecture
-- [RAG_Support_Design.md](RAG_Support_Design.md) — RAG design document with embedding model info
 
 *Documentation generated from model_cache.go and ollama.go source code. Version 1.0.*

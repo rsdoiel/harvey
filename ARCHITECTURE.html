@@ -88,19 +88,16 @@ recorder.go                 Fountain .spmd session recorder
 sessions_files.go           Session file discovery, listing, MostRecentSession()
 replay.go                   Session replay (re-run user turns against new model)
 
---- Embeddings (to be pruned, DR-0035) ---
-rag_support.go              RagStore, Embedder, chunk ingest/query, FTS5+cosine hybrid
+--- Embeddings ---
+embedding.go                Embedder interface, cosine similarity, vector (de)serialisation for memory
 
 --- Scholarly support ---
 scholarly_identifiers.go    14-type identifier extraction (DOI, ORCID, ROR, ArXiv, etc.)
-scholarly_pdf.go            Section-aware PDF chunking; identifier tagging
 
 --- Language support ---
 language_detector.go        Language detection from filename and content
 language_registry.go        Language registry (extension → language mapping)
-code_chunkers.go            Symbol-aware chunking for 13+ languages
 code_formatters.go          Auto-formatters (gofmt, clang-format, prettier, black, etc.)
-doc_extractors.go           Comment/docstring extraction and symbol association
 syntax_highlighters.go      ANSI syntax highlighting for code blocks in LLM replies
 
 --- Remote I/O ---
@@ -974,14 +971,16 @@ retry.</li>
 <li>If nothing selected: Harvey starts without a backend; commands that
 need one print a prompt to connect first.</li>
 </ol>
-<h2 id="embeddings-rag_support.go-ollama.go">Embeddings
-(<code>rag_support.go</code>, <code>ollama.go</code>)</h2>
-<p><code>/rag</code> was removed (workspace DR-0035): there are no named
-RAG stores and no per-prompt retrieval. <code>rag_support.go</code>
-still holds the older <code>RagStore</code>, <code>Embedder</code> and
-chunk types, kept until the orphan check of DR-0035 slice 4. Retrieval
-over documents is the knowledge base: <code>kb document ingest</code>,
-then <code>/kb search</code>.</p>
+<h2 id="embeddings-embedding.go">Embeddings
+(<code>embedding.go</code>)</h2>
+<p><code>/rag</code> and its stores were removed (workspace DR-0035):
+there are no named RAG stores and no per-prompt retrieval.
+<code>embedding.go</code> keeps the <code>Embedder</code> interface,
+cosine similarity and vector serialisation that the memory system uses;
+nothing supplies an embedder now, so memory recall is by keyword
+(DR-0037 replaces the memory store). Retrieval over documents is the
+knowledge base: <code>kb document ingest</code>, then
+<code>/kb search</code>.</p>
 <h2 id="spinner-spinner.go">Spinner (<code>spinner.go</code>)</h2>
 <p>The <code>Spinner</code> runs a background goroutine that:</p>
 <ol type="1">
@@ -1053,136 +1052,119 @@ scholarly fields</td>
 <code>ExpandDynamicSections</code></td>
 </tr>
 <tr class="even">
-<td><code>rag_support_test.go</code></td>
-<td><code>RagStore</code> ingest, query, source round-trip, semantic
-ranking</td>
-</tr>
-<tr class="odd">
 <td><code>ollama_chat_test.go</code></td>
 <td>OllamaChatClient: streaming, tool calls, errors, num_ctx,
 images</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>codeblock_test.go</code></td>
 <td>Fenced code block parser</td>
-</tr>
-<tr class="odd">
-<td><code>code_chunkers_test.go</code></td>
-<td>Symbol-aware chunking for multiple languages</td>
 </tr>
 <tr class="even">
 <td><code>code_formatters_test.go</code></td>
 <td>Auto-formatter detection and dispatch</td>
 </tr>
 <tr class="odd">
-<td><code>doc_extractors_test.go</code></td>
-<td>Comment/docstring extraction</td>
-</tr>
-<tr class="even">
 <td><code>language_detector_test.go</code></td>
 <td>Language detection from filename and content</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>language_registry_test.go</code></td>
 <td>Extension → language mapping</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>syntax_highlighters_test.go</code></td>
 <td>ANSI highlighting output</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>memory_store_test.go</code></td>
 <td>MemoryStore CRUD, enrichment fields, archiving</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>memory_miner_test.go</code></td>
 <td>Miner extraction and scrub</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>memory_rolling_test.go</code></td>
 <td>Rolling summary trigger and compression</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>memory_unified_test.go</code></td>
 <td>UnifiedMemory.Recall() priority ordering</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>memory_onboarding_test.go</code></td>
 <td>Workspace-profile onboarding flow</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>memory_test.go</code></td>
 <td>Integration across memory subsystems</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>tools_test.go</code></td>
 <td>Tool schema definitions and registry construction</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>tool_executor_test.go</code></td>
 <td>RunToolLoop multi-turn execution, compaction</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>skill_dispatch_test.go</code></td>
 <td>Trigger matching</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>skill_direct_test.go</code></td>
 <td><code>/NAME</code> commands, automatic loading, leftover scripts
 ignored</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>skill_set_test.go</code></td>
 <td>SkillSet YAML loading and validation</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>skills_test.go</code></td>
 <td>Skill discovery and catalog</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>skill_wizard_test.go</code></td>
 <td>Wizard scaffolding output</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>pipeline_test.go</code></td>
 <td>Confidence extraction and pipeline step gating</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>plan_test.go</code></td>
 <td>Plan parsing, step state transitions</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>loop_test.go</code></td>
 <td>Loop interval parsing and execution</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>routing_test.go</code></td>
 <td>RouteRegistry CRUD and <span class="citation"
 data-cites="mention">@mention</span> dispatch</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>routing_phase4_test.go</code></td>
 <td>Routing phase 4 integration scenarios</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>config_test.go</code></td>
 <td>Config load, YAML migration, model alias resolution</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>remote_test.go</code></td>
 <td>RemoteReader scheme selection</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>remote_sftp_test.go</code></td>
 <td>SFTP packet size limits and string length caps</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>scholarly_identifiers_test.go</code></td>
 <td>14-type identifier extraction and normalization</td>
-</tr>
-<tr class="odd">
-<td><code>scholarly_pdf_test.go</code></td>
-<td>Section-aware PDF chunking</td>
 </tr>
 <tr class="even">
 <td><code>pdf_extract_test.go</code></td>
@@ -1221,10 +1203,6 @@ data-cites="mention">@mention</span> dispatch</td>
 <td>ModelCache capability lookup and expiry</td>
 </tr>
 <tr class="odd">
-<td><code>encoderfile_embedder_test.go</code></td>
-<td>Embedder interface and embedding consistency</td>
-</tr>
-<tr class="even">
 <td><code>templates_test.go</code></td>
 <td>Workspace profile template rendering</td>
 </tr>

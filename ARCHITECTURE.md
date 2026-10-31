@@ -72,19 +72,16 @@ recorder.go                 Fountain .spmd session recorder
 sessions_files.go           Session file discovery, listing, MostRecentSession()
 replay.go                   Session replay (re-run user turns against new model)
 
---- Embeddings (to be pruned, DR-0035) ---
-rag_support.go              RagStore, Embedder, chunk ingest/query, FTS5+cosine hybrid
+--- Embeddings ---
+embedding.go                Embedder interface, cosine similarity, vector (de)serialisation for memory
 
 --- Scholarly support ---
 scholarly_identifiers.go    14-type identifier extraction (DOI, ORCID, ROR, ArXiv, etc.)
-scholarly_pdf.go            Section-aware PDF chunking; identifier tagging
 
 --- Language support ---
 language_detector.go        Language detection from filename and content
 language_registry.go        Language registry (extension → language mapping)
-code_chunkers.go            Symbol-aware chunking for 13+ languages
 code_formatters.go          Auto-formatters (gofmt, clang-format, prettier, black, etc.)
-doc_extractors.go           Comment/docstring extraction and symbol association
 syntax_highlighters.go      ANSI syntax highlighting for code blocks in LLM replies
 
 --- Remote I/O ---
@@ -552,11 +549,12 @@ Named remote endpoints are managed by `RouteRegistry` (`routing.go`). The
 4. If nothing selected: Harvey starts without a backend; commands that need one
    print a prompt to connect first.
 
-## Embeddings (`rag_support.go`, `ollama.go`)
+## Embeddings (`embedding.go`)
 
-`/rag` was removed (workspace DR-0035): there are no named RAG stores and no per-prompt retrieval. `rag_support.go` still holds the
-older `RagStore`, `Embedder` and chunk types, kept until the orphan check of DR-0035 slice 4. Retrieval over documents is the
-knowledge base: `kb document ingest`, then `/kb search`.
+`/rag` and its stores were removed (workspace DR-0035): there are no named RAG stores and no per-prompt retrieval. `embedding.go`
+keeps the `Embedder` interface, cosine similarity and vector serialisation that the memory system uses; nothing supplies an
+embedder now, so memory recall is by keyword (DR-0037 replaces the memory store). Retrieval over documents is the knowledge
+base: `kb document ingest`, then `/kb search`.
 
 ## Spinner (`spinner.go`)
 
@@ -587,12 +585,9 @@ Tests live alongside source files. Current test files:
 | `commands_test.go` | Core slash-command handlers |
 | `tier2_test.go` | Helpers (`isBinary`, `looksLikePath`), `/search`, `/git` |
 | `tier3_test.go` | Mock client, `/summarize`, `/context`, `ExpandDynamicSections` |
-| `rag_support_test.go` | `RagStore` ingest, query, source round-trip, semantic ranking |
 | `ollama_chat_test.go` | OllamaChatClient: streaming, tool calls, errors, num_ctx, images |
 | `codeblock_test.go` | Fenced code block parser |
-| `code_chunkers_test.go` | Symbol-aware chunking for multiple languages |
 | `code_formatters_test.go` | Auto-formatter detection and dispatch |
-| `doc_extractors_test.go` | Comment/docstring extraction |
 | `language_detector_test.go` | Language detection from filename and content |
 | `language_registry_test.go` | Extension → language mapping |
 | `syntax_highlighters_test.go` | ANSI highlighting output |
@@ -618,7 +613,6 @@ Tests live alongside source files. Current test files:
 | `remote_test.go` | RemoteReader scheme selection |
 | `remote_sftp_test.go` | SFTP packet size limits and string length caps |
 | `scholarly_identifiers_test.go` | 14-type identifier extraction and normalization |
-| `scholarly_pdf_test.go` | Section-aware PDF chunking |
 | `pdf_extract_test.go` | Poppler-based text extraction |
 | `ollama_probe_test.go` | Ollama server health probing |
 | `agent_integration_test.go` | Full agent lifecycle integration tests |
@@ -628,7 +622,6 @@ Tests live alongside source files. Current test files:
 | `ui_test.go` | Terminal line editor and completion |
 | `terminal_test.go` | REPL startup sequence and backend selection |
 | `model_cache_test.go` | ModelCache capability lookup and expiry |
-| `encoderfile_embedder_test.go` | Embedder interface and embedding consistency |
 | `templates_test.go` | Workspace profile template rendering |
 
 The `mockLLMClient` in `tier3_test.go` is the canonical test double for

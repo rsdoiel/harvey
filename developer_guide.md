@@ -11,7 +11,6 @@ This guide is for developers who want to understand Harvey's internals, contribu
 
 ### Design Documents
 - **[DECISIONS.md](../agents/projects/harvey/notes/DECISIONS.md)** — Historical design decisions (frozen 2026-09-23); newer ones are records in [decisions/](../agents/projects/harvey/decisions/index.md)
-- **[RAG Support Design](RAG_Support_Design.md)** — Design document for retrieval-augmented generation support
 - **[Harvey Skill-Set Design](Harvey_Skill-Set_Design.md)** — Design for the `/skill-set` command and skill bundling system
 - **[Improved Tool Handling with Schemas](improved_tool_handling_with_schemas.md)** — Tool schema validation and handling design
 - **[Memory Unified Design](memory-unified-design.md)** — Unified memory system architecture
@@ -62,7 +61,6 @@ make clean
 - **[memory_*_test.go](memory_*_test.go)** — Memory system tests (manifest, miner, onboarding, rolling, store, unified)
 - **[ollama_probe_test.go](ollama_probe_test.go)** — Ollama probing tests
 - **[pipeline_test.go](pipeline_test.go)** — Pipeline functionality tests
-- **[rag_support_test.go](rag_support_test.go)** — RAG support tests
 
 ---
 
