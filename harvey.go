@@ -213,6 +213,7 @@ type Agent struct {
 	kbRun                      *kbRun         // identities and injections the running /kb subcommand reports; nil outside a logged one
 	permCall                   permissionCall // the tool call in flight, so a permission event can name it
 	permScope                  string         // "session" once the author has answered all to a write offer; "" otherwise
+	offerIndex, offerOf        int            // which of how many tagged blocks the running write offer is on; 0 outside one
 	Backend                    ManagedBackend // active inference backend; nil when no backend is wired
 	hailoDevicePath            string         // Hailo card device node; "" = /dev/hailo0 (tests set it)
 	hailoUnitPath              string         // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service

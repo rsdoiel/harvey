@@ -3730,10 +3730,12 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 	}
 
 	applyAll := false
-	defer func() { a.permScope = "" }()
+	a.offerOf = len(blocks)
+	defer func() { a.permScope, a.offerIndex, a.offerOf = "", 0, 0 }()
 
 	// 1. Tagged code blocks — always offer to apply.
-	for _, b := range blocks {
+	for i, b := range blocks {
+		a.offerIndex = i + 1
 		// A path the permissions table forbids is refused before it is offered,
 		// so a yes is never asked for a write that cannot happen.
 		if !a.CheckWritePermission(b.path) {
@@ -3861,11 +3863,10 @@ func choiceStr(c actionChoice) string {
 
 // logAction records one agent action to the Recorder if one is active.
 func (a *Agent) logAction(kind, target string, choice actionChoice, outcome string) {
-	// "denied" is the permissions table refusing before anyone was asked; the
-	// audit buffer has already reported that as a rule decision.
-	if outcome != "denied" {
-		a.logAuthorsChoice(kind, target, choice)
-	}
+	// A refusal by the permissions table ("denied") is recorded once, as a rule
+	// decision, by logAuthorsAnswer; the audit buffer's own event for it is
+	// held back while an offer is running.
+	a.logAuthorsAnswer(kind, target, choice, outcome)
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordAgentAction(kind, target, choiceStr(choice), outcome)
 	}

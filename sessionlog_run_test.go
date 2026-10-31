@@ -17,6 +17,14 @@ import (
 // test: a session on one model, a switch to another mid-session, and a turn
 // after it, which the --debug log lost (harvey-session-20261006-204135).
 
+// scriptedReply, when set, is what the fake model says to every turn, so a test
+// can make it reply with tagged code blocks. Tests reset it with t.Cleanup.
+var scriptedReply string
+
+// scriptedTerminal makes scripted runs interactive, as at a terminal: only then
+// are write offers made. Tests reset it with t.Cleanup.
+var scriptedTerminal bool
+
 // fakeOllamaTwoModels serves /api/tags with two models, /api/show, and a
 // streaming /api/chat that answers FIRST, SECOND, … and names the model that
 // was asked, so a test can see which model answered.
@@ -79,7 +87,11 @@ func fakeOllama(t *testing.T, tools bool) *httptest.Server {
 			turn++
 			mu.Unlock()
 			w.Header().Set("Content-Type", "application/x-ndjson")
-			io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":"`+word+`"},"done":false}`+"\n")
+			if scriptedReply != "" {
+				word = scriptedReply
+			}
+			quoted, _ := json.Marshal(word)
+			io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":`+string(quoted)+`},"done":false}`+"\n")
 			io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":7,"eval_count":1}`+"\n")
 		default:
 			http.NotFound(w, r)
@@ -106,7 +118,7 @@ func scriptedRunWith(t *testing.T, debug bool, setup func(root string), tools bo
 // scriptedRunFull is scriptedRunWith with a last look at the agent before Run.
 func scriptedRunFull(t *testing.T, debug bool, setup func(root string), tools bool, tweak func(*Agent), lines ...string) string {
 	t.Helper()
-	a, ws := runFixture(t, false)
+	a, ws := runFixture(t, scriptedTerminal)
 	if setup != nil {
 		setup(ws.Root)
 	}
@@ -134,8 +146,10 @@ func scriptedRunFull(t *testing.T, debug bool, setup func(root string), tools bo
 	t.Cleanup(func() { f.Close() })
 	a.stdin = f
 	var out strings.Builder
-	if err := a.Run(&out); err != nil {
-		t.Fatalf("Run: %v\n%s", err, out.String())
+	err = a.Run(&out)
+	t.Logf("session output:\n%s", out.String())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
 	}
 	return filepath.Join(ws.Root, "agents", "sessions")
 }

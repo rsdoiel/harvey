@@ -143,6 +143,15 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
+- [ ] **Two write-offer mechanisms fire for the same reply in an interactive session.** Found 2026-10-30 while testing the
+  Fountain rendering of write offers. For every fenced block in a reply, `runChatTurn` first asks "[Write LANG block N/M to
+  file? Path (or Enter to skip)]" (`terminal.go`, the "Code-block extraction" branch) and writes the block to whatever path is
+  typed; then `autoExecuteReply` offers each *tagged* block (` ```text:out/a.txt `) with the Write box (yes / no / all / quit).
+  A tagged block is therefore offered twice, and the first prompt shows the fence's `lang:path` label as if it were the
+  language. A scripted answer meant for the box (`y`) is taken as a path by the first prompt (it wrote a file named `y`). Not
+  changed; to decide whether the first prompt should skip blocks the second one handles. Neither prompt runs without a
+  terminal (`interactive`).
+
 - [ ] **`harvey check` and/or `harvey update` for a stale `harvey.yaml`.** Raised by the author 2026-10-30, to be done later
   (not now). Several accepted decisions leave existing `harvey.yaml` files out of date: workspace policy DR-0043 (the
   `safe_mode`, `allowed_commands` and `permissions:` are all ignored in favour of `policy:`), DR-0042 (routes of the removed cloud kinds, `s3://` uses), and DR-0033/DR-0035/DR-0037 (llamafile and llama.cpp

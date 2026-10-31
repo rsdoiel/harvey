@@ -119,7 +119,8 @@ func TestPermission_TheAuthorsAnswersAreLogged(t *testing.T) {
 	a.logAction("write", "b.txt", actionAll, "ok")
 	a.logAction("write", "c.txt", actionNo, "skipped")
 	a.logAction("write", "d.txt", actionQuit, "aborted")
-	// A refusal by the permissions table asked nobody; the audit hook logs it.
+	// A refusal by the permissions table is a rule decision, recorded once, as
+	// the author saying no to something that could not have happened.
 	a.logAction("write", "e.txt", actionNo, "denied")
 	// Memory and context actions are not file or command permissions.
 	a.logAction("add_memory", "m", actionYes, "ok")
@@ -129,6 +130,7 @@ func TestPermission_TheAuthorsAnswersAreLogged(t *testing.T) {
 		{Action: "write", Target: Content{Text: "b.txt"}, Decision: "allow", Scope: "session"},
 		{Action: "write", Target: Content{Text: "c.txt"}, Decision: "deny", Scope: "once"},
 		{Action: "write", Target: Content{Text: "d.txt"}, Decision: "none", Scope: "once"},
+		{Action: "write", Target: Content{Text: "e.txt"}, Decision: "deny", Scope: "rule"},
 	}
 	got := perms(t, a, path)
 	if len(got) != len(want) {

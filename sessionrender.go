@@ -248,6 +248,7 @@ func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspa
 	var failure *renderResponse
 	var skills []renderInjection
 	var skillEvents []Event
+	var offers []renderOffer
 	type call struct {
 		id, name, args, status string
 	}
@@ -272,6 +273,13 @@ func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspa
 			if inj.Source == "skill" {
 				skills = append(skills, inj)
 				skillEvents = append(skillEvents, e)
+			}
+		case KindPermission:
+			var o renderOffer
+			_ = json.Unmarshal(e.Data, &o)
+			if o.Choice != "" { // an answer to an offer; rule decisions carry no choice
+				o.event = e
+				offers = append(offers, o)
 			}
 		case KindToolCall:
 			var tc renderTool
@@ -328,6 +336,44 @@ func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspa
 	case failure != nil:
 		out.note("model error: " + strings.TrimSpace(opts.contentOf(failure.Error)))
 	}
+	// The offers to write what the reply proposed come after the turn's scene.
+	for _, o := range offers {
+		renderOffer1(out, opts, user, o, at)
+	}
+}
+
+// renderOffer is the permission event of the author's answer to an offer.
+type renderOffer struct {
+	Action  string          `json:"action"`
+	Target  json.RawMessage `json:"target"`
+	Choice  string          `json:"choice"`
+	Outcome json.RawMessage `json:"outcome"`
+	Offer   *struct {
+		Index int `json:"index"`
+		Of    int `json:"of"`
+	} `json:"offer"`
+	event Event
+}
+
+// renderOffer1 writes one offer: the first of a reply's tagged blocks opens the
+// agent scene; each offer is the proposal, the author's answer and a note of
+// what came of it.
+func renderOffer1(out fountainOut, opts RenderOptions, user string, o renderOffer, at func(Event) string) {
+	target := opts.contentOf(o.Target)
+	if o.Offer != nil && o.Offer.Index == 1 {
+		out.sceneHeading("INT. AGENT MODE " + at(o.event))
+		out.dialogue("HARVEY", "", fmt.Sprintf("Harvey proposes to write %d file(s).", o.Offer.Of))
+	}
+	proposal := strings.ToUpper(o.Action[:1]) + o.Action[1:] + " " + target
+	switch o.Action {
+	case "write":
+		proposal = fmt.Sprintf("Write %s?", target)
+	case "run":
+		proposal = fmt.Sprintf("Run: %s?", target)
+	}
+	out.dialogue("HARVEY", "", proposal)
+	out.dialogue(user, "", o.Choice)
+	out.note(fmt.Sprintf("%s: %s — %s", o.Action, target, opts.contentOf(o.Outcome)))
 }
 
 // toolNote formats a tool call as the recorder does, without the character.

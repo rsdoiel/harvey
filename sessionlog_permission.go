@@ -54,6 +54,9 @@ func (a *Agent) permissionFromAudit(e AuditEvent) {
 	case ActionFileWrite:
 		switch e.Status {
 		case StatusDenied:
+			if a.offerOf > 0 {
+				return // inside a write offer, logAction records this refusal with its offer
+			}
 			a.logPermission("write", e.Details, "deny", "rule")
 		case StatusSuccess, StatusError:
 			a.logPermission("write", e.Details, "auto", "rule")
@@ -78,11 +81,19 @@ func (a *Agent) permissionFromAudit(e AuditEvent) {
  *   a.logPermission("write", "notes.md", "allow", "once")
  */
 func (a *Agent) logPermission(action, target, decision, scope string) {
+	a.logPermissionWith(action, target, decision, scope, nil)
+}
+
+// logPermissionWith is logPermission with further fields in the event.
+func (a *Agent) logPermissionWith(action, target, decision, scope string, extra map[string]any) {
 	if a.SessionLog == nil {
 		return
 	}
 	data := map[string]any{
 		"action": action, "target": a.logContent(target), "decision": decision, "scope": scope,
+	}
+	for k, v := range extra {
+		data[k] = v
 	}
 	if a.permCall.id != "" {
 		data["outcome_of"] = a.permCall.id
@@ -96,6 +107,28 @@ func (a *Agent) logPermission(action, target, decision, scope string) {
 // logAuthorsChoice records the author's answer to an offer to write target.
 // An answer after "all" is session-scoped.
 func (a *Agent) logAuthorsChoice(kind, target string, choice actionChoice) {
+	a.logAuthorsAnswer(kind, target, choice, "")
+}
+
+/** logAuthorsAnswer records the author's answer to an offer to write or run
+ * something, with what came of it, as a permission event. Besides the
+ * decision and scope it carries the literal choice (yes, no, all, quit), the
+ * outcome (ok, skipped, aborted, denied, error: …) and, for the tagged blocks
+ * of one reply, which offer of how many it was, so the Fountain scene of the
+ * offer can be rebuilt from the log. A refusal by the permissions table is
+ * recorded here once, as a rule decision with the choice no, not as a second
+ * event.
+ *
+ * Parameters:
+ *   kind    (string)       — write or run; other kinds are not permissions.
+ *   target  (string)       — the path or command.
+ *   choice  (actionChoice) — what the author answered.
+ *   outcome (string)       — what came of it; "" when not known.
+ *
+ * Example:
+ *   a.logAuthorsAnswer("write", "out/a.txt", actionYes, "ok")
+ */
+func (a *Agent) logAuthorsAnswer(kind, target string, choice actionChoice, outcome string) {
 	action := ""
 	switch kind {
 	case "write":
@@ -117,5 +150,15 @@ func (a *Agent) logAuthorsChoice(kind, target string, choice actionChoice) {
 	if decision == "allow" && a.permScope != "" {
 		scope = a.permScope
 	}
-	a.logPermission(action, target, decision, scope)
+	if outcome == "denied" {
+		decision, scope = "deny", "rule"
+	}
+	extra := map[string]any{"choice": choiceStr(choice)}
+	if outcome != "" {
+		extra["outcome"] = a.logContent(outcome)
+	}
+	if a.offerOf > 0 {
+		extra["offer"] = map[string]int{"index": a.offerIndex, "of": a.offerOf}
+	}
+	a.logPermissionWith(action, target, decision, scope, extra)
 }
