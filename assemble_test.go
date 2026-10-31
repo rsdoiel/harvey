@@ -237,3 +237,109 @@ func TestAssembleForTurn_WithoutAPromptLimitItKeepsToAShareOfTheWindow(t *testin
 		}
 	}
 }
+
+func summaryAgent(t *testing.T, client LLMClient) *Agent {
+	t.Helper()
+	a := limitedLoggedAgent(t, 0)
+	a.Config.Ollama.ContextLength = 353 // a limit of 300 tokens: 85% of the window
+	a.Client = client
+	a.Config.Memory.RollingSummary = RollingSummaryConfig{Enabled: true, WarnAtPct: 0.8, KeepTurns: 2}
+	return a
+}
+
+func compactions(t *testing.T, a *Agent) []struct {
+	Reason     string   `json:"reason"`
+	Summary    Content  `json:"summary"`
+	Sources    []string `json:"sources"`
+	Supersedes string   `json:"supersedes"`
+} {
+	t.Helper()
+	var out []struct {
+		Reason     string   `json:"reason"`
+		Summary    Content  `json:"summary"`
+		Sources    []string `json:"sources"`
+		Supersedes string   `json:"supersedes"`
+	}
+	for _, e := range eventsOf(t, a, a.SessionLog.Path(), KindCompaction) {
+		var d struct {
+			Reason     string   `json:"reason"`
+			Summary    Content  `json:"summary"`
+			Sources    []string `json:"sources"`
+			Supersedes string   `json:"supersedes"`
+		}
+		_ = json.Unmarshal(e.Data, &d)
+		if d.Reason == "summary" {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+func TestSummarize_ReplacesOlderTurnsWithASummaryThatNamesThem(t *testing.T) {
+	a := summaryAgent(t, &mockLLMClient{reply: "the user asked questions and got answers"})
+	var out strings.Builder
+	for i := 1; i <= 10; i++ {
+		playTurn(t, a, fmt.Sprintf("question %d %s", i, words(12)), fmt.Sprintf("answer %d %s", i, words(12)), &out)
+		a.summarizeForNextTurn(context.Background(), &out)
+	}
+	cs := compactions(t, a)
+	if len(cs) == 0 {
+		t.Fatalf("no summary was made; notices: %s", out.String())
+	}
+	if len(cs[0].Sources) == 0 || cs[0].Supersedes != "" {
+		t.Errorf("first summary = %+v, want sources and nothing superseded", cs[0])
+	}
+	if len(cs) > 1 && cs[1].Supersedes == "" {
+		t.Errorf("a later summary should absorb the earlier one: %+v", cs[1])
+	}
+	summaries := 0
+	for _, m := range a.History {
+		if strings.HasPrefix(m.Content, "[Conversation summary]") {
+			summaries++
+		}
+	}
+	if summaries != 1 {
+		t.Errorf("%d summaries in the history, want exactly one (they chain)", summaries)
+	}
+	// The log still rebuilds every request, summaries included.
+	events, _, _ := ReadSessionLog(a.SessionLog.Path())
+	for _, r := range RebuildPrompts(events, RenderOptions{Blobs: BlobDir(a.SessionLog.Path())}) {
+		if r.Stored != r.Rebuilt {
+			t.Errorf("request %s does not rebuild from the log", r.RequestID)
+		}
+	}
+	// Every source is an event in the log, and the index knows the compaction.
+	idx, _, _ := BuildSessionIndex(a.SessionLog.Path())
+	for _, s := range cs[0].Sources {
+		if _, ok := idx.Lookup(s); !ok {
+			t.Errorf("source %s is not an event of the log", s)
+		}
+	}
+	if got := idx.Compactions(); len(got) == 0 {
+		t.Error("the index should list the compactions")
+	}
+}
+
+func TestSummarize_AFailedCallLeavesTheHistoryAndBacksOff(t *testing.T) {
+	a := summaryAgent(t, &mockLLMClient{callErr: fmt.Errorf("the server is busy")})
+	var out strings.Builder
+	for i := 1; i <= 8; i++ {
+		playTurn(t, a, fmt.Sprintf("question %d %s", i, words(12)), fmt.Sprintf("answer %d %s", i, words(12)), io.Discard)
+		a.summarizeForNextTurn(context.Background(), &out)
+	}
+	if n := len(compactions(t, a)); n != 0 {
+		t.Errorf("%d summaries from a failing model", n)
+	}
+	if got := strings.Count(out.String(), "Could not summarise"); got == 0 || got > 3 {
+		t.Errorf("want a few notices, not one per turn: %d\n%s", got, out.String())
+	}
+	faults := 0
+	for _, e := range eventsOf(t, a, a.SessionLog.Path(), KindFault) {
+		if strings.Contains(string(e.Data), `"source":"summary"`) {
+			faults++
+		}
+	}
+	if faults == 0 {
+		t.Error("the failure should be a fault event")
+	}
+}

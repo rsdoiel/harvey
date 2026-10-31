@@ -179,12 +179,12 @@ func TestRewriteOps_ApplyingThemGivesTheNewHistory(t *testing.T) {
 // events). A new direct write fails this test until it is logged and listed.
 func TestPromptAdditionsGoThroughTheLog(t *testing.T) {
 	allowed := map[string]int{
-		"assemble.go": 1, // assembleForTurn; logRewrite
+		"assemble_summary.go": 1, // summarizeForNextTurn; logRewriteWith
+		"assemble.go":         1, // assembleForTurn; logRewrite
 		// file -> number of lines that write the history directly
 		"builtin_tools.go":    2, // filter_context, summary_context; both logRewrite
 		"commands.go":         1, // /context clear; logRewrite
 		"harvey.go":           4, // AddMessage, AddMessageParts, ClearHistory (2); the rest log through callers
-		"memory_rolling.go":   1, // CompressHistory; logRewrite
 		"prompt_fit.go":       2, // trim and retry; logRewrite
 		"replay.go":           1, // the replayed turn; logTurnMessage
 		"sessionlog_agent.go": 1, // dropLastMessage; addPromptParts goes through AddMessageParts

@@ -231,7 +231,11 @@ func (a *Agent) historySnapshot() []Message {
  *   a.History = trimmed
  *   a.logRewrite("trim", before)
  */
-func (a *Agent) logRewrite(reason string, before []Message) {
+func (a *Agent) logRewrite(reason string, before []Message) { a.logRewriteWith(reason, before, nil) }
+
+// logRewriteWith is logRewrite with more fields on the event: the summary text
+// and the events it stands for, for the rewrite that makes a summary.
+func (a *Agent) logRewriteWith(reason string, before []Message, extra map[string]any) {
 	if a.SessionLog == nil {
 		return
 	}
@@ -244,9 +248,13 @@ func (a *Agent) logRewrite(reason string, before []Message) {
 			ops[i] = map[string]any{"role": m.Role, "message": a.logContent(m.Content), "tool_call_id": m.ToolCallID, "tool_calls": m.ToolCalls, "parts": m.Parts}
 		}
 	}
-	a.logEvent(KindCompaction, LevelInfo, map[string]any{
+	data := map[string]any{
 		"turn": a.logTurn, "reason": reason, "sources": []string{}, "through": a.logLastID, "ops": ops,
-	})
+	}
+	for k, v := range extra {
+		data[k] = v
+	}
+	a.logEvent(KindCompaction, LevelInfo, data)
 }
 
 // dropLastMessage removes the last message of the history, the user message of

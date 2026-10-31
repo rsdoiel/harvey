@@ -1411,22 +1411,9 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		a.autoExecuteReply(buf.String(), out, reader, ctx)
 	}
 
-	// Rolling summary: compress history when approaching the context limit.
-	if a.Config.Memory.RollingSummary.Enabled && a.Client != nil {
-		contextLen := a.effectiveContextLimit()
-		if contextLen > 0 {
-			histTokens := estimateTokens(HistoryText(a.History))
-			if ShouldCompress(histTokens, contextLen, a.Config.Memory.RollingSummary.WarnAtPct) {
-				pct := histTokens * 100 / contextLen
-				fmt.Fprintln(out, dim(fmt.Sprintf("  [context ~%d%% full — compressing older turns]", pct)))
-				if compErr := CompressHistory(a, a.Config.Memory.RollingSummary.KeepTurns, out); compErr != nil {
-					fmt.Fprintf(out, "%s Compression failed: %v\n", yellow("  ✗"), compErr)
-				} else {
-					a.sessionCompressed = true
-				}
-			}
-		}
-	}
+	// Summarise the older turns when the conversation nears the limit; the
+	// summary is a compaction event that names the turns it stands for.
+	a.summarizeForNextTurn(ctx, out)
 
 	return buf.String(), stats, nil
 }

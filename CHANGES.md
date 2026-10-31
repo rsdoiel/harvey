@@ -36,6 +36,13 @@
   but its context window is (`--context`, `ollama.context_length`, or probed), the prompt is kept to 85% of the window, which
   leaves room for the reply; before, such a conversation was never trimmed. The `model_request` records which limit applied.
 
+- **Summaries name what they stand for.** The rolling summary is now made by the context assembler: after a reply, when the
+  conversation reaches `rolling_summary.warn_at_pct` of the prompt limit, every turn but the last `keep_turns` is summarised
+  by the active model and replaced by one summary, and the session log records the summary with the ids of the events it
+  replaces (a later summary absorbs the earlier one). `keep_turns` now counts turns, not messages, and `warn_at_pct` is a
+  share of the prompt limit, not of the window. If the call fails, harvey says so once, leaves the history alone, does not
+  try again for three turns, and the oldest turns are left out as before.
+
 ### Removed
 
 - **`/record` (`start`, `stop`, `status`) and `/help record`.** Every session is logged from the start, so there is nothing to

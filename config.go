@@ -661,15 +661,17 @@ type MemoryConfig struct {
 }
 
 /** RollingSummaryConfig controls automatic working-memory compression.
- * When history token count exceeds WarnAtPct of the model context window,
- * Harvey warns then compresses all but the last KeepTurns turns into a
- * short summary via a separate low-temperature LLM call.
+ * When the conversation reaches WarnAtPct of the prompt limit (the model's
+ * prompt limit, else 85% of its context window), Harvey summarises all but the
+ * last KeepTurns turns, with the active model, into one summary that the
+ * session log records together with the events it stands for.
  *
  * Fields:
  *   Enabled   (bool)    — when false compression never fires; default true.
- *   WarnAtPct (float64) — compress when history exceeds this fraction of the
- *                         model context window; default 0.80.
- *   KeepTurns (int)     — number of recent turns to keep verbatim; default 6.
+ *   WarnAtPct (float64) — summarise when the conversation exceeds this fraction
+ *                         of the prompt limit; default 0.80.
+ *   KeepTurns (int)     — number of recent turns (a typed line and its reply,
+ *                         with what was read into it) to keep verbatim; default 6.
  *
  * Example:
  *   cfg.Memory.RollingSummary = RollingSummaryConfig{Enabled: true, WarnAtPct: 0.80, KeepTurns: 6}
