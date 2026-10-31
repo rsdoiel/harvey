@@ -1,0 +1,40 @@
+{
+  "hits": [
+    {
+      "kind": "observation",
+      "id": 2,
+      "project": "demo",
+      "concepts": [
+        "zebra"
+      ],
+      "excerpt": "zebra stripes repel flies, again",
+      "sources": [
+        {
+          "id": 1,
+          "title": "Bad paper",
+          "identifier_type": "doi",
+          "identifier_value": "10.1/bad",
+          "retracted": true,
+          "retraction_note": "Retracted for data fabrication",
+          "relationship": "cited"
+        }
+      ],
+      "retracted": true
+    },
+    {
+      "kind": "observation",
+      "id": 1,
+      "project": "demo",
+      "concepts": [
+        "zebra"
+      ],
+      "excerpt": "zebra stripes repel flies --source-doi 10.1/bad",
+      "sources": [],
+      "retracted": false
+    }
+  ],
+  "matched": [
+    "zebra"
+  ],
+  "projects": []
+}

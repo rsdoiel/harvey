@@ -1,0 +1,62 @@
+{
+  "hits": [
+    {
+      "kind": "record",
+      "id": 120,
+      "project": "harvey",
+      "concepts": [
+        "ollama"
+      ],
+      "title": "Models are looked for where each model system keeps them; ~/Models is for llamafiles only",
+      "excerpt": "**Context.** Harvey found models by scanning `~/Models` for `*.llamafile` and `*.gguf`, whatever the model system. That…",
+      "sources": [],
+      "material": {
+        "path": "agents/projects/harvey/decisions/0031-models-are-looked-for-where-each-model-system.md",
+        "checksum": "sha256:c685536ad659649c5ecd174353bc77df361083fc54e820aa77732124dd743e02",
+        "format": "markdown",
+        "ingested_at": "2026-10-30T00:13:52Z"
+      },
+      "retracted": false
+    },
+    {
+      "kind": "document_gist",
+      "id": 93,
+      "project": "harvey",
+      "concepts": [
+        "ollama"
+      ],
+      "title": "v0.0.19: llama.cpp cache default, live model tests, completion, flag precedence, release",
+      "excerpt": "",
+      "sources": [],
+      "material": {
+        "path": "agents/projects/harvey/hand-off/20261010-v0019-llamacpp-cache-completion-and-release.md",
+        "checksum": "sha256:f6317bafb49327122da11dc284232bbc495c0f22904c0e400970ab23bf0abcfd",
+        "format": "markdown",
+        "ingested_at": "2026-10-11T15:28:22Z"
+      },
+      "retracted": false
+    },
+    {
+      "kind": "document_section",
+      "id": 97,
+      "project": "harvey",
+      "concepts": [
+        "ollama"
+      ],
+      "title": "v0.0.19: llama.cpp cache default, live model tests, completion, flag precedence, release / Current State",
+      "excerpt": "",
+      "sources": [],
+      "material": {
+        "path": "agents/projects/harvey/hand-off/20261010-v0019-llamacpp-cache-completion-and-release.md",
+        "checksum": "sha256:f6317bafb49327122da11dc284232bbc495c0f22904c0e400970ab23bf0abcfd",
+        "format": "markdown",
+        "ingested_at": "2026-10-11T15:28:22Z"
+      },
+      "retracted": false
+    }
+  ],
+  "matched": [
+    "ollama"
+  ],
+  "projects": []
+}

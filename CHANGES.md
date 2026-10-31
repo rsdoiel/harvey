@@ -4,6 +4,11 @@
 
 ### Changed
 
+- Knowledge recall for the prompt (DR-0037 item 4) runs the installed `kb -json concept recall` instead of linking the
+  `knowledge` library: it still names each cited work and flags a retracted one with its note. A recalled row's text is kb's
+  shortened excerpt, not the full body. `kb` must be installed for recall to work; without it recall reports that kb is
+  unavailable. Tests of the kb contract live in `kbrecall_test.go` with fixtures in `testdata/kb/`.
+
 - **`--debug` no longer writes `agents/logs/harvey-TIMESTAMP.jsonl`.** Harvey now records every session as an append-only JSONL
   log, `agents/sessions/NAME.jsonl`, beside the Fountain file with the same name (workspace DRs 0036, 0038, 0039 and 0040). It is
   written whether or not `--debug` is set; `--debug` only adds level-debug events, such as the exact messages sent with each

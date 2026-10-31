@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -387,6 +388,10 @@ func TestStatsCount_Empty(t *testing.T) {
 // KnowledgeBase at the workspace's default path, with a current project set.
 func newTestUnifiedMemoryWithKB(t *testing.T) (*UnifiedMemory, *knowledge.KnowledgeBase, int64) {
 	t.Helper()
+	// recallKB runs the installed kb (DR-0037 item 4).
+	if _, err := exec.LookPath("kb"); err != nil {
+		t.Skip("kb not installed")
+	}
 	ws, err := NewWorkspace(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
