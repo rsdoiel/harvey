@@ -54,6 +54,22 @@
 - **`/context` shows what the model sees.** It prints the next prompt grouped as system prompt, pins, summaries, recalled
   knowledge and dialog, with sizes and shares of the prompt limit.
 
+### Deprecated
+
+- **llama.cpp and llamafile support will be removed in the next release** (workspace DR-0033). Harvey will support Ollama and
+  hailo-ollama only. This release is the last that carries the two backends, the `llamafile:` and `llamacpp:` sections of
+  `harvey.yaml`, the `llamafile://` and `llamacpp://` route kinds and their model handling. After the removal a `harvey.yaml`
+  that names either one is a configuration error (exit 78). Stay on this release if you run a model through them. Harvey now
+  prints a notice once at startup when a llamafile is registered or either backend is the one in use.
+
+- **The cloud route kinds and the S3 reader will be removed in the next release** (workspace DR-0042). Harvey will talk only
+  to Ollama-shaped servers on this machine or the local network. `anthropic://`, `deepseek://`, `gemini://`, `mistral://` and
+  `openai://` routes, their API-key environment variables and the `s3://` document reader go; `ollama://`, `http(s)://` and
+  `sftp://` stay. Harvey prints a notice once when a route of a retiring kind is loaded, added or dispatched to, and when an
+  `s3://` URI is opened. To keep a cloud model, put an Ollama-compatible gateway on your network and point an `ollama://`
+  route at it; to keep S3, mount the bucket as a filesystem. A persisted route of a removed kind will be skipped with a
+  warning. The `any-llm-go` client layer is replaced by a native Ollama client after that (DR-0046).
+
 ### Removed
 
 - **`/context add`, `/context show` and `/context clear`.** Pin text with `/pin --text TEXT`, list with `/pins`, remove with

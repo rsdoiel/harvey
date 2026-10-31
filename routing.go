@@ -242,6 +242,7 @@ func DispatchToEndpointLogged(ctx context.Context, ep *RouteEndpoint, history []
 
 // clientForEndpoint constructs the appropriate LLMClient for ep.
 func clientForEndpoint(ep *RouteEndpoint, cfg *Config) (LLMClient, error) {
+	noteRouteKind(deprecationWriter, ep.Kind)
 	model := ep.Model
 	switch ep.Kind {
 	case KindOllama:

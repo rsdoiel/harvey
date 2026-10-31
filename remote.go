@@ -89,6 +89,7 @@ func NewRemoteReader(uri string) (RemoteReader, error) {
 	scheme := parseURIScheme(uri)
 	switch scheme {
 	case "s3":
+		deprecationNotice(deprecationWriter, "remote:s3", "The s3:// reader is deprecated and will be removed in the next release (workspace DR-0042). Mount the bucket as a filesystem instead. See CHANGES.md.")
 		return newS3Reader()
 	case "http", "https":
 		return newHTTPReader(), nil

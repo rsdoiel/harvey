@@ -447,7 +447,9 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// PID re-adoption: if a prior Harvey session left a running backend, adopt it.
 	agentsDir := filepath.Join(a.Workspace.Root, "agents")
-	if adopted := a.tryAdoptPriorBackend(agentsDir, out); !adopted {
+	a.startupDeprecations(out)
+	adopted := a.tryAdoptPriorBackend(agentsDir, out)
+	if !adopted {
 		// Backend selection — use sessionModel as the preferred model hint.
 		// If no session hint is set but the --llamafile flag set Config.Llamafile.Active,
 		// use it so pickBackend can auto-select without an extra interactive prompt.
@@ -464,6 +466,7 @@ func (a *Agent) Run(out io.Writer) error {
 			return Unavailablef("no backend connected: start Ollama or register a llamafile, then use /model use")
 		}
 	}
+	a.noteActiveBackend(out)
 
 	// Preflight: verify the active model's context can hold the system
 	// prompt alone, before any turn is attempted — otherwise the first

@@ -131,6 +131,7 @@ func routeAdd(a *Agent, args []string, out io.Writer) error {
 	}
 	ep := &RouteEndpoint{Name: name, URL: rawURL, Model: model, Kind: kind}
 	a.Routes.Add(ep)
+	noteRouteKind(out, kind)
 	if saveErr := SaveRouteConfig(a.Workspace, a.Routes); saveErr != nil {
 		persistErr = persistFailure(out, "route config", saveErr)
 	}
