@@ -1,5 +1,10 @@
 # Harvey Knowledge Base
 
+> **Since the /kb passthrough (workspace DR-0034)** `/kb VERB ...` runs the installed `kb`, so these commands are kb's own and
+> the current ones are in `kb help`. Harvey's own verbs are `/kb inject`, `/kb learn` and `/kb project use ID`. This guide was
+> written for harvey's earlier `/kb` subcommands (`observe`, `cite`, `show`, `status`, ...), which are gone; use kb's names
+> (`observation add`, `source link`, `observation show`, `stats`).
+
 *Version 1.0 — Complete guide to Harvey's SQLite-backed knowledge management system*
 
 ---

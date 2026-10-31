@@ -86,4 +86,4 @@ points to /help learn for the full memory overview.
   /help learn     — overview of all three memory silos
   /memory status  — summary of the experiential memory store
   /rag status     — summary of the active RAG store
-  /kb status      — summary of the knowledge base
+  /kb stats       — summary of the knowledge base

@@ -14,12 +14,23 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
 <section id="main-content">
 <h1 id="harvey-knowledge-base">Harvey Knowledge Base</h1>
+<blockquote>
+<p><strong>Since the /kb passthrough (workspace DR-0034)</strong>
+<code>/kb VERB ...</code> runs the installed <code>kb</code>, so these
+commands are kb’s own and the current ones are in <code>kb help</code>.
+Harvey’s own verbs are <code>/kb inject</code>, <code>/kb learn</code>
+and <code>/kb project use ID</code>. This guide was written for harvey’s
+earlier <code>/kb</code> subcommands (<code>observe</code>,
+<code>cite</code>, <code>show</code>, <code>status</code>, …), which are
+gone; use kb’s names (<code>observation add</code>,
+<code>source link</code>, <code>observation show</code>,
+<code>stats</code>).</p>
+</blockquote>
 <p><em>Version 1.0 — Complete guide to Harvey’s SQLite-backed knowledge
 management system</em></p>
 <hr />
@@ -143,7 +154,7 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="
 <col style="width: 28%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Column</th>
 <th scope="col">Type</th>
 <th scope="col">Nullable</th>
@@ -152,42 +163,42 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>id</code></td>
 <td>INTEGER</td>
 <td>NO</td>
 <td>AUTOINCREMENT</td>
 <td>Primary key</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>name</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td>-</td>
 <td>Unique project name</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>description</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td><code>''</code></td>
 <td>Human-readable description</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>status</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td><code>'active'</code></td>
 <td>Project status (active, archived, etc.)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>created_at</code></td>
 <td>DATETIME</td>
 <td>NO</td>
 <td>CURRENT_TIMESTAMP</td>
 <td>Creation timestamp</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>updated_at</code></td>
 <td>DATETIME</td>
 <td>NO</td>
@@ -211,7 +222,7 @@ hypotheses.</p>
 <col style="width: 28%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Column</th>
 <th scope="col">Type</th>
 <th scope="col">Nullable</th>
@@ -220,35 +231,35 @@ hypotheses.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>id</code></td>
 <td>INTEGER</td>
 <td>NO</td>
 <td>AUTOINCREMENT</td>
 <td>Primary key</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>project_id</code></td>
 <td>INTEGER</td>
 <td>NO</td>
 <td>-</td>
 <td>Foreign key to projects(id), ON DELETE CASCADE</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>kind</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td><code>'note'</code></td>
 <td>Observation type</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>body</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td>-</td>
 <td>The observation text content</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>created_at</code></td>
 <td>DATETIME</td>
 <td>NO</td>
@@ -274,7 +285,7 @@ observations.</p>
 <col style="width: 28%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Column</th>
 <th scope="col">Type</th>
 <th scope="col">Nullable</th>
@@ -283,28 +294,28 @@ observations.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>id</code></td>
 <td>INTEGER</td>
 <td>NO</td>
 <td>AUTOINCREMENT</td>
 <td>Primary key</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>name</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td>-</td>
 <td>Unique concept name</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>description</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td><code>''</code></td>
 <td>Human-readable explanation</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>created_at</code></td>
 <td>DATETIME</td>
 <td>NO</td>
@@ -324,19 +335,19 @@ observations.</p>
 <col style="width: 48%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Column</th>
 <th scope="col">Type</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>observation_id</code></td>
 <td>INTEGER</td>
 <td>Foreign key to observations(id), ON DELETE CASCADE</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>concept_id</code></td>
 <td>INTEGER</td>
 <td>Foreign key to concepts(id), ON DELETE CASCADE</td>
@@ -355,19 +366,19 @@ ignored</p>
 <col style="width: 48%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Column</th>
 <th scope="col">Type</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>project_id</code></td>
 <td>INTEGER</td>
 <td>Foreign key to projects(id), ON DELETE CASCADE</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>concept_id</code></td>
 <td>INTEGER</td>
 <td>Foreign key to concepts(id), ON DELETE CASCADE</td>
@@ -396,7 +407,7 @@ Table)</h4>
 concepts.</p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Column</th>
 <th scope="col">Type</th>
 <th scope="col">Indexed</th>
@@ -404,43 +415,43 @@ concepts.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>body</code></td>
 <td>TEXT</td>
 <td>YES</td>
 <td>Main searchable content</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>kind</code></td>
 <td>TEXT</td>
 <td>YES</td>
 <td>Entity type (project, observation, concept)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>label</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td>Entity name (unindexed)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>descr</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td>Description (unindexed)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>source_type</code></td>
 <td>TEXT</td>
 <td>NO</td>
 <td>Source entity type (unindexed)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>source_id</code></td>
 <td>INTEGER</td>
 <td>NO</td>
 <td>Source entity ID (unindexed)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>project_id</code></td>
 <td>INTEGER</td>
 <td>NO</td>
@@ -514,25 +525,25 @@ class="sourceCode go"><code class="sourceCode go"><span id="cb15-1"><a href="#cb
 <col style="width: 61%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Method</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>AddProject(name, description string) (int64, error)</code></td>
 <td>Insert new project, return ID (or existing if name conflicts)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Projects() ([]Project, error)</code></td>
 <td>Return all projects ordered by creation date</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>ProjectByName(name string) (*Project, error)</code></td>
 <td>Return project by exact name match, or nil</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>ProjectConcepts(projectID int64) ([]Concept, error)</code></td>
 <td>Return all concepts linked to a project</td>
 </tr>
@@ -545,21 +556,21 @@ class="sourceCode go"><code class="sourceCode go"><span id="cb15-1"><a href="#cb
 <col style="width: 61%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Method</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>AddObservation(projectID int64, kind, body string) (int64, error)</code></td>
 <td>Insert new observation, return ID</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Observations(projectID int64) ([]Observation, error)</code></td>
 <td>Return all observations for project, newest first</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>LinkObservationConcept(observationID, conceptID int64) error</code></td>
 <td>Associate observation with concept</td>
 </tr>
@@ -575,21 +586,21 @@ class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb
 <col style="width: 61%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Method</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>AddConcept(name, description string) (int64, error)</code></td>
 <td>Insert new concept, return ID (or existing if name conflicts)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Concepts() ([]Concept, error)</code></td>
 <td>Return all concepts ordered by name</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>LinkProjectConcept(projectID, conceptID int64) error</code></td>
 <td>Associate project with concept</td>
 </tr>
@@ -602,22 +613,22 @@ class="sourceCode go"><code class="sourceCode go"><span id="cb16-1"><a href="#cb
 <col style="width: 61%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Method</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>Search(term string) ([]KBSearchResult, error)</code></td>
 <td>Full-text search with BM25 ranking, limited to 50 results</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>Summary() (string, error)</code></td>
 <td>Human-readable text summary of all projects and recent
 observations</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>FormatMarkdown(projectID int64) (string, error)</code></td>
 <td>Export as Markdown (projectID=0 for all projects)</td>
 </tr>
@@ -633,39 +644,39 @@ observations</td>
 <col style="width: 34%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Syntax</th>
 <th scope="col">Example</th>
 <th scope="col">Meaning</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td>Single word</td>
 <td><code>parser</code></td>
 <td>Match documents containing “parser”</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Multiple words</td>
 <td><code>parser bug</code></td>
 <td>Match documents containing BOTH words (AND)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Phrase</td>
 <td><code>"parser bug"</code></td>
 <td>Match exact phrase</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Prefix</td>
 <td><code>pars*</code></td>
 <td>Match words starting with “pars”</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>OR</td>
 <td><code>parser OR tokenizer</code></td>
 <td>Match either word</td>
 </tr>
-<tr>
+<tr class="even">
 <td>NOT</td>
 <td><code>parser NOT bug</code></td>
 <td>Match “parser” but not “bug”</td>
@@ -693,25 +704,25 @@ FTS index will be automatically rebuilt when FTS5 becomes available</p>
 <h3 id="project-commands">Project Commands</h3>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/kb project add &lt;name&gt; [description]</code></td>
 <td>Create a new project</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb project list</code></td>
 <td>List all projects</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb project info &lt;name-or-id&gt;</code></td>
 <td>Show project details</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb project status &lt;name&gt; &lt;status&gt;</code></td>
 <td>Update project status</td>
 </tr>
@@ -724,21 +735,21 @@ FTS index will be automatically rebuilt when FTS5 becomes available</p>
 <col style="width: 59%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/kb obs add &lt;project&gt; &lt;kind&gt; &lt;body&gt;</code></td>
 <td>Add observation to project (by name or ID)</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb obs list &lt;project&gt;</code></td>
 <td>List observations for project</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb obs info &lt;id&gt;</code></td>
 <td>Show observation details</td>
 </tr>
@@ -752,21 +763,21 @@ finding - <code>d</code> or <code>decision</code> → decision -
 <h3 id="concept-commands">Concept Commands</h3>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/kb concept add &lt;name&gt; [description]</code></td>
 <td>Create a new concept</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb concept list</code></td>
 <td>List all concepts</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb concept info &lt;name&gt;</code></td>
 <td>Show concept details</td>
 </tr>
@@ -779,17 +790,17 @@ finding - <code>d</code> or <code>decision</code> → decision -
 <col style="width: 59%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/kb link obs &lt;obs-id&gt; concept &lt;concept-name&gt;</code></td>
 <td>Link observation to concept</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb link project &lt;proj-name&gt; concept &lt;concept-name&gt;</code></td>
 <td>Link project to concept</td>
 </tr>
@@ -802,21 +813,21 @@ finding - <code>d</code> or <code>decision</code> → decision -
 <col style="width: 59%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Command</th>
 <th scope="col">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>/kb search &lt;query&gt;</code></td>
 <td>Full-text search across all content</td>
 </tr>
-<tr>
+<tr class="even">
 <td><code>/kb summary</code></td>
 <td>Show formatted summary of all projects</td>
 </tr>
-<tr>
+<tr class="odd">
 <td><code>/kb export [project]</code></td>
 <td>Export as Markdown (all projects or specified)</td>
 </tr>
@@ -980,35 +991,35 @@ returns results with both words</li>
 <col style="width: 41%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th scope="col">Issue</th>
 <th scope="col">Cause</th>
 <th scope="col">Solution</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td><code>Search()</code> returns error about FTS5</td>
 <td>SQLite compiled without FTS5</td>
 <td>Recompile SQLite with FTS5, or update Harvey’s SQLite driver</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Observations not appearing in search</td>
 <td>FTS index not rebuilt</td>
 <td>Restart Harvey to trigger rebuild, or call
 <code>rebuildFTSIfNeeded()</code></td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Duplicate project name error</td>
 <td>Name must be unique</td>
 <td>Use a different name or update the existing project</td>
 </tr>
-<tr>
+<tr class="even">
 <td>Invalid observation kind</td>
 <td>Kind not in allowed list</td>
 <td>Use one of: note, finding, decision, question, hypothesis</td>
 </tr>
-<tr>
+<tr class="odd">
 <td>Database locked</td>
 <td>Multiple connections with WAL mode</td>
 <td>Harvey uses <code>MaxOpenConns(1)</code> to prevent this</td>

@@ -1,117 +1,72 @@
-%harvey(7) user manual | version 0.0.16 66875a0
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-09-24
+% 2026-10-20
 
 # NAME
 
-KB — knowledge base management
+KB — the knowledge base, through the installed kb
 
 # SYNOPSIS
 
-/kb [status]
-/kb search TERM [TERM...]
+/kb [OPTIONS] VERB [ARGS...]
 /kb inject [PROJECT]
-/kb project <list|add NAME [DESC]|use ID>
-/kb observe [KIND] TEXT
-/kb concept <list|add NAME [DESC]>
+/kb project use ID
 /kb learn [ingest|draft|review|concepts] [ARGS]
 
 # DESCRIPTION
 
-Harvey keeps a SQLite knowledge base at <workdir>/agents/knowledge.db.
-It stores structured notes about experiments and concepts so you can
-search and inject that context into conversations without relying on
-the model's general knowledge.
+/kb runs the installed kb(1) on this workspace's knowledge base,
+<workdir>/agents/knowledge.db, and shows its output. The verbs, options and
+exit codes are kb's own, so anything the command line can do, /kb can, and
+"/kb help" shows kb's manual. harvey passes -db for the workspace's database
+unless you give one. kb runs in the workspace with no terminal input, so a
+verb kb keeps for a terminal (accepting a decision record, for example)
+refuses; run those yourself with ! kb ... .
+
+kb must be installed:
+
+~~~
+  go install github.com/rsdoiel/knowledge/cmd/kb@latest
+~~~
 
 The knowledge base is independent of the RAG store (/help rag). KB holds
 hand-authored structured records; RAG holds embedded chunks from ingested
-documents. Use both: /kb inject to bring structured records into context,
-and RAG to retrieve relevant document passages automatically.
+documents.
 
-# CONCEPTS
+Add -json before the verb for machine-readable output. harvey does not add it.
 
-  Project     — a named container for a body of work. One project can be
-                "active" at a time; /kb observe attaches to the active project.
-
-  Observation — a timestamped note attached to a project. Each observation
-                has a kind:
-
-                  note        — general remark
-                  finding     — empirical result
-                  decision    — a choice made and its rationale
-                  question    — open question to return to
-                  hypothesis  — testable prediction
-
-  Concept     — a named idea or term that can be referenced across multiple
-                projects and observations.
-
-# SUBCOMMANDS
-
-/kb status
-  Show the database path, project count, and observation count.
-
-/kb search TERM [TERM...]
-  Full-text search (FTS5) across all observations and concepts. Supports
-  quoted phrases and prefix wildcards:
+# EXAMPLES
 
 ~~~
-  /kb search RAG embedding
   /kb search "context window"
-  /kb search grpc*
+  /kb project list
+  /kb observation add --project harvey finding "RAG threshold 0.3 removes noise"
+  /kb record show harvey/DR-0048
+  /kb stats
 ~~~
+
+# HARVEY'S OWN VERBS
+
+Three things only harvey can do are not sent to kb.
 
 /kb inject [PROJECT]
   Format the knowledge base as Markdown and add it to the conversation
-  as a user message. With no argument, injects the active project (or all
-  projects if none is active). With a project name, injects only that project.
-
-~~~
-  /kb inject
-  /kb inject harvey
-~~~
-
-/kb project list
-  List all projects with ID, name, and status. The active project is
-  marked with *.
-
-/kb project add NAME [DESCRIPTION]
-  Create a project and set it as the active project.
-
-~~~
-  /kb project add harvey "terminal coding agent for Ollama"
-~~~
+  as a user message. With no argument, injects the current project (or all
+  projects if none is current). With a project name, injects only that project.
 
 /kb project use ID
-  Set an existing project as the active project by numeric ID.
+  Set the current project by numeric ID. inject, learn and memory recall use
+  it. (/kb project list shows the IDs.)
 
-/kb observe [KIND] TEXT
-  Record an observation against the active project. KIND defaults to
-  "note" if omitted. Valid kinds: note, finding, decision, question,
-  hypothesis.
-
-~~~
-  /kb observe finding RAG threshold of 0.3 eliminates noise on granite3-moe
-  /kb observe decision switched embedding model to nomic-embed-text
-  /kb observe question does bge-m3 outperform nomic on code retrieval?
-~~~
-
-/kb concept list
-  List all concepts with ID and description.
-
-/kb concept add NAME [DESCRIPTION]
-  Add a named concept to the knowledge base.
-
-~~~
-  /kb concept add RAG "retrieval-augmented generation"
-  /kb concept add "context window" "token budget for a single LLM call"
-~~~
+/kb learn
+  See LEARNING MODE.
 
 # LEARNING MODE
 
 /kb learn turns Harvey's own recorded sessions and hand-off notes into
 searchable knowledge. Every step ends with a human decision: nothing a model
 writes is trusted, or found by /kb search, until you accept it. All four
-steps work on the active project (/kb project use ID).
+steps work on the current project (/kb project use ID).
 
 /kb learn ingest [--min-words N] [--all] [--dry-run]
   List the hand-off notes and recorded sessions that are not yet in the

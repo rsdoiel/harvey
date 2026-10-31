@@ -613,13 +613,9 @@ sessions.
 
 | Command | Description |
 |---|---|
-| `/kb status` | Show all projects with recent observations |
-| `/kb search TERM...` | Full-text search (quote phrases, `*` for a prefix) |
+| `/kb VERB ...` | Run the installed `kb` on the workspace knowledge base, for example `/kb search TERM`, `/kb stats`, `/kb project list`, `/kb observation add --project NAME KIND TEXT` (see `kb help`) |
 | `/kb inject [PROJECT]` | Add the current (or named) project's knowledge to the conversation context |
-| `/kb project list` | List projects with ID and status |
-| `/kb project add NAME [DESC]` | Create a project and set it as current |
-| `/kb project use ID` | Set the active project by ID |
-| `/kb observe [KIND] TEXT` | Record an observation against the active project |
+| `/kb project use ID` | Set harvey's current project by ID (used by `/kb inject` and `/kb learn`) |
 | `/kb show OBS_ID` | Show one observation in full |
 | `/kb concept list` | List all concepts |
 | `/kb concept add NAME [DESC]` | Add a named concept |

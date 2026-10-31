@@ -17,7 +17,7 @@ is the key to getting consistently good results.
 
   Have a text file or document?        →  /rag ingest <file>
   Something useful happened in a session? →  /memory mine
-  Making an observation about an experiment? →  /kb observe
+  Making an observation about an experiment? →  /kb observation add
 
 
 # THE THREE SILOS
@@ -32,7 +32,7 @@ is the key to getting consistently good results.
                   what the model got wrong,  auto-mines on
                   user preferences           session exit
 
-  Knowledge base  Research notes, named      /kb observe      On-demand via
+  Knowledge base  Research notes, named      /kb observation  On-demand via
                   experiments, cross-project /kb project      /memory recall
                   concepts and hypotheses    /kb concept
 
@@ -72,7 +72,7 @@ Mine learnings from last session before starting the next:
 
 Record an observation about a running experiment:
 
-  /kb observe "Qwen3.5 handles nil pointer chains correctly after explicit cast"
+  /kb observation add --project NAME note "Qwen3.5 handles nil pointer chains correctly after explicit cast"
 
 Check what would improve the current session:
 

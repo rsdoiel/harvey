@@ -48,7 +48,7 @@ capable desktop and server machines.
    ```
    harvey > /read src/main.go
    harvey > /run go test ./...
-   harvey > /kb observe finding context window at 8 192 tokens is tight for large files
+   harvey > /kb observation add --project harvey finding "context window at 8 192 tokens is tight for large files"
    harvey > /bye
    ```
 

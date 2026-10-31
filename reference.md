@@ -193,11 +193,11 @@ See **[harvey.1.md](harvey.1.md#environment)** for complete list:
 
 | Task | Command |
 |------|---------|
-| Show status | `/kb status` |
+| Show status | `/kb stats` |
 | Search | `/kb search <text>` |
 | List projects | `/kb project list` |
-| Add project | `/kb project add <name> [desc]` |
-| Record observation | `/kb observe <kind> <text>` |
+| Add project | `/kb project add <name> [desc]` (kb's own) |
+| Record observation | `/kb observation add --project <name> <kind> <text>` |
 | List concepts | `/kb concept list` |
 | Add concept | `/kb concept add <name> [desc]` |
 

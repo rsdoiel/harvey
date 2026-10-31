@@ -111,6 +111,31 @@ limit.</p></li>
 </ul>
 <h3 id="removed">Removed</h3>
 <ul>
+<li><p><strong><code>/kb</code> runs the installed
+<code>kb</code></strong> (workspace DR-0034). <code>/kb ARGS</code> runs
+<code>kb -db &lt;workspace db&gt; ARGS</code> in the workspace, shows
+its output, and exits with kb’s status class. Gone from harvey:
+<code>/kb status</code>, <code>observe</code>, <code>retract</code>,
+<code>cite</code>, <code>show</code>, <code>check-retractions</code> and
+the harvey-side <code>search</code>, <code>project list|add</code>,
+<code>concept</code> and <code>source</code>; use kb’s own
+(<code>stats</code>, <code>observation add</code>,
+<code>source   retract</code>, <code>source link</code>,
+<code>observation show</code>, <code>source check-retractions</code>,
+…). Still harvey’s own: <code>/kb inject</code>,
+<code>/kb learn ...</code> and <code>/kb project use ID</code> (harvey’s
+in-session current project). Tab completion reads
+<code>kb -json verbs</code> once per session. kb must be installed
+(<code>go install github.com/rsdoiel/knowledge/cmd/kb@latest</code>);
+without it <code>/kb</code> says so and nothing else is affected. The
+session log’s <code>kb_result.items</code> is empty for a
+<code>/kb</code> command now (it named the rows a harvey-side search or
+show returned); retrieval for the model (<code>kb_call</code> with
+<code>purpose: retrieval</code>) is unchanged. Not built yet from
+DR-0034: the write-class gate for model-triggered kb calls (item 5; no
+model tool runs <code>/kb</code> today), the <code>kb -version</code>
+minimum (item 3), and <code>kb search</code> for injection (item
+2).</p></li>
 <li><p><strong>A native Ollama client replaces
 <code>any-llm-go</code></strong> (workspace DR-0046). Harvey speaks
 <code>/api/chat</code> itself, in <code>ollama_chat.go</code>, and the

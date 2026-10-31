@@ -914,33 +914,22 @@ conversation history and persists across sessions.</p>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>/kb status</code></td>
-<td>Show all projects with recent observations</td>
+<td><code>/kb VERB ...</code></td>
+<td>Run the installed <code>kb</code> on the workspace knowledge base,
+for example <code>/kb search TERM</code>, <code>/kb stats</code>,
+<code>/kb project list</code>,
+<code>/kb observation add --project NAME KIND TEXT</code> (see
+<code>kb help</code>)</td>
 </tr>
 <tr class="even">
-<td><code>/kb search TERM...</code></td>
-<td>Full-text search (quote phrases, <code>*</code> for a prefix)</td>
-</tr>
-<tr class="odd">
 <td><code>/kb inject [PROJECT]</code></td>
 <td>Add the current (or named) project’s knowledge to the conversation
 context</td>
 </tr>
-<tr class="even">
-<td><code>/kb project list</code></td>
-<td>List projects with ID and status</td>
-</tr>
 <tr class="odd">
-<td><code>/kb project add NAME [DESC]</code></td>
-<td>Create a project and set it as current</td>
-</tr>
-<tr class="even">
 <td><code>/kb project use ID</code></td>
-<td>Set the active project by ID</td>
-</tr>
-<tr class="odd">
-<td><code>/kb observe [KIND] TEXT</code></td>
-<td>Record an observation against the active project</td>
+<td>Set harvey’s current project by ID (used by <code>/kb inject</code>
+and <code>/kb learn</code>)</td>
 </tr>
 <tr class="even">
 <td><code>/kb show OBS_ID</code></td>
