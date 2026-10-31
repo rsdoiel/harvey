@@ -20,7 +20,7 @@ func HelpTopicsText() string {
   attach          Attach a file (image, PDF, or text) to the next turn
   builtin-tools   Built-in tools the LLM can invoke (read, write, run, search…)
   clear           Clear conversation history
-  context         Conversation context and token budget management
+  context         Show what the model sees on the next turn
   editing         Keyboard shortcuts and line-editing keybindings
   file-tree       Display the workspace directory tree
   files           List files in the workspace or a subdirectory
@@ -37,6 +37,7 @@ func HelpTopicsText() string {
   memory          Experience memory — mine, list, show, flag, forget
   pdf-tools       PDF extraction tools (requires poppler)
   pipeline        Multi-step pipelines chaining prompts and commands
+  pin             Keep something in front of the model for this session
   plan            Create and track multi-step work plans
   rag             Retrieval-augmented generation with named knowledge stores
   read            Read workspace files into conversation context
@@ -60,7 +61,7 @@ func HelpTopicsText() string {
            filetree → file-tree   install, setup → getting-started
            knowledge → kb         pdf, pdftools → pdf-tools
            profile, recall → memory   readdir → read-dir
-           route → routing
+           route → routing        pins, unpin → pin
            skill → skills         tools, builtins → builtin-tools
 
 `
@@ -102,6 +103,8 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(SummarizeHelpText)
 	case "context":
 		f(ContextHelpText)
+	case "pin", "pins", "unpin":
+		f(PinHelpText)
 	case "editing", "edit", "keybindings", "keys":
 		f(EditingHelpText)
 	case "file-tree", "filetree":

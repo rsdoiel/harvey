@@ -254,8 +254,17 @@ are also available from the shell: harvey --help TOPIC.
 
 **Context and history**
 
-/context <show|add TEXT...|clear>
-: manage pinned context that survives /clear
+/context
+: show what the model sees on the next turn
+
+/pin <EVENT_ID|kb:TYPE:ID|--text TEXT...>
+: keep text, a session event or a knowledge-base row in front of the model for this session
+
+/pins
+: list the pins with their cost and share of the prompt limit
+
+/unpin <N|PIN_ID|REF>
+: stop keeping a pin in front of the model
 
 /clear
 : reset conversation history (system prompt and pinned context survive)
@@ -1653,7 +1662,7 @@ The model has no memory of the previous conversation after /clear.
 # WHAT SURVIVES /CLEAR
 
   System prompt   — re-injected from HARVEY.md automatically.
-  Pinned context  — any text set with /context add is re-injected as the
+  Pins            — anything kept with /pin is re-injected as the
                     first user message, keeping persistent constraints
                     visible to the model across topic changes.
   Recording       — the session log keeps running; the cleared conversation
@@ -1670,7 +1679,7 @@ The model has no memory of the previous conversation after /clear.
 
 # SEE ALSO
 
-  /context   — manage pinned context that survives /clear
+  /pin       — keep something in front of the model (pins survive /clear)
   /summarize — condense history into a summary instead of discarding it
 
 `
@@ -1683,62 +1692,124 @@ The model has no memory of the previous conversation after /clear.
 
 # NAME
 
-CONTEXT — manage pinned context that survives /clear
+CONTEXT — show what the model sees on the next turn
 
 # SYNOPSIS
 
-/context show
-/context add TEXT...
-/context clear
+/context
 
 # DESCRIPTION
 
-Pinned context is a block of text that is always present as the first user
-message after the system prompt. It survives /clear so the model keeps
-seeing it no matter how many times you reset the conversation.
+/context prints the prompt Harvey would send next, grouped by what each part
+is, with its estimated size in tokens and its share of the prompt limit:
 
-Use pinned context for information the model should never lose sight of:
+  system prompt        the instructions from HARVEY.md and the skill catalog
+  pinned               what you asked to keep with /pin
+  summaries            summaries Harvey made of older turns
+  recalled knowledge   knowledge-base rows recalled or injected
+  dialog               the turns kept word for word
 
-  - A project description or goal that frames every question.
-  - Key constraints ("do not modify files outside agents/").
-  - A running summary you composed to replace a long conversation.
-  - Environment facts that are not in HARVEY.md.
+The prompt limit is the model's known prompt limit, or 85% of its context
+window when only the window is known. When neither is known, nothing is left
+out and the shares are not shown. If the next turn would leave older turns out,
+/context says how many items.
 
-Pinned context is stored in memory only; it is not persisted to
-agents/harvey.yaml or session files. It resets when Harvey exits.
+The same figures are written to the session log: each turn's model_request
+names the pinned items, the summaries, the tail kept and how many items were
+left out.
 
-# SUBCOMMANDS
-
-/context show
-  Print the current pinned context and its byte count. If no context is
-  set, prints "(pinned context is empty)".
-
-/context add TEXT...
-  Append TEXT to the pinned context. Multiple words are joined with a
-  space. Calling add again appends a newline then the new text so you can
-  build up multi-line context incrementally.
-
-~~~
-  /context add This project targets Raspberry Pi OS (armv7l).
-  /context add Never use cgo; the binary must be statically linked.
-~~~
-
-/context clear
-  Remove the pinned context and delete the pinned-context message from the
-  conversation history. The model will not see it in subsequent turns.
-
-# RELATION TO /CLEAR
-
-/clear resets the conversation history but keeps pinned context. After
-/clear, the system prompt is re-injected, then the pinned context is
-re-injected as the first user message, so the model's next turn starts
-with both.
+/context add, /context show and /context clear were removed. Use
+/pin --text TEXT, /pins and /unpin N instead.
 
 # SEE ALSO
 
-  /clear       — reset conversation history (pinned context survives)
-  /summarize   — condense history; combine with /context add to preserve
-                 a summary across /clear
+  /pin       — keep something in front of the model for this session
+  /pins      — list what is pinned, with cost
+  /unpin     — stop keeping a pin
+  /summarize — condense history by hand
+  /help pin
+
+`
+
+	// PinHelpText is shown by /help pin and harvey --help pin.
+	// Generates harvey-pin.7.md.
+	PinHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
+% R. S. Doiel
+% {release_date}
+
+# NAME
+
+PIN — keep something in front of the model for this session
+
+# SYNOPSIS
+
+/pin --text TEXT...
+/pin EVENT_ID
+/pin kb:record:PROJECT/DR-NNNN
+/pin kb:observation:ID
+/pins
+/unpin N | PIN_ID | REF
+
+# DESCRIPTION
+
+A pin keeps something in the prompt however long the conversation gets. The
+prompt for each turn is made of the system prompt, then the pins, then
+summaries, recalled knowledge, and the most recent turns; when the
+conversation outgrows the model's prompt limit, older turns are summarised or
+left out, but pins stay. Use a pin for a constraint, a decision, or a passage
+you cannot afford to lose.
+
+A pin can be:
+
+  --text TEXT       text you type
+  EVENT_ID          an event of this session's log, such as the line you
+                    typed or a model reply: the id looks like
+                    harvey-session-20261030-1412#0042
+  kb:record:REF     a decision record from the knowledge base, read with the
+                    installed kb: kb:record:harvey/DR-0048
+  kb:observation:ID an observation: kb:observation:592
+
+A pin is recorded in the session log (a pin event, and an unpin event when it
+is removed) and appears in the manifest of every turn after it. Pinning an
+event does not remove it from the dialog, so while it is still among the recent
+turns it is in the prompt twice.
+
+# SCOPE
+
+Pins belong to the session. A new session starts with none, /clear keeps them,
+and they are not saved anywhere else. Use the knowledge base to keep something
+beyond the session.
+
+# THE CAP
+
+Together the pins may take a quarter of the prompt limit. A pin that would go
+over is refused with exit status 1, and the refusal lists the existing pins by
+cost so you can /unpin one. When the prompt limit is not known there is no cap.
+
+# SUBCOMMANDS
+
+/pins
+  List the pins: number, what was pinned, estimated tokens, share of the prompt
+  limit, and the start of the text; then the total against the cap.
+
+/unpin N
+  Remove the pin numbered N in /pins. The pin's id (the event id of the pin) or
+  the text of its first column also work.
+
+# EXIT STATUS
+
+  0   done
+  1   a pin over the cap; an event or kb row that does not exist; no log to
+      look an event up in
+  2   a wrong argument: no argument, something that is not an event id, a kb
+      identity or --text, an unpin that names no pin
+
+# SEE ALSO
+
+  /context   — show what the model sees, with pins and their share
+  /clear     — reset the conversation (pins survive)
+  /summarize — condense history by hand
+  /kb        — the knowledge base the kb: pins read from
 
 `
 
@@ -1763,7 +1834,7 @@ SUMMARIZE — condense conversation history to free context window space
 summary of the current conversation, then replaces the entire history with:
 
   1. The system prompt (re-injected automatically).
-  2. Any pinned context set with /context add.
+  2. Any pins (see /pin).
   3. A single user message containing the summary.
 
 This frees up the context window so you can continue a long session without
@@ -1795,14 +1866,14 @@ command does nothing.
 # WHAT SURVIVES SUMMARIZE
 
   System prompt    — re-injected automatically.
-  Pinned context   — re-injected as the first user message.
+  Pins             — re-injected as the first user messages.
   RAG state        — unaffected.
   Recording        — the running session continues; summary is not
                      written back to the Fountain file.
 
 # SEE ALSO
 
-  /context add TEXT   — pin a summary you compose manually
+  /pin --text TEXT    — pin a summary you compose manually
   /clear              — discard history entirely (no summary generated)
   /status             — check context window usage before and after
   /help context
@@ -3483,7 +3554,7 @@ The full conversation history is NOT included. This means:
   - Per-step token usage is constant regardless of plan length.
   - The model has no memory of earlier steps beyond the plan file.
   - For steps that need context from prior steps, inject that context
-    explicitly via /context add before running /plan next, or note it
+    explicitly via /pin --text before running /plan next, or note it
     directly in agents/plan.md.
 
 # WORKFLOW EXAMPLE

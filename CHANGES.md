@@ -43,7 +43,21 @@
   share of the prompt limit, not of the window. If the call fails, harvey says so once, leaves the history alone, does not
   try again for three turns, and the oldest turns are left out as before.
 
+- **Pins: `/pin`, `/unpin`, `/pins`.** `/pin --text TEXT` keeps text in front of the model for the rest of the session;
+  `/pin EVENT_ID` pins an event of the session log (the line you typed, a reply); `/pin kb:record:PROJECT/DR-NNNN` and
+  `kb:observation:ID` pin a knowledge-base row, read with the installed `kb`. Pins stay ahead of the dialog however long the
+  conversation gets, survive `/clear` and `/summarize`, and may take a quarter of the prompt limit together: a pin over that is
+  refused (exit 1) with the existing pins listed by cost. A pin is a `pin` event in the session log (an `unpin` event when
+  removed), and each turn's `model_request` names the pins. A pinned event is still in the dialog while it is recent, so it
+  is in the prompt twice for a while. `/pins` lists them with their cost and share of the limit. Pins belong to the session.
+
+- **`/context` shows what the model sees.** It prints the next prompt grouped as system prompt, pins, summaries, recalled
+  knowledge and dialog, with sizes and shares of the prompt limit.
+
 ### Removed
+
+- **`/context add`, `/context show` and `/context clear`.** Pin text with `/pin --text TEXT`, list with `/pins`, remove with
+  `/unpin N`. The single "pinned context" string is now a list of pins. `/context` with no argument is the new view.
 
 - **`/record` (`start`, `stop`, `status`) and `/help record`.** Every session is logged from the start, so there is nothing to
   start or stop, and the log's file name is chosen with `--record-file` or `/rename NAME`. `--record` and `--record-file` stay.

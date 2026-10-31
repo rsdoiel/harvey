@@ -107,10 +107,12 @@ func TestCmdSummarize_clientError(t *testing.T) {
 	}
 }
 
-func TestCmdSummarize_preservesPinnedContext(t *testing.T) {
+func TestCmdSummarize_preservesPins(t *testing.T) {
 	a := newTestAgent(t)
 	a.Client = &mockLLMClient{reply: "A brief summary."}
-	a.PinnedContext = "Always use Go 1.26."
+	if _, err := a.addPin("text", "Always use Go 1.26."); err != nil {
+		t.Fatal(err)
+	}
 	a.AddMessage("user", "first question")
 	a.AddMessage("assistant", "first answer")
 	a.AddMessage("user", "second question")
@@ -121,7 +123,6 @@ func TestCmdSummarize_preservesPinnedContext(t *testing.T) {
 		t.Fatalf("cmdSummarize: %v", err)
 	}
 
-	// Pinned context should be re-injected.
 	found := false
 	for _, m := range a.History {
 		if strings.Contains(m.Content, "Always use Go 1.26.") {
@@ -130,123 +131,7 @@ func TestCmdSummarize_preservesPinnedContext(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("pinned context should be preserved after summarize")
-	}
-}
-
-// ─── /context ────────────────────────────────────────────────────────────────
-
-func TestCmdContext_showEmpty(t *testing.T) {
-	a := newTestAgent(t)
-	var out strings.Builder
-	cmdContext(a, nil, &out)
-	if !strings.Contains(out.String(), "empty") {
-		t.Error("expected 'empty' message for blank pinned context")
-	}
-}
-
-func TestCmdContext_addAndShow(t *testing.T) {
-	a := newTestAgent(t)
-	var out strings.Builder
-
-	cmdContext(a, []string{"add", "Use", "Go", "1.26"}, &out)
-	if a.PinnedContext != "Use Go 1.26" {
-		t.Errorf("PinnedContext = %q, want %q", a.PinnedContext, "Use Go 1.26")
-	}
-
-	out.Reset()
-	cmdContext(a, []string{"show"}, &out)
-	if !strings.Contains(out.String(), "Use Go 1.26") {
-		t.Error("expected pinned context in show output")
-	}
-}
-
-func TestCmdContext_addAppends(t *testing.T) {
-	a := newTestAgent(t)
-	var out strings.Builder
-	cmdContext(a, []string{"add", "line one"}, &out)
-	cmdContext(a, []string{"add", "line two"}, &out)
-
-	if !strings.Contains(a.PinnedContext, "line one") || !strings.Contains(a.PinnedContext, "line two") {
-		t.Errorf("expected both lines in PinnedContext, got %q", a.PinnedContext)
-	}
-}
-
-func TestCmdContext_addInjectsIntoHistory(t *testing.T) {
-	a := newTestAgent(t)
-	var out strings.Builder
-	cmdContext(a, []string{"add", "important note"}, &out)
-
-	found := false
-	for _, m := range a.History {
-		if m.Role == "user" && strings.Contains(m.Content, "important note") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("expected pinned context message in history after add")
-	}
-}
-
-func TestCmdContext_addUpdatesExistingMessage(t *testing.T) {
-	a := newTestAgent(t)
-	var out strings.Builder
-	cmdContext(a, []string{"add", "first"}, &out)
-	cmdContext(a, []string{"add", "second"}, &out)
-
-	// Should be exactly one pinned context message in history.
-	count := 0
-	for _, m := range a.History {
-		if m.Role == "user" && strings.HasPrefix(m.Content, "[pinned context]") {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("expected 1 pinned context message, got %d", count)
-	}
-}
-
-func TestCmdContext_clear(t *testing.T) {
-	a := newTestAgent(t)
-	var out strings.Builder
-	cmdContext(a, []string{"add", "some text"}, &out)
-	out.Reset()
-	cmdContext(a, []string{"clear"}, &out)
-
-	if a.PinnedContext != "" {
-		t.Error("PinnedContext should be empty after clear")
-	}
-	if !strings.Contains(out.String(), "cleared") {
-		t.Error("expected 'cleared' message")
-	}
-	for _, m := range a.History {
-		if m.Role == "user" && strings.HasPrefix(m.Content, "[pinned context]") {
-			t.Error("pinned context message should be removed from history after clear")
-		}
-	}
-}
-
-func TestCmdContext_persistsAcrossClearHistory(t *testing.T) {
-	a := newTestAgent(t)
-	a.Config = &Config{SystemPrompt: "You are Harvey."}
-	var out strings.Builder
-	cmdContext(a, []string{"add", "target: macOS arm64"}, &out)
-
-	// Simulate several turns then /clear.
-	a.AddMessage("user", "hello")
-	a.AddMessage("assistant", "hi")
-	a.ClearHistory()
-
-	found := false
-	for _, m := range a.History {
-		if strings.Contains(m.Content, "target: macOS arm64") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("pinned context should be re-injected after ClearHistory")
+		t.Error("a pin should be kept after summarize")
 	}
 }
 

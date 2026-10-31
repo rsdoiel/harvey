@@ -457,10 +457,29 @@ func TestHandlerErrors_Context(t *testing.T) {
 		return func(a *Agent, o io.Writer) error { return cmdContext(a, args, o) }
 	}
 	runHandlerCases(t, []handlerCase{
-		{"add without text", nil, cx("add"), ClassUsage},
+		{"removed subcommand add", nil, cx("add", "note"), ClassUsage},
+		{"removed subcommand clear", nil, cx("clear"), ClassUsage},
 		{"unknown subcommand", nil, cx("bogus"), ClassUsage},
-		{"show", nil, cx("show"), ClassOK},
-		{"add", nil, cx("add", "note"), ClassOK},
+		{"view", nil, cx(), ClassOK},
+	})
+}
+
+func TestHandlerErrors_Pins(t *testing.T) {
+	pin := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdPin(a, args, o) }
+	}
+	unpin := func(args ...string) func(*Agent, io.Writer) error {
+		return func(a *Agent, o io.Writer) error { return cmdUnpin(a, args, o) }
+	}
+	runHandlerCases(t, []handlerCase{
+		{"pin: no arguments", nil, pin(), ClassUsage},
+		{"pin: --text without text", nil, pin("--text"), ClassUsage},
+		{"pin: not an id", nil, pin("somewhere"), ClassUsage},
+		{"pin: an event with no log", nil, pin("s#0001"), ClassNegative},
+		{"pin: text", nil, pin("--text", "note"), ClassOK},
+		{"unpin: no arguments", nil, unpin(), ClassUsage},
+		{"unpin: no such pin", nil, unpin("3"), ClassUsage},
+		{"pins", nil, func(a *Agent, o io.Writer) error { return cmdPins(a, nil, o) }, ClassOK},
 	})
 }
 

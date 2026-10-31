@@ -22,7 +22,7 @@ The model has no memory of the previous conversation after /clear.
 # WHAT SURVIVES /CLEAR
 
   System prompt   — re-injected from HARVEY.md automatically.
-  Pinned context  — any text set with /context add is re-injected as the
+  Pins            — anything kept with /pin is re-injected as the
                     first user message, keeping persistent constraints
                     visible to the model across topic changes.
   Recording       — the session log keeps running; the cleared conversation
@@ -39,6 +39,6 @@ The model has no memory of the previous conversation after /clear.
 
 # SEE ALSO
 
-  /context   — manage pinned context that survives /clear
+  /pin       — keep something in front of the model (pins survive /clear)
   /summarize — condense history into a summary instead of discarding it
 

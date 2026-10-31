@@ -122,7 +122,7 @@ spinner.go                  Animated spinner: braille frames, Lear messages, liv
 | `Skills` | `SkillCatalog` | Skills discovered at startup |
 | `Recorder` | `*Recorder` | Optional Fountain .spmd session log |
 | `In` | `io.Reader` | Interactive prompt source (default `os.Stdin`; injectable for tests) |
-| `PinnedContext` | `string` | Text that survives `/clear`; re-injected after system prompt |
+| `Pins` | `[]Pin` | Kept in front of the model for the session; re-injected after `/clear` |
 | `Routes` | `*RouteRegistry` | Registered remote endpoints; nil when routing not configured |
 | `ActiveSkill` | `string` | Most recently loaded skill name; `""` when none |
 | `ActiveSkillSet` | `string` | Currently loaded skill-set bundle name; `""` when none |
@@ -193,7 +193,7 @@ paths.
 ```
 startup
   └─ system message  ← HARVEY.md (after ExpandDynamicSections)
-  └─ user message    ← [pinned context] if PinnedContext != ""
+  └─ user message    ← [pinned context] messages, one per pin
   └─ user message    ← [memory context] from UnifiedMemory.Recall()
 
 each turn
@@ -215,32 +215,12 @@ each turn
   └─ AddMessage("user", "[Conversation summary]\n\n"+summary)
 ```
 
-### Pinned context (`PinnedContext`)
+### Pins
 
-`PinnedContext` is a free-form string managed by `/context add|show|clear`.
-`add` appends (newline-separated); there is always at most one `[pinned context]`
-message in `History` — subsequent `add` calls update it in-place. `ClearHistory`
-re-injects it automatically, so it survives `/summarize`.
-
-### Dynamic system prompt (`ExpandDynamicSections`)
-
-`LoadHarveyMD` reads `HARVEY.md` from the process working directory.
-`ExpandDynamicSections` is called before the system message is injected,
-replacing these markers with live data:
-
-| Marker | Replaced with |
-|---|---|
-| `<!-- @date -->` | Current date (`YYYY-MM-DD`) |
-| `<!-- @files -->` | Workspace file tree (hidden dirs excluded) |
-| `<!-- @git-status -->` | `git status --short`, or `(not a git repository)` |
-
-## Slash-command system (`commands.go`)
-
-Commands are registered in `registerCommands()` as `map[string]*Command`.
-Each `Command` has a `Handler func(a *Agent, args []string, out io.Writer) error`.
-The REPL calls `dispatch(input, out)` for any line beginning with `/`.
-
-### Workspace commands
+A pin (`sessionpins.go`) is a `Pin` in `Agent.Pins`, a `pin` event in the session log and a `[pinned context]` message in the history.
+`/pin` takes text, a session event id or a `kb:` identity; the pins may take a quarter of the prompt limit. The assembler keeps pins
+ahead of the dialog (system prompt, pins, summaries, recalled knowledge, tail). `ClearHistory` adds each pin's message again, so
+pins survive `/clear` and `/summarize`. `/unpin` removes the message (a logged rewrite) and writes an `unpin` event.
 
 | Command | Purpose |
 |---|---|
@@ -268,8 +248,9 @@ The REPL calls `dispatch(input, out)` for any line beginning with `/`.
 
 | Command | Purpose |
 |---|---|
-| `/context add TEXT...\|show\|clear` | Manage pinned context that survives `/clear` |
-| `/clear` | Reset conversation history (system prompt + pinned context survive) |
+| `/pin ...`, `/pins`, `/unpin N` | Keep something in front of the model for the session; list; remove |
+| `/context` | Show what the model sees on the next turn |
+| `/clear` | Reset conversation history (system prompt + pins survive) |
 | `/summarize` | Condense history to a summary; `/compact` is an alias |
 | `/status` | Show backend, token usage, routing, recording, memory, debug state |
 | `/hint` | Actionable suggestions (unmined sessions, empty RAG, empty KB) |

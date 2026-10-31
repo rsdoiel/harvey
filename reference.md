@@ -28,7 +28,8 @@ All Harvey commands are organized into logical categories. Each command has its 
 ### Context and Search
 
 - **[harvey-search.7.md](harvey-search.7.md)** — Regex search across workspace files
-- **[harvey-context.7.md](harvey-context.7.md)** — Manage pinned context that survives /clear
+- **[harvey-context.7.md](harvey-context.7.md)** — Show what the model sees on the next turn
+- **[harvey-pin.7.md](harvey-pin.7.md)** — Keep text, an event or a knowledge-base row in front of the model (`/pin`, `/pins`, `/unpin`)
 - **[harvey-git.7.md](harvey-git.7.md)** — Read-only git commands (status, diff, log, show, blame)
 
 ### RAG (Retrieval-Augmented Generation)

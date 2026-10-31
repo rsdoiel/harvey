@@ -277,7 +277,9 @@ list is in [harvey(1)](harvey.1.md).
 | `/hint` | Show suggestions for improving results (RAG, memory, KB) |
 | `/clear` | Reset conversation history (system prompt and pinned context are kept) |
 | `/summarize` `/compact` | Ask the model to summarize the history and replace it with the summary |
-| `/context <show\|add TEXT...\|clear>` | Manage pinned context that survives `/clear` |
+| `/context` | Show what the model sees on the next turn |
+| `/pin <EVENT_ID\|kb:TYPE:ID\|--text TEXT...>` | Keep something in front of the model for this session |
+| `/pins`, `/unpin N` | List the pins; remove one |
 | `/exit` `/quit` `/bye` | End the session |
 
 ### Models and routing
@@ -578,31 +580,38 @@ harvey > /summarize
 The summary is stored as a `[Conversation summary]` user message. The system
 prompt and any pinned context are preserved.
 
-### `/context add|show|clear`
+### `/pin`, `/pins`, `/unpin` and `/context`
 
-Manages *pinned context* — text that is automatically re-injected into the
-conversation history after every `/clear` or `/summarize`, keeping persistent
-facts in front of the model throughout the session.
+A *pin* keeps something in front of the model for the rest of the session,
+however long the conversation gets and across `/clear` and `/summarize`. A pin
+can be text you type, an event of the session log, or a knowledge-base row.
 
 ```
-harvey > /context add Target platform: macOS arm64. Prefer stdlib over third-party.
-  Pinned context updated (57 chars).
+harvey > /pin --text Target platform: macOS arm64. Prefer stdlib over third-party.
+✓ Pinned text, ~21 tokens (1%). The pins keep to 25% of the prompt limit; /pins lists them.
 
-harvey > /context add The project uses semantic versioning via codemeta.json.
-  Pinned context updated (106 chars).
+harvey > /pin kb:record:harvey/DR-0048
+✓ Pinned kb:record:harvey/DR-0048, ~310 tokens (9%). ...
 
-harvey > /context show
-  Pinned context (106 chars):
+harvey > /pins
+  1  text                         ~21 tokens (1%)  Target platform: macOS arm64. Prefer stdlib over...
+  2  kb:record:harvey/DR-0048     ~310 tokens (9%)  harvey/DR-0048 accepted ...
+  total ~331 tokens (10%) of the 850 the pins may take
 
-  Target platform: macOS arm64. Prefer stdlib over third-party.
-  The project uses semantic versioning via codemeta.json.
+harvey > /unpin 2
+✓ Unpinned kb:record:harvey/DR-0048.
 
-harvey > /context clear
-  Pinned context cleared.
+harvey > /context
+  What the model sees on the next turn (limit ~3400 tokens, from window):
+    system prompt            1 item(s)  ~212 tokens (6%)
+    pinned                   1 item(s)  ~21 tokens (0%)
+    ...
 ```
 
-Multiple `/context add` calls append to the existing pinned context, separated
-by newlines. To replace it entirely, `/context clear` then `/context add`.
+Pins belong to the session (a new session starts with none) and may take a
+quarter of the prompt limit; a pin over that is refused and the existing pins
+are listed by cost. `/context` shows what the next prompt is made of. The old
+`/context add|show|clear` were removed: use `/pin --text`, `/pins`, `/unpin`.
 
 ## Knowledge base commands
 
@@ -750,8 +759,8 @@ harvey > /write .git/COMMIT_EDITMSG
 ### Keep context focused on a long refactor
 
 ```
-harvey > /context add We are migrating from the old auth middleware to the new JWT-based one.
-harvey > /context add All session tokens must be stored as httpOnly cookies, not localStorage.
+harvey > /pin --text We are migrating from the old auth middleware to the new JWT-based one.
+harvey > /pin --text All session tokens must be stored as httpOnly cookies, not localStorage.
 harvey > /read internal/auth/middleware.go
 harvey > ...several turns of back and forth...
 harvey > /summarize

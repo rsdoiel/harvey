@@ -247,11 +247,20 @@ are also available from the shell: harvey --help TOPIC.
 
 **Context and history**
 
-/context <show|add TEXT...|clear>
-: manage pinned context that survives /clear
+/context
+: show what the model sees on the next turn
+
+/pin <EVENT_ID|kb:TYPE:ID|--text TEXT...>
+: keep text, a session event or a knowledge-base row in front of the model for this session
+
+/pins
+: list the pins with their cost and share of the prompt limit
+
+/unpin <N|PIN_ID|REF>
+: stop keeping a pin in front of the model
 
 /clear
-: reset conversation history (system prompt and pinned context survive)
+: reset conversation history (system prompt and pins survive)
 
 /summarize
 : condense history to a summary, freeing context window space (/compact is an alias)

@@ -169,7 +169,7 @@ type Agent struct {
 	ragWarned         map[string]bool // retrieval failures already reported this session, by message
 	pendingInput      []string        // lines handed back to the REPL by a prompt that was given a command instead of an answer
 	Out               io.Writer       // destination for interactive output; defaults to os.Stdout
-	PinnedContext     string          // persists across /clear; re-injected after system prompt
+	Pins              []Pin           // kept in front of the model for the session; /clear keeps them
 	Routes            *RouteRegistry  // registered remote endpoints; nil when routing not configured
 	ActiveSkill       string          // name of the most recently loaded skill; "" when none
 	ActiveSkillSet    string          // name of the currently loaded skill-set bundle; "" when none
@@ -376,8 +376,8 @@ func (a *Agent) ClearHistory() {
 	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Memory.InjectOnStart {
 		a.memoryContextPending = true
 	}
-	if a.PinnedContext != "" {
-		a.addPrompt("user", "pinned", "[pinned context]\n\n"+a.PinnedContext)
+	for _, p := range a.Pins {
+		a.addPrompt("user", "pinned", p.Message)
 	}
 	a.ActiveSkill = ""
 	a.LastRAGInfo = nil

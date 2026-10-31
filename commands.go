@@ -294,10 +294,24 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdSummarize,
 		},
 		"context": {
-			Usage:       "/context <show|add TEXT...|clear>",
-			Description: "Manage pinned context that survives /clear",
+			Usage:       "/context",
+			Description: "Show what the model sees on the next turn: pins, summaries, dialog, and what is left out",
 			Handler:     cmdContext,
-			Subcommands: []string{"show", "add", "clear"},
+		},
+		"pin": {
+			Usage:       "/pin <EVENT_ID|kb:TYPE:ID|--text TEXT...>",
+			Description: "Keep text, a session event or a knowledge-base row in front of the model for this session",
+			Handler:     cmdPin,
+		},
+		"unpin": {
+			Usage:       "/unpin <N|PIN_ID|REF>",
+			Description: "Stop keeping a pin in front of the model",
+			Handler:     cmdUnpin,
+		},
+		"pins": {
+			Usage:       "/pins",
+			Description: "List the pins with their cost and share of the prompt limit",
+			Handler:     cmdPins,
 		},
 		"audit": {
 			Usage:       "/audit <show [n]|clear|status>",
@@ -3160,63 +3174,6 @@ func cmdSummarize(a *Agent, args []string, out io.Writer) error {
 }
 
 // ─── /context ────────────────────────────────────────────────────────────────
-
-// cmdContext manages the agent's PinnedContext: text that persists across
-// /clear and is re-injected into history after the system prompt.
-func cmdContext(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 || strings.ToLower(args[0]) == "show" {
-		if a.PinnedContext == "" {
-			fmt.Fprintln(out, "  (pinned context is empty)")
-		} else {
-			fmt.Fprintf(out, "  Pinned context (%d chars):\n\n%s\n", len(a.PinnedContext), a.PinnedContext)
-		}
-		return nil
-	}
-
-	switch strings.ToLower(args[0]) {
-	case "clear":
-		a.PinnedContext = ""
-		// Remove any existing pinned context message from history.
-		before := a.historySnapshot()
-		filtered := a.History[:0]
-		for _, m := range a.History {
-			if !(m.Role == "user" && strings.HasPrefix(m.Content, "[pinned context]")) {
-				filtered = append(filtered, m)
-			}
-		}
-		a.History = filtered
-		a.logRewrite("pinned", before)
-		fmt.Fprintln(out, "  Pinned context cleared.")
-
-	case "add":
-		if len(args) < 2 {
-			return Usagef("usage: /context add TEXT...")
-		}
-		text := strings.Join(args[1:], " ")
-		if a.PinnedContext == "" {
-			a.PinnedContext = text
-		} else {
-			a.PinnedContext += "\n" + text
-		}
-		// Update or insert the pinned context message in history.
-		updated := false
-		for i, m := range a.History {
-			if m.Role == "user" && strings.HasPrefix(m.Content, "[pinned context]") {
-				a.History[i].Content = "[pinned context]\n\n" + a.PinnedContext
-				updated = true
-				break
-			}
-		}
-		if !updated {
-			a.addPrompt("user", "pinned", "[pinned context]\n\n"+a.PinnedContext)
-		}
-		fmt.Fprintf(out, "  Pinned context updated (%d chars).\n", len(a.PinnedContext))
-
-	default:
-		return Usagef("unknown context subcommand: %s  (usage: /context <show|add TEXT...|clear>)", args[0])
-	}
-	return nil
-}
 
 // ─── /session ────────────────────────────────────────────────────────────────
 

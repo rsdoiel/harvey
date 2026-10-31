@@ -17,7 +17,7 @@ SUMMARIZE — condense conversation history to free context window space
 summary of the current conversation, then replaces the entire history with:
 
   1. The system prompt (re-injected automatically).
-  2. Any pinned context set with /context add.
+  2. Any pins (see /pin).
   3. A single user message containing the summary.
 
 This frees up the context window so you can continue a long session without
@@ -56,7 +56,7 @@ command does nothing.
 
 # SEE ALSO
 
-  /context add TEXT   — pin a summary you compose manually
+  /pin --text TEXT    — pin a summary you compose manually
   /clear              — discard history entirely (no summary generated)
   /status             — check context window usage before and after
   /help context
