@@ -9,10 +9,10 @@ import (
 
 // modelEngines are the engine prefixes a model name may carry. Only these are
 // read as an engine: a slash elsewhere ("user/model:tag") is part of the name.
-var modelEngines = []string{"hailo", "ollama", "llamafile", "llamacpp"}
+var modelEngines = []string{"hailo", "ollama"}
 
 /** parseQualifiedModel splits "engine/model" into its engine and model. Only a
- * known engine prefix (hailo, ollama, llamafile, llamacpp) counts, matched
+ * known engine prefix (hailo, ollama) counts, matched
  * without regard to case; any other name, including one with a slash in it,
  * is returned whole with an empty engine.
  *
@@ -159,8 +159,6 @@ func (a *Agent) useStartupModel(name string, out io.Writer) error {
 	case "ollama":
 		a.setOllamaModel(model)
 		return nil
-	case "llamafile", "llamacpp":
-		return Usagef("-m %s: %s models are chosen with /model use, not at start", name, engine)
 	}
 	var cands []ModelSummary
 	for _, m := range a.listFamilyModels() {

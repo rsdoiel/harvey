@@ -26,8 +26,6 @@ func newTestAgent(t *testing.T) *Agent {
 	cfg := DefaultConfig()
 	cfg.Security.SafeMode = false // tests exercise command mechanics, not safe mode policy
 	// A test agent never scans this machine's ~/Models (harvey.local has llamafiles).
-	cfg.Llamafile.ModelsDir = t.TempDir()
-	cfg.LlamaCpp.ModelsDir = t.TempDir()
 	return &Agent{
 		Config:    cfg,
 		Workspace: ws,
@@ -1016,10 +1014,10 @@ func TestCmdModelShow_noBackend(t *testing.T) {
 	}
 }
 
-func TestCmdModelShow_withLlamafile(t *testing.T) {
+func TestCmdModelShow_withOllamaModel(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.Llamafile.Active = "qwen-coding"
+	cfg.Ollama.Model = "qwen-coding"
 	a := NewAgent(cfg, ws)
 	a.Client = &mockLLMClient{}
 	var buf strings.Builder
@@ -1041,33 +1039,6 @@ func TestCmdModelList_empty(t *testing.T) {
 	// Should not panic and should produce some output.
 	if buf.Len() == 0 {
 		t.Error("expected non-empty output from /model list")
-	}
-}
-
-func TestCmdModelList_withLlamafiles(t *testing.T) {
-	// Create stub .llamafile files so aggregateModels can discover them on disk.
-	dir := t.TempDir()
-	for _, name := range []string{"qwen-coding.llamafile", "phi-mini.llamafile"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("stub"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.ModelsDir = dir
-	cfg.LlamaCpp.ModelsDir = dir // no .gguf files here
-	cfg.Ollama.URL = "http://127.0.0.1:1" // unreachable — Ollama skipped
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	if err := cmdModel(a, []string{"list"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "qwen-coding") {
-		t.Errorf("expected qwen-coding in list output, got: %s", out)
-	}
-	if !strings.Contains(out, "phi-mini") {
-		t.Errorf("expected phi-mini in list output, got: %s", out)
 	}
 }
 
@@ -1320,60 +1291,13 @@ func TestRagShow_noActive(t *testing.T) {
 
 func TestCmdModelUse_noArg_noModels(t *testing.T) {
 	a := newTestAgent(t)
-	// Point all backends at empty/unreachable sources so no models are found.
-	emptyDir := t.TempDir()
-	a.Config.Llamafile.ModelsDir = emptyDir
-	a.Config.LlamaCpp.ModelsDir = emptyDir
+	// Point the backend at an unreachable source so no models are found.
 	a.Config.Ollama.URL = "http://127.0.0.1:1" // unreachable — ProbeOllama returns false
 	a.In = strings.NewReader("\n")
 	var buf strings.Builder
 	err := cmdModel(a, []string{"use"}, &buf)
 	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no models found") {
 		t.Errorf("expected a negative result naming 'no models found', got: %v", err)
-	}
-}
-
-func TestCmdModelUse_noArg_showsPicker(t *testing.T) {
-	a := newTestAgent(t)
-	dir := t.TempDir()
-	// Create actual .llamafile files so the disk scanner finds them.
-	for _, name := range []string{"qwen-coder.llamafile", "gemma4.llamafile"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("placeholder"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	a.Config.Llamafile.ModelsDir = dir
-	a.Config.LlamaCpp.ModelsDir = dir // no .gguf files here
-	// Simulate user entering "0" → cancellation without model switch.
-	a.In = strings.NewReader("0\n")
-	var buf strings.Builder
-	if err := cmdModel(a, []string{"use"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "qwen-coder") {
-		t.Errorf("expected model name qwen-coder in picker output, got: %s", out)
-	}
-	if !strings.Contains(out, "gemma4") {
-		t.Errorf("expected model name gemma4 in picker output, got: %s", out)
-	}
-}
-
-func TestCmdModelUse_noArg_selectsModel(t *testing.T) {
-	a := newTestAgent(t)
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "qwen-coder.llamafile"), []byte("placeholder"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	a.Config.Llamafile.ModelsDir = dir
-	a.Config.LlamaCpp.ModelsDir = dir
-	// Select item 1; picker will show qwen-coder, switch will fail (not a real binary).
-	a.In = strings.NewReader("1\n\n\n") // model select + skip alias prompt + skip tags
-	var buf strings.Builder
-	cmdModel(a, []string{"use"}, &buf)
-	out := buf.String()
-	if !strings.Contains(out, "qwen-coder") {
-		t.Errorf("expected selected model name in output, got: %s", out)
 	}
 }
 

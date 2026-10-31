@@ -50,8 +50,7 @@ func main() {
 // startState is what the command line builds up before a session starts.
 type startState struct {
 	cfg             *harvey.Config
-	workDirExplicit bool   // -w/--workdir was given, so the cwd must lie inside it
-	llamafile       string // the path given to --llamafile, checked after parsing
+	workDirExplicit bool // -w/--workdir was given, so the cwd must lie inside it
 }
 
 // flagSpec is one option of harvey. The table below is the single list of
@@ -73,28 +72,6 @@ var flagSpecs = []flagSpec{
 	{[]string{"--ollama"}, true, func(st *startState, v string) error {
 		st.cfg.Ollama.URL = v
 		st.cfg.Ollama.URLExplicit = true
-		return nil
-	}},
-	{[]string{"--llamafile"}, true, func(st *startState, v string) error {
-		// Session-only: create a synthetic registry entry without persisting.
-		// The file itself is checked once the whole command line has parsed, so
-		// a usage mistake later in it is reported as one.
-		st.llamafile = v
-		st.cfg.Llamafile.Models = append(st.cfg.Llamafile.Models, harvey.LlamafileEntry{
-			Name: harvey.LlamafileModelNameFromPath(v),
-			Path: v,
-		})
-		st.cfg.Llamafile.Active = harvey.LlamafileModelNameFromPath(v)
-		return nil
-	}},
-	{[]string{"--llamafile-url"}, true, func(st *startState, v string) error {
-		st.cfg.Llamafile.URL = v
-		st.cfg.MarkExplicit("llamafile.url")
-		return nil
-	}},
-	{[]string{"--llamafile-dir"}, true, func(st *startState, v string) error {
-		st.cfg.Llamafile.ModelsDir = v
-		st.cfg.MarkExplicit("llamafile.models_dir")
 		return nil
 	}},
 	{[]string{"-w", "--workdir"}, true, func(st *startState, v string) error {
@@ -284,13 +261,6 @@ func runArgs(args []string, out, errOut io.Writer) error {
 		}
 	}
 
-	applyEnvironment(cfg)
-
-	if st.llamafile != "" {
-		if err := harvey.CheckLlamafileInput(st.llamafile); err != nil {
-			return err
-		}
-	}
 	if err := checkWorkDir(cfg.WorkDir, st.workDirExplicit); err != nil {
 		return err
 	}
@@ -347,14 +317,4 @@ func runCompletion(args []string, appName string, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "Installed %s completion: %s\n", strings.ToLower(shell), path)
 	return nil
-}
-
-// applyEnvironment applies the environment variables that set configuration.
-// HARVEY_LLAMAFILE_DIR overrides llamafile.models_dir in harvey.yaml and is
-// itself overridden by --llamafile-dir (already applied by now).
-func applyEnvironment(cfg *harvey.Config) {
-	if v := os.Getenv("HARVEY_LLAMAFILE_DIR"); v != "" && !cfg.IsExplicit("llamafile.models_dir") {
-		cfg.Llamafile.ModelsDir = v
-		cfg.MarkExplicit("llamafile.models_dir")
-	}
 }

@@ -46,10 +46,6 @@ func b2s(b bool) string {
 }
 
 var precedenceCases = []precedenceCase{
-	{"--llamafile-url", "http://flag:1", "llamafile:\n  url: http://yaml:2\n",
-		func(c *harvey.Config) (string, string) { return c.Llamafile.URL, "http://flag:1" }},
-	{"--llamafile-dir", "/flag/models", "llamafile:\n  models_dir: /yaml/models\n",
-		func(c *harvey.Config) (string, string) { return c.Llamafile.ModelsDir, "/flag/models" }},
 	{"-r", "", "session:\n  auto_record: false\n",
 		func(c *harvey.Config) (string, string) { return b2s(c.Session.AutoRecord), "true" }},
 	{"--record-file", "/flag/rec.spmd", "session:\n  record_path: /yaml/rec.spmd\n",
@@ -88,9 +84,9 @@ func TestFlags_CommandLineBeatsHarveyYAML(t *testing.T) {
 // Without the flag the file still sets them.
 func TestFlags_HarveyYAMLStillAppliesWithoutTheFlag(t *testing.T) {
 	cfg := harvey.DefaultConfig()
-	loadWithYAML(t, cfg, "llamafile:\n  url: http://yaml:2\n  models_dir: /yaml/models\nsession:\n  record_path: /yaml/rec.spmd\n")
-	if cfg.Llamafile.URL != "http://yaml:2" || cfg.Llamafile.ModelsDir != "/yaml/models" || cfg.Session.RecordPath != "/yaml/rec.spmd" {
-		t.Errorf("yaml values not applied: %+v %+v", cfg.Llamafile, cfg.Session)
+	loadWithYAML(t, cfg, "session:\n  record_path: /yaml/rec.spmd\n")
+	if cfg.Session.RecordPath != "/yaml/rec.spmd" {
+		t.Errorf("yaml values not applied: %+v", cfg.Session)
 	}
 }
 
@@ -99,9 +95,8 @@ func TestFlags_HarveyYAMLStillAppliesWithoutTheFlag(t *testing.T) {
 // the reason it cannot collide.
 var flagsWithoutYAMLCounterpart = map[string]string{
 	"-m": "covered by TestFlags_OllamaAndModelAreMarkedExplicit", "--model": "same as -m",
-	"--ollama":    "covered by TestFlags_OllamaAndModelAreMarkedExplicit",
-	"--llamafile": "adds a session-only registry entry; harvey.yaml models are appended after it and llamafile.active never auto-selects",
-	"-w":          "the file is found through the workspace, so there is no yaml counterpart", "--workdir": "same as -w",
+	"--ollama": "covered by TestFlags_OllamaAndModelAreMarkedExplicit",
+	"-w":       "the file is found through the workspace, so there is no yaml counterpart", "--workdir": "same as -w",
 	"--record": "same as -r", "--debug": "there is no debug key in harvey.yaml",
 }
 
@@ -121,42 +116,4 @@ func TestFlags_EveryFlagIsCheckedAgainstHarveyYAML(t *testing.T) {
 			t.Errorf("flag %v is neither a precedence case nor listed as having no harvey.yaml counterpart", f.names)
 		}
 	}
-}
-
-// HARVEY_LLAMAFILE_DIR beats llamafile.models_dir (CONFIGURATION.md) and is
-// itself beaten by --llamafile-dir.
-func TestEnv_LlamafileDirBeatsYAMLAndLosesToTheFlag(t *testing.T) {
-	t.Run("env beats yaml", func(t *testing.T) {
-		t.Setenv("HARVEY_LLAMAFILE_DIR", "/env/models")
-		cfg := harvey.DefaultConfig()
-		applyEnvironment(cfg)
-		loadWithYAML(t, cfg, "llamafile:\n  models_dir: /yaml/models\n")
-		if cfg.Llamafile.ModelsDir != "/env/models" {
-			t.Errorf("ModelsDir = %q, want /env/models", cfg.Llamafile.ModelsDir)
-		}
-	})
-	t.Run("flag beats env", func(t *testing.T) {
-		t.Setenv("HARVEY_LLAMAFILE_DIR", "/env/models")
-		st := &startState{cfg: harvey.DefaultConfig()}
-		if err := findFlag("--llamafile-dir").apply(st, "/flag/models"); err != nil {
-			t.Fatal(err)
-		}
-		applyEnvironment(st.cfg)
-		loadWithYAML(t, st.cfg, "llamafile:\n  models_dir: /yaml/models\n")
-		if st.cfg.Llamafile.ModelsDir != "/flag/models" {
-			t.Errorf("ModelsDir = %q, want /flag/models", st.cfg.Llamafile.ModelsDir)
-		}
-	})
-	t.Run("flag equal to the default still beats env", func(t *testing.T) {
-		t.Setenv("HARVEY_LLAMAFILE_DIR", "/env/models")
-		st := &startState{cfg: harvey.DefaultConfig()}
-		def := harvey.DefaultLlamafileModelsDir()
-		if err := findFlag("--llamafile-dir").apply(st, def); err != nil {
-			t.Fatal(err)
-		}
-		applyEnvironment(st.cfg)
-		if st.cfg.Llamafile.ModelsDir != def {
-			t.Errorf("ModelsDir = %q, want the flag's %q", st.cfg.Llamafile.ModelsDir, def)
-		}
-	})
 }

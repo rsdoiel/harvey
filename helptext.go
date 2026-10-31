@@ -24,14 +24,14 @@ It was inspired by Claude Code but designed for local language model systems
 running on small computers like a Raspberry Pi. Language model systems are
 commonly called "AI models" or "AI"; {app_name} treats them as a programmable
 interface for deliberate, documented work. {app_name} supports language model
-systems via llamafile (self-contained executables from Mozilla) and Ollama,
+systems via Ollama and hailo-ollama,
 and scales from resource-constrained hardware to more capable computers.
 {app_name} can be compiled to run on any system supported by Go. The project
 distributes executables for Linux, macOS, and Windows on x86_64 and aarch64.
 
 {app_name} looks for HARVEY.md in the current directory and uses it as a
-system prompt. It connects to a local language model system — llamafile or
-Ollama — and opens an interactive natural language programming session.
+system prompt. It connects to a local language model system — Ollama or
+hailo-ollama — and opens an interactive natural language programming session.
 Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI) can be
 added as named routes via /route add.
 
@@ -75,15 +75,6 @@ completion SHELL [-install]
 
 --ollama URL
 : Ollama base URL (default: http://localhost:11434)
-
---llamafile PATH
-: connect to PATH for this session (not persisted to harvey.yaml)
-
---llamafile-url URL
-: override the llamafile API base URL (default: http://localhost:8080)
-
---llamafile-dir PATH
-: override the llamafile discovery directory (default: ~/Models)
 
 -w, --workdir DIR
 : workspace directory (default: current directory)
@@ -156,12 +147,12 @@ went wrong from the number:
 
 66
 : A named input is missing or is the wrong kind of thing: the -w directory, the
-  --continue or --replay file, the init source, or the --llamafile file. These
+  --continue or --replay file, or the init source. These
   are checked before a model is started.
 
 69
 : A service cannot be reached: no model is connected and nobody is at a
-  terminal to choose one, or a llamafile will not start.
+  terminal to choose one.
 
 70
 : An internal error, or one nothing classified. Please report it.
@@ -239,9 +230,8 @@ are also available from the shell: harvey --help TOPIC.
 **Model and backend**
 
 /model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|alias ...]
-: unified model management across llamafile, Ollama, and llama.cpp backends;
-  place .llamafile or .gguf files in ~/Models/ — Harvey discovers them automatically;
-  Ollama models are listed live when Ollama is running; use ollama CLI for pull/rm
+: unified model management across Ollama and hailo-ollama;
+  models are listed live when the server is running; use the ollama CLI for pull/rm
 
 /workspace <status|init [PATH]>
 : show workspace root, alias count and profile; seed aliases from another workspace
@@ -405,19 +395,11 @@ Actions:
 	FirstRunWizardText = `
 Harvey couldn't find a model to connect to.
 
-To get started with a local model (no internet required after download):
+To get started, install Ollama (https://ollama.com), start it, and pull a model:
 
-  1. Download a llamafile from:
-       https://huggingface.co/Mozilla/llamafile-models
-     Recommended:   Qwen2.5-Coder-7B-Q5_K_S.llamafile  (~5 GB)
-     Low-memory:    Phi-3.5-mini-instruct-Q4_K_M.llamafile  (~2 GB)
-
-  2. Place it in ~/Models/ (or any directory).
-
-  3. Run Harvey again — it will find the file automatically.
-
-Alternatively, install Ollama (https://ollama.com) and pull a model:
   ollama pull qwen2.5-coder:7b
+
+Then run Harvey again, or use /model use inside it.
 
 `
 
@@ -441,8 +423,8 @@ MODEL — backend-agnostic model management and inline switching
 
 # DESCRIPTION
 
-The /model command manages models across all backends — llamafile, Ollama,
-and llama.cpp — using a single consistent interface.
+The /model command manages models across Ollama and hailo-ollama using a
+single consistent interface.
 
 The @NAME prefix switches the active model inline, within the current prompt.
 @TAG resolves via purpose tags: if an alias is tagged "code", @code switches
@@ -457,7 +439,7 @@ the scene.
     details for that model.
 
   /model list
-    List all registered models across llamafile, Ollama, and llama.cpp,
+    List all registered models across Ollama and hailo-ollama,
     marking the active entry with an arrow. Purpose tags are shown where
     defined.
 
@@ -541,7 +523,7 @@ the scene.
   unknown.
 
   /model stop
-    Stop the active llamafile or llama.cpp server if Harvey started it.
+    Stop the active model server if Harvey started it.
     Backends not started by Harvey are left running.
 
 # AT-MENTION SWITCHING
@@ -562,7 +544,7 @@ If NAME matches none of the above, the @ prefix is treated as part of the
 prompt and no switch occurs. History is never cleared on a switch.
 
 Switch notes are written to the session file:
-  [[model switch: phi-mini (llamafile) at 2026-06-20 14:32:11]]
+  [[model switch: phi-mini (ollama) at 2026-06-20 14:32:11]]
 
 # MODEL ALIASES
 
@@ -674,8 +656,7 @@ model_aliases:
     List all defined aliases with their full model names and purpose tags.
 
   /model alias add ALIAS FULLNAME [--tags TAG,TAG,...]
-    Define a new alias. FULLNAME is an Ollama model identifier, a registered
-    llamafile name, or a llama.cpp model path. Optional --tags lists purpose
+    Define a new alias. FULLNAME is an Ollama or hailo-ollama model identifier. Optional --tags lists purpose
     labels that enable @TAG routing (comma-separated, no spaces).
     "add" is the preferred form; "set" is also accepted for compatibility.
 
@@ -716,7 +697,7 @@ ROUTING
 # DESCRIPTION
 
 Harvey can dispatch individual prompts to remote LLM endpoints — other Ollama
-instances on a Pi cluster, Llamafile servers, or cloud providers — using
+instances on a Pi cluster or cloud providers — using
 @mention syntax. Prefix any prompt with @name to send it to the named endpoint instead
 of the local model. The reply is streamed back and lands in the local
 conversation history so future turns retain full context.
@@ -738,8 +719,6 @@ starting point and will be tuned over time.
 Local providers (no API key):
 
   ollama://host:port    A remote Ollama server (also accepts http:// and https://).
-  llamafile://host:port A Llamafile binary server (OpenAI-compatible, port 8080).
-  llamacpp://host:port  A llama.cpp server (OpenAI-compatible, port 8080).
 
 Cloud providers (API key read from environment):
 
@@ -752,12 +731,6 @@ Cloud providers (API key read from environment):
 # EXAMPLE SESSION
 
 ~~~
-  # Register a local llamafile server (running on default port 8080)
-  /route add lf llamafile://localhost:8080 bonsai-8b
-
-  # Register a local llama.cpp server (llama-server on port 8081)
-  /route add cpp llamacpp://localhost:8081 phi4-Q4_K_M
-
   # Register a Pi cluster node running Ollama
   /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
 
@@ -766,12 +739,6 @@ Cloud providers (API key read from environment):
 
   # Enable routing
   /route on
-
-  # Send a task to the llamafile server
-  @lf summarise this function in one sentence
-
-  # Send a task to the llama.cpp server
-  @cpp write a unit test for the Parse function
 
   # Run a quick task on a Pi node
   @pi2 what does this error mean?
@@ -787,8 +754,6 @@ Cloud providers (API key read from environment):
 
 ~~~
   /route add NAME URL [MODEL]        register a remote endpoint
-                                       @lf     llamafile://localhost:8080 bonsai-8b
-                                       @cpp    llamacpp://localhost:8081 phi4-Q4_K_M
                                        @pi2    ollama://192.168.1.12:11434 llama3.1:8b
                                        @claude anthropic:// claude-sonnet-4-20250514
   /route remove NAME                 unregister an endpoint (alias: rm)
@@ -3818,7 +3783,7 @@ Detail view for a specific model:
 
 # SEE ALSO
 
-  /model list         — models across llamafile, llama.cpp, and Ollama
+  /model list         — models across Ollama and hailo-ollama
   /model use NAME     — switch models (an Ollama model is probed on first alias)
   ollama show MODEL   — raw Modelfile, run in a shell
   /help model
@@ -3844,7 +3809,7 @@ Detail view for a specific model:
 # DESCRIPTION
 
 {app_name} is an LLM evaluation harness for Harvey. It runs a corpus of prompts
-against one or more Ollama models (or a llamafile binary) and produces a
+against one or more Ollama models and produces a
 Markdown report plus a JSON results file for human review and automated
 checking.
 
@@ -3880,21 +3845,8 @@ failure mode. Mutually exclusive with -rag-compare.
 -category NAME
 : Run only prompts in the named category. Omit to run all categories.
 
--llamafile PATH
-: Path to a llamafile binary to evaluate. {app_name} starts the llamafile
-  server automatically before the run and stops it when finished.
-  The model name is derived from the binary filename.
-  Mutually exclusive with -llamacpp.
-
--llamacpp URL
-: Base URL of a running llama-server instance, e.g. http://localhost:8081.
-  The user is responsible for starting and stopping llama-server.
-  If -models is not set, {app_name} queries GET /v1/models to discover
-  the loaded model. Mutually exclusive with -llamafile.
-
 -ollama URL
-: Base URL of the Ollama server (also used for RAG embeddings when
-  -rag-db is set with --llamafile or --llamacpp).
+: Base URL of the Ollama server (also used for RAG embeddings).
   Default: http://localhost:11434
 
 -output PATH
@@ -3955,18 +3907,18 @@ thing that failed, using the workspace's exit codes:
 2
 : The command line is wrong: an unknown option, an option without its value, a
   surplus argument, or options that conflict (-rag-compare without -rag-db,
-  -guide-compare without -guide-file, -llamafile with -llamacpp).
+  -guide-compare without -guide-file).
 
 65
 : A file {app_name} read is wrong: a corpus that will not parse or has no
   prompts, or a RAG store it cannot use.
 
 66
-: A named input is missing: the -corpus, -guide-file or -llamafile file.
+: A named input is missing: the -corpus or -guide-file file.
 
 69
-: A service cannot be reached: Ollama or llama-server while listing models, a
-  llamafile that will not start, or a model call that failed. The run still
+: A service cannot be reached: Ollama while listing models, or a model call
+  that failed. The run still
   finishes, writes its report, and says how many calls failed.
 
 70
@@ -4010,12 +3962,6 @@ Run only the go-crosswalk category against a specific model:
 
 ~~~
   assay -models qwen2.5-coder:7b -category go-crosswalk
-~~~
-
-Evaluate a llamafile binary:
-
-~~~
-  assay -llamafile ~/models/qwen2.5-coder-7b.llamafile
 ~~~
 
 Run with RAG context injection and comparison:

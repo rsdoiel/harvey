@@ -75,7 +75,7 @@ func defaultParams(chunks []DocumentChunk) ChunkAnalysisParams {
 // really a single root-cause problem. A preflight reachability check must
 // now fail immediately, before any chunk is processed at all.
 func TestRunChunkedAnalysis_FailsFastWhenBackendUnreachable(t *testing.T) {
-	client := newLlamafileLLMClient("http://127.0.0.1:1/v1", "test-model", 0)
+	client := newOllamaLLMClient("http://127.0.0.1:1", "test-model", 0)
 	params := defaultParams(strChunks("chunk one content", "chunk two content"))
 
 	var progress strings.Builder

@@ -1,5 +1,5 @@
 // Package harvey — backend.go defines the ManagedBackend abstraction shared
-// by OllamaBackend, LlamafileBackend, and LlamaCppBackend.
+// by OllamaBackend.
 package harvey
 
 import (
@@ -16,12 +16,11 @@ import (
 const backendPIDFile = ".harvey-backend.pid"
 
 /** ManagedBackend represents a local inference backend Harvey can start,
- * stop, and query. It is implemented by OllamaBackend, LlamafileBackend,
- * and LlamaCppBackend. All methods must be safe to call when the backend
+ * stop, and query. It is implemented by OllamaBackend. All methods must be safe to call when the backend
  * is not running; Start and Stop are idempotent.
  *
  * Methods:
- *   Name()            — backend identifier: "ollama", "llamafile", or "llamacpp".
+ *   Name()            — backend identifier: "ollama".
  *   BaseURL()         — HTTP base URL of the server, e.g. "http://127.0.0.1:11434".
  *   ActiveModel()     — name of the currently loaded model, or "" when idle.
  *   IsRunning()       — true when the server is reachable via HTTP probe.
@@ -52,14 +51,13 @@ type ManagedBackend interface {
 }
 
 /** ModelSummary is a backend-neutral description of a locally available model.
- * OllamaBackend.ListModels returns Ollama models; LlamafileBackend and
- * LlamaCppBackend return filesystem-scanned entries. The Engine field
+ * OllamaBackend.ListModels returns Ollama models. The Engine field
  * distinguishes the source.
  *
  * Fields:
  *   Name      (string)    — display or alias name, e.g. "phi4-Q4_K_M".
  *   Path      (string)    — absolute filesystem path; empty for Ollama models.
- *   Engine    (string)    — "ollama", "llamafile", or "llamacpp".
+ *   Engine    (string)    — "ollama" or "hailo".
  *   SizeBytes (int64)     — model weight size in bytes; 0 if unknown.
  *   Modified  (time.Time) — last modified time of the file; zero if unknown.
  *
@@ -94,13 +92,13 @@ func (m ModelSummary) EngineLabel() string {
  * the next session can re-adopt or clean up the prior server.
  *
  * Fields:
- *   Backend (string) — backend name: "ollama", "llamafile", or "llamacpp".
+ *   Backend (string) — backend name: "ollama".
  *   PID     (int)    — OS process ID of the server process.
  *   Model   (string) — model name or path the server was started with.
  *   URL     (string) — base HTTP URL the server is listening on.
  *
  * Example:
- *   p := BackendPID{Backend: "llamafile", PID: 12345, Model: "phi4", URL: "http://127.0.0.1:8080"}
+ *   p := BackendPID{Backend: "ollama", PID: 12345, Model: "phi4", URL: "http://127.0.0.1:11434"}
  *   _ = writePIDFile("/workspace/agents", p)
  */
 type BackendPID struct {

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,66 +22,6 @@ func TestNewAssayClient_ReturnsNonNilClient(t *testing.T) {
 		t.Fatal("newAssayClient returned nil")
 	}
 	_ = client.Close()
-}
-
-// TestListOpenAIModels_ParsesModelIDs verifies that listOpenAIModels extracts
-// model IDs from the /v1/models JSON response.
-func TestListOpenAIModels_ParsesModelIDs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/models" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"object":"list","data":[{"id":"phi4-Q4_K_M"},{"id":"llama3.2:3b"}]}`)
-	}))
-	defer srv.Close()
-
-	models, err := listOpenAIModels(srv.URL)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(models) != 2 {
-		t.Fatalf("expected 2 models, got %d: %v", len(models), models)
-	}
-	if models[0] != "phi4-Q4_K_M" {
-		t.Errorf("expected phi4-Q4_K_M, got %s", models[0])
-	}
-	if models[1] != "llama3.2:3b" {
-		t.Errorf("expected llama3.2:3b, got %s", models[1])
-	}
-}
-
-// TestListOpenAIModels_SkipsEmptyIDs verifies that listOpenAIModels omits
-// entries with an empty model ID.
-func TestListOpenAIModels_SkipsEmptyIDs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"object":"list","data":[{"id":"phi4"},{"id":""}]}`)
-	}))
-	defer srv.Close()
-
-	models, err := listOpenAIModels(srv.URL)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(models) != 1 || models[0] != "phi4" {
-		t.Errorf("expected [phi4], got %v", models)
-	}
-}
-
-// TestListOpenAIModels_ErrorOnBadJSON verifies that listOpenAIModels returns
-// an error when the server responds with malformed JSON.
-func TestListOpenAIModels_ErrorOnBadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `not json`)
-	}))
-	defer srv.Close()
-
-	_, err := listOpenAIModels(srv.URL)
-	if err == nil {
-		t.Fatal("expected error for bad JSON, got nil")
-	}
 }
 
 // ─── buildGuideMessages ───────────────────────────────────────────────────────
@@ -218,8 +157,6 @@ func TestMainRun_UsageErrorsExitTwoWithNothingOnStdout(t *testing.T) {
 		{"--guide-compare needs --guide-file", []string{"--guide-compare"}, "--guide-compare requires --guide-file"},
 		{"the two compares conflict", []string{"--rag-compare", "--rag-db", "x", "--guide-compare", "--guide-file", "y"},
 			"--guide-compare and --rag-compare are mutually exclusive"},
-		{"the two local backends conflict", []string{"--llamafile", "x", "--llamacpp", "http://x"},
-			"--llamafile and --llamacpp are mutually exclusive"},
 	} {
 		code, out, errOut := runAssay(t, tc.args...)
 		if code != 2 {
@@ -284,8 +221,8 @@ func TestMainRun_JSONFlagDoesNotAffectSuccess(t *testing.T) {
 // and the bulk rule: a run does everything, then exits with the class of the
 // first failed step. Failing automatic checks are results, not failures.
 
-// fakeModelServer speaks the parts of an OpenAI-compatible server assay uses
-// (/v1/chat/completions, streaming or not) and Ollama's /api/tags. A chat
+// fakeModelServer speaks the parts of an Ollama server assay uses
+// (/api/chat and /api/tags). A chat
 // request for a model in fail gets an HTTP 500.
 func fakeModelServer(t *testing.T, tags []string, fail ...string) *httptest.Server {
 	t.Helper()
@@ -297,10 +234,10 @@ func fakeModelServer(t *testing.T, tags []string, fail ...string) *httptest.Serv
 				models = append(models, map[string]string{"name": n})
 			}
 			json.NewEncoder(w).Encode(map[string]any{"models": models})
-		case "/v1/chat/completions":
+		case "/api/chat":
 			var req struct {
 				Model  string `json:"model"`
-				Stream bool   `json:"stream"`
+				Stream *bool  `json:"stream"`
 			}
 			json.NewDecoder(r.Body).Decode(&req)
 			for _, f := range fail {
@@ -309,18 +246,10 @@ func fakeModelServer(t *testing.T, tags []string, fail ...string) *httptest.Serv
 					return
 				}
 			}
-			if req.Stream {
-				w.Header().Set("Content-Type", "text/event-stream")
-				fmt.Fprint(w, `data: {"id":"1","object":"chat.completion.chunk","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"say hi"},"finish_reason":null}]}`+"\n\n")
-				fmt.Fprint(w, `data: {"id":"1","object":"chat.completion.chunk","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n")
-				fmt.Fprint(w, "data: [DONE]\n\n")
-				return
-			}
-			json.NewEncoder(w).Encode(map[string]any{
-				"id": "1", "object": "chat.completion", "model": req.Model,
-				"choices": []map[string]any{{"index": 0, "finish_reason": "stop",
-					"message": map[string]string{"role": "assistant", "content": "say hi"}}},
-			})
+			reply := map[string]any{"model": req.Model, "created_at": "2026-10-30T00:00:00Z",
+				"message": map[string]string{"role": "assistant", "content": "say hi"}, "done": true, "done_reason": "stop"}
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			json.NewEncoder(w).Encode(reply)
 		default:
 			http.NotFound(w, r)
 		}
@@ -379,10 +308,7 @@ func TestMainRun_InputsAndAvailabilityByClass(t *testing.T) {
 		{"corpus with no prompts", []string{"--corpus", empty, "--models", "m", "--ollama", up.URL}, 65},
 		{"category matches nothing", []string{"--corpus", corpus, "--models", "m", "--category", "nosuch", "--ollama", up.URL}, 1},
 		{"guide file missing", []string{"--corpus", corpus, "--models", "m", "--guide-file", filepath.Join(dir, "nope"), "--ollama", up.URL}, 66},
-		{"llamafile missing", []string{"--corpus", corpus, "--llamafile", filepath.Join(dir, "nope.llamafile")}, 66},
-		{"llamafile of the wrong kind", []string{"--corpus", corpus, "--llamafile", file}, 66},
 		{"ollama unreachable while listing models", []string{"--corpus", corpus, "--ollama", closed}, 69},
-		{"llama.cpp unreachable while listing models", []string{"--corpus", corpus, "--llamacpp", closed}, 69},
 		{"ollama up with no models", []string{"--corpus", corpus, "--ollama", up.URL}, 1},
 		{"output directory cannot be created", []string{"--corpus", corpus, "--models", "m", "--ollama", up.URL, "--output", filepath.Join(file, "sub")}, 73},
 	} {

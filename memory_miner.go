@@ -792,7 +792,7 @@ type modelSegment struct {
  *   ok      (bool)   — true when the line matches the expected format.
  *
  * Example:
- *   name, backend, ok := parseModelSwitchNote("[[model switch: phi-mini (llamafile) at 2026-06-20 14:32:11]]")
+ *   name, backend, ok := parseModelSwitchNote("[[model switch: phi-mini (ollama) at 2026-06-20 14:32:11]]")
  */
 func parseModelSwitchNote(line string) (name, backend string, ok bool) {
 	const prefix = "[[model switch: "

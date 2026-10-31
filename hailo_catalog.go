@@ -158,8 +158,6 @@ func cmdModelPull(a *Agent, args []string, out io.Writer) error {
 	switch engine {
 	case "ollama":
 		return Usagef("Ollama models are pulled with the ollama CLI: ! ollama pull %s", model)
-	case "llamafile", "llamacpp":
-		return Usagef("%s models are files you download; /model pull is for the Hailo catalog", engine)
 	}
 
 	f := a.ollamaFamily()

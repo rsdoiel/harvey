@@ -104,8 +104,6 @@ func SaveRouteConfig(ws *Workspace, rr *RouteRegistry) error {
  *
  * Local providers (no API key):
  *   ollama://host:port, http://, https://  → KindOllama
- *   llamafile://host:port                  → KindLlamafile
- *   llamacpp://host:port                   → KindLlamaCpp
  *
  * Cloud providers (API key from environment):
  *   anthropic://  → KindAnthropic  (ANTHROPIC_API_KEY)
@@ -133,10 +131,8 @@ func InferRouteKind(rawURL string) (RouteKind, error) {
 		strings.HasPrefix(rawURL, "http://"),
 		strings.HasPrefix(rawURL, "https://"):
 		return KindOllama, nil
-	case strings.HasPrefix(rawURL, "llamafile://"):
-		return KindLlamafile, nil
-	case strings.HasPrefix(rawURL, "llamacpp://"):
-		return KindLlamaCpp, nil
+	case strings.HasPrefix(rawURL, "llamafile://"), strings.HasPrefix(rawURL, "llamacpp://"):
+		return "", fmt.Errorf("the llamafile:// and llamacpp:// route kinds were removed (workspace DR-0033); use ollama://host:port")
 	case strings.HasPrefix(rawURL, "anthropic://"):
 		return KindAnthropic, nil
 	case strings.HasPrefix(rawURL, "deepseek://"):
@@ -150,7 +146,7 @@ func InferRouteKind(rawURL string) (RouteKind, error) {
 	default:
 		return "", fmt.Errorf(
 			"unrecognised URL scheme in %q\n"+
-				"  Local:  ollama://host:port  llamafile://host:port  llamacpp://host:port\n"+
+				"  Local:  ollama://host:port\n"+
 				"  Cloud:  anthropic://  deepseek://  gemini://  mistral://  openai://",
 			rawURL,
 		)

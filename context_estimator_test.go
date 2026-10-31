@@ -60,7 +60,7 @@ func TestContextUsage_ollamaExactPath(t *testing.T) {
 
 // TestContextUsage_ollamaUsesEffectiveContextLimit locks in the 2026-07-12
 // decision: the Ollama path must derive limit from effectiveContextLimit()
-// (which also checks llamafile-entry/ModelCache fallbacks), not read
+// (which also checks the ModelCache fallback), not read
 // a.Config.Ollama.ContextLength directly — so it agrees with /status and the
 // llamafile path on what "the limit" is, even when Ollama.ContextLength is
 // left unset in harvey.yaml.
@@ -70,11 +70,10 @@ func TestContextUsage_ollamaUsesEffectiveContextLimit(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	a := newTestAgent(t)
+	a, mc := newTestAgentWithCache(t, "")
 	a.Config.Ollama.ContextLength = 0 // deliberately unset
-	a.Config.Llamafile.Active = "probed-entry"
-	a.Config.Llamafile.Models = []LlamafileEntry{{Name: "probed-entry", ContextLength: 9999}}
 	a.Client = NewAnyLLMClient(nil, "llama3", "ollama", srv.URL)
+	_ = mc.Set(&ModelCapability{Name: a.modelKey("llama3"), ContextLength: 9999})
 
 	_, limit, _ := a.contextUsage()
 

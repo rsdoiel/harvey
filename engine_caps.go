@@ -52,7 +52,7 @@ func capsForEngine(engine string) (EngineCaps, bool) {
  * server Harvey was not told was Hailo), else the backend's name, else "".
  *
  * Returns:
- *   string — e.g. "hailo", "ollama", "llamacpp"; "" when nothing is active.
+ *   string — e.g. "hailo", "ollama"; "" when nothing is active.
  *
  * Example:
  *   if c, ok := capsForEngine(a.activeEngine()); ok && c.Tools == CapNo { ... }

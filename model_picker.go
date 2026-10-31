@@ -1,6 +1,5 @@
 // Package harvey — model_picker.go implements the unified /model use picker
-// that aggregates all locally available models across llamafile, llama.cpp,
-// and Ollama backends.
+// that aggregates all locally available models across Ollama and hailo-ollama.
 package harvey
 
 import (
@@ -12,15 +11,14 @@ import (
 )
 
 /** aggregateModels collects all locally available models across all backends.
- * Llamafile and llama.cpp models are discovered by scanning their model
- * directories. Ollama models are queried live only when Ollama is reachable;
+ * Ollama models are queried live only when Ollama is reachable;
  * when Ollama is down no error is returned and its models are simply absent.
  *
  * Parameters:
  *   a (*Agent) — the running Harvey agent.
  *
  * Returns:
- *   []ModelSummary — all models found, backends in order: llamafile, llamacpp, ollama.
+ *   []ModelSummary — all models found, Ollama, then hailo-ollama.
  *   error          — non-nil only on unexpected filesystem errors.
  *
  * Example:
@@ -30,29 +28,6 @@ import (
 func aggregateModels(a *Agent) ([]ModelSummary, error) {
 	var all []ModelSummary
 
-	agentsDir := ""
-	if a.Workspace != nil {
-		agentsDir = a.Workspace.Root + "/agents"
-	}
-
-	workspaceRoot := ""
-	if a.Workspace != nil {
-		workspaceRoot = a.Workspace.Root
-	}
-
-	// Llamafile models — disk scan of ModelsDir (default ~/Models) for *.llamafile files.
-	lb := NewLlamafileBackend(a.Config, agentsDir, workspaceRoot)
-	if models, err := lb.ListModels(); err == nil {
-		all = append(all, models...)
-	}
-
-	// llama.cpp *.gguf models — disk scan of ModelsDir (default ~/Models).
-	cb := NewLlamaCppBackend(a.Config, agentsDir)
-	if models, err := cb.ListModels(); err == nil {
-		all = append(all, models...)
-	}
-
-	// Ollama — live query, silent if unreachable.
 	// Ollama and, when a card or hailo.url is set, hailo-ollama — silent if unreachable.
 	all = append(all, a.listFamilyModels()...)
 
@@ -60,7 +35,7 @@ func aggregateModels(a *Agent) ([]ModelSummary, error) {
 }
 
 /** pickAndUseModel presents a combined numbered list of all locally available
- * models across llamafile, llama.cpp, and Ollama. When the user picks an
+ * models across Ollama and hailo-ollama. When the user picks an
  * unaliased model, promptLazyRegister offers to save a short alias. If a
  * different backend is currently active, a warn-and-switch message is printed
  * and the outgoing server is stopped when Harvey owns it.
@@ -81,7 +56,7 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
 		return err
 	}
 	if len(models) == 0 {
-		return Negativef("no models found. Install a llamafile, *.gguf, or an Ollama model")
+		return Negativef("no models found. Pull a model with ollama pull")
 	}
 
 	// Build display items.
@@ -231,14 +206,6 @@ func useSelectedModel(a *Agent, selected ModelSummary, out io.Writer, offerAlias
 			return err
 		}
 		if err := a.setHailoModel(selected.Name); err != nil {
-			return err
-		}
-	case "llamafile":
-		if err := switchLlamafileModel(a, selected.Name, selected.Path, out); err != nil {
-			return err
-		}
-	case "llamacpp":
-		if err := startLlamaCppModelPath(a, selected.Path, out); err != nil {
 			return err
 		}
 	default:

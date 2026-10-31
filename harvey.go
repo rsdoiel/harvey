@@ -189,10 +189,7 @@ type Agent struct {
 	learnDrafterOverride func(name string, out io.Writer) (Drafter, func(), error)
 	// attemptModelSwitchOverride, when non-nil, overrides attemptModelSwitch in
 	// resolveDispatchTarget's local-swap branch. Set in tests to simulate a
-	// successful model switch without spawning a real llamafile/llama.cpp
-	// server process (attemptModelSwitch's llamafile-registry branch does so
-	// via switchLlamafileModel → StartLlamafileService, impractical to exercise
-	// in a unit test).
+	// successful model switch without contacting a server.
 	attemptModelSwitchOverride func(name string, out io.Writer) (bool, error)
 	memoryContextPending       bool   // true after ClearHistory until first user turn injects memories
 	catalogBlock               string // the skills catalog appended to Config.SystemPrompt by loadSkills; the first layer dropped to fit a prompt limit
@@ -244,14 +241,6 @@ type Agent struct {
  *   if limit > 0 { fmt.Printf("window: %d tokens\n", limit) }
  */
 func (a *Agent) effectiveContextLimit() int {
-	// Llamafile: check the active entry's ContextLength first (user config or probed).
-	// Skip when a non-llamafile backend is active — it would read a stale entry.
-	isLlamafile := a.Backend == nil || a.Backend.Name() == "llamafile"
-	if isLlamafile && a.Config.Llamafile.Active != "" {
-		if entry := a.Config.ActiveLlamafileEntry(); entry != nil && entry.ContextLength > 0 {
-			return entry.ContextLength
-		}
-	}
 	if a.Config.Ollama.ContextLength > 0 {
 		return a.Config.Ollama.ContextLength
 	}

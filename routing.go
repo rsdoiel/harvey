@@ -17,8 +17,6 @@ type RouteKind string
 const (
 	// Local providers — no API key required.
 	KindOllama    RouteKind = "ollama"
-	KindLlamafile RouteKind = "llamafile"
-	KindLlamaCpp  RouteKind = "llamacpp"
 
 	// Cloud providers — credentials read from environment variables.
 	KindAnthropic RouteKind = "anthropic"
@@ -34,7 +32,7 @@ const (
  *   Name  (string)    — identifier used in @mention syntax (e.g. "pi2").
  *   URL   (string)    — endpoint URL; e.g. "ollama://host:port" or "anthropic://".
  *   Model (string)    — default model on this endpoint; empty falls back to Config defaults.
- *   Kind  (RouteKind) — KindOllama, KindLlamafile, KindLlamaCpp, etc.
+ *   Kind  (RouteKind) — KindOllama, KindAnthropic, etc.
  *   Tools (bool)      — when true, dispatch uses ToolExecutor for tool calling.
  *
  * Example:
@@ -250,10 +248,6 @@ func clientForEndpoint(ep *RouteEndpoint, cfg *Config) (LLMClient, error) {
 			model = cfg.Ollama.Model
 		}
 		return newOllamaLLMClient(ollamaBaseURL(ep.URL), model, cfg.Ollama.Timeout), nil
-	case KindLlamafile:
-		return newLlamafileLLMClient(LlamafileAPIURL(ep.URL), model, cfg.Ollama.Timeout), nil
-	case KindLlamaCpp:
-		return newLlamaCppLLMClient(LlamacppAPIURL(ep.URL), model, cfg.Ollama.Timeout), nil
 	case KindAnthropic:
 		return newAnthropicLLMClient(model)
 	case KindDeepSeek:
@@ -264,6 +258,8 @@ func clientForEndpoint(ep *RouteEndpoint, cfg *Config) (LLMClient, error) {
 		return newMistralLLMClient(model)
 	case KindOpenAI:
 		return newOpenAILLMClient(model)
+	case "llamafile", "llamacpp":
+		return nil, fmt.Errorf("route %s: the %s route kind was removed (workspace DR-0033); use an ollama:// route", ep.Name, ep.Kind)
 	default:
 		return nil, fmt.Errorf("route %s: unknown endpoint kind %q", ep.Name, ep.Kind)
 	}
@@ -277,40 +273,6 @@ func ollamaBaseURL(u string) string {
 	}
 	return u
 }
-
-// LlamafileAPIURL converts a "llamafile://host:port" URL to the form
-// "http://host:port/v1" expected by the any-llm-go llamafile provider.
-// Already well-formed http(s):// URLs are left unchanged.
-func LlamafileAPIURL(u string) string {
-	base := u
-	if strings.HasPrefix(u, "llamafile://") {
-		base = "http://" + strings.TrimPrefix(u, "llamafile://")
-	}
-	if !strings.HasSuffix(base, "/v1") {
-		base = strings.TrimRight(base, "/") + "/v1"
-	}
-	return base
-}
-
-// LlamafileHealthURL returns the base URL (without /v1) suitable for health
-// probing a llamafile or llama.cpp server.
-func LlamafileHealthURL(u string) string {
-	base := LlamafileAPIURL(u)
-	return strings.TrimSuffix(base, "/v1")
-}
-
-// LlamacppAPIURL converts a "llamacpp://host:port" URL to "http://host:port/v1".
-func LlamacppAPIURL(u string) string {
-	base := u
-	if strings.HasPrefix(u, "llamacpp://") {
-		base = "http://" + strings.TrimPrefix(u, "llamacpp://")
-	}
-	if !strings.HasSuffix(base, "/v1") {
-		base = strings.TrimRight(base, "/") + "/v1"
-	}
-	return base
-}
-
 
 /** listModelsForEndpoint returns the available model IDs for the given provider.
  * For Anthropic, the v1/models SDK endpoint is called directly because the
@@ -348,7 +310,7 @@ func listModelsForEndpoint(ctx context.Context, kind RouteKind, rawURL string, c
 func kindSupportsTools(kind RouteKind) bool {
 	switch kind {
 	case KindAnthropic, KindDeepSeek, KindGemini, KindMistral, KindOpenAI,
-		KindOllama, KindLlamafile, KindLlamaCpp:
+		KindOllama:
 		return true
 	}
 	return false

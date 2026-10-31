@@ -34,109 +34,32 @@ const (
 	sep         = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 )
 
-// isConnectionError returns true when err indicates a transport-level failure
-// consistent with the llamafile server having stopped: connection refused,
-// EOF, or reset by peer.
-func isConnectionError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "connection refused") ||
-		strings.Contains(msg, "EOF") ||
-		strings.Contains(msg, "connection reset") ||
-		strings.Contains(msg, "no route to host") ||
-		strings.Contains(msg, "unexpected end of JSON input")
-}
-
-// restartActiveLlamafile stops any Harvey-managed llamafile process and
-// starts a fresh one for the currently active entry. Returns an error when
-// there is no active entry, or when the active entry has an empty path
-// (i.e. an adopted external server that Harvey cannot restart).
-func restartActiveLlamafile(a *Agent, out io.Writer) error {
-	entry := a.Config.ActiveLlamafileEntry()
-	if entry == nil {
-		return fmt.Errorf("no active llamafile entry to restart")
-	}
-	if entry.Path == "" {
-		return fmt.Errorf("cannot restart %q: server was adopted (path unknown)", entry.Name)
-	}
-	if a.Backend != nil {
-		_ = a.Backend.Stop()
-	}
-	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-	fmt.Fprintf(out, "  Starting %s...\n", entry.Name)
-	proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
-	if err != nil {
-		return fmt.Errorf("restart failed: %w", err)
-	}
-	a.wireLlamafileBackend(proc, entry.Name)
-	fmt.Fprintln(out, green("  ✓")+" Restarted "+entry.Name)
-	return a.useLlamafileEntry(entry.Name, out)
-}
-
-// restartActiveLlamaCpp stops and restarts the llama-server for the model
-// that was active when the crash occurred, then rewires a.Client and a.Backend.
-func restartActiveLlamaCpp(a *Agent, out io.Writer) error {
-	b, ok := a.Backend.(*LlamaCppBackend)
-	if !ok || b == nil {
-		return fmt.Errorf("active backend is not llamacpp")
-	}
-	modelPath := b.ModelPath()
-	if modelPath == "" {
-		return fmt.Errorf("cannot restart: active model path unknown")
-	}
-	fmt.Fprintf(out, "  Starting llama-server for %s...\n", b.ActiveModel())
-	return startLlamaCppModelPath(a, modelPath, out)
-}
-
 /** runFirstRunWizard prints onboarding text for new users who have no backend
- * configured, then reads one line of input. An empty line returns an error
- * (no backend available). A non-empty line is treated as a llamafile path and
- * passed to cmdLlamafileAdd to register and connect the model.
+ * reachable, so they can start Ollama and pull a model.
  *
  * Parameters:
  *   a   (*Agent)   — the running Harvey agent.
- *   in  (io.Reader) — source for user input (typically a.In or a bufio.Reader).
- *   out (io.Writer) — destination for the wizard text and prompts.
+ *   in  (io.Reader) — unused; kept for call-site uniformity with selectBackend.
+ *   out (io.Writer) — destination for the wizard text.
  *
  * Returns:
- *   error — "no backend available" when the user provides no path; any error
- *           from cmdLlamafileAdd when the given path is invalid.
+ *   error — always "no backend available".
  *
  * Example:
  *   if err := runFirstRunWizard(a, reader, out); err != nil {
- *       // user pressed Enter or path was invalid
+ *       // no backend; use /model use once Ollama is running
  *   }
  */
 func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
-	// If ~/Models already has .llamafile files, show a picker instead of
-	// asking for a raw path — this is the common case for users who
-	// downloaded a llamafile but haven't registered it yet.
-	if paths := scanLlamafileModels(a.Config.Llamafile.ModelsDir); len(paths) > 0 {
-		selected, err := llamafilePickFromDir(a, out)
-		if err != nil || selected == "" {
-			return fmt.Errorf("no backend available")
-		}
-		return addAndStartLlamafile(a, selected, out)
-	}
 	fmt.Fprint(out, FirstRunWizardText)
-	fmt.Fprint(out, "Enter a llamafile path (or press Enter to exit): ")
-	line, _ := bufio.NewReader(in).ReadString('\n')
-	path := strings.TrimSpace(line)
-	if path == "" {
-		return fmt.Errorf("no backend available")
-	}
-	return addAndStartLlamafile(a, path, out)
+	return fmt.Errorf("no backend available")
 }
 
-/** attemptModelSwitch tries to switch the active model to the named backend
- * entry. It checks the llamafile registry first, then ModelAliases. Aliases
- * are dispatched by Engine: "llamacpp" → startLlamaCppModelPath, "ollama" →
- * Ollama client, "" or "llamafile" → switchLlamafileModel with Ollama fallback
- * (legacy behaviour). Returns (true, err) when the name is found regardless of
+/** attemptModelSwitch tries to switch the active model to the named alias.
+ * The name is an alias or the model an alias points at. Aliases are dispatched by Engine: "hailo" → hailo-ollama, "ollama" or ""
+ * → Ollama client. Returns (true, err) when the name is found regardless of
  * whether the switch succeeded; returns (false, nil) when the name is not
- * registered anywhere so the caller can fall through to a normal prompt.
+ * registered so the caller can fall through to a normal prompt.
  *
  * Parameters:
  *   a    (*Agent)    — the running Harvey agent.
@@ -151,51 +74,36 @@ func runFirstRunWizard(a *Agent, in io.Reader, out io.Writer) error {
  *   if switched, err := attemptModelSwitch(a, "phi-mini", out); switched { ... }
  */
 func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
-	// Check llamafile registry first (case-insensitive).
-	for _, e := range a.Config.Llamafile.Models {
-		if strings.EqualFold(e.Name, name) {
-			err := switchLlamafileModel(a, e.Name, "", out)
-			return true, err
+	// Check model aliases (stored with lowercase keys), then the model names
+	// they point at: a tag lookup (@code) resolves to a model name, not a key.
+	entry, ok := a.Config.ModelAliases[strings.ToLower(name)]
+	if !ok {
+		for _, e := range a.Config.ModelAliases {
+			if strings.EqualFold(e.Model, name) {
+				entry, ok = e, true
+				break
+			}
 		}
 	}
-	// Check model aliases (stored with lowercase keys).
-	if entry, ok := a.Config.ModelAliases[strings.ToLower(name)]; ok {
+	if ok {
 		full := entry.Model
-		switch entry.Engine {
-		case "llamacpp":
-			path, err := resolveLlamaCppModelPath(full, llamaCppModelsDir(a.Config))
-			if err != nil {
-				return true, err
-			}
-			return true, startLlamaCppModelPath(a, path, out)
-		case "hailo":
+		if entry.Engine == "hailo" {
 			if err := a.setHailoModel(full); err != nil {
 				return true, err
 			}
-			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
-			return true, nil
-		case "ollama":
+		} else {
 			a.useOllamaClient(full)
-			fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
-			return true, nil
-		default:
-			// "llamafile" or "" (legacy): try switchLlamafileModel, then fall back to Ollama.
-			err := switchLlamafileModel(a, full, "", out)
-			if err != nil {
-				a.useOllamaClient(full)
-				fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
-			}
-			return true, nil
 		}
+		fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
+		return true, nil
 	}
 	// Name not found in any registry.
 	return false, nil
 }
 
 /** activeModelLabel returns a short human-readable label for the currently
- * configured model backend, e.g. "qwen-coding (llamafile)" or "llama3.2:3b (ollama)".
- * Returns "none" when no backend is configured. Llamafile takes priority when
- * both LlamafileActive and OllamaModel are set.
+ * configured model backend, e.g. "llama3.2:3b (ollama)".
+ * Returns "none" when no backend is configured.
  *
  * Parameters:
  *   a (*Agent) — the running Harvey agent.
@@ -212,9 +120,6 @@ func activeModelLabel(a *Agent) string {
 		return a.Backend.ActiveModel() + " (" + a.Backend.Name() + ")"
 	}
 	// Fallback to config fields (Ollama has no ManagedBackend wrapper).
-	if a.Config.Llamafile.Active != "" {
-		return a.Config.Llamafile.Active + " (llamafile)"
-	}
 	if a.Config.Ollama.Model != "" {
 		return a.Config.Ollama.Model + " (ollama)"
 	}
@@ -451,22 +356,15 @@ func (a *Agent) Run(out io.Writer) error {
 	adopted := a.tryAdoptPriorBackend(agentsDir, out)
 	if !adopted {
 		// Backend selection — use sessionModel as the preferred model hint.
-		// If no session hint is set but the --llamafile flag set Config.Llamafile.Active,
-		// use it so pickBackend can auto-select without an extra interactive prompt.
-		hint := sessionModel
-		if hint == "" && a.Config.Llamafile.Active != "" {
-			hint = a.Config.Llamafile.Active
-		}
-		if err := a.selectBackend(reader, out, hint); err != nil {
+		if err := a.selectBackend(reader, out, sessionModel); err != nil {
 			return err
 		}
 		// At a terminal, no backend leaves the session usable: /model use can
 		// connect one. Without a terminal there is nobody to do that.
 		if a.Client == nil && !interactive {
-			return Unavailablef("no backend connected: start Ollama or register a llamafile, then use /model use")
+			return Unavailablef("no backend connected: start Ollama, then use /model use")
 		}
 	}
-	a.noteActiveBackend(out)
 
 	// Preflight: verify the active model's context can hold the system
 	// prompt alone, before any turn is attempted — otherwise the first
@@ -816,7 +714,7 @@ func (a *Agent) Run(out io.Writer) error {
 		}
 
 		// @mention: dispatch to a registered remote endpoint, or switch to a
-		// local model when the name matches a registered llamafile or alias.
+		// local model when the name matches an alias.
 		if name, prompt, ok := ParseAtMention(input); ok {
 			// Step 1: Route dispatch — only when routing is enabled and the
 			// name matches a registered endpoint.
@@ -868,7 +766,7 @@ func (a *Agent) Run(out io.Writer) error {
 				}
 			}
 
-			// Step 2: Local model switch — try registered llamafiles and aliases.
+			// Step 2: Local model switch — try aliases.
 			switched, switchErr := attemptModelSwitch(a, name, out)
 			if switchErr != nil {
 				fmt.Fprintf(out, red("  @%s switch failed: ")+"%v\n", name, switchErr)
@@ -954,31 +852,6 @@ func (a *Agent) Run(out io.Writer) error {
 		reply, _, turnErr := a.runChatTurn(chatCtx, input, out, reader, true, charName)
 		close(watchDone)
 		cancelChat()
-
-		// Auto-reconnect: when the backend server drops mid-session, offer
-		// to restart it and retry the turn rather than surfacing a raw HTTP error.
-		if turnErr != nil && isConnectionError(turnErr) &&
-			a.Backend != nil && a.Backend.StartedByHarvey() && !probeActiveBackend(a) {
-			backendName := a.Backend.Name()
-			modelName := a.Backend.ActiveModel()
-			fmt.Fprintf(out, yellow("  ⚠ The %s server stopped unexpectedly.\n"), backendName)
-			if askYesNo(reader, out, fmt.Sprintf("  Restart %s? [Y/n] ", modelName), true) {
-				var restartErr error
-				switch backendName {
-				case "llamacpp":
-					restartErr = restartActiveLlamaCpp(a, out)
-				default:
-					restartErr = restartActiveLlamafile(a, out)
-				}
-				if restartErr == nil {
-					retryCtx, retryCancel := context.WithCancel(context.Background())
-					reply, _, turnErr = a.runChatTurn(retryCtx, input, out, reader, true, charName)
-					retryCancel()
-				} else {
-					fmt.Fprintf(out, red("  Restart failed: ")+"%v\n", restartErr)
-				}
-			}
-		}
 
 		// When a skill was loaded for this turn and the model responded with a
 		// parseable plan checklist, auto-save it to agents/plan.md so the user

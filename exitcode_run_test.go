@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // H3 of exit-codes-plan.md, the library half: what Agent.Run and the code under
@@ -30,7 +29,6 @@ func runFixture(t *testing.T, terminal bool) (*Agent, *Workspace) {
 	cfg := DefaultConfig()
 	cfg.WorkDir = ws.Root
 	cfg.Ollama.URL = "http://127.0.0.1:1"
-	cfg.Llamafile.ModelsDir = t.TempDir()
 	cfg.Security.SafeMode = true
 	a := NewAgent(cfg, ws)
 	a.hailoDevicePath = filepath.Join(t.TempDir(), "no-hailo0") // not this machine's card
@@ -158,18 +156,5 @@ func TestSystemPromptExceedsContext_IsData(t *testing.T) {
 	}
 	if got := ExitCodeFor(err); got != ClassData {
 		t.Errorf("class %v, want data", got)
-	}
-}
-
-func TestStartLlamafileService_Classes(t *testing.T) {
-	// The wrong kind of file is a bad input, not an unavailable service.
-	_, err := StartLlamafileService("/bin/sh", "http://127.0.0.1:1", "", time.Second, -1, 0, nil)
-	if got := ExitCodeFor(err); got != ClassNoInput {
-		t.Errorf("wrong extension = %v (%v), want no_input", got, err)
-	}
-	// A llamafile that will not serve is an unavailable service.
-	_, err = StartLlamafileService("/nonexistent/x.llamafile", "http://127.0.0.1:1", "", 5*time.Second, -1, 0, nil)
-	if got := ExitCodeFor(err); got != ClassUnavailable {
-		t.Errorf("launch that fails = %v (%v), want unavailable", got, err)
 	}
 }

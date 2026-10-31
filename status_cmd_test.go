@@ -1,8 +1,6 @@
 package harvey
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -100,20 +98,20 @@ func TestCmdStatus_MemoryDisabled(t *testing.T) {
 	}
 }
 
-// ─── /status llamafile parity ─────────────────────────────────────────────────
+// ─── /status token estimate ─────────────────────────────────────────────────
 
-func TestCmdStatus_llamafileShowsTokenEstimate(t *testing.T) {
+func TestCmdStatus_ollamaShowsTokenEstimate(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile", ContextLength: 32768}}
-	cfg.Llamafile.Active = "qwen-coding"
+	cfg.Ollama.Model = "qwen-coding"
+	cfg.Ollama.ContextLength = 32768
 	a := &Agent{
 		Config:   cfg,
 		Workspace: ws,
 		commands: make(map[string]*Command),
 	}
 	a.registerCommands()
-	a.Client = newLlamafileLLMClient("http://localhost:8080/v1", "qwen-coding", 0)
+	a.Client = newOllamaLLMClient("http://localhost:11434", "qwen-coding", 0)
 	a.AddMessage("user", strings.Repeat("x", 400)) // ~100 tokens
 
 	var out strings.Builder
@@ -121,39 +119,12 @@ func TestCmdStatus_llamafileShowsTokenEstimate(t *testing.T) {
 		t.Fatalf("cmdStatus: %v", err)
 	}
 	got := out.String()
-	// Should show a token estimate (with ~ prefix) for llamafile.
+	// Should show a token estimate (with ~ prefix).
 	if !strings.Contains(got, "Tokens:") {
-		t.Errorf("expected Tokens line for llamafile backend, got:\n%s", got)
+		t.Errorf("expected Tokens line for the Ollama backend, got:\n%s", got)
 	}
 	if !strings.Contains(got, "~") {
-		t.Errorf("expected ~ estimate qualifier for llamafile, got:\n%s", got)
+		t.Errorf("expected ~ estimate qualifier, got:\n%s", got)
 	}
 }
 
-func TestCmdStatus_llamafileShowsHarveyTag(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{{Name: "qwen-coding", Path: "/tmp/q.llamafile"}}
-	cfg.Llamafile.Active = "qwen-coding"
-	a := &Agent{
-		Config:   cfg,
-		Workspace: ws,
-		commands: make(map[string]*Command),
-	}
-	a.registerCommands()
-	a.Client = newLlamafileLLMClient("http://localhost:8080/v1", "qwen-coding", 0)
-	// Simulate Harvey having started the llamafile via a LlamafileBackend.
-	lb := NewLlamafileBackend(cfg, filepath.Join(ws.Root, "agents"), ws.Root)
-	lb.proc = &os.Process{Pid: 99999}
-	lb.activeModel = "qwen-coding"
-	a.Backend = lb
-
-	var out strings.Builder
-	if err := cmdStatus(a, nil, &out); err != nil {
-		t.Fatalf("cmdStatus: %v", err)
-	}
-	got := out.String()
-	if !strings.Contains(got, "[Harvey]") {
-		t.Errorf("expected [Harvey] tag when Harvey started the llamafile, got:\n%s", got)
-	}
-}

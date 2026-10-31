@@ -144,10 +144,6 @@ func resolvePipelineClient(a *Agent, mention string) (LLMClient, error) {
 	switch ac.ProviderName() {
 	case "ollama":
 		return newOllamaLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout), nil
-	case "llamafile":
-		return newLlamafileLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout), nil
-	case "llamacpp":
-		return newLlamaCppLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout), nil
 	case "anthropic":
 		return newAnthropicLLMClient(mention)
 	case "deepseek":

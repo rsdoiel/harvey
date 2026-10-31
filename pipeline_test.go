@@ -284,16 +284,13 @@ func TestCmdPipeline_fileNotFound(t *testing.T) {
 	}
 }
 
-// ─── llamafile parity: context % in pipeline spinner ──────────────────────────
+// ─── context % in pipeline spinner ──────────────────────────
 
-func TestRunPipelineStep_llamafileContextHint(t *testing.T) {
+func TestRunPipelineStep_ollamaContextHint(t *testing.T) {
 	a, dir := newPipelineTestAgent(t)
-	// Use a llamafile client (not Ollama) with a known context window.
-	a.Client = newLlamafileLLMClient("http://localhost:8080/v1", "qwen-coding", 0)
-	a.Config.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile", ContextLength: 1024},
-	}
-	a.Config.Llamafile.Active = "qwen-coding"
+	// An Ollama client with a known context window.
+	a.Client = newOllamaLLMClient("http://localhost:11434", "qwen-coding", 0)
+	a.Config.Ollama.ContextLength = 1024
 
 	// Write a step file.
 	step := filepath.Join(dir, "step.md")
@@ -313,8 +310,8 @@ func TestRunPipelineStep_llamafileContextHint(t *testing.T) {
 		t.Fatalf("runPipelineStep: %v", err)
 	}
 
-	// The spinner label should have included a context percentage for llamafile.
+	// The spinner label should have included a context percentage for Ollama.
 	// We can't directly inspect the label, but the run should succeed without panic.
-	// The key assertion: the step completes successfully on a llamafile backend.
+	// The key assertion: the step completes successfully on an Ollama backend.
 	_ = out.String()
 }

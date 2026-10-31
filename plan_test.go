@@ -214,20 +214,20 @@ func TestParsePlan_modelAnnotation(t *testing.T) {
 // a.Config.Llamafile.Active AFTER the step's switch had already overwritten
 // it to the step's own model, so it never actually returned to the original.
 // Using attemptModelSwitchOverride lets the switch genuinely succeed in-test
-// (no real llamafile process needed) so this can assert on the *result*,
+// (no real server needed) so this can assert on the *result*,
 // not just "didn't panic."
 func TestCmdPlanNext_modelAnnotationSwitches(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
 	a := NewAgent(cfg, ws)
-	a.Config.Llamafile.Active = "original-model"
+	a.Config.Ollama.Model = "original-model"
 	a.Client = &mockLLMClient{reply: "done"}
 
 	var switchedTo []string
 	a.attemptModelSwitchOverride = func(name string, out io.Writer) (bool, error) {
 		switchedTo = append(switchedTo, name)
-		// Simulate switchLlamafileModel's real mutation (llamafile.go:220).
-		a.Config.Llamafile.Active = name
+		// Simulate the real mutation: a switch overwrites the active model.
+		a.Config.Ollama.Model = name
 		a.Client = &mockLLMClient{reply: "reply from " + name}
 		return true, nil
 	}
@@ -254,19 +254,12 @@ func TestCmdPlanNext_modelAnnotationSwitches(t *testing.T) {
 		t.Fatalf("cmdPlanNext: %v", err)
 	}
 
-	if len(switchedTo) != 2 {
-		t.Fatalf("expected 2 switch calls (to phi-mini, then back), got %v", switchedTo)
+	if len(switchedTo) != 1 || switchedTo[0] != "phi-mini" {
+		t.Fatalf("expected one switch, to phi-mini, got %v", switchedTo)
 	}
-	if switchedTo[0] != "phi-mini" {
-		t.Errorf("first switch: got %q, want %q", switchedTo[0], "phi-mini")
-	}
-	if switchedTo[1] != "original-model" {
-		t.Errorf("restore switch: got %q, want %q (the pre-step model, not the step's own)",
-			switchedTo[1], "original-model")
-	}
-	if a.Config.Llamafile.Active != "original-model" {
-		t.Errorf("Llamafile.Active after cmdPlanNext = %q, want %q (restored)",
-			a.Config.Llamafile.Active, "original-model")
+	if a.Config.Ollama.Model != "original-model" {
+		t.Errorf("Ollama.Model after cmdPlanNext = %q, want %q (restored)",
+			a.Config.Ollama.Model, "original-model")
 	}
 }
 

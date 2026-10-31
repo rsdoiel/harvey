@@ -24,7 +24,7 @@ func estimateTokens(s string) int {
  * calculation.
  *
  * limit always comes from effectiveContextLimit(), including its
- * llamafile-entry and ModelCache fallbacks — not a direct read of
+ * ModelCache fallback — not a direct read of
  * a.Config.Ollama.ContextLength — so every caller agrees on what "the limit"
  * is regardless of whether harvey.yaml sets ollama.context_length explicitly
  * (2026-07-12 decision).

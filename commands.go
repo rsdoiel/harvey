@@ -411,7 +411,7 @@ func (a *Agent) registerCommands() {
 		},
 		"model": {
 			Usage:       "/model [list|use [NAME]|show [NAME]|status|stop|clean|mode [MODEL] MODE|limit [MODEL] N|alias ...]",
-			Description: "Unified model management across llamafile, llama.cpp, and Ollama backends",
+			Description: "Unified model management across Ollama and hailo-ollama",
 			Handler:     cmdModel,
 			Subcommands: []string{"list", "use", "pull", "show", "status", "stop", "clean", "mode", "limit", "alias"},
 			ArgCompletion: map[string]func(*Agent) []string{
@@ -632,7 +632,7 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		tag := ""
 		if ac, ok := a.Client.(*AnyLLMClient); ok {
 			switch ac.ProviderName() {
-			case "ollama", "llamafile", "llamacpp":
+			case "ollama":
 				if a.Backend != nil && a.Backend.StartedByHarvey() {
 					tag = " [Harvey]"
 				} else {
@@ -759,13 +759,10 @@ func cmdClear(a *Agent, _ []string, out io.Writer) error {
  * Example:
  *   /hint
  */
-// allModelNames returns all registered model names across llamafile and ollama
+// allModelNames returns all registered model aliases
 // for use in tab completion.
 func allModelNames(a *Agent) []string {
 	var names []string
-	for _, e := range a.Config.Llamafile.Models {
-		names = append(names, e.Name)
-	}
 	for alias := range a.Config.ModelAliases {
 		names = append(names, alias)
 	}
@@ -806,7 +803,7 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 			return nil
 		}
 		// Not in the registry or the aliases: search the same list the picker shows
-		// (llamafile, llama.cpp and Ollama models), by name or by a unique prefix.
+		// (Ollama and hailo-ollama models), by name or by a unique prefix.
 		if models, lerr := listLocalModels(a); lerr == nil {
 			if m, ambiguous, ok := matchModel(models, args[1]); ok {
 				return defaultClass(ClassUnavailable, useSelectedModel(a, m, out, false))
@@ -855,30 +852,7 @@ func cmdModel(a *Agent, args []string, out io.Writer) error {
 // are preserved because their backend cannot be determined safely.
 func cmdModelClean(a *Agent, out io.Writer) error {
 	// Collect live model names per engine.
-	var liveOllama, liveLlamafile, liveLlamaCpp []string
-
-	agentsDir := ""
-	if a.Workspace != nil {
-		agentsDir = a.Workspace.Root + "/agents"
-	}
-	workspaceRoot := ""
-	if a.Workspace != nil {
-		workspaceRoot = a.Workspace.Root
-	}
-
-	lb := NewLlamafileBackend(a.Config, agentsDir, workspaceRoot)
-	if models, err := lb.ListModels(); err == nil {
-		for _, m := range models {
-			liveLlamafile = append(liveLlamafile, m.Name)
-		}
-	}
-
-	cb := NewLlamaCppBackend(a.Config, agentsDir)
-	if models, err := cb.ListModels(); err == nil {
-		for _, m := range models {
-			liveLlamaCpp = append(liveLlamaCpp, m.Name)
-		}
-	}
+	var liveOllama []string
 
 	var liveHailo []string
 	if a.ollamaFamily().Relabelled {
@@ -892,7 +866,7 @@ func cmdModelClean(a *Agent, out io.Writer) error {
 		}
 	}
 
-	n, err := pruneStaleModelRefs(a, liveOllama, liveLlamafile, liveLlamaCpp, liveHailo, out)
+	n, err := pruneStaleModelRefs(a, liveOllama, liveHailo, out)
 	if err != nil {
 		return err
 	}
@@ -904,59 +878,23 @@ func cmdModelClean(a *Agent, out io.Writer) error {
 	return nil
 }
 
-// cmdModelShowEntry prints details for the named model, or the active model when name is "".
-// For llamafile models it shows path, size, and context length.
+// cmdModelShowEntry prints the active model, or reports that the named model
+// is not the active one.
 func cmdModelShowEntry(a *Agent, name string, out io.Writer) error {
-	explicit := name != ""
-	if name == "" {
-		label := activeModelLabel(a)
-		if a.Client != nil {
-			fmt.Fprintf(out, "  Active model: %s\n", green(label))
-		} else {
-			fmt.Fprintf(out, "  Active model: %s\n", yellow(label))
-		}
-		// If the active model is a llamafile entry, show details too.
-		if a.Config.Llamafile.Active != "" {
-			name = a.Config.Llamafile.Active
-		}
+	label := activeModelLabel(a)
+	if name != "" && !strings.EqualFold(name, label) {
+		return Negativef("model %q is not the active model (%s) — see /model list", name, label)
 	}
-	if name == "" {
-		fmt.Fprintln(out, "  No active llamafile model.")
-		return nil
-	}
-	entry := a.Config.LlamafileEntryByName(name)
-	if entry == nil {
-		if !explicit {
-			// The active model was already shown; its llamafile entry is not
-			// registered, which is a status, not a failure.
-			fmt.Fprintf(out, "  llamafile %q not found.\n", name)
-			return nil
-		}
-		return Negativef("llamafile %q not found", name)
-	}
-	active := ""
-	if entry.Name == a.Config.Llamafile.Active {
-		active = " (active)"
-	}
-	fmt.Fprintf(out, "  Name:    %s%s\n", entry.Name, active)
-	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-	fmt.Fprintf(out, "  Path:    %s\n", absPath)
-	if info, err := os.Stat(absPath); err == nil {
-		fmt.Fprintf(out, "  Size:    %s\n", llamafileFormatBytes(info.Size()))
+	if a.Client != nil {
+		fmt.Fprintf(out, "  Active model: %s\n", green(label))
 	} else {
-		fmt.Fprintln(out, "  Size:    (file not found)")
-	}
-	if entry.ContextLength > 0 {
-		fmt.Fprintf(out, "  Context: %d tokens\n", entry.ContextLength)
-	} else {
-		fmt.Fprintln(out, "  Context: unknown")
+		fmt.Fprintf(out, "  Active model: %s\n", yellow(label))
 	}
 	return nil
 }
 
 // cmdModelList prints all locally available models across every backend.
-// It uses aggregateModels so llamafile, llama.cpp, and Ollama entries
-// appear together without separate per-engine commands.
+// It uses aggregateModels so Ollama and hailo-ollama entries appear together.
 func cmdModelList(a *Agent, out io.Writer) error {
 	models, err := aggregateModels(a)
 	if err != nil {
@@ -972,9 +910,6 @@ func cmdModelList(a *Agent, out io.Writer) error {
 	if a.Backend != nil {
 		activeEngine = a.Backend.Name()
 		activeModel = a.Backend.ActiveModel()
-	} else if a.Config.Llamafile.Active != "" {
-		activeEngine = "llamafile"
-		activeModel = a.Config.Llamafile.Active
 	} else if a.Config.Ollama.Model != "" {
 		activeEngine = "ollama"
 		activeModel = a.Config.Ollama.Model
@@ -997,65 +932,18 @@ func cmdModelStatus(a *Agent, out io.Writer) error {
 		fmt.Fprintln(out, "  No active backend.")
 		return nil
 	}
-	switch a.Backend.Name() {
-	case "llamafile":
-		active := a.Config.Llamafile.Active
-		if active == "" {
-			active = "(none)"
-		}
-		reachable := "no"
-		if ProbeLlamafile(a.Config.Llamafile.URL) {
-			reachable = "yes"
-		}
-		managed := "no"
-		if a.Backend.StartedByHarvey() {
-			managed = "yes (started by Harvey)"
-		}
-		fmt.Fprintf(out, "  Active model:    %s\n", active)
-		fmt.Fprintf(out, "  API URL:         %s\n", a.Config.Llamafile.URL)
-		fmt.Fprintf(out, "  Reachable:       %s\n", reachable)
-		fmt.Fprintf(out, "  Process managed: %s\n", managed)
-		fmt.Fprintf(out, "  Models dir:      %s\n", a.Config.Llamafile.ModelsDir)
-		fmt.Fprintf(out, "  Registered:      %d model(s)\n", len(a.Config.Llamafile.Models))
-	case "llamacpp":
-		cfg := &a.Config.LlamaCpp
-		url := cfg.URL
-		if url == "" {
-			url = "http://127.0.0.1:8081"
-		}
-		reachable := "no"
-		if probeLlamaCpp(url) {
-			reachable = "yes"
-		}
-		managed := "no"
-		if a.Backend.StartedByHarvey() {
-			managed = "yes (started by Harvey)"
-		}
-		active := a.Backend.ActiveModel()
-		if active == "" {
-			active = "(none)"
-		}
-		fmt.Fprintf(out, "  Active model:    %s\n", active)
-		fmt.Fprintf(out, "  API URL:         %s\n", url)
-		fmt.Fprintf(out, "  Reachable:       %s\n", reachable)
-		fmt.Fprintf(out, "  Managed:         %s\n", managed)
-		if cfg.GPULayers > 0 {
-			fmt.Fprintf(out, "  GPU layers:      %d\n", cfg.GPULayers)
-		}
-	default:
-		label := activeModelLabel(a)
-		reachable := probeActiveBackend(a)
-		status := red("✗ not reachable")
-		if reachable {
-			status = green("✓ reachable")
-		}
-		fmt.Fprintf(out, "  Model:  %s\n", label)
-		fmt.Fprintf(out, "  Status: %s\n", status)
+	label := activeModelLabel(a)
+	reachable := probeActiveBackend(a)
+	status := red("✗ not reachable")
+	if reachable {
+		status = green("✓ reachable")
 	}
+	fmt.Fprintf(out, "  Model:  %s\n", label)
+	fmt.Fprintf(out, "  Status: %s\n", status)
 	return nil
 }
 
-// cmdModelStop stops the active managed backend (llamafile or llama.cpp).
+// cmdModelStop stops the active managed backend.
 // Backends not started by Harvey are not stopped.
 func cmdModelStop(a *Agent, out io.Writer) error {
 	if a.Backend == nil {
@@ -1575,15 +1463,13 @@ func truncate(s string, n int) string {
 
 // pruneStaleModelRefs removes model_aliases that point to models no longer
 // available on their respective backend. Each live-model slice covers one
-// engine (ollama, llamafile, llamacpp); pass nil to skip that engine.
+// engine (ollama, hailo); pass nil to skip that engine.
 // Aliases with Engine=="" are preserved — their backend is unknown.
 // Returns the count of removed aliases; saves config when changed.
-func pruneStaleModelRefs(a *Agent, liveOllama, liveLlamafile, liveLlamaCpp, liveHailo []string, out io.Writer) (int, error) {
+func pruneStaleModelRefs(a *Agent, liveOllama, liveHailo []string, out io.Writer) (int, error) {
 	byEngine := map[string]map[string]bool{
-		"ollama":    setOf(liveOllama),
-		"llamafile": setOf(liveLlamafile),
-		"llamacpp":  setOf(liveLlamaCpp),
-		"hailo":     setOf(liveHailo),
+		"ollama": setOf(liveOllama),
+		"hailo":  setOf(liveHailo),
 	}
 
 	removed := 0

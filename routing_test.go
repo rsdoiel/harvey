@@ -381,8 +381,6 @@ func TestKindSupportsTools(t *testing.T) {
 		{KindMistral, true},
 		{KindOpenAI, true},
 		{KindOllama, true},
-		{KindLlamafile, true},
-		{KindLlamaCpp, true},
 		{RouteKind("unknown"), false},
 		{RouteKind(""), false},
 	}

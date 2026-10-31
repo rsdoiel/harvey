@@ -120,7 +120,7 @@ func contains(list []string, s string) bool {
 
 func TestCompletion_BashScriptNamesEverything(t *testing.T) {
 	s := completionScript(t, "bash")
-	want := []string{"-F _harvey harvey", "completion", "init", "--workdir", "--replay-continue", "--llamafile-dir", "-help", "powershell", "topics", "rag"}
+	want := []string{"-F _harvey harvey", "completion", "init", "--workdir", "--replay-continue", "--ollama", "-help", "powershell", "topics", "rag"}
 	for _, w := range want {
 		if !strings.Contains(s, w) {
 			t.Errorf("bash script missing %q", w)
@@ -244,7 +244,7 @@ func TestCompletion_Bash_PathValuesCompleteFiles(t *testing.T) {
 	for _, words := range [][]string{
 		{"harvey", "--replay", "zz"},
 		{"harvey", "-w", "zz"},
-		{"harvey", "--llamafile", "zz"},
+		{"harvey", "--continue", "zz"},
 		{"harvey", "init", "zz"},
 	} {
 		got := bashComplete(t, dir, words...)
@@ -257,7 +257,7 @@ func TestCompletion_Bash_PathValuesCompleteFiles(t *testing.T) {
 func TestCompletion_Bash_FreeValuesOfferNothing(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "zzfile"), []byte("x"), 0o644)
-	for _, flag := range []string{"-m", "--model", "--ollama", "--llamafile-url"} {
+	for _, flag := range []string{"-m", "--model", "--ollama"} {
 		if got := bashComplete(t, dir, "harvey", flag, ""); len(got) != 0 {
 			t.Errorf("%s value: offered %v, want nothing", flag, got)
 		}

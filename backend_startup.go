@@ -14,8 +14,7 @@ import (
 )
 
 /** probeActiveBackend returns true if the currently configured backend server
- * is reachable. Probes the LlamafileURL when LlamafileActive is set; probes
- * OllamaURL when OllamaModel is set; returns false when neither is configured.
+ * is reachable. Probes OllamaURL when OllamaModel is set; returns false when neither is configured.
  *
  * Parameters:
  *   a (*Agent) — the running Harvey agent.
@@ -29,46 +28,14 @@ import (
  *   }
  */
 func probeActiveBackend(a *Agent) bool {
-	if a.Config.Llamafile.Active != "" {
-		return ProbeLlamafile(a.Config.Llamafile.URL)
-	}
 	if a.Config.Ollama.Model != "" {
 		return ProbeOllama(a.Config.Ollama.URL)
 	}
 	return false
 }
 
-/** useLlamafileEntry wires a.Client to the running llamafile server using
- * the registry entry name as the model identifier.
- *
- * Parameters:
- *   name (string)    — registry entry name; used as the model name in API calls.
- *   out  (io.Writer) — destination for the "Using model:" status line.
- *
- * Returns:
- *   error — always nil; present for call-site uniformity with selectBackend.
- *
- * Example:
- *   return a.useLlamafileEntry("qwen-coding", out)
- */
-func (a *Agent) useLlamafileEntry(name string, out io.Writer) error {
-	client := newLlamafileLLMClient(a.Config.Llamafile.URL+"/v1", name, a.Config.Ollama.Timeout)
-	if a.Config.Llamafile.MaxTokens > 0 {
-		client.SetMaxTokens(a.Config.Llamafile.MaxTokens)
-	}
-	a.Client = client
-	a.wireSessionLog(a.Client)
-	// Keep Active in sync so activeModelLabel and effectiveContextLimit are correct.
-	a.Config.Llamafile.Active = name
-	fmt.Fprintf(out, "  Using model: %s\n", cyan(name))
-	a.logModelSwitch(name, "llamafile")
-	probeLlamaCppAndCache(a, name, a.Config.Llamafile.URL)
-	return nil
-}
-
 /** selectBackend runs the interactive startup sequence to choose a backend.
- * When an active llamafile entry is configured it is probed first; Ollama is
- * the fallback when no active llamafile is set. preferredModel hints at which
+ * Ollama (or hailo-ollama) is probed and offered. preferredModel hints at which
  * Ollama model to pre-select from a prior session; pass "" when unknown.
  *
  * Parameters:
@@ -86,34 +53,6 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 	// A Hailo card whose server is stopped: say so once, before choosing a backend.
 	a.hailoHint(out)
 
-	// Case 0: llama.cpp models dir has *.gguf files — probe server, offer to start.
-	if len(a.Config.LlamaCpp.ModelsDir) > 0 || a.Config.LlamaCpp.URL != "" {
-		agentsDir := filepath.Join(a.Workspace.Root, "agents")
-		lb := NewLlamaCppBackend(a.Config, agentsDir)
-		if lb.Detect() {
-			a.Backend = lb
-			// Wire a client using the first model name we can detect.
-			if models, err := lb.ListModels(); err == nil && len(models) > 0 {
-				lb.activeModel = models[0].Name
-			}
-			if lb.activeModel != "" {
-				client, err := lb.NewClient()
-				if err == nil {
-					a.Client = client
-					fmt.Fprintf(out, "  Using llama-server at %s (model: %s)\n", lb.BaseURL(), cyan(lb.ActiveModel()))
-					return nil
-				}
-			}
-		}
-	}
-
-	// Case 2: Registered llamafiles exist — show combined picker
-	// with llamafiles first, Ollama models second.
-	if len(a.Config.Llamafile.Models) > 0 {
-		return a.pickBackend(reader, out, preferredModel)
-	}
-
-	// Case 3: No llamafiles registered — try Ollama.
 	family := a.ollamaFamily()
 	if family.Relabelled {
 		fmt.Fprintf(out, "\n  Checking hailo-ollama at %s...\n", a.Config.Ollama.URL)
@@ -159,244 +98,6 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 	fmt.Fprintln(out)
 	if err := runFirstRunWizard(a, reader, out); err != nil {
 		fmt.Fprintln(out, dim("  No backend connected — use /model use once inside."))
-	}
-	return nil
-}
-
-/** pickBackend presents a combined numbered list of registered llamafile models
- * (first) and available Ollama models (second), and lets the user choose one.
- * If preferredModel matches a registered llamafile name (case-insensitive), it
- * is selected automatically without showing the picker.
- *
- * Parameters:
- *   reader         (*bufio.Reader) — reads the user's selection.
- *   out            (io.Writer)     — destination for the picker display.
- *   preferredModel (string)        — model name hint from a resumed session; "" for none.
- *
- * Returns:
- *   error — on unexpected failures starting a llamafile or listing Ollama models.
- *
- * Example:
- *   err := agent.pickBackend(reader, os.Stdout, "qwen-coding")
- */
-func (a *Agent) pickBackend(reader *bufio.Reader, out io.Writer, preferredModel string) error {
-	// Auto-select when preferredModel matches a registered llamafile.
-	if preferredModel != "" {
-		for i := range a.Config.Llamafile.Models {
-			e := &a.Config.Llamafile.Models[i]
-			if strings.EqualFold(e.Name, preferredModel) {
-				return a.startAndUseLlamafile(e, out)
-			}
-		}
-	}
-
-	type option struct {
-		label         string
-		kind          string // "llamafile", "llamacpp", or "ollama"
-		name          string
-		path          string // resolved absolute path; llamafile/llamacpp options only
-		contextLength int
-		notPulled     bool // a Hailo catalog entry that is not pulled yet
-	}
-	var opts []option
-	seenPaths := make(map[string]bool)
-
-	for _, e := range a.Config.Llamafile.Models {
-		absPath := resolveLlamafilePath(e.Path, a.Workspace.Root)
-		size := ""
-		if absPath != "" {
-			if info, err := os.Stat(absPath); err == nil {
-				size = " (" + llamafileFormatBytes(info.Size()) + ")"
-			}
-			seenPaths[absPath] = true
-		}
-		opts = append(opts, option{
-			label:         e.Name + size + dim(" (llamafile)"),
-			kind:          "llamafile",
-			name:          e.Name,
-			path:          absPath,
-			contextLength: e.ContextLength,
-		})
-	}
-
-	// Llamafiles found on disk but not yet registered — the startup picker
-	// must reflect everything in the models directory, not just the subset
-	// a prior session happened to register.
-	agentsDir := ""
-	if a.Workspace != nil {
-		agentsDir = filepath.Join(a.Workspace.Root, "agents")
-	}
-	lb := NewLlamafileBackend(a.Config, agentsDir, a.Workspace.Root)
-	if diskModels, err := lb.ListModels(); err == nil {
-		for _, m := range diskModels {
-			if seenPaths[m.Path] {
-				continue
-			}
-			seenPaths[m.Path] = true
-			size := ""
-			if m.SizeBytes > 0 {
-				size = " (" + llamafileFormatBytes(m.SizeBytes) + ")"
-			}
-			opts = append(opts, option{
-				label: m.Name + size + dim(" (llamafile)"),
-				kind:  "llamafile",
-				name:  m.Name,
-				path:  m.Path,
-			})
-		}
-	}
-
-	// llama.cpp *.gguf models found on disk. Unlike llamafile, .gguf files are
-	// never pre-registered — this disk scan is the only source for them, so
-	// without it they never appear in the startup picker at all (the bug this
-	// fixes: TODO.md, "gguf models are not listed as an option").
-	cb := NewLlamaCppBackend(a.Config, agentsDir)
-	if ggufModels, err := cb.ListModels(); err == nil {
-		for _, m := range ggufModels {
-			if seenPaths[m.Path] {
-				continue
-			}
-			seenPaths[m.Path] = true
-			size := ""
-			if m.SizeBytes > 0 {
-				size = " (" + llamafileFormatBytes(m.SizeBytes) + ")"
-			}
-			opts = append(opts, option{
-				label: m.Name + size + dim(" (llamacpp)"),
-				kind:  "llamacpp",
-				name:  m.Name,
-				path:  m.Path,
-			})
-		}
-	}
-
-	for _, m := range a.listFamilyModels() {
-		opts = append(opts, option{
-			label:     m.Name + dim(" ("+m.EngineLabel()+")"),
-			kind:      m.Engine,
-			name:      m.Name,
-			notPulled: m.NotPulled,
-		})
-	}
-
-	if len(opts) == 0 {
-		fmt.Fprintln(out)
-		return runFirstRunWizard(a, reader, out)
-	}
-
-	fmt.Fprintln(out, "\n  Available models:")
-	for i, o := range opts {
-		marker := "  "
-		if preferredModel != "" && strings.EqualFold(o.name, preferredModel) {
-			marker = "* "
-		}
-		fmt.Fprintf(out, "  %s[%d] %s\n", marker, i+1, o.label)
-	}
-	fmt.Fprintf(out, "    Select model [1-%d, 0=none, default=1]: ", len(opts))
-
-	line, _ := reader.ReadString('\n')
-	idx := 1
-	if trimmed := strings.TrimSpace(line); trimmed != "" {
-		fmt.Sscanf(trimmed, "%d", &idx)
-	}
-	if idx < 1 || idx > len(opts) {
-		fmt.Fprintln(out, dim("  No backend selected."))
-		return nil
-	}
-
-	chosen := opts[idx-1]
-	switch chosen.kind {
-	case "llamafile":
-		// Use the exact path tied to the option the user picked — never a
-		// name-based registry relookup, which can resolve to a different
-		// file when two on-disk models share a display name.
-		entry := &LlamafileEntry{Name: chosen.name, Path: chosen.path, ContextLength: chosen.contextLength}
-		return a.startAndUseLlamafile(entry, out)
-	case "llamacpp":
-		return startLlamaCppModelPath(a, chosen.path, out)
-	}
-	if chosen.kind == "hailo" {
-		if err := a.pullIfNeeded(ModelSummary{Name: chosen.name, Engine: "hailo", NotPulled: chosen.notPulled}, out); err != nil {
-			return err
-		}
-		if err := a.setHailoModel(chosen.name); err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen.name))
-		return nil
-	}
-	// Ollama model.
-	a.setOllamaModel(chosen.name)
-	fmt.Fprintf(out, "  Using model: %s\n", cyan(chosen.name))
-	return nil
-}
-
-// startAndUseLlamafile starts the llamafile server for entry (if not already
-// running) and wires it as the active client. When a server is already running
-// at LlamafileURL but was not started by Harvey, it probes /v1/models to
-// identify the actual model and adopts it — using the detected name rather
-// than entry.Name when they differ. On start failure the error is printed and
-// returned.
-func (a *Agent) startAndUseLlamafile(entry *LlamafileEntry, out io.Writer) error {
-	if ProbeLlamafile(a.Config.Llamafile.URL) {
-		// A server is already running — probe which model it is actually serving.
-		detectedName := probeRunningLlamafileName(a.Config.Llamafile.URL)
-		useName := entry.Name
-		if detectedName != "" && !strings.EqualFold(detectedName, entry.Name) {
-			fmt.Fprintf(out, "  Server at %s is serving %q (configured: %q) — adopting detected model.\n",
-				a.Config.Llamafile.URL, detectedName, entry.Name)
-			useName = detectedName
-		} else {
-			fmt.Fprintf(out, "  Connecting to %s (llamafile)… %s\n", useName, green("✓"))
-		}
-		if err := a.useLlamafileEntry(useName, out); err != nil {
-			return err
-		}
-		// Register a matching entry for an adopted server when none exists yet
-		// — same gap class as the already-fixed adoptExternalServer
-		// (DECISIONS.md 2026-07-05): without this, effectiveContextLimit()
-		// has no ContextLength to fall back on for the rest of the session.
-		// Path is left empty, matching adoptExternalServer's own precedent —
-		// the adopted server's actual model file path is unknown.
-		if a.Config.LlamafileEntryByName(useName) == nil {
-			newEntry := LlamafileEntry{Name: useName}
-			if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
-				newEntry.ContextLength = ctx
-			}
-			a.Config.AddOrUpdateLlamafileEntry(newEntry)
-			if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
-				fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
-			}
-		}
-		return nil
-	}
-	absPath := resolveLlamafilePath(entry.Path, a.Workspace.Root)
-	fmt.Fprintf(out, "  Connecting to %s (llamafile)…\n", entry.Name)
-	proc, err := StartLlamafileService(absPath, a.Config.Llamafile.URL, "", a.Config.Llamafile.StartupTimeout, a.Config.Llamafile.GPULayers, a.Config.ActiveLlamafileContextLength(), out)
-	if err != nil {
-		fmt.Fprintf(out, red("  ✗ Failed: ")+"%v\n", err)
-		return err
-	}
-	if a.Backend != nil {
-		_ = a.Backend.Stop()
-	}
-	a.wireLlamafileBackend(proc, entry.Name)
-	fmt.Fprintf(out, "  %s Ready\n", green("✓"))
-	if err := a.useLlamafileEntry(entry.Name, out); err != nil {
-		return err
-	}
-	// Register a model picked straight from a disk scan (no registry entry
-	// yet) so it persists across sessions and gets a real context-length
-	// once probed, same as switchLlamafileModel does for /model use.
-	if a.Config.LlamafileEntryByName(entry.Name) == nil {
-		ctxLen := entry.ContextLength
-		if ctx := ProbeLlamafileContextLength(a.Config.Llamafile.URL); ctx > 0 {
-			ctxLen = ctx
-		}
-		a.Config.AddOrUpdateLlamafileEntry(LlamafileEntry{Name: entry.Name, Path: absPath, ContextLength: ctxLen})
-		if err := SaveLlamafileConfig(a.Workspace, a.Config); err != nil {
-			fmt.Fprintf(out, yellow("  ⚠ Could not save config: %v\n"), err)
-		}
 	}
 	return nil
 }
@@ -515,10 +216,6 @@ func (a *Agent) tryAdoptPriorBackend(agentsDir string, out io.Writer) bool {
 	// Process is alive — check if the URL is still reachable.
 	reachable := false
 	switch pid.Backend {
-	case "llamafile":
-		reachable = ProbeLlamafile(pid.URL)
-	case "llamacpp":
-		reachable = probeLlamaCpp(pid.URL)
 	case "ollama":
 		reachable = ProbeOllama(pid.URL)
 	}
@@ -531,20 +228,6 @@ func (a *Agent) tryAdoptPriorBackend(agentsDir string, out io.Writer) bool {
 
 	// Reconstruct the backend and wire it without restarting the server.
 	switch pid.Backend {
-	case "llamafile":
-		lb := NewLlamafileBackend(a.Config, agentsDir, a.Workspace.Root)
-		lb.activeModel = pid.Model
-		lb.running = true
-		a.Backend = lb
-		client := newLlamafileLLMClient(pid.URL+"/v1", pid.Model, a.Config.Ollama.Timeout)
-		a.Client = client
-	case "llamacpp":
-		lb := NewLlamaCppBackend(a.Config, agentsDir)
-		lb.activeModel = pid.Model
-		lb.running = true
-		a.Backend = lb
-		client := newLlamafileLLMClient(pid.URL+"/v1", pid.Model, 0)
-		a.Client = client
 	case "ollama":
 		a.setOllamaModel(pid.Model)
 	default:

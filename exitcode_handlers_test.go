@@ -369,8 +369,6 @@ func isolateModels(t *testing.T, a *Agent) {
 	t.Setenv("HARVEY_LLAMAFILE_DIR", "")
 	a.Config.Ollama.URL = "http://127.0.0.1:1"
 	// DefaultConfig resolved ~/Models before HOME was redirected.
-	a.Config.Llamafile.ModelsDir = t.TempDir()
-	a.Config.LlamaCpp.ModelsDir = t.TempDir()
 }
 
 func withModelCache(t *testing.T, a *Agent) {
@@ -534,7 +532,6 @@ func TestRun_NonInteractive_FailedModelSwitchDecidesExitClass(t *testing.T) {
 	a.Config.ModelAliases = map[string]ModelAlias{
 		"broken": {Model: "no-such-file.gguf", Engine: "llamacpp"},
 	}
-	a.Config.LlamaCpp.ModelsDir = t.TempDir()
 	err := a.Run(io.Discard)
 	got := ExitCodeFor(err)
 	if got == ClassOK || got == ClassInternal {

@@ -628,39 +628,30 @@ func TestLoadHarveyYAML_PerPromptNotSet_NoSkip(t *testing.T) {
 	}
 }
 
-// TestLoadHarveyYAML_IgnoresPersistedLlamafileActive is a regression test for
-// the "blank slate" bug: a harvey.yaml with llamafile.active: set (a legacy
-// leftover from an older Harvey, or a hand edit) must NOT auto-select that
-// model at startup by populating cfg.Llamafile.Active. Only an explicit
-// --llamafile CLI flag (set directly in cmd/harvey/main.go, independent of
-// this load path) or a --continue/--resume session hint should be able to
-// skip the interactive model picker.
-func TestLoadHarveyYAML_IgnoresPersistedLlamafileActive(t *testing.T) {
-	dir := t.TempDir()
-	ws := &Workspace{Root: dir}
-	agentsDir := filepath.Join(dir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	yamlContent := `llamafile:
-  active: bonsai-8b
-  models:
-    - name: bonsai-8b
-      path: /models/bonsai-8b.llamafile
-`
-	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := DefaultConfig()
-	if err := LoadHarveyYAML(ws, cfg); err != nil {
-		t.Fatalf("LoadHarveyYAML: %v", err)
-	}
-	if cfg.Llamafile.Active != "" {
-		t.Errorf("Llamafile.Active = %q, want empty — a persisted active: must not auto-select a model at startup", cfg.Llamafile.Active)
-	}
-	// The model registry itself must still load correctly.
-	if len(cfg.Llamafile.Models) != 1 || cfg.Llamafile.Models[0].Name != "bonsai-8b" {
-		t.Errorf("Llamafile.Models = %+v, want one entry named bonsai-8b", cfg.Llamafile.Models)
+// TestLoadHarveyYAML_LlamaSectionsAreConfigErrors: llama.cpp and llamafile were
+// removed (workspace DR-0033), so a harvey.yaml that still has a llamafile: or
+// llamacpp: section is a configuration error (exit 78), not a silent ignore.
+func TestLoadHarveyYAML_LlamaSectionsAreConfigErrors(t *testing.T) {
+	for _, section := range []string{"llamafile:\n  active: bonsai-8b\n", "llamacpp:\n  url: http://127.0.0.1:8081\n"} {
+		dir := t.TempDir()
+		ws := &Workspace{Root: dir}
+		agentsDir := filepath.Join(dir, "agents")
+		if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(section), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := LoadHarveyYAML(ws, DefaultConfig())
+		if err == nil {
+			t.Fatalf("%q: expected a configuration error", section)
+		}
+		if got := ExitCodeFor(err); got != ClassConfig {
+			t.Errorf("%q: class %v, want config", section, got)
+		}
+		if !strings.Contains(err.Error(), "DR-0033") {
+			t.Errorf("%q: error does not say why: %v", section, err)
+		}
 	}
 }
 

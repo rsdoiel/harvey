@@ -119,7 +119,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				rem := remainingContext(a)
 				if rem <= 0 {
 					// remainingContext returns 0 both when the context limit is
-					// unknown (e.g. an adopted external llamafile server that was
+					// unknown (e.g. an adopted external server that was
 					// never probed) and when it is known but exhausted. Either way,
 					// the guard must still run rather than silently falling through
 					// to a full raw read — use the same conservative fallback as

@@ -30,7 +30,7 @@ import (
  *   status                     — Show routing status and endpoints
  *
  * Supported endpoint types:
- *   Local:  ollama://host:port, llamafile://host:port, llamacpp://host:port
+ *   Local:  ollama://host:port
  *   Cloud:  anthropic://, deepseek://, gemini://, mistral://, openai://
  *
  * Cloud providers read API keys from environment variables:
@@ -118,7 +118,7 @@ func cmdRoute(a *Agent, args []string, out io.Writer) error {
 func routeAdd(a *Agent, args []string, out io.Writer) error {
 	var persistErr error
 	if len(args) < 2 {
-		return Usagef("usage: /route add NAME URL [MODEL]  (local: ollama://host:port llamafile://host:port llamacpp://host:port; cloud: anthropic:// deepseek:// gemini:// mistral:// openai://, which read API keys from environment variables)")
+		return Usagef("usage: /route add NAME URL [MODEL]  (local: ollama://host:port; cloud: anthropic:// deepseek:// gemini:// mistral:// openai://, which read API keys from environment variables)")
 	}
 	name, rawURL := args[0], args[1]
 	model := ""
@@ -412,10 +412,6 @@ func probeRouteEndpoint(ep *RouteEndpoint, cfg *Config) bool {
 	switch ep.Kind {
 	case KindOllama:
 		return ProbeOllama(ollamaBaseURL(ep.URL))
-	case KindLlamafile:
-		return ProbeEncoderfile(LlamafileHealthURL(ep.URL))
-	case KindLlamaCpp:
-		return ProbeEncoderfile(LlamafileHealthURL(LlamacppAPIURL(ep.URL)))
 	case KindAnthropic:
 		return os.Getenv("ANTHROPIC_API_KEY") != ""
 	case KindDeepSeek:

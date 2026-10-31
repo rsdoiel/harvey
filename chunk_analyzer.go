@@ -149,8 +149,8 @@ func firstLine(s string) string {
 }
 
 /** probeClientReachable reports whether client's backend is currently
- * reachable, for backends with a known local health-check endpoint (ollama,
- * llamafile, llamacpp). checked is false for backends with no local
+ * reachable, for backends with a known local health-check endpoint (ollama).
+ * checked is false for backends with no local
  * reachability probe (cloud providers, or any client that isn't an
  * *AnyLLMClient, e.g. a test double) — callers should treat checked=false as
  * "nothing to verify, proceed as usual," not as a failure.
@@ -175,10 +175,6 @@ func probeClientReachable(client LLMClient) (reachable, checked bool) {
 	switch ac.ProviderName() {
 	case "ollama":
 		return ProbeOllama(ac.BackendURL()), true
-	case "llamafile":
-		return ProbeLlamafile(LlamafileHealthURL(ac.BackendURL())), true
-	case "llamacpp":
-		return probeLlamaCpp(LlamafileHealthURL(ac.BackendURL())), true
 	default:
 		return false, false
 	}

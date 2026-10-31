@@ -35,12 +35,9 @@ type DispatchTarget struct {
 }
 
 // currentActiveName returns the name that identifies the agent's currently
-// active local model for lookup purposes: the llamafile registry name when
-// set, else the configured Ollama model. Empty when neither is set.
+// active local model for lookup purposes: the configured Ollama model.
+// Empty when none is set.
 func currentActiveName(a *Agent) string {
-	if a.Config.Llamafile.Active != "" {
-		return a.Config.Llamafile.Active
-	}
 	return a.Config.Ollama.Model
 }
 
@@ -53,7 +50,7 @@ func currentActiveName(a *Agent) string {
  *      Restore is a no-op.
  *   2. name already matches the active local model (case-insensitive) —
  *      no switch needed; Restore is a no-op.
- *   3. A local llamafile registry entry or model alias — performs a real,
+ *   3. A local model alias — performs a real,
  *      persistent switch via attemptModelSwitch (or
  *      a.attemptModelSwitchOverride in tests), capturing the pre-switch
  *      state first so Restore can correctly relaunch it afterward.
@@ -96,10 +93,7 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 		switchFn = a.attemptModelSwitchOverride
 	}
 
-	// Captured BEFORE switching — switchFn (attemptModelSwitch's llamafile
-	// branch, via switchLlamafileModel) overwrites a.Config.Llamafile.Active
-	// as part of performing the switch, so this must be read now, not later.
-	prevLlamafileActive := a.Config.Llamafile.Active
+	// Captured BEFORE switching — the switch overwrites it.
 	prevOllamaModel := a.Config.Ollama.Model
 
 	switched, err := switchFn(name, out)
@@ -111,10 +105,6 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 	}
 
 	restore := func() {
-		if prevLlamafileActive != "" {
-			_, _ = switchFn(prevLlamafileActive, out)
-			return
-		}
 		a.useOllamaClient(prevOllamaModel)
 	}
 

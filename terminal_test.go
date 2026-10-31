@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -163,28 +162,11 @@ func TestActiveModelLabel_noBackend(t *testing.T) {
 	}
 }
 
-func TestActiveModelLabel_llamafile(t *testing.T) {
-	a := &Agent{Config: DefaultConfig()}
-	a.Config.Llamafile.Active = "qwen-coding"
-	if got := activeModelLabel(a); got != "qwen-coding (llamafile)" {
-		t.Errorf("got %q want %q", got, "qwen-coding (llamafile)")
-	}
-}
-
 func TestActiveModelLabel_ollama(t *testing.T) {
 	a := &Agent{Config: DefaultConfig()}
 	a.Config.Ollama.Model = "llama3.2:3b"
 	if got := activeModelLabel(a); got != "llama3.2:3b (ollama)" {
 		t.Errorf("got %q want %q", got, "llama3.2:3b (ollama)")
-	}
-}
-
-func TestActiveModelLabel_llamafileTakesPriority(t *testing.T) {
-	a := &Agent{Config: DefaultConfig()}
-	a.Config.Llamafile.Active = "qwen-coding"
-	a.Config.Ollama.Model = "llama3.2:3b"
-	if got := activeModelLabel(a); got != "qwen-coding (llamafile)" {
-		t.Errorf("llamafile should take priority; got %q", got)
 	}
 }
 
@@ -199,74 +181,12 @@ func TestProbeActiveBackend_noBackendConfigured(t *testing.T) {
 	}
 }
 
-func TestProbeActiveBackend_llamafileNotRunning(t *testing.T) {
-	a := &Agent{Config: DefaultConfig()}
-	a.Config.Llamafile.Active = "qwen-coding"
-	a.Config.Llamafile.URL = "http://127.0.0.1:19991" // nothing listening here
-	if probeActiveBackend(a) {
-		t.Error("expected false when llamafile server is not running")
-	}
-}
-
 func TestProbeActiveBackend_ollamaNotRunning(t *testing.T) {
 	a := &Agent{Config: DefaultConfig()}
 	a.Config.Ollama.Model = "llama3.2:3b"
 	a.Config.Ollama.URL = "http://127.0.0.1:19992" // nothing listening here
 	if probeActiveBackend(a) {
 		t.Error("expected false when ollama server is not running")
-	}
-}
-
-// ─── isConnectionError ───────────────────────────────────────────────────────
-
-func TestIsConnectionError_refused(t *testing.T) {
-	err := fmt.Errorf("dial tcp: connect: connection refused")
-	if !isConnectionError(err) {
-		t.Error("expected true for connection refused")
-	}
-}
-
-func TestIsConnectionError_eof(t *testing.T) {
-	err := fmt.Errorf("unexpected EOF")
-	if !isConnectionError(err) {
-		t.Error("expected true for EOF")
-	}
-}
-
-func TestIsConnectionError_reset(t *testing.T) {
-	err := fmt.Errorf("read tcp: connection reset by peer")
-	if !isConnectionError(err) {
-		t.Error("expected true for connection reset")
-	}
-}
-
-func TestIsConnectionError_other(t *testing.T) {
-	err := fmt.Errorf("invalid JSON response")
-	if isConnectionError(err) {
-		t.Error("expected false for non-connection error")
-	}
-}
-
-func TestIsConnectionError_nil(t *testing.T) {
-	if isConnectionError(nil) {
-		t.Error("expected false for nil error")
-	}
-}
-
-func TestIsConnectionError_unexpectedEndOfJSONInput(t *testing.T) {
-	// json.Decoder returns this exact string when the server closes the stream
-	// mid-JSON (e.g. llama-server OOM or streaming boundary bug with SmolLM3).
-	err := fmt.Errorf("unexpected end of JSON input")
-	if !isConnectionError(err) {
-		t.Error("expected true for 'unexpected end of JSON input'")
-	}
-}
-
-func TestIsConnectionError_wrappedUnexpectedEndOfJSON(t *testing.T) {
-	// same message but wrapped — as anyllm provider may do.
-	err := fmt.Errorf("llamacpp stream: %w", fmt.Errorf("unexpected end of JSON input"))
-	if !isConnectionError(err) {
-		t.Error("expected true for wrapped 'unexpected end of JSON input'")
 	}
 }
 
@@ -282,39 +202,6 @@ func TestAttemptModelSwitch_notFound(t *testing.T) {
 	}
 	if switched {
 		t.Error("expected switched=false for unknown model name")
-	}
-}
-
-func TestAttemptModelSwitch_llamafileRegistered(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/nonexistent.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	// The switch will fail because the file doesn't exist and no server is
-	// running, but the name IS found, so switched==true and err!=nil.
-	switched, err := attemptModelSwitch(a, "qwen-coding", &buf)
-	if !switched {
-		t.Error("expected switched=true when model name is registered")
-	}
-	// An error is acceptable (server not running); what matters is switched==true.
-	_ = err
-}
-
-func TestAttemptModelSwitch_caseInsensitive(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/nonexistent.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	// Upper-case name should still find "qwen-coding".
-	switched, _ := attemptModelSwitch(a, "QWEN-CODING", &buf)
-	if !switched {
-		t.Error("expected switched=true for case-insensitive name match")
 	}
 }
 
@@ -335,56 +222,17 @@ func TestAttemptModelSwitch_aliasLookupCaseInsensitive(t *testing.T) {
 
 // ─── @mention local model switch (REPL-level) ─────────────────────────────────
 
-func TestAtMention_localModelSwitch_withFakeServer(t *testing.T) {
-	// A fake llamafile server so startAndUseLlamafile succeeds.
-	srv := fakeLlamafileServer(t, "phi-mini")
-	defer srv.Close()
-
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.URL = srv.URL
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-		{Name: "phi-mini", Path: "/tmp/p.llamafile"},
-	}
-	cfg.Llamafile.Active = "qwen-coding"
-	a := NewAgent(cfg, ws)
-	// Wire up a starting client so the REPL has a backend.
-	a.Client = newLlamafileLLMClient(srv.URL+"/v1", "qwen-coding", 0)
-
-	var buf strings.Builder
-	// attemptModelSwitch with "phi-mini" should succeed (server is reachable).
-	switched, err := attemptModelSwitch(a, "phi-mini", &buf)
-	if !switched {
-		t.Error("expected switched=true when model is registered and server reachable")
-	}
-	if err != nil {
-		t.Errorf("unexpected switch error: %v", err)
-	}
-	// After switch, active model should be phi-mini.
-	if a.Config.Llamafile.Active != "phi-mini" {
-		t.Errorf("expected LlamafileActive=phi-mini, got %q", a.Config.Llamafile.Active)
-	}
-}
-
 // TestAtMention_tagRouting_resolvesTaggedAlias verifies that @code switches to
 // the model whose alias is tagged "code", even though no alias is literally
 // named "code". This exercises the Step 3 tag-lookup path in the REPL.
 func TestAtMention_tagRouting_resolvesTaggedAlias(t *testing.T) {
-	srv := fakeLlamafileServer(t, "granite3.3:8b")
-	defer srv.Close()
-
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.Llamafile.URL = srv.URL
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "granite3.3:8b", Path: "/tmp/granite.llamafile"},
-	}
 	cfg.ModelAliases = map[string]ModelAlias{
 		"granite": {Model: "granite3.3:8b", Tags: []string{"code", "instruct"}},
 	}
 	a := NewAgent(cfg, ws)
-	a.Client = newLlamafileLLMClient(srv.URL+"/v1", "granite3.3:8b", 0)
+	a.Client = newOllamaLLMClient("http://127.0.0.1:1", "granite3.3:8b", 0)
 
 	// @code should not match any alias by name, but should resolve via tag "code"
 	// → granite alias → granite3.3:8b → attemptModelSwitch succeeds.
@@ -424,23 +272,15 @@ func TestAtMention_tagRouting_noTagMatch(t *testing.T) {
 }
 
 // TestAtMention_tagRouting_exactAliasPrecedence verifies that @granite uses
-// the exact alias (Step 2) before tag lookup (Step 3). The fake server
-// advertises the model so attemptModelSwitch can complete.
+// the exact alias (Step 2) before tag lookup (Step 3)..
 func TestAtMention_tagRouting_exactAliasPrecedence(t *testing.T) {
-	srv := fakeLlamafileServer(t, "granite3.3:8b")
-	defer srv.Close()
-
 	ws, _ := NewWorkspace(t.TempDir())
 	cfg := DefaultConfig()
-	cfg.Llamafile.URL = srv.URL
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "granite3.3:8b", Path: "/tmp/granite.llamafile"},
-	}
 	cfg.ModelAliases = map[string]ModelAlias{
 		"granite": {Model: "granite3.3:8b", Tags: []string{"code", "instruct"}},
 	}
 	a := NewAgent(cfg, ws)
-	a.Client = newLlamafileLLMClient(srv.URL+"/v1", "granite3.3:8b", 0)
+	a.Client = newOllamaLLMClient("http://127.0.0.1:1", "granite3.3:8b", 0)
 
 	// @granite → exact alias hit via ResolveModelAlias before tag lookup runs.
 	resolved := a.Config.ResolveModelAlias("granite")
@@ -455,102 +295,6 @@ func TestAtMention_tagRouting_exactAliasPrecedence(t *testing.T) {
 	}
 	if err != nil {
 		t.Errorf("attemptModelSwitch: %v", err)
-	}
-}
-
-// ─── pickBackend tests ────────────────────────────────────────────────────────
-
-func TestPickBackend_listsLlamafilesBeforeOllama(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-		{Name: "phi-mini", Path: "/tmp/p.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	// "0\n" = select none, avoiding any actual llamafile start.
-	a.In = strings.NewReader("0\n")
-	var buf strings.Builder
-
-	_ = a.pickBackend(newTestBufioReader("0\n"), &buf, "")
-
-	out := buf.String()
-	// Both models should appear in the output.
-	if !strings.Contains(out, "qwen-coding") {
-		t.Errorf("expected qwen-coding in picker output, got: %s", out)
-	}
-	if !strings.Contains(out, "phi-mini") {
-		t.Errorf("expected phi-mini in picker output, got: %s", out)
-	}
-	// llamafile label should appear before any Ollama label.
-	qwenPos := strings.Index(out, "qwen-coding")
-	phiPos := strings.Index(out, "phi-mini")
-	if qwenPos < 0 || phiPos < 0 {
-		t.Fatal("models missing from output")
-	}
-	if qwenPos > phiPos {
-		t.Error("expected qwen-coding listed before phi-mini (registration order)")
-	}
-	// No backend should be set after selecting none.
-	if a.Client != nil {
-		t.Error("expected no client set after selecting none")
-	}
-}
-
-func TestPickBackend_autoSelectsPreferredLlamafile(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/nonexistent.llamafile"},
-		{Name: "phi-mini", Path: "/tmp/phi.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-
-	// preferredModel matches "qwen-coding" — should auto-select without showing picker.
-	// Start will fail (no binary), but the output should mention starting qwen-coding.
-	_ = a.pickBackend(newTestBufioReader(""), &buf, "qwen-coding")
-
-	out := buf.String()
-	// Should have attempted to start or use qwen-coding, not phi-mini.
-	if strings.Contains(out, "phi-mini") && !strings.Contains(out, "qwen-coding") {
-		t.Errorf("auto-select should have chosen qwen-coding, got: %s", out)
-	}
-}
-
-func TestPickBackend_noSelectionLeavesNoClient(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-
-	_ = a.pickBackend(newTestBufioReader("0\n"), &buf, "")
-
-	if a.Client != nil {
-		t.Error("expected no client when user selects 0 (none)")
-	}
-}
-
-func TestSelectBackend_callsPickBackendWhenLlamafileModelsExistButNoActive(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-	}
-	// LlamafileActive is empty — should take the pickBackend path.
-	cfg.LlamaCpp.URL = "http://127.0.0.1:1" // unreachable — prevent Case 0 adoption
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-
-	_ = a.selectBackend(newTestBufioReader("0\n"), &buf, "")
-
-	out := buf.String()
-	// The picker should have been shown (mentions qwen-coding).
-	if !strings.Contains(out, "qwen-coding") {
-		t.Errorf("expected picker to show registered llamafile, got: %s", out)
 	}
 }
 
@@ -584,37 +328,6 @@ func TestRouteSpinnerLabel_fallbackWhenNoModel(t *testing.T) {
 }
 
 // ─── --continue / --resume model hint extraction ──────────────────────────────
-
-func TestSelectBackend_extractsModelHintFromContinuePath(t *testing.T) {
-	// Write a minimal session file that records "llamafile (qwen-coding)" as the model.
-	dir := t.TempDir()
-	sessionPath := filepath.Join(dir, "session.fountain")
-	writeLegacyFountain(t, sessionPath, "llamafile (qwen-coding)", dir, "hello", "world")
-
-	// Set up agent with qwen-coding registered but no active model.
-	// Point LlamafileURL at a fake server so pickBackend can auto-select.
-	srv := fakeLlamafileServer(t, "qwen-coding")
-	defer srv.Close()
-
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Session.ContinuePath = sessionPath
-	cfg.Llamafile.URL = srv.URL
-	cfg.Llamafile.Models = []LlamafileEntry{
-		{Name: "qwen-coding", Path: "/tmp/q.llamafile"},
-	}
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-
-	// selectBackend should auto-select qwen-coding (from the session hint)
-	// without showing the interactive picker.
-	_ = a.selectBackend(newTestBufioReader(""), &buf, "")
-
-	// The auto-selection path connects the client.
-	if a.Client == nil {
-		t.Error("expected Client to be set after auto-selection from session hint")
-	}
-}
 
 // ─── ragAugment ───────────────────────────────────────────────────────────────
 

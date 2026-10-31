@@ -218,7 +218,7 @@ func TestPruneStaleModelRefs_KnowsHailo(t *testing.T) {
 	a := newTestAgent(t)
 	a.Config.ModelAliases["live"] = ModelAlias{Model: "llama3.2:3b", Engine: "hailo"}
 	a.Config.ModelAliases["gone"] = ModelAlias{Model: "missing:1b", Engine: "hailo"}
-	n, err := pruneStaleModelRefs(a, nil, nil, nil, []string{"llama3.2:3b"}, io.Discard)
+	n, err := pruneStaleModelRefs(a, nil, []string{"llama3.2:3b"}, io.Discard)
 	if err != nil || n != 1 {
 		t.Fatalf("pruned %d, %v; want 1", n, err)
 	}
@@ -389,21 +389,6 @@ func TestSelectBackend_RelabelledServerSaysHailo(t *testing.T) {
 	_ = a.selectBackend(newTestBufioReader(""), &out, "")
 	if !strings.Contains(out.String(), "hailo-ollama is running") {
 		t.Errorf("start-up did not say hailo-ollama:\n%s", out.String())
-	}
-	if a.Backend == nil || a.Backend.Name() != "hailo" {
-		t.Errorf("backend = %v, want hailo", a.Backend)
-	}
-}
-
-// The combined picker used when llamafiles are registered lists Hailo too.
-func TestPickBackend_ListsHailoModels(t *testing.T) {
-	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
-	a := familyAgent(t, "http://127.0.0.1:1", hl.URL, true, true)
-	a.Config.Llamafile.Models = []LlamafileEntry{{Name: "phi4", Path: "/models/phi4.llamafile"}}
-	var out strings.Builder
-	_ = a.pickBackend(newTestBufioReader("2\n"), &out, "")
-	if !strings.Contains(out.String(), "llama3.2:3b") || !strings.Contains(out.String(), "(hailo)") {
-		t.Errorf("combined picker lacks the Hailo model:\n%s", out.String())
 	}
 	if a.Backend == nil || a.Backend.Name() != "hailo" {
 		t.Errorf("backend = %v, want hailo", a.Backend)

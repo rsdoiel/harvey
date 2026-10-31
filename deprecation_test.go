@@ -26,7 +26,7 @@ func TestDeprecationNotice_oncePerKey(t *testing.T) {
 
 func TestRouteAdd_cloudKindNotice(t *testing.T) {
 	resetNotices(t)
-	for _, url := range []string{"anthropic://", "openai://", "llamafile://h:1", "llamacpp://h:1"} {
+	for _, url := range []string{"anthropic://", "openai://"} {
 		a := newTestAgent(t)
 		a.Routes = NewRouteRegistry()
 		var buf bytes.Buffer
@@ -60,7 +60,7 @@ func TestClientForEndpoint_noticeOnDispatch(t *testing.T) {
 	deprecationWriter = &buf
 	t.Cleanup(func() { deprecationWriter = old })
 	cfg := DefaultConfig()
-	_, _ = clientForEndpoint(&RouteEndpoint{Name: "x", URL: "llamafile://h:1", Kind: KindLlamafile}, cfg)
+	_, _ = clientForEndpoint(&RouteEndpoint{Name: "x", URL: "gemini://", Kind: KindGemini}, cfg)
 	if !strings.Contains(buf.String(), "deprecated") {
 		t.Fatalf("no notice on dispatch: %q", buf.String())
 	}
@@ -75,12 +75,11 @@ func TestStartupDeprecations(t *testing.T) {
 		t.Fatalf("default config printed %q", buf.String())
 	}
 
-	a.Config.Llamafile.Models = []LlamafileEntry{{Name: "m", Path: "/x"}}
 	a.Routes = NewRouteRegistry()
 	a.Routes.Add(&RouteEndpoint{Name: "g", URL: "gemini://", Kind: KindGemini})
 	a.startupDeprecations(&buf)
 	got := buf.String()
-	for _, want := range []string{"llamafile", "gemini"} {
+	for _, want := range []string{"gemini"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("startup notice missing %q in %q", want, got)
 		}
@@ -96,5 +95,14 @@ func TestNewRemoteReader_s3Notice(t *testing.T) {
 	_, _ = NewRemoteReader("s3://bucket/key")
 	if !strings.Contains(buf.String(), "s3") || !strings.Contains(buf.String(), "deprecated") {
 		t.Fatalf("no s3 notice: %q", buf.String())
+	}
+}
+
+func TestClientForEndpoint_removedLlamaKindsSayWhy(t *testing.T) {
+	for _, kind := range []RouteKind{"llamafile", "llamacpp"} {
+		_, err := clientForEndpoint(&RouteEndpoint{Name: "x", URL: string(kind) + "://h:1", Kind: kind}, DefaultConfig())
+		if err == nil || !strings.Contains(err.Error(), "DR-0033") {
+			t.Errorf("%s: want an error naming DR-0033, got %v", kind, err)
+		}
 	}
 }

@@ -124,8 +124,8 @@ type harveyYAML struct {
 	Security        securityYAML              `yaml:"security,omitempty"`
 	Session         sessionYAML               `yaml:"session,omitempty"`
 	Memory          memoryYAML                `yaml:"memory,omitempty"`
-	Llamafile       llamafileYAML             `yaml:"llamafile,omitempty"`
-	LlamaCpp        llamacppYAML              `yaml:"llamacpp,omitempty"`
+	Llamafile       any                       `yaml:"llamafile,omitempty"` // removed (DR-0033); kept to detect it
+	LlamaCpp        any                       `yaml:"llamacpp,omitempty"`  // removed (DR-0033); kept to detect it
 	Chunking        chunkingYAML              `yaml:"chunking,omitempty"`
 	LearnModel      string                    `yaml:"learn_model,omitempty"`
 }
@@ -144,33 +144,6 @@ type toolsYAML struct {
 	MaxToolCallsPerTurn  int   `yaml:"max_tool_calls_per_turn,omitempty"`
 	MaxOutputBytes       int   `yaml:"max_output_bytes,omitempty"`
 	ToolResultCompaction *bool `yaml:"tool_result_compaction,omitempty"`
-}
-
-type llamafileEntryYAML struct {
-	Name          string `yaml:"name"`
-	Path          string `yaml:"path"`
-	ContextLength int    `yaml:"context_length,omitempty"`
-}
-
-type llamafileYAML struct {
-	ModelsDir      string               `yaml:"models_dir,omitempty"`
-	Active         string               `yaml:"active,omitempty"`
-	URL            string               `yaml:"url,omitempty"`
-	StartupTimeout string               `yaml:"startup_timeout,omitempty"` // e.g. "120s", "2m"
-	GPULayers      *int                 `yaml:"gpu_layers,omitempty"`      // -ngl value; nil = use default (0, CPU-only)
-	MaxTokens      int                  `yaml:"max_tokens,omitempty"`      // cap on tokens per completion; 0 = no limit
-	Models         []llamafileEntryYAML `yaml:"models,omitempty"`
-}
-
-type llamacppYAML struct {
-	ServerBin    string `yaml:"server_bin,omitempty"`    // path to llama-server; "" = PATH lookup
-	ModelsDir    string `yaml:"models_dir,omitempty"`    // directory for *.gguf files
-	URL          string `yaml:"url,omitempty"`           // API base URL; default http://127.0.0.1:8081
-	CtxSize      int    `yaml:"ctx_size,omitempty"`      // --ctx-size; 0 = server default
-	Threads      int    `yaml:"threads,omitempty"`       // --threads; 0 = server default
-	GPULayers    *int   `yaml:"gpu_layers,omitempty"`    // --n-gpu-layers; nil = not set (0 = CPU-only)
-	StartTimeout string `yaml:"start_timeout,omitempty"` // e.g. "120s", "2m"
-	PinCPU       bool   `yaml:"pin_cpu,omitempty"`       // taskset -c 0-(threads-1); default false
 }
 
 type rollingSummaryYAML struct {

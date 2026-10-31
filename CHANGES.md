@@ -56,12 +56,6 @@
 
 ### Deprecated
 
-- **llama.cpp and llamafile support will be removed in the next release** (workspace DR-0033). Harvey will support Ollama and
-  hailo-ollama only. This release is the last that carries the two backends, the `llamafile:` and `llamacpp:` sections of
-  `harvey.yaml`, the `llamafile://` and `llamacpp://` route kinds and their model handling. After the removal a `harvey.yaml`
-  that names either one is a configuration error (exit 78). Stay on this release if you run a model through them. Harvey now
-  prints a notice once at startup when a llamafile is registered or either backend is the one in use.
-
 - **The cloud route kinds and the S3 reader will be removed in the next release** (workspace DR-0042). Harvey will talk only
   to Ollama-shaped servers on this machine or the local network. `anthropic://`, `deepseek://`, `gemini://`, `mistral://` and
   `openai://` routes, their API-key environment variables and the `s3://` document reader go; `ollama://`, `http(s)://` and
@@ -71,6 +65,14 @@
   warning. The `any-llm-go` client layer is replaced by a native Ollama client after that (DR-0046).
 
 ### Removed
+
+- **llama.cpp and llamafile support** (workspace DR-0033). Harvey supports Ollama and hailo-ollama only. Gone: the two backends and
+  their launch, probe and model-scan code, the `--llamafile`, `--llamafile-url` and `--llamafile-dir` options,
+  `HARVEY_LLAMAFILE_DIR`, the `llamafile://` and `llamacpp://` route kinds, `assay -llamafile` and `assay -llamacpp`, and the
+  llamafile registry (`/model` no longer lists, shows or starts them; `/model stop` and the restart-on-crash prompt for a
+  llamafile are gone). A `harvey.yaml` with a `llamafile:` or `llamacpp:` section is a configuration error (exit 78): delete the
+  section. A persisted route of either kind fails with a message that says it was removed. The last release that carries them
+  is the one before this. `assay` now talks to Ollama's native API, not its OpenAI-compatible one.
 
 - **`/context add`, `/context show` and `/context clear`.** Pin text with `/pin --text TEXT`, list with `/pins`, remove with
   `/unpin N`. The single "pinned context" string is now a list of pins. `/context` with no argument is the new view.

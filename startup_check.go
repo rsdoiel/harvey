@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // startup_check.go: the inputs a person names on the command line are checked
@@ -44,40 +43,6 @@ func CheckStartupInputs(cfg *Config) error {
 		if err := checkCreatable(p); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-/** CheckLlamafileInput verifies a llamafile named with --llamafile: the file
- * must exist (66) and carry the .llamafile or .llamafile.exe extension Harvey
- * is willing to launch (66, the wrong kind of file).
- *
- * Parameters:
- *   path (string) — the path given to --llamafile.
- *
- * Returns:
- *   error — nil, or an error classified as a missing input.
- *
- * Example:
- *   if err := harvey.CheckLlamafileInput("~/Models/qwen.llamafile"); err != nil { return err }
- */
-func CheckLlamafileInput(path string) error {
-	p := path
-	if strings.HasPrefix(p, "~") {
-		if home, err := os.UserHomeDir(); err == nil {
-			p = filepath.Join(home, p[1:])
-		}
-	}
-	fi, err := os.Stat(p)
-	if err != nil {
-		return NoInputf("--llamafile %s: %w", path, err)
-	}
-	if fi.IsDir() {
-		return NoInputf("--llamafile %s is a directory, not a llamafile", path)
-	}
-	lower := strings.ToLower(path)
-	if !strings.HasSuffix(lower, ".llamafile") && !strings.HasSuffix(lower, ".llamafile.exe") {
-		return NoInputf("--llamafile %s does not have a .llamafile or .llamafile.exe extension", path)
 	}
 	return nil
 }

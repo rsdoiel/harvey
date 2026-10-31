@@ -419,7 +419,7 @@ func scanCapability(s scanner) (*ModelCapability, error) {
  * the key valid.
  *
  * Parameters:
- *   engine (string) — backend name, e.g. "ollama", "hailo", "llamacpp"; "" = ollama.
+ *   engine (string) — backend name, e.g. "ollama", "hailo"; "" = ollama.
  *   model  (string) — full model name, e.g. "llama3.2:3b".
  *
  * Returns:

@@ -14,8 +14,7 @@ func TestParseQualifiedModel(t *testing.T) {
 	for _, c := range []struct{ in, engine, model string }{
 		{"hailo/llama3.2:3b", "hailo", "llama3.2:3b"},
 		{"Ollama/qwen2.5-coder:1.5b", "ollama", "qwen2.5-coder:1.5b"},
-		{"llamacpp/Phi4-Q4", "llamacpp", "Phi4-Q4"},
-		{"llamafile/phi4", "llamafile", "phi4"},
+		{"llamacpp/Phi4-Q4", "", "llamacpp/Phi4-Q4"}, // removed engines are not engines (DR-0033)
 		{"llama3.2:3b", "", "llama3.2:3b"},
 		{"user/model:tag", "", "user/model:tag"}, // a slash in a name is not an engine
 		{"hailo/", "", "hailo/"},                 // nothing after the engine

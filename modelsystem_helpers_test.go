@@ -2,8 +2,6 @@ package harvey
 
 import (
 	"fmt"
-	"os/exec"
-	"path/filepath"
 	"testing"
 )
 
@@ -31,19 +29,6 @@ func modelSystemAvailable(system string, cfg *Config) (bool, string) {
 	case "hailo":
 		if !ProbeOllama(cfg.Hailo.URL) {
 			return false, fmt.Sprintf("hailo-ollama is not reachable at %s; start it (`systemctl --user start hailo-ollama`) to run this test", cfg.Hailo.URL)
-		}
-	case "llamacpp":
-		bin := cfg.LlamaCpp.ServerBin
-		if bin == "" {
-			bin = "llama-server"
-		}
-		if _, err := exec.LookPath(bin); err != nil {
-			return false, fmt.Sprintf("%s is not on PATH; install llama.cpp to run this test", bin)
-		}
-	case "llamafile":
-		dir := cfg.Llamafile.ModelsDir
-		if m, _ := filepath.Glob(filepath.Join(dir, "*.llamafile")); len(m) == 0 {
-			return false, fmt.Sprintf("no *.llamafile in %s; put a llamafile there to run this test", dir)
 		}
 	default:
 		return false, fmt.Sprintf("unknown model system %q", system)
