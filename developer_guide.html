@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -99,11 +98,8 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="
 <li><strong><a href="TESTING.html">TESTING.md</a></strong> — Running
 tests, test architecture, writing tests, and CI/CD setup</li>
 <li><strong><a
-href="agent_integration_test.go">agent_integration_test.go</a></strong>
-— Integration tests for agent functionality</li>
-<li><strong><a
-href="anyllm_client_test.go">anyllm_client_test.go</a></strong> — Tests
-for the AnyLLM client wrapper</li>
+href="ollama_chat_test.go">ollama_chat_test.go</a></strong> — Tests for
+the Ollama chat client</li>
 <li><strong><a href="commands_test.go">commands_test.go</a></strong> —
 Tests for slash command handlers</li>
 <li><strong><a href="config_test.go">config_test.go</a></strong> —
@@ -144,8 +140,8 @@ ring-buffer audit log</li>
 Permission check helpers</li>
 <li><strong><a href="ollama.go">ollama.go</a></strong> — OllamaClient
 helpers and probing utilities</li>
-<li><strong><a href="anyllm_client.go">anyllm_client.go</a></strong> —
-AnyLLMClient wrapper for mozilla-ai/any-llm-go</li>
+<li><strong><a href="ollama_chat.go">ollama_chat.go</a></strong> —
+OllamaChatClient, harvey’s /api/chat client</li>
 <li><strong><a href="routing.go">routing.go</a></strong> —
 RouteRegistry, named remote endpoints, <span class="citation"
 data-cites="mention">@mention</span> dispatch</li>

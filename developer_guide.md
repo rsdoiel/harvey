@@ -55,8 +55,7 @@ make clean
 ## 🧪 Testing
 
 - **[TESTING.md](TESTING.md)** — Running tests, test architecture, writing tests, and CI/CD setup
-- **[agent_integration_test.go](agent_integration_test.go)** — Integration tests for agent functionality
-- **[anyllm_client_test.go](anyllm_client_test.go)** — Tests for the AnyLLM client wrapper
+- **[ollama_chat_test.go](ollama_chat_test.go)** — Tests for the Ollama chat client
 - **[commands_test.go](commands_test.go)** — Tests for slash command handlers
 - **[config_test.go](config_test.go)** — Configuration loading and validation tests
 - **[knowledge_test.go](knowledge_test.go)** — Knowledge base functionality tests
@@ -79,7 +78,7 @@ make clean
 - **[audit.go](audit.go)** — In-memory ring-buffer audit log
 - **[permissions.go](permissions.go)** — Permission check helpers
 - **[ollama.go](ollama.go)** — OllamaClient helpers and probing utilities
-- **[anyllm_client.go](anyllm_client.go)** — AnyLLMClient wrapper for mozilla-ai/any-llm-go
+- **[ollama_chat.go](ollama_chat.go)** — OllamaChatClient, harvey's /api/chat client
 - **[routing.go](routing.go)** — RouteRegistry, named remote endpoints, @mention dispatch
 - **[recorder.go](recorder.go)** — Fountain (.spmd) session recorder
 - **[spinner.go](spinner.go)** — Animated spinner with Edward Lear messages

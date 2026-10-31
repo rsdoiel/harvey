@@ -48,7 +48,8 @@ lear_messages.go            Edward Lear-themed spinner waiting messages
 
 --- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
-anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go (Ollama provider only)
+ollama_chat.go              OllamaChatClient — speaks Ollama&#39;s /api/chat (streaming, tools, num_ctx)
+chat_types.go               ToolCall, Tool, ContentPart and the other chat types
 model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
 route_persist.go            Persistence helpers for routes.json
@@ -965,14 +966,16 @@ responses, enabling cross-model comparison.</p>
 final chunk with <code>done: true</code> carries eval counts and
 durations (nanoseconds). <code>TokensPerSec</code> is computed as
 <code>eval_count / (eval_duration / 1e9)</code>.</p>
-<h3 id="anyllmclient-anyllm_client.go">AnyLLMClient
-(<code>anyllm_client.go</code>)</h3>
-<p>Wraps <a
-href="https://github.com/mozilla-ai/any-llm-go">mozilla-ai/any-llm-go</a>
-for the Ollama provider. Servers with
-<code>Config.OllamaTimeout == 0</code> use
-<code>anyllm.WithHTTPClient(&amp;http.Client{})</code> to remove the
-library’s default 120 s timeout.</p>
+<h3 id="ollamachatclient-ollama_chat.go">OllamaChatClient
+(<code>ollama_chat.go</code>)</h3>
+<p>Speaks Ollama’s <code>/api/chat</code> itself (workspace DR-0046);
+there is no model library between harvey and the server. The request is
+streamed newline-delimited JSON. Harvey sets
+<code>options.num_ctx</code> to the window it believes
+(<code>effectiveContextLimit()</code>) and sends none when the window is
+unknown. A tool result goes out with role <code>tool</code> and the
+tool’s name. A hailo-ollama client never sends a <code>tools</code> key.
+<code>Config.OllamaTimeout == 0</code> means no HTTP timeout.</p>
 <p>Named remote endpoints are managed by <code>RouteRegistry</code>
 (<code>routing.go</code>). The <code>@name</code> prefix in a prompt
 dispatches that turn to the named endpoint.</p>
@@ -1123,8 +1126,9 @@ scholarly fields</td>
 ranking</td>
 </tr>
 <tr class="odd">
-<td><code>anyllm_client_test.go</code></td>
-<td>AnyLLMClient construction and routing</td>
+<td><code>ollama_chat_test.go</code></td>
+<td>OllamaChatClient: streaming, tool calls, errors, num_ctx,
+images</td>
 </tr>
 <tr class="even">
 <td><code>codeblock_test.go</code></td>

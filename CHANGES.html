@@ -111,6 +111,22 @@ limit.</p></li>
 </ul>
 <h3 id="removed">Removed</h3>
 <ul>
+<li><p><strong>A native Ollama client replaces
+<code>any-llm-go</code></strong> (workspace DR-0046). Harvey speaks
+<code>/api/chat</code> itself, in <code>ollama_chat.go</code>, and the
+<code>any-llm-go</code> module and the <code>ollama/ollama</code>
+packages it pulled in are gone from <code>go.mod</code>. Visible
+changes: harvey sends <code>options.num_ctx</code> set to the window it
+believes for the model (from <code>ollama.context_length</code>,
+<code>--context</code>, the model cache or the server), and sends none
+when the window is unknown; the library always sent 32,000, which cost
+about 1 GB of memory on a small model. A tool result is sent with role
+<code>tool</code> and the tool’s name, as Ollama’s API defines, where
+the library sent it as a <code>user</code> message; llama3.2:3b and
+qwen2.5:3b answer correctly from it. A tool’s full parameter schema is
+sent, not only each property’s type and description. Error messages lose
+the library’s <code>[ollama] provider_error:</code> prefix and read
+<code>ollama chat: 500 Internal Server   Error: ...</code>.</p></li>
 <li><p><strong>The cloud route kinds and the S3 reader</strong>
 (workspace DR-0042). Harvey talks only to Ollama-shaped servers on this
 machine or the local network. Gone: <code>anthropic://</code>,
@@ -129,8 +145,8 @@ the next time routes are saved). An <code>s3://</code> URI is refused
 with a message that says so. To keep a cloud model, put an
 Ollama-compatible gateway on your network and point an
 <code>ollama://</code> route at it; to keep S3, mount the bucket as a
-filesystem. The <code>any-llm-go</code> client layer goes when the
-native Ollama client lands (DR-0046).</p></li>
+filesystem. The <code>any-llm-go</code> client layer is gone too (next
+entry).</p></li>
 <li><p><strong>llama.cpp and llamafile support</strong> (workspace
 DR-0033). Harvey supports Ollama and hailo-ollama only. Gone: the two
 backends and their launch, probe and model-scan code, the

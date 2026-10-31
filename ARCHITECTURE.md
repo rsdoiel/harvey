@@ -32,7 +32,8 @@ lear_messages.go            Edward Lear-themed spinner waiting messages
 
 --- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
-anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go (Ollama provider only)
+ollama_chat.go              OllamaChatClient — speaks Ollama's /api/chat (streaming, tools, num_ctx)
+chat_types.go               ToolCall, Tool, ContentPart and the other chat types
 model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
 route_persist.go            Persistence helpers for routes.json
@@ -535,12 +536,14 @@ Posts to `/api/chat` with `stream: true`. The final chunk with `done: true`
 carries eval counts and durations (nanoseconds). `TokensPerSec` is computed as
 `eval_count / (eval_duration / 1e9)`.
 
-### AnyLLMClient (`anyllm_client.go`)
+### OllamaChatClient (`ollama_chat.go`)
 
-Wraps [mozilla-ai/any-llm-go](https://github.com/mozilla-ai/any-llm-go) for
-the Ollama provider. Servers
-with `Config.OllamaTimeout == 0` use `anyllm.WithHTTPClient(&http.Client{})`
-to remove the library's default 120 s timeout.
+Speaks Ollama's `/api/chat` itself (workspace DR-0046); there is no model
+library between harvey and the server. The request is streamed newline-delimited
+JSON. Harvey sets `options.num_ctx` to the window it believes
+(`effectiveContextLimit()`) and sends none when the window is unknown. A tool
+result goes out with role `tool` and the tool's name. A hailo-ollama client
+never sends a `tools` key. `Config.OllamaTimeout == 0` means no HTTP timeout.
 
 Named remote endpoints are managed by `RouteRegistry` (`routing.go`). The
 `@name` prefix in a prompt dispatches that turn to the named endpoint.
@@ -621,7 +624,7 @@ Tests live alongside source files. Current test files:
 | `tier2_test.go` | Helpers (`isBinary`, `looksLikePath`), `/search`, `/git` |
 | `tier3_test.go` | Mock client, `/summarize`, `/context`, `ExpandDynamicSections` |
 | `rag_support_test.go` | `RagStore` ingest, query, source round-trip, semantic ranking |
-| `anyllm_client_test.go` | AnyLLMClient construction and routing |
+| `ollama_chat_test.go` | OllamaChatClient: streaming, tool calls, errors, num_ctx, images |
 | `codeblock_test.go` | Fenced code block parser |
 | `code_chunkers_test.go` | Symbol-aware chunking for multiple languages |
 | `code_formatters_test.go` | Auto-formatter detection and dispatch |
