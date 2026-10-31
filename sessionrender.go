@@ -87,6 +87,14 @@ type renderResponse struct {
 	MS int64 `json:"ms"`
 }
 
+type renderInjection struct {
+	Source      string          `json:"source"`
+	Origin      string          `json:"origin"`
+	Ref         string          `json:"ref"`
+	Description json.RawMessage `json:"description"`
+	Text        json.RawMessage `json:"text"`
+}
+
 type renderTool struct {
 	Tool   string `json:"tool"`
 	Origin string `json:"origin"`
@@ -184,6 +192,12 @@ func RenderFountain(events []Event, opts RenderOptions) []byte {
 			if tc.Origin == "user" && tc.Tool == "shell" {
 				renderShell(out, opts, events, i, user, at)
 			}
+		case KindInjection:
+			var inj renderInjection
+			_ = json.Unmarshal(e.Data, &inj)
+			if inj.Source == "skill" {
+				renderSkill(out, opts, e, inj, at)
+			}
 		case KindUserInput:
 			end := turnEnd(events, i)
 			renderTurn(out, opts, events[i:end], user, start.Workspace, modelName, label, at)
@@ -205,6 +219,14 @@ func turnEnd(events []Event, i int) int {
 		switch events[j].Kind {
 		case KindUserInput, KindModelSwitch, KindSessionEnd:
 			return j
+		case KindInjection:
+			// An injection the author asked for sits between turns; one made
+			// for the turn (a trigger match, a recall) stays inside it.
+			var inj renderInjection
+			_ = json.Unmarshal(events[j].Data, &inj)
+			if inj.Origin == "user" {
+				return j
+			}
 		case KindToolCall:
 			var tc renderTool
 			_ = json.Unmarshal(events[j].Data, &tc)
@@ -224,6 +246,8 @@ func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspa
 
 	var last *renderResponse
 	var failure *renderResponse
+	var skills []renderInjection
+	var skillEvents []Event
 	type call struct {
 		id, name, args, status string
 	}
@@ -241,6 +265,13 @@ func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspa
 				last = &r
 			} else {
 				failure = &r
+			}
+		case KindInjection:
+			var inj renderInjection
+			_ = json.Unmarshal(e.Data, &inj)
+			if inj.Source == "skill" {
+				skills = append(skills, inj)
+				skillEvents = append(skillEvents, e)
 			}
 		case KindToolCall:
 			var tc renderTool
@@ -266,6 +297,11 @@ func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspa
 		}
 	}
 
+	// The recorder wrote a skill's scene when it was loaded, which is before the
+	// turn's own scene.
+	for k, inj := range skills {
+		renderSkill(out, opts, skillEvents[k], inj, at)
+	}
 	out.sceneHeading(fmt.Sprintf("INT. HARVEY AND %s TALKING %s", user, at(turn[0])))
 	out.action(fmt.Sprintf("Harvey and %s are in chat mode. Model: %s. Workspace: %s.", user, modelName, workspace))
 	out.dialogue(user, "", opts.contentOf(input.Text))
@@ -342,5 +378,19 @@ func renderShell(out fountainOut, opts RenderOptions, events []Event, i int, use
 		out.note(fmt.Sprintf("shell: %s — exit %d", cmd, *res.Exit))
 	default:
 		out.note("shell: " + cmd + " — did not run")
+	}
+}
+
+// renderSkill writes the scene for a skill load: its heading, the line saying
+// harvey executes it, its description, and its body spoken by the skill.
+func renderSkill(out fountainOut, opts RenderOptions, e Event, inj renderInjection, at func(Event) string) {
+	char := strings.ToUpper(inj.Ref)
+	out.sceneHeading(fmt.Sprintf("INT. SKILL %s %s", char, at(e)))
+	out.action(fmt.Sprintf("Harvey executes the %s skill.", inj.Ref))
+	if desc := opts.contentOf(inj.Description); desc != "" {
+		out.action(desc)
+	}
+	if body := opts.contentOf(inj.Text); body != "" {
+		out.dialogue(char, "", body)
 	}
 }

@@ -587,3 +587,34 @@ func cappedOutput(b []byte) []byte {
 	}
 	return b
 }
+
+/** logSkillLoad records that a skill's body entered the conversation, as an
+ * injection with source "skill". The body is kept once, by hash, however
+ * often the skill is loaded. A load the author asked for has no turn; one
+ * harvey made because the input matched the skill's trigger belongs to the
+ * turn that is running.
+ *
+ * Parameters:
+ *   skill  (*SkillMeta) — the skill that was loaded.
+ *   origin (string)     — "user" or "auto".
+ *
+ * Example:
+ *   a.logSkillLoad(skill, "user")
+ */
+func (a *Agent) logSkillLoad(skill *SkillMeta, origin string) {
+	if a.SessionLog == nil {
+		return
+	}
+	data := map[string]any{
+		"source":      "skill",
+		"origin":      origin,
+		"ref":         skill.Name,
+		"description": a.logContent(skill.Description),
+		"path":        a.logContent(skill.Path),
+		"text":        a.logContentBlob(skill.Body),
+	}
+	if origin == "auto" {
+		data["turn"] = a.logTurn
+	}
+	a.logEvent(KindInjection, LevelInfo, data)
+}

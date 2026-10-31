@@ -168,6 +168,26 @@ func skillLoad(a *Agent, name string, out io.Writer) error {
  *   err := loadSkill(a, a.Skills["go-review"], os.Stdout)
  */
 func loadSkill(a *Agent, skill *SkillMeta, out io.Writer) error {
+	return loadSkillAs(a, skill, out, "user")
+}
+
+/** loadSkillAs is loadSkill with the origin of the load: "user" when the author
+ * asked for the skill (/skill load, /NAME), "auto" when harvey loaded it
+ * because the input matched its trigger. The origin goes to the session log.
+ *
+ * Parameters:
+ *   a      (*Agent)     — the running agent.
+ *   skill  (*SkillMeta) — the skill to activate.
+ *   out    (io.Writer)  — destination for the confirmation line.
+ *   origin (string)     — "user" or "auto".
+ *
+ * Returns:
+ *   error — a negative-class error when the skill has no body.
+ *
+ * Example:
+ *   err := loadSkillAs(a, skill, os.Stdout, "auto")
+ */
+func loadSkillAs(a *Agent, skill *SkillMeta, out io.Writer, origin string) error {
 	if skill.Body == "" {
 		return Negativef("skill %q has no body content", skill.Name)
 	}
@@ -176,6 +196,7 @@ func loadSkill(a *Agent, skill *SkillMeta, out io.Writer) error {
 	if a.Recorder != nil {
 		_ = a.Recorder.RecordSkillLoad(skill.Name, skill.Description, skill.Body)
 	}
+	a.logSkillLoad(skill, origin)
 	fmt.Fprintf(out, "  ✓ Skill %q loaded into context (%d chars).\n", skill.Name, len(skill.Body))
 	return nil
 }

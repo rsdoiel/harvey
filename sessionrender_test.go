@@ -167,3 +167,28 @@ func TestRenderFountain_SecretsStayRedacted(t *testing.T) {
 	}
 	_ = rec // the recorder, which writes what was typed, is unchanged and may contain it
 }
+
+// The recorder wrote a skill's scene when the skill was loaded. A skill loaded
+// for a turn (a trigger match) therefore comes before that turn's scene; one
+// the author loaded between turns comes between them.
+func TestRenderFountain_SkillScenesKeepTheRecordersOrder(t *testing.T) {
+	l, opts := openTestLog(t, func(o *SessionLogOptions) { o.Start.User = "ALICE" })
+	body, _ := l.ContentBlob("Do the review.\n")
+	mustAppend(t, l, KindInjection, LevelInfo, map[string]any{"source": "skill", "origin": "user", "ref": "first", "text": body})
+	mustAppend(t, l, KindUserInput, LevelInfo, map[string]any{"text": "review please"})
+	mustAppend(t, l, KindInjection, LevelInfo, map[string]any{"source": "skill", "origin": "auto", "turn": 1, "ref": "second", "text": body})
+	req := mustAppend(t, l, KindModelRequest, LevelInfo, map[string]any{"form": "assembled", "backend": "ollama", "model": "m"})
+	mustAppend(t, l, KindModelResponse, LevelInfo, map[string]any{"request": req, "status": "ok", "text": "done"})
+	_ = l.Close("quit")
+	events, _, _ := ReadSessionLog(logPath(opts))
+	got := string(RenderFountain(events, RenderOptions{Zone: time.UTC, Blobs: BlobDir(logPath(opts))}))
+	first := strings.Index(got, "INT. SKILL FIRST")
+	second := strings.Index(got, "INT. SKILL SECOND")
+	turn := strings.Index(got, "INT. HARVEY AND ALICE TALKING")
+	if !(first >= 0 && first < second && second < turn) {
+		t.Errorf("want skill FIRST < skill SECOND < the turn, got %d %d %d:\n%s", first, second, turn, got)
+	}
+	if strings.Count(got, "Do the review.") != 2 {
+		t.Errorf("each skill scene should carry the body once:\n%s", got)
+	}
+}
