@@ -5,7 +5,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1372,110 +1371,6 @@ func newTestAgentWithKB(t *testing.T) (*Agent, int64) {
 	}
 	a.Config.Memory.CurrentProjectID = pid
 	return a, pid
-}
-
-func TestKBObserve_SetsLastObservationID(t *testing.T) {
-	a, _ := newTestAgentWithKB(t)
-	var buf strings.Builder
-	if err := kbObserve(a, []string{"note", "something interesting"}, &buf); err != nil {
-		t.Fatalf("kbObserve: %v", err)
-	}
-	if a.LastObservationID == 0 {
-		t.Error("expected LastObservationID to be set after /kb observe")
-	}
-}
-
-func TestKBObserve_HintsRAGSources(t *testing.T) {
-	a, _ := newTestAgentWithKB(t)
-	// Seed a source and set LastRAGInfo with it.
-	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Test Paper", IdentifierType: "doi", IdentifierValue: "10.1/test"})
-	a.LastRAGInfo = &RAGAugmentInfo{
-		StoreName: "docs.db",
-		Chunks:    1,
-		TopScore:  0.9,
-		Sources: []RAGChunkRef{
-			{Source: "paper.md", SourceDOI: "10.1/test", SourceTitle: "Test Paper"},
-		},
-	}
-	_ = srcID
-
-	var buf strings.Builder
-	if err := kbObserve(a, []string{"finding", "RAG helped here"}, &buf); err != nil {
-		t.Fatalf("kbObserve: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "cite") {
-		t.Errorf("expected /kb cite hint in output when LastRAGInfo has sources; got:\n%s", out)
-	}
-}
-
-func TestKBCite_LinksToLastObservation(t *testing.T) {
-	a, pid := newTestAgentWithKB(t)
-	obsID, _ := a.KB.AddObservation(pid, "note", "needs a citation")
-	a.LastObservationID = obsID
-	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Cited Work"})
-
-	var buf strings.Builder
-	if err := kbCite(a, []string{strconv.FormatInt(srcID, 10)}, &buf); err != nil {
-		t.Fatalf("kbCite: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "linked") {
-		t.Errorf("expected 'linked' in output; got: %s", out)
-	}
-	// Verify the link is actually in the DB.
-	sources, err := a.KB.ObservationSources(obsID)
-	if err != nil {
-		t.Fatalf("ObservationSources: %v", err)
-	}
-	if len(sources) != 1 || sources[0].Title != "Cited Work" {
-		t.Errorf("expected 'Cited Work' linked to observation; got: %v", sources)
-	}
-}
-
-func TestKBCite_NoLastObservation(t *testing.T) {
-	a, _ := newTestAgentWithKB(t)
-	var buf strings.Builder
-	err := kbCite(a, []string{"1"}, &buf)
-	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no recent observation") {
-		t.Errorf("expected a negative result naming the missing observation; got: %v", err)
-	}
-}
-
-func TestKBShow_WithSources(t *testing.T) {
-	a, pid := newTestAgentWithKB(t)
-	obsID, _ := a.KB.AddObservation(pid, "finding", "important finding")
-	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Key Reference", IdentifierType: "doi", IdentifierValue: "10.1/key"})
-	_ = a.KB.LinkObservationSource(obsID, srcID, "cited")
-
-	var buf strings.Builder
-	if err := kbShow(a, []string{strconv.FormatInt(obsID, 10)}, &buf); err != nil {
-		t.Fatalf("kbShow: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "important finding") {
-		t.Errorf("expected observation body in output; got: %s", out)
-	}
-	if !strings.Contains(out, "Key Reference") {
-		t.Errorf("expected source title in output; got: %s", out)
-	}
-}
-
-func TestKBShow_RetractedSourceWarning(t *testing.T) {
-	a, pid := newTestAgentWithKB(t)
-	obsID, _ := a.KB.AddObservation(pid, "note", "based on a paper")
-	srcID, _ := a.KB.AddSource(knowledge.Source{Title: "Retracted Paper"})
-	_ = a.KB.LinkObservationSource(obsID, srcID, "cited")
-	_ = a.KB.RetractSource(srcID, "Withdrawn by publisher")
-
-	var buf strings.Builder
-	if err := kbShow(a, []string{strconv.FormatInt(obsID, 10)}, &buf); err != nil {
-		t.Fatalf("kbShow: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "RETRACTED") {
-		t.Errorf("expected RETRACTED warning in output; got: %s", out)
-	}
 }
 
 func TestClearHistory_ClearsLastRAGInfo(t *testing.T) {

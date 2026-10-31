@@ -202,10 +202,10 @@ func (a *Agent) registerCommands() {
 			Handler:     cmdClear,
 		},
 		"kb": {
-			Usage:       "/kb <status|search|inject|project|observe|concept|source|retract|cite|show|learn|check-retractions> [args...]",
-			Description: "Manage and query the workspace knowledge base",
+			Usage:       "/kb [OPTIONS] VERB [ARGS...]   (runs the installed kb; inject and learn are harvey's own)",
+			Description: "Run the installed kb on the workspace knowledge base",
 			Handler:     cmdKB,
-			Subcommands: []string{"status", "search", "inject", "project", "observe", "concept", "source", "retract", "cite", "show", "learn", "check-retractions"},
+			Subcommands: kbVerbNames(),
 		},
 		"memory": {
 			Usage:       "/memory <mine|list|show|flag|forget|status|recall|profile> [args...]",

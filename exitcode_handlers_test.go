@@ -608,32 +608,8 @@ func TestHandlerErrors_KB(t *testing.T) {
 		return func(a *Agent, o io.Writer) error { return cmdKB(a, args, o) }
 	}
 	runHandlerCases(t, []handlerCase{
-		{"no arguments shows the status", withKB, kb(), ClassOK},
-		{"search: no terms", withKB, kb("search"), ClassUsage},
+		{"no arguments", withKB, kb(), ClassUsage},
 		{"inject: no such project", withKB, kb("inject", "ghost"), ClassNegative},
-		{"project: no arguments", withKB, kb("project"), ClassUsage},
-		{"project add: no name", withKB, kb("project", "add"), ClassUsage},
-		{"project use: no id", withKB, kb("project", "use"), ClassUsage},
-		{"project use: bad id", withKB, kb("project", "use", "x"), ClassUsage},
-		{"project: unknown subcommand", withKB, kb("project", "bogus"), ClassUsage},
-		{"observe: no text", withKB, kb("observe"), ClassUsage},
-		{"concept: no arguments", withKB, kb("concept"), ClassUsage},
-		{"concept add: no name", withKB, kb("concept", "add"), ClassUsage},
-		{"concept: unknown subcommand", withKB, kb("concept", "bogus"), ClassUsage},
-		{"source: no arguments", withKB, kb("source"), ClassUsage},
-		{"source add: no title", withKB, kb("source", "add"), ClassUsage},
-		{"source show: no id", withKB, kb("source", "show"), ClassUsage},
-		{"source show: bad id", withKB, kb("source", "show", "x"), ClassUsage},
-		{"source show: no such source", withKB, kb("source", "show", "999"), ClassNegative},
-		{"source remove: no id", withKB, kb("source", "remove"), ClassUsage},
-		{"source remove: bad id", withKB, kb("source", "remove", "x"), ClassUsage},
-		{"source: unknown subcommand", withKB, kb("source", "bogus"), ClassUsage},
-		{"retract: no id", withKB, kb("retract"), ClassUsage},
-		{"retract: bad id", withKB, kb("retract", "x"), ClassUsage},
-		{"cite: no ids", withKB, kb("cite"), ClassUsage},
-		{"show: no id", withKB, kb("show"), ClassUsage},
-		{"show: bad id", withKB, kb("show", "x"), ClassUsage},
-		{"show: no such observation", withKB, kb("show", "999"), ClassNegative},
 	})
 }
 

@@ -1,129 +1,194 @@
-// Package harvey — commands_kb.go implements the /kb slash command family
-// for managing the knowledge base.
+// Package harvey — commands_kb.go implements /kb: it runs the installed kb
+// (workspace DR-0034), except for the two verbs only harvey can do, inject and
+// learn, which stay harvey's until the design brief's decision 4 is made.
 package harvey
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
 	knowledge "github.com/rsdoiel/knowledge"
 )
 
-// ─── /kb ─────────────────────────────────────────────────────────────────────
+// kbInstallHint is what an error says when kb is not on PATH.
+const kbInstallHint = "go install github.com/rsdoiel/knowledge/cmd/kb@latest"
 
-/** cmdKB handles Knowledge Base (KB) commands for managing projects,
- * observations, concepts, and full-text search.
- *
- * Subcommands:
- *   status    — Show summary of all projects and recent observations
- *   search    — Full-text search across all KB content
- *   inject   — Inject KB content into conversation context
- *   project  — Manage projects (add, list, info, status)
- *   observe  — Manage observations (add, list)
- *   concept  — Manage concepts (add, list, info)
- *   link     — Link observations/concepts to projects/concepts
- *
- * The knowledge base is a SQLite3 database storing projects, observations,
- * and concepts with FTS5 full-text search. Commands delegate to specialized
- * handlers (kbStatus, kbSearch, kbProject, etc.).
+/** cmdKB handles /kb. It runs the installed kb with the given arguments in the
+ * workspace, shows its output, and returns its exit status as the matching
+ * class (workspace DR-0003). The knowledge base is the workspace's, passed
+ * with -db unless the arguments name one. Two verbs are harvey's own and are
+ * not sent to kb: inject (puts knowledge base content into the model's
+ * context) and learn, and so is "project use ID", which sets harvey's
+ * in-session current project.
  *
  * Parameters:
- *   a    (*Agent)    — Harvey agent with active KB connection.
- *   args ([]string)  — Command arguments from user input.
- *   out  (io.Writer) — Destination for command output.
+ *   a    (*Agent)    — Harvey agent.
+ *   args ([]string)  — everything after /kb: options, a verb, its arguments.
+ *   out  (io.Writer) — destination for kb's output.
  *
  * Returns:
- *   error — On command execution failure.
+ *   error — nil when kb exited 0; otherwise an error of the class kb's exit code names.
+ *
+ * Example:
+ *   err := cmdKB(a, []string{"search", "streaming"}, os.Stdout)
  */
 func cmdKB(a *Agent, args []string, out io.Writer) error {
-	if a.KB == nil {
-		return Unavailablef("the knowledge base is not open. This should not happen — please restart Harvey")
-	}
-	verb := "status"
-	if len(args) > 0 {
-		verb = strings.ToLower(args[0])
-	}
-	if !kbVerbs[verb] {
-		return kbDispatch(a, args, out) // a usage error: nothing is asked of the knowledge base
-	}
-	return a.loggedKB(verb, args, out, func(w io.Writer) error { return kbDispatch(a, args, w) })
-}
-
-// kbDispatch runs one /kb subcommand; cmdKB wraps it for the session log.
-func kbDispatch(a *Agent, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return kbStatus(a, out)
+		return Usagef("usage: /kb [OPTIONS] VERB [ARGS...]   runs the installed kb (try /kb help); /kb inject and /kb learn are harvey's own")
 	}
-	switch strings.ToLower(args[0]) {
-	case "status":
-		return kbStatus(a, out)
-	case "search":
-		return kbSearch(a, args[1:], out)
-	case "inject":
-		return kbInject(a, args[1:], out)
-	case "project":
-		return kbProject(a, args[1:], out)
-	case "observe":
-		return kbObserve(a, args[1:], out)
-	case "concept":
-		return kbConcept(a, args[1:], out)
-	case "source":
-		return kbSource(a, args[1:], out)
-	case "retract":
-		return kbRetract(a, args[1:], out)
-	case "cite":
-		return kbCite(a, args[1:], out)
-	case "show":
-		return kbShow(a, args[1:], out)
-	case "learn":
-		return kbLearn(a, args[1:], out)
-	case "check-retractions":
-		return kbCheckRetractions(a, out)
-	default:
-		return Usagef("unknown kb subcommand: %s  (usage: /kb <status|search|inject|project|observe|concept|source|retract|cite|show|learn|check-retractions> [args...])", args[0])
+	verb, logArgs := kbVerbOf(args)
+	if verb == "project" && len(logArgs) > 1 && strings.ToLower(logArgs[1]) == "use" {
+		return kbProjectUse(a, logArgs[2:], out)
 	}
+	switch verb {
+	case "inject", "learn":
+		if a.KB == nil {
+			return Unavailablef("the knowledge base is not open. This should not happen — please restart Harvey")
+		}
+		return a.loggedKB(verb, append([]string{verb}, args[1:]...), out, func(w io.Writer) error {
+			if verb == "inject" {
+				return kbInject(a, args[1:], w)
+			}
+			return kbLearn(a, args[1:], w)
+		})
+	}
+	return a.loggedKB(verb, logArgs, out, func(w io.Writer) error { return a.runKB(args, w) })
 }
 
-func kbStatus(a *Agent, out io.Writer) error {
-	fmt.Fprintln(out)
-	s, err := a.KB.Summary()
-	if err != nil {
-		return err
+// kbProjectUse handles /kb project use ID, which sets harvey's in-session
+// current project (kb has no such notion); inject, learn and memory recall
+// read it.
+func kbProjectUse(a *Agent, args []string, out io.Writer) error {
+	if len(args) != 1 {
+		return Usagef("usage: /kb project use ID")
 	}
-	fmt.Fprint(out, s)
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil || id <= 0 {
+		return Usagef("invalid project ID: %s", args[0])
+	}
+	a.Config.Memory.CurrentProjectID = id
+	fmt.Fprintf(out, "Current project set to id=%d.\n", id)
 	return nil
 }
 
-// kbSearch handles /kb search TERM [TERM...] using the FTS5 index.
-func kbSearch(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return Usagef("usage: /kb search TERM [TERM...]  (quote phrases (\"WAL mode\"), use * for prefix (docker*))")
+// kbVerbOf finds the verb in /kb's arguments: the first one that is not an
+// option. It returns the verb and the arguments reordered as verb first, for
+// the session log. An option that takes a value (-db PATH) is skipped with it.
+func kbVerbOf(args []string) (verb string, logArgs []string) {
+	for i := 0; i < len(args); i++ {
+		if strings.HasPrefix(args[i], "-") {
+			if (args[i] == "-db" || args[i] == "--db") && i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		rest := append([]string(nil), args[:i]...)
+		rest = append(rest, args[i+1:]...)
+		return strings.ToLower(args[i]), append([]string{args[i]}, rest...)
 	}
-	term := strings.Join(args, " ")
-	results, err := a.KB.Search(term)
-	if err != nil {
-		return fmt.Errorf("kb search: %w", err)
+	return "", args
+}
+
+// knowledgeDBPath is the workspace's knowledge base, as kb should open it.
+func (a *Agent) knowledgeDBPath() string {
+	p := a.Config.Memory.KnowledgeDB
+	if p == "" {
+		return knowledge.DefaultPath(a.Workspace.Root)
 	}
-	if len(results) == 0 {
-		fmt.Fprintf(out, "  No results for %q\n", term)
-		return nil
-	}
-	fmt.Fprintln(out)
-	for _, r := range results {
-		a.noteKBItem(kbRefOf(r.SourceType, r.SourceID, r.Ref), r.SourceType, nil)
-		switch {
-		case r.Label != "" && r.Snippet != "":
-			fmt.Fprintf(out, "  [%-10s] %s — %s\n", r.Kind, r.Label, r.Snippet)
-		case r.Label != "":
-			fmt.Fprintf(out, "  [%-10s] %s\n", r.Kind, r.Label)
-		default:
-			fmt.Fprintf(out, "  [%-10s] %s\n", r.Kind, r.Snippet)
+	if !filepath.IsAbs(p) {
+		if abs, err := a.Workspace.AbsPath(p); err == nil {
+			return abs
 		}
 	}
-	fmt.Fprintln(out)
-	return nil
+	return p
+}
+
+// runKB runs the installed kb. Options before the verb are kept in place, and
+// -db is added in front unless the arguments already name one.
+func (a *Agent) runKB(args []string, out io.Writer) error {
+	bin, err := exec.LookPath("kb")
+	if err != nil {
+		return Unavailablef("kb is not installed (or not on PATH). Install it with: %s", kbInstallHint)
+	}
+	full := args
+	hasDB := false
+	for _, x := range args {
+		if x == "-db" || x == "--db" || strings.HasPrefix(x, "-db=") || strings.HasPrefix(x, "--db=") {
+			hasDB = true
+		}
+	}
+	if !hasDB {
+		full = append([]string{"-db", a.knowledgeDBPath()}, args...)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	if a.Config.Security.RunTimeout > 0 {
+		cancel()
+		ctx, cancel = context.WithTimeout(context.Background(), a.Config.Security.RunTimeout)
+	}
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, full...)
+	cmd.Dir = a.Workspace.Root
+	cmd.Env = filterCommandEnvironment(os.Environ())
+	cmd.Stdout, cmd.Stderr = out, out // no stdin: kb's terminal-only verbs refuse, as they should
+	runErr := cmd.Run()
+	if cmd.ProcessState == nil {
+		return startFailure("kb", runErr)
+	}
+	return kbExitError(cmd.ProcessState.ExitCode(), ctx.Err() != nil)
+}
+
+// kbExitError turns kb's exit code into an error of the class the workspace
+// table (DR-0003) gives that code; a code the table does not know is internal.
+func kbExitError(code int, timedOut bool) error {
+	if timedOut {
+		return ClassedAs(ClassUnavailable, fmt.Errorf("kb did not finish within the run timeout"))
+	}
+	if code == 0 {
+		return nil
+	}
+	class := ClassInternal
+	for _, c := range []ExitClass{ClassNegative, ClassUsage, ClassData, ClassNoInput, ClassUnavailable, ClassInternal,
+		ClassCantCreate, ClassIO, ClassTempFail, ClassNoPermission, ClassConfig} {
+		if c.Code == code {
+			class = c
+		}
+	}
+	return ClassedAs(class, fmt.Errorf("kb exited %d", code))
+}
+
+// kbVerbNames reads the verbs the installed kb has from kb -json verbs, for
+// completion; harvey's own verbs are added. When kb is absent or answers
+// unreadably only harvey's own are returned.
+func kbVerbNames() []string {
+	names := map[string]bool{"inject": true, "learn": true}
+	if bin, err := exec.LookPath("kb"); err == nil {
+		if raw, err := exec.Command(bin, "-json", "verbs").Output(); err == nil {
+			var t struct {
+				Verbs []struct {
+					Name string `json:"name"`
+				} `json:"verbs"`
+			}
+			if json.Unmarshal(raw, &t) == nil {
+				for _, v := range t.Verbs {
+					names[v.Name] = true
+				}
+			}
+		}
+	}
+	out := make([]string, 0, len(names))
+	for n := range names {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // kbInject formats KB content as Markdown and adds it to the conversation as
@@ -164,414 +229,5 @@ func kbInject(a *Agent, args []string, out io.Writer) error {
 	a.noteKBInjection(injectRef, "[knowledge base context]\n\n"+md)
 	a.addPrompt("user", "kb-inject", "[knowledge base context]\n\n"+md)
 	fmt.Fprintf(out, green("✓")+" KB context for %s injected (%d bytes).\n", label, len(md))
-	return nil
-}
-
-// kbProject handles /kb project <list|add NAME [DESC]|use ID>
-func kbProject(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return Usagef("usage: /kb project <list|add NAME [DESC]|use ID>")
-	}
-	switch strings.ToLower(args[0]) {
-	case "list":
-		projects, err := a.KB.Projects()
-		if err != nil {
-			return err
-		}
-		if len(projects) == 0 {
-			fmt.Fprintln(out, "  (no projects)")
-			return nil
-		}
-		for _, p := range projects {
-			active := ""
-			if a.Config.Memory.CurrentProjectID == p.ID {
-				active = " *"
-			}
-			fmt.Fprintf(out, "  [%d]%s %s  (%s)\n", p.ID, active, p.Name, p.Status)
-			if p.Description != "" {
-				fmt.Fprintf(out, "      %s\n", p.Description)
-			}
-		}
-	case "add":
-		if len(args) < 2 {
-			return Usagef("usage: /kb project add NAME [DESCRIPTION]")
-		}
-		name := args[1]
-		desc := strings.Join(args[2:], " ")
-		id, err := a.KB.AddProject(name, desc)
-		if err != nil {
-			return err
-		}
-		a.Config.Memory.CurrentProjectID = id
-		fmt.Fprintf(out, "Project %q added (id=%d) and set as current.\n", name, id)
-	case "use":
-		if len(args) < 2 {
-			return Usagef("usage: /kb project use ID")
-		}
-		id, err := strconv.ParseInt(args[1], 10, 64)
-		if err != nil {
-			return Usagef("invalid project ID: %s", args[1])
-		}
-		a.Config.Memory.CurrentProjectID = id
-		fmt.Fprintf(out, "Current project set to id=%d.\n", id)
-	default:
-		return Usagef("unknown project subcommand: %s", args[0])
-	}
-	return nil
-}
-
-// kbObserve handles /kb observe KIND BODY...
-// KIND defaults to "note" if omitted or invalid.
-func kbObserve(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return Usagef("usage: /kb observe [KIND] TEXT  (kinds: %s; default: note)", strings.Join(knowledge.ValidObservationKinds, ", "))
-	}
-	if a.Config.Memory.CurrentProjectID == 0 {
-		return Negativef("no current project. Use /kb project add NAME or /kb project use ID first")
-	}
-
-	kind := "note"
-	bodyArgs := args
-	if knowledge.IsValidKind(strings.ToLower(args[0])) {
-		kind = strings.ToLower(args[0])
-		bodyArgs = args[1:]
-	}
-	if len(bodyArgs) == 0 {
-		fmt.Fprintln(out, "Observation text is required.")
-		return nil
-	}
-	body := strings.Join(bodyArgs, " ")
-	id, err := a.KB.AddObservation(a.Config.Memory.CurrentProjectID, kind, body)
-	if err != nil {
-		return err
-	}
-	a.LastObservationID = id
-	fmt.Fprintf(out, "Observation recorded (id=%d, kind=%s).\n", id, kind)
-	if a.LastRAGInfo != nil && len(a.LastRAGInfo.Sources) > 0 {
-		fmt.Fprintln(out, "  RAG sources available — link with /kb cite SOURCE_ID [SOURCE_ID ...]:")
-		for _, src := range a.LastRAGInfo.Sources {
-			label := src.Source
-			var meta []string
-			if src.SourceTitle != "" {
-				meta = append(meta, src.SourceTitle)
-			}
-			if src.SourceDOI != "" {
-				meta = append(meta, "doi:"+src.SourceDOI)
-			}
-			if len(meta) > 0 {
-				label += " (" + strings.Join(meta, ", ") + ")"
-			}
-			fmt.Fprintf(out, "    %s\n", label)
-		}
-		fmt.Fprintln(out, "  Use /kb source list to find source IDs.")
-	}
-	return nil
-}
-
-// kbConcept handles /kb concept <list|add NAME [DESC]>
-func kbConcept(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return Usagef("usage: /kb concept <list|add NAME [DESCRIPTION]>")
-	}
-	switch strings.ToLower(args[0]) {
-	case "list":
-		concepts, err := a.KB.Concepts()
-		if err != nil {
-			return err
-		}
-		if len(concepts) == 0 {
-			fmt.Fprintln(out, "  (no concepts)")
-			return nil
-		}
-		for _, c := range concepts {
-			fmt.Fprintf(out, "  [%d] %s", c.ID, c.Name)
-			if c.Description != "" {
-				fmt.Fprintf(out, " — %s", c.Description)
-			}
-			fmt.Fprintln(out)
-		}
-	case "add":
-		if len(args) < 2 {
-			return Usagef("usage: /kb concept add NAME [DESCRIPTION]")
-		}
-		name := args[1]
-		desc := strings.Join(args[2:], " ")
-		id, err := a.KB.AddConcept(name, desc)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "Concept %q added (id=%d).\n", name, id)
-	default:
-		return Usagef("unknown concept subcommand: %s", args[0])
-	}
-	return nil
-}
-
-// ─── /kb source ──────────────────────────────────────────────────────────────
-
-// kbSource handles /kb source <list|add|show|remove> [args...]
-func kbSource(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return Usagef("usage: /kb source <list|add|show ID|remove ID>")
-	}
-	switch strings.ToLower(args[0]) {
-	case "list":
-		sources, err := a.KB.ListSources()
-		if err != nil {
-			return err
-		}
-		if len(sources) == 0 {
-			fmt.Fprintln(out, "  (no sources registered)")
-			return nil
-		}
-		fmt.Fprintf(out, "  %-4s  %-32s  %-24s  %s\n", "ID", "Title", "Identifier", "Retracted")
-		for _, s := range sources {
-			ident := "—"
-			if s.IdentifierType != "" && s.IdentifierValue != "" {
-				ident = s.IdentifierType + ":" + s.IdentifierValue
-			}
-			retracted := "no"
-			if s.Retracted {
-				retracted = "[RETRACTED]"
-			}
-			fmt.Fprintf(out, "  %-4d  %-32s  %-24s  %s\n", s.ID, truncate(s.Title, 32), truncate(ident, 24), retracted)
-		}
-	case "add":
-		var s knowledge.Source
-		var i int
-		for i = 1; i < len(args); i++ {
-			switch args[i] {
-			case "--doi":
-				if i+1 < len(args) {
-					i++
-					s.IdentifierType = "doi"
-					s.IdentifierValue = args[i]
-				}
-			case "--url":
-				if i+1 < len(args) {
-					i++
-					if s.IdentifierType == "" {
-						s.IdentifierType = "url"
-						s.IdentifierValue = args[i]
-					}
-				}
-			case "--title":
-				if i+1 < len(args) {
-					i++
-					s.Title = args[i]
-				}
-			case "--authors":
-				if i+1 < len(args) {
-					i++
-					s.Authors = args[i]
-				}
-			case "--publisher":
-				if i+1 < len(args) {
-					i++
-					s.Publisher = args[i]
-				}
-			case "--date":
-				if i+1 < len(args) {
-					i++
-					s.PublishedDate = args[i]
-				}
-			case "--rights":
-				if i+1 < len(args) {
-					i++
-					s.Rights = args[i]
-				}
-			case "--version":
-				if i+1 < len(args) {
-					i++
-					s.Version = args[i]
-				}
-			default:
-				if s.Title == "" {
-					s.Title = args[i]
-				}
-			}
-		}
-		if s.Title == "" {
-			return Usagef("usage: /kb source add --title TITLE [--doi DOI] [--url URL] [--authors AUTHORS] ")
-		}
-		id, err := a.KB.AddSource(s)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "Source added (id=%d).\n", id)
-	case "show":
-		if len(args) < 2 {
-			return Usagef("usage: /kb source show ID")
-		}
-		id, err := strconv.ParseInt(args[1], 10, 64)
-		if err != nil {
-			return Usagef("invalid source ID %q", args[1])
-		}
-		s, err := a.KB.ShowSource(id)
-		if err != nil {
-			return Negativef("source %d not found", id)
-		}
-		fmt.Fprintf(out, "  ID:        %d\n", s.ID)
-		fmt.Fprintf(out, "  Title:     %s\n", s.Title)
-		if s.IdentifierType != "" {
-			fmt.Fprintf(out, "  %s:      %s\n", s.IdentifierType, s.IdentifierValue)
-		}
-		if s.Authors != "" {
-			fmt.Fprintf(out, "  Authors:   %s\n", s.Authors)
-		}
-		if s.PublishedDate != "" {
-			fmt.Fprintf(out, "  Date:      %s\n", s.PublishedDate)
-		}
-		if s.Publisher != "" {
-			fmt.Fprintf(out, "  Publisher: %s\n", s.Publisher)
-		}
-		if s.Retracted {
-			fmt.Fprintf(out, "  ⚠ RETRACTED: %s\n", s.RetractionNote)
-		}
-	case "remove":
-		if len(args) < 2 {
-			return Usagef("usage: /kb source remove ID")
-		}
-		id, err := strconv.ParseInt(args[1], 10, 64)
-		if err != nil {
-			return Usagef("invalid source ID %q", args[1])
-		}
-		if err := a.KB.RemoveSource(id); err != nil {
-			fmt.Fprintf(out, "  ✗ %v\n", err)
-			return nil
-		}
-		fmt.Fprintf(out, "Source %d removed.\n", id)
-	default:
-		return Usagef("unknown source subcommand: %s", args[0])
-	}
-	return nil
-}
-
-// kbRetract handles /kb retract ID [--note NOTE]
-func kbRetract(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return Usagef("usage: /kb retract SOURCE_ID [--note NOTE]")
-	}
-	id, err := strconv.ParseInt(args[0], 10, 64)
-	if err != nil {
-		return Usagef("invalid source ID %q", args[0])
-	}
-	note := ""
-	for i := 1; i < len(args); i++ {
-		if args[i] == "--note" && i+1 < len(args) {
-			i++
-			note = args[i]
-		}
-	}
-	if err := a.KB.RetractSource(id, note); err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "Source %d marked as retracted.\n", id)
-	return nil
-}
-
-// ─── /kb cite ────────────────────────────────────────────────────────────────
-
-// kbCite handles /kb cite SOURCE_ID [SOURCE_ID ...]
-// Links one or more sources to the most recently recorded observation.
-func kbCite(a *Agent, args []string, out io.Writer) error {
-	if len(args) == 0 {
-		return Usagef("usage: /kb cite SOURCE_ID [SOURCE_ID ...]  (use /kb source list to see available source IDs)")
-	}
-	if a.LastObservationID == 0 {
-		return Negativef("no recent observation to cite. Use /kb observe first")
-	}
-	var failed error // first failure; every id is still tried
-	for _, arg := range args {
-		id, err := strconv.ParseInt(arg, 10, 64)
-		if err != nil {
-			fmt.Fprintf(out, "  Invalid source ID %q — skipping\n", arg)
-			failed = keepFirstFailure(failed, Usagef("invalid source ID %q", arg))
-			continue
-		}
-		if err := a.KB.LinkObservationSource(a.LastObservationID, id, "cited"); err != nil {
-			fmt.Fprintf(out, "  ✗ source %d: %v\n", id, err)
-			failed = keepFirstFailure(failed, fmt.Errorf("source %d: %w", id, err))
-		} else {
-			fmt.Fprintf(out, "  Source %d linked to observation %d.\n", id, a.LastObservationID)
-		}
-	}
-	return failed
-}
-
-// ─── /kb show ────────────────────────────────────────────────────────────────
-
-// kbShow handles /kb show OBS_ID — displays an observation with its linked
-// sources and retraction warnings.
-func kbShow(a *Agent, args []string, out io.Writer) error {
-	var obsID int64
-	if len(args) > 0 {
-		id, err := strconv.ParseInt(args[0], 10, 64)
-		if err != nil {
-			return Usagef("invalid observation ID %q", args[0])
-		}
-		obsID = id
-	} else if a.LastObservationID != 0 {
-		obsID = a.LastObservationID
-	} else {
-		return Usagef("usage: /kb show OBS_ID")
-	}
-
-	obs, err := a.KB.ObservationByID(obsID)
-	if err != nil {
-		return Negativef("observation %d not found", obsID)
-	}
-	fmt.Fprintf(out, "  [%s] %s\n", obs.Kind, obs.Body)
-	if obs.SourceDOI != "" {
-		fmt.Fprintf(out, "  DOI (legacy): %s\n", obs.SourceDOI)
-	}
-
-	sources, err := a.KB.ObservationSources(obsID)
-	if err != nil {
-		return err
-	}
-	anyRetracted := false
-	for _, s := range sources {
-		if s.Retracted {
-			anyRetracted = true
-		}
-	}
-	a.noteKBItem(kbRefOf("observation", obsID, ""), "observation", &anyRetracted)
-	if len(sources) == 0 {
-		fmt.Fprintln(out, "  (no sources linked)")
-		return nil
-	}
-	fmt.Fprintln(out, "  Sources:")
-	for _, s := range sources {
-		ident := ""
-		if s.IdentifierType != "" && s.IdentifierValue != "" {
-			ident = fmt.Sprintf(" [%s:%s]", s.IdentifierType, s.IdentifierValue)
-		}
-		if s.Retracted {
-			fmt.Fprintf(out, "    ⚠ RETRACTED [%d] %s%s — %s\n", s.ID, s.Title, ident, s.RetractionNote)
-		} else {
-			fmt.Fprintf(out, "    [%d] %s%s\n", s.ID, s.Title, ident)
-		}
-	}
-	return nil
-}
-
-// kbCheckRetractions handles /kb check-retractions: queries the Retraction
-// Watch API for every non-retracted DOI source and marks hits as retracted.
-func kbCheckRetractions(a *Agent, out io.Writer) error {
-	fmt.Fprintln(out, "Checking registered DOIs against the Retraction Watch database...")
-	checked, updated, err := a.KB.CheckRetractions(
-		func(doi string) (bool, string, error) {
-			return CheckDOIRetraction(doi, DefaultRetractionWatchURL)
-		},
-		out,
-	)
-	if err != nil {
-		return fmt.Errorf("check-retractions: %w", err)
-	}
-	fmt.Fprintf(out, "\nChecked %d DOI source(s); %d newly marked as retracted.\n", checked, updated)
-	if updated > 0 {
-		fmt.Fprintln(out, "Run /kb source list to review retracted sources.")
-	}
 	return nil
 }

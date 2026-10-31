@@ -11,14 +11,6 @@ import (
 // DR-0039). kb is where provenance of stored knowledge lives; the log is where
 // the harness records which of it reached a prompt.
 
-// kbVerbs are the /kb subcommands; anything else is a usage error and asks
-// nothing of the knowledge base.
-var kbVerbs = map[string]bool{
-	"status": true, "search": true, "inject": true, "project": true, "observe": true,
-	"concept": true, "source": true, "retract": true, "cite": true, "show": true,
-	"learn": true, "check-retractions": true,
-}
-
 // kbItem is an identity a kb call returned. Retracted is nil when the call
 // cannot tell, which is not the same as false.
 type kbItem struct {

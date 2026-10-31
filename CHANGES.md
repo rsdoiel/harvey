@@ -56,6 +56,17 @@
 
 ### Removed
 
+- **`/kb` runs the installed `kb`** (workspace DR-0034). `/kb ARGS` runs `kb -db <workspace db> ARGS` in the workspace, shows its
+  output, and exits with kb's status class. Gone from harvey: `/kb status`, `observe`, `retract`, `cite`, `show`, `check-retractions`
+  and the harvey-side `search`, `project list|add`, `concept` and `source`; use kb's own (`stats`, `observation add`, `source
+  retract`, `source link`, `observation show`, `source check-retractions`, ...). Still harvey's own: `/kb inject`, `/kb learn ...`
+  and `/kb project use ID` (harvey's in-session current project). Tab completion reads `kb -json verbs` once per session. kb must
+  be installed (`go install github.com/rsdoiel/knowledge/cmd/kb@latest`); without it `/kb` says so and nothing else is affected.
+  The session log's `kb_result.items` is empty for a `/kb` command now (it named the rows a harvey-side search or show returned);
+  retrieval for the model (`kb_call` with `purpose: retrieval`) is unchanged. Not built yet from DR-0034: the write-class gate for
+  model-triggered kb calls (item 5; no model tool runs `/kb` today), the `kb -version` minimum (item 3), and `kb search` for
+  injection (item 2).
+
 - **A native Ollama client replaces `any-llm-go`** (workspace DR-0046). Harvey speaks `/api/chat` itself, in `ollama_chat.go`, and the
   `any-llm-go` module and the `ollama/ollama` packages it pulled in are gone from `go.mod`. Visible changes: harvey sends
   `options.num_ctx` set to the window it believes for the model (from `ollama.context_length`, `--context`, the model cache or the

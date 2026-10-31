@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -63,96 +62,10 @@ func kbEvents(t *testing.T, a *Agent, path string) (calls, results, injections [
 	return eventsOf(t, a, path, KindKBCall), eventsOf(t, a, path, KindKBResult), inj
 }
 
-func TestKBCommand_SearchIsACallAndAResultNamingWhatItReturned(t *testing.T) {
-	a, pid, path := kbAgentWithLog(t)
-	if _, err := a.KB.AddObservation(pid, "finding", "chunking is sound on a Pi"); err != nil {
-		t.Fatal(err)
-	}
-	var out strings.Builder
-	if _, err := a.dispatch("/kb search chunking", &out); err != nil {
-		t.Fatalf("/kb search: %v", err)
-	}
-	calls, results, _ := kbEvents(t, a, path)
-	if len(calls) != 1 || len(results) != 1 {
-		t.Fatalf("%d calls and %d results, want 1 and 1", len(calls), len(results))
-	}
-	var c kbCallData
-	var r kbResultData
-	_ = json.Unmarshal(calls[0].Data, &c)
-	_ = json.Unmarshal(results[0].Data, &r)
-	if c.Verb != "search" || c.Args != "chunking" || c.Purpose != "user_command" || c.Turn != nil {
-		t.Errorf("kb_call = %s", calls[0].Data)
-	}
-	if r.Call != calls[0].ID || r.Status != "ok" || !strings.Contains(r.Output, "chunking is sound") {
-		t.Errorf("kb_result = %s", results[0].Data)
-	}
-	if len(r.Items) != 1 || !strings.HasPrefix(r.Items[0].Ref, "kb:observation:") || r.Items[0].Kind != "observation" {
-		t.Errorf("the result must name the identities it returned: %s", results[0].Data)
-	}
-	if r.Items[0].Retracted != nil {
-		t.Errorf("search does not know about retractions and must not claim otherwise: %s", results[0].Data)
-	}
-	// What the author saw is still what was printed.
-	if !strings.Contains(out.String(), "chunking is sound") {
-		t.Errorf("output no longer reaches the author: %q", out.String())
-	}
-}
-
-func TestKBCommand_ShowSaysWhenASourceIsRetracted(t *testing.T) {
-	a, pid, path := kbAgentWithLog(t)
-	obs, err := a.KB.AddObservation(pid, "finding", "a claim resting on a paper")
-	if err != nil {
-		t.Fatal(err)
-	}
-	src, err := a.KB.AddSource(knowledge.Source{Title: "Bad paper", IdentifierType: "doi", IdentifierValue: "10.1/bad"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := a.KB.LinkObservationSource(obs, src, "cited"); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.KB.RetractSource(src, "withdrawn by the publisher"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.dispatch("/kb show "+strconv.FormatInt(obs, 10), io.Discard); err != nil {
-		t.Fatalf("/kb show: %v", err)
-	}
-	_, results, _ := kbEvents(t, a, path)
-	var r kbResultData
-	_ = json.Unmarshal(results[0].Data, &r)
-	if len(r.Items) != 1 || r.Items[0].Retracted == nil || !*r.Items[0].Retracted {
-		t.Errorf("the observation rests on a retracted source and the result must say so: %s", results[0].Data)
-	}
-}
-
-func TestKBCommand_AFailureIsAResultWithItsClass(t *testing.T) {
-	a, _, path := kbAgentWithLog(t)
-	if _, err := a.dispatch("/kb show 99999", io.Discard); err == nil {
-		t.Fatal("want an error for a missing observation")
-	}
-	calls, results, _ := kbEvents(t, a, path)
-	if len(calls) != 1 || len(results) != 1 {
-		t.Fatalf("a failed kb command must still be a call and a result: %d/%d", len(calls), len(results))
-	}
-	var r kbResultData
-	_ = json.Unmarshal(results[0].Data, &r)
-	if r.Status != "negative" {
-		t.Errorf("status = %q, want the exit class name negative", r.Status)
-	}
-}
-
-func TestKBCommand_UnknownSubcommandIsNotAKBCall(t *testing.T) {
-	a, _, path := kbAgentWithLog(t)
-	_, _ = a.dispatch("/kb frobnicate", io.Discard)
-	calls, results, _ := kbEvents(t, a, path)
-	if len(calls) != 0 || len(results) != 0 {
-		t.Errorf("nothing was asked of the knowledge base, yet %d calls and %d results were logged", len(calls), len(results))
-	}
-}
-
 func TestKBCommand_ArgumentsAreScrubbed(t *testing.T) {
 	a, _, path := kbAgentWithLog(t)
-	_, _ = a.dispatch("/kb observe note API_KEY=sk-live-555", io.Discard)
+	recordingKB(t)
+	_, _ = a.dispatch("/kb observation add API_KEY=sk-live-555", io.Discard)
 	calls, results, _ := kbEvents(t, a, path)
 	all := string(calls[0].Data) + string(results[0].Data)
 	if strings.Contains(all, "sk-live-555") {
@@ -268,10 +181,11 @@ func TestRecall_NothingFoundIsStillACallAndAResult(t *testing.T) {
 }
 
 func TestKB_NoLogIsNoProblem(t *testing.T) {
+	recordingKB(t)
 	a, _ := newTestAgentWithKB(t)
 	a.registerCommands()
 	var out bytes.Buffer
-	if _, err := a.dispatch("/kb status", &out); err != nil {
-		t.Fatalf("/kb status with no log: %v", err)
+	if _, err := a.dispatch("/kb stats", &out); err != nil {
+		t.Fatalf("/kb stats with no log: %v", err)
 	}
 }
