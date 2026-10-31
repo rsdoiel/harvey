@@ -626,3 +626,57 @@ func (a *Agent) logSkillLoad(skill *SkillMeta, origin string) {
 	}
 	a.logEvent(KindInjection, LevelInfo, data)
 }
+
+/** logPipelineCall records the start of one /pipeline step as a tool_call by
+ * the author, with what the Fountain scene of the step needs: the file, the step
+ * and how many, the threshold, every file of the run, the model that will answer,
+ * and the step's prompt (a blob).
+ *
+ * Returns:
+ *   string — the tool_call event id; "" when no log is open.
+ *
+ * Example:
+ *   id := a.logPipelineCall("s1.md", 1, 2, 0.7, []string{"s1.md", "s2.md"}, "ollama (m)", body)
+ */
+func (a *Agent) logPipelineCall(file string, step, of int, threshold float64, files []string, model, body string) string {
+	if a.SessionLog == nil {
+		return ""
+	}
+	return a.logEvent(KindToolCall, LevelInfo, map[string]any{
+		"tool":   "pipeline",
+		"origin": "user",
+		"args": map[string]any{
+			"file": file, "step": step, "of": of, "threshold": threshold,
+			"files": files, "model": model, "body": a.logContentBlob(body),
+		},
+	})
+}
+
+/** logPipelineResult records how a pipeline step ended: the response with its
+ * confidence block removed, the confidence the pipeline settled on, and whether
+ * the step passed. A chat error and a score below the threshold are both
+ * "failed"; the error says which.
+ *
+ * Parameters:
+ *   callID   (string) — the tool_call id from logPipelineCall.
+ *   response (string) — the step's response, confidence block removed.
+ *   score    (float64) — the confidence; 0 when the step could not be scored.
+ *   err      (error)  — nil when the step passed.
+ *
+ * Example:
+ *   a.logPipelineResult(id, stripped, 0.9, nil)
+ */
+func (a *Agent) logPipelineResult(callID, response string, score float64, err error) {
+	if a.SessionLog == nil || callID == "" {
+		return
+	}
+	data := map[string]any{
+		"call": callID, "call_id": callID, "status": "ok",
+		"confidence": score, "output": a.logContent(response),
+	}
+	if err != nil {
+		data["status"] = "failed"
+		data["error"] = a.logContent(err.Error())
+	}
+	a.logEvent(KindToolResult, LevelInfo, data)
+}

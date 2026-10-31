@@ -207,6 +207,9 @@ func RenderFountain(events []Event, opts RenderOptions) []byte {
 			if tc.Origin == "user" && tc.Tool == "shell" {
 				renderShell(out, opts, events, i, user, at)
 			}
+			if tc.Origin == "user" && tc.Tool == "pipeline" {
+				renderPipelineStep(out, opts, events, i, user, start.Workspace, label, at)
+			}
 		case KindInjection:
 			var inj renderInjection
 			_ = json.Unmarshal(e.Data, &inj)
@@ -604,4 +607,69 @@ func renderChunkAnalysis(out fountainOut, opts RenderOptions, events []Event, i 
 		}
 	}
 	return k
+}
+
+// renderPipelineStep writes the scene for one step of a /pipeline run: the step's
+// heading, the model line, the hidden-instruction note, the author's prompt, the
+// response and its confidence; then CUT TO the next step, or CUT BACK to the chat
+// scene, with a note if the step failed or the response if the last one passed.
+func renderPipelineStep(out fountainOut, opts RenderOptions, events []Event, i int, user, workspace, chatLabel string, at func(Event) string) {
+	call := events[i]
+	var d struct {
+		Args struct {
+			File      string          `json:"file"`
+			Step      int             `json:"step"`
+			Of        int             `json:"of"`
+			Threshold float64         `json:"threshold"`
+			Files     []string        `json:"files"`
+			Model     string          `json:"model"`
+			Body      json.RawMessage `json:"body"`
+		} `json:"args"`
+	}
+	_ = json.Unmarshal(call.Data, &d)
+	a := d.Args
+	var res struct {
+		Status     string          `json:"status"`
+		Confidence float64         `json:"confidence"`
+		Output     json.RawMessage `json:"output"`
+	}
+	for j := i + 1; j < len(events); j++ {
+		if events[j].Kind != KindToolResult {
+			continue
+		}
+		var r struct {
+			Call string `json:"call"`
+		}
+		_ = json.Unmarshal(events[j].Data, &r)
+		if r.Call == call.ID {
+			_ = json.Unmarshal(events[j].Data, &res)
+			break
+		}
+	}
+	out.sceneHeading(fmt.Sprintf("INT. PIPELINE %s STEP %d/%d %s", strings.ToUpper(a.File), a.Step, a.Of, at(call)))
+	out.action(fmt.Sprintf("%s executes /pipeline %.0f%% %s.\nModel: %s. Workspace: %s.",
+		user, a.Threshold*100, strings.Join(a.Files, " "), a.Model, workspace))
+	out.note("hidden confidence instruction appended")
+	out.dialogue(user, "", opts.contentOf(a.Body))
+	response := opts.contentOf(res.Output)
+	out.dialogue("HARVEY", "", response)
+	failed := res.Status != "ok"
+	if failed {
+		out.note(fmt.Sprintf("confidence: %.2f — threshold not met (%.2f)", res.Confidence, a.Threshold))
+		out.transition("CUT BACK TO:")
+		out.sceneHeading(fmt.Sprintf("INT. HARVEY AND %s TALKING %s", user, at(call)))
+		out.action(fmt.Sprintf("Harvey and %s are in chat mode. Model: %s. Workspace: %s.", user, chatLabel, workspace))
+		out.note(fmt.Sprintf("pipeline stopped at step %d/%d: confidence %.2f below threshold %.2f",
+			a.Step, a.Of, res.Confidence, a.Threshold))
+		return
+	}
+	out.note(fmt.Sprintf("confidence: %.2f — threshold met", res.Confidence))
+	if a.Step < a.Of {
+		out.transition("CUT TO:")
+		return
+	}
+	out.transition("CUT BACK TO:")
+	out.sceneHeading(fmt.Sprintf("INT. HARVEY AND %s TALKING %s", user, at(call)))
+	out.action(fmt.Sprintf("Harvey and %s are in chat mode. Model: %s. Workspace: %s.", user, chatLabel, workspace))
+	out.dialogue("HARVEY", "", response)
 }

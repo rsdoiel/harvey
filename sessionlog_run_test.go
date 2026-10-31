@@ -29,6 +29,10 @@ var scriptedTerminal bool
 // with an HTTP 500. Tests reset it with t.Cleanup.
 var scriptedFailOn int
 
+// scriptedReplies, when set, gives the reply to the nth chat call of a scripted
+// run (it wins over scriptedReply for the calls it covers). Tests reset it with t.Cleanup.
+var scriptedReplies []string
+
 // scriptedRender makes a scripted run render its Fountain file from the log at
 // close, as harvey does. Off by default so the live recording stays for comparison.
 var scriptedRender bool
@@ -102,6 +106,9 @@ func fakeOllama(t *testing.T, tools bool) *httptest.Server {
 			w.Header().Set("Content-Type", "application/x-ndjson")
 			if scriptedReply != "" {
 				word = scriptedReply
+			}
+			if n-1 < len(scriptedReplies) {
+				word = scriptedReplies[n-1]
 			}
 			quoted, _ := json.Marshal(word)
 			io.WriteString(w, `{"model":"`+req.Model+`","message":{"role":"assistant","content":`+string(quoted)+`},"done":false}`+"\n")

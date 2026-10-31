@@ -409,10 +409,15 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 				Content: prevResponse + "\n\n---\n\n" + userBody})
 		}
 
+		// The step is the author's operation: a call and a result in the log, with the
+		// model calls inside it tagged as the pipeline's.
+		callID := a.logPipelineCall(filename, stepNum, total, threshold, relNames, step.client.Name(), step.body)
+		stepCtx := withCallPurpose(ctx, "pipeline", map[string]any{"path": filename, "step": stepNum, "of": total})
 		strippedResp, score, stepErr := runPipelineStep(
-			ctx, a, step.client, messages, out,
+			stepCtx, a, step.client, messages, out,
 			stepNum, total, filename, threshold,
 		)
+		a.logPipelineResult(callID, strippedResp, score, stepErr)
 
 		// Fountain: record step response.
 		if a.Recorder != nil {
