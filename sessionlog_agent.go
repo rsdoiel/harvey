@@ -49,6 +49,7 @@ func (a *Agent) openSessionLog(recPath, replayOf string, out io.Writer) {
 		Debug:   a.Config.Debug,
 		Start: SessionStart{
 			HarveyVersion: Version,
+			User:          os.Getenv("USER"),
 			Workspace:     root,
 			Backend:       backendFromClientName(clientName),
 			Model:         modelFromClientName(clientName),

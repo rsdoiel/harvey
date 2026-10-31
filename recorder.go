@@ -40,6 +40,7 @@ package harvey
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -731,43 +732,60 @@ func DefaultSessionPath(dir string) string {
 // ─── private write helpers ────────────────────────────────────────────────────
 
 // writeSceneHeading appends a scene heading preceded by two blank lines.
-func (r *Recorder) writeSceneHeading(content string) {
-	elem := &fountain.Element{Type: fountain.SceneHeadingType, Content: content}
-	fmt.Fprintf(r.f, "\n\n%s\n\n", fountainSrc(elem))
-}
+func (r *Recorder) writeSceneHeading(content string) { fountainOut{r.f}.sceneHeading(content) }
 
-// writeAction appends an action (stage-direction) block followed by a blank line.
-func (r *Recorder) writeAction(content string) {
-	elem := &fountain.Element{Type: fountain.ActionType, Content: content}
-	fmt.Fprintf(r.f, "%s\n\n", fountainSrc(elem))
-}
+func (r *Recorder) writeAction(content string) { fountainOut{r.f}.action(content) }
 
-// writeDialogue appends a CHARACTER / (parenthetical) / dialogue block.
-// parenthetical and text may each be empty — empty strings are omitted.
 func (r *Recorder) writeDialogue(character, parenthetical, text string) {
+	fountainOut{r.f}.dialogue(character, parenthetical, text)
+}
+
+func (r *Recorder) writeNote(content string) { fountainOut{r.f}.note(content) }
+
+func (r *Recorder) writeTransition(content string) { fountainOut{r.f}.transition(content) }
+
+/** fountainOut writes Fountain elements to w with the blank-line conventions
+ * of a session file. The live recorder and the renderer (sessionrender.go)
+ * both write through it, so the two cannot drift apart.
+ *
+ * Example:
+ *   out := fountainOut{os.Stdout}
+ *   out.dialogue("HARVEY", "", "Hello")
+ */
+type fountainOut struct{ w io.Writer }
+
+func (o fountainOut) sceneHeading(content string) {
+	elem := &fountain.Element{Type: fountain.SceneHeadingType, Content: content}
+	fmt.Fprintf(o.w, "\n\n%s\n\n", fountainSrc(elem))
+}
+
+func (o fountainOut) action(content string) {
+	elem := &fountain.Element{Type: fountain.ActionType, Content: content}
+	fmt.Fprintf(o.w, "%s\n\n", fountainSrc(elem))
+}
+
+func (o fountainOut) dialogue(character, parenthetical, text string) {
 	charElem := &fountain.Element{Type: fountain.CharacterType, Content: character}
-	fmt.Fprintln(r.f, fountainSrc(charElem))
+	fmt.Fprintln(o.w, fountainSrc(charElem))
 	if parenthetical != "" {
 		paren := &fountain.Element{Type: fountain.ParentheticalType, Content: parenthetical}
-		fmt.Fprintln(r.f, fountainSrc(paren))
+		fmt.Fprintln(o.w, fountainSrc(paren))
 	}
 	if text != "" {
 		diag := &fountain.Element{Type: fountain.DialogueType, Content: text}
-		fmt.Fprintln(r.f, fountainSrc(diag))
+		fmt.Fprintln(o.w, fountainSrc(diag))
 	}
-	fmt.Fprintln(r.f) // blank line ends the dialogue block
+	fmt.Fprintln(o.w) // blank line ends the dialogue block
 }
 
-// writeNote appends a Fountain note ([[...]]) followed by a blank line.
-func (r *Recorder) writeNote(content string) {
+func (o fountainOut) note(content string) {
 	elem := &fountain.Element{Type: fountain.NoteType, Content: content}
-	fmt.Fprintf(r.f, "%s\n\n", fountainSrc(elem))
+	fmt.Fprintf(o.w, "%s\n\n", fountainSrc(elem))
 }
 
-// writeTransition appends a transition line preceded by a blank line.
-func (r *Recorder) writeTransition(content string) {
+func (o fountainOut) transition(content string) {
 	elem := &fountain.Element{Type: fountain.TransitionType, Content: content}
-	fmt.Fprintf(r.f, "\n%s\n", fountainSrc(elem))
+	fmt.Fprintf(o.w, "\n%s\n", fountainSrc(elem))
 }
 
 // extractModelName extracts a clean ALL-CAPS model identifier from a backend

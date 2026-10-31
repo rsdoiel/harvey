@@ -157,6 +157,7 @@ type SystemPrompt struct {
  *
  * Fields:
  *   HarveyVersion (string)       — harvey's version.
+ *   User          (string)       — the author's name as the Fountain file shows it (upper case); "" is written as OPERATOR.
  *   Workspace     (string)       — the workspace root, stored as given.
  *   Backend, Model (string)      — the backend and model in use.
  *   System        (SystemPrompt) — the system prompt and its version id.
@@ -168,6 +169,7 @@ type SystemPrompt struct {
  */
 type SessionStart struct {
 	HarveyVersion string
+	User          string
 	Workspace     string
 	Backend       string
 	Model         string
@@ -325,6 +327,7 @@ func OpenSessionLog(opts SessionLogOptions) (*SessionLog, error) {
 		"v":              sessionLogVersion,
 		"session":        opts.Session,
 		"harvey_version": opts.Start.HarveyVersion,
+		"user":           sessionUser(opts.Start.User),
 		"workspace":      opts.Start.Workspace,
 		"backend":        opts.Start.Backend,
 		"model":          opts.Start.Model,
@@ -648,4 +651,13 @@ func ReadSessionLog(path string) ([]Event, bool, error) {
 		events = append(events, e)
 	}
 	return events, torn, nil
+}
+
+// sessionUser is the name written to session_start: the given name, upper
+// case, or OPERATOR. It is recorded so that a rendering needs no environment.
+func sessionUser(name string) string {
+	if name = strings.ToUpper(strings.TrimSpace(name)); name != "" {
+		return name
+	}
+	return "OPERATOR"
 }
