@@ -831,6 +831,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			"required": []string{"id", "content"},
 		},
 		func(_ context.Context, args map[string]any) (string, error) {
+			noteMemoryRetiring(deprecationWriter)
 			if a.Memory == nil || a.Memory.Store == nil {
 				return "update_memory: memory store is not available in this session.", nil
 			}
@@ -889,6 +890,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			"required": []string{"id"},
 		},
 		func(_ context.Context, args map[string]any) (string, error) {
+			noteMemoryRetiring(deprecationWriter)
 			if a.Memory == nil || a.Memory.Store == nil {
 				return "delete_memory: memory store is not available in this session.", nil
 			}
@@ -1036,6 +1038,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			"required": []string{"content", "memory_type"},
 		},
 		func(_ context.Context, args map[string]any) (string, error) {
+			noteMemoryRetiring(deprecationWriter)
 			if a.Memory == nil || a.Memory.Store == nil {
 				return "add_memory: memory store is not available in this session.", nil
 			}

@@ -38,6 +38,7 @@ import (
  *   /memory status
  */
 func cmdMemory(a *Agent, args []string, out io.Writer) error {
+	noteMemoryRetiring(out)
 	if len(args) == 0 {
 		return Usagef("usage: /memory <mine|list|show|flag|forget|status|recall|profile> [args...]")
 	}

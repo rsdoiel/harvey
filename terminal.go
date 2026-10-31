@@ -314,6 +314,7 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// Memory subsystems (session-scoped; opened once, closed on exit)
 	a.initMemory(out)
+	a.startupDeprecations(out)
 	defer a.Memory.Close()
 
 	// Sessions directory
@@ -510,6 +511,7 @@ func (a *Agent) Run(out io.Writer) error {
 	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Session.ReplayPath == "" &&
 		a.Memory != nil && a.Memory.Store != nil {
 		if NeedsOnboarding(a.Memory.Store) {
+			noteMemoryRetiring(out)
 			var onboardEmbedder Embedder = a.memoryEmbedder()
 			if onboardErr := RunOnboarding(a, a.Memory.Store, onboardEmbedder, out, reader); onboardErr != nil {
 				fmt.Fprintf(out, yellow("  ✗")+" Onboarding: %v\n", onboardErr)

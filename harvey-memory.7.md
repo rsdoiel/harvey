@@ -10,6 +10,15 @@ MEMORY — mine session recordings for memories and manage the memory store
 
 /memory <mine|list|show|flag|forget|status|recall|profile> [args...]
 
+# DEPRECATED
+
+The memory store is deprecated and will be removed in a following release
+(DR-0037). Knowledge worth keeping goes in the knowledge base as an
+observation: `/kb observation add --project NAME KIND BODY`. Recall for the
+prompt already comes from `kb`. Files in agents/memories/ stay on disk but
+will not be read after the removal. Harvey prints a notice once per session
+when the store holds memories or when `/memory` or a memory tool is used.
+
 # DESCRIPTION
 
 /memory provides a semi-manual system for extracting useful knowledge from

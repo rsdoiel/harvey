@@ -59,6 +59,15 @@
 - **`/context` shows what the model sees.** It prints the next prompt grouped as system prompt, pins, summaries, recalled
   knowledge and dialog, with sizes and shares of the prompt limit.
 
+### Deprecated
+
+- **The memory store (DR-0037).** `/memory`, `agents/memories/`, onboarding profiles, session mining and the `add_memory`,
+  `update_memory` and `delete_memory` tools are deprecated and will be removed in a following release. Harvey prints one
+  notice per session when the store holds memories, when `/memory` or a memory-writing tool is used, or when first-run
+  onboarding starts. Keep what is worth keeping as a kb observation (`/kb observation add --project NAME KIND BODY`); files
+  already in `agents/memories/` stay on disk but will not be read after the removal. Recall for the prompt already comes
+  from the installed `kb`.
+
 ### Removed
 
 - **`/rag` code (fourth and last slice of DR-0035).** The code behind `/rag` is gone: `rag_support.go` (`RagStore`, ingest and
