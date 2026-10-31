@@ -193,9 +193,6 @@ func loadSkillAs(a *Agent, skill *SkillMeta, out io.Writer, origin string) error
 	}
 	a.AddMessage("user", fmt.Sprintf("[skill: %s]\n\n%s", skill.Name, skill.Body))
 	a.ActiveSkill = skill.Name
-	if a.Recorder != nil {
-		_ = a.Recorder.RecordSkillLoad(skill.Name, skill.Description, skill.Body)
-	}
 	a.logSkillLoad(skill, origin)
 	fmt.Fprintf(out, "  ✓ Skill %q loaded into context (%d chars).\n", skill.Name, len(skill.Body))
 	return nil

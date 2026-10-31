@@ -97,14 +97,13 @@ func TestLoadSkill_NoLogIsNoProblem(t *testing.T) {
 
 // Through the real Run: the log has the injection, and the rendering of the log
 // has the same skill scene the live recorder wrote.
-func TestRun_ASkillLoadIsLoggedAndRendersLikeTheRecorder(t *testing.T) {
+func TestRun_ASkillLoadIsLoggedAndRendered(t *testing.T) {
 	dir := scriptedRunWith(t, false, func(root string) {
 		d := filepath.Join(root, "agents", "skills", "demo")
 		os.MkdirAll(d, 0o755)
 		os.WriteFile(filepath.Join(d, "SKILL.md"), []byte("---\nname: demo\ndescription: A demonstration skill\n---\n\nDo the demonstration.\n"), 0o644)
 	}, false, "/skill load demo", "hello", "/exit")
 	logs, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
-	spmd, _ := filepath.Glob(filepath.Join(dir, "*.spmd"))
 	events, _, err := ReadSessionLog(logs[0])
 	if err != nil {
 		t.Fatal(err)
@@ -125,10 +124,6 @@ func TestRun_ASkillLoadIsLoggedAndRendersLikeTheRecorder(t *testing.T) {
 	if inj == nil {
 		t.Fatal("no skill injection in the log")
 	}
-	rec, _ := os.ReadFile(spmd[0])
 	got := RenderFountain(events, RenderOptions{Zone: time.Local, Blobs: BlobDir(logs[0])})
-	if a, b := normaliseFountain(string(rec)), normaliseFountain(string(got)); a != b {
-		t.Errorf("rendering differs from the recorder's\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
-	}
 	goldenCheck(t, "skill_load", string(got))
 }

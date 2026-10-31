@@ -426,49 +426,47 @@ func TestRunFirstRunWizard_pathNotFound(t *testing.T) {
 // where /llamafile use (and all other code paths through useLlamafileEntry)
 // did not call RecordModelSwitch, leaving the recorder showing the old model
 // name in all subsequent scene headers and speaker lines.
-func TestUseLlamafileEntry_updatesRecorder(t *testing.T) {
+func TestUseLlamafileEntry_LogsTheModelSwitch(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	a := NewAgent(cfg, ws)
-
-	recPath := filepath.Join(t.TempDir(), "session.fountain")
-	rec, err := NewRecorder(recPath, "none", ws.Root)
+	a := NewAgent(DefaultConfig(), ws)
+	l, err := OpenSessionLog(SessionLogOptions{
+		Dir: t.TempDir(), Session: "s", Start: SessionStart{Backend: "none", Model: "none", Workspace: ws.Root},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.Recorder = rec
+	a.SessionLog = l
 
 	var buf strings.Builder
 	_ = a.useLlamafileEntry("apertus", &buf)
-	rec.Close()
 
-	data, _ := os.ReadFile(recPath)
-	content := string(data)
-
+	content := switchTranscript(t, a)
 	if !strings.Contains(content, "model switch: apertus (llamafile)") {
 		t.Errorf("expected model switch note after useLlamafileEntry, got:\n%s", content)
 	}
 }
 
 // TestUseLlamafileEntry_subsequentTurnUsesNewModel verifies the full chain:
-// after useLlamafileEntry, RecordTurnWithStats uses the new model name in the
-// scene header and speaker lines — not the stale name from recorder creation.
+// after useLlamafileEntry, the next turn's scene header and speaker lines name
+// the new model, not the one the session started with.
 func TestUseLlamafileEntry_subsequentTurnUsesNewModel(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
 	a := NewAgent(DefaultConfig(), ws)
-
-	recPath := filepath.Join(t.TempDir(), "session.fountain")
-	rec, _ := NewRecorder(recPath, "none", ws.Root)
-	a.Recorder = rec
+	l, err := OpenSessionLog(SessionLogOptions{
+		Dir: t.TempDir(), Session: "s", Start: SessionStart{Backend: "none", Model: "none", Workspace: ws.Root},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SessionLog = l
 
 	var buf strings.Builder
 	_ = a.useLlamafileEntry("apertus", &buf)
-	_ = rec.RecordTurn("review the file", "Here is my review.")
-	rec.Close()
+	a.logUserInput("review the file")
+	req := a.logEvent(KindModelRequest, LevelInfo, map[string]any{"form": "assembled", "backend": "llamafile", "model": "apertus"})
+	a.logModelResponse(req, "Here is my review.", ChatStats{}, nil)
 
-	data, _ := os.ReadFile(recPath)
-	content := string(data)
-
+	content := switchTranscript(t, a)
 	if !strings.Contains(content, "Model: APERTUS.") {
 		t.Errorf("expected APERTUS in scene header after switch, got:\n%s", content)
 	}

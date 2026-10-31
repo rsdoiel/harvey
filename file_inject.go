@@ -258,7 +258,7 @@ func (a *Agent) injectOrChunk(ctx context.Context, prompt string, out io.Writer,
 			DocType:     docType,
 			Config:      a.Config.Chunking,
 		}
-		synthesis, synthErr := RunChunkedAnalysis(ctx, client, a.Recorder, params, out)
+		synthesis, synthErr := RunChunkedAnalysis(ctx, client, params, out)
 		if restore != nil {
 			restore()
 		}

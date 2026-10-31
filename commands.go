@@ -2208,7 +2208,7 @@ func cmdReadChunks(a *Agent, args []string, out io.Writer) error {
 		Config:      cfg,
 	}
 
-	synthesis, err := RunChunkedAnalysis(context.Background(), client, a.Recorder, params, out)
+	synthesis, err := RunChunkedAnalysis(context.Background(), client, params, out)
 	if err != nil {
 		return fmt.Errorf("read-chunks: %w", err)
 	}
@@ -3723,12 +3723,6 @@ func (a *Agent) autoExecuteReply(reply string, out io.Writer, reader *bufio.Read
 
 	blocks := findTaggedBlocks(reply)
 
-	// Open an agent scene in the recording if there is anything to act on.
-	if len(blocks) > 0 && a.Recorder != nil {
-		desc := fmt.Sprintf("Harvey proposes to write %d file(s).", len(blocks))
-		_ = a.Recorder.StartAgentScene(desc)
-	}
-
 	applyAll := false
 	a.offerOf = len(blocks)
 	defer func() { a.permScope, a.offerIndex, a.offerOf = "", 0, 0 }()
@@ -3861,15 +3855,12 @@ func choiceStr(c actionChoice) string {
 	}
 }
 
-// logAction records one agent action to the Recorder if one is active.
+// logAction records one agent action in the session log. A refusal by the
+// permissions table ("denied") is recorded once, as a rule decision, by
+// logAuthorsAnswer; the audit buffer's own event for it is held back while an
+// offer is running.
 func (a *Agent) logAction(kind, target string, choice actionChoice, outcome string) {
-	// A refusal by the permissions table ("denied") is recorded once, as a rule
-	// decision, by logAuthorsAnswer; the audit buffer's own event for it is
-	// held back while an offer is running.
 	a.logAuthorsAnswer(kind, target, choice, outcome)
-	if a.Recorder != nil {
-		_ = a.Recorder.RecordAgentAction(kind, target, choiceStr(choice), outcome)
-	}
 }
 
 // ─── /format ─────────────────────────────────────────────────────────────────

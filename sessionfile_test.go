@@ -113,8 +113,6 @@ func TestRecoverSessionFiles_OnlyACrashedSessionIsRendered(t *testing.T) {
 // The file on disk after a session is the rendering of its log: here that shows
 // as the tool note the live recorder loses.
 func TestRun_TheFountainFileIsRenderedFromTheLogAtClose(t *testing.T) {
-	scriptedRender = true
-	t.Cleanup(func() { scriptedRender = false })
 	dir := scriptedRunWith(t, false, func(root string) {
 		os.WriteFile(filepath.Join(root, "note.txt"), []byte("the note says hello"), 0o644)
 	}, true, "read note.txt", "/exit")
@@ -130,8 +128,6 @@ func TestRun_TheFountainFileIsRenderedFromTheLogAtClose(t *testing.T) {
 
 // A session that crashed is recovered the next time harvey starts in that workspace.
 func TestRun_ACrashedSessionIsRecoveredAtStartup(t *testing.T) {
-	scriptedRender = true
-	t.Cleanup(func() { scriptedRender = false })
 	var sessions string
 	_ = scriptedRunFull(t, false, func(root string) {
 		sessions = filepath.Join(root, "agents", "sessions")

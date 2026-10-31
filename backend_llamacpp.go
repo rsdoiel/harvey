@@ -488,9 +488,6 @@ func startLlamaCppModelPath(a *Agent, modelPath string, out io.Writer) error {
 	// mid-session switch cannot leave --debug silent or the transcript naming
 	// the previous model. At startup neither is open yet and both are no-ops.
 	a.Client = a.wireSessionLog(client)
-	if a.Recorder != nil {
-		_ = a.Recorder.RecordModelSwitch(b.ActiveModel(), "llamacpp")
-	}
 	a.logModelSwitch(b.ActiveModel(), "llamacpp")
 	a.Backend = b
 	// Clear stale llamafile Active so activeModelLabel and effectiveContextLimit

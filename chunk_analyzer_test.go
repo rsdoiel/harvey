@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -81,7 +79,7 @@ func TestRunChunkedAnalysis_FailsFastWhenBackendUnreachable(t *testing.T) {
 	params := defaultParams(strChunks("chunk one content", "chunk two content"))
 
 	var progress strings.Builder
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, &progress)
+	_, err := RunChunkedAnalysis(context.Background(), client, params, &progress)
 	if err == nil {
 		t.Fatal("expected an error when the backend is unreachable")
 	}
@@ -95,7 +93,7 @@ func TestRunChunkedAnalysis_TwoChunks(t *testing.T) {
 		replies: []string{"result1", "result2", "final"},
 	}
 	params := defaultParams(strChunks("chunk one content", "chunk two content"))
-	result, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	result, err := RunChunkedAnalysis(context.Background(), client, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -115,7 +113,7 @@ func TestRunChunkedAnalysis_ChunkError(t *testing.T) {
 	}
 	params := defaultParams(strChunks("chunk one", "chunk two", "chunk three"))
 	var progress strings.Builder
-	result, err := RunChunkedAnalysis(context.Background(), client, nil, params, &progress)
+	result, err := RunChunkedAnalysis(context.Background(), client, params, &progress)
 	if err != nil {
 		t.Fatalf("chunk error should not abort RunChunkedAnalysis, got: %v", err)
 	}
@@ -136,7 +134,7 @@ func TestRunChunkedAnalysis_SynthesisError(t *testing.T) {
 		errors:  []error{nil, nil, errSynth}, // synthesis call (index 2) fails
 	}
 	params := defaultParams(strChunks("chunk one", "chunk two"))
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	_, err := RunChunkedAnalysis(context.Background(), client, params, io.Discard)
 	if err == nil {
 		t.Fatal("expected error from synthesis failure, got nil")
 	}
@@ -149,7 +147,7 @@ func TestRunChunkedAnalysis_NilRecorder(t *testing.T) {
 	// mockLLMClient always returns the same reply — fine for a single chunk + synthesis.
 	client := &mockLLMClient{reply: "ok"}
 	params := defaultParams(strChunks("only chunk"))
-	result, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	result, err := RunChunkedAnalysis(context.Background(), client, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error with nil recorder: %v", err)
 	}
@@ -164,7 +162,7 @@ func TestRunChunkedAnalysis_Progress(t *testing.T) {
 	}
 	params := defaultParams(strChunks("chunk one", "chunk two"))
 	var progress strings.Builder
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, &progress)
+	_, err := RunChunkedAnalysis(context.Background(), client, params, &progress)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -180,45 +178,6 @@ func TestRunChunkedAnalysis_Progress(t *testing.T) {
 	}
 }
 
-func TestRunChunkedAnalysis_WithRecorder(t *testing.T) {
-	dir := t.TempDir()
-	sessPath := filepath.Join(dir, "session.fountain")
-	rec, err := NewRecorder(sessPath, "Ollama (llama3.2:1b)", dir)
-	if err != nil {
-		t.Fatalf("NewRecorder: %v", err)
-	}
-	defer rec.Close()
-
-	client := &seqMockClient{
-		replies: []string{"chunk 1 summary", "chunk 2 summary", "synthesized"},
-	}
-	params := defaultParams(strChunks("first chunk", "second chunk"))
-	result, err := RunChunkedAnalysis(context.Background(), client, rec, params, io.Discard)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != "synthesized" {
-		t.Errorf("expected %q, got %q", "synthesized", result)
-	}
-	rec.Close()
-
-	data, _ := os.ReadFile(sessPath)
-	content := string(data)
-
-	checks := []string{
-		"INT. CHUNK ANALYSIS",
-		"[[chunk: file=doc.md",
-		"[[chunk-result: 1/2 — ok]]",
-		"[[chunk-result: 2/2 — ok]]",
-		"[[synthesis: model=llama3.2:1b — ok]]",
-	}
-	for _, want := range checks {
-		if !strings.Contains(content, want) {
-			t.Errorf("expected %q in session file\n---\n%s", want, content)
-		}
-	}
-}
-
 func TestRunChunkedAnalysis_PromptIncludesInstruction(t *testing.T) {
 	// Verify that the instruction appears in the user message sent for each chunk.
 	var allCaptured [][]Message
@@ -228,7 +187,7 @@ func TestRunChunkedAnalysis_PromptIncludesInstruction(t *testing.T) {
 	}
 	params := defaultParams(strChunks("the chunk"))
 	params.Instruction = "Extract all headings."
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	_, err := RunChunkedAnalysis(context.Background(), client, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -250,7 +209,7 @@ func TestRunChunkedAnalysis_PromptIncludesLineRange(t *testing.T) {
 	}
 	chunks := []DocumentChunk{{Content: "some content", StartLine: 42, EndLine: 55}}
 	params := defaultParams(chunks)
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	_, err := RunChunkedAnalysis(context.Background(), client, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -276,7 +235,7 @@ func TestRunChunkedAnalysis_ChunkMessagesAreIsolated(t *testing.T) {
 		replies:  []string{"r1", "r2", "synthesis"},
 	}
 	params := defaultParams(strChunks("first chunk content", "second chunk content"))
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	_, err := RunChunkedAnalysis(context.Background(), client, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -309,7 +268,7 @@ func TestRunChunkedAnalysis_ChunkSystemMessageConstrainsToChunk(t *testing.T) {
 		replies:  []string{"r1", "synthesis"},
 	}
 	params := defaultParams(strChunks("only this content"))
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	_, err := RunChunkedAnalysis(context.Background(), client, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -337,7 +296,7 @@ func TestRunChunkedAnalysis_SynthesisAlsoHasSystemMessage(t *testing.T) {
 		replies:  []string{"r1", "synthesis"},
 	}
 	params := defaultParams(strChunks("chunk content"))
-	_, err := RunChunkedAnalysis(context.Background(), client, nil, params, io.Discard)
+	_, err := RunChunkedAnalysis(context.Background(), client, params, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

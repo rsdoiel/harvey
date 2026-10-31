@@ -62,52 +62,40 @@ func goldenCheck(t *testing.T, name, rendered string) {
 	}
 }
 
-// recordedAndRendered runs a scripted session and returns what the live
-// recorder wrote and what the renderer makes of the session log.
-func recordedAndRendered(t *testing.T, debug bool, tools bool, lines ...string) (recorded, rendered string) {
+// recordedAndRendered runs a scripted session and returns the rendering of its
+// session log.
+func recordedAndRendered(t *testing.T, debug bool, tools bool, lines ...string) (rendered string) {
 	t.Helper()
 	dir := scriptedRunWith(t, debug, func(root string) {
 		os.WriteFile(filepath.Join(root, "note.txt"), []byte("the note says hello"), 0o644)
 	}, tools, lines...)
-	spmd, _ := filepath.Glob(filepath.Join(dir, "*.spmd"))
 	logs, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
-	if len(spmd) != 1 || len(logs) != 1 {
-		t.Fatalf("want one .spmd and one .jsonl in %s, got %v %v", dir, spmd, logs)
+	if len(logs) != 1 {
+		t.Fatalf("want one .jsonl in %s, got %v", dir, logs)
 	}
-	rec, _ := os.ReadFile(spmd[0])
 	events, torn, err := ReadSessionLog(logs[0])
 	if err != nil || torn {
 		t.Fatalf("ReadSessionLog: torn=%v err=%v", torn, err)
 	}
-	out := RenderFountain(events, RenderOptions{Zone: time.Local, Blobs: BlobDir(logs[0])})
-	return string(rec), string(out)
+	return string(RenderFountain(events, RenderOptions{Zone: time.Local, Blobs: BlobDir(logs[0])}))
 }
 
-func TestRenderFountain_MatchesTheLiveRecorder(t *testing.T) {
-	rec, got := recordedAndRendered(t, false, false,
+func TestRenderFountain_TurnsModelSwitchAndShell(t *testing.T) {
+	got := recordedAndRendered(t, false, false,
 		"hello", "/model use qwen2.5-coder:1.5b", "again", "!echo hi", "/exit")
-	if a, b := normaliseFountain(rec), normaliseFountain(got); a != b {
-		t.Errorf("rendered Fountain differs from the recorder's\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
-	}
 	goldenCheck(t, "turns_switch_shell", got)
 }
 
 func TestRenderFountain_DebugEventsDoNotAppear(t *testing.T) {
-	rec, got := recordedAndRendered(t, true, false, "hello", "/exit")
-	if a, b := normaliseFountain(rec), normaliseFountain(got); a != b {
-		t.Errorf("--debug changed the rendering\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
-	}
+	got := recordedAndRendered(t, true, false, "hello", "/exit")
 	goldenCheck(t, "debug_hello", got)
 }
 
 // The recorder dropped the tool notes of a turn whose tool round was compacted;
 // the log has the calls, so the renderer shows them, between the forwarding line
 // and the reply, as DR-0014 says.
-func TestRenderFountain_ToolNotesAreIncludedWhereTheRecorderLostThem(t *testing.T) {
-	rec, got := recordedAndRendered(t, false, true, "read note.txt", "/exit")
-	if strings.Contains(rec, "[[tool:") {
-		t.Skip("the recorder now keeps tool notes; the comparison below is no longer the point")
-	}
+func TestRenderFountain_ToolNotesComeFromTheLog(t *testing.T) {
+	got := recordedAndRendered(t, false, true, "read note.txt", "/exit")
 	fwd := strings.Index(got, "Forwarding to LLAMA3.2.")
 	note := strings.Index(got, "[[tool: read_file(")
 	reply := strings.Index(got, "\nLLAMA3.2\nTOOLDONE")
@@ -117,12 +105,7 @@ func TestRenderFountain_ToolNotesAreIncludedWhereTheRecorderLostThem(t *testing.
 	if !strings.Contains(got, `note.txt`) || !strings.Contains(got, ") — ok]]") {
 		t.Errorf("tool note should carry the arguments and the status ok:\n%s", got)
 	}
-	// Apart from that one note the two agree.
-	noteLine := regexp.MustCompile(`(?m)^\[\[tool: .*\]\]\n\n`).FindString(got)
-	if a, b := normaliseFountain(rec), normaliseFountain(strings.Replace(got, noteLine, "", 1)); a != b {
-		t.Errorf("apart from the tool note the rendering should equal the recorder's\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
-	}
-	// This golden is the rendering, which has the tool note the recorder lost.
+	// This golden has the tool note the old live recorder lost.
 	goldenCheck(t, "tool_call", got)
 }
 
@@ -201,11 +184,10 @@ func TestRenderFountain_ShellOutputComesFromABlobWhenSpilled(t *testing.T) {
 }
 
 func TestRenderFountain_SecretsStayRedacted(t *testing.T) {
-	rec, got := recordedAndRendered(t, false, false, "!echo API_KEY=sk-live-424", "/exit")
+	got := recordedAndRendered(t, false, false, "!echo API_KEY=sk-live-424", "/exit")
 	if strings.Contains(got, "sk-live-424") || !strings.Contains(got, "[REDACTED:secret]") {
 		t.Errorf("the rendering must keep the log's redaction:\n%s", got)
 	}
-	_ = rec // the recorder, which writes what was typed, is unchanged and may contain it
 }
 
 // The recorder wrote a skill's scene when the skill was loaded. A skill loaded

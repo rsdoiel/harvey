@@ -80,7 +80,7 @@ func TestPipeline_TheLogHasEachStepAsACallAndAResult(t *testing.T) {
 	}
 }
 
-func TestRenderFountain_PipelineScenesMatchTheRecorder(t *testing.T) {
+func TestRenderFountain_PipelineScenes(t *testing.T) {
 	for name, tc := range map[string]struct {
 		replies []string
 		failOn  int
@@ -90,13 +90,10 @@ func TestRenderFountain_PipelineScenesMatchTheRecorder(t *testing.T) {
 		"the first call fails": {nil, 1},
 	} {
 		t.Run(name, func(t *testing.T) {
-			events, rec, lp := pipelineSession(t, tc.replies, tc.failOn)
+			events, _, lp := pipelineSession(t, tc.replies, tc.failOn)
 			got := string(RenderFountain(events, RenderOptions{Zone: time.Local, Blobs: BlobDir(lp)}))
 			if !strings.Contains(got, "INT. PIPELINE S1.MD STEP 1/2") {
 				t.Errorf("no pipeline scene in the rendering:\n%s", got)
-			}
-			if a, b := normaliseFountain(rec), normaliseFountain(got); a != b {
-				t.Errorf("rendering differs from the recorder's\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
 			}
 			goldenCheck(t, "pipeline_"+strings.ReplaceAll(name, " ", "_"), got)
 		})

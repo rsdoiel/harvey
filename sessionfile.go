@@ -106,11 +106,6 @@ func RecoverSessionFiles(dir string, zone *time.Location) ([]string, error) {
 	return recovered, nil
 }
 
-// renderAtClose says whether finishSession renders the Fountain file from the
-// log. It is true; the tests that compare the rendering with the live
-// recorder's output turn it off so the live file is still there to compare.
-var renderAtClose = true
-
 /** finishSession ends the session's records: the log gets its session_end, the
  * recorder is closed, and the Fountain file is rendered from the log over the
  * live recording. If the rendering fails the live recording is kept and a
@@ -134,7 +129,7 @@ func (a *Agent) finishSession(out interface{ Write([]byte) (int, error) }) {
 	path := a.Recorder.Path()
 	a.Recorder.Close()
 	a.Recorder = nil
-	if logPath != "" && renderAtClose {
+	if logPath != "" {
 		if err := RenderSessionFile(logPath, path, time.Local); err != nil {
 			fmt.Fprintf(out, yellow("  ⚠")+" Could not render %s from the session log (%v); the live recording is kept.\n", path, err)
 		}

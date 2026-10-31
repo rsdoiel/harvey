@@ -809,11 +809,6 @@ func (a *Agent) Run(out io.Writer) error {
 				a.logShellInjection(a.logShellResult(shellCallID, status, exitPtr, output, truncated, runErr))
 			}
 
-			if a.Recorder != nil {
-				if recErr := a.Recorder.RecordShellCommand(cmdLine, string(output), exitCode); recErr != nil {
-					fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
-				}
-			}
 			continue
 		}
 
@@ -865,12 +860,6 @@ func (a *Agent) Run(out io.Writer) error {
 					fmt.Fprintln(out, dim("  @"+name))
 					a.foldBackTurn(input, reply)
 
-					if a.Recorder != nil {
-						// Route dispatch is remote computation — use EXT. scene.
-						if recErr := a.Recorder.RecordExteriorTurn(strings.ToUpper(name), input, reply); recErr != nil {
-							fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
-						}
-					}
 					a.autoExecuteReply(reply, out, reader, context.Background())
 					continue
 				}
@@ -1181,7 +1170,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	sp := newSpinner(out, a.estimateDuration(), spLabel)
 	var stats ChatStats
 	var chatErr error
-	var toolCallRecords []ToolCallRecord
 	// Use RunToolLoop only when tools are configured AND the model's ToolMode
 	// allows structured calls. Explicit modes prose/inject/none bypass the loop.
 	useStructuredTools := a.Tools != nil && a.Config.ToolsEnabled
@@ -1202,7 +1190,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		if chatErr == nil {
 			// Preserve any intermediate tool-call/result messages added by the loop.
 			a.History = updatedHistory
-			toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
 		}
 	} else {
 		stats, chatErr = a.Client.Chat(ctx, a.History, &buf)
@@ -1277,7 +1264,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 				a.ActiveStatus = nil
 				if chatErr == nil {
 					a.History = updatedHistory
-					toolCallRecords = toolCallsFromHistory(a.History[histLenBeforeChat:], charName)
 				}
 			} else {
 				retryStats, chatErr = a.Client.Chat(ctx, a.History, &buf)
@@ -1404,11 +1390,6 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 	}
 
 	a.AddMessage("assistant", buf.String())
-	if a.Recorder != nil {
-		if recErr := a.Recorder.RecordTurnWithStats(input, buf.String(), stats, modelsUsed, "", toolCallRecords, ragInfo); recErr != nil {
-			fmt.Fprintf(out, yellow("  ✗")+" Recording error: %v\n", recErr)
-		}
-	}
 	// Feed unknown-tool errors back into history so the model can self-correct
 	// on the next turn (now that the assistant message is in place, the history
 	// order is correct: …, assistant: <hallucinated call>, user: <correction>).

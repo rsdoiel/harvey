@@ -7,10 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Switching to an Ollama model mid-session built a new client without the
@@ -43,7 +42,7 @@ func fakeOllamaChat(t *testing.T) *httptest.Server {
 
 // switchAgent is a mid-session agent: on llama3.2:3b, recording, with --debug on
 // and a session log open.
-func switchAgent(t *testing.T) (*Agent, string) {
+func switchAgent(t *testing.T) *Agent {
 	t.Helper()
 	a := selectAgent(t, fakeOllamaChat(t).URL)
 	a.Config.Ollama.Model = "llama3.2:3b"
@@ -60,32 +59,38 @@ func switchAgent(t *testing.T) (*Agent, string) {
 	t.Cleanup(func() { l.Close("test") })
 	a.SessionLog = l
 	a.logModel = ModelRef{Backend: "ollama", Model: "llama3.2:3b"}
-	path := filepath.Join(dir, "session.spmd")
-	rec, err := NewRecorder(path, "ollama (llama3.2:3b)", dir)
-	if err != nil {
-		t.Fatalf("NewRecorder: %v", err)
-	}
-	t.Cleanup(func() { rec.Close() })
-	a.Recorder = rec
-	return a, path
+	return a
 }
 
-// chatOnce sends one turn through the active client and records it, as the
-// REPL does.
+// switchTranscript closes the agent's session log and returns its Fountain
+// rendering, the transcript a reader of the session would see.
+func switchTranscript(t *testing.T, a *Agent) string {
+	t.Helper()
+	if err := a.SessionLog.Close("test"); err != nil {
+		t.Fatalf("close the session log: %v", err)
+	}
+	events, _, err := ReadSessionLog(a.SessionLog.Path())
+	if err != nil {
+		t.Fatalf("read the session log: %v", err)
+	}
+	return string(RenderFountain(events, RenderOptions{Zone: time.UTC, Blobs: BlobDir(a.SessionLog.Path())}))
+}
+
+// chatOnce sends one turn through the active client and logs it, as the REPL
+// does: the author's input, then the call.
 func chatOnce(t *testing.T, a *Agent) {
 	t.Helper()
+	a.logUserInput("Hi")
 	var out bytes.Buffer
-	if _, err := a.Client.Chat(context.Background(), []Message{{Role: "user", Content: "Hi"}}, &out); err != nil {
+	ctx := withCallPurpose(context.Background(), purposeTurn, nil)
+	if _, err := a.Client.Chat(ctx, []Message{{Role: "user", Content: "Hi"}}, &out); err != nil {
 		t.Fatalf("chat: %v", err)
-	}
-	if err := a.Recorder.RecordTurn("Hi", out.String()); err != nil {
-		t.Fatalf("RecordTurn: %v", err)
 	}
 }
 
 // assertSwitchedCleanly checks that the turn after the switch is logged and
 // attributed to the new model, in the session log and in the transcript.
-func assertSwitchedCleanly(t *testing.T, a *Agent, transcript, wantSpeaker, wantNote, wantModel string) {
+func assertSwitchedCleanly(t *testing.T, a *Agent, wantSpeaker, wantNote, wantModel string) {
 	t.Helper()
 	chatOnce(t, a)
 	events, _, err := ReadSessionLog(a.SessionLog.Path())
@@ -128,11 +133,7 @@ func assertSwitchedCleanly(t *testing.T, a *Agent, transcript, wantSpeaker, want
 	if sw.To.Model != wantModel {
 		t.Errorf("model_switch names %q, want %q", sw.To.Model, wantModel)
 	}
-	a.Recorder.Close()
-	rec, err := os.ReadFile(transcript)
-	if err != nil {
-		t.Fatalf("read transcript: %v", err)
-	}
+	rec := []byte(switchTranscript(t, a))
 	if !strings.Contains(string(rec), "\n"+wantSpeaker+"\n") {
 		t.Errorf("transcript does not attribute the reply to %s:\n%s", wantSpeaker, rec)
 	}
@@ -145,40 +146,40 @@ func assertSwitchedCleanly(t *testing.T, a *Agent, transcript, wantSpeaker, want
 }
 
 func TestModelUse_PickerMatchKeepsSessionLogAndRecordsSwitch(t *testing.T) {
-	a, transcript := switchAgent(t)
+	a := switchAgent(t)
 	withLocalModels(t, []ModelSummary{{Name: "qwen2.5-coder:1.5b", Engine: "ollama"}})
 	var out bytes.Buffer
 	if err := cmdModel(a, []string{"use", "qwen2.5-coder:1.5b"}, &out); err != nil {
 		t.Fatalf("/model use: %v", err)
 	}
-	assertSwitchedCleanly(t, a, transcript, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)", "qwen2.5-coder:1.5b")
+	assertSwitchedCleanly(t, a, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)", "qwen2.5-coder:1.5b")
 }
 
 func TestModelUse_OllamaAliasKeepsSessionLog(t *testing.T) {
-	a, transcript := switchAgent(t)
+	a := switchAgent(t)
 	a.Config.ModelAliases["coder"] = ModelAlias{Model: "qwen2.5-coder:1.5b", Engine: "ollama"}
 	var out bytes.Buffer
 	if err := cmdModel(a, []string{"use", "coder"}, &out); err != nil {
 		t.Fatalf("/model use: %v", err)
 	}
-	assertSwitchedCleanly(t, a, transcript, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)", "qwen2.5-coder:1.5b")
+	assertSwitchedCleanly(t, a, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)", "qwen2.5-coder:1.5b")
 }
 
 func TestModelUse_LegacyAliasFallingBackToOllamaKeepsSessionLog(t *testing.T) {
-	a, transcript := switchAgent(t)
+	a := switchAgent(t)
 	a.Config.ModelAliases["coder"] = ModelAlias{Model: "qwen2.5-coder:1.5b"}
 	var out bytes.Buffer
 	if err := cmdModel(a, []string{"use", "coder"}, &out); err != nil {
 		t.Fatalf("/model use: %v", err)
 	}
-	assertSwitchedCleanly(t, a, transcript, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)", "qwen2.5-coder:1.5b")
+	assertSwitchedCleanly(t, a, "QWEN2.5-CODER", "model switch: qwen2.5-coder:1.5b (ollama)", "qwen2.5-coder:1.5b")
 }
 
 // A dispatched step (@coder, or a plan step's [model: coder]) switches to the
 // step's model and Restore switches back. The restored Ollama client was
 // rebuilt without the debug log, and the transcript kept the step's model.
 func TestDispatchRestore_OllamaKeepsSessionLogAndRecordsSwitchBack(t *testing.T) {
-	a, transcript := switchAgent(t)
+	a := switchAgent(t)
 	a.Config.ModelAliases["coder"] = ModelAlias{Model: "qwen2.5-coder:1.5b", Engine: "ollama"}
 	var out strings.Builder
 	target, ok, err := resolveDispatchTarget(a, "coder", &out)
@@ -210,8 +211,7 @@ func TestDispatchRestore_OllamaKeepsSessionLogAndRecordsSwitchBack(t *testing.T)
 	if !switchBack {
 		t.Error("the session log has no model_switch back to the restored model")
 	}
-	a.Recorder.Close()
-	rec, _ := os.ReadFile(transcript)
+	rec := []byte(switchTranscript(t, a))
 	if !strings.Contains(string(rec), "model switch: llama3.2:3b (ollama)") {
 		t.Errorf("transcript does not record the switch back:\n%s", rec)
 	}

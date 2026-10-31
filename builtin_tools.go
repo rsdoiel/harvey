@@ -177,7 +177,7 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 						DocType:     docType,
 						Config:      a.Config.Chunking,
 					}
-					synthesis, synthErr := RunChunkedAnalysis(ctx, client, a.Recorder, params, a.Out)
+					synthesis, synthErr := RunChunkedAnalysis(ctx, client, params, a.Out)
 					if synthErr != nil {
 						return "", fmt.Errorf("read_file: chunked analysis: %w", synthErr)
 					}
@@ -872,10 +872,6 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 				return "", fmt.Errorf("update_memory: %w", err)
 			}
 
-			if a.Recorder != nil {
-				_ = a.Recorder.RecordAgentAction("update_memory", id, "auto", "ok")
-			}
-
 			return "Memory updated: " + id, nil
 		},
 	)
@@ -923,10 +919,6 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 
 			if err := a.Memory.Store.Archive(id); err != nil {
 				return "", fmt.Errorf("delete_memory: %w", err)
-			}
-
-			if a.Recorder != nil {
-				_ = a.Recorder.RecordAgentAction("delete_memory", id, "auto", "archived")
 			}
 
 			return "Memory archived: " + id, nil
@@ -1018,11 +1010,6 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 
 			a.History = keep
 
-			if a.Recorder != nil {
-				_ = a.Recorder.RecordAgentAction("filter_context",
-					fmt.Sprintf("%d messages removed matching %q", removed, criteria), "auto", "ok")
-			}
-
 			return fmt.Sprintf("Filtered %d messages matching %q.", removed, criteria), nil
 		},
 	)
@@ -1102,10 +1089,6 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 
 			if err := a.Memory.Store.Save(doc, nil); err != nil {
 				return "", fmt.Errorf("add_memory: %w", err)
-			}
-
-			if a.Recorder != nil {
-				_ = a.Recorder.RecordAgentAction("add_memory", id+" — "+memTypeStr, "auto", "ok")
 			}
 
 			return "Memory saved: " + id, nil
@@ -1205,10 +1188,6 @@ func RegisterBuiltinTools(r *ToolRegistry, a *Agent) {
 			newHistory = append(newHistory, summaryMsg)
 			newHistory = append(newHistory, keep...)
 			a.History = newHistory
-
-			if a.Recorder != nil {
-				_ = a.Recorder.RecordAgentAction("summary_context", fmt.Sprintf("%d messages compressed", n), "auto", "ok")
-			}
 
 			return fmt.Sprintf("Summarised %d turns into 1 entry (~%d tokens saved).", n, tokensSaved), nil
 		},

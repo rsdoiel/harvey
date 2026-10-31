@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // confidenceInstruction is hidden-appended to every outgoing user message in a pipeline step.
@@ -366,10 +365,6 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 	for i, s := range steps {
 		relNames[i] = s.relPath
 	}
-	userName := strings.ToUpper(os.Getenv("USER"))
-	if userName == "" {
-		userName = "OPERATOR"
-	}
 
 	ctx := context.Background()
 	var prevResponse string
@@ -377,21 +372,6 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 	for i, step := range steps {
 		stepNum := i + 1
 		filename := filepath.Base(step.relPath)
-
-		// Fountain: open a new pipeline scene for this step.
-		if a.Recorder != nil {
-			ts := time.Now().Format("2006-01-02 15:04:05")
-			heading := fmt.Sprintf("INT. PIPELINE %s STEP %d/%d %s",
-				strings.ToUpper(filename), stepNum, total, ts)
-			a.Recorder.writeSceneHeading(heading)
-			a.Recorder.writeAction(fmt.Sprintf(
-				"%s executes /pipeline %.0f%% %s.\nModel: %s. Workspace: %s.",
-				userName, threshold*100, strings.Join(relNames, " "),
-				step.client.Name(), a.Workspace.Root,
-			))
-			a.Recorder.writeNote("hidden confidence instruction appended")
-			a.Recorder.writeDialogue(userName, "", step.body)
-		}
 
 		// Build messages for this step.
 		var messages []Message
@@ -419,40 +399,9 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 		)
 		a.logPipelineResult(callID, strippedResp, score, stepErr)
 
-		// Fountain: record step response.
-		if a.Recorder != nil {
-			a.Recorder.writeDialogue("HARVEY", "", strippedResp)
-			if stepErr != nil {
-				a.Recorder.writeNote(fmt.Sprintf(
-					"confidence: %.2f — threshold not met (%.2f)", score, threshold))
-			} else {
-				a.Recorder.writeNote(fmt.Sprintf("confidence: %.2f — threshold met", score))
-			}
-		}
-
 		if stepErr != nil {
-			// Fountain: return to original scene after failure.
-			if a.Recorder != nil {
-				a.Recorder.writeTransition("CUT BACK TO:")
-				ts := time.Now().Format("2006-01-02 15:04:05")
-				a.Recorder.writeSceneHeading(fmt.Sprintf(
-					"INT. HARVEY AND %s TALKING %s", userName, ts))
-				a.Recorder.writeAction(fmt.Sprintf(
-					"Harvey and %s are in chat mode. Model: %s. Workspace: %s.",
-					userName, a.Client.Name(), a.Workspace.Root,
-				))
-				a.Recorder.writeNote(fmt.Sprintf(
-					"pipeline stopped at step %d/%d: confidence %.2f below threshold %.2f",
-					stepNum, total, score, threshold,
-				))
-			}
 			// The step ran but did not meet the bar: the answer is no.
 			return defaultClass(ClassNegative, stepErr)
-		}
-
-		// Fountain: CUT TO next step if there is one.
-		if a.Recorder != nil && stepNum < total {
-			a.Recorder.writeTransition("CUT TO:")
 		}
 
 		prevResponse = strippedResp
@@ -460,19 +409,6 @@ func cmdPipeline(a *Agent, args []string, out io.Writer) error {
 
 	// All steps passed — append final response to history.
 	a.AddMessage("assistant", prevResponse)
-
-	// Fountain: return to original scene after success.
-	if a.Recorder != nil {
-		a.Recorder.writeTransition("CUT BACK TO:")
-		ts := time.Now().Format("2006-01-02 15:04:05")
-		a.Recorder.writeSceneHeading(fmt.Sprintf(
-			"INT. HARVEY AND %s TALKING %s", userName, ts))
-		a.Recorder.writeAction(fmt.Sprintf(
-			"Harvey and %s are in chat mode. Model: %s. Workspace: %s.",
-			userName, a.Client.Name(), a.Workspace.Root,
-		))
-		a.Recorder.writeDialogue("HARVEY", "", prevResponse)
-	}
 
 	fmt.Fprintln(out, green("✓")+" Pipeline complete.")
 	return nil

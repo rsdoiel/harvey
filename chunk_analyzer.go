@@ -48,16 +48,13 @@ type ChunkAnalysisParams struct {
  * in partialResults and synthesis runs over all available results. A synthesis
  * failure is unrecoverable and is returned as an error.
  *
- * rec may be nil; when nil, recording calls are silently skipped. There is no
- * separate debug-log parameter — client (an *AnyLLMClient, in production)
- * already logs its own llm_request/llm_response events internally; a caller-
- * side debug log here would just duplicate that (see DECISIONS.md, the
- * chunk-analysis double-logging fix).
+ * The client (an *AnyLLMClient, in production) reports each of its calls to the
+ * session log itself, as ad-hoc requests with the purposes chunk and synthesis
+ * that the context here sets, so this function writes no record of its own.
  *
  * Parameters:
  *   ctx    (context.Context)     — cancellation context.
  *   client (LLMClient)           — LLM backend for map and reduce calls.
- *   rec    (*Recorder)           — session recorder; nil is accepted.
  *   params (ChunkAnalysisParams) — all inputs.
  *   w      (io.Writer)           — progress output (usually os.Stdout).
  *
@@ -66,7 +63,7 @@ type ChunkAnalysisParams struct {
  *   error  — synthesis error, or nil.
  *
  * Example:
- *   result, err := RunChunkedAnalysis(ctx, client, rec, params, os.Stdout)
+ *   result, err := RunChunkedAnalysis(ctx, client, params, os.Stdout)
  *   if err != nil { log.Fatal(err) }
  *   fmt.Println(result)
  */
@@ -77,7 +74,7 @@ const chunkSystemPrompt = "You are a focused document analysis assistant. " +
 	"Analyse ONLY the text provided in this message. " +
 	"Do not reference any information from outside the provided content."
 
-func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, params ChunkAnalysisParams, w io.Writer) (string, error) {
+func RunChunkedAnalysis(ctx context.Context, client LLMClient, params ChunkAnalysisParams, w io.Writer) (string, error) {
 	n := len(params.Chunks)
 
 	// Preflight reachability check — fail immediately with one clear message
@@ -85,10 +82,6 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, pa
 	// error before the run finally errors out at synthesis (TODO.md).
 	if reachable, checked := probeClientReachable(client); checked && !reachable {
 		return "", fmt.Errorf("chunked analysis: %s is unreachable — check the server is running before retrying", client.Name())
-	}
-
-	if rec != nil {
-		_ = rec.RecordChunkAnalysisStart(params.Filename, n, params.Model, params.DocType, params.Config)
 	}
 
 	partialResults := make([]string, 0, n)
@@ -113,20 +106,14 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, pa
 		})
 		_, err := client.Chat(chunkCtx, messages, &buf)
 
-		outcome := "ok"
 		var result string
 		if err != nil {
-			outcome = "error: " + firstLine(err.Error())
 			result = fmt.Sprintf("[chunk %d failed: %v]", chunkNum, err)
 		} else {
 			result = buf.String()
 		}
 
 		partialResults = append(partialResults, result)
-
-		if rec != nil {
-			_ = rec.RecordChunkResult(chunkNum, n, params.Model, result, outcome)
-		}
 	}
 
 	// ── Reduce phase ─────────────────────────────────────────────────────────
@@ -146,16 +133,10 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, pa
 	synCtx := withCallPurpose(ctx, "synthesis", map[string]any{"path": params.Filename, "chunks": n})
 	_, err := client.Chat(synCtx, messages, &synBuf)
 	if err != nil {
-		if rec != nil {
-			_ = rec.RecordChunkSynthesis(params.Model, "", "error: "+firstLine(err.Error()))
-		}
 		return "", fmt.Errorf("chunked analysis synthesis: %w", err)
 	}
 
 	synthesis := synBuf.String()
-	if rec != nil {
-		_ = rec.RecordChunkSynthesis(params.Model, synthesis, "ok")
-	}
 	return synthesis, nil
 }
 

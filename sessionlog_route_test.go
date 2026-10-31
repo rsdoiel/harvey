@@ -51,14 +51,11 @@ func TestRoutedTurn_TheLogHasTheInputTheRouteAndTheCall(t *testing.T) {
 	}
 }
 
-func TestRenderFountain_ARoutedTurnMatchesTheRecorder(t *testing.T) {
-	events, rec, lp := routedSession(t)
+func TestRenderFountain_ARoutedTurn(t *testing.T) {
+	events, _, lp := routedSession(t)
 	got := string(RenderFountain(events, RenderOptions{Zone: time.Local, Blobs: BlobDir(lp)}))
 	if !strings.Contains(got, "EXT. PI2 AND ") || !strings.Contains(got, "Harvey routing to PI2.") {
 		t.Errorf("no exterior scene in the rendering:\n%s", got)
-	}
-	if a, b := normaliseFountain(rec), normaliseFountain(got); a != b {
-		t.Errorf("rendering differs from the recorder's\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
 	}
 	goldenCheck(t, "routed_turn", got)
 }

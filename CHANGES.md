@@ -10,6 +10,14 @@
   request, which rendering and kb ingest skip. Anything that read the old `agents/logs` file should read the session log instead.
   The Fountain `.spmd` files are unchanged.
 
+- **The Fountain `.spmd` file is rendered from the session log when the session closes.** It used to be written live, scene by
+  scene. During a session the file now holds only the title page; the whole screenplay appears at close, or at the next start
+  if the session died (harvey says so). The format is the same, and nothing the live recording wrote is lost: `@name` routed
+  turns, skill loads, write offers, chunk analysis and `/pipeline` runs all render from the log. Two differences: tool calls are
+  now shown as `[[tool: …]]` notes in the turn (the live recorder lost them after tool-result compaction), and a turn that
+  failed is shown with the failure. Anything that reads the *current* session's `.spmd` while it is running will see only the
+  title page; read the session log (`agents/sessions/NAME.jsonl`) instead.
+
 ### Added
 
 - **A complete record of each session.** The session log holds every user input, model request and response (with the usage the
