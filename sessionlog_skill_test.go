@@ -130,4 +130,5 @@ func TestRun_ASkillLoadIsLoggedAndRendersLikeTheRecorder(t *testing.T) {
 	if a, b := normaliseFountain(string(rec)), normaliseFountain(string(got)); a != b {
 		t.Errorf("rendering differs from the recorder's\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
 	}
+	goldenCheck(t, "skill_load", string(got))
 }

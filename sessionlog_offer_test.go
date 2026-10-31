@@ -102,6 +102,7 @@ func TestRenderFountain_WriteOffersMatchTheRecorder(t *testing.T) {
 			if !strings.Contains(got, "INT. AGENT MODE") || !strings.Contains(got, "Harvey proposes to write 2 file(s).") {
 				t.Errorf("no agent scene in the rendering:\n%s", got)
 			}
+			goldenCheck(t, "offers_"+strings.ReplaceAll(name, " ", "_"), got)
 		})
 	}
 }

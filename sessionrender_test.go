@@ -14,6 +14,7 @@ var (
 	renderDateRE  = regexp.MustCompile(`Draft date: \d{4}-\d{2}-\d{2}`)
 	renderStatsRE = regexp.MustCompile(`· [0-9.]+(µs|ms|s) · [0-9.]+ tok/s`)
 	renderDurRE   = regexp.MustCompile(`(?m)^(.+ \(.+\)) · [0-9.]+(µs|ms|s)$`)
+	renderWSRE    = regexp.MustCompile(`Workspace: \S+\.`)
 )
 
 // normaliseFountain removes what differs between two runs of the same
@@ -23,7 +24,42 @@ func normaliseFountain(s string) string {
 	s = renderDateRE.ReplaceAllString(s, "Draft date: <date>")
 	s = renderStatsRE.ReplaceAllString(s, "· <dur> · <rate> tok/s")
 	s = renderDurRE.ReplaceAllString(s, "$1 · <dur>")
+	s = renderWSRE.ReplaceAllString(s, "Workspace: <ws>.")
 	return s
+}
+
+// goldenRoot is the package directory, taken before any test changes directory.
+var goldenRoot, _ = os.Getwd()
+
+// goldenCheck compares a rendering with the golden file testdata/fountain/NAME.golden.
+// The golden files are the live recorder's output for a scripted scenario,
+// normalised, captured before the recorder's live writes were removed, except
+// where the file says otherwise (the recorder lost tool notes the rendering has).
+// Run with UPDATE_GOLDEN=1 to write them: the file is written only if the test has
+// not failed, that is, only from a rendering already proved equal to the recorder.
+func goldenCheck(t *testing.T, name, rendered string) {
+	t.Helper()
+	path := filepath.Join(goldenRoot, "testdata", "fountain", name+".golden")
+	got := normaliseFountain(rendered)
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if t.Failed() {
+			t.Fatalf("not updating %s: the rendering did not match the live recorder", path)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("no golden file %s (UPDATE_GOLDEN=1 writes it): %v", path, err)
+	}
+	if string(want) != got {
+		t.Errorf("the rendering differs from %s\n--- golden ---\n%s\n--- rendering ---\n%s", path, want, got)
+	}
 }
 
 // recordedAndRendered runs a scripted session and returns what the live
@@ -53,6 +89,7 @@ func TestRenderFountain_MatchesTheLiveRecorder(t *testing.T) {
 	if a, b := normaliseFountain(rec), normaliseFountain(got); a != b {
 		t.Errorf("rendered Fountain differs from the recorder's\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
 	}
+	goldenCheck(t, "turns_switch_shell", got)
 }
 
 func TestRenderFountain_DebugEventsDoNotAppear(t *testing.T) {
@@ -60,6 +97,7 @@ func TestRenderFountain_DebugEventsDoNotAppear(t *testing.T) {
 	if a, b := normaliseFountain(rec), normaliseFountain(got); a != b {
 		t.Errorf("--debug changed the rendering\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
 	}
+	goldenCheck(t, "debug_hello", got)
 }
 
 // The recorder dropped the tool notes of a turn whose tool round was compacted;
@@ -84,6 +122,8 @@ func TestRenderFountain_ToolNotesAreIncludedWhereTheRecorderLostThem(t *testing.
 	if a, b := normaliseFountain(rec), normaliseFountain(strings.Replace(got, noteLine, "", 1)); a != b {
 		t.Errorf("apart from the tool note the rendering should equal the recorder's\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
 	}
+	// This golden is the rendering, which has the tool note the recorder lost.
+	goldenCheck(t, "tool_call", got)
 }
 
 func TestRenderFountain_IsAPureFunctionOfTheLogAndTheZone(t *testing.T) {

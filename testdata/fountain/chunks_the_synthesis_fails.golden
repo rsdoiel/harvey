@@ -1,0 +1,52 @@
+Title: Harvey Session
+Credit: Recorded by Harvey
+Author: TESTER
+Date: <ts>
+Draft date: <date>
+Model: LLAMA3.2 (ollama)
+Backend: ollama
+
+
+FADE IN:
+
+
+INT. CHUNK ANALYSIS — DOC.MD <ts>
+
+Harvey processes doc.md as 4 chunks of type prose.
+
+[[chunk: file=doc.md, chunks=4, model=llama3.2:3b, boundary=paragraph, chunk-size=300]]
+
+LLAMA3.2
+(chunk 1/4)
+FIRST
+
+[[chunk-result: 1/4 — ok]]
+
+LLAMA3.2
+(chunk 2/4)
+SECOND
+
+[[chunk-result: 2/4 — ok]]
+
+LLAMA3.2
+(chunk 3/4)
+THIRD
+
+[[chunk-result: 3/4 — ok]]
+
+LLAMA3.2
+(chunk 4/4)
+FOURTH
+
+[[chunk-result: 4/4 — ok]]
+
+HARVEY
+Synthesizing results.
+
+LLAMA3.2
+(synthesis)
+
+[[synthesis: model=llama3.2:3b — error: [ollama] provider_error: 500 Internal Server Error: boom]]
+
+
+THE END.

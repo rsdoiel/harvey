@@ -1,0 +1,31 @@
+Title: Harvey Session
+Credit: Recorded by Harvey
+Author: TESTER
+Date: <ts>
+Draft date: <date>
+Model: LLAMA3.2 (ollama)
+Backend: ollama
+
+
+FADE IN:
+
+
+INT. HARVEY AND TESTER TALKING <ts>
+
+Harvey and TESTER are in chat mode. Model: LLAMA3.2. Workspace: <ws>.
+
+TESTER
+read note.txt
+
+HARVEY
+Forwarding to LLAMA3.2.
+
+[[tool: read_file({"path":"note.txt"}) — ok]]
+
+LLAMA3.2
+TOOLDONE
+
+ollama (llama3.2:3b) · 1 reply + 20 ctx · <dur> · <rate> tok/s
+
+
+THE END.

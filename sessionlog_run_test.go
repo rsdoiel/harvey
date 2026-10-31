@@ -133,6 +133,7 @@ func scriptedRunFull(t *testing.T, debug bool, setup func(root string), tools bo
 	t.Helper()
 	// By default the live recording is kept, for the tests that compare it with the
 	// rendering; scriptedRender turns the close-time rendering on.
+	t.Setenv("USER", "tester") // the Fountain title page and scenes name the author
 	prev := renderAtClose
 	renderAtClose = scriptedRender
 	t.Cleanup(func() { renderAtClose = prev })

@@ -87,6 +87,7 @@ func TestRenderFountain_ChunkAnalysisMatchesTheRecorder(t *testing.T) {
 			if a, b := normaliseFountain(rec), normaliseFountain(got); a != b {
 				t.Errorf("rendering differs from the recorder's\n--- recorder ---\n%s\n--- renderer ---\n%s", a, b)
 			}
+			goldenCheck(t, "chunks_"+strings.ReplaceAll(name, " ", "_"), got)
 		})
 	}
 }
