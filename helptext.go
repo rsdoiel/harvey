@@ -288,9 +288,6 @@ are also available from the shell: harvey --help TOPIC.
 /kb learn concepts [--limit N]
 : suggest new concepts from the ingested documents; you pick which become concepts, then see each affected document as a diff of changed lines and choose whether to write it. Writes obey the permissions table; Fountain documents (sessions, hand-offs) are never rewritten
 
-/rag <list|new NAME|use NAME|drop NAME|setup|ingest PATH|status|query TEXT|on|off>
-: manage retrieval-augmented generation stores
-
 /memory <mine|list|show|forget|status|recall|profile> [args...]
 : manage the session-experience memory store; mine and recall typed patterns
 
@@ -1043,8 +1040,8 @@ vector-diagram pages. Those pages cannot be extracted by any text tool; the
 output will note them so you can follow up with a vision-capable model.
 
 The injected content is ephemeral — it is added to the current conversation
-and is not written to disk or stored in the RAG database. Use /rag ingest
-if you want to index a PDF for retrieval.
+and is not written to disk. To make a document searchable, ingest it with
+kb document ingest.
 
 # EXAMPLES
 
@@ -1070,10 +1067,9 @@ Read a short PDF (≤ 20 pages) in full:
 # SEE ALSO
 
   /read FILE...       — inject plain-text workspace files into context
-  /rag ingest PATH    — index a file into the RAG store for retrieval
+  /kb document ingest — make a document searchable (the installed kb)
   /status             — check remaining context window space
   /help read
-  /help rag
 
 `
 
@@ -1113,8 +1109,8 @@ route can accept:
 
   Text and source-code files (≤ 256 KB)
     The file content is injected as plain text, identical to /read.
-    Files larger than 256 KB are rejected; use /rag ingest for large
-    text corpora.
+    Files larger than 256 KB are rejected; ingest large text with
+    kb document ingest.
 
   Binary files
     Rejected with a clear error. Use an appropriate converter first.
@@ -1151,10 +1147,9 @@ Attach a local source file:
 
   /read FILE...       — inject workspace text files (workspace-scoped)
   /read-pdf FILE PAGES — inject a specific page range from a PDF
-  /rag ingest PATH    — index a file into the RAG store for retrieval
+  /kb document ingest — make a document searchable (the installed kb)
   /route              — manage named remote endpoints
   /help read-pdf
-  /help rag
 
 `
 
@@ -2018,7 +2013,6 @@ RAG store
     Suggests ingesting documents into the active store:
 
       Run: /rag ingest <file>   (PDF, .md, .txt, .go, .ts, ...)
-      See: /help rag
 
   Store has chunks but RAG is off
     Suggests turning RAG on so chunks are prepended to prompts:
@@ -2211,254 +2205,6 @@ The same operations are available as startup flags:
 
 	// ─── Knowledge & memory ─────────────────────────────────────────────────────
 
-	// RagHelpText is shown by /help rag and harvey --help rag.
-	// Generates harvey-rag.7.md.
-	RagHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
-% R. S. Doiel
-% {release_date}
-
-# NAME
-
-RAG — Retrieval-Augmented Generation
-
-# SYNOPSIS
-
-/rag <list|new NAME|use NAME|show [NAME]|remove NAME|ingest PATH|status|query TEXT|on|off>
-
-# DESCRIPTION
-
-RAG lets Harvey find relevant snippets from a local knowledge store and
-inject them into the context window before each prompt is sent to the model.
-This grounds the model's replies in documents you have ingested, reducing
-hallucination and allowing it to answer questions about your own codebase,
-notes, and reference material without needing those files to be manually
-read into context with /read.
-
-When RAG is on, every user prompt is silently augmented with a short block
-of matching text retrieved from the store. Only chunks that score above the
-relevance threshold (0.3 cosine similarity) are injected; if nothing scores
-high enough, the prompt is sent unmodified.
-
-# NAMED STORES
-
-Harvey supports multiple named RAG stores. Each store is an independent
-SQLite database bound to one embedding model — you cannot mix vectors from
-different embedding models in the same store, and Harvey enforces this at
-every ingest and query operation.
-
-Named stores let you maintain separate, topically focused knowledge bases
-and switch between them as your work changes:
-
-  golang        Go standard library docs, idioms, and project code
-  deno          Deno/TypeScript docs and project source
-  web-frontend  MDN references, CSS specs, web-component guides
-  writing       Style guides, project drafts, editorial notes
-  research-X    Papers and notes for a specific research topic
-
-Only the active store is open at any time, so inactive stores consume no
-memory. The active store can be changed with /rag use at any time.
-
-On storage-constrained hardware (e.g. a Raspberry Pi), keep stores small
-and topical: a focused 5 000-chunk store retrieves better than a bloated
-50 000-chunk general store, and it fits in RAM.
-
-# EMBEDDING MODEL CHOICE
-
-RAG depends on a separate embedding model — a small neural network that
-converts text to vectors. The quality of retrieval depends heavily on the
-embedding model used. The models are ranked here from best to least suitable:
-
-  nomic-embed-text        (~274 MB) best general-purpose retrieval
-  mxbai-embed-large       (~670 MB) high quality, larger
-  bge-small-en-v1.5        (~46 MB) small but retrieval-optimised
-  bge-m3                  (~1.2 GB) multilingual
-  all-minilm-l6-v2         (~46 MB) avoid — similarity-tuned, not retrieval-tuned
-
-The critical distinction: models like all-MiniLM were trained on
-sentence-similarity tasks (NLI, STS), not on document retrieval. On standard
-retrieval benchmarks (MTEB), all-MiniLM-L6-v2 scores around 56% while
-bge-small-en-v1.5 scores around 62% and nomic-embed-text around 68%. Use a
-retrieval-optimised model whenever possible.
-
-The /rag new wizard detects which embedding models are installed and
-proposes the best available one, preferring nomic-embed-text > mxbai-embed-large
-> bge- > all-minilm. If none are installed, it prints a list of recommended
-models you can pull with "ollama pull" in a shell.
-
-Each store is bound to one embedding model at creation time. If you want to
-try a different embedding model for the same topic, create a new store and
-re-ingest the documents.
-
-# WORKFLOW — FIRST STORE
-
-~~~
-  # Step 1 — choose an embedding model (one-time)
-  ollama pull nomic-embed-text      (in a shell, outside Harvey)
-
-  # Step 2 — create and name a store
-  /rag new golang
-
-  # Step 3 — ingest the documents you want Harvey to retrieve from
-  /rag ingest agents/
-  /rag ingest HARVEY.md
-  /rag ingest docs/
-
-  # Step 4 — verify retrieval quality before trusting answers
-  /rag query what license does Harvey use?
-  /rag query how does routing work?
-
-  # RAG is now on automatically — ask questions normally
-  what license does Harvey use?
-~~~
-
-# WORKFLOW — MULTIPLE STORES
-
-~~~
-  # Create a writing store alongside the golang store
-  /rag new writing
-
-  # Ingest style guides and project drafts
-  /rag ingest ~/writing/style-guide.md
-  /rag ingest ~/projects/novel/drafts/
-
-  # Switch back to golang when you return to code
-  /rag use golang
-
-  # See all registered stores
-  /rag list
-~~~
-
-# DIAGNOSING POOR RETRIEVAL
-
-Use /rag query to inspect what the store would return for a given question
-before sending it to the model. The output shows each chunk with its cosine
-similarity score (0.0–1.0) and source file:
-
-~~~
-  /rag query what license does Harvey use?
-
-  Top 5 result(s) for "what license does Harvey use?":
-
-    [1] score=0.712  source=/home/user/Laboratory/harvey/LICENSE
-        GNU AFFERO GENERAL PUBLIC LICENSE...
-
-    [2] score=0.431  source=/home/user/Laboratory/harvey/README.md
-        Harvey is licensed under AGPL-3.0...
-~~~
-
-Scores below 0.3 are dropped from the injected context. If the top scores
-are all low (< 0.3) for a question you expect the store to answer, consider:
-
-  1. Switching to a better embedding model (see Embedding Model Choice above)
-     then creating a new store and re-ingesting.
-  2. Ingesting the missing documents with /rag ingest PATH.
-  3. Rephrasing the question to be closer to the language used in the docs.
-
-# SUBCOMMANDS
-
-/rag list
-  List all registered stores with a * marking the active one.
-
-/rag new NAME
-  Interactive wizard to create a named store. Detects installed embedding
-  models, proposes the best one, shows the proposed generation-model →
-  embedding-model mapping, and asks for confirmation. Creates the database
-  at agents/rag/NAME.db and saves the config to agents/harvey.yaml.
-  The new store is immediately set as active.
-
-/rag use NAME
-  Close the currently open store and activate NAME. The change is persisted
-  to agents/harvey.yaml.
-
-/rag show [NAME]
-  Show details for the named (or active) store: database path, embedding
-  model, chunk count, and model map. If NAME is omitted, the active store
-  is shown.
-
-/rag remove NAME
-  Remove a store from the registry after confirmation. The .db file is NOT
-  deleted automatically — the path is printed so you can remove it manually.
-  Alias: drop.
-
-/rag drop NAME
-  Alias for remove.
-
-/rag ingest PATH [PATH...]
-  Reads each file or directory (recursively), splits text into
-  paragraph-sized chunks (~500 characters each), embeds them using the
-  active store's embedding model, and stores the vectors in the database.
-  Re-ingest any file after it changes to keep the store current.
-
-  Remote URIs are supported alongside local paths:
-    sftp://[user@]host/path/ — list and ingest via SFTP over SSH (reads
-                              SFTP_PASSWORD or SFTP_KEY_PATH from environment)
-    scp://[user@]host/path/  — alias for sftp://
-    http://host/file.ext    — download and ingest a single file
-    https://host/file.ext   — same, with TLS (optional HTTP_BEARER_TOKEN or
-                              HTTP_BASIC_USER / HTTP_BASIC_PASSWORD)
-
-  Supported formats:
-    Plain text — .md, .txt, .go, .ts, .py, .yaml, .toml, .sql, and other
-                 text files.
-    PDF        — .pdf files are extracted with the poppler utilities
-                 (pdfinfo, pdftotext, pdfimages; must be installed). Each
-                 page is chunked separately, and every chunk is prefixed
-                 with the document title and page number so retrieval
-                 results always carry their source. Pages that contain
-                 only vector graphics (no extractable text) are stored
-                 with an incomplete-content marker so the model knows to
-                 ask for a vision-capable route for those pages.
-
-/rag query TEXT
-  Retrieves the top 5 matching chunks for TEXT from the active store and
-  prints each one with its cosine similarity score and source path.
-
-/rag status
-  Shows the active store (database path, embedding model, chunk count) and
-  a summary list of all registered stores.
-
-/rag on
-  Enable automatic context injection for the current session.
-
-/rag off
-  Disable automatic context injection for the current session.
-  The database and configuration are preserved; /rag on re-enables it.
-
-# CONFIGURATION
-
-RAG configuration is persisted in agents/harvey.yaml. Example with two stores:
-
-~~~yaml
-  rag:
-    enabled: true
-    active: golang
-    stores:
-      - name: golang
-        db_path: agents/rag/golang.db
-        embedding_model: nomic-embed-text
-        model_map:
-          llama3.1:latest: nomic-embed-text
-          granite3.3:2b:   nomic-embed-text
-      - name: writing
-        db_path: agents/rag/writing.db
-        embedding_model: nomic-embed-text
-~~~
-
-Each store has its own db_path and embedding_model. The model_map lets
-different generation models share the same embedding model; entries are
-populated automatically by /rag new.
-
-Old single-store configurations (db_path at the top level of rag:) are
-automatically migrated to a store named "default" on first load.
-
-# SEE ALSO
-
-  /memory recall         — search all knowledge silos including RAG
-  /help learn            — overview of all three memory silos
-  /help kb               — structured knowledge base for experiments
-
-`
-
 	// KBHelpText is shown by /help kb and harvey --help kb.
 	// Also dispatched for "knowledge" and "knowledge-base" aliases. Generates harvey-kb.7.md.
 	KBHelpText = `%{app_name}(7) user manual | version {version} {release_hash}
@@ -2596,7 +2342,7 @@ answer questions about it, suggest next steps, or help resolve open questions.
 # SEE ALSO
 
   /memory recall         — search all knowledge silos including the KB
-  /rag ingest            — embed documents for semantic retrieval
+  /kb document ingest    — make a document searchable (the installed kb)
   /help learn            — overview of all three memory silos
 
 `
@@ -2798,7 +2544,6 @@ memory before the review card is displayed.
   /profile               — alias for /memory profile
   /recall QUERY          — alias for /memory recall
   /help learn            — overview of all three memory silos
-  /help rag              — RAG store management
   /help kb               — knowledge base management
 
 `
@@ -2822,7 +2567,7 @@ is the key to getting consistently good results.
 
 # THE ONE DECISION RULE
 
-  Have a text file or document?        →  /rag ingest <file>
+  Have a text file or document?        →  /kb document ingest <file>
   Something useful happened in a session? →  /memory mine
   Making an observation about an experiment? →  /kb observe
 
@@ -2890,7 +2635,6 @@ Check what would improve the current session:
 
   /profile        — alias for /memory profile (manage workspace profile)
   /recall QUERY   — alias for /memory recall (search all silos)
-  /help rag       — full RAG command reference
   /help memory    — full memory command reference
   /help kb        — full knowledge base reference
 

@@ -39,7 +39,6 @@ func HelpTopicsText() string {
   pipeline        Multi-step pipelines chaining prompts and commands
   pin             Keep something in front of the model for this session
   plan            Create and track multi-step work plans
-  rag             Retrieval-augmented generation with named knowledge stores
   read            Read workspace files into conversation context
   read-dir        Read a directory tree into conversation context
   read-pdf        Extract and inject PDF text (requires poppler)
@@ -83,7 +82,7 @@ func HelpTopicsText() string {
  *   bool — true if the topic was recognized, false if unknown.
  *
  * Example:
- *   ok := PrintHelpTopic(os.Stdout, "rag", "harvey", Version, ReleaseDate, ReleaseHash)
+ *   ok := PrintHelpTopic(os.Stdout, "kb", "harvey", Version, ReleaseDate, ReleaseHash)
  *   if !ok {
  *       fmt.Fprintln(os.Stderr, "unknown topic")
  *   }
@@ -139,8 +138,6 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(PipelineHelpText)
 	case "plan":
 		f(PlanHelpText)
-	case "rag":
-		f(RagHelpText)
 	case "read":
 		f(ReadHelpText)
 	case "read-dir", "readdir":

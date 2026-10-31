@@ -865,26 +865,6 @@ func TestSubcommandCompletion_prefix(t *testing.T) {
 	}
 }
 
-func TestSubcommandCompletion_rag(t *testing.T) {
-	a := newTestAgent(t)
-	a.registerCommands()
-	completer := a.buildCompleter()
-
-	got := completer("/rag ")
-	for _, want := range []string{"list", "new", "use", "drop", "ingest", "status", "query", "on", "off"} {
-		found := false
-		for _, g := range got {
-			if g == want {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected %q in /rag completions, got %v", want, got)
-		}
-	}
-}
-
 func TestSubcommandCompletion_noSubcommands(t *testing.T) {
 	a := newTestAgent(t)
 	a.registerCommands()
@@ -907,48 +887,6 @@ func TestSubcommandCompletion_sorted(t *testing.T) {
 		if got[i] < got[i-1] {
 			t.Errorf("completions not sorted: %q before %q", got[i-1], got[i])
 		}
-	}
-}
-
-func TestArgCompletion_ragStoreNames(t *testing.T) {
-	a := newTestAgent(t)
-	a.Config.Memory.RagStores = []RagStoreEntry{
-		{Name: "harvey"},
-		{Name: "project-docs"},
-	}
-	a.registerCommands()
-	completer := a.buildCompleter()
-
-	got := completer("/rag use ")
-	if len(got) != 2 {
-		t.Fatalf("expected 2 store candidates, got %d: %v", len(got), got)
-	}
-	for _, want := range []string{"harvey", "project-docs"} {
-		found := false
-		for _, g := range got {
-			if g == want {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected %q in /rag use completions, got %v", want, got)
-		}
-	}
-}
-
-func TestArgCompletion_ragStorePrefixFilter(t *testing.T) {
-	a := newTestAgent(t)
-	a.Config.Memory.RagStores = []RagStoreEntry{
-		{Name: "harvey"},
-		{Name: "project-docs"},
-	}
-	a.registerCommands()
-	completer := a.buildCompleter()
-
-	got := completer("/rag use h")
-	if len(got) != 1 || got[0] != "harvey" {
-		t.Errorf("prefix 'h' should match only 'harvey', got %v", got)
 	}
 }
 
@@ -1054,17 +992,6 @@ func TestCmdModelUse_notFound(t *testing.T) {
 }
 
 // ─── vocabulary alias tests ───────────────────────────────────────────────────
-
-func TestRagRemove_alias(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	// No stores registered — remove says there is no such store.
-	err := cmdRag(a, []string{"remove", "nonexistent"}, &buf)
-	if ExitCodeFor(err) != ClassNegative {
-		t.Fatalf("expected a negative result, got: %v", err)
-	}
-}
 
 func TestSkillShow_aliasForInfo(t *testing.T) {
 	ws, _ := NewWorkspace(t.TempDir())
@@ -1219,72 +1146,6 @@ func TestRouteUse_noArgs_clearsActiveRoute(t *testing.T) {
 }
 
 // ─── /rag show ────────────────────────────────────────────────────────────────
-
-func TestRagShow_activeStore(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Memory.RagStores = []RagStoreEntry{
-		{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"},
-	}
-	cfg.Memory.RagActive = "golang"
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	if err := cmdRag(a, []string{"show"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "golang") {
-		t.Errorf("expected store name in output, got: %s", out)
-	}
-	if !strings.Contains(out, "nomic-embed-text") {
-		t.Errorf("expected embedding model in output, got: %s", out)
-	}
-	if !strings.Contains(out, "agents/rag/golang.db") {
-		t.Errorf("expected db path in output, got: %s", out)
-	}
-}
-
-func TestRagShow_namedStore(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	cfg := DefaultConfig()
-	cfg.Memory.RagStores = []RagStoreEntry{
-		{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"},
-		{Name: "writing", DBPath: "agents/rag/writing.db", EmbeddingModel: "nomic-embed-text"},
-	}
-	cfg.Memory.RagActive = "golang"
-	a := NewAgent(cfg, ws)
-	var buf strings.Builder
-	if err := cmdRag(a, []string{"show", "writing"}, &buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "writing") {
-		t.Errorf("expected 'writing' in output, got: %s", out)
-	}
-	if !strings.Contains(out, "agents/rag/writing.db") {
-		t.Errorf("expected writing db path in output, got: %s", out)
-	}
-}
-
-func TestRagShow_notFound(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	err := cmdRag(a, []string{"show", "nonexistent"}, &buf)
-	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "not found") {
-		t.Errorf("expected a negative not-found result, got: %v", err)
-	}
-}
-
-func TestRagShow_noActive(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
-	var buf strings.Builder
-	err := cmdRag(a, []string{"show"}, &buf)
-	if ExitCodeFor(err) != ClassNegative || !strings.Contains(err.Error(), "no store configured") {
-		t.Errorf("expected a negative result naming the missing store, got: %v", err)
-	}
-}
 
 // ─── /model use (no arg → picker) ────────────────────────────────────────────
 

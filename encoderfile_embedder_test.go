@@ -155,26 +155,3 @@ func TestNewEmbedderForEntry_encoderfile(t *testing.T) {
 		t.Errorf("NewEmbedderForEntry() returned %T, want *harvey.EncoderfileEmbedder", emb)
 	}
 }
-
-func TestParseEmbedderFlags(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		args     []string
-		wantKind string
-		wantURL  string
-	}{
-		{[]string{"--embedder", "encoderfile", "--embedder-url", "http://localhost:8080"}, "encoderfile", "http://localhost:8080"},
-		{[]string{"--embedder", "ollama"}, "ollama", ""},
-		{[]string{}, "", ""},
-		{[]string{"--embedder-url", "http://x:9000"}, "", "http://x:9000"},
-	}
-	for _, tc := range tests {
-		kind, url := harvey.ParseEmbedderFlags(tc.args)
-		if kind != tc.wantKind {
-			t.Errorf("args=%v: kind=%q, want %q", tc.args, kind, tc.wantKind)
-		}
-		if url != tc.wantURL {
-			t.Errorf("args=%v: url=%q, want %q", tc.args, url, tc.wantURL)
-		}
-	}
-}

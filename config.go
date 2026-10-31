@@ -615,6 +615,7 @@ type MemoryConfig struct {
 	RagStores        []RagStoreEntry      // all registered named RAG stores
 	RagActive        string               // name of the currently active RAG store; "" = none
 	RagEnabled       bool                 // when true, inject top-K chunks before each Chat call
+	RagRemoved       bool                 // harvey.yaml still had a memory.rag section; /rag was removed (DR-0035)
 	KnowledgeDB      string               // path to knowledge.db; empty = agents/knowledge.db
 	CurrentProjectID int64                // in-session active knowledge-base project ID (0 = none)
 }
@@ -840,33 +841,14 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.ModelCacheDB != "" {
 		cfg.ModelCacheDB = y.ModelCacheDB
 	}
-	// memory.rag: is the canonical RAG configuration location.
-	if len(y.Memory.RAG.Stores) > 0 {
-		cfg.Memory.RagStores = make([]RagStoreEntry, len(y.Memory.RAG.Stores))
-		for i, s := range y.Memory.RAG.Stores {
-			// PerPrompt defaults to true (augment every prompt); false disables it.
-			skipPerPrompt := s.PerPrompt != nil && !*s.PerPrompt
-			cfg.Memory.RagStores[i] = RagStoreEntry{
-				Name:           s.Name,
-				DBPath:         s.DBPath,
-				EmbeddingModel: s.EmbeddingModel,
-				ModelMap:       s.ModelMap,
-				EmbedderKind:   s.EmbedderKind,
-				EmbedderURL:    s.EmbedderURL,
-				SkipPerPrompt:  skipPerPrompt,
-			}
-		}
-		cfg.Memory.RagActive = y.Memory.RAG.Active
-		cfg.Memory.RagEnabled = y.Memory.RAG.Enabled
-	} else if y.Memory.RAG.DBPath != "" {
-		cfg.Memory.RagStores = []RagStoreEntry{{
-			Name:           "default",
-			DBPath:         y.Memory.RAG.DBPath,
-			EmbeddingModel: y.Memory.RAG.EmbeddingModel,
-			ModelMap:       y.Memory.RAG.ModelMap,
-		}}
-		cfg.Memory.RagActive = "default"
-		cfg.Memory.RagEnabled = y.Memory.RAG.Enabled
+	// memory.rag: was the RAG configuration. /rag was removed (workspace
+	// DR-0035): naming an active store or turning RAG on is an error, since
+	// the author would expect per-prompt retrieval that no longer happens; a
+	// section that only lists stores is noted once at startup.
+	if r := y.Memory.RAG; r.Active != "" || r.Enabled {
+		return Configf("harvey.yaml: memory.rag: names an active store or turns RAG on, but /rag was removed (workspace DR-0035). Delete the section (the store files stay on disk) and ingest documents with kb document ingest")
+	} else if len(r.Stores) > 0 || r.DBPath != "" {
+		cfg.Memory.RagRemoved = true
 	}
 	// Load security settings — only override defaults when explicitly set in YAML.
 	if y.Security.Permissions != nil {

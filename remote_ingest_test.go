@@ -254,31 +254,6 @@ func TestRagIngestHTTP_httpError(t *testing.T) {
 
 // ─── ragIngest dispatch tests ─────────────────────────────────────────────────
 
-func TestRagIngest_sftp_noLongerWarnsUnsupported(t *testing.T) {
-	// Before the fix, sftp:// printed "remote ingest only supports s3://".
-	// After the fix it should attempt to connect (and fail with a connection
-	// error, not an "unsupported" message).
-	dir := t.TempDir()
-	store, _ := NewRagStore(filepath.Join(dir, "r.db"), "stub")
-	defer store.db.Close()
-
-	ws, _ := NewWorkspace(dir)
-	cfg := DefaultConfig()
-	cfg.Memory.RagStores = []RagStoreEntry{{Name: "test", DBPath: "r.db", EmbeddingModel: "stub"}}
-	cfg.Memory.RagActive = "test"
-	a := NewAgent(cfg, ws)
-	a.Rag = store
-	a.In = strings.NewReader("n\n")
-
-	var buf strings.Builder
-	_ = cmdRag(a, []string{"ingest", "sftp://localhost:2222/nonexistent/"}, &buf)
-	out := buf.String()
-
-	if strings.Contains(out, "remote ingest only supports s3") {
-		t.Errorf("sftp:// should no longer produce the s3-only warning; got: %s", out)
-	}
-}
-
 // ─── failures are returned, so a scripted session sees them ──────────────────
 
 // offlineEmbedder stands in for an embedding server that cannot be used.
@@ -396,46 +371,4 @@ func ragIngestFixture(t *testing.T) (*Agent, *RagStore) {
 	a.Config.Memory.RagActive = "s"
 	a.Config.Ollama.URL = "http://127.0.0.1:1" // the embedder cannot be reached
 	return a, store
-}
-
-func TestRagIngest_NotConfiguredIsNegative(t *testing.T) {
-	a := newTestAgent(t)
-	if err := ragIngest(a, []string{"x.md"}, io.Discard); ExitCodeFor(err) != ClassNegative {
-		t.Fatalf("no store: err = %v, want negative", err)
-	}
-	a, _ = ingestAgent(t)
-	if err := ragIngest(a, []string{"x.md"}, io.Discard); ExitCodeFor(err) != ClassNegative {
-		t.Fatalf("no active store: err = %v, want negative", err)
-	}
-}
-
-func TestRagIngest_UnsupportedSchemeIsUsage(t *testing.T) {
-	a, _ := ragIngestFixture(t)
-	err := ragIngest(a, []string{"gopher://host/x.md"}, io.Discard)
-	if ExitCodeFor(err) != ClassUsage {
-		t.Fatalf("err = %v, want usage", err)
-	}
-}
-
-func TestRagIngest_RemoteFailureIsReturned(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "gone", http.StatusNotFound)
-	}))
-	defer srv.Close()
-	a, _ := ragIngestFixture(t)
-	err := ragIngest(a, []string{srv.URL + "/missing.md"}, io.Discard)
-	if ExitCodeFor(err) != ClassUnavailable {
-		t.Fatalf("err = %v, want unavailable", err)
-	}
-}
-
-func TestRagIngest_LocalFileFailureIsReturned(t *testing.T) {
-	a, _ := ragIngestFixture(t)
-	if err := a.Workspace.WriteFile("a.md", []byte("# A\n\nSome text to embed.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	err := ragIngest(a, []string{"a.md"}, io.Discard)
-	if ExitCodeFor(err) != ClassUnavailable {
-		t.Fatalf("err = %v, want unavailable (the embedding server cannot be reached)", err)
-	}
 }

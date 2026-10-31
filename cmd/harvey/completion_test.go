@@ -100,7 +100,7 @@ func TestCompletion_HelpTopicsAreRealTopics(t *testing.T) {
 			t.Errorf("harvey help %s: exit %d, %d bytes, stderr %.80q", name, code, len(out), errOut)
 		}
 	}
-	for _, want := range []string{"rag", "model", "topics"} {
+	for _, want := range []string{"kb", "model", "topics"} {
 		if !contains(topics, want) {
 			t.Errorf("topic %q missing from %v", want, topics)
 		}
@@ -120,7 +120,7 @@ func contains(list []string, s string) bool {
 
 func TestCompletion_BashScriptNamesEverything(t *testing.T) {
 	s := completionScript(t, "bash")
-	want := []string{"-F _harvey harvey", "completion", "init", "--workdir", "--replay-continue", "--ollama", "-help", "powershell", "topics", "rag"}
+	want := []string{"-F _harvey harvey", "completion", "init", "--workdir", "--replay-continue", "--ollama", "-help", "powershell", "topics", "kb"}
 	for _, w := range want {
 		if !strings.Contains(s, w) {
 			t.Errorf("bash script missing %q", w)
@@ -137,7 +137,7 @@ func TestCompletion_BashScriptNamesEverything(t *testing.T) {
 
 func TestCompletion_PowerShellScriptNamesEverything(t *testing.T) {
 	s := completionScript(t, "powershell")
-	for _, w := range []string{"Register-ArgumentCompleter -Native -CommandName harvey,harvey.exe", "CompletionResult", "init", "--workdir", "completion", "rag"} {
+	for _, w := range []string{"Register-ArgumentCompleter -Native -CommandName harvey,harvey.exe", "CompletionResult", "init", "--workdir", "completion", "kb"} {
 		if !strings.Contains(s, w) {
 			t.Errorf("powershell script missing %q", w)
 		}
@@ -209,7 +209,7 @@ func TestCompletion_Bash_OptionsOnDash(t *testing.T) {
 
 func TestCompletion_Bash_HelpTakesTopics(t *testing.T) {
 	got := bashComplete(t, t.TempDir(), "harvey", "help", "")
-	for _, want := range []string{"rag", "model", "topics"} {
+	for _, want := range []string{"kb", "model", "topics"} {
 		if !contains(got, want) {
 			t.Errorf("%q missing from %v", want, got)
 		}
@@ -220,7 +220,7 @@ func TestCompletion_Bash_HelpTakesTopics(t *testing.T) {
 // last word.
 func TestCompletion_Bash_VerbFoundPastAValueFlag(t *testing.T) {
 	got := bashComplete(t, t.TempDir(), "harvey", "-w", "somedir", "help", "")
-	if !contains(got, "rag") {
+	if !contains(got, "kb") {
 		t.Errorf("topics not offered after -w somedir help: %v", got)
 	}
 }

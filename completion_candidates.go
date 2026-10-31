@@ -4,33 +4,6 @@ package harvey
 // for tab completion (ArgCompletion entries on Command). These must be fast:
 // no LLM calls, no network I/O. File I/O is acceptable (memory store listing).
 
-/** ragStoreSelectItems builds a []SelectItem for the registered RAG stores,
- * with Active set on the currently-active store. Used by picker fallbacks in
- * /rag use and /rag drop.
- *
- * Parameters:
- *   a (*Agent) — current agent.
- *
- * Returns:
- *   []SelectItem — one entry per registered store; empty when none exist.
- *
- * Example:
- *   items := ragStoreSelectItems(a)
- *   chosen, _ := SelectFrom(items, "Select: ", a.In, out)
- */
-func ragStoreSelectItems(a *Agent) []SelectItem {
-	active := a.Config.Memory.ActiveRagStore()
-	items := make([]SelectItem, len(a.Config.Memory.RagStores))
-	for i, s := range a.Config.Memory.RagStores {
-		items[i] = SelectItem{
-			Value:  s.Name,
-			Label:  s.Name,
-			Active: active != nil && active.Name == s.Name,
-		}
-	}
-	return items
-}
-
 /** memorySelectItems builds a []SelectItem for all active memories in the
  * given store, suitable for picker fallbacks in /memory show, /memory forget,
  * /memory flag. Label is "ID — description"; Value is the bare ID.
@@ -61,30 +34,6 @@ func memorySelectItems(store *MemoryStore) []SelectItem {
 		}
 	}
 	return items
-}
-
-/** ragStoreNameCandidates returns the names of all registered RAG stores.
- * Called by buildCompleter for /rag use and /rag drop argument completion.
- *
- * Parameters:
- *   a (*Agent) — current agent.
- *
- * Returns:
- *   []string — store name strings; nil when no stores are registered.
- *
- * Example:
- *   names := ragStoreNameCandidates(a) // ["harvey", "project-docs"]
- */
-func ragStoreNameCandidates(a *Agent) []string {
-	stores := a.Config.Memory.RagStores
-	if len(stores) == 0 {
-		return nil
-	}
-	names := make([]string, len(stores))
-	for i, s := range stores {
-		names[i] = s.Name
-	}
-	return names
 }
 
 /** memoryTypeCandidates returns all valid MemoryType constant strings.

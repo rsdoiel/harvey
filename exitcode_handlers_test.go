@@ -650,26 +650,6 @@ func TestHandlerErrors_Skill(t *testing.T) {
 	})
 }
 
-func TestHandlerErrors_Rag(t *testing.T) {
-	rg := func(args ...string) func(*Agent, io.Writer) error {
-		return func(a *Agent, o io.Writer) error { return cmdRag(a, args, o) }
-	}
-	runHandlerCases(t, []handlerCase{
-		{"on: not configured", nil, rg("on"), ClassNegative},
-		{"new: no name", nil, rg("new"), ClassUsage},
-		{"ingest: no path", nil, rg("ingest"), ClassUsage},
-		{"query: no text", nil, rg("query"), ClassUsage},
-		{"unknown subcommand", nil, rg("bogus"), ClassUsage},
-		{"show: no store configured", nil, rg("show"), ClassNegative},
-		{"show: no such store", nil, rg("show", "ghost"), ClassNegative},
-		{"use: no such store", nil, rg("use", "ghost"), ClassNegative},
-		{"drop: no such store", nil, rg("drop", "ghost"), ClassNegative},
-		{"use: nothing to pick from", nil, rg("use"), ClassNegative},
-		{"new: encoderfile needs a url", nil, rg("new", "s", "--embedder", "encoderfile"), ClassUsage},
-		{"status: nothing configured is a status", nil, rg("status"), ClassOK},
-	})
-}
-
 // ─── Phase 5: the remaining handlers, and the guards ─────────────────────────
 
 func TestHandlerErrors_Loop(t *testing.T) {

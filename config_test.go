@@ -269,72 +269,7 @@ func TestMemoryConfig_RemoveRagStore(t *testing.T) {
 
 // ─── LoadHarveyYAML memory.rag ───────────────────────────────────────────────
 
-func TestLoadHarveyYAML_MemoryRagLoadsStores(t *testing.T) {
-	dir := t.TempDir()
-	ws := &Workspace{Root: dir}
-	agentsDir := filepath.Join(dir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	yamlContent := `memory:
-  rag:
-    enabled: true
-    active: docs
-    stores:
-      - name: docs
-        db_path: agents/rag/docs.db
-        embedding_model: nomic
-`
-	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := DefaultConfig()
-	if err := LoadHarveyYAML(ws, cfg); err != nil {
-		t.Fatalf("LoadHarveyYAML: %v", err)
-	}
-	if len(cfg.Memory.RagStores) != 1 {
-		t.Fatalf("Memory.RagStores: got %d, want 1", len(cfg.Memory.RagStores))
-	}
-	if cfg.Memory.RagStores[0].Name != "docs" {
-		t.Errorf("Memory.RagStores[0].Name: got %q, want docs", cfg.Memory.RagStores[0].Name)
-	}
-	if cfg.Memory.RagActive != "docs" {
-		t.Errorf("Memory.RagActive: got %q, want docs", cfg.Memory.RagActive)
-	}
-	if !cfg.Memory.RagEnabled {
-		t.Error("Memory.RagEnabled: got false, want true")
-	}
-}
-
 // ─── SaveMemoryConfig and SaveRAGConfig ───────────────────────────────────────
-
-func TestSaveMemoryConfig_WritesMemoryRagSection(t *testing.T) {
-	dir := t.TempDir()
-	ws := &Workspace{Root: dir}
-	agentsDir := filepath.Join(dir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := DefaultConfig()
-	cfg.Memory.RagStores = []RagStoreEntry{{Name: "docs", DBPath: "agents/rag/docs.db", EmbeddingModel: "nomic"}}
-	cfg.Memory.RagActive = "docs"
-	cfg.Memory.RagEnabled = true
-
-	if err := SaveMemoryConfig(ws, cfg); err != nil {
-		t.Fatalf("SaveMemoryConfig: %v", err)
-	}
-
-	cfg2 := DefaultConfig()
-	if err := LoadHarveyYAML(ws, cfg2); err != nil {
-		t.Fatalf("LoadHarveyYAML after save: %v", err)
-	}
-	if len(cfg2.Memory.RagStores) != 1 || cfg2.Memory.RagStores[0].Name != "docs" {
-		t.Errorf("Memory.RagStores (via memory.rag:): got %+v", cfg2.Memory.RagStores)
-	}
-}
 
 // ─── MemoryConfig KB fields defaults ─────────────────────────────────────────
 
@@ -423,34 +358,6 @@ func TestLoadHarveyYAML_KnowledgeDBEmpty_KeepsDefault(t *testing.T) {
 	}
 }
 
-func TestSaveRAGConfig_AliasForSaveMemoryConfig(t *testing.T) {
-	dir := t.TempDir()
-	ws := &Workspace{Root: dir}
-	agentsDir := filepath.Join(dir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := DefaultConfig()
-	cfg.Memory.RagStores = []RagStoreEntry{{Name: "kb", DBPath: "agents/rag/kb.db", EmbeddingModel: "nomic"}}
-	cfg.Memory.RagActive = "kb"
-	cfg.Memory.RagEnabled = true
-
-	if err := SaveRAGConfig(ws, cfg); err != nil {
-		t.Fatalf("SaveRAGConfig: %v", err)
-	}
-
-	cfg2 := DefaultConfig()
-	if err := LoadHarveyYAML(ws, cfg2); err != nil {
-		t.Fatalf("LoadHarveyYAML after save: %v", err)
-	}
-	if cfg2.Memory.RagActive != "kb" {
-		t.Errorf("Memory.RagActive: got %q, want kb", cfg2.Memory.RagActive)
-	}
-}
-
 // ── chunking configuration ────────────────────────────────────────────────────
 
 func TestDefaultConfig_ChunkingDefaults(t *testing.T) {
@@ -535,99 +442,6 @@ func TestLoadHarveyYAML_ChunkingNotSet_KeepsDefaults(t *testing.T) {
 
 // ─── per_prompt flag (M6) ────────────────────────────────────────────────────
 
-func TestLoadHarveyYAML_PerPromptFalse_SetsSkipPerPrompt(t *testing.T) {
-	dir := t.TempDir()
-	ws := &Workspace{Root: dir}
-	agentsDir := filepath.Join(dir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	yamlContent := `memory:
-  rag:
-    enabled: true
-    active: docs
-    stores:
-      - name: docs
-        db_path: agents/rag/docs.db
-        embedding_model: nomic
-        per_prompt: false
-`
-	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := DefaultConfig()
-	if err := LoadHarveyYAML(ws, cfg); err != nil {
-		t.Fatalf("LoadHarveyYAML: %v", err)
-	}
-	if len(cfg.Memory.RagStores) != 1 {
-		t.Fatalf("expected 1 store; got %d", len(cfg.Memory.RagStores))
-	}
-	if !cfg.Memory.RagStores[0].SkipPerPrompt {
-		t.Error("per_prompt: false in YAML should set SkipPerPrompt=true on the entry")
-	}
-}
-
-func TestLoadHarveyYAML_PerPromptTrue_NoSkip(t *testing.T) {
-	dir := t.TempDir()
-	ws := &Workspace{Root: dir}
-	agentsDir := filepath.Join(dir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	yamlContent := `memory:
-  rag:
-    enabled: true
-    active: docs
-    stores:
-      - name: docs
-        db_path: agents/rag/docs.db
-        embedding_model: nomic
-        per_prompt: true
-`
-	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := DefaultConfig()
-	if err := LoadHarveyYAML(ws, cfg); err != nil {
-		t.Fatalf("LoadHarveyYAML: %v", err)
-	}
-	if len(cfg.Memory.RagStores) != 1 {
-		t.Fatalf("expected 1 store; got %d", len(cfg.Memory.RagStores))
-	}
-	if cfg.Memory.RagStores[0].SkipPerPrompt {
-		t.Error("per_prompt: true in YAML should leave SkipPerPrompt=false")
-	}
-}
-
-func TestLoadHarveyYAML_PerPromptNotSet_NoSkip(t *testing.T) {
-	// When per_prompt is absent, SkipPerPrompt must default to false (augment normally).
-	dir := t.TempDir()
-	ws := &Workspace{Root: dir}
-	agentsDir := filepath.Join(dir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	yamlContent := `memory:
-  rag:
-    enabled: true
-    active: docs
-    stores:
-      - name: docs
-        db_path: agents/rag/docs.db
-        embedding_model: nomic
-`
-	if err := os.WriteFile(filepath.Join(agentsDir, "harvey.yaml"), []byte(yamlContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := DefaultConfig()
-	if err := LoadHarveyYAML(ws, cfg); err != nil {
-		t.Fatalf("LoadHarveyYAML: %v", err)
-	}
-	if cfg.Memory.RagStores[0].SkipPerPrompt {
-		t.Error("per_prompt absent in YAML should leave SkipPerPrompt=false (default)")
-	}
-}
-
 // TestLoadHarveyYAML_LlamaSectionsAreConfigErrors: llama.cpp and llamafile were
 // removed (workspace DR-0033), so a harvey.yaml that still has a llamafile: or
 // llamacpp: section is a configuration error (exit 78), not a silent ignore.
@@ -702,7 +516,7 @@ func TestSaveMemoryConfig_KeepsLearnModel(t *testing.T) {
 	if err := LoadHarveyYAML(ws, cfg); err != nil {
 		t.Fatalf("LoadHarveyYAML: %v", err)
 	}
-	cfg.Memory.RagActive = "somestore"
+	cfg.Memory.CurrentProjectID = 3
 	if err := SaveMemoryConfig(ws, cfg); err != nil {
 		t.Fatalf("SaveMemoryConfig: %v", err)
 	}
@@ -770,5 +584,45 @@ func TestLoadHarveyYAML_SkillsCatalogBadValueIsConfigError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "skills.catalog") {
 		t.Errorf("error should name the key: %v", err)
+	}
+}
+
+// /rag was removed (DR-0035): a harvey.yaml that names an active store or turns
+// RAG on is a configuration error (exit 78); one that only lists stores is
+// loaded with a note to print, and no store is loaded.
+func TestLoadHarveyYAML_RagSectionAfterTheRemoval(t *testing.T) {
+	load := func(t *testing.T, body string) (*Config, error) {
+		t.Helper()
+		dir := t.TempDir()
+		ws := &Workspace{Root: dir}
+		if err := os.MkdirAll(filepath.Join(dir, "agents"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "agents", "harvey.yaml"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg := DefaultConfig()
+		return cfg, LoadHarveyYAML(ws, cfg)
+	}
+	for _, body := range []string{
+		"memory:\n  rag:\n    active: docs\n    stores:\n      - name: docs\n        db_path: agents/rag/docs.db\n        embedding_model: nomic-embed-text\n",
+		"memory:\n  rag:\n    enabled: true\n",
+		"memory:\n  rag:\n    db_path: agents/rag/old.db\n    enabled: true\n",
+	} {
+		_, err := load(t, body)
+		if ExitCodeFor(err) != ClassConfig || !strings.Contains(err.Error(), "DR-0035") {
+			t.Errorf("%q: want a config error naming DR-0035, got %v", body, err)
+		}
+	}
+	cfg, err := load(t, "memory:\n  rag:\n    stores:\n      - name: docs\n        db_path: agents/rag/docs.db\n        embedding_model: nomic-embed-text\n")
+	if err != nil {
+		t.Fatalf("a section that only lists stores should load: %v", err)
+	}
+	if !cfg.Memory.RagRemoved || len(cfg.Memory.RagStores) != 0 {
+		t.Errorf("RagRemoved %v, stores %v: want the note flagged and no store loaded", cfg.Memory.RagRemoved, cfg.Memory.RagStores)
+	}
+	cfg, err = load(t, "ollama:\n  url: http://localhost:11434\n")
+	if err != nil || cfg.Memory.RagRemoved {
+		t.Errorf("no rag section: err %v, RagRemoved %v", err, cfg.Memory.RagRemoved)
 	}
 }

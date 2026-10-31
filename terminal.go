@@ -355,6 +355,9 @@ func (a *Agent) Run(out io.Writer) error {
 	if err := a.skippedRoutes(out, interactive); err != nil {
 		return err
 	}
+	if a.Config.Memory.RagRemoved {
+		fmt.Fprintln(out, "  ⚠  harvey.yaml has a memory.rag section: /rag was removed (workspace DR-0035). The store files stay on disk, the section is dropped the next time the configuration is saved, and documents are ingested with kb document ingest.")
+	}
 	adopted := a.tryAdoptPriorBackend(agentsDir, out)
 	if !adopted {
 		// Backend selection — use sessionModel as the preferred model hint.
@@ -997,8 +1000,7 @@ func (a *Agent) runChatTurn(ctx context.Context, input string, out io.Writer, re
 		turnBudget = 4096 // context limit unknown — conservative default
 	}
 	tracker := NewBudgetTracker(turnBudget)
-	augmented, ragInfo := a.ragAugmentTo(out, input, tracker)
-	a.LastRAGInfo = ragInfo
+	augmented := input
 
 	// File-reference injection — for models that don't reliably call read_file,
 	// resolve any mentioned file paths and prepend their content directly.

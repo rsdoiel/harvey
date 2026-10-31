@@ -219,17 +219,6 @@ func (a *Agent) registerCommands() {
 				"forget": memoryIDCandidates,
 			},
 		},
-		"rag": {
-			Usage:       "/rag <list|new NAME|use NAME|drop NAME|ingest PATH|status|query TEXT|on|off>",
-			Description: "Manage named RAG knowledge stores for context-augmented generation",
-			Handler:     cmdRag,
-			Subcommands: []string{"list", "new", "use", "show", "remove", "drop", "ingest", "status", "query", "on", "off"},
-			ArgCompletion: map[string]func(*Agent) []string{
-				"use":    ragStoreNameCandidates,
-				"remove": ragStoreNameCandidates,
-				"drop":   ragStoreNameCandidates,
-			},
-		},
 		"files": {
 			Usage:       "/files [PATH]",
 			Description: "List files in the workspace (or a sub-directory)",
