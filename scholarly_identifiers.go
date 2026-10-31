@@ -590,3 +590,16 @@ func FindIdentifiers(text string) map[IdentifierType][]string {
 	add(IdentifierLCNAF, FindLCNAFs(text))
 	return result
 }
+
+// convertIdentifierMap converts FindIdentifiers' map[IdentifierType][]string
+// result to map[string][]string, the form workspace-profile onboarding stores.
+func convertIdentifierMap(m map[IdentifierType][]string) map[string][]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(m))
+	for t, values := range m {
+		out[string(t)] = values
+	}
+	return out
+}

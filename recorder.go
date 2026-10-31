@@ -93,25 +93,6 @@ type ToolCallRecord struct {
 	Character string // ALL-CAPS model name when attributed; empty = HARVEY (default)
 }
 
-// RAGChunkRef carries provenance metadata for a single retrieved RAG chunk,
-// used to emit per-source [[rag-source:]] Fountain notes.
-type RAGChunkRef struct {
-	Source      string // file path or store key
-	SourceURL   string
-	SourceDOI   string
-	SourceTitle string
-}
-
-// RAGAugmentInfo holds metadata about a RAG retrieval that fired for a chat
-// turn, for recording as a [[rag: ...]] Fountain note.
-type RAGAugmentInfo struct {
-	StoreName string
-	Chunks    int
-	TopScore  float64
-	// Sources holds deduplicated source refs ordered by retrieval rank.
-	Sources []RAGChunkRef
-}
-
 // formatToolCallNote returns the content of a [[...]] Fountain note for a
 // tool call, e.g. "tool: read_file({"path":"foo.go"}) — ok".
 // When tc.Character is set, the prefix becomes "CHARACTER.tool: ...".

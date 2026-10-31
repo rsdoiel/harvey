@@ -45,8 +45,6 @@ const (
  *   BlockStart      (string)   — token that opens a code block, e.g. "{" or "begin".
  *   BlockEnd        (string)   — token that closes a code block, e.g. "}" or "end".
  *   Shebang         (string)   — typical shebang line when used as a script, or "".
- *   HasChunking     (bool)     — code-aware chunker planned/available.
- *   HasExtraction   (bool)     — documentation extractor planned/available.
  *   HasFormatting   (bool)     — formatter planned/available.
  *   HasHighlighting (bool)     — syntax highlighter planned/available.
  *
@@ -62,76 +60,11 @@ type LanguageInfo struct {
 	BlockEnd       string
 	Shebang        string
 
-	HasChunking     bool
-	HasExtraction   bool
 	HasFormatting   bool
 	HasHighlighting bool
 }
 
 // ─── Chunk and documentation types ───────────────────────────────────────────
-
-/** EnrichedChunk is a fragment of source code or document text with location
- * and semantic metadata.  StartLine/StartCol and EndLine/EndCol give a precise
- * re-location address so a reader can jump directly to the chunk in the source
- * file. Columns are 0-indexed byte offsets from the start of the line.
- *
- * Fields:
- *   Content     (string)              — the text of this chunk.
- *   StartLine   (int)                 — first line of the chunk, 1-indexed.
- *   StartCol    (int)                 — byte offset from the start of StartLine, 0-indexed.
- *   EndLine     (int)                 — last line of the chunk, 1-indexed.
- *   EndCol      (int)                 — byte offset from the start of EndLine, 0-indexed.
- *   ChunkType   (string)              — "function", "class", "procedure", "comment", "code",
- *                                        or for scholarly documents: "abstract", "introduction",
- *                                        "methods", "results", "discussion", "conclusion",
- *                                        "references", "body".
- *   Symbols     ([]string)            — identifiers defined in this chunk.
- *   Docs        (string)              — extracted comment/docstring text associated with the chunk.
- *   Identifiers (map[string][]string) — the source document's own scholarly identifiers
- *                                        (DOI, ORCID, ROR, FundRef, etc.), keyed by
- *                                        IdentifierType string; shared across every chunk
- *                                        from the same document. Empty/nil for non-scholarly chunks.
- *   Citations   ([]string)            — scholarly identifiers found in this chunk's text that
- *                                        point to OTHER works (e.g. DOIs cited in a references
- *                                        section). Empty/nil for non-scholarly chunks.
- *
- * Example:
- *   chunk := EnrichedChunk{Content: "func Foo() {}", StartLine: 10, StartCol: 0,
- *       EndLine: 10, EndCol: 14, ChunkType: "function", Symbols: []string{"Foo"}}
- */
-type EnrichedChunk struct {
-	Content     string
-	StartLine   int
-	StartCol    int
-	EndLine     int
-	EndCol      int
-	ChunkType   string
-	Symbols     []string
-	Docs        string
-	Identifiers map[string][]string
-	Citations   []string
-}
-
-/** DocumentationBlock represents a comment or docstring extracted from source.
- *
- * Fields:
- *   Content   (string) — the documentation text (comment markers stripped).
- *   StartLine (int)    — first line of the block, 1-indexed.
- *   EndLine   (int)    — last line of the block, 1-indexed.
- *   Symbol    (string) — name of the associated symbol, or "" if free-standing.
- *   Type      (string) — "line_comment", "block_comment", or "docstring".
- *
- * Example:
- *   doc := DocumentationBlock{Content: "Foo does X.", StartLine: 9, EndLine: 9,
- *       Symbol: "Foo", Type: "line_comment"}
- */
-type DocumentationBlock struct {
-	Content   string
-	StartLine int
-	EndLine   int
-	Symbol    string
-	Type      string
-}
 
 /** FormatIssue describes a formatting problem found by a CodeFormatter.
  *
@@ -198,38 +131,6 @@ type LanguageDetector interface {
 	DetectFromExtension(ext string) (language string, ok bool)
 }
 
-/** CodeChunker splits source code into semantically meaningful chunks for
- * RAG ingestion.  Each chunk preserves code boundaries (functions, procedures,
- * etc.) and carries source-location metadata in EnrichedChunk.
- *
- * Example:
- *   chunks := chunker.Chunk(src, "main.go")
- */
-type CodeChunker interface {
-	// Chunk splits content into enriched units.  filePath is used for context only.
-	Chunk(content string, filePath string) []EnrichedChunk
-
-	// Language returns the language ID this chunker handles.
-	Language() string
-}
-
-/** DocExtractor pulls documentation blocks out of source code and associates
- * them with the symbols they document.
- *
- * Example:
- *   docs := extractor.ExtractDocs(src)
- */
-type DocExtractor interface {
-	// ExtractDocs returns all documentation blocks found in content.
-	ExtractDocs(content string) []DocumentationBlock
-
-	// ExtractSymbols returns a map of symbol name → documentation text.
-	ExtractSymbols(content string) map[string]string
-
-	// Language returns the language ID this extractor handles.
-	Language() string
-}
-
 /** CodeFormatter formats source code according to language conventions.
  *
  * Two modes are supported; see FormatterMode for details.
@@ -273,7 +174,7 @@ type SyntaxHighlighter interface {
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 /** LanguageRegistry is a central catalogue that maps language identifiers to
- * their metadata and optional handlers (chunker, extractor, formatter,
+ * their metadata and optional handlers (formatter,
  * highlighter, detector).
  *
  * The registry is populated once at package initialisation via init() and is
@@ -281,13 +182,10 @@ type SyntaxHighlighter interface {
  *
  * Example:
  *   lang, ok := globalRegistry.DetectFromExtension(".go")
- *   chunker  := globalRegistry.GetChunker("go") // nil until Phase 3
  */
 type LanguageRegistry struct {
 	languages    map[string]LanguageInfo
 	detectors    map[string]LanguageDetector
-	chunkers     map[string]CodeChunker
-	extractors   map[string]DocExtractor
 	formatters   map[string]CodeFormatter
 	highlighters map[string]SyntaxHighlighter
 
@@ -305,14 +203,12 @@ type LanguageRegistry struct {
  *
  * Example:
  *   r := NewLanguageRegistry()
- *   r.RegisterLanguage(goInfo, nil, nil, nil, nil, nil)
+ *   r.RegisterLanguage(goInfo, nil, nil, nil)
  */
 func NewLanguageRegistry() *LanguageRegistry {
 	return &LanguageRegistry{
 		languages:    make(map[string]LanguageInfo),
 		detectors:    make(map[string]LanguageDetector),
-		chunkers:     make(map[string]CodeChunker),
-		extractors:   make(map[string]DocExtractor),
 		formatters:   make(map[string]CodeFormatter),
 		highlighters: make(map[string]SyntaxHighlighter),
 		extExact:     make(map[string]string),
@@ -322,25 +218,21 @@ func NewLanguageRegistry() *LanguageRegistry {
 
 /** RegisterLanguage adds a language and its optional handlers to the registry.
  * Any handler may be nil; nil handlers are silently ignored in later lookups
- * (GetChunker etc. return nil).  Calling RegisterLanguage for the same ID a
+ * (GetFormatter etc. return nil).  Calling RegisterLanguage for the same ID a
  * second time overwrites the previous entry.
  *
  * Parameters:
  *   info        (LanguageInfo)     — language metadata.
  *   detector    (LanguageDetector) — content/extension detector, or nil.
- *   chunker     (CodeChunker)      — code-aware chunker, or nil.
- *   extractor   (DocExtractor)     — documentation extractor, or nil.
  *   formatter   (CodeFormatter)    — code formatter, or nil.
  *   highlighter (SyntaxHighlighter)— syntax highlighter, or nil.
  *
  * Example:
- *   r.RegisterLanguage(goInfo, nil, nil, nil, nil, nil)
+ *   r.RegisterLanguage(goInfo, nil, nil, nil)
  */
 func (r *LanguageRegistry) RegisterLanguage(
 	info LanguageInfo,
 	detector LanguageDetector,
-	chunker CodeChunker,
-	extractor DocExtractor,
 	formatter CodeFormatter,
 	highlighter SyntaxHighlighter,
 ) {
@@ -360,12 +252,6 @@ func (r *LanguageRegistry) RegisterLanguage(
 
 	if detector != nil {
 		r.detectors[info.ID] = detector
-	}
-	if chunker != nil {
-		r.chunkers[info.ID] = chunker
-	}
-	if extractor != nil {
-		r.extractors[info.ID] = extractor
 	}
 	if formatter != nil {
 		r.formatters[info.ID] = formatter
@@ -517,36 +403,6 @@ func (r *LanguageRegistry) GetDetector(id string) LanguageDetector {
 	return r.detectors[id]
 }
 
-/** GetChunker returns the CodeChunker registered for id, or nil.
- *
- * Parameters:
- *   id (string) — language ID.
- *
- * Returns:
- *   CodeChunker — handler, or nil.
- *
- * Example:
- *   c := r.GetChunker("c")
- */
-func (r *LanguageRegistry) GetChunker(id string) CodeChunker {
-	return r.chunkers[id]
-}
-
-/** GetExtractor returns the DocExtractor registered for id, or nil.
- *
- * Parameters:
- *   id (string) — language ID.
- *
- * Returns:
- *   DocExtractor — handler, or nil.
- *
- * Example:
- *   e := r.GetExtractor("pascal")
- */
-func (r *LanguageRegistry) GetExtractor(id string) DocExtractor {
-	return r.extractors[id]
-}
-
 /** GetFormatter returns the CodeFormatter registered for id, or nil.
  *
  * Parameters:
@@ -640,8 +496,6 @@ var langC = LanguageInfo{
 	BlockStart:      "{",
 	BlockEnd:        "}",
 	Shebang:         "#!/usr/bin/env tcc",
-	HasChunking:     true,
-	HasExtraction:   true,
 	HasFormatting:   true,
 	HasHighlighting: true,
 }
@@ -653,8 +507,6 @@ var langCPP = LanguageInfo{
 	CommentMarkers:  []string{"//", "/*", "*/"},
 	BlockStart:      "{",
 	BlockEnd:        "}",
-	HasChunking:     true,
-	HasExtraction:   true,
 	HasFormatting:   true,
 	HasHighlighting: true,
 }
@@ -666,8 +518,6 @@ var langPascal = LanguageInfo{
 	CommentMarkers:  []string{"//", "(*", "*)", "{", "}"},
 	BlockStart:      "begin",
 	BlockEnd:        "end;",
-	HasChunking:     true,
-	HasExtraction:   true,
 	HasFormatting:   true,
 	HasHighlighting: true,
 }
@@ -684,8 +534,6 @@ var langOberon = LanguageInfo{
 	CommentMarkers:  []string{"(*", "*)"},
 	BlockStart:      "BEGIN",
 	BlockEnd:        "END",
-	HasChunking:     true,
-	HasExtraction:   true,
 	HasFormatting:   true,
 	HasHighlighting: true,
 }
@@ -698,8 +546,6 @@ var langLisp = LanguageInfo{
 	BlockStart:      "(",
 	BlockEnd:        ")",
 	Shebang:         "#!/usr/bin/env clisp",
-	HasChunking:     true,
-	HasExtraction:   true,
 	HasFormatting:   true,
 	HasHighlighting: true,
 }
@@ -709,8 +555,6 @@ var langBasic = LanguageInfo{
 	Name:            "Basic",
 	Extensions:      []string{".bas", ".bi"},
 	CommentMarkers:  []string{"REM", "'"},
-	HasChunking:     true,
-	HasExtraction:   true,
 	HasFormatting:   true,
 	HasHighlighting: true,
 }
@@ -789,8 +633,6 @@ var globalRegistry *LanguageRegistry
 func init() {
 	globalRegistry = NewLanguageRegistry()
 	initLanguages(globalRegistry)
-	initChunkers(globalRegistry)
-	initExtractors(globalRegistry)
 	initHighlighters(globalRegistry)
 	initFormatters(globalRegistry)
 }
@@ -811,67 +653,67 @@ func initLanguages(r *LanguageRegistry) {
 	// over Oberon's ".Mod" when the input extension is lowercase.
 	r.RegisterLanguage(langGo,
 		NewCombinedDetector(langGo.ID, langGo.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langTypeScript,
 		NewCombinedDetector(langTypeScript.ID, langTypeScript.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langJavaScript,
 		NewCombinedDetector(langJavaScript.ID, langJavaScript.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langPython,
 		NewCombinedDetector(langPython.ID, langPython.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langRust,
 		NewCombinedDetector(langRust.ID, langRust.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langC,
 		NewCombinedDetector(langC.ID, langC.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langCPP,
 		NewCombinedDetector(langCPP.ID, langCPP.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langPascal,
 		NewCombinedDetector(langPascal.ID, langPascal.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langOberon,
 		NewCombinedDetector(langOberon.ID, langOberon.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langLisp,
 		NewCombinedDetector(langLisp.ID, langLisp.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langBasic,
 		NewCombinedDetector(langBasic.ID, langBasic.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langJSON,
 		NewCombinedDetector(langJSON.ID, langJSON.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langMarkdown,
 		NewCombinedDetector(langMarkdown.ID, langMarkdown.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langText,
 		NewCombinedDetector(langText.ID, langText.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langCSS,
 		NewCombinedDetector(langCSS.ID, langCSS.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langYAML,
 		NewCombinedDetector(langYAML.ID, langYAML.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langTOML,
 		NewCombinedDetector(langTOML.ID, langTOML.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langSQL,
 		NewCombinedDetector(langSQL.ID, langSQL.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langHTML,
 		NewCombinedDetector(langHTML.ID, langHTML.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langShell,
 		NewCombinedDetector(langShell.ID, langShell.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 	r.RegisterLanguage(langEnv,
 		NewCombinedDetector(langEnv.ID, langEnv.Extensions),
-		nil, nil, nil, nil)
+		nil, nil)
 }
 
 // ─── looksLikePath helper (used by commands.go) ───────────────────────────────

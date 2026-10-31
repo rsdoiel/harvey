@@ -194,20 +194,6 @@ func TestFastProbeModel_HailoAppliesTheTable(t *testing.T) {
 	}
 }
 
-func TestThoroughProbeModel_HailoMakesNoEmbedRequest(t *testing.T) {
-	rs := newRecordingServer(t, true)
-	cap, err := ThoroughProbeModel(context.Background(), rs.URL, "llama3.2:3b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rs.saw("/api/embed") {
-		t.Error("POST /api/embed was sent to hailo-ollama, which has no such route")
-	}
-	if cap.SupportsEmbed != CapNo {
-		t.Errorf("SupportsEmbed = %v, want CapNo", cap.SupportsEmbed)
-	}
-}
-
 // ─── tokenize ────────────────────────────────────────────────────────────────
 
 func TestCountTokensFor_HailoDoesNotAsk(t *testing.T) {

@@ -41,33 +41,6 @@ workspace. /git <subcommand> shows status/diff/log.
    writes it and confirms.
 `
 
-/** RagStoreEntry describes one named RAG knowledge store in the registry.
- *
- * Fields:
- *   Name           (string)            — short identifier used with /rag use and /rag new.
- *   DBPath         (string)            — path to the SQLite database, relative to workspace root.
- *   EmbeddingModel (string)            — embedding model name bound to this store.
- *   ModelMap       (map[string]string) — generation model → embedding model overrides.
- *   EmbedderKind   (string)            — "ollama" (default) or "encoderfile".
- *   EmbedderURL    (string)            — base URL for the embedder; used when EmbedderKind is "encoderfile".
- *   SkipPerPrompt  (bool)              — when true, ragAugment skips this store; the model uses
- *                                        retrieve_memory instead. Set via per_prompt: false in YAML.
- *
- * Example:
- *   e := RagStoreEntry{Name: "golang", DBPath: "agents/rag/golang.db", EmbeddingModel: "nomic-embed-text"}
- *   e2 := RagStoreEntry{Name: "docs", DBPath: "agents/rag/docs.db", EmbeddingModel: "nomic-embed-text-v1_5",
- *                        EmbedderKind: "encoderfile", EmbedderURL: "http://localhost:8080"}
- */
-type RagStoreEntry struct {
-	Name           string
-	DBPath         string
-	EmbeddingModel string
-	ModelMap       map[string]string
-	EmbedderKind   string // "ollama" (default) or "encoderfile"
-	EmbedderURL    string // base URL for the embedder when EmbedderKind == "encoderfile"
-	SkipPerPrompt  bool   // when true, ragAugment skips this store (per_prompt: false in YAML)
-}
-
 /** OllamaConfig holds all Ollama-specific connection and model settings.
  *
  * Fields:
@@ -952,25 +925,6 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 		return err
 	}
 	return os.WriteFile(yamlPath, out, 0644)
-}
-
-/** SaveRAGConfig is an alias for SaveMemoryConfig, retained for call-site
- * compatibility. All RAG state now lives in cfg.Memory.
- *
- * Parameters:
- *   ws  (*Workspace) — workspace whose agents/ directory is written.
- *   cfg (*Config)    — source of Memory fields to persist.
- *
- * Returns:
- *   error — on path resolution, YAML parse, or file write failure.
- *
- * Example:
- *   if err := SaveRAGConfig(ws, cfg); err != nil {
- *       fmt.Println("could not save RAG config:", err)
- *   }
- */
-func SaveRAGConfig(ws *Workspace, cfg *Config) error {
-	return SaveMemoryConfig(ws, cfg)
 }
 
 /** SaveModelAliases writes the model_aliases map back to harvey.yaml,

@@ -56,6 +56,14 @@
 
 ### Removed
 
+- **`/rag` code (fourth and last slice of DR-0035).** The code behind `/rag` is gone: `rag_support.go` (`RagStore`, ingest and
+  query), `commands_rag.go` (the remote and HTTP ingest helpers), the language chunkers and doc extractors (`code_chunkers.go`,
+  `doc_extractors.go` and the `CodeChunker`/`DocExtractor` registry slots), `scholarly_pdf.go` (section-aware PDF chunking),
+  `encoderfile_embedder.go`, `OllamaEmbedder`, the Hailo embed-error wrapper and `ThoroughProbeModel`, with their tests. Kept: the
+  `Embedder` interface, cosine similarity and vector (de)serialisation for memory (`embedding.go`), `scholarly_identifiers.go`
+  (the first thing to port to knowledge), `chunker.go` and `chunk_analyzer.go` (`/read-chunks`), `pdf_extract.go` (`/read` of a
+  PDF), and the remote readers (`/read`, `/attach`). Everything removed is one `git show v0.0.20:FILE` away.
+
 - **`/rag` (first slice of DR-0035).** The `/rag` command, per-prompt RAG injection (`ragAugment`), `/help rag` and
   `harvey-rag.7`, and `Using_RAGs_with_Harvey.md` are gone. Retrieval over documents is the knowledge base: `kb document ingest`,
   then `/kb search`. A `harvey.yaml` whose `memory.rag:` section names an active store or turns RAG on is a configuration error

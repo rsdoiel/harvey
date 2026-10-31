@@ -1,7 +1,6 @@
 package harvey
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -32,79 +31,6 @@ func embedServer(t *testing.T) (*httptest.Server, *int32) {
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &hits
-}
-
-func ragEntry() *RagStoreEntry {
-	return &RagStoreEntry{Name: "s", EmbeddingModel: "nomic-embed-text"}
-}
-
-// ollama.url is the Hailo server (harvey.local today): there is no Ollama.
-func TestEmbedder_RelabelledServerSaysHailoCannotEmbed(t *testing.T) {
-	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
-	a := familyAgent(t, hl.URL, hl.URL, false, true)
-	_, err := a.embedderFor(ragEntry()).Embed("hello")
-	if err == nil {
-		t.Fatal("expected an error")
-	}
-	for _, want := range []string{"Hailo cannot embed", "ollama.url", hl.URL, "http://localhost:11434"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q should mention %q", err, want)
-		}
-	}
-	if got := ExitCodeFor(err); got != ClassUnavailable {
-		t.Errorf("exit class = %v, want unavailable", got)
-	}
-}
-
-// Hailo up, Ollama not: name the URL where Ollama was expected.
-func TestEmbedder_OnlyHailoUpNamesTheMissingOllama(t *testing.T) {
-	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
-	dead := "http://127.0.0.1:1"
-	a := familyAgent(t, dead, hl.URL, true, true)
-	_, err := a.embedderFor(ragEntry()).Embed("hello")
-	if err == nil || !strings.Contains(err.Error(), "Hailo cannot embed; no Ollama at "+dead) {
-		t.Fatalf("error = %v, want %q", err, "Hailo cannot embed; no Ollama at "+dead)
-	}
-	if ExitCodeFor(err) != ClassUnavailable {
-		t.Errorf("exit class = %v, want unavailable", ExitCodeFor(err))
-	}
-	var _ = errors.Unwrap(err) // the cause is kept
-}
-
-// With Ollama up the embedder just works, Hailo or not.
-func TestEmbedder_OllamaUpEmbedsWhateverHailoIsDoing(t *testing.T) {
-	ol, _ := embedServer(t)
-	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
-	a := familyAgent(t, ol.URL, hl.URL, true, true)
-	vec, err := a.embedderFor(ragEntry()).Embed("hello")
-	if err != nil || len(vec) != 3 {
-		t.Fatalf("Embed = %v, %v", vec, err)
-	}
-}
-
-// No card and no hailo.url: a failure is Ollama's own error and Hailo is never
-// looked for (no request, no mention).
-func TestEmbedder_PlainOllamaFailureIsUnchangedAndProbesNothing(t *testing.T) {
-	hl, hits := ollamaFamilyServer(t, true, "llama3.2:3b")
-	a := familyAgent(t, "http://127.0.0.1:1", hl.URL, false, false)
-	_, err := a.embedderFor(ragEntry()).Embed("hello")
-	if err == nil {
-		t.Fatal("expected an error")
-	}
-	if strings.Contains(err.Error(), "Hailo") {
-		t.Errorf("a non-Hailo machine mentions Hailo: %v", err)
-	}
-	if n := atomic.LoadInt32(hits); n != 0 {
-		t.Errorf("made %d request(s) to the Hailo URL", n)
-	}
-}
-
-func TestEmbedder_EncoderfileIsLeftAlone(t *testing.T) {
-	a := familyAgent(t, "http://127.0.0.1:1", "http://127.0.0.1:1", false, false)
-	e := a.embedderFor(&RagStoreEntry{Name: "s", EmbeddingModel: "m", EmbedderKind: "encoderfile", EmbedderURL: "http://127.0.0.1:1"})
-	if _, ok := e.(*EncoderfileEmbedder); !ok {
-		t.Errorf("embedder = %T, want *EncoderfileEmbedder", e)
-	}
 }
 
 // ─── step 6: the stopped-service hint ────────────────────────────────────────
