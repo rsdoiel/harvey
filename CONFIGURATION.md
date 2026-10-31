@@ -148,22 +148,27 @@ tools:
 
 **Memory System (`memory:`):**
 
-Controls Harvey's memory architecture: experience memories and the knowledge
-base.
+Controls the memory store (deprecated, workspace DR-0037: it will be removed in a
+following release) and where recalled knowledge comes from. Recall for the prompt
+already reads the knowledge base through the installed `kb`; `kb` must be on
+`PATH`. The store's own settings (`enabled`, `top_k`, `inject_on_start`) stop having
+effect at the removal; `budget_pct` and `knowledge_base.path` stay.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `enabled` | boolean/null | No | `true` | Enable the memory system at session start |
-| `top_k` | integer | No | `5` | Number of experience memories retrieved at session start |
-| `inject_on_start` | boolean/null | No | `true` | Inject memory context block into history on start |
-| `budget_pct` | float | No | `0.25` | Fraction of context window reserved for memory injection |
+| `enabled` | boolean/null | No | `true` | Enable the memory store at session start (deprecated) |
+| `top_k` | integer | No | `5` | Number of experience memories retrieved at session start (deprecated) |
+| `inject_on_start` | boolean/null | No | `true` | Inject recalled context into history on start |
+| `budget_pct` | float | No | `0.25` | Fraction of the active model's context window for recalled knowledge (512 tokens when the window is unknown) |
 | `rolling_summary` | object | No | See below | Automatic working-memory compression settings |
 | `knowledge_base.path` | string | No | `"agents/knowledge.db"` | Path to the SQLite knowledge base |
 
 **Rolling Summary (`memory.rolling_summary:`):**
 
-When history token count exceeds `warn_at_pct` of the model's context window,
-Harvey compresses all but the last `keep_turns` turns into a short summary.
+Not part of the memory store: the context assembler owns it (workspace DR-0036). When
+the prompt passes `warn_at_pct` of the model's prompt limit after a reply, Harvey has
+the active model summarise all but the last `keep_turns` turns into one summary that
+names the events it replaces.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -591,9 +596,9 @@ tools:
 # ── Memory system ─────────────────────────────────────────────────────────────
 memory:
   enabled: true
-  top_k: 5                        # experience memories retrieved at session start
+  top_k: 5                        # experience memories retrieved at session start (deprecated)
   inject_on_start: true
-  budget_pct: 0.25                # fraction of context window reserved for memory
+  budget_pct: 0.25                # fraction of the model's context window for recalled knowledge
   rolling_summary:
     enabled: true
     warn_at_pct: 0.80             # compression triggers at 80% context usage
