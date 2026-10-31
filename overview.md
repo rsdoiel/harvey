@@ -21,9 +21,9 @@ capable desktop and server machines.
 |---|---|
 | **Ollama & hailo-ollama backends** | Run language model systems locally with no cloud dependency. Ollama manages a model registry; hailo-ollama serves the Raspberry Pi AI HAT+ 2. Switch models with `/model use`. |
 | **Unified command set** (`/read`, `/write`, `/run`, `/attach`, `/search`, `/git`, `/rag`, `/memory`, `/kb`, etc.) | Direct the language model and manage your workspace without leaving the REPL. |
-| **RAG integration** | Inject context from local files, PDFs, S3 objects, SFTP/SCP servers, or HTTP/HTTPS URLs into your prompts. Create and query SQLite-backed vector stores with `/rag` commands. |
+| **RAG integration** | Inject context from local files, PDFs, SFTP/SCP servers, or HTTP/HTTPS URLs into your prompts. Create and query SQLite-backed vector stores with `/rag` commands. |
 | **Tool calling** | Built-in tools (`read_file`, `write_file`, `run_command`, etc.) with validated schemas let capable language models act directly on your workspace. |
-| **Multi-model routing** | Dispatch prompts to specific models (`@model_name`) or route to remote endpoints (Ollama, Anthropic, DeepSeek, Gemini, Mistral, OpenAI) via `/route add`. |
+| **Multi-model routing** | Dispatch prompts to specific models (`@model_name`) or route to remote Ollama endpoints via `/route add`. |
 | **Session recording** | Every session is recorded as a Fountain `.spmd` file — a structured, human-readable transcript you can review, replay against a different model, or mine for reusable memories. |
 | **Knowledge base & memory** | Persistent SQLite knowledge base (`agents/knowledge.db`) plus a unified memory system with rolling summaries, typed experience records, and token-budget tracking. |
 | **Secure safe mode** | Execution is gated by a command allowlist; workspace permissions give fine-grained read/write/exec/delete control per path prefix; API keys are stripped from every child process. |
@@ -68,8 +68,8 @@ designed for work that requires documentation and continuity across sessions.
 
 **Tool-first, local-first architecture** — All user actions are exposed as
 first-class tools (`read_file`, `write_file`, `run_command`, etc.) with
-validated schemas. Language model systems run locally by default; cloud
-endpoints are opt-in named routes, never the primary path.
+validated schemas. Language model systems run locally by default; remote
+Ollama servers are opt-in named routes.
 
 **Layered security** — Safe Mode gates execution to a command allowlist;
 workspace permissions give fine-grained read/write/exec/delete control per

@@ -15,7 +15,7 @@ ROUTING
 # DESCRIPTION
 
 Harvey can dispatch individual prompts to remote LLM endpoints — other Ollama
-instances on a Pi cluster or cloud providers — using
+instances on a Pi cluster or elsewhere on your network — using
 @mention syntax. Prefix any prompt with @name to send it to the named endpoint instead
 of the local model. The reply is streamed back and lands in the local
 conversation history so future turns retain full context.
@@ -34,17 +34,11 @@ starting point and will be tuned over time.
 
 # ENDPOINT TYPES
 
-Local providers (no API key):
-
   ollama://host:port    A remote Ollama server (also accepts http:// and https://).
 
-Cloud providers (API key read from environment):
-
-  anthropic://  Anthropic Claude  (ANTHROPIC_API_KEY)
-  deepseek://   DeepSeek          (DEEPSEEK_API_KEY)
-  gemini://     Google Gemini     (GEMINI_API_KEY or GOOGLE_API_KEY)
-  mistral://    Mistral           (MISTRAL_API_KEY)
-  openai://     OpenAI            (OPENAI_API_KEY)
+The llamafile://, llamacpp:// and cloud kinds (anthropic://, deepseek://,
+gemini://, mistral://, openai://) were removed. A route of one in
+agents/routes.json is skipped with a warning (an error without a terminal).
 
 # EXAMPLE SESSION
 
@@ -52,14 +46,8 @@ Cloud providers (API key read from environment):
   # Register a Pi cluster node
   /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
 
-  # Register the Anthropic cloud endpoint
-  /route add claude anthropic:// claude-sonnet-4-20250514
-
   # Enable routing
   /route on
-
-  # Dispatch a complex task to the cloud
-  @claude refactor this module to use the repository pattern
 
   # Run a quick task on a Pi node
   @pi2 write a unit test for the Parse function
@@ -73,7 +61,6 @@ Cloud providers (API key read from environment):
 ~~~
   /route add NAME URL [MODEL]        register a remote endpoint
                                        @pi2    ollama://192.168.1.12:11434 llama3.1:8b
-                                       @claude anthropic:// claude-sonnet-4-20250514
   /route remove NAME                 unregister an endpoint (alias: rm)
   /route rm NAME                     alias for remove
   /route use [NAME]                  set NAME as the sticky route so all prompts
@@ -97,5 +84,5 @@ Registered endpoints and the on/off state persist across sessions in
 # SEE ALSO
 
   /model use NAME        — backend-agnostic model switching
-  /help security         — API key filtering for cloud endpoints
+  /help security         — API key filtering for child processes
 

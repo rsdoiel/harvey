@@ -109,26 +109,28 @@ It prints the next prompt grouped as system prompt, pins, summaries,
 recalled knowledge and dialog, with sizes and shares of the prompt
 limit.</p></li>
 </ul>
-<h3 id="deprecated">Deprecated</h3>
-<ul>
-<li><strong>The cloud route kinds and the S3 reader will be removed in
-the next release</strong> (workspace DR-0042). Harvey will talk only to
-Ollama-shaped servers on this machine or the local network.
-<code>anthropic://</code>, <code>deepseek://</code>,
-<code>gemini://</code>, <code>mistral://</code> and
-<code>openai://</code> routes, their API-key environment variables and
-the <code>s3://</code> document reader go; <code>ollama://</code>,
-<code>http(s)://</code> and <code>sftp://</code> stay. Harvey prints a
-notice once when a route of a retiring kind is loaded, added or
-dispatched to, and when an <code>s3://</code> URI is opened. To keep a
-cloud model, put an Ollama-compatible gateway on your network and point
-an <code>ollama://</code> route at it; to keep S3, mount the bucket as a
-filesystem. A persisted route of a removed kind will be skipped with a
-warning. The <code>any-llm-go</code> client layer is replaced by a
-native Ollama client after that (DR-0046).</li>
-</ul>
 <h3 id="removed">Removed</h3>
 <ul>
+<li><p><strong>The cloud route kinds and the S3 reader</strong>
+(workspace DR-0042). Harvey talks only to Ollama-shaped servers on this
+machine or the local network. Gone: <code>anthropic://</code>,
+<code>deepseek://</code>, <code>gemini://</code>,
+<code>mistral://</code> and <code>openai://</code> routes, their API-key
+environment variables, the <code>s3://</code> document reader and its
+AWS credentials (<code>/read</code>, <code>/attach</code>,
+<code>/rag ingest</code> and tab completion), and the
+<code>anthropic-sdk-go</code>, AWS SDK and other provider modules from
+<code>go.mod</code>. <code>ollama://</code>, <code>http(s)://</code> and
+<code>sftp://</code> stay. A route of a removed kind in
+<code>agents/routes.json</code> is skipped with a warning at a terminal
+and stops the run with exit 78 without one; re-add it as an
+<code>ollama://</code> route (a skipped route is dropped from the file
+the next time routes are saved). An <code>s3://</code> URI is refused
+with a message that says so. To keep a cloud model, put an
+Ollama-compatible gateway on your network and point an
+<code>ollama://</code> route at it; to keep S3, mount the bucket as a
+filesystem. The <code>any-llm-go</code> client layer goes when the
+native Ollama client lands (DR-0046).</p></li>
 <li><p><strong>llama.cpp and llamafile support</strong> (workspace
 DR-0033). Harvey supports Ollama and hailo-ollama only. Gone: the two
 backends and their launch, probe and model-scan code, the

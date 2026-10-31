@@ -6,7 +6,7 @@
 Harvey uses a **workspace-local configuration system**. All configuration
 files live inside the workspace — the directory where Harvey is launched.
 A HARVEY.md file in the workspace root provides the system prompt, and
-environment variables supply cloud provider API keys.
+environment variables supply the few credentials harvey reads.
 
 ### Configuration Sources
 
@@ -317,12 +317,6 @@ sessions.
       "kind": "ollama"
     },
     {
-      "name": "claude",
-      "url": "anthropic://",
-      "model": "claude-3-haiku",
-      "kind": "anthropic"
-    },
-    {
       "name": "pi3",
       "url": "ollama://192.0.2.13:11434",
       "model": "mistral:latest",
@@ -346,7 +340,7 @@ sessions.
 | `name` | string | Yes | Unique identifier for the endpoint |
 | `url` | string | Yes | URL including scheme (e.g., `ollama://host:port`) |
 | `model` | string | No | Default model to use with this endpoint |
-| `kind` | string | No | Inferred from URL scheme | One of: `ollama`, `anthropic`, `deepseek`, `gemini`, `mistral`, `openai` |
+| `kind` | string | No | Inferred from URL scheme | Only `ollama`. The `llamafile`, `llamacpp` and cloud kinds were removed (DR-0033, DR-0042); such an endpoint is skipped on load |
 
 **URL Schemes:**
 
@@ -355,11 +349,6 @@ sessions.
 | `ollama://host:port` | ollama | Ollama server | Local or remote |
 | `http://host:port` | ollama | Ollama server | HTTP (insecure) |
 | `https://host:port` | ollama | Ollama server | HTTPS (secure) |
-| `anthropic://` | anthropic | Anthropic Claude | Uses `ANTHROPIC_API_KEY` |
-| `deepseek://` | deepseek | DeepSeek API | Uses `DEEPSEEK_API_KEY` |
-| `gemini://` | gemini | Google Gemini | Uses `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
-| `mistral://` | mistral | Mistral API | Uses `MISTRAL_API_KEY` |
-| `openai://` | openai | OpenAI API | Uses `OPENAI_API_KEY` |
 
 **Commands:**
 - `/route add NAME URL [MODEL]` — Register a new endpoint
@@ -476,27 +465,18 @@ You have access to the following slash commands: /read, /write, /run, /search,
 - The prompt is re-injected after `/clear`
 - Pins (from `/pin`) is injected after the system prompt
 - The skills catalog is not in the prompt by default; set `skills: catalog: full` in `agents/harvey.yaml` to add it (about 180 characters per skill)
-- **Cloud privacy:** When a cloud route (`@claude`, `@openrouter`, etc.) is
-  active, HARVEY.md is sent to the remote provider verbatim. Avoid hardcoding
-  absolute local paths in HARVEY.md. Use the `<!-- @files -->` dynamic marker
-  instead — it injects a workspace-relative file tree without exposing your
-  home directory layout.
+- **Remote servers:** When a route to another machine is active, HARVEY.md is
+  sent to that server verbatim. Avoid hardcoding absolute local paths in
+  HARVEY.md. Use the `<!-- @files -->` dynamic marker instead — it injects a
+  workspace-relative file tree without exposing your home directory layout.
 
 
 ## Environment Variables
 
-Harvey reads environment variables for cloud provider API keys. These are
-optional and only needed when using the corresponding route types.
+Harvey reads no model-provider API keys. These variables are optional.
 
 | Variable | Provider | Route Scheme | Purpose |
 |----------|----------|--------------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic | `anthropic://` | Claude API key |
-| `DEEPSEEK_API_KEY` | DeepSeek | `deepseek://` | DeepSeek API key |
-| `GEMINI_API_KEY` | Google | `gemini://` | Gemini API key (primary) |
-| `GOOGLE_API_KEY` | Google | `gemini://` | Gemini API key (fallback) |
-| `MISTRAL_API_KEY` | Mistral | `mistral://` | Mistral API key |
-| `OPENAI_API_KEY` | OpenAI | `openai://` | OpenAI API key |
-| `OLLAMA_HOST` | Ollama | `ollama://` | Ollama server host (default: `localhost`) |
 | `OLLAMA_ORIGINS` | Ollama | `ollama://` | CORS origins for Ollama |
 | `OLLAMA_KEEP_ALIVE` | Ollama | `ollama://` | Keep-alive interval (default: `24h`) |
 | `SFTP_PASSWORD` | SFTP/SCP | `sftp://` `scp://` | Password for SFTP/SCP remote ingest (`/rag ingest sftp://…`) |
@@ -504,9 +484,6 @@ optional and only needed when using the corresponding route types.
 | `HTTP_BEARER_TOKEN` | HTTP/HTTPS | `http://` `https://` | Bearer token for authenticated HTTP remote ingest |
 | `HTTP_BASIC_USER` | HTTP/HTTPS | `http://` `https://` | Username for HTTP Basic Auth remote ingest |
 | `HTTP_BASIC_PASSWORD` | HTTP/HTTPS | `http://` `https://` | Password for HTTP Basic Auth remote ingest |
-| `AWS_ACCESS_KEY_ID` | S3 | `s3://` | AWS access key for S3 remote ingest |
-| `AWS_SECRET_ACCESS_KEY` | S3 | `s3://` | AWS secret key for S3 remote ingest |
-| `AWS_ENDPOINT_URL` | S3 | `s3://` | S3-compatible endpoint URL (MinIO, Cloudflare R2, etc.) |
 
 **Security:** All API keys and credential environment variables are stripped from
 the environment of every child process started by `!` or `/run`. They are never

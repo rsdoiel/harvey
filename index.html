@@ -52,8 +52,8 @@ href="SECURITY.html">SECURITY.md</a> for details.</p>
 this machine or your local network</li>
 <li><strong>hailo-ollama</strong>: the Ollama-shaped server for the
 Raspberry Pi AI HAT+ 2</li>
-<li><strong>Cloud routes</strong>: Anthropic, DeepSeek, Gemini, Mistral,
-and OpenAI via configured routes</li>
+<li><strong>Routes</strong>: other Ollama servers on your network, via
+<code>@mention</code></li>
 <li>Multi-model dispatch via <code>@mention</code> and model aliasing;
 routing feedback shown in spinner</li>
 </ul>
@@ -88,9 +88,8 @@ clang-format, black, rustfmt, prettier, and built-in Pascal/Oberon/Basic
 formatters</li>
 <li>PDF text extraction via poppler; image reading via vision-capable
 model routes</li>
-<li>Remote RAG ingest: <code>s3://</code>, <code>sftp://</code>,
-<code>scp://</code>, <code>http://</code>, <code>https://</code>
-URIs</li>
+<li>Remote RAG ingest: <code>sftp://</code>, <code>scp://</code>,
+<code>http://</code>, <code>https://</code> URIs</li>
 <li>File-reference injection: for models that ignore the tools schema,
 Harvey pre-injects workspace files mentioned in the prompt so they can
 still work with file content</li>

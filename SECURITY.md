@@ -111,10 +111,9 @@ Harvey connects to:
   with `https://`. Harvey warns when a non-localhost `http://` URL is
   registered.
 
-- **Cloud providers** (`anthropic://`, `deepseek://`, `gemini://`,
-  `mistral://`, `openai://`) — all cloud SDKs enforce HTTPS internally.
-  API keys are read from environment variables and are never written to disk
-  by Harvey.
+- **No cloud model providers.** The cloud route kinds were removed
+  (workspace DR-0042); harvey sends prompts only to Ollama-shaped servers you
+  run. Harvey reads no model-provider API keys.
 
 ---
 

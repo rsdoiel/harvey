@@ -16,7 +16,7 @@ Harvey is **experimental** — a **working proof of concept**, not production-re
 ### Language Model Support
 - **Ollama** (primary): connect to an Ollama server on this machine or your local network
 - **hailo-ollama**: the Ollama-shaped server for the Raspberry Pi AI HAT+ 2
-- **Cloud routes**: Anthropic, DeepSeek, Gemini, Mistral, and OpenAI via configured routes
+- **Routes**: other Ollama servers on your network, via `@mention`
 - Multi-model dispatch via `@mention` and model aliasing; routing feedback shown in spinner
 
 ### Core Capabilities
@@ -35,7 +35,7 @@ Harvey is **experimental** — a **working proof of concept**, not production-re
 - Code-aware RAG chunking, documentation extraction, and ANSI syntax highlighting (13 languages)
 - Automatic code formatting on `write_file`: gofmt, clang-format, black, rustfmt, prettier, and built-in Pascal/Oberon/Basic formatters
 - PDF text extraction via poppler; image reading via vision-capable model routes
-- Remote RAG ingest: `s3://`, `sftp://`, `scp://`, `http://`, `https://` URIs
+- Remote RAG ingest: `sftp://`, `scp://`, `http://`, `https://` URIs
 - File-reference injection: for models that ignore the tools schema, Harvey pre-injects workspace files mentioned in the prompt so they can still work with file content
 
 ### Extensibility

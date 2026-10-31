@@ -151,11 +151,10 @@ responses travel unencrypted. Use a VPN or SSH tunnel on untrusted
 networks, or configure the server to support TLS and register the
 endpoint with <code>https://</code>. Harvey warns when a non-localhost
 <code>http://</code> URL is registered.</p></li>
-<li><p><strong>Cloud providers</strong> (<code>anthropic://</code>,
-<code>deepseek://</code>, <code>gemini://</code>,
-<code>mistral://</code>, <code>openai://</code>) — all cloud SDKs
-enforce HTTPS internally. API keys are read from environment variables
-and are never written to disk by Harvey.</p></li>
+<li><p><strong>No cloud model providers.</strong> The cloud route kinds
+were removed (workspace DR-0042); harvey sends prompts only to
+Ollama-shaped servers you run. Harvey reads no model-provider API
+keys.</p></li>
 </ul>
 <hr />
 <h2 id="known-limitations">Known limitations</h2>

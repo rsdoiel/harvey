@@ -36,8 +36,8 @@ aarch64.</p>
 <p>harvey looks for HARVEY.md in the current directory and uses it as a
 system prompt. It connects to a local language model system — Ollama or
 hailo-ollama — and opens an interactive natural language programming
-session. Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI)
-can be added as named routes via /route add.</p>
+session. Other Ollama-shaped servers on this machine or the local
+network can be added as named routes via /route add.</p>
 <p>All file I/O is constrained to the workspace directory (–workdir or
 “.”). A knowledge base is stored at <workdir>/agents/knowledge.db and is
 created automatically on first run. Session recordings (.spmd files) are
@@ -140,15 +140,10 @@ change stdout, and has nothing to print when the command succeeds.
 </dd>
 </dl>
 <h1 id="environment">ENVIRONMENT</h1>
-<p>ANTHROPIC_API_KEY API key for Anthropic Claude (optional, for /route
-add NAME anthropic://) DEEPSEEK_API_KEY API key for DeepSeek (optional,
-for /route add NAME deepseek://) GEMINI_API_KEY API key for Google
-Gemini (optional; GOOGLE_API_KEY also accepted) MISTRAL_API_KEY API key
-for Mistral (optional, for /route add NAME mistral://) OPENAI_API_KEY
-API key for OpenAI (optional, for /route add NAME openai://)</p>
-<p>All of the above API key variables are filtered out of every child
-process environment — they are never passed to commands run via ! or
-/run.</p>
+<p>Common API key variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_*
+and similar) are filtered out of every child process environment — they
+are never passed to commands run via ! or /run. Harvey itself reads none
+of them.</p>
 <h1 id="exit-status">EXIT STATUS</h1>
 <p>harvey exits with the workspace’s exit codes, so a script can tell
 what went wrong from the number:</p>

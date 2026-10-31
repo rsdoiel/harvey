@@ -5,12 +5,12 @@
 ## Overview
 
 Harvey's **routing system** allows you to dispatch prompts to **remote LLM
-endpoints** — other Ollama instances on your network, or
-cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI). This enables:
+endpoints** — other Ollama or hailo-ollama servers on this machine or your
+local network. Routing reaches only servers of that kind; the cloud and
+llamafile/llama.cpp route kinds were removed (workspace DR-0033, DR-0042). This enables:
 
 - **Multi-model workflows**: Use different models for different tasks
 - **Hardware distribution**: Offload to more powerful machines
-- **Cloud integration**: Access commercial APIs when needed
 - **Load balancing**: Distribute work across a cluster
 
 ### Core Concept: @mention Routing
@@ -19,12 +19,12 @@ Prefix any prompt with `@name` to send it to a registered remote endpoint:
 
 ```
 RSDOIEL
-@claude refactor this module
+@pi2 refactor this module
 
 HARVEY
-Forwarding to CLAUDE.
+Forwarding to PI2.
 
-CLAUDE
+PI2
 Here is the refactored code...
 ```
 
@@ -63,9 +63,7 @@ The algorithm implements a depth-first search with...
 
 ## Endpoint Types
 
-Harvey supports **10 endpoint types** across local and cloud providers:
-
-### Local Providers (No API Key Required)
+Harvey supports one endpoint type, an Ollama-shaped server, written three ways:
 
 | Type | Scheme | Backend | Default Port | Notes |
 |------|--------|---------|--------------|-------|
@@ -78,17 +76,6 @@ Harvey supports **10 endpoint types** across local and cloud providers:
 > network segment between Harvey and the server. Use `https://` or an SSH
 > tunnel for any Ollama endpoint that is not `localhost`.
 
-### Cloud Providers (API Key Required)
-
-| Type | Scheme | Backend | API Key Variable | Notes |
-|------|--------|---------|------------------|-------|
-| Anthropic | `anthropic://` | Claude | `ANTHROPIC_API_KEY` | All Claude models |
-| DeepSeek | `deepseek://` | DeepSeek | `DEEPSEEK_API_KEY` | All DeepSeek models |
-| Gemini | `gemini://` | Google | `GEMINI_API_KEY` | Primary |
-| Gemini | `gemini://` | Google | `GOOGLE_API_KEY` | Fallback |
-| Mistral | `mistral://` | Mistral | `MISTRAL_API_KEY` | All Mistral models |
-| OpenAI | `openai://` | OpenAI | `OPENAI_API_KEY` | All OpenAI models |
-
 ## Configuration Files
 
 ### Route configuration: `<workspace>/agents/routes.json`
@@ -97,6 +84,12 @@ All registered endpoints and routing state are persisted in JSON format
 inside the workspace. There is no global route configuration.
 
 **Location:** `<workspace>/agents/routes.json`
+
+An endpoint whose kind was removed (`llamafile`, `llamacpp`, `anthropic`,
+`deepseek`, `gemini`, `mistral`, `openai`) is skipped when the file is loaded.
+At a terminal Harvey warns and carries on; without one it stops with exit 78.
+Re-add the route as an `ollama://` route. A skipped route is dropped from the
+file the next time routes are saved.
 
 **Example:**
 ```json
@@ -114,18 +107,6 @@ inside the workspace. There is no global route configuration.
       "url": "ollama://192.0.2.13:11434",
       "model": "mistral:latest",
       "kind": "ollama"
-    },
-    {
-      "name": "claude",
-      "url": "anthropic://",
-      "model": "claude-3-haiku",
-      "kind": "anthropic"
-    },
-    {
-      "name": "gemini",
-      "url": "gemini://",
-      "model": "gemini-1.5-flash",
-      "kind": "gemini"
     }
   ]
 }
@@ -151,7 +132,6 @@ Register a new remote endpoint.
 ```
 /route add pi2 ollama://192.0.2.12:11434 llama3.1:8b
 /route add pi2 ollama://192.0.2.12:11434
-/route add claude anthropic:// claude-3-haiku
 /route add myollama http://localhost:11434
 /route add secure https://my-ollama.example.com:443
 ```
@@ -168,7 +148,7 @@ Remove a registered endpoint.
 **Examples:**
 ```
 /route rm pi2
-/route rm claude
+/route rm pi3
 ```
 
 ### `/route list`
@@ -182,14 +162,11 @@ List all registered endpoints with reachability status.
   ✓  @pi2      ollama://192.0.2.12:11434  llama3.1:8b
   ✓  @pi3      ollama://192.0.2.13:11434  mistral:latest
   ✗  @pi4      ollama://192.0.2.14:11434  (unreachable)
-  ✓  @claude   anthropic://                   claude-3-haiku
-  ?  @gemini   gemini://                      (API key not set)
 ```
 
 **Status indicators:**
 - `✓` (green): Endpoint is reachable
 - `✗` (yellow): Endpoint is unreachable
-- `?` (yellow): API key not configured (cloud providers)
 
 ### `/route on`
 
@@ -217,7 +194,6 @@ model names are available at that endpoint.
 
 **Examples:**
 ```
-/route models anthropic://
 /route models ollama://192.0.2.12:11434
 ```
 
@@ -227,30 +203,28 @@ Show reachability, URL, model, and tool-call capability for a registered endpoin
 
 **Examples:**
 ```
-/route probe claude
 /route probe pi2
 ```
 
 **Output:**
 ```
-  Route:    @claude
-  Provider: anthropic
-  URL:      anthropic://
+  Route:    @pi2
+  Provider: ollama
+  URL:      ollama://192.0.2.12:11434
   Status:   ✓ reachable
-  Model:    claude-sonnet-4-20250514
+  Model:    llama3.1:8b
   Tools:    on
   Caps:     streaming, tools, json_mode
 ```
 
 ### `/route set NAME tools on|off`
 
-Toggle tool calling for a registered endpoint. Only available for providers that
-support tool use (Anthropic, OpenAI, Mistral). Persisted to `agents/routes.json`.
+Toggle tool calling for a registered endpoint. Persisted to `agents/routes.json`.
 
 **Examples:**
 ```
-/route set claude tools on
-/route set claude tools off
+/route set pi2 tools on
+/route set pi2 tools off
 ```
 
 ## Usage Patterns
@@ -272,23 +246,13 @@ harvey> @pi3 review the API design document
 harvey> @pi4 generate documentation
 ```
 
-### Pattern 2: Local + Cloud Hybrid
-
-```
-# Use local model for most work
-harvey> Explain this Go code
-
-# Switch to cloud for complex tasks
-harvey> @claude This is a complex architecture decision, give me options
-```
-
-### Pattern 3: Model Comparison
+### Pattern 2: Model Comparison
 
 ```
 # Same prompt to multiple models
-harvey> @llama3 How would you refactor this?
-harvey> @mistral How would you refactor this?
-harvey> @claude How would you refactor this?
+harvey> @pi2 How would you refactor this?
+harvey> @pi3 How would you refactor this?
+harvey> @pi4 How would you refactor this?
 
 # Compare responses in the same conversation
 ```
@@ -313,9 +277,9 @@ Local history:
   [assistant] Here is the parser code...
   [user] The ParseExpr function has a bug
   [assistant] Yes, it doesn't handle empty input...
-  [user] @claude How should we fix this?
+  [user] @pi2 How should we fix this?
 
-Sent to CLAUDE:
+Sent to PI2:
   [system] HARVEY.md content
   [user] Read the parser code
   [assistant] Here is the parser code...
@@ -324,7 +288,7 @@ Sent to CLAUDE:
   [user] How should we fix this?
 ```
 
-The `@claude` prefix is removed from the sent prompt.
+The `@pi2` prefix is removed from the sent prompt.
 
 ## Best Practices
 
@@ -333,7 +297,7 @@ The `@claude` prefix is removed from the sent prompt.
 | Good | Bad | Reason |
 |------|-----|--------|
 | `pi2`, `pi3`, `pi4` | `node2`, `server2` | Consistent with role |
-| `claude`, `mistral` | `model1`, `api1` | Descriptive of model |
+| `coder`, `reasoner` | `model1`, `api1` | Descriptive of role |
 | `gpu-box`, `big-iron` | `machine`, `computer` | Descriptive of hardware |
 | `dev`, `prod`, `test` | `d`, `p`, `t` | Clear purpose |
 
@@ -368,19 +332,16 @@ The `@claude` prefix is removed from the sent prompt.
 ### Model Selection
 
 **For coding tasks:**
-- Local: `codellama:13b`, `llama3:latest`
-- Cloud: `@claude` (Claude 3 Sonnet/Haiku)
+- `codellama:13b`, `llama3:latest`
 
 **For reasoning/complex tasks:**
-- Local: `llama3:70b` (if you have the VRAM)
-- Cloud: `@claude` (Claude 3 Opus)
+- `llama3:70b` (if you have the VRAM)
 
 **For embedding:**
-- Local: `nomic-embed-text`, `mxbai-embed-large`
+- `nomic-embed-text`, `mxbai-embed-large`
 
 **For small/quick tasks:**
-- Local: `llama3:8b`, `phi3:latest`
-- Cloud: `@mistral` (Mistral Small)
+- `llama3:8b`, `phi3:latest`
 
 ## Troubleshooting
 
@@ -422,33 +383,6 @@ ssh pi2 ollama serve
 curl http://192.0.2.12:11434/api/tags
 ```
 
-### "API key not configured for @claude"
-
-**Cause:** The required environment variable isn't set.
-
-**Fix:**
-```bash
-# For current session only
-export ANTHROPIC_API_KEY=YOUR_KEY_HERE
-harvey
-```
-
-> **Security note:** Avoid writing API keys into `~/.bashrc` or `~/.zshrc`. Shell
-> profile files may be world-readable on shared systems, captured by backup tools, or
-> recorded by terminal loggers. Prefer a secrets manager and load the key at session
-> start:
->
-> ```bash
-> # macOS Keychain
-> export ANTHROPIC_API_KEY=$(security find-generic-password -s harvey-anthropic -w)
->
-> # HashiCorp Vault
-> eval "$(vault read -f json secret/harvey/anthropic)"
-> ```
->
-> If you must use a shell profile, run `chmod 600 ~/.bashrc` and avoid committing
-> dotfiles to a public repository.
-
 ### "Model not available on @pi2"
 
 **Cause:** The model hasn't been pulled on the remote Ollama instance.
@@ -486,49 +420,11 @@ SaveRouteConfig(rr)
 
 ## Security Considerations
 
-### API Key Management
-
-**Never commit API keys to version control.**
-
-**Recommended approach:**
-
-> **Security note:** Avoid writing API keys into `~/.bashrc` or `~/.zshrc`. Shell
-> profile files may be world-readable on shared systems, captured by backup tools, or
-> recorded by terminal loggers. Prefer a secrets manager:
->
-> ```bash
-> # macOS Keychain
-> export ANTHROPIC_API_KEY=$(security find-generic-password -s harvey-anthropic -w)
->
-> # HashiCorp Vault
-> eval "$(vault read -f json secret/harvey/anthropic)"
-> ```
->
-> If you must use a shell profile, run `chmod 600 ~/.bashrc` and avoid committing
-> dotfiles to a public repository.
-
-For a current session only:
-```bash
-export ANTHROPIC_API_KEY=YOUR_KEY_HERE
-harvey
-```
-
-**Environment variable precedence:**
-- Harvey checks environment variables at startup
-- Changing them requires restarting Harvey
-- Each cloud provider uses its own variable name
-
 ### Network Security
 
-**For local network routes:**
 - Use HTTPS if exposed to untrusted networks
 - Consider firewall rules to restrict access
 - Use SSH tunneling for remote access
-
-**For cloud providers:**
-- API keys have the same permissions as your account
-- Monitor usage to detect anomalies
-- Rotate keys periodically
 
 ## Complete Example Session
 
@@ -552,7 +448,6 @@ HARVEY
 Endpoints registered:
   ✓  @pi2      ollama://192.0.2.12:11434  llama3.1:8b
   ✓  @pi3      ollama://192.0.2.13:11434  mistral:latest
-  ✓  @claude   anthropic://                   claude-3-haiku
 
 RSDOIEL
 @pi2 write a unit test for the Parse function
@@ -592,12 +487,12 @@ INT. HARVEY AND RSDOIEL TALKING 2026-05-04 14:06:00
 Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace: /home/user/project.
 
 RSDOIEL
-@claude review this test and suggest improvements
+@pi3 review this test and suggest improvements
 
 HARVEY
-Forwarding to CLAUDE.
+Forwarding to PI3.
 
-CLAUDE
+PI3
 The test is well-structured. Consider adding:
 1. Edge case for empty input
 2. Property-based testing

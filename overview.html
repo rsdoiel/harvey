@@ -61,9 +61,9 @@ the REPL.</td>
 </tr>
 <tr class="odd">
 <td><strong>RAG integration</strong></td>
-<td>Inject context from local files, PDFs, S3 objects, SFTP/SCP servers,
-or HTTP/HTTPS URLs into your prompts. Create and query SQLite-backed
-vector stores with <code>/rag</code> commands.</td>
+<td>Inject context from local files, PDFs, SFTP/SCP servers, or
+HTTP/HTTPS URLs into your prompts. Create and query SQLite-backed vector
+stores with <code>/rag</code> commands.</td>
 </tr>
 <tr class="even">
 <td><strong>Tool calling</strong></td>
@@ -74,8 +74,7 @@ language models act directly on your workspace.</td>
 <tr class="odd">
 <td><strong>Multi-model routing</strong></td>
 <td>Dispatch prompts to specific models (<code>@model_name</code>) or
-route to remote endpoints (Ollama, Anthropic, DeepSeek, Gemini, Mistral,
-OpenAI) via <code>/route add</code>.</td>
+route to remote Ollama endpoints via <code>/route add</code>.</td>
 </tr>
 <tr class="even">
 <td><strong>Session recording</strong></td>
@@ -142,8 +141,8 @@ documentation and continuity across sessions.</p>
 <p><strong>Tool-first, local-first architecture</strong> — All user
 actions are exposed as first-class tools (<code>read_file</code>,
 <code>write_file</code>, <code>run_command</code>, etc.) with validated
-schemas. Language model systems run locally by default; cloud endpoints
-are opt-in named routes, never the primary path.</p>
+schemas. Language model systems run locally by default; remote Ollama
+servers are opt-in named routes.</p>
 <p><strong>Layered security</strong> — Safe Mode gates execution to a
 command allowlist; workspace permissions give fine-grained
 read/write/exec/delete control per path prefix; an audit log records

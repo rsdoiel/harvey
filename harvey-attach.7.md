@@ -47,9 +47,9 @@ restricted to the workspace.
 Attach an image to the next turn on a vision-capable route:
 
 ~~~
-  harvey > /route add claude https://api.anthropic.com claude-opus-4-7
+  harvey > /route add pi2 ollama://192.168.1.12:11434 llama3.2-vision
   harvey > /attach ~/screenshots/error.png
-  harvey > @claude What does this error message say?
+  harvey > @pi2 What does this error message say?
 ~~~
 
 Attach a PDF for the model to reason about:

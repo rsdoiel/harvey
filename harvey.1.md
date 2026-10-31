@@ -25,7 +25,7 @@ distributes executables for Linux, macOS, and Windows on x86_64 and aarch64.
 harvey looks for HARVEY.md in the current directory and uses it as a
 system prompt. It connects to a local language model system — Ollama or
 hailo-ollama — and opens an interactive natural language programming session.
-Cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI) can be
+Other Ollama-shaped servers on this machine or the local network can be
 added as named routes via /route add.
 
 All file I/O is constrained to the workspace directory (--workdir or ".").
@@ -109,14 +109,9 @@ completion SHELL [-install]
 
 # ENVIRONMENT
 
-ANTHROPIC_API_KEY   API key for Anthropic Claude (optional, for /route add NAME anthropic://)
-DEEPSEEK_API_KEY    API key for DeepSeek (optional, for /route add NAME deepseek://)
-GEMINI_API_KEY      API key for Google Gemini (optional; GOOGLE_API_KEY also accepted)
-MISTRAL_API_KEY     API key for Mistral (optional, for /route add NAME mistral://)
-OPENAI_API_KEY      API key for OpenAI (optional, for /route add NAME openai://)
-
-All of the above API key variables are filtered out of every child process
-environment — they are never passed to commands run via ! or /run.
+Common API key variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, AWS_* and
+similar) are filtered out of every child process environment — they are
+never passed to commands run via ! or /run. Harvey itself reads none of them.
 
 # EXIT STATUS
 

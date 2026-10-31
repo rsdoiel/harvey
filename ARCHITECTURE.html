@@ -21,11 +21,11 @@
 <h1 id="harvey-architecture">Harvey Architecture</h1>
 <p>Harvey is a terminal-based coding agent written in Go. It connects to
 a local <a href="https://ollama.com">Ollama</a> server (and optionally
-to cloud providers via named routes) and provides an interactive REPL
-for code-focused conversations. The design philosophy is: keep the LLM
-backend swappable, constrain all file I/O to a sandboxed workspace, and
-accumulate context through explicit slash commands rather than implicit
-background crawling.</p>
+to other Ollama servers via named routes) and provides an interactive
+REPL for code-focused conversations. The design philosophy is: keep the
+LLM backend swappable, constrain all file I/O to a sandboxed workspace,
+and accumulate context through explicit slash commands rather than
+implicit background crawling.</p>
 <h2 id="component-map">Component map</h2>
 <pre><code>cmd/harvey/main.go          CLI entry point; parses flags; calls agent.Run()
 cmd/assay/main.go           Evaluation harness binary (LLM prompt corpus runner)
@@ -48,7 +48,7 @@ lear_messages.go            Edward Lear-themed spinner waiting messages
 
 --- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
-anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go for cloud providers
+anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go (Ollama provider only)
 model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
 route_persist.go            Persistence helpers for routes.json
@@ -105,7 +105,6 @@ syntax_highlighters.go      ANSI syntax highlighting for code blocks in LLM repl
 --- Remote I/O ---
 remote.go                   RemoteReader interface, URI-scheme factory
 remote_http.go              HTTP/HTTPS backend with body limit and timeout
-remote_s3.go                S3-compatible backend (AWS S3, MinIO, Cloudflare R2)
 remote_sftp.go              SFTP/SCP backend with strict host-key verification
 
 --- Utilities ---
@@ -135,7 +134,7 @@ together for one session:</p>
 <tr class="odd">
 <td><code>Client</code></td>
 <td><code>LLMClient</code></td>
-<td>Current backend (Ollama, hailo-ollama, cloud provider)</td>
+<td>Current backend (Ollama, hailo-ollama)</td>
 </tr>
 <tr class="even">
 <td><code>Config</code></td>
@@ -645,10 +644,8 @@ unconditionally stripped:</p>
 <code>GEMINI_API_KEY</code>, <code>GOOGLE_API_KEY</code>,
 <code>GROQ_API_KEY</code>, <code>MISTRAL_API_KEY</code>,
 <code>OPENAI_API_KEY</code>, <code>PERPLEXITY_API_KEY</code></li>
-<li>S3-compatible credentials: <code>AWS_ACCESS_KEY_ID</code>,
-<code>AWS_SECRET_ACCESS_KEY</code>, <code>AWS_SESSION_TOKEN</code>,
-<code>AWS_SECURITY_TOKEN</code>, <code>MINIO_ACCESS_KEY</code>,
-<code>MINIO_SECRET_KEY</code></li>
+<li>Cloud-storage credentials (<code>AWS_*</code>, <code>MINIO_*</code>)
+stay filtered as a precaution</li>
 <li>SFTP/SCP credentials: <code>SFTP_PASSWORD</code>,
 <code>SFTP_KEY_PATH</code></li>
 <li>HTTP authentication: <code>HTTP_BEARER_TOKEN</code>,
@@ -972,8 +969,8 @@ durations (nanoseconds). <code>TokensPerSec</code> is computed as
 (<code>anyllm_client.go</code>)</h3>
 <p>Wraps <a
 href="https://github.com/mozilla-ai/any-llm-go">mozilla-ai/any-llm-go</a>
-for cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI).
-Local providers with <code>Config.OllamaTimeout == 0</code> use
+for the Ollama provider. Servers with
+<code>Config.OllamaTimeout == 0</code> use
 <code>anyllm.WithHTTPClient(&amp;http.Client{})</code> to remove the
 library’s default 120 s timeout.</p>
 <p>Named remote endpoints are managed by <code>RouteRegistry</code>
@@ -1306,12 +1303,12 @@ described in this document are fully implemented as of v0.0.13:</p>
 <ul>
 <li>✓ Three-silo memory (RAG, experience store, knowledge base)</li>
 <li>✓ Tool registry and dual execution paths (structured + prose)</li>
-<li>✓ Multi-backend routing (Ollama, cloud providers)</li>
+<li>✓ Routing to other Ollama servers</li>
 <li>✓ Skills system (SKILL.md loaded directly)</li>
 <li>✓ Pipelines, plan execution, and loop automation</li>
 <li>✓ Scholarly identifier support (14 types) and scholarly PDF
 chunking</li>
-<li>✓ Remote I/O (S3, HTTP/S, SFTP/SCP)</li>
+<li>✓ Remote I/O (HTTP/S, SFTP/SCP)</li>
 <li>✓ Security system (safe mode, permissions, audit log, env
 filtering)</li>
 </ul>

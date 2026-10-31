@@ -175,8 +175,6 @@ are all low (< 0.3) for a question you expect the store to answer, consider:
   Re-ingest any file after it changes to keep the store current.
 
   Remote URIs are supported alongside local paths:
-    s3://bucket/prefix/     — list and ingest all ingestable objects (requires
-                              AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
     sftp://[user@]host/path/ — list and ingest via SFTP over SSH (reads
                               SFTP_PASSWORD or SFTP_KEY_PATH from environment)
     scp://[user@]host/path/  — alias for sftp://

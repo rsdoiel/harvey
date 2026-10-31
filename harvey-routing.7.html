@@ -26,12 +26,12 @@ NAME tools on|off|list|on|off|status&gt;</p>
 <p><span class="citation" data-cites="name">@name</span> prompt text</p>
 <h1 id="description">DESCRIPTION</h1>
 <p>Harvey can dispatch individual prompts to remote LLM endpoints —
-other Ollama instances on a Pi cluster or cloud providers — using <span
-class="citation" data-cites="mention">@mention</span> syntax. Prefix any
-prompt with <span class="citation" data-cites="name">@name</span> to
-send it to the named endpoint instead of the local model. The reply is
-streamed back and lands in the local conversation history so future
-turns retain full context.</p>
+other Ollama instances on a Pi cluster or elsewhere on your network —
+using <span class="citation" data-cites="mention">@mention</span>
+syntax. Prefix any prompt with <span class="citation"
+data-cites="name">@name</span> to send it to the named endpoint instead
+of the local model. The reply is streamed back and lands in the local
+conversation history so future turns retain full context.</p>
 <p>Routing is explicitly user-driven: there is no automatic
 classification. You choose which endpoint handles each prompt by using
 (or omitting) an <span class="citation"
@@ -43,26 +43,18 @@ messages are excluded. This gives the remote model enough context to be
 useful without sending the entire conversation over the network. The
 window size is a starting point and will be tuned over time.</p>
 <h1 id="endpoint-types">ENDPOINT TYPES</h1>
-<p>Local providers (no API key):</p>
 <p>ollama://host:port A remote Ollama server (also accepts http:// and
 https://).</p>
-<p>Cloud providers (API key read from environment):</p>
-<p>anthropic:// Anthropic Claude (ANTHROPIC_API_KEY) deepseek://
-DeepSeek (DEEPSEEK_API_KEY) gemini:// Google Gemini (GEMINI_API_KEY or
-GOOGLE_API_KEY) mistral:// Mistral (MISTRAL_API_KEY) openai:// OpenAI
-(OPENAI_API_KEY)</p>
+<p>The llamafile://, llamacpp:// and cloud kinds (anthropic://,
+deepseek://, gemini://, mistral://, openai://) were removed. A route of
+one in agents/routes.json is skipped with a warning (an error without a
+terminal).</p>
 <h1 id="example-session">EXAMPLE SESSION</h1>
 <pre><code>  # Register a Pi cluster node
   /route add pi2 ollama://192.168.1.12:11434 llama3.1:8b
 
-  # Register the Anthropic cloud endpoint
-  /route add claude anthropic:// claude-sonnet-4-20250514
-
   # Enable routing
   /route on
-
-  # Dispatch a complex task to the cloud
-  @claude refactor this module to use the repository pattern
 
   # Run a quick task on a Pi node
   @pi2 write a unit test for the Parse function
@@ -72,7 +64,6 @@ GOOGLE_API_KEY) mistral:// Mistral (MISTRAL_API_KEY) openai:// OpenAI
 <h1 id="slash-commands">SLASH COMMANDS</h1>
 <pre><code>  /route add NAME URL [MODEL]        register a remote endpoint
                                        @pi2    ollama://192.168.1.12:11434 llama3.1:8b
-                                       @claude anthropic:// claude-sonnet-4-20250514
   /route remove NAME                 unregister an endpoint (alias: rm)
   /route rm NAME                     alias for remove
   /route use [NAME]                  set NAME as the sticky route so all prompts
@@ -92,7 +83,7 @@ GOOGLE_API_KEY) mistral:// Mistral (MISTRAL_API_KEY) openai:// OpenAI
 <code>&lt;workspace&gt;/agents/routes.json.</code></p>
 <h1 id="see-also">SEE ALSO</h1>
 <p>/model use NAME — backend-agnostic model switching /help security —
-API key filtering for cloud endpoints</p>
+API key filtering for child processes</p>
 </section>
 </body>
 </html>

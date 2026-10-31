@@ -2,7 +2,7 @@
 # Harvey Architecture
 
 Harvey is a terminal-based coding agent written in Go. It connects to a local
-[Ollama](https://ollama.com) server (and optionally to cloud providers via named
+[Ollama](https://ollama.com) server (and optionally to other Ollama servers via named
 routes) and provides an interactive REPL for code-focused conversations. The
 design philosophy is: keep the LLM backend swappable, constrain all file I/O
 to a sandboxed workspace, and accumulate context through explicit slash commands
@@ -32,7 +32,7 @@ lear_messages.go            Edward Lear-themed spinner waiting messages
 
 --- Backends ---
 ollama.go                   OllamaClient helpers and probing utilities
-anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go for cloud providers
+anyllm_client.go            AnyLLMClient — wraps mozilla-ai/any-llm-go (Ollama provider only)
 model_cache.go              ModelCache — capability cache for installed Ollama models
 routing.go                  RouteRegistry, named remote endpoints, @mention dispatch
 route_persist.go            Persistence helpers for routes.json
@@ -89,7 +89,6 @@ syntax_highlighters.go      ANSI syntax highlighting for code blocks in LLM repl
 --- Remote I/O ---
 remote.go                   RemoteReader interface, URI-scheme factory
 remote_http.go              HTTP/HTTPS backend with body limit and timeout
-remote_s3.go                S3-compatible backend (AWS S3, MinIO, Cloudflare R2)
 remote_sftp.go              SFTP/SCP backend with strict host-key verification
 
 --- Utilities ---
@@ -108,7 +107,7 @@ spinner.go                  Animated spinner: braille frames, Lear messages, liv
 
 | Field | Type | Purpose |
 |---|---|---|
-| `Client` | `LLMClient` | Current backend (Ollama, hailo-ollama, cloud provider) |
+| `Client` | `LLMClient` | Current backend (Ollama, hailo-ollama) |
 | `Config` | `*Config` | Runtime configuration |
 | `History` | `[]Message` | Full conversation sent to the LLM on every turn |
 | `Workspace` | `*Workspace` | Sandboxed root for all file operations |
@@ -323,8 +322,7 @@ are forwarded. The following variables are unconditionally stripped:
 - LLM provider API keys: `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `DEEPSEEK_API_KEY`,
   `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`,
   `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`
-- S3-compatible credentials: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-  `AWS_SESSION_TOKEN`, `AWS_SECURITY_TOKEN`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`
+- Cloud-storage credentials (`AWS_*`, `MINIO_*`) stay filtered as a precaution
 - SFTP/SCP credentials: `SFTP_PASSWORD`, `SFTP_KEY_PATH`
 - HTTP authentication: `HTTP_BEARER_TOKEN`, `HTTP_BASIC_PASSWORD`
 
@@ -540,7 +538,7 @@ carries eval counts and durations (nanoseconds). `TokensPerSec` is computed as
 ### AnyLLMClient (`anyllm_client.go`)
 
 Wraps [mozilla-ai/any-llm-go](https://github.com/mozilla-ai/any-llm-go) for
-cloud providers (Anthropic, DeepSeek, Gemini, Mistral, OpenAI). Local providers
+the Ollama provider. Servers
 with `Config.OllamaTimeout == 0` use `anyllm.WithHTTPClient(&http.Client{})`
 to remove the library's default 120 s timeout.
 
@@ -676,11 +674,11 @@ in this document are fully implemented as of v0.0.13:
 
 - ✓ Three-silo memory (RAG, experience store, knowledge base)
 - ✓ Tool registry and dual execution paths (structured + prose)
-- ✓ Multi-backend routing (Ollama, cloud providers)
+- ✓ Routing to other Ollama servers
 - ✓ Skills system (SKILL.md loaded directly)
 - ✓ Pipelines, plan execution, and loop automation
 - ✓ Scholarly identifier support (14 types) and scholarly PDF chunking
-- ✓ Remote I/O (S3, HTTP/S, SFTP/SCP)
+- ✓ Remote I/O (HTTP/S, SFTP/SCP)
 - ✓ Security system (safe mode, permissions, audit log, env filtering)
 
 See `TODO.md` for current open items and `CHANGES.md` for the release history.

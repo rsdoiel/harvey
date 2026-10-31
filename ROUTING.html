@@ -24,16 +24,15 @@ Remote Endpoint Configuration</h1>
 Harvey</em></p>
 <h2 id="overview">Overview</h2>
 <p>Harvey’s <strong>routing system</strong> allows you to dispatch
-prompts to <strong>remote LLM endpoints</strong> — other Ollama
-instances on your network, or cloud providers (Anthropic, DeepSeek,
-Gemini, Mistral, OpenAI). This enables:</p>
+prompts to <strong>remote LLM endpoints</strong> — other Ollama or
+hailo-ollama servers on this machine or your local network. Routing
+reaches only servers of that kind; the cloud and llamafile/llama.cpp
+route kinds were removed (workspace DR-0033, DR-0042). This enables:</p>
 <ul>
 <li><strong>Multi-model workflows</strong>: Use different models for
 different tasks</li>
 <li><strong>Hardware distribution</strong>: Offload to more powerful
 machines</li>
-<li><strong>Cloud integration</strong>: Access commercial APIs when
-needed</li>
 <li><strong>Load balancing</strong>: Distribute work across a
 cluster</li>
 </ul>
@@ -42,12 +41,12 @@ class="citation" data-cites="mention">@mention</span> Routing</h3>
 <p>Prefix any prompt with <code>@name</code> to send it to a registered
 remote endpoint:</p>
 <pre><code>RSDOIEL
-@claude refactor this module
+@pi2 refactor this module
 
 HARVEY
-Forwarding to CLAUDE.
+Forwarding to PI2.
 
-CLAUDE
+PI2
 Here is the refactored code...</code></pre>
 <p>The response is <strong>streamed back</strong> into your local
 conversation history, so Harvey retains full context of the
@@ -72,10 +71,8 @@ Forwarding to PI2.
 PI2
 The algorithm implements a depth-first search with...</code></pre>
 <h2 id="endpoint-types">Endpoint Types</h2>
-<p>Harvey supports <strong>10 endpoint types</strong> across local and
-cloud providers:</p>
-<h3 id="local-providers-no-api-key-required">Local Providers (No API Key
-Required)</h3>
+<p>Harvey supports one endpoint type, an Ollama-shaped server, written
+three ways:</p>
 <table style="width:100%;">
 <colgroup>
 <col style="width: 13%" />
@@ -124,70 +121,6 @@ and can be intercepted on the network segment between Harvey and the
 server. Use <code>https://</code> or an SSH tunnel for any Ollama
 endpoint that is not <code>localhost</code>.</p>
 </blockquote>
-<h3 id="cloud-providers-api-key-required">Cloud Providers (API Key
-Required)</h3>
-<table>
-<colgroup>
-<col style="width: 12%" />
-<col style="width: 16%" />
-<col style="width: 18%" />
-<col style="width: 37%" />
-<col style="width: 14%" />
-</colgroup>
-<thead>
-<tr class="header">
-<th scope="col">Type</th>
-<th scope="col">Scheme</th>
-<th scope="col">Backend</th>
-<th scope="col">API Key Variable</th>
-<th scope="col">Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Anthropic</td>
-<td><code>anthropic://</code></td>
-<td>Claude</td>
-<td><code>ANTHROPIC_API_KEY</code></td>
-<td>All Claude models</td>
-</tr>
-<tr class="even">
-<td>DeepSeek</td>
-<td><code>deepseek://</code></td>
-<td>DeepSeek</td>
-<td><code>DEEPSEEK_API_KEY</code></td>
-<td>All DeepSeek models</td>
-</tr>
-<tr class="odd">
-<td>Gemini</td>
-<td><code>gemini://</code></td>
-<td>Google</td>
-<td><code>GEMINI_API_KEY</code></td>
-<td>Primary</td>
-</tr>
-<tr class="even">
-<td>Gemini</td>
-<td><code>gemini://</code></td>
-<td>Google</td>
-<td><code>GOOGLE_API_KEY</code></td>
-<td>Fallback</td>
-</tr>
-<tr class="odd">
-<td>Mistral</td>
-<td><code>mistral://</code></td>
-<td>Mistral</td>
-<td><code>MISTRAL_API_KEY</code></td>
-<td>All Mistral models</td>
-</tr>
-<tr class="even">
-<td>OpenAI</td>
-<td><code>openai://</code></td>
-<td>OpenAI</td>
-<td><code>OPENAI_API_KEY</code></td>
-<td>All OpenAI models</td>
-</tr>
-</tbody>
-</table>
 <h2 id="configuration-files">Configuration Files</h2>
 <h3 id="route-configuration-workspaceagentsroutes.json">Route
 configuration: <code>&lt;workspace&gt;/agents/routes.json</code></h3>
@@ -195,6 +128,13 @@ configuration: <code>&lt;workspace&gt;/agents/routes.json</code></h3>
 format inside the workspace. There is no global route configuration.</p>
 <p><strong>Location:</strong>
 <code>&lt;workspace&gt;/agents/routes.json</code></p>
+<p>An endpoint whose kind was removed (<code>llamafile</code>,
+<code>llamacpp</code>, <code>anthropic</code>, <code>deepseek</code>,
+<code>gemini</code>, <code>mistral</code>, <code>openai</code>) is
+skipped when the file is loaded. At a terminal Harvey warns and carries
+on; without one it stops with exit 78. Re-add the route as an
+<code>ollama://</code> route. A skipped route is dropped from the file
+the next time routes are saved.</p>
 <p><strong>Example:</strong></p>
 <div class="sourceCode" id="cb5"><pre
 class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
@@ -211,21 +151,9 @@ class="sourceCode json"><code class="sourceCode json"><span id="cb5-1"><a href="
 <span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama://192.0.2.13:11434&quot;</span><span class="fu">,</span></span>
 <span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;mistral:latest&quot;</span><span class="fu">,</span></span>
 <span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;ollama&quot;</span></span>
-<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
-<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
-<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;claude&quot;</span><span class="fu">,</span></span>
-<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;anthropic://&quot;</span><span class="fu">,</span></span>
-<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;claude-3-haiku&quot;</span><span class="fu">,</span></span>
-<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;anthropic&quot;</span></span>
-<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
-<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
-<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;gemini&quot;</span><span class="fu">,</span></span>
-<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;url&quot;</span><span class="fu">:</span> <span class="st">&quot;gemini://&quot;</span><span class="fu">,</span></span>
-<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;model&quot;</span><span class="fu">:</span> <span class="st">&quot;gemini-1.5-flash&quot;</span><span class="fu">,</span></span>
-<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;kind&quot;</span><span class="fu">:</span> <span class="st">&quot;gemini&quot;</span></span>
-<span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
-<span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
-<span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
 <h3 id="workspace-configuration-workspaceagentsharvey.yaml">Workspace
 configuration: <code>&lt;workspace&gt;/agents/harvey.yaml</code></h3>
 <p>Additional Harvey configuration (knowledge base path, sessions
@@ -242,7 +170,6 @@ id="route-add-name-url-model"><code>/route add NAME URL [MODEL]</code></h3>
 <p><strong>Examples:</strong></p>
 <pre><code>/route add pi2 ollama://192.0.2.12:11434 llama3.1:8b
 /route add pi2 ollama://192.0.2.12:11434
-/route add claude anthropic:// claude-3-haiku
 /route add myollama http://localhost:11434
 /route add secure https://my-ollama.example.com:443</code></pre>
 <p><strong>Notes:</strong> - <code>NAME</code> must be unique across all
@@ -253,7 +180,7 @@ type</p>
 <p>Remove a registered endpoint.</p>
 <p><strong>Examples:</strong></p>
 <pre><code>/route rm pi2
-/route rm claude</code></pre>
+/route rm pi3</code></pre>
 <h3 id="route-list"><code>/route list</code></h3>
 <p>List all registered endpoints with reachability status.</p>
 <p><strong>Output:</strong></p>
@@ -261,12 +188,10 @@ type</p>
 
   ✓  @pi2      ollama://192.0.2.12:11434  llama3.1:8b
   ✓  @pi3      ollama://192.0.2.13:11434  mistral:latest
-  ✗  @pi4      ollama://192.0.2.14:11434  (unreachable)
-  ✓  @claude   anthropic://                   claude-3-haiku
-  ?  @gemini   gemini://                      (API key not set)</code></pre>
+  ✗  @pi4      ollama://192.0.2.14:11434  (unreachable)</code></pre>
 <p><strong>Status indicators:</strong> - <code>✓</code> (green):
-Endpoint is reachable - <code>✗</code> (yellow): Endpoint is unreachable
-- <code>?</code> (yellow): API key not configured (cloud providers)</p>
+Endpoint is reachable - <code>✗</code> (yellow): Endpoint is
+unreachable</p>
 <h3 id="route-on"><code>/route on</code></h3>
 <p>Enable routing. State is persisted to
 <code>agents/routes.json</code>.</p>
@@ -285,30 +210,27 @@ Active endpoint: none (routing uses @mention)</code></pre>
 <code>/route add</code> to see what model names are available at that
 endpoint.</p>
 <p><strong>Examples:</strong></p>
-<pre><code>/route models anthropic://
-/route models ollama://192.0.2.12:11434</code></pre>
+<pre><code>/route models ollama://192.0.2.12:11434</code></pre>
 <h3 id="route-probe-name"><code>/route probe NAME</code></h3>
 <p>Show reachability, URL, model, and tool-call capability for a
 registered endpoint.</p>
 <p><strong>Examples:</strong></p>
-<pre><code>/route probe claude
-/route probe pi2</code></pre>
+<pre><code>/route probe pi2</code></pre>
 <p><strong>Output:</strong></p>
-<pre><code>  Route:    @claude
-  Provider: anthropic
-  URL:      anthropic://
+<pre><code>  Route:    @pi2
+  Provider: ollama
+  URL:      ollama://192.0.2.12:11434
   Status:   ✓ reachable
-  Model:    claude-sonnet-4-20250514
+  Model:    llama3.1:8b
   Tools:    on
   Caps:     streaming, tools, json_mode</code></pre>
 <h3
 id="route-set-name-tools-onoff"><code>/route set NAME tools on|off</code></h3>
-<p>Toggle tool calling for a registered endpoint. Only available for
-providers that support tool use (Anthropic, OpenAI, Mistral). Persisted
-to <code>agents/routes.json</code>.</p>
+<p>Toggle tool calling for a registered endpoint. Persisted to
+<code>agents/routes.json</code>.</p>
 <p><strong>Examples:</strong></p>
-<pre><code>/route set claude tools on
-/route set claude tools off</code></pre>
+<pre><code>/route set pi2 tools on
+/route set pi2 tools off</code></pre>
 <h2 id="usage-patterns">Usage Patterns</h2>
 <h3 id="pattern-1-pi-cluster-workload-distribution">Pattern 1: Pi
 Cluster Workload Distribution</h3>
@@ -324,18 +246,11 @@ harvey&gt; /route on
 harvey&gt; @pi2 write unit tests for the parser package
 harvey&gt; @pi3 review the API design document
 harvey&gt; @pi4 generate documentation</code></pre>
-<h3 id="pattern-2-local-cloud-hybrid">Pattern 2: Local + Cloud
-Hybrid</h3>
-<pre><code># Use local model for most work
-harvey&gt; Explain this Go code
-
-# Switch to cloud for complex tasks
-harvey&gt; @claude This is a complex architecture decision, give me options</code></pre>
-<h3 id="pattern-3-model-comparison">Pattern 3: Model Comparison</h3>
+<h3 id="pattern-2-model-comparison">Pattern 2: Model Comparison</h3>
 <pre><code># Same prompt to multiple models
-harvey&gt; @llama3 How would you refactor this?
-harvey&gt; @mistral How would you refactor this?
-harvey&gt; @claude How would you refactor this?
+harvey&gt; @pi2 How would you refactor this?
+harvey&gt; @pi3 How would you refactor this?
+harvey&gt; @pi4 How would you refactor this?
 
 # Compare responses in the same conversation</code></pre>
 <h2 id="context-window-behavior">Context Window Behavior</h2>
@@ -357,16 +272,16 @@ remote model’s context window or waste tokens).</p>
   [assistant] Here is the parser code...
   [user] The ParseExpr function has a bug
   [assistant] Yes, it doesn&#39;t handle empty input...
-  [user] @claude How should we fix this?
+  [user] @pi2 How should we fix this?
 
-Sent to CLAUDE:
+Sent to PI2:
   [system] HARVEY.md content
   [user] Read the parser code
   [assistant] Here is the parser code...
   [user] The ParseExpr function has a bug
   [assistant] Yes, it doesn&#39;t handle empty input...
   [user] How should we fix this?</code></pre>
-<p>The <code>@claude</code> prefix is removed from the sent prompt.</p>
+<p>The <code>@pi2</code> prefix is removed from the sent prompt.</p>
 <h2 id="best-practices">Best Practices</h2>
 <h3 id="naming-endpoints">Naming Endpoints</h3>
 <table>
@@ -389,9 +304,9 @@ Sent to CLAUDE:
 <td>Consistent with role</td>
 </tr>
 <tr class="even">
-<td><code>claude</code>, <code>mistral</code></td>
+<td><code>coder</code>, <code>reasoner</code></td>
 <td><code>model1</code>, <code>api1</code></td>
-<td>Descriptive of model</td>
+<td>Descriptive of role</td>
 </tr>
 <tr class="odd">
 <td><code>gpu-box</code>, <code>big-iron</code></td>
@@ -424,17 +339,14 @@ data-cites="mentions">@mentions</span>)</p>
 <pre><code>/route add harvey ollama://localhost:11434 llama3.1:8b
 /route add mable ollama://localhost:11434 mistral:latest</code></pre>
 <h3 id="model-selection">Model Selection</h3>
-<p><strong>For coding tasks:</strong> - Local:
-<code>codellama:13b</code>, <code>llama3:latest</code> - Cloud:
-<code>@claude</code> (Claude 3 Sonnet/Haiku)</p>
-<p><strong>For reasoning/complex tasks:</strong> - Local:
-<code>llama3:70b</code> (if you have the VRAM) - Cloud:
-<code>@claude</code> (Claude 3 Opus)</p>
-<p><strong>For embedding:</strong> - Local:
-<code>nomic-embed-text</code>, <code>mxbai-embed-large</code></p>
-<p><strong>For small/quick tasks:</strong> - Local:
-<code>llama3:8b</code>, <code>phi3:latest</code> - Cloud:
-<code>@mistral</code> (Mistral Small)</p>
+<p><strong>For coding tasks:</strong> - <code>codellama:13b</code>,
+<code>llama3:latest</code></p>
+<p><strong>For reasoning/complex tasks:</strong> -
+<code>llama3:70b</code> (if you have the VRAM)</p>
+<p><strong>For embedding:</strong> - <code>nomic-embed-text</code>,
+<code>mxbai-embed-large</code></p>
+<p><strong>For small/quick tasks:</strong> - <code>llama3:8b</code>,
+<code>phi3:latest</code></p>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <h3 id="unknown-endpoint-name">“Unknown endpoint: <span class="citation"
 data-cites="name">@name</span>”</h3>
@@ -451,47 +363,23 @@ data-cites="name">@name</span> is not reachable”</h3>
 - Firewall blocking connection - Ollama not installed on remote
 machine</p>
 <p><strong>Fix:</strong></p>
-<div class="sourceCode" id="cb23"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check if Ollama is running on the remote</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> pi2 ollama <span class="at">--version</span></span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start Ollama on the remote</span></span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> pi2 ollama serve</span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify connectivity</span></span>
-<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> http://192.0.2.12:11434/api/tags</span></code></pre></div>
-<h3 id="api-key-not-configured-for-claude">“API key not configured for
-<span class="citation" data-cites="claude">@claude</span>”</h3>
-<p><strong>Cause:</strong> The required environment variable isn’t
-set.</p>
-<p><strong>Fix:</strong></p>
-<div class="sourceCode" id="cb24"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># For current session only</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">ANTHROPIC_API_KEY</span><span class="op">=</span>YOUR_KEY_HERE</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span></code></pre></div>
-<blockquote>
-<p><strong>Security note:</strong> Avoid writing API keys into
-<code>~/.bashrc</code> or <code>~/.zshrc</code>. Shell profile files may
-be world-readable on shared systems, captured by backup tools, or
-recorded by terminal loggers. Prefer a secrets manager and load the key
-at session start:</p>
-<div class="sourceCode" id="cb25"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co"># macOS Keychain</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">ANTHROPIC_API_KEY</span><span class="op">=</span><span class="va">$(</span><span class="ex">security</span> find-generic-password <span class="at">-s</span> harvey-anthropic <span class="at">-w</span><span class="va">)</span></span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="co"># HashiCorp Vault</span></span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="bu">eval</span> <span class="st">&quot;</span><span class="va">$(</span><span class="ex">vault</span> read <span class="at">-f</span> json secret/harvey/anthropic<span class="va">)</span><span class="st">&quot;</span></span></code></pre></div>
-<p>If you must use a shell profile, run <code>chmod 600 ~/.bashrc</code>
-and avoid committing dotfiles to a public repository.</p>
-</blockquote>
+<div class="sourceCode" id="cb22"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check if Ollama is running on the remote</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> pi2 ollama <span class="at">--version</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Start Ollama on the remote</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> pi2 ollama serve</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify connectivity</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> http://192.0.2.12:11434/api/tags</span></code></pre></div>
 <h3 id="model-not-available-on-pi2">“Model not available on <span
 class="citation" data-cites="pi2">@pi2</span>”</h3>
 <p><strong>Cause:</strong> The model hasn’t been pulled on the remote
 Ollama instance.</p>
 <p><strong>Fix:</strong></p>
-<div class="sourceCode" id="cb26"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co"># On the remote machine</span></span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> pi2 ollama pull llama3.1:8b</span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># On the remote machine</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> pi2 ollama pull llama3.1:8b</span></code></pre></div>
 <p>Or pull it in a shell:</p>
 <pre><code>ollama pull llama3.1:8b</code></pre>
 <p>(Note: This pulls on the local machine, not the remote)</p>
@@ -499,50 +387,25 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb26-1"><a href=
 <p>Routes can be managed programmatically via the
 <code>RouteRegistry</code> type in Go code.</p>
 <p><strong>Example (from Harvey source):</strong></p>
-<div class="sourceCode" id="cb28"><pre
-class="sourceCode go"><code class="sourceCode go"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Add a route programmatically</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>rr <span class="op">:=</span> agent<span class="op">.</span>Routes</span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>rr<span class="op">.</span>Add<span class="op">(&amp;</span>RouteEndpoint<span class="op">{</span></span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    Name<span class="op">:</span> <span class="st">&quot;pi5&quot;</span><span class="op">,</span></span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    URL<span class="op">:</span>  <span class="st">&quot;ollama://192.0.2.15:11434&quot;</span><span class="op">,</span></span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    Model<span class="op">:</span> <span class="st">&quot;llama3.1:8b&quot;</span><span class="op">,</span></span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    Kind<span class="op">:</span> KindOllama<span class="op">,</span></span>
-<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a><span class="op">})</span></span>
-<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a><span class="co">// Save to disk</span></span>
-<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>SaveRouteConfig<span class="op">(</span>rr<span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode go"><code class="sourceCode go"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Add a route programmatically</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>rr <span class="op">:=</span> agent<span class="op">.</span>Routes</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>rr<span class="op">.</span>Add<span class="op">(&amp;</span>RouteEndpoint<span class="op">{</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    Name<span class="op">:</span> <span class="st">&quot;pi5&quot;</span><span class="op">,</span></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    URL<span class="op">:</span>  <span class="st">&quot;ollama://192.0.2.15:11434&quot;</span><span class="op">,</span></span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    Model<span class="op">:</span> <span class="st">&quot;llama3.1:8b&quot;</span><span class="op">,</span></span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>    Kind<span class="op">:</span> KindOllama<span class="op">,</span></span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a><span class="op">})</span></span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a><span class="co">// Save to disk</span></span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>SaveRouteConfig<span class="op">(</span>rr<span class="op">)</span></span></code></pre></div>
 <h2 id="security-considerations">Security Considerations</h2>
-<h3 id="api-key-management">API Key Management</h3>
-<p><strong>Never commit API keys to version control.</strong></p>
-<p><strong>Recommended approach:</strong></p>
-<blockquote>
-<p><strong>Security note:</strong> Avoid writing API keys into
-<code>~/.bashrc</code> or <code>~/.zshrc</code>. Shell profile files may
-be world-readable on shared systems, captured by backup tools, or
-recorded by terminal loggers. Prefer a secrets manager:</p>
-<div class="sourceCode" id="cb29"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># macOS Keychain</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">ANTHROPIC_API_KEY</span><span class="op">=</span><span class="va">$(</span><span class="ex">security</span> find-generic-password <span class="at">-s</span> harvey-anthropic <span class="at">-w</span><span class="va">)</span></span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="co"># HashiCorp Vault</span></span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="bu">eval</span> <span class="st">&quot;</span><span class="va">$(</span><span class="ex">vault</span> read <span class="at">-f</span> json secret/harvey/anthropic<span class="va">)</span><span class="st">&quot;</span></span></code></pre></div>
-<p>If you must use a shell profile, run <code>chmod 600 ~/.bashrc</code>
-and avoid committing dotfiles to a public repository.</p>
-</blockquote>
-<p>For a current session only:</p>
-<div class="sourceCode" id="cb30"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">ANTHROPIC_API_KEY</span><span class="op">=</span>YOUR_KEY_HERE</span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="ex">harvey</span></span></code></pre></div>
-<p><strong>Environment variable precedence:</strong> - Harvey checks
-environment variables at startup - Changing them requires restarting
-Harvey - Each cloud provider uses its own variable name</p>
 <h3 id="network-security">Network Security</h3>
-<p><strong>For local network routes:</strong> - Use HTTPS if exposed to
-untrusted networks - Consider firewall rules to restrict access - Use
-SSH tunneling for remote access</p>
-<p><strong>For cloud providers:</strong> - API keys have the same
-permissions as your account - Monitor usage to detect anomalies - Rotate
-keys periodically</p>
+<ul>
+<li>Use HTTPS if exposed to untrusted networks</li>
+<li>Consider firewall rules to restrict access</li>
+<li>Use SSH tunneling for remote access</li>
+</ul>
 <h2 id="complete-example-session">Complete Example Session</h2>
 <pre><code>Title: Multi-Model Development Session
 Credit: Recorded by Harvey
@@ -563,7 +426,6 @@ HARVEY
 Endpoints registered:
   ✓  @pi2      ollama://192.0.2.12:11434  llama3.1:8b
   ✓  @pi3      ollama://192.0.2.13:11434  mistral:latest
-  ✓  @claude   anthropic://                   claude-3-haiku
 
 RSDOIEL
 @pi2 write a unit test for the Parse function
@@ -587,10 +449,10 @@ func TestParse(t *testing.T) {
 <p>INT. HARVEY AND RSDOIEL TALKING 2026-05-04 14:06:00</p>
 <p>Harvey and RSDOIEL are in chat mode. Model: llama3:latest. Workspace:
 /home/user/project.</p>
-<p>RSDOIEL <span class="citation" data-cites="claude">@claude</span>
-review this test and suggest improvements</p>
-<p>HARVEY Forwarding to CLAUDE.</p>
-<p>CLAUDE The test is well-structured. Consider adding: 1. Edge case for
+<p>RSDOIEL <span class="citation" data-cites="pi3">@pi3</span> review
+this test and suggest improvements</p>
+<p>HARVEY Forwarding to PI3.</p>
+<p>PI3 The test is well-structured. Consider adding: 1. Edge case for
 empty input 2. Property-based testing 3. Benchmark</p>
 <p>THE END. ```</p>
 <p><em>See also:</em> - <a

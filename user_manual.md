@@ -79,7 +79,7 @@ Learning this vocabulary for one command teaches you all the others:
 
 - **[Unified /model Command](harvey-model.7.md)** — `/model list|use|show|status` works across Ollama and hailo-ollama
 - **[Model & Alias Commands](harvey-model-alias.7.md)** — `@mention` inline model switching and `/model alias` short names
-- **[Routing](ROUTING.md)** — Connect to remote endpoints (Anthropic, DeepSeek, Gemini, Mistral, OpenAI, remote Ollama) via @mention syntax
+- **[Routing](ROUTING.md)** — Connect to remote endpoints (other Ollama servers on your network) via @mention syntax
 - **[Routing Commands](harvey-routing.7.md)** — `/route` slash command reference
 - **[Model Guide](model_guide.md)** — Model selection guide based on capability probing results
 - **[Model Cache](MODEL_CACHE.md)** — Model capability caching architecture, database schema, and probing mechanisms

@@ -480,7 +480,7 @@ capacity at a glance.
 
 ### API key filtering
 
-Cloud provider API keys (`ANTHROPIC_API_KEY`, `COHERE_API_KEY`,
+Common API keys (`ANTHROPIC_API_KEY`, `COHERE_API_KEY`,
 `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`,
 `MISTRAL_API_KEY`, `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`) are stripped from
 the environment of every child process started by `!` or `/run`. They are
