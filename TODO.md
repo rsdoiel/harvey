@@ -145,8 +145,7 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 - [ ] **`harvey check` and/or `harvey update` for a stale `harvey.yaml`.** Raised by the author 2026-10-30, to be done later
   (not now). Several accepted decisions leave existing `harvey.yaml` files out of date: workspace policy DR-0043 (the
-  `permissions:` section is ignored in favour of `policy:`; `safe_mode` and `allowed_commands` are read and mapped for one
-  release), DR-0042 (routes of the removed cloud kinds, `s3://` uses), and DR-0033/DR-0035/DR-0037 (llamafile and llama.cpp
+  `safe_mode`, `allowed_commands` and `permissions:` are all ignored in favour of `policy:`), DR-0042 (routes of the removed cloud kinds, `s3://` uses), and DR-0033/DR-0035/DR-0037 (llamafile and llama.cpp
   sections, `rag:` and `memory:` settings). A `harvey check` would report a stale file and what to change; a `harvey update`
   would rewrite it. Undecided: one verb or both, and whether `update` writes in place or prints a diff. Constraints:
   harvey already rewrites `harvey.yaml` whole whenever it saves memory settings or aliases (`SaveMemoryConfig`), so `update`
