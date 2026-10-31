@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -37,8 +37,8 @@ vector-diagram pages. Those pages cannot be extracted by any text tool; the
 output will note them so you can follow up with a vision-capable model.
 
 The injected content is ephemeral — it is added to the current conversation
-and is not written to disk. To make a document searchable, ingest it with kb document ingest.
-if you want to index a PDF for retrieval.
+and is not written to disk. To make a document searchable, ingest it with
+kb document ingest.
 
 # EXAMPLES
 
@@ -67,5 +67,4 @@ Read a short PDF (≤ 20 pages) in full:
   /kb document ingest — make a document searchable (the installed kb)
   /status             — check remaining context window space
   /help read
-  /help rag
 

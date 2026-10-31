@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -30,7 +29,7 @@ concise summary of the current conversation, then replaces the entire
 history with:</p>
 <ol type="1">
 <li>The system prompt (re-injected automatically).</li>
-<li>Any pinned context set with /context add.</li>
+<li>Any pins (see /pin).</li>
 <li>A single user message containing the summary.</li>
 </ol>
 <p>This frees up the context window so you can continue a long session
@@ -54,14 +53,13 @@ identically.</p>
   harvey &gt; /status
   Tokens: ~312 / 131 072 (0%)</code></pre>
 <h1 id="what-survives-summarize">WHAT SURVIVES SUMMARIZE</h1>
-<p>System prompt — re-injected automatically. Pinned context —
-re-injected as the first user message. RAG state — unaffected. Recording
-— the running session continues; summary is not written back to the
-Fountain file.</p>
+<p>System prompt — re-injected automatically. Pins — re-injected as the
+first user messages. Recording — the running session continues; summary
+is not written back to the Fountain file.</p>
 <h1 id="see-also">SEE ALSO</h1>
-<p>/context add TEXT — pin a summary you compose manually /clear —
-discard history entirely (no summary generated) /status — check context
-window usage before and after /help context /help clear</p>
+<p>/pin –text TEXT — pin a summary you compose manually /clear — discard
+history entirely (no summary generated) /status — check context window
+usage before and after /help context /help clear</p>
 </section>
 </body>
 </html>

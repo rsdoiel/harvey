@@ -34,15 +34,13 @@ decision record, for example) refuses; run those yourself with ! kb …
 .</p>
 <p>kb must be installed:</p>
 <pre><code>  go install github.com/rsdoiel/knowledge/cmd/kb@latest</code></pre>
-<p>The knowledge base is independent of the RAG store (/help rag). KB
-holds hand-authored structured records; RAG holds embedded chunks from
-ingested documents.</p>
+<p>KB holds hand-authored structured records and ingested documents.</p>
 <p>Add -json before the verb for machine-readable output. harvey does
 not add it.</p>
 <h1 id="examples">EXAMPLES</h1>
 <pre><code>  /kb search &quot;context window&quot;
   /kb project list
-  /kb observation add --project harvey finding &quot;RAG threshold 0.3 removes noise&quot;
+  /kb observation add --project harvey finding &quot;chunk size 500 removes noise&quot;
   /kb record show harvey/DR-0048
   /kb stats</code></pre>
 <h1 id="harveys-own-verbs">HARVEY’S OWN VERBS</h1>
@@ -114,7 +112,7 @@ open questions.</p>
 <h1 id="see-also">SEE ALSO</h1>
 <p>/memory recall — search all knowledge silos including the KB /kb
 document ingest — make a document searchable (the installed kb) /help
-learn — overview of all three memory silos</p>
+learn — overview of the memory silos</p>
 </section>
 </body>
 </html>

@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -32,8 +32,8 @@ route can accept:
 
   Text and source-code files (≤ 256 KB)
     The file content is injected as plain text, identical to /read.
-    Files larger than 256 KB are rejected; ingest large text with kb document ingest;
-    text corpora.
+    Files larger than 256 KB are rejected; ingest large text with
+    kb document ingest.
 
   Binary files
     Rejected with a clear error. Use an appropriate converter first.
@@ -73,5 +73,4 @@ Attach a local source file:
   /kb document ingest — make a document searchable (the installed kb)
   /route              — manage named remote endpoints
   /help read-pdf
-  /help rag
 

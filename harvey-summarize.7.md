@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -49,8 +49,7 @@ command does nothing.
 # WHAT SURVIVES SUMMARIZE
 
   System prompt    — re-injected automatically.
-  Pinned context   — re-injected as the first user message.
-  RAG state        — unaffected.
+  Pins             — re-injected as the first user messages.
   Recording        — the running session continues; summary is not
                      written back to the Fountain file.
 

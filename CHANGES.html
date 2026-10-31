@@ -123,10 +123,15 @@ that only lists stores loads with a note at startup, and the section is
 dropped the next time the configuration is saved. Existing store files
 stay on disk and are not converted (their vectors are bound to an
 embedding model). The last release that carries <code>/rag</code> is
-v0.0.20. Still there until the next slices: the RAG parts of
-<code>/memory</code>, <code>/status</code>, <code>/hint</code>, the
-memory tools and recall; they find no store, so they do nothing.
-<code>assay</code> lost <code>-rag-db</code>, <code>-rag-top-k</code>,
+v0.0.20. The RAG parts of <code>/memory</code>, <code>/status</code>,
+<code>/hint</code>, <code>/clear</code>, the startup digest, the memory
+tools and <code>UnifiedMemory.Recall()</code> are gone, and
+<code>/hint</code> no longer checks a RAG store. <strong>Memory recall
+is now by keyword only</strong>: the embedder the memory system used
+came from the active RAG store’s configuration, so with no RAG store
+memory has no embedder (<code>Agent.memoryEmbedder</code> returns nil)
+until the memory store is replaced (DR-0037). <code>assay</code> lost
+<code>-rag-db</code>, <code>-rag-top-k</code>,
 <code>-rag-embed-model</code> and <code>-rag-compare</code> (an old
 command line using them is now a usage error), and its report and
 <code>results.json</code> no longer carry RAG fields;

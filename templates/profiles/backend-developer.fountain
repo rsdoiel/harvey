@@ -2,7 +2,7 @@ TITLE: Back End Developer
 
 NOTE:
   Recommended model: qwen2.5-coder:7b or granite3.3:2b
-  RAG: ingest your project source and key dependency docs
+  Documents: ingest your project source and key dependency docs
 
 NAME:
   (your preferred name or handle)

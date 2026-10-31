@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -37,18 +36,18 @@ treated as seconds (e.g. 300 → 5 minutes); Go duration strings such as
 30s, 5m, and 1h30m are also accepted. Must be positive.</p>
 <p>–count N Optional. Number of iterations, integer in [1, 100].
 Default: 10.</p>
-<p>PROMPT Free text sent as a chat turn each iteration. The same RAG
-augmentation, tool-loop execution, and recording that apply to normal
-chat apply here.</p>
+<p>PROMPT Free text sent as a chat turn each iteration. The same
+tool-loop execution and recording that apply to normal chat apply
+here.</p>
 <p>/COMMAND A slash command dispatched each iteration, exactly as if
 typed at the prompt. The command’s own safe-mode checks, audit logging,
 and recording are preserved. /exit, /quit, and /bye are recognised and
 stop the loop rather than exiting Harvey.</p>
 <h1 id="iteration-behaviour">ITERATION BEHAVIOUR</h1>
-<p>Chat iterations use the same model call as normal chat — same RAG
-augmentation, same tool-loop-or-plain-chat branch, same stats recording
-and Fountain recording — so looping a prompt behaves identically to
-typing it by hand repeatedly. Two things are deliberately excluded:</p>
+<p>Chat iterations use the same model call as normal chat — same
+tool-loop-or-plain-chat branch, same stats recording and Fountain
+recording — so looping a prompt behaves identically to typing it by hand
+repeatedly. Two things are deliberately excluded:</p>
 <p>Interactive write-offers — the fenced-code-block “write to file?”
 prompts and autoExecuteReply are skipped, because an unattended loop
 must never block waiting for stdin input.</p>

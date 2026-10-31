@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 00feb2f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -69,9 +69,8 @@ Fountain files in agents/memories/ inside the workspace.
 
   recall QUERY
         Query all memory silos (workspace profile, project facts, experiential
-        memories, RAG chunks, and KB observations) and print grouped results.
-        Uses FTS5 full-text search plus cosine similarity when a RAG store is
-        configured. No token budget is applied — all matching results are shown.
+        memories, and KB observations) and print grouped results.
+        Uses FTS5 full-text search. No token budget is applied — all matching results are shown.
 
   profile show|update|use [name]
         Manage the workspace profile.
@@ -84,6 +83,10 @@ Fountain files in agents/memories/ inside the workspace.
                    new profile, and resets history so the new context injects
                    on the next turn. Alias: /profile use [name].
         "rename" — rename the workspace in the active profile document.
+        "on"     — enable workspace profile injection at session start
+                   (sets memory.inject_on_start: true in harvey.yaml).
+        "off"    — disable workspace profile injection at session start
+                   (sets memory.inject_on_start: false in harvey.yaml).
         "update" — deprecated alias for "edit".
 
 # MEMORY TYPES
@@ -123,11 +126,12 @@ When a session starts, Harvey injects a [memory context] block into the
 conversation. Factual types (workspace_profile, project_fact) always appear
 first. Experiential memories (tool_use, workflow, user_preference) are ranked
 by FTS5 full-text search and optionally cosine similarity weighted by the
-memory's confidence score. RAG chunks and KB observations follow if token
+memory's confidence score. KB observations follow if token
 budget permits.
 
 The budget is controlled by memory.budget_pct in harvey.yaml (default 0.25 of
-the context window). Setting memory.inject_on_start: false disables injection.
+the context window). Memory injection is OFF by default; enable it with
+memory.inject_on_start: true in harvey.yaml.
 
 # DIGEST
 
@@ -187,7 +191,6 @@ memory before the review card is displayed.
 
   /profile               — alias for /memory profile
   /recall QUERY          — alias for /memory recall
-  /help learn            — overview of all three memory silos
-  /help rag              — RAG store management
+  /help learn            — overview of the memory silos
   /help kb               — knowledge base management
 

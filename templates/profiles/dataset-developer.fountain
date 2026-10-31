@@ -2,7 +2,7 @@ TITLE: Dataset Developer
 
 NOTE:
   Recommended model: qwen2.5-coder:7b or granite3.3:2b
-  RAG: ingest dataset and datasetd docs, your project source,
+  Documents: ingest dataset and datasetd docs, your project source,
        and any SQL schema files
 
 NAME:

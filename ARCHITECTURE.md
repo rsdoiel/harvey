@@ -72,12 +72,12 @@ recorder.go                 Fountain .spmd session recorder
 sessions_files.go           Session file discovery, listing, MostRecentSession()
 replay.go                   Session replay (re-run user turns against new model)
 
---- RAG ---
+--- Embeddings (to be pruned, DR-0035) ---
 rag_support.go              RagStore, Embedder, chunk ingest/query, FTS5+cosine hybrid
 
 --- Scholarly support ---
 scholarly_identifiers.go    14-type identifier extraction (DOI, ORCID, ROR, ArXiv, etc.)
-scholarly_pdf.go            Section-aware PDF chunking; identifier tagging for RAG
+scholarly_pdf.go            Section-aware PDF chunking; identifier tagging
 
 --- Language support ---
 language_detector.go        Language detection from filename and content
@@ -114,7 +114,6 @@ spinner.go                  Animated spinner: braille frames, Lear messages, liv
 | `Workspace` | `*Workspace` | Sandboxed root for all file operations |
 | `KB` | `*KnowledgeBase` | SQLite knowledge base (`agents/knowledge.db`) |
 | `ModelCache` | `*ModelCache` | Capability cache for installed Ollama models |
-| `Rag` | `*RagStore` | Active RAG chunk store; nil when not configured |
 | `RagOn` | `bool` | When true, top-K chunks are prepended before each Chat call |
 | `SessionsDir` | `string` | Absolute path to the sessions directory |
 | `Skills` | `SkillCatalog` | Skills discovered at startup |
@@ -176,8 +175,8 @@ keeping the last N turns verbatim.
 time. Every subsequent operation calls `AbsPath(rel)`, which joins `rel` under
 `Root` and then checks that the result still has `Root` as a prefix — rejecting
 `../` escapes and absolute paths outside the root. The `agents/` subdirectory
-is created automatically and holds `knowledge.db`, `memories/`, `sessions/`, and
-`rag/*.db`.
+is created automatically and holds `knowledge.db`, `memories/` and `sessions/`.
+Older `rag/*.db` stores are no longer read.
 
 All file I/O in command handlers goes through `ws.ReadFile`, `ws.WriteFile`,
 `ws.ListDir`, or `ws.MkdirAll`; direct `os.*` calls are not used for workspace
@@ -250,7 +249,7 @@ pins survive `/clear` and `/summarize`. `/unpin` removes the message (a logged r
 | `/clear` | Reset conversation history (system prompt + pins survive) |
 | `/summarize` | Condense history to a summary; `/compact` is an alias |
 | `/status` | Show backend, token usage, routing, recording, memory, debug state |
-| `/hint` | Actionable suggestions (unmined sessions, empty RAG, empty KB) |
+| `/hint` | Actionable suggestions (unmined sessions, empty KB) |
 
 ### Session commands
 
@@ -358,7 +357,6 @@ by `UnifiedMemory.Recall()` (`memory_unified.go`):
 
 | Silo | Files | Content | Injection point |
 |---|---|---|---|
-| **RAG store** | `rag_support.go`, `agents/rag/*.db` | Vector-embedded document chunks | Per-prompt via `ragAugment()` when RAG is on |
 | **Memory store** | `memory_store.go`, `memory_miner.go`, `memory_manifest.go`, `agents/memories/` | Typed experience records extracted from sessions | Session start via `UnifiedMemory.Recall()` |
 | **Knowledge base** | `knowledge.go`, `agents/knowledge.db` | Hand-authored experiments/observations/concepts (relational) | Optional; also via `UnifiedMemory` |
 
@@ -390,8 +388,7 @@ Auto-mine triggers on session exit when `sessionTurns >= 10`.
 
 1. `workspace_profile` + `project_fact` memories — always injected first (score 1.0)
 2. Experiential memories (FTS5 full-text + cosine × confidence) — ranked by final score
-3. RAG chunks — relevance-ranked, discarded below `ragMinScore` (0.3)
-4. KB observations — optional
+3. KB observations — optional
 
 Token budget is enforced via `memory.budget_pct` in harvey.yaml (default 0.25 of
 the model context window). Setting `memory.inject_on_start: false` disables injection.
@@ -555,43 +552,11 @@ Named remote endpoints are managed by `RouteRegistry` (`routing.go`). The
 4. If nothing selected: Harvey starts without a backend; commands that need one
    print a prompt to connect first.
 
-## RAG — Retrieval-Augmented Generation (`rag_support.go`)
+## Embeddings (`rag_support.go`, `ollama.go`)
 
-| Type | Purpose |
-|---|---|
-| `Embedder` | Interface: `Embed(text) ([]float64, error)` + `Name() string` |
-| `RagStore` | SQLite-backed chunk store; enforces single-embedder consistency |
-| `Chunk` | Retrieved result: ID, Content, Score, Source |
-| `RagStoreEntry` | Registry entry: Name, DBPath, EmbeddingModel, ModelMap |
-
-**Embedding model binding.** Each `RagStore` is bound to one embedding model at
-creation. `Ingest` and `Query` both reject an `Embedder` whose `Name()` differs
-from the stored model.
-
-**Hybrid retrieval.** `RagStore.Query` uses FTS5 full-text search as a fast
-lexical pass, then re-ranks results using cosine similarity. Chunks below
-`ragMinScore` (0.3) are discarded. The same threshold is used in `terminal.go`
-and `cmd/assay/main.go` — keep them in sync if changed.
-
-**Retrieval flow.** `Agent.ragAugment(prompt)` is called before every `Chat`
-invocation when `RagOn` is true. It embeds the prompt, queries the active store
-for the top 5 chunks, discards any below the threshold, and prepends a
-`### Context (from knowledge base)` block. Silent no-op if the store is empty or
-nothing exceeds threshold.
-
-**Database layout.** One table per store:
-
-```sql
-CREATE TABLE chunks (
-    id        INTEGER PRIMARY KEY,
-    content   TEXT    NOT NULL,
-    embedding BLOB    NOT NULL,
-    source    TEXT    NOT NULL DEFAULT ''
-);
-```
-
-Embeddings are stored as `[int32 length][float64...]` in little-endian byte order.
-Cosine similarity is computed in Go at query time.
+`/rag` was removed (workspace DR-0035): there are no named RAG stores and no per-prompt retrieval. `rag_support.go` still holds the
+older `RagStore`, `Embedder` and chunk types, kept until the orphan check of DR-0035 slice 4. Retrieval over documents is the
+knowledge base: `kb document ingest`, then `/kb search`.
 
 ## Spinner (`spinner.go`)
 
@@ -674,7 +639,7 @@ The `mockLLMClient` in `tier3_test.go` is the canonical test double for
 Harvey is in active development. All major architectural components described
 in this document are fully implemented as of v0.0.13:
 
-- ✓ Three-silo memory (RAG, experience store, knowledge base)
+- ✓ Two-silo memory (experience store, knowledge base)
 - ✓ Tool registry and dual execution paths (structured + prose)
 - ✓ Routing to other Ollama servers
 - ✓ Skills system (SKILL.md loaded directly)

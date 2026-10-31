@@ -29,9 +29,7 @@ kb must be installed:
   go install github.com/rsdoiel/knowledge/cmd/kb@latest
 ~~~
 
-The knowledge base is independent of the RAG store (/help rag). KB holds
-hand-authored structured records; RAG holds embedded chunks from ingested
-documents.
+KB holds hand-authored structured records and ingested documents.
 
 Add -json before the verb for machine-readable output. harvey does not add it.
 
@@ -40,7 +38,7 @@ Add -json before the verb for machine-readable output. harvey does not add it.
 ~~~
   /kb search "context window"
   /kb project list
-  /kb observation add --project harvey finding "RAG threshold 0.3 removes noise"
+  /kb observation add --project harvey finding "chunk size 500 removes noise"
   /kb record show harvey/DR-0048
   /kb stats
 ~~~
@@ -134,5 +132,5 @@ answer questions about it, suggest next steps, or help resolve open questions.
 
   /memory recall         — search all knowledge silos including the KB
   /kb document ingest    — make a document searchable (the installed kb)
-  /help learn            — overview of all three memory silos
+  /help learn            — overview of the memory silos
 

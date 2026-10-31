@@ -14,7 +14,6 @@
     <li><a href="INSTALL.html">INSTALL</a></li>
     <li><a href="user_manual.html">User Manual</a></li>
     <li><a href="about.html">About</a></li>
-    <!-- <li><a href="search.html">Search</a></li> -->
     <li><a href="https://github.com/rsdoiel/harvey">Code Repository</a></li>
 </ul>
 </nav>
@@ -45,9 +44,8 @@ menu</li>
 <hr />
 <h2 id="step-2-install-pdf-tools-optional">Step 2 — Install PDF Tools
 (optional)</h2>
-<p>Harvey uses <code>pdftotext</code> to extract text from PDF files for
-the RAG store. Harvey works fine without it — you just cannot read
-PDFs.</p>
+<p>Harvey uses <code>pdftotext</code> to extract text from PDF files.
+Harvey works fine without it — you just cannot read PDFs.</p>
 <p><strong>macOS:</strong></p>
 <pre><code>brew install poppler</code></pre>
 <p><strong>Linux (Debian/Ubuntu):</strong></p>
@@ -67,7 +65,7 @@ profile. Pick a starting template that fits your role.</p>
 <pre><code>/help ollama       — Harvey&#39;s Ollama command reference
 /help pdf-tools    — PDF tools detail and troubleshooting
 /help memory       — how Harvey remembers things across sessions
-/help rag          — how to ingest documents for retrieval</code></pre>
+/help kb           — the knowledge base, through the installed kb</code></pre>
 </section>
 </body>
 </html>

@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -32,7 +32,7 @@ then returns to the Harvey prompt.
                 Default: 10.
 
   PROMPT        Free text sent as a chat turn each iteration. The same
-                RAG augmentation, tool-loop execution, and recording
+                tool-loop execution and recording
                 that apply to normal chat apply here.
 
   /COMMAND      A slash command dispatched each iteration, exactly as if
@@ -43,8 +43,8 @@ then returns to the Harvey prompt.
 
 # ITERATION BEHAVIOUR
 
-Chat iterations use the same model call as normal chat — same RAG
-augmentation, same tool-loop-or-plain-chat branch, same stats recording
+Chat iterations use the same model call as normal chat — same
+tool-loop-or-plain-chat branch, same stats recording
 and Fountain recording — so looping a prompt behaves identically to
 typing it by hand repeatedly. Two things are deliberately excluded:
 

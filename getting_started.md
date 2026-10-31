@@ -229,7 +229,7 @@ them once and you can predict subcommands for any command family.
 
 The key distinction: **`add`** registers something you already have (a route
 URL, a model alias); **`new`** creates something Harvey manages from scratch
-(a RAG database, a skill bundle, a plan). Both verbs are distinct from `use`,
+(a skill bundle, a plan). Both verbs are distinct from `use`,
 which activates something already registered.
 
 For backend services (`/model`, `/route`), `status` checks whether the
@@ -266,7 +266,7 @@ list is in [harvey(1)](harvey.1.md).
 |---|---|
 | `/help` | List all available slash commands |
 | `/status` | Show backend, history length, workspace, KB state, and recording status |
-| `/hint` | Show suggestions for improving results (RAG, memory, KB) |
+| `/hint` | Show suggestions for improving results (memory, KB) |
 | `/clear` | Reset conversation history (system prompt and pinned context are kept) |
 | `/summarize` `/compact` | Ask the model to summarize the history and replace it with the summary |
 | `/context` | Show what the model sees on the next turn |

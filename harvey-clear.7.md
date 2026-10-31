@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 7ec384f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -27,7 +27,6 @@ The model has no memory of the previous conversation after /clear.
                     visible to the model across topic changes.
   Recording       — the session log keeps running; the cleared conversation
                     stays in it, as the record of what was said.
-  RAG             — the RAG store and its on/off state are unaffected.
   Skills          — the skill catalog remains loaded; /skill load must be
                     re-run to activate a skill in the new context.
 

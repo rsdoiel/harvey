@@ -3,7 +3,7 @@ INT. WORKSPACE PROFILE - WEB DEVELOPER
 TITLE: Web Developer
 
 NOTE: Recommended model: qwen2.5-coder:7b or granite3.3:2b
-      RAG: ingest Go source, deno.json/package.json, SQL schema files
+      Documents: ingest Go source, deno.json/package.json, SQL schema files
       Style: prefer stdlib and web platform APIs; avoid heavy frameworks
 
 ROLE:

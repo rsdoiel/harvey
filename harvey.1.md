@@ -254,7 +254,7 @@ are also available from the shell: harvey --help TOPIC.
 : show active backend, token usage, routing, recording, and debug state
 
 /hint
-: show actionable suggestions for improving results (RAG, memory, KB)
+: show actionable suggestions for improving results (memory, KB)
 
 **Sessions**
 

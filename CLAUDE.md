@@ -25,7 +25,7 @@ cmt codemeta.json version.go  # regenerate version.go after bumping codemeta.jso
 | `bin/harvey` | `cmd/harvey/main.go` → `harvey.go` | Interactive terminal agent |
 | `bin/assay`  | `cmd/assay/main.go` (standalone) | LLM evaluation harness |
 
-`cmd/assay/main.go` imports the root `harvey` package for `RagStore` and `OllamaEmbedder`. It is otherwise self-contained.
+`cmd/assay/main.go` imports the root `harvey` package for the Ollama client. It is otherwise self-contained.
 
 ## Documentation convention
 
@@ -39,7 +39,7 @@ Every exported Go symbol **must** have a `/** ... */` block comment with a descr
 
 The startup sequence wires state in this order, and order matters:
 
-1. Banner → workspace init → `LoadHarveyYAML` (path overrides) → KB → model cache → RAG store
+1. Banner → workspace init → `LoadHarveyYAML` (path overrides) → KB → model cache
 2. Session picker → system prompt → skills catalog → backend selection → debug log
 3. Session resume / `--continue` / replay
 4. Auto-record → workspace-profile onboarding (once, if empty)
@@ -71,21 +71,16 @@ Harvey has two separate execution paths depending on model capability:
 
 ## Three-silo memory architecture
 
-Harvey has three independent knowledge stores, unified at retrieval time by `UnifiedMemory.Recall()`:
+Harvey has two independent knowledge stores, unified at retrieval time by `UnifiedMemory.Recall()`:
 
 | Silo | Files | Content | Injection point |
 |---|---|---|---|
-| **RAG store** | `rag_support.go`, `agents/rag/*.db` | Vector-embedded document chunks | Per-prompt via `ragAugment()` when RAG is on |
 | **Memory store** | `memory_store.go`, `memory_miner.go`, `memory_manifest.go`, `agents/memories/` | Typed experience records extracted from sessions | Session start via `UnifiedMemory.Recall()` |
 | **Knowledge base** | `github.com/rsdoiel/knowledge` (external module, a normal versioned `require` in `go.mod`; no `replace`), `agents/knowledge.db` | Hand-authored projects/observations/concepts (relational) | Optional, also via `UnifiedMemory` |
 
-`UnifiedMemory.Recall()` queries all three silos in priority order: `workspace_profile` + `project_fact` first (always injected, score 1.0), then experiential memories (FTS5 + optional cosine), then RAG chunks, then KB observations. Token budget is enforced.
-
-**RAG retrieval flow:** `Agent.ragAugment(prompt)` → embed prompt → cosine-similarity search → discard chunks below `ragMinScore` (0.3) → prepend `### Context (from knowledge base)` block. Silent no-op if store is empty or nothing exceeds threshold.
+`UnifiedMemory.Recall()` queries both silos in priority order: `workspace_profile` + `project_fact` first (always injected, score 1.0), then experiential memories (FTS5), then KB observations. Token budget is enforced.
 
 **Memory mining flow:** `Manifest.UnminedSessions()` finds `.spmd` files not yet in the manifest → `Miner.Mine()` sends session text to LLM for JSON extraction → interactive review → `MemoryStore.Save()` writes typed Fountain files. Auto-mines on session exit when `sessionTurns >= 10`.
-
-**RagStore embedding consistency:** The store is bound to one embedding model at creation. `Query` and `Ingest` both reject an `Embedder` whose `Name()` differs from the stored model.
 
 ## Session recording — the session log
 
@@ -101,8 +96,7 @@ Each session writes an append-only JSONL log, `agents/sessions/<stem>.jsonl` (sc
 `bin/assay` runs prompts from `agents/assay/corpus.yaml` against Ollama models and writes `testout/assay-<timestamp>/report.md` + `results.json`.
 
 Flags of note:
-- `--rag-db PATH` — opens a RAG store and injects context before each prompt
-- `--rag-compare` — runs each prompt twice (base + RAG) and shows a per-check delta table
+- `--guide-file PATH` and `--guide-compare` — run each prompt twice (base + a guide file as the system message) and show a per-check delta table
 - `--category NAME` — run only one category (e.g. `ts-deno`, `go-crosswalk`)
 
 When adding corpus prompts, follow the narrow-prompt principle: one testable capability per entry, at least one automatable `contains:` check, and 2–4 `human:` review questions targeting the specific failure modes that matter.
@@ -114,6 +108,5 @@ Both binaries use the workspace exit-code convention (workspace DR-0003; the tab
 ## Key invariants to preserve
 
 - `ToolRegistry.Dispatch` returns `fmt.Errorf("unknown tool %q", name)` — `tryExecuteProseToolCalls` detects this via `strings.Contains(r.Content, "unknown tool")`.
-- `ragMinScore = 0.3` is shared between `terminal.go` and `cmd/assay/main.go` — keep them in sync if changed.
 - `suggestPathFromHistory` returns `""` when there are ≠1 path-like tokens in the last user message. The `autoExecuteReply` fallback only calls `promptAction` (the Y/n box, which also reports end of input; a caller that writes files must treat that as quit, never as yes) when a single candidate is found; otherwise it asks the user to type a path.
 - The `mockLLMClient` in `tier3_test.go` is the canonical test double for `LLMClient` — reuse it rather than creating new ones.

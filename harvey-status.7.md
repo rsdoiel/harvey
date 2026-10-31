@@ -1,6 +1,6 @@
-%harvey(7) user manual | version 0.0.13 00feb2f
+%harvey(7) user manual | version 0.0.20 cd480d8
 % R. S. Doiel
-% 2026-06-19
+% 2026-10-20
 
 # NAME
 
@@ -14,7 +14,7 @@ STATUS — show Harvey's current runtime state
 
 /status prints a snapshot of the active Harvey session. It is the fastest
 way to confirm what model you are talking to, how full the context window is,
-and whether optional subsystems (RAG, routing, recording) are active.
+and whether optional subsystems (routing, recording) are active.
 
 # OUTPUT FIELDS
 
@@ -25,8 +25,8 @@ Backend
   connected the tag [external] is appended.
 
 Debug
-  Shown only when Harvey was started with --debug. Prints the path of the
-  JSONL diagnostic log file being written this session.
+  Shown only when Harvey was started with --debug. Names the session log
+  (agents/sessions/NAME.jsonl) that the level-debug events are written to.
 
 History
   Number of messages in the current conversation history (all roles).

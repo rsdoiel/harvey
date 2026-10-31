@@ -32,8 +32,6 @@ All Harvey commands are organized into logical categories. Each command has its 
 - **[harvey-pin.7.md](harvey-pin.7.md)** — Keep text, an event or a knowledge-base row in front of the model (`/pin`, `/pins`, `/unpin`)
 - **[harvey-git.7.md](harvey-git.7.md)** — Read-only git commands (status, diff, log, show, blame)
 
-### RAG (Retrieval-Augmented Generation)
-
 - **[harvey-learn.7.md](harvey-learn.7.md)** — Learn from context and build knowledge
 - **[harvey-inspect.7.md](harvey-inspect.7.md)** — Inspect model capabilities and metadata
 
@@ -82,7 +80,7 @@ All Harvey commands are organized into logical categories. Each command has its 
 ### System Status
 
 - **[harvey-status.7.md](harvey-status.7.md)** — Show active backend, token usage, routing, and debug state
-- **[harvey-hint.7.md](harvey-hint.7.md)** — Show actionable suggestions for improving results (RAG, memory, KB)
+- **[harvey-hint.7.md](harvey-hint.7.md)** — Show actionable suggestions for improving results (memory, KB)
 
 ---
 
@@ -175,11 +173,6 @@ See **[harvey.1.md](harvey.1.md#environment)** for complete list:
 | Show model info | `/model show <model>` |
 | Start Ollama | `ollama serve` (in a shell) |
 | Check the backend | `/model status` |
-
-### RAG Operations
-
-| Task | Command |
-|------|---------|
 
 ### Knowledge Base
 

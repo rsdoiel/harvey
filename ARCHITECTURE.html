@@ -88,12 +88,12 @@ recorder.go                 Fountain .spmd session recorder
 sessions_files.go           Session file discovery, listing, MostRecentSession()
 replay.go                   Session replay (re-run user turns against new model)
 
---- RAG ---
+--- Embeddings (to be pruned, DR-0035) ---
 rag_support.go              RagStore, Embedder, chunk ingest/query, FTS5+cosine hybrid
 
 --- Scholarly support ---
 scholarly_identifiers.go    14-type identifier extraction (DOI, ORCID, ROR, ArXiv, etc.)
-scholarly_pdf.go            Section-aware PDF chunking; identifier tagging for RAG
+scholarly_pdf.go            Section-aware PDF chunking; identifier tagging
 
 --- Language support ---
 language_detector.go        Language detection from filename and content
@@ -163,90 +163,85 @@ together for one session:</p>
 <td>Capability cache for installed Ollama models</td>
 </tr>
 <tr class="odd">
-<td><code>Rag</code></td>
-<td><code>*RagStore</code></td>
-<td>Active RAG chunk store; nil when not configured</td>
-</tr>
-<tr class="even">
 <td><code>RagOn</code></td>
 <td><code>bool</code></td>
 <td>When true, top-K chunks are prepended before each Chat call</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>SessionsDir</code></td>
 <td><code>string</code></td>
 <td>Absolute path to the sessions directory</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Skills</code></td>
 <td><code>SkillCatalog</code></td>
 <td>Skills discovered at startup</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Recorder</code></td>
 <td><code>*Recorder</code></td>
 <td>Optional Fountain .spmd session log</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>In</code></td>
 <td><code>io.Reader</code></td>
 <td>Interactive prompt source (default <code>os.Stdin</code>; injectable
 for tests)</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Pins</code></td>
 <td><code>[]Pin</code></td>
 <td>Kept in front of the model for the session; re-injected after
 <code>/clear</code></td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Routes</code></td>
 <td><code>*RouteRegistry</code></td>
 <td>Registered remote endpoints; nil when routing not configured</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>ActiveSkill</code></td>
 <td><code>string</code></td>
 <td>Most recently loaded skill name; <code>""</code> when none</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>ActiveSkillSet</code></td>
 <td><code>string</code></td>
 <td>Currently loaded skill-set bundle name; <code>""</code> when
 none</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Tools</code></td>
 <td><code>*ToolRegistry</code></td>
 <td>Schema-based tool registry; nil when tools disabled</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>AuditBuffer</code></td>
 <td><code>*AuditBuffer</code></td>
 <td>In-memory audit log ring buffer</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>SessionLog</code></td>
 <td><code>*SessionLog</code></td>
 <td>Append-only JSONL record of this session (DR-0036); nil when none is
 open</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>OllamaStartedByHarvey</code></td>
 <td><code>bool</code></td>
 <td>True when Harvey launched the Ollama subprocess</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>sessionTurns</code></td>
 <td><code>int</code></td>
 <td>Total completed user turns (used to trigger auto-mine)</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>sessionInjectedTokens</code></td>
 <td><code>int</code></td>
 <td>Tokens injected via UnifiedMemory this session</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>sessionCompressed</code></td>
 <td><code>bool</code></td>
 <td>True if rolling summary fired at least once this session</td>
@@ -295,8 +290,8 @@ path at construction time. Every subsequent operation calls
 <code>Root</code> as a prefix — rejecting <code>../</code> escapes and
 absolute paths outside the root. The <code>agents/</code> subdirectory
 is created automatically and holds <code>knowledge.db</code>,
-<code>memories/</code>, <code>sessions/</code>, and
-<code>rag/*.db</code>.</p>
+<code>memories/</code> and <code>sessions/</code>. Older
+<code>rag/*.db</code> stores are no longer read.</p>
 <p>All file I/O in command handlers goes through
 <code>ws.ReadFile</code>, <code>ws.WriteFile</code>,
 <code>ws.ListDir</code>, or <code>ws.MkdirAll</code>; direct
@@ -461,7 +456,7 @@ state</td>
 </tr>
 <tr class="even">
 <td><code>/hint</code></td>
-<td>Actionable suggestions (unmined sessions, empty RAG, empty KB)</td>
+<td>Actionable suggestions (unmined sessions, empty KB)</td>
 </tr>
 </tbody>
 </table>
@@ -728,19 +723,13 @@ retrieval time by <code>UnifiedMemory.Recall()</code>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>RAG store</strong></td>
-<td><code>rag_support.go</code>, <code>agents/rag/*.db</code></td>
-<td>Vector-embedded document chunks</td>
-<td>Per-prompt via <code>ragAugment()</code> when RAG is on</td>
-</tr>
-<tr class="even">
 <td><strong>Memory store</strong></td>
 <td><code>memory_store.go</code>, <code>memory_miner.go</code>,
 <code>memory_manifest.go</code>, <code>agents/memories/</code></td>
 <td>Typed experience records extracted from sessions</td>
 <td>Session start via <code>UnifiedMemory.Recall()</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><strong>Knowledge base</strong></td>
 <td><code>knowledge.go</code>, <code>agents/knowledge.db</code></td>
 <td>Hand-authored experiments/observations/concepts (relational)</td>
@@ -780,8 +769,6 @@ priority order</h3>
 — always injected first (score 1.0)</li>
 <li>Experiential memories (FTS5 full-text + cosine × confidence) —
 ranked by final score</li>
-<li>RAG chunks — relevance-ranked, discarded below
-<code>ragMinScore</code> (0.3)</li>
 <li>KB observations — optional</li>
 </ol>
 <p>Token budget is enforced via <code>memory.budget_pct</code> in
@@ -987,66 +974,14 @@ retry.</li>
 <li>If nothing selected: Harvey starts without a backend; commands that
 need one print a prompt to connect first.</li>
 </ol>
-<h2 id="rag-retrieval-augmented-generation-rag_support.go">RAG —
-Retrieval-Augmented Generation (<code>rag_support.go</code>)</h2>
-<table>
-<colgroup>
-<col style="width: 50%" />
-<col style="width: 50%" />
-</colgroup>
-<thead>
-<tr class="header">
-<th scope="col">Type</th>
-<th scope="col">Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>Embedder</code></td>
-<td>Interface: <code>Embed(text) ([]float64, error)</code> +
-<code>Name() string</code></td>
-</tr>
-<tr class="even">
-<td><code>RagStore</code></td>
-<td>SQLite-backed chunk store; enforces single-embedder consistency</td>
-</tr>
-<tr class="odd">
-<td><code>Chunk</code></td>
-<td>Retrieved result: ID, Content, Score, Source</td>
-</tr>
-<tr class="even">
-<td><code>RagStoreEntry</code></td>
-<td>Registry entry: Name, DBPath, EmbeddingModel, ModelMap</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Embedding model binding.</strong> Each <code>RagStore</code>
-is bound to one embedding model at creation. <code>Ingest</code> and
-<code>Query</code> both reject an <code>Embedder</code> whose
-<code>Name()</code> differs from the stored model.</p>
-<p><strong>Hybrid retrieval.</strong> <code>RagStore.Query</code> uses
-FTS5 full-text search as a fast lexical pass, then re-ranks results
-using cosine similarity. Chunks below <code>ragMinScore</code> (0.3) are
-discarded. The same threshold is used in <code>terminal.go</code> and
-<code>cmd/assay/main.go</code> — keep them in sync if changed.</p>
-<p><strong>Retrieval flow.</strong>
-<code>Agent.ragAugment(prompt)</code> is called before every
-<code>Chat</code> invocation when <code>RagOn</code> is true. It embeds
-the prompt, queries the active store for the top 5 chunks, discards any
-below the threshold, and prepends a
-<code>### Context (from knowledge base)</code> block. Silent no-op if
-the store is empty or nothing exceeds threshold.</p>
-<p><strong>Database layout.</strong> One table per store:</p>
-<div class="sourceCode" id="cb6"><pre
-class="sourceCode sql"><code class="sourceCode sql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> chunks (</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">id</span>        <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    content   TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    embedding <span class="dt">BLOB</span>    <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">source</span>    TEXT    <span class="kw">NOT</span> <span class="kw">NULL</span> <span class="kw">DEFAULT</span> <span class="st">&#39;&#39;</span></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
-<p>Embeddings are stored as <code>[int32 length][float64...]</code> in
-little-endian byte order. Cosine similarity is computed in Go at query
-time.</p>
+<h2 id="embeddings-rag_support.go-ollama.go">Embeddings
+(<code>rag_support.go</code>, <code>ollama.go</code>)</h2>
+<p><code>/rag</code> was removed (workspace DR-0035): there are no named
+RAG stores and no per-prompt retrieval. <code>rag_support.go</code>
+still holds the older <code>RagStore</code>, <code>Embedder</code> and
+chunk types, kept until the orphan check of DR-0035 slice 4. Retrieval
+over documents is the knowledge base: <code>kb document ingest</code>,
+then <code>/kb search</code>.</p>
 <h2 id="spinner-spinner.go">Spinner (<code>spinner.go</code>)</h2>
 <p>The <code>Spinner</code> runs a background goroutine that:</p>
 <ol type="1">
@@ -1302,7 +1237,7 @@ creating new ones.</p>
 <p>Harvey is in active development. All major architectural components
 described in this document are fully implemented as of v0.0.13:</p>
 <ul>
-<li>✓ Three-silo memory (RAG, experience store, knowledge base)</li>
+<li>✓ Two-silo memory (experience store, knowledge base)</li>
 <li>✓ Tool registry and dual execution paths (structured + prose)</li>
 <li>✓ Routing to other Ollama servers</li>
 <li>✓ Skills system (SKILL.md loaded directly)</li>

@@ -2,7 +2,7 @@ TITLE: Technical Writer
 
 NOTE:
   Recommended model: llama3.1:8b or granite3.3:2b
-  RAG: ingest your project docs, style guide, and any existing
+  Documents: ingest your project docs, style guide, and any existing
        reference material
 
 NAME:
