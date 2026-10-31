@@ -24,17 +24,12 @@ human-review questions. assay sends each prompt to each model, records
 the response, runs all automated checks, and writes a summary table plus
 per-prompt results to the output directory.
 
-When a RAG store is provided via -rag-db, assay embeds each prompt and
-injects the top-k retrieved chunks as context before calling the model.
-With -rag-compare, every prompt is run twice (once without RAG, once with)
-and a per-check delta table is appended to the report.
-
 With -guide-compare and -guide-file, every prompt is run twice (once with
 no system message, once with the guide file's content as a system message)
 and a per-check delta table is appended to the report — useful for testing
 whether an always-on guide (a HARVEY.md section, a skill's prose) still
 changes model behavior once a computational sensor exists for the same
-failure mode. Mutually exclusive with -rag-compare.
+failure mode.
 
 # OPTIONS
 
@@ -50,29 +45,13 @@ failure mode. Mutually exclusive with -rag-compare.
 : Run only prompts in the named category. Omit to run all categories.
 
 -ollama URL
-: Base URL of the Ollama server (also used for RAG embeddings).
+: Base URL of the Ollama server.
   Default: http://localhost:11434
 
 -output PATH
 : Directory to write the report (report.md) and results (results.json).
   Default: $WORKSPACE/assay-results/assay-TIMESTAMP/ if run inside a
   Harvey workspace, or assay-results/assay-TIMESTAMP/ otherwise.
-
--rag-db PATH
-: Path to a Harvey RAG store (SQLite). When set, assay embeds each
-  prompt and prepends retrieved context chunks before calling the model.
-
--rag-top-k N
-: Number of RAG chunks to retrieve per prompt when -rag-db is set.
-  Default: 3
-
--rag-embed-model MODEL
-: Ollama embedding model used to embed prompts for RAG retrieval.
-  Default: nomic-embed-text
-
--rag-compare
-: Run each prompt twice — once without RAG context and once with — and
-  append a per-check delta table to the report. Requires -rag-db.
 
 -guide-file PATH
 : Path to a plain text file whose content becomes a system message sent
@@ -83,7 +62,7 @@ failure mode. Mutually exclusive with -rag-compare.
 : Run each prompt twice — once with no system message (identical to
   assay's default dispatch) and once with -guide-file's content sent
   as a system message — and append a per-check delta table to the report.
-  Requires -guide-file. Mutually exclusive with -rag-compare.
+  Requires -guide-file.
 
 -h, -help, --help
 : Display this help message.
@@ -110,12 +89,11 @@ thing that failed, using the workspace's exit codes:
 
 2
 : The command line is wrong: an unknown option, an option without its value, a
-  surplus argument, or options that conflict (-rag-compare without -rag-db,
-  -guide-compare without -guide-file).
+  surplus argument, or options that conflict (-guide-compare without -guide-file).
 
 65
 : A file assay read is wrong: a corpus that will not parse or has no
-  prompts, or a RAG store it cannot use.
+  prompts.
 
 66
 : A named input is missing: the -corpus or -guide-file file.
@@ -168,10 +146,10 @@ Run only the go-crosswalk category against a specific model:
   assay -models qwen2.5-coder:7b -category go-crosswalk
 ~~~
 
-Run with RAG context injection and comparison:
+Compare a run with and without a guide file as the system message:
 
 ~~~
-  assay -models llama3.1:8b -rag-db agents/rag/harvey.db -rag-compare
+  assay -models llama3.1:8b -guide-file HARVEY.md -guide-compare
 ~~~
 
 Write results to a custom directory:

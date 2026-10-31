@@ -125,9 +125,13 @@ stay on disk and are not converted (their vectors are bound to an
 embedding model). The last release that carries <code>/rag</code> is
 v0.0.20. Still there until the next slices: the RAG parts of
 <code>/memory</code>, <code>/status</code>, <code>/hint</code>, the
-memory tools and recall, and <code>assay -rag-db</code>; they find no
-store, so they do nothing. The scholarly-document designs moved to
-<code>agents/projects/knowledge/notes/</code>.</p></li>
+memory tools and recall; they find no store, so they do nothing.
+<code>assay</code> lost <code>-rag-db</code>, <code>-rag-top-k</code>,
+<code>-rag-embed-model</code> and <code>-rag-compare</code> (an old
+command line using them is now a usage error), and its report and
+<code>results.json</code> no longer carry RAG fields;
+<code>-guide-compare</code> is unchanged. The scholarly-document designs
+moved to <code>agents/projects/knowledge/notes/</code>.</p></li>
 <li><p><strong><code>/kb</code> runs the installed
 <code>kb</code></strong> (workspace DR-0034). <code>/kb ARGS</code> runs
 <code>kb -db &lt;workspace db&gt; ARGS</code> in the workspace, shows
