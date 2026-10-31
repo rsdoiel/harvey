@@ -109,6 +109,7 @@ func RunChunkedAnalysis(ctx context.Context, client LLMClient, rec *Recorder, pa
 		chunkCtx := withCallPurpose(ctx, "chunk", map[string]any{
 			"path": params.Filename, "from_line": chunk.StartLine, "to_line": chunk.EndLine,
 			"chunk": chunkNum, "of": n,
+			"doc_type": docTypeLabel(params.DocType), "chunk_size": params.Config.ChunkSizeBytes,
 		})
 		_, err := client.Chat(chunkCtx, messages, &buf)
 
@@ -200,4 +201,13 @@ func probeClientReachable(client LLMClient) (reachable, checked bool) {
 	default:
 		return false, false
 	}
+}
+
+// docTypeLabel names a document type as the session log and the Fountain scene
+// do: "source" for code, "prose" for everything else.
+func docTypeLabel(t DocType) string {
+	if t == DocTypeSource {
+		return "source"
+	}
+	return "prose"
 }

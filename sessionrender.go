@@ -87,6 +87,21 @@ type renderResponse struct {
 	MS int64 `json:"ms"`
 }
 
+type renderRequest struct {
+	Form    string `json:"form"`
+	Purpose string `json:"purpose"`
+	Backend string `json:"backend"`
+	Model   string `json:"model"`
+	Source  struct {
+		Path      string `json:"path"`
+		Chunk     int    `json:"chunk"`
+		Of        int    `json:"of"`
+		Chunks    int    `json:"chunks"`
+		DocType   string `json:"doc_type"`
+		ChunkSize int    `json:"chunk_size"`
+	} `json:"source"`
+}
+
 type renderInjection struct {
 	Source      string          `json:"source"`
 	Origin      string          `json:"origin"`
@@ -198,6 +213,10 @@ func RenderFountain(events []Event, opts RenderOptions) []byte {
 			if inj.Source == "skill" {
 				renderSkill(out, opts, e, inj, at)
 			}
+		case KindModelRequest:
+			if isChunkStart(e) {
+				i = renderChunkAnalysis(out, opts, events, i, at) - 1
+			}
 		case KindUserInput:
 			end := turnEnd(events, i)
 			renderTurn(out, opts, events[i:end], user, start.Workspace, modelName, label, at)
@@ -244,6 +263,29 @@ func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspa
 	}
 	_ = json.Unmarshal(turn[0].Data, &input)
 
+	// A chunk analysis inside the turn (the model asked for one, or an oversized
+	// file was chunked) was written by the recorder when it ran, before the
+	// turn's own scene; render those first and set their events aside.
+	consumed := map[int]bool{}
+	adhoc := map[string]bool{}
+	for k := 1; k < len(turn); k++ {
+		if turn[k].Level == LevelDebug || turn[k].Kind != KindModelRequest {
+			continue
+		}
+		var rq renderRequest
+		_ = json.Unmarshal(turn[k].Data, &rq)
+		if rq.Form == "adhoc" {
+			adhoc[turn[k].ID] = true
+		}
+		if isChunkStart(turn[k]) {
+			next := renderChunkAnalysis(out, opts, turn, k, at)
+			for m := k; m < next; m++ {
+				consumed[m] = true
+			}
+			k = next - 1
+		}
+	}
+
 	var last *renderResponse
 	var failure *renderResponse
 	var skills []renderInjection
@@ -254,14 +296,21 @@ func renderTurn(out fountainOut, opts RenderOptions, turn []Event, user, workspa
 	}
 	var calls []call
 	results := map[string]string{}
-	for _, e := range turn[1:] {
-		if e.Level == LevelDebug {
+	for k, e := range turn {
+		if k == 0 || consumed[k] || e.Level == LevelDebug {
 			continue
 		}
 		switch e.Kind {
 		case KindModelResponse:
 			var r renderResponse
 			_ = json.Unmarshal(e.Data, &r)
+			var link struct {
+				Request string `json:"request"`
+			}
+			_ = json.Unmarshal(e.Data, &link)
+			if adhoc[link.Request] {
+				continue // an answer to a side request is not the turn's reply
+			}
 			if r.Status == "ok" {
 				last = &r
 			} else {
@@ -439,4 +488,100 @@ func renderSkill(out fountainOut, opts RenderOptions, e Event, inj renderInjecti
 	if body := opts.contentOf(inj.Text); body != "" {
 		out.dialogue(char, "", body)
 	}
+}
+
+// isChunkStart reports whether e is the request for the first chunk of an analysis.
+func isChunkStart(e Event) bool {
+	if e.Kind != KindModelRequest || e.Level == LevelDebug {
+		return false
+	}
+	var rq renderRequest
+	_ = json.Unmarshal(e.Data, &rq)
+	return rq.Form == "adhoc" && rq.Purpose == "chunk" && rq.Source.Chunk == 1
+}
+
+// responseTo finds the model_response that answers the request with this id.
+func responseTo(events []Event, from int, id string) *renderResponse {
+	for j := from; j < len(events); j++ {
+		if events[j].Kind != KindModelResponse {
+			continue
+		}
+		var link struct {
+			Request string `json:"request"`
+		}
+		_ = json.Unmarshal(events[j].Data, &link)
+		if link.Request == id {
+			var r renderResponse
+			_ = json.Unmarshal(events[j].Data, &r)
+			return &r
+		}
+	}
+	return nil
+}
+
+// renderChunkAnalysis writes the scene for a chunk analysis that starts at
+// events[i]: the file, the model, each chunk's answer with how it ended, and the
+// synthesis. A chunk that failed shows the failure as the recorder did. It
+// returns the index of the first event after the analysis.
+func renderChunkAnalysis(out fountainOut, opts RenderOptions, events []Event, i int, at func(Event) string) int {
+	var first renderRequest
+	_ = json.Unmarshal(events[i].Data, &first)
+	path, total := first.Source.Path, first.Source.Of
+	model := first.Model
+	label := "prose"
+	boundary := "paragraph"
+	if first.Source.DocType == "source" {
+		label, boundary = "source", "block"
+	}
+	out.sceneHeading("INT. CHUNK ANALYSIS — " + path + " " + at(events[i]))
+	out.action(fmt.Sprintf("Harvey processes %s as %d chunks of type %s.", path, total, label))
+	out.note(fmt.Sprintf("chunk: file=%s, chunks=%d, model=%s, boundary=%s, chunk-size=%d",
+		path, total, model, boundary, first.Source.ChunkSize))
+
+	k := i
+	for ; k < len(events); k++ {
+		e := events[k]
+		if e.Level == LevelDebug {
+			continue
+		}
+		if e.Kind == KindModelResponse || e.Kind == KindPermission || e.Kind == KindFault {
+			continue // answers are looked up with their requests
+		}
+		if e.Kind != KindModelRequest {
+			break
+		}
+		var rq renderRequest
+		_ = json.Unmarshal(e.Data, &rq)
+		if rq.Form != "adhoc" || rq.Source.Path != path {
+			break
+		}
+		resp := responseTo(events, k+1, e.ID)
+		switch rq.Purpose {
+		case "chunk":
+			result, outcome := "", "ok"
+			if resp != nil && resp.Status == "ok" {
+				result = opts.contentOf(resp.Text)
+			} else if resp != nil {
+				msg := strings.TrimSpace(opts.contentOf(resp.Error))
+				result = fmt.Sprintf("[chunk %d failed: %s]", rq.Source.Chunk, msg)
+				outcome = "error: " + firstLine(msg)
+			}
+			out.dialogue(extractModelName(rq.Model), fmt.Sprintf("chunk %d/%d", rq.Source.Chunk, total), result)
+			out.note(fmt.Sprintf("chunk-result: %d/%d — %s", rq.Source.Chunk, total, outcome))
+		case "synthesis":
+			text, outcome := "", "ok"
+			if resp != nil && resp.Status == "ok" {
+				text = opts.contentOf(resp.Text)
+			} else if resp != nil {
+				outcome = "error: " + firstLine(strings.TrimSpace(opts.contentOf(resp.Error)))
+			}
+			out.dialogue("HARVEY", "", "Synthesizing results.")
+			out.dialogue(extractModelName(rq.Model), "synthesis", text)
+			out.note(fmt.Sprintf("synthesis: model=%s — %s", rq.Model, outcome))
+			return k + 1
+		default:
+			return k
+		}
+	}
+	return k
 }

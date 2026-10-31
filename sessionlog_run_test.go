@@ -25,6 +25,10 @@ var scriptedReply string
 // are write offers made. Tests reset it with t.Cleanup.
 var scriptedTerminal bool
 
+// scriptedFailOn, when above zero, makes the nth chat call of a scripted run fail
+// with an HTTP 500. Tests reset it with t.Cleanup.
+var scriptedFailOn int
+
 // fakeOllamaTwoModels serves /api/tags with two models, /api/show, and a
 // streaming /api/chat that answers FIRST, SECOND, … and names the model that
 // was asked, so a test can see which model answered.
@@ -85,7 +89,12 @@ func fakeOllama(t *testing.T, tools bool) *httptest.Server {
 			mu.Lock()
 			word := words[turn%len(words)]
 			turn++
+			n := turn
 			mu.Unlock()
+			if scriptedFailOn > 0 && n == scriptedFailOn {
+				http.Error(w, `{"error":"boom"}`, http.StatusInternalServerError)
+				return
+			}
 			w.Header().Set("Content-Type", "application/x-ndjson")
 			if scriptedReply != "" {
 				word = scriptedReply
