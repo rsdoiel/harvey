@@ -162,7 +162,9 @@ func DraftTranscript(events []Event, blob func(string) (string, bool)) []Transcr
 				Args    json.RawMessage `json:"args"`
 				Purpose string          `json:"purpose"`
 			}
-			if json.Unmarshal(ev.Data, &d) != nil || d.Purpose != "user_command" {
+			// /kb draft is in the log of the session it reads, with its report;
+			// a drafting run is not something the session learned.
+			if json.Unmarshal(ev.Data, &d) != nil || d.Purpose != "user_command" || d.Verb == "draft" {
 				continue
 			}
 			args := cutMarked(strings.TrimSpace(argsText(d.Args, blob)), transcriptArgCap)

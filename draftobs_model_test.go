@@ -143,10 +143,15 @@ func TestFinishBody_NamesTheSessionAndTheEvents(t *testing.T) {
 
 // A fake Drafter that returns scripted replies and records the purpose of each call.
 type scriptDrafter struct {
-	replies  []string
-	errs     []error
-	purposes []string
-	calls    int
+	replies   []string
+	errs      []error
+	purposes  []string
+	calls     int
+	lastUser  string
+	afterCall func(n int)
+	// during runs at the start of a call with the call's context and its
+	// number; an error it returns is the call's error.
+	during func(ctx context.Context, n int) error
 }
 
 func (f *scriptDrafter) Name() string { return "fake" }
@@ -154,6 +159,17 @@ func (f *scriptDrafter) Draft(ctx context.Context, msgs []Message) (string, erro
 	i := f.calls
 	f.calls++
 	f.purposes = append(f.purposes, callPurposeOf(ctx).name)
+	if len(msgs) > 1 {
+		f.lastUser = msgs[len(msgs)-1].Content
+	}
+	if f.afterCall != nil {
+		defer f.afterCall(f.calls)
+	}
+	if f.during != nil {
+		if err := f.during(ctx, f.calls); err != nil {
+			return "", err
+		}
+	}
 	if i < len(f.errs) && f.errs[i] != nil {
 		return "", f.errs[i]
 	}

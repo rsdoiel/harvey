@@ -44,6 +44,27 @@ func learnDrafterFor(a *Agent, mention string, out io.Writer) (Drafter, func(), 
 	if name == "" {
 		name = strings.TrimSpace(a.Config.LearnModel)
 	}
+	return resolveDrafter(a, name, out)
+}
+
+/** resolveDrafter is learnDrafterFor after the name is settled: an empty name
+ * is the active model, a name is a route or a local model. `/kb draft` calls
+ * it directly, because learn_model is for `/kb learn draft` only.
+ *
+ * Parameters:
+ *   a    (*Agent)    — the running agent.
+ *   name (string)    — a route or model name without the @, or "" for the active model.
+ *   out  (io.Writer) — where model-switch progress is written.
+ *
+ * Returns:
+ *   Drafter — the model to draft with.
+ *   func()  — restore; never nil on success.
+ *   error   — if the name matches no route or model, or no model is active.
+ *
+ * Example:
+ *   d, restore, err := resolveDrafter(a, "granite", out)
+ */
+func resolveDrafter(a *Agent, name string, out io.Writer) (Drafter, func(), error) {
 	if a.learnDrafterOverride != nil {
 		return a.learnDrafterOverride(name, out)
 	}

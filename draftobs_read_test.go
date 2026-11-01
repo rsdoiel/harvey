@@ -222,3 +222,20 @@ func TestDraftTranscript_EmptyLogIsNoEntries(t *testing.T) {
 		t.Errorf("got %+v", got)
 	}
 }
+
+// /kb draft is itself in the log of the session it reads (loggedKB writes its
+// kb_call before it runs), and an earlier run's report is there too. Neither is
+// something the session learned.
+func TestDraftTranscript_TheDraftCommandItselfIsLeftOut(t *testing.T) {
+	l, _ := openTestLog(t, nil)
+	d := &drafted{l: l, ids: map[string]string{}}
+	d.add(t, "user", KindUserInput, LevelInfo, map[string]any{"turn": 1, "text": "a real question"})
+	k1 := d.add(t, "k1", KindKBCall, LevelInfo, map[string]any{"verb": "draft", "args": "--project harvey", "purpose": "user_command"})
+	d.add(t, "r1", KindKBResult, LevelInfo, map[string]any{"call": k1, "status": "ok", "output": "3 drafts written REPORT SHOULD NOT APPEAR"})
+	k2 := d.add(t, "k2", KindKBCall, LevelInfo, map[string]any{"verb": "draft", "args": "", "purpose": "user_command"})
+	_ = k2
+	got := DraftTranscript(readBack(t, l), nil)
+	if len(got) != 1 || !strings.Contains(got[0].Text, "a real question") {
+		t.Fatalf("want only the question, got:\n%s", transcriptText(got))
+	}
+}

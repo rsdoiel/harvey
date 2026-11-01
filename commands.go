@@ -206,6 +206,9 @@ func (a *Agent) registerCommands() {
 			Description: "Run the installed kb on the workspace knowledge base",
 			Handler:     cmdKB,
 			Subcommands: kbVerbNames(),
+			ArgCompletion: map[string]func(*Agent) []string{
+				"draft": draftSessionCandidates,
+			},
 		},
 		"memory": {
 			Usage:       "/memory <mine|list|show|flag|forget|status|recall|profile> [args...]",

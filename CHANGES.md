@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added
+
+- **`/kb draft [--project NAME] [--limit N] [@route] [SESSION]`** drafts observations from a recorded session (DR-0037 item 3). It reads
+  what was said and what the tools returned, in passes that fit the drafting model's window, asks the active model (or `@route`;
+  `learn_model` is not used) what is worth remembering, and writes each answer with `kb observation add --draft --by "harvey MODEL"`.
+  A draft is not searchable or recalled until the author promotes it with `kb observation review promote` in a normal shell; harvey
+  never promotes one (tests grep the package for it). At most 5 per run (`--limit 0` for all); proposals that repeat what the project
+  already holds, in any status, are skipped and named. A failed pass does not stop the others and the exit code is the first failure's.
+  Each draft ends with a line naming its session and events until kb can link a draft to a session event. Needs kb 0.0.30.
+  Ctrl-C once stops after the pass in flight and keeps what was written; Ctrl-C again cancels the request (a hailo-ollama server wedges
+  when a request is abandoned, so the first never does). Tab after `/kb draft` offers the recorded sessions. The command is logged as one
+  `kb_call` and `kb_result`, whose items list the drafts it wrote.
+- **`kb:` in `agents/harvey.yaml`** with `project:`, the kb project `/kb draft` uses when `--project` is not given. See
+  `CONFIGURATION.md`.
+
 ### Changed
 
 - **harvey pairs with a kb version.** Every call to the installed `kb` first checks `kb -version` (once per process) against

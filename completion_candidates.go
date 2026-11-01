@@ -1,5 +1,10 @@
 package harvey
 
+import (
+	"os"
+	"strings"
+)
+
 // completion_candidates.go — functions that supply argument value candidates
 // for tab completion (ArgCompletion entries on Command). These must be fast:
 // no LLM calls, no network I/O. File I/O is acceptable (memory store listing).
@@ -158,6 +163,38 @@ func profileTemplateNameCandidates(a *Agent) []string {
 	names := make([]string, len(templates))
 	for i, t := range templates {
 		names[i] = t.Name
+	}
+	return names
+}
+
+/** draftSessionCandidates returns the names of the recorded sessions that have
+ * a log, for Tab after /kb draft. It reads the sessions directory only; a
+ * session with only a rendered Fountain file has no log to draft from and is
+ * not offered, and a log and the file rendered from it are one name.
+ *
+ * Parameters:
+ *   a (*Agent) — the running agent; its SessionsDir is read.
+ *
+ * Returns:
+ *   []string — session names (the .jsonl file names without the extension);
+ *              empty when the directory is missing.
+ *
+ * Example:
+ *   names := draftSessionCandidates(a) // ["harvey-session-20261030-143612"]
+ */
+func draftSessionCandidates(a *Agent) []string {
+	if a == nil {
+		return nil
+	}
+	entries, err := os.ReadDir(a.SessionsDir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
+			names = append(names, strings.TrimSuffix(e.Name(), ".jsonl"))
+		}
 	}
 	return names
 }

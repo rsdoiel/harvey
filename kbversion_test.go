@@ -79,7 +79,7 @@ func TestKB_TooOldIsUnavailableAndIsNotRun(t *testing.T) {
 	if _, err := a.kbRecall("zebra", 3); err == nil || ExitCodeFor(err) != ClassUnavailable {
 		t.Errorf("kbRecall with an old kb: %v", err)
 	}
-	if got := strings.Join(kbVerbNames(), ","); got != "inject,learn" {
+	if got := strings.Join(kbVerbNames(), ","); got != "draft,inject,learn" {
 		t.Errorf("an old kb must not supply verbs, got %s", got)
 	}
 }

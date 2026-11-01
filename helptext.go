@@ -276,6 +276,9 @@ are also available from the shell: harvey --help TOPIC.
 /kb [OPTIONS] VERB [ARGS...]
 : run the installed kb on the workspace knowledge base (kb(1)); /kb inject [PROJECT] adds knowledge base content to the conversation, and /kb project use ID sets the current project for inject and learn
 
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
+: read a recorded session and write what a model finds worth keeping to the knowledge base as draft observations (at most 5; --limit 0 for all). A draft is not searchable until you promote it with kb observation review promote in a normal shell
+
 /kb learn ingest [--min-words N] [--all] [--dry-run]
 : offer recorded sessions (at least 200 words) and hand-off notes to the knowledge base as documents, and ingest the ones you choose
 
@@ -2195,6 +2198,7 @@ KB — the knowledge base, through the installed kb
 /kb inject [PROJECT]
 /kb project use ID
 /kb learn [ingest|draft|review|concepts] [ARGS]
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
 
 # DESCRIPTION
 
@@ -2296,6 +2300,49 @@ steps work on the current project (/kb project use ID).
   never rewritten: they are records, and [[...]] in them reads as a note.
   Tagging changes source text, so summaries of changed sections are marked
   stale; the closing line says how many.
+
+# DRAFTING OBSERVATIONS
+
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
+  Read a recorded session and ask a model what in it is worth remembering,
+  then write each answer to the knowledge base as a draft observation. A draft
+  is not searchable, not recalled into a prompt and not counted until you
+  promote it; harvey never promotes one. Nothing runs on its own: you type
+  this when you want it.
+
+  SESSION is a session name (harvey-session-20261030-143612) or the path of a
+  .jsonl log; with none it reads the session you are in. It reads what you
+  and the model said, and each tool call with its status and the start of its
+  output, in passes that fit the drafting model's context window. Skill and
+  knowledge-base text added to prompts is not read, and neither is anything
+  the log recorded at debug level.
+
+  The model is @route if given, else the active model (learn_model is for
+  /kb learn only). Each draft is signed "harvey MODEL", so the review queue
+  shows which model wrote it, and ends with a line "Drafted from SESSION#a..#b."
+  naming the events it came from.
+
+  The project is --project, else kb: {project: NAME} in agents/harvey.yaml,
+  else the workspace directory's name when a kb project has it; otherwise
+  /kb draft stops and lists the projects.
+
+  At most 5 drafts are written (--limit N changes that; --limit 0 writes all).
+  A proposal that repeats an observation already in the project, in any
+  status, or an earlier proposal of the run, is skipped and the report says
+  what it matched. A pass whose model call fails is reported and does not stop
+  the others; the exit code is that of the first failure. Ctrl-C once stops
+  after the pass in flight (its answer is kept, with what was already
+  written); Ctrl-C again cancels the request now, for a model that is stuck.
+  Tab after /kb draft offers the recorded sessions.
+
+  Review the drafts in a normal shell, because promoting needs a terminal:
+
+~~~
+  kb observation review list --project NAME
+  kb observation review promote ID
+~~~
+
+  This needs kb 0.0.30 or newer.
 
 # WORKFLOW EXAMPLE
 

@@ -48,6 +48,9 @@ func cmdKB(a *Agent, args []string, out io.Writer) error {
 	if verb == "project" && len(logArgs) > 1 && strings.ToLower(logArgs[1]) == "use" {
 		return kbProjectUse(a, logArgs[2:], out)
 	}
+	if verb == "draft" {
+		return a.loggedKB(verb, append([]string{verb}, args[1:]...), out, func(w io.Writer) error { return kbDraft(a, args[1:], w) })
+	}
 	switch verb {
 	case "inject", "learn":
 		if a.KB == nil {
@@ -168,7 +171,7 @@ func kbExitError(code int, timedOut bool) error {
 // completion; harvey's own verbs are added. When kb is absent or answers
 // unreadably only harvey's own are returned.
 func kbVerbNames() []string {
-	names := map[string]bool{"inject": true, "learn": true}
+	names := map[string]bool{"inject": true, "learn": true, "draft": true}
 	if bin, err := lookKB(); err == nil {
 		if raw, err := exec.Command(bin, "-json", "verbs").Output(); err == nil {
 			var t struct {

@@ -564,6 +564,14 @@ permissions:
 # or edits every draft before it is trusted.
 learn_model: granite
 
+# ── How harvey uses the installed kb ─────────────────────────────────────────
+kb:
+  # The kb project /kb draft attaches drafts to when --project is not given.
+  # Without it, /kb draft uses the workspace directory's name if a kb project
+  # has it, and otherwise stops and lists the projects. (~/Laboratory holds many
+  # projects, so set this when you work on one project most of the time.)
+  project: harvey
+
 # ── Chunked document analysis ────────────────────────────────────────────────
 chunking:
   enabled: true                    # when false, read_file reads files without any size check

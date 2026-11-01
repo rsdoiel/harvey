@@ -150,11 +150,11 @@ func TestKBRegistry_ListsKBVerbsAndHarveysOwn(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	got := strings.Join(kbVerbNames(), ",")
-	if got != "inject,learn,observation,search" {
+	if got != "draft,inject,learn,observation,search" {
 		t.Errorf("verbs = %s", got)
 	}
 	t.Setenv("PATH", t.TempDir())
-	if got := strings.Join(kbVerbNames(), ","); got != "inject,learn" {
+	if got := strings.Join(kbVerbNames(), ","); got != "draft,inject,learn" {
 		t.Errorf("without kb, verbs = %s, want harvey's own only", got)
 	}
 }
