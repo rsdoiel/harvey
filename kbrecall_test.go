@@ -134,3 +134,62 @@ func TestKBRecallContract_InstalledKB(t *testing.T) {
 		t.Errorf("no-match: %+v, %v", r, err)
 	}
 }
+
+// DR-0090 (kb 0.0.30): a draft observation is not recalled. The fixtures were
+// captured from kb 0.0.30; in both, a model-drafted observation shares the
+// concept with, or is the only observation of, a concept that is recalled.
+func TestKBRecallContract_DraftIsNotRecalled(t *testing.T) {
+	res, err := ParseKBRecall(readKBFixture(t, "concept_recall_draft_excluded.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) != 1 || res.Hits[0].ID != 1 {
+		t.Fatalf("want only the reviewed observation, got %+v", res.Hits)
+	}
+	for _, h := range res.Hits {
+		if strings.Contains(FormatKBRecallHit(h), "model guess") {
+			t.Errorf("a draft reached the prompt text: %q", FormatKBRecallHit(h))
+		}
+	}
+}
+
+// A concept that only a draft is linked to still matches, with no hits: an
+// empty result, not an error and not the draft's text.
+func TestKBRecallContract_ConceptOnlyADraftLinksHasNoHits(t *testing.T) {
+	res, err := ParseKBRecall(readKBFixture(t, "concept_recall_draft_only.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) != 0 || len(res.Matched) != 1 || res.Matched[0] != "okapi" {
+		t.Fatalf("got %+v", res)
+	}
+}
+
+// Against the installed kb: a draft recorded with `add --draft` stays out of
+// recall until promoted. Skipped when kb is absent or older than harvey needs.
+func TestKBRecallContract_InstalledKBHidesDrafts(t *testing.T) {
+	if _, err := lookKB(); err != nil {
+		t.Skipf("no usable kb: %v", err)
+	}
+	db := filepath.Join(t.TempDir(), "t.db")
+	run := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("kb", append([]string{"-db", db}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("kb %v: %v\n%s", args, err, out)
+		}
+	}
+	run("project", "add", "demo", "demo")
+	run("concept", "add", "zebra", "striped horse")
+	run("observation", "add", "--project", "demo", "finding", "zebra stripes repel flies")
+	run("observation", "add", "--project", "demo", "--draft", "--by", "harvey test", "finding", "zebra stripes are a model guess")
+	run("link", "observation", "1", "zebra")
+	run("link", "observation", "2", "zebra")
+	out, err := exec.Command("kb", "-db", db, "-json", "concept", "recall", "zebra").Output()
+	if err != nil {
+		t.Fatalf("recall: %v", err)
+	}
+	res, err := ParseKBRecall(out)
+	if err != nil || len(res.Hits) != 1 || strings.Contains(res.Hits[0].Excerpt, "model guess") {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+}

@@ -5,7 +5,8 @@
 ### Changed
 
 - **harvey pairs with a kb version.** Every call to the installed `kb` first checks `kb -version` (once per process) against
-  the oldest release harvey works with, 0.0.29 (`kbMinVersion` in `kbversion.go`). A kb that is older, or whose version
+  the oldest release harvey works with, 0.0.30 (`kbMinVersion` in `kbversion.go`), the first with draft observations
+  (knowledge DR-0090): a draft is left out of recall and of the default `observation list`, and only a person at a terminal can promote one. A kb that is older, or whose version
   cannot be read, is treated as unavailable: `/kb`, recall and the `recall_knowledge` tool report it (exit 69) and do not run
   it, and `/kb` completion offers only harvey's own verbs. Raise `kbMinVersion` together with a fixture and a contract test
   when harvey comes to depend on something a newer kb added. `codemeta.json` lists kb under `softwareRequirements`.

@@ -15,8 +15,13 @@ import (
  * Raise it when harvey starts to depend on something a newer kb added (a
  * contract test and a fixture go with the change); a kb older than this, or
  * one that does not report a version, is treated as unavailable.
+ *
+ * 0.0.30 is the first release with draft observations (knowledge DR-0090):
+ * `observation add --draft --by`, drafts left out of recall and out of the
+ * default `observation list`, and `observation review promote`, which only a
+ * person at a terminal can run. Harvey drafts; it never promotes.
  */
-const kbMinVersion = "0.0.29"
+const kbMinVersion = "0.0.30"
 
 var kbVersionPattern = regexp.MustCompile(`^kb\s+v?(\d+)\.(\d+)\.(\d+)`)
 

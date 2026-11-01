@@ -109,3 +109,24 @@ func TestKB_SupportedVersionRunsAndIsAskedOnce(t *testing.T) {
 		t.Errorf("kb -version asked %d times, want 1 per process", n)
 	}
 }
+
+// kb 0.0.30 is the first release with draft observations (DR-0090). Until
+// harvey raised kbMinVersion, a 0.0.29 kb was accepted and a draft written to
+// it by `add --draft` would have failed as an unknown flag.
+func TestKB_ReleaseBeforeDraftsIsUnavailable(t *testing.T) {
+	dir := fakeKBWithVersion(t, "0.0.29")
+	a := newTestAgent(t)
+	err := a.runKB([]string{"observation", "list", "--project", "x"}, &strings.Builder{})
+	if err == nil || ExitCodeFor(err) != ClassUnavailable || !strings.Contains(err.Error(), "0.0.30") {
+		t.Fatalf("a 0.0.29 kb must be unavailable and name 0.0.30, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "calls")); statErr == nil {
+		t.Error("an unsupported kb must not be run")
+	}
+}
+
+func TestKB_MinimumIsTheReleaseWithDrafts(t *testing.T) {
+	if kbMinVersion != "0.0.30" {
+		t.Errorf("kbMinVersion = %q, want 0.0.30", kbMinVersion)
+	}
+}
