@@ -204,6 +204,8 @@ type Config struct {
 	Memory MemoryConfig
 	// Chunking: context-overflow detection and chunked document analysis settings.
 	Chunking ChunkConfig
+	// KB holds settings about how harvey uses the installed kb (harvey.yaml kb:).
+	KB KBConfig
 	// LearnModel names the route or local model `/kb learn draft` uses to draft
 	// document summaries (knowledge-learning-mode-design.md decision 6). Empty
 	// means the active model. Kept distinct from any retrieval-time model: the
@@ -588,6 +590,21 @@ type MemoryConfig struct {
 	CurrentProjectID int64                // in-session active knowledge-base project ID (0 = none)
 }
 
+/** KBConfig is the kb: section of harvey.yaml: how harvey uses the installed
+ * kb, apart from where its database is (memory.knowledge_base.path).
+ *
+ * Fields:
+ *   Project (string) — the kb project /kb draft attaches drafts to when
+ *                      --project is not given; empty = use the workspace
+ *                      directory's name if a kb project has it, else stop.
+ *
+ * Example:
+ *   cfg.KB.Project = "harvey" // harvey.yaml: kb: {project: harvey}
+ */
+type KBConfig struct {
+	Project string
+}
+
 /** RollingSummaryConfig controls automatic working-memory compression.
  * When the conversation reaches WarnAtPct of the prompt limit (the model's
  * prompt limit, else 85% of its context window), Harvey summarises all but the
@@ -699,6 +716,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	if y.Memory.KnowledgeBase.Path != "" {
 		cfg.Memory.KnowledgeDB = y.Memory.KnowledgeBase.Path
+	}
+	if y.KB.Project != "" {
+		cfg.KB.Project = y.KB.Project
 	}
 	if y.SessionsDir != "" {
 		cfg.SessionsDir = y.SessionsDir

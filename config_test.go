@@ -557,3 +557,54 @@ func TestLoadHarveyYAML_RagSectionAfterTheRemoval(t *testing.T) {
 		t.Errorf("no rag section: err %v, RagRemoved %v", err, cfg.Memory.RagRemoved)
 	}
 }
+
+// kb.project names the kb project /kb draft attaches its drafts to when
+// --project is not given (observation-drafting design, decision 4).
+func TestLoadHarveyYAML_KBProject(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	if err := os.MkdirAll(filepath.Join(dir, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	y := "memory:\n  knowledge_base:\n    path: kb.db\nkb:\n  project: harvey\n"
+	if err := os.WriteFile(filepath.Join(dir, "agents", "harvey.yaml"), []byte(y), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatalf("LoadHarveyYAML: %v", err)
+	}
+	if cfg.KB.Project != "harvey" || cfg.Memory.KnowledgeDB != "kb.db" {
+		t.Errorf("project %q, db %q", cfg.KB.Project, cfg.Memory.KnowledgeDB)
+	}
+	if DefaultConfig().KB.Project != "" {
+		t.Error("the default must be no project")
+	}
+}
+
+func TestSaveMemoryConfig_KeepsTheKBProject(t *testing.T) {
+	dir := t.TempDir()
+	ws := &Workspace{Root: dir}
+	if err := os.MkdirAll(filepath.Join(dir, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	y := "kb:\n  project: harvey\n"
+	if err := os.WriteFile(filepath.Join(dir, "agents", "harvey.yaml"), []byte(y), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := LoadHarveyYAML(ws, cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Memory.KnowledgeDB = "other.db"
+	if err := SaveMemoryConfig(ws, cfg); err != nil {
+		t.Fatalf("SaveMemoryConfig: %v", err)
+	}
+	again := DefaultConfig()
+	if err := LoadHarveyYAML(ws, again); err != nil {
+		t.Fatal(err)
+	}
+	if again.KB.Project != "harvey" || again.Memory.KnowledgeDB != "other.db" {
+		t.Errorf("after a save: project %q, db %q", again.KB.Project, again.Memory.KnowledgeDB)
+	}
+}

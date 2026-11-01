@@ -110,6 +110,7 @@ type sessionYAML struct {
 
 // harveyYAML is the on-disk representation of harvey/harvey.yaml.
 type harveyYAML struct {
+	KB              kbYAML                    `yaml:"kb,omitempty"`
 	SessionsDir     string                    `yaml:"sessions_dir"`
 	AgentsDir       string                    `yaml:"agents_dir"`
 	ModelCacheDB    string                    `yaml:"model_cache_db"`
@@ -154,6 +155,12 @@ type rollingSummaryYAML struct {
 
 type knowledgeBaseYAML struct {
 	Path string `yaml:"path,omitempty"`
+}
+
+// kbYAML is the kb: section of harvey.yaml: settings about how harvey uses the
+// installed kb, apart from where its database is.
+type kbYAML struct {
+	Project string `yaml:"project,omitempty"` // the kb project /kb draft uses when --project is not given
 }
 
 type memoryYAML struct {
