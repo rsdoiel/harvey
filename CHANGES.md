@@ -21,6 +21,11 @@
 
 ### Fixed
 
+- **A model never read a tool's result.** The tool loop compacted each round of tool calls to `[called: NAME]` and `[done]` before
+  the model's next request, which is the first request that should read it, so every result except `read_file`'s was replaced
+  before any model saw it. Found 2026-11-02 in a real session: `recall_knowledge` returned three foulpapers records, the model
+  was sent `[done]`, asked again, was sent `[done]` again, and answered from nothing. A round is now compacted after the model
+  has read it (one round later, and at the end of the turn). Logs written earlier replay as they were.
 - **harvey no longer asks Ollama for a model's whole trained context window.** It sent `num_ctx` equal to the window `/api/show`
   reports, 131,072 tokens for `llama3.2:3b` and `granite4`, so Ollama tried to allocate a 14 GiB cache for `llama3.2:3b` and, on a
   16 GB Raspberry Pi, the kernel killed `llama-server` ("llama-server process has terminated: signal: killed"); every chat with such a

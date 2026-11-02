@@ -480,7 +480,9 @@ func TestRun_ModelToolCallsAreLogged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "user_input injection model_request model_response tool_call tool_result compaction model_request model_response command"
+	// The round is compacted after the model has read it and answered, not before
+	// its second request (D7, 2026-11-02: it used to go in as "[done]").
+	want := "user_input injection model_request model_response tool_call tool_result model_request model_response compaction command"
 	if got := infoKinds(events[:len(events)-1]); got != want {
 		t.Fatalf("kinds\n got: %s\nwant: %s", got, want)
 	}

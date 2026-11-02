@@ -199,22 +199,18 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 
 	schemas := e.Registry.GetToolSchemas()
 	history := messages
-	prevRoundStart := -1 // index where the previous round's messages begin; -1 = none yet
+	prevRoundStart := -1  // index where the newest round's messages begin; -1 = none yet
+	staleRoundStart := -1 // index of a round the model has already read, awaiting compaction; -1 = none
 
 	for iter := 0; iter < e.MaxIterations; iter++ {
-		// Compact the previous round's messages now that the LLM has consumed them.
-		// We wait until the next iteration so the current round's full results are
-		// always available when the LLM needs them.
-		if e.ToolResultCompaction && prevRoundStart >= 0 {
-			if e.Events != nil && prevRoundStart < len(history) {
-				var ids []string
-				for _, tc := range history[prevRoundStart].ToolCalls {
-					ids = append(ids, tc.ID)
-				}
-				e.Events.Compacted(ids)
-			}
-			compactToolRound(history, prevRoundStart)
-		}
+		// Compact a round only once the model has read it. The newest round's
+		// results are what this call is for, so they go in intact; the round
+		// before it was in the previous call and is now stale. (Compacting the
+		// newest round here sent "[done]" in place of every result but
+		// read_file's, so no model read a recall or a command's output: D7,
+		// 2026-11-02.)
+		e.compactRound(history, staleRoundStart)
+		staleRoundStart = -1
 
 		stats, calls, err := tc.ChatWithTools(ctx, history, schemas, out)
 		if err != nil {
@@ -222,11 +218,16 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 		}
 
 		if len(calls) == 0 {
-			// LLM returned a plain text response — we're done.
+			// LLM returned a plain text response — we're done. It has now read the
+			// newest round too, so history leaves the turn compact.
+			e.compactRound(history, prevRoundStart)
 			return history, stats, nil
 		}
 
-		// Record where this round begins so we can compact it next iteration.
+		// Record where this round begins. The round before it has now been read
+		// by the call that just returned, so it is compacted at the next iteration;
+		// this one waits a call longer.
+		staleRoundStart = prevRoundStart
 		prevRoundStart = len(history)
 
 		// Append the assistant's tool-call turn to history.
@@ -244,6 +245,31 @@ func (e *ToolExecutor) RunToolLoop(ctx context.Context, messages []Message, out 
 	}
 
 	return history, ChatStats{}, fmt.Errorf("tool loop exceeded %d iterations without a final response: %w", e.MaxIterations, ErrToolLoopExceeded)
+}
+
+/** compactRound compacts the tool-call round that begins at start in history,
+ * if compaction is on, and tells Events which calls it compacted. A start of -1
+ * or one past the end does nothing.
+ *
+ * Parameters:
+ *   history ([]Message) — the conversation, modified in place.
+ *   start   (int)       — index of the round's assistant message, or -1.
+ *
+ * Example:
+ *   e.compactRound(history, staleRoundStart)
+ */
+func (e *ToolExecutor) compactRound(history []Message, start int) {
+	if !e.ToolResultCompaction || start < 0 || start >= len(history) {
+		return
+	}
+	if e.Events != nil {
+		var ids []string
+		for _, tc := range history[start].ToolCalls {
+			ids = append(ids, tc.ID)
+		}
+		e.Events.Compacted(ids)
+	}
+	compactToolRound(history, start)
 }
 
 // compactToolRound replaces the assistant and tool messages from a completed
