@@ -25,6 +25,23 @@
   a hailo-ollama client, because the label comes from `Name()` ("Ollama (MODEL)") and backend names are derived from it
   (`backendFromClientName`). Which server answered is therefore not readable from the log. Decide whether the label should carry the
   engine; at the least the banner and `session_start` must agree.
+- [ ] **Two model services on one machine: carry the engine through every model call, and show it only when there is a choice.**
+  Raised 2026-11-02 (author's question: Ollama on the CPU beside hailo-ollama for the AI HAT+ 2, common with an accelerator,
+  absent on CPU-only machines). Today the engine is a label on the model (`engine/model`, DR-0030) and detection adds options without
+  overriding a choice; the label is lost on the way to the log, the banner and the draft header (the entry above). (1) Record the
+  engine on every model call in its own field (session log `session_start`, `model_switch`, `BeginModelCall`, the `/kb draft` header,
+  the status line) from one source, not by parsing `Name()`; a test fails if two of them disagree for a hailo client. (2) Show the
+  engine only when more than one is configured or detected: with one, the display stays as it is and a CPU-only user never sees the
+  word "ollama"; with two, `Connected`, `/status` and `/model list` always name it. Test both: a CPU-only workspace (no `hailo.url`,
+  no `/dev/hailo0`) prints no engine word, a workspace with both always does. Related: the ambiguous-name entry (answer not
+  remembered) and the next entry. Choosing an engine by job is the next entry.
+- [ ] **Choose the engine by job: a `draft.model` setting (design in progress, 2026-11-02).** Decided with the author so far: the
+  choice is per job, not one session default; the jobs with their own setting are chat (`ollama.model`, exists) and drafting
+  (`draft.model`, new); embeddings stay Ollama-only and need none; an unset `draft.model` means the session's chat model, so nothing
+  changes for anyone who sets nothing and a CPU-only user sees no new setting (when that model is on hailo the draft header names the
+  engine). Also decided (2026-11-02): `/kb draft @NAME` beats `draft.model`; a `draft.model` naming an engine that is down stops with a
+  message and exits 69 unattended, never a silent fallback (hailo wedges if a request is abandoned); the value is `engine/model`, as
+  DR-0030. Still to decide: a new DR or an amendment to DR-0030.
 - [ ] **A hailo-ollama model has no known context window, so every pass is sized for 2,048 tokens.** Found 2026-11-02 in D7:
   `window.source` is `unknown` and `/kb draft` says "window not known, 2048 assumed". hailo-ollama has no `/api/show` window and the
   `llama3.2:3b` prompt limit is about 3,000 characters (`hailo-ollama-api.md`). The log's budget says `limit 700, limit_source
