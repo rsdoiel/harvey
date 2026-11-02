@@ -4,6 +4,15 @@
 > Entries below that mention llamafile or llama.cpp (their code, tests and `backend_*` files) are history: both backends were
 > removed (workspace DR-0033), and the files and tests they name no longer exist.
 
+- [ ] **A model name in `harvey.yaml` that is on both Ollama and hailo exits 2, and the message does not say where it came from.**
+  Found 2026-11-02 in D7 (`llama3.2:3b` is installed on both servers of this Pi). With `ollama.model: llama3.2:3b` startup prints
+  `"llama3.2:3b" matches several models; name one of: ollama/llama3.2:3b, hailo/llama3.2:3b` on standard error and exits **2**
+  (usage), after "Ollama is running" and before the REPL. Two faults: DR-0003 says a bad value read from a file is **78** (config),
+  not 2, which is for the command line; and the message names no source, so a person who set nothing on the command line has to
+  guess it is `ollama.model` in `agents/harvey.yaml`. `/model use llama3.2:3b` in a session is right: the same message, the active
+  model kept. Reproduce through the real startup with that yaml and `echo /exit | harvey`; expect exit 78 and a message naming the
+  key. Not decided: whether a bare name should ever resolve by itself (DR-0030 item 6 qualifies by engine, and the author has said
+  nothing for the ambiguous case); this entry is only the exit code and the message.
 - [ ] **Harvey says "Connected" for a model that is not installed.** Found 2026-11-01 (a mistyped `qwen2.5:rb`) and again in the
   hand-off of that day: startup prints `Connected: qwen2.5:rb` and only the first prompt fails (HTTP 404). Check at startup, and at
   `/model use`, that the chosen model exists on the server (`/api/tags`; hailo-ollama answers it too), and say so plainly if not.

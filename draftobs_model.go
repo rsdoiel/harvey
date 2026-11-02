@@ -35,12 +35,13 @@ type Proposal struct {
 
 const draftInstructions = `You read part of a working session between an author and a coding assistant, and you note what is worth remembering in a later session.
 
-Trust what the commands showed and what the author said over what the assistant claimed: the assistant is often wrong. Keep only what a later session would want: how a tool or model behaved, a decision and the reason for it, a failure and its cause, a question left open. Leave out chit-chat, steps that went as expected, and anything already obvious from the files.
+Trust what the commands showed and what the author said over what the assistant claimed: the assistant is often wrong. A claim about the world that only the assistant made, with no command output or tool result in the excerpt to back it, is not worth keeping: do not write it as a note or a finding. If a tool result in the excerpt says something different from what the assistant then claimed, write that as a finding: what the tool result showed, and that the assistant's answer did not match it. Keep only what a later session would want: how a tool or model behaved, a decision and the reason for it, a failure and its cause, a question left open. Leave out chit-chat, steps that went as expected, and anything already obvious from the files.
 
 Reply with one observation per line. Begin each line with one of the words note, finding, decision, question or hypothesis, then a colon. For example:
 finding: the build fails on Go 1.26 because go.mod now requires 1.27
 question: does the tool-result role work on the hailo models?
 decision: draft with the 3b model on the Pi because the 7b one is too slow
+finding: grep found parse() in utils.go, but the assistant's answer said it did not exist and did not match the output
 
 Write each as one self-contained sentence under 300 characters that makes sense without the conversation. Never copy a password, key or token.
 
