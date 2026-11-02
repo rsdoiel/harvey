@@ -966,16 +966,38 @@ func TestCmdModelShow_withOllamaModel(t *testing.T) {
 	}
 }
 
-func TestCmdModelList_empty(t *testing.T) {
-	ws, _ := NewWorkspace(t.TempDir())
-	a := NewAgent(DefaultConfig(), ws)
+// /model list asks the servers the config names, and nothing else: a test that
+// builds its agent from DefaultConfig() asks the real localhost:11434 and
+// :8000, so it passed on a machine with models and failed on one without
+// (macmini-rd.local, 2026-11-02). These two fix every input: both URLs, and no
+// card.
+
+func TestCmdModelList_noModelsIsANegativeAnswer(t *testing.T) {
+	a := familyAgent(t, "http://127.0.0.1:1", "http://127.0.0.1:1", false, false)
+	var buf strings.Builder
+	err := cmdModel(a, []string{"list"}, &buf)
+	if err == nil {
+		t.Fatal("no server has a model, but /model list reported success")
+	}
+	if got := ExitCodeFor(err); got != ClassNegative {
+		t.Errorf("exit class = %v, want negative (a query that finds nothing is 1)", got)
+	}
+	if !strings.Contains(buf.String(), "No models found") {
+		t.Errorf("output = %q, want it to say No models found", buf.String())
+	}
+}
+
+func TestCmdModelList_listsWhatTheServerHas(t *testing.T) {
+	srv, _ := ollamaFamilyServer(t, false, "model-a", "model-b")
+	a := familyAgent(t, srv.URL, "http://127.0.0.1:1", false, false)
 	var buf strings.Builder
 	if err := cmdModel(a, []string{"list"}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Should not panic and should produce some output.
-	if buf.Len() == 0 {
-		t.Error("expected non-empty output from /model list")
+	for _, want := range []string{"model-a", "model-b"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("output lacks %s: %s", want, buf.String())
+		}
 	}
 }
 
