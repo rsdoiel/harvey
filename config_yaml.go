@@ -76,6 +76,7 @@ type ollamaYAML struct {
 	URL           string `yaml:"url,omitempty"`
 	Model         string `yaml:"model,omitempty"`
 	ContextLength int    `yaml:"context_length,omitempty"`
+	MaxContext    int    `yaml:"max_context,omitempty"` // the most window harvey asks for by default
 	Timeout       string `yaml:"timeout,omitempty"` // e.g. "0", "10m"; 0 or empty = no timeout
 }
 

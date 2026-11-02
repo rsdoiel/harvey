@@ -640,6 +640,11 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 		}
 	}
 	fmt.Fprintf(out, "History:   %d messages\n", len(a.History))
+	if _, ok := a.Client.(*OllamaChatClient); ok {
+		if n := a.WindowLimit().Notice(); n != "" {
+			fmt.Fprintf(out, "Window:    %s\n", strings.TrimSuffix(strings.TrimPrefix(n, "Context window "), "."))
+		}
+	}
 	if _, ok := a.Client.(*OllamaChatClient); ok && len(a.History) > 0 {
 		n, limit, exact := a.contextUsage()
 		qualifier := "~"

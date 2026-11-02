@@ -103,6 +103,7 @@ type OllamaModelSummary struct {
  * Fields:
  *   OllamaModelSummary — embedded summary fields.
  *   ContextLength  (int)    — context window in tokens (0 if not reported).
+ *   KVBytesPerToken (int64) — estimated bytes of key-value cache per token of context (0 if not reported); see kvBytesPerToken.
  *   RawParameters  (string) — raw parameter block from the Modelfile.
  *   Template       (string) — chat template string.
  *
@@ -113,7 +114,10 @@ type OllamaModelSummary struct {
 type OllamaModelDetail struct {
 	OllamaModelSummary
 	ContextLength int
-	RawParameters string
+	// KVBytesPerToken is what one token of context costs in cache, estimated from
+	// model_info; 0 when the server did not say enough (hailo-ollama).
+	KVBytesPerToken int64
+	RawParameters   string
 	Template      string
 	Capabilities  []string // e.g. ["completion", "tools", "vision"]; nil on older Ollama
 	Format        string   // details.format, e.g. "gguf"; "hef" on hailo-ollama
@@ -254,8 +258,9 @@ func (o *OllamaClient) ShowModel(ctx context.Context, model string) (OllamaModel
 			Quantization:  sr.Details.Quantization,
 			SizeBytes:     sr.Size,
 		},
-		ContextLength: ctxLen,
-		RawParameters: sr.Parameters,
+		ContextLength:   ctxLen,
+		KVBytesPerToken: kvBytesPerToken(modelInfo),
+		RawParameters:   sr.Parameters,
 		Template:      sr.Template,
 		Capabilities:  sr.Capabilities,
 		Format:        sr.Details.Format,
@@ -500,6 +505,7 @@ func fastProbe(ctx context.Context, baseURL, name string) (*ModelCapability, str
 		Quantization:  detail.Quantization,
 		SizeBytes:     detail.SizeBytes,
 		ContextLength: detail.ContextLength,
+		KVBytesPerToken: detail.KVBytesPerToken,
 		SupportsTools: CapUnknown,
 		SupportsEmbed: CapUnknown,
 		ProbeLevel:    "fast",

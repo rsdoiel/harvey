@@ -95,6 +95,7 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 			a.useOllamaClient(full)
 		}
 		fmt.Fprintf(out, "  Using model: %s\n", cyan(full))
+		a.noteWindow(out)
 		return true, nil
 	}
 	// Name not found in any registry.
@@ -497,6 +498,7 @@ func (a *Agent) Run(out io.Writer) error {
 	fmt.Fprintln(out, cyan(bold(sep)))
 	if a.Client != nil {
 		fmt.Fprintf(out, "  Connected: %s\n", green(activeModelLabel(a)))
+		a.noteWindow(out)
 	} else {
 		fmt.Fprintf(out, "  %s\n", yellow("No backend — use /model use"))
 	}

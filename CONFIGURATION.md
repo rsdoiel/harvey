@@ -101,6 +101,28 @@ Security fields are persisted by the `/safemode`, `/permissions`, and related co
 integer seconds. Examples: `"5m"`, `"300"`, `"1m30s"`. `ollama_timeout` should be
 left unset for local hardware where inference can take several minutes.
 
+**Context window** (`ollama.context_length`, `ollama.max_context`): the window harvey
+budgets against is the number it asks Ollama to allocate (`num_ctx`), and a model's
+trained maximum is often more than a small machine can hold. `llama3.2:3b` and
+`granite4` train at 131,072 tokens, which is 14 GiB of cache for `llama3.2:3b`, and
+on a 16 GB Pi the kernel killed Ollama's `llama-server` when harvey asked for it.
+When a model is selected, at startup and at every switch, harvey works out the
+largest window whose weights and cache fit in 60% of the memory then available
+(on Linux, `MemAvailable`), capped by the model's own window and by a ceiling of
+32,768 tokens, and keeps that number for the session. It says so when the result is
+below the model's maximum, and `/status` shows it. Where memory cannot be read
+(not Linux) or the model does not report its size, only the ceiling applies.
+
+```yaml
+ollama:
+  max_context: 16384      # lower the ceiling (default 32768); also caps a computed window
+  context_length: 8192    # or set the window yourself; harvey uses it as given
+```
+
+An explicit `context_length` is honoured, with a warning when it is more than memory is
+estimated to hold. The estimate assumes Ollama's default f16 cache. See
+`agents/projects/harvey/design/memory-aware-context-window-design.md`.
+
 **`permissions` map** — keys are path prefixes relative to the workspace root;
 values are lists of allowed actions (`read`, `write`, `exec`, `delete`).
 Harvey checks the most specific matching prefix. Default is full access to `.`.

@@ -52,7 +52,7 @@ func (a *Agent) openSessionLog(recPath, replayOf string, out io.Writer) {
 			Backend:       backendFromClientName(clientName),
 			Model:         modelFromClientName(clientName),
 			System:        SystemPrompt{ID: sysID, Text: system},
-			Window:        Window{N: a.effectiveContextLimit(), Source: "unknown"},
+			Window:        a.logWindow(),
 		},
 	}
 	if replayOf != "" {
@@ -708,7 +708,7 @@ func (a *Agent) logModelSwitch(model, backend string) {
 	a.logEvent(KindModelSwitch, LevelInfo, map[string]any{
 		"from":   a.logModel,
 		"to":     to,
-		"window": Window{N: a.effectiveContextLimit(), Source: "unknown"},
+		"window": a.logWindow(),
 	})
 	a.logModel = to
 }

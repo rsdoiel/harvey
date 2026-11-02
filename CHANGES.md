@@ -17,6 +17,21 @@
 - **`kb:` in `agents/harvey.yaml`** with `project:`, the kb project `/kb draft` uses when `--project` is not given. See
   `CONFIGURATION.md`.
 
+### Fixed
+
+- **harvey no longer asks Ollama for a model's whole trained context window.** It sent `num_ctx` equal to the window `/api/show`
+  reports, 131,072 tokens for `llama3.2:3b` and `granite4`, so Ollama tried to allocate a 14 GiB cache for `llama3.2:3b` and, on a
+  16 GB Raspberry Pi, the kernel killed `llama-server` ("llama-server process has terminated: signal: killed"); every chat with such a
+  model failed unless `ollama.context_length` was set. When an Ollama model is selected (startup and every switch) harvey now fixes its
+  window at the largest that fits in 60% of the memory then available, from the model's layers, KV heads and head size and its weights,
+  capped by the model's own window and a ceiling of 32,768 tokens (`ollama.max_context`). The same number is what harvey budgets against
+  (`/kb draft`, summaries, the assembler). The window is told to you at startup and at a switch when it is below the model's maximum, and
+  `/status` and the session log (`window.source`: `memory`, `ceiling`, `model` or `configured`) say what set it. An explicit
+  `ollama.context_length` is still used as given, with a warning when it is more than memory is estimated to hold. Memory is read from
+  `/proc/meminfo`; elsewhere only the ceiling applies. The model cache gains a `kv_bytes_per_token` column. Found by `/kb draft`; test
+  `TestWindow_ALargeTrainedWindowIsNotRequestedWhenMemoryCannotHoldIt` (red first). Design:
+  `agents/projects/harvey/design/memory-aware-context-window-design.md`.
+
 ### Changed
 
 - **harvey pairs with a kb version.** Every call to the installed `kb` first checks `kb -version` (once per process) against

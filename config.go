@@ -46,7 +46,8 @@ workspace. /git <subcommand> shows status/diff/log.
  * Fields:
  *   URL           (string)        — Ollama base URL; default "http://localhost:11434".
  *   Model         (string)        — currently selected Ollama model.
- *   ContextLength (int)           — context window size in tokens; 0 = unknown.
+ *   ContextLength (int)           — context window size in tokens; 0 = derive it (the model's own, limited by memory).
+ *   MaxContext    (int)           — the most window harvey asks for by default, in tokens; 0 = 32768.
  *   Timeout       (time.Duration) — HTTP timeout for Ollama requests; 0 = no timeout.
  *
  * Example:
@@ -56,6 +57,7 @@ type OllamaConfig struct {
 	URL           string
 	Model         string
 	ContextLength int
+	MaxContext    int
 	Timeout       time.Duration
 	// URLExplicit and ModelExplicit are set when --ollama or -m/--model gave
 	// the value, so LoadHarveyYAML leaves it alone: the command line wins.
@@ -809,6 +811,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	}
 	if y.Ollama.ContextLength > 0 {
 		cfg.Ollama.ContextLength = y.Ollama.ContextLength
+	}
+	if y.Ollama.MaxContext > 0 {
+		cfg.Ollama.MaxContext = y.Ollama.MaxContext
 	}
 	if y.Ollama.Timeout != "" {
 		if d, err := parseDurationString(y.Ollama.Timeout); err == nil {

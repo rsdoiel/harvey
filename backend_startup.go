@@ -258,6 +258,14 @@ func (a *Agent) useModelAt(engine, url, model string) {
 	client.SetEngine(engine)
 	client.SetWindow(a.effectiveContextLimit)
 	a.Client = a.wireSessionLog(client)
+	// Fix the window for this model now, from the cache and the memory there is
+	// now, before the switch is logged with it. The probe that follows (if any)
+	// fixes it again from fresher facts.
+	var cap *ModelCapability
+	if a.ModelCache != nil {
+		cap, _ = a.ModelCache.Get(a.modelKey(model))
+	}
+	a.fixWindowLimit(model, cap)
 	a.logModelSwitch(model, engine)
 }
 
@@ -327,4 +335,5 @@ func (a *Agent) probeModelAndCache(url, model string) {
 		}
 	}
 	_ = a.ModelCache.Set(cap)
+	a.fixWindowLimit(model, cap)
 }

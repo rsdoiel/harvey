@@ -213,6 +213,7 @@ func useSelectedModel(a *Agent, selected ModelSummary, out io.Writer, offerAlias
 	}
 
 	fmt.Fprintf(out, "  %s Using model: %s\n", green("✓"), cyan(displayName))
+	a.noteWindow(out)
 	return nil
 }
 

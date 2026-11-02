@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	knowledge "github.com/rsdoiel/knowledge"
@@ -222,12 +223,19 @@ type Agent struct {
 	// SensorEvent during their own execution without a ToolHandler signature
 	// change. nil outside an active tool-calling turn.
 	ActiveStatus StatusReporter
+
+	// windowMu guards windowLimits, the context window fixed for each Ollama
+	// model when it was selected (design/memory-aware-context-window-design.md).
+	windowMu     sync.Mutex
+	windowLimits map[string]WindowLimit
 }
 
 /** effectiveContextLimit returns the context-window size in tokens for the
- * active model. It prefers the explicit --context flag value; when that is
- * zero it falls back to the probed ContextLength stored in the model cache.
- * Returns 0 when neither source is available.
+ * active model. It prefers the explicit ollama.context_length; when that is
+ * zero it is the window limit fixed for the model when it was selected: the
+ * model's own window, limited by the ceiling and by what this machine's memory
+ * can hold (see SafeWindow). It is the number harvey budgets against and the
+ * num_ctx it asks the server for. Returns 0 when neither source is available.
  *
  * Returns:
  *   int — token limit, or 0 if unknown.
@@ -240,12 +248,8 @@ func (a *Agent) effectiveContextLimit() int {
 	if a.Config.Ollama.ContextLength > 0 {
 		return a.Config.Ollama.ContextLength
 	}
-	if a.ModelCache != nil {
-		if ac, ok := a.Client.(*OllamaChatClient); ok {
-			if cap, _ := a.ModelCache.Get(a.modelKey(ac.ModelName())); cap != nil && cap.ContextLength > 0 {
-				return cap.ContextLength
-			}
-		}
+	if ac, ok := a.Client.(*OllamaChatClient); ok {
+		return a.windowLimitFor(ac.ModelName()).N
 	}
 	return 0
 }
