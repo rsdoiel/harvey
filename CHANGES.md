@@ -106,11 +106,18 @@
 
 - **The memory store (DR-0037).** `/memory`, `agents/memories/`, onboarding profiles, and session mining are deprecated
   and will be removed in a following release. Harvey prints one notice per session when the store holds memories, when
-  `/memory` is used, or when first-run onboarding starts. Keep what is worth keeping as a kb observation (`/kb observation add --project NAME KIND BODY`); files
+  `/memory` is used. Keep what is worth keeping as a kb observation (`/kb observation add --project NAME KIND BODY`); files
   already in `agents/memories/` stay on disk but will not be read after the removal. Recall for the prompt already comes
   from the installed `kb`.
 
 ### Removed
+
+- **Workspace profiles (DR-0037).** The first-run prompt ("Select [1-7] or press Enter for Blank"), `/profile`, `/memory profile`
+  (list, show, edit, use, rename, on, off), the profile templates (`templates/profiles/`), the profile hand-off that `/profile use`
+  wrote, and the `Profile:` lines in `/status` and `/workspace status` are gone. Profiles were guesses about what each role needs,
+  harvey stays simple, and the prompt took the first line of piped input as its answer. A `workspace_profile` file already in
+  `agents/memories/` stays on disk and is no longer injected into prompts. `/memory` keeps its other subcommands until the memory
+  store is removed. A workspace that never used the memory store is no longer shown the deprecation notice at startup.
 
 - **The model's memory tools (DR-0037 item 5).** `add_memory`, `update_memory`, `delete_memory` and `retrieve_memory` are no
   longer offered to the model, so a model can no longer write what later becomes context. `recall_knowledge(query, top_k)`

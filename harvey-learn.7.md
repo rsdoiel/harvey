@@ -38,14 +38,6 @@ Retrieval from both silos is unified:
   /memory recall <query>   — search both silos, print ranked results
   /recall <query>          — alias for /memory recall
 
-  /profile <list|show|edit|use|rename> [args...]
-                           — alias for /memory profile (manage workspace profile)
-  /profile list            — list active and archived profiles
-  /profile show            — print full content of the active profile
-  /profile edit            — open active profile in $EDITOR
-  /profile use [name]      — switch profile: saves handoff, archives old profile,
-                             selects new template, resets history
-  /profile rename NAME     — rename the workspace in the active profile
 
 
 # CHECKING WHAT YOU HAVE
@@ -76,7 +68,6 @@ Check what would improve the current session:
 
 # SEE ALSO
 
-  /profile        — alias for /memory profile (manage workspace profile)
   /recall QUERY   — alias for /memory recall (search all silos)
   /help memory    — full memory command reference
   /help kb        — full knowledge base reference

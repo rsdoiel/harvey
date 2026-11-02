@@ -58,7 +58,7 @@ make clean
 - **[commands_test.go](commands_test.go)** — Tests for slash command handlers
 - **[config_test.go](config_test.go)** — Configuration loading and validation tests
 - **[knowledge_test.go](knowledge_test.go)** — Knowledge base functionality tests
-- **[memory_*_test.go](memory_*_test.go)** — Memory system tests (manifest, miner, onboarding, rolling, store, unified)
+- **[memory_*_test.go](memory_*_test.go)** — Memory system tests (manifest, miner, rolling, store, unified)
 - **[ollama_probe_test.go](ollama_probe_test.go)** — Ollama probing tests
 - **[pipeline_test.go](pipeline_test.go)** — Pipeline functionality tests
 

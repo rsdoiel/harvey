@@ -211,10 +211,10 @@ func (a *Agent) registerCommands() {
 			},
 		},
 		"memory": {
-			Usage:       "/memory <mine|list|show|flag|forget|status|recall|profile> [args...]",
+			Usage:       "/memory <mine|list|show|flag|forget|status|recall> [args...]",
 			Description: "Mine sessions for memories and manage the memory store",
 			Handler:     cmdMemory,
-			Subcommands: []string{"mine", "list", "show", "flag", "forget", "status", "recall", "profile"},
+			Subcommands: []string{"mine", "list", "show", "flag", "forget", "status", "recall"},
 			ArgCompletion: map[string]func(*Agent) []string{
 				"list":   memoryTypeCandidates,
 				"show":   memoryIDCandidates,
@@ -424,17 +424,6 @@ func (a *Agent) registerCommands() {
 			Description: "Alias for /memory recall — search all knowledge silos",
 			Handler: func(a *Agent, args []string, out io.Writer) error {
 				return cmdMemory(a, append([]string{"recall"}, args...), out)
-			},
-		},
-		"profile": {
-			Usage:       "/profile <list|show|edit|use|rename|on|off> [args...]",
-			Description: "Alias for /memory profile — manage workspace profile",
-			Handler: func(a *Agent, args []string, out io.Writer) error {
-				return cmdMemory(a, append([]string{"profile"}, args...), out)
-			},
-			Subcommands: []string{"list", "show", "edit", "use", "rename", "on", "off"},
-			ArgCompletion: map[string]func(*Agent) []string{
-				"use": profileTemplateNameCandidates,
 			},
 		},
 		"format": {
@@ -698,14 +687,6 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 				fmt.Fprintf(out, "  (%d session(s) unmined)", unminedCount)
 			}
 			fmt.Fprintln(out)
-		}
-		// Active workspace profile
-		if profiles, err := store.List(string(MemoryTypeWorkspaceProfile)); err == nil {
-			if len(profiles) > 0 {
-				fmt.Fprintf(out, "Profile:   %s (%s)\n", profiles[0].Description, profiles[0].ID)
-			} else {
-				fmt.Fprintln(out, "Profile:   (none — run /profile use to set one)")
-			}
 		}
 	}
 	if a.Config.Security.SafeMode {
@@ -3693,20 +3674,6 @@ func cmdWorkspace(a *Agent, args []string, out io.Writer) error {
 		}
 		fmt.Fprintf(out, "  Root:    %s\n", a.Workspace.Root)
 		fmt.Fprintf(out, "  Aliases: %d defined\n", len(a.Config.ModelAliases))
-		// Profile + injection status
-		if a.Config.Memory.Enabled && a.Memory != nil && a.Memory.Store != nil {
-			profiles, err := a.Memory.Store.List(string(MemoryTypeWorkspaceProfile))
-			if err == nil && len(profiles) > 0 {
-				p := profiles[0]
-				inject := "injection off — enable with: memory.inject_on_start: true in harvey.yaml"
-				if a.Config.Memory.InjectOnStart {
-					inject = "injection on"
-				}
-				fmt.Fprintf(out, "  Profile: %q (%s)\n", p.Description, inject)
-			} else {
-				fmt.Fprintln(out, "  Profile: none  (create one with /memory profile new)")
-			}
-		}
 		return nil
 	default:
 		return Usagef("unknown subcommand %q. Usage: /workspace <init [FROM_PATH]|status>", sub)

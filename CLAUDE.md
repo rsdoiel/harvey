@@ -42,7 +42,7 @@ The startup sequence wires state in this order, and order matters:
 1. Banner → workspace init → `LoadHarveyYAML` (path overrides) → KB → model cache
 2. Session picker → system prompt → skills catalog → backend selection → debug log
 3. Session resume / `--continue` / replay
-4. Auto-record → workspace-profile onboarding (once, if empty)
+4. Auto-record
 5. REPL loop
 
 The REPL chat path (`histLenBeforeChat` pattern):

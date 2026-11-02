@@ -509,17 +509,9 @@ func (a *Agent) Run(out io.Writer) error {
 	// Memory digest — dim hints about pending actions, only printed when actionable.
 	sessionMemoryDigest(a, out)
 
-	// Workspace profile onboarding — runs once when workspace_profile/ is empty.
-	if a.Workspace != nil && a.Config.Memory.Enabled && a.Config.Session.ReplayPath == "" &&
-		a.Memory != nil && a.Memory.Store != nil {
-		if NeedsOnboarding(a.Memory.Store) {
-			noteMemoryRetiring(out)
-			var onboardEmbedder Embedder = a.memoryEmbedder()
-			if onboardErr := RunOnboarding(a, a.Memory.Store, onboardEmbedder, out, reader); onboardErr != nil {
-				fmt.Fprintf(out, yellow("  ✗")+" Onboarding: %v\n", onboardErr)
-			}
-		}
-	}
+	// No first-run profile prompt: profiles are not kept past the pre-release
+	// (DR-0037, TODO.md), and the prompt took the first line of piped input as
+	// its answer. RunOnboarding stays for /profile until the memory store goes.
 
 	// Attach completer now that all state (models, routes, aliases) is loaded.
 	le.Completer = a.buildCompleter()

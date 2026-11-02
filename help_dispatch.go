@@ -59,7 +59,7 @@ func HelpTopicsText() string {
            compact → summarize    edit, keys → editing
            filetree → file-tree   install, setup → getting-started
            knowledge → kb         pdf, pdftools → pdf-tools
-           profile, recall → memory   readdir → read-dir
+           recall → memory            readdir → read-dir
            route → routing        pins, unpin → pin
            skill → skills         tools, builtins → builtin-tools
 
@@ -126,7 +126,7 @@ func PrintHelpTopic(w io.Writer, topic, appName, version, releaseDate, releaseHa
 		f(LearnHelpText)
 	case "loop":
 		f(LoopHelpText)
-	case "memory", "profile", "recall":
+	case "memory", "recall":
 		f(MemoryHelpText)
 	case "model":
 		f(ModelHelpText)

@@ -11,8 +11,7 @@ import (
 
 // factualTypes are always included at score 1.0 regardless of query.
 var factualTypes = map[MemoryType]bool{
-	MemoryTypeWorkspaceProfile: true,
-	MemoryTypeProjectFact:      true,
+	MemoryTypeProjectFact: true,
 }
 
 /** UnifiedResult is one retrieved item from any memory silo.
@@ -112,7 +111,7 @@ func (u *UnifiedMemory) Recall(query string, embedder Embedder, budget int) ([]U
 	}
 
 	// 1. Factual types — always first at score 1.0.
-	for _, ft := range []MemoryType{MemoryTypeWorkspaceProfile, MemoryTypeProjectFact} {
+	for _, ft := range []MemoryType{MemoryTypeProjectFact} {
 		docs, err := u.store.ListDocs(string(ft))
 		if err != nil {
 			continue

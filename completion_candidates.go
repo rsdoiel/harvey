@@ -139,34 +139,6 @@ func skillNameCandidates(a *Agent) []string {
 	return names
 }
 
-/** profileTemplateNameCandidates returns template names from ListTemplates.
- * Called by buildCompleter for /profile use argument completion.
- *
- * Parameters:
- *   a (*Agent) — current agent.
- *
- * Returns:
- *   []string — template name strings; nil when no templates are found.
- *
- * Example:
- *   names := profileTemplateNameCandidates(a) // ["Back End Developer", ...]
- */
-func profileTemplateNameCandidates(a *Agent) []string {
-	wsRoot := ""
-	if a.Workspace != nil {
-		wsRoot = a.Workspace.Root
-	}
-	templates := ListTemplates(wsRoot)
-	if len(templates) == 0 {
-		return nil
-	}
-	names := make([]string, len(templates))
-	for i, t := range templates {
-		names[i] = t.Name
-	}
-	return names
-}
-
 /** draftSessionCandidates returns the names of the recorded sessions that have
  * a log, for Tab after /kb draft. It reads the sessions directory only; a
  * session with only a rendered Fountain file has no log to draft from and is

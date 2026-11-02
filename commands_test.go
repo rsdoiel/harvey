@@ -834,7 +834,7 @@ func TestSubcommandCompletion_memory(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("expected subcommand completions for '/memory ', got none")
 	}
-	for _, want := range []string{"mine", "list", "show", "recall", "profile"} {
+	for _, want := range []string{"mine", "list", "show", "recall"} {
 		found := false
 		for _, g := range got {
 			if g == want {

@@ -59,8 +59,7 @@ and add the `bin/` folder to your PATH.
 
     harvey
 
-On first run in a new workspace Harvey will ask you to set up a
-profile. Pick a starting template that fits your role.
+Harvey starts at the prompt. It asks nothing about your role or a profile.
 
 ---
 

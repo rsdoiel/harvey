@@ -595,11 +595,6 @@ func TestHandlerErrors_Memory(t *testing.T) {
 		{"flag: nothing to pick from", withMemory, mem("flag"), ClassNegative},
 		{"recall: no query", withMemory, mem("recall"), ClassUsage},
 		{"recall: nothing found", withMemory, mem("recall", "zzzqqq"), ClassNegative},
-		{"profile: unknown subcommand", withMemory, mem("profile", "bogus"), ClassUsage},
-		{"profile show: no profile", withMemory, mem("profile", "show"), ClassNegative},
-		{"profile rename: no name", withMemory, mem("profile", "rename"), ClassUsage},
-		{"profile rename: no profile", withMemory, mem("profile", "rename", "x"), ClassNegative},
-		{"profile edit: no profile", withMemory, mem("profile", "edit"), ClassNegative},
 	})
 }
 

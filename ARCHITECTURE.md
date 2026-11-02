@@ -52,7 +52,6 @@ memory_manifest.go          Manifest — tracks which sessions have been mined
 memory_unified.go           UnifiedMemory — unified Recall() across all three silos
 memory_rolling.go           Rolling summary — compresses history when budget exceeded
 memory_scrub.go             Credential scrubbing before memory review cards
-memory_onboarding.go        Workspace-profile onboarding on first run
 memory_enrichment_*.go      Design/plan documents (not compiled)
 
 --- Skills ---
@@ -92,7 +91,7 @@ remote_sftp.go              SFTP/SCP backend with strict host-key verification
 --- Utilities ---
 pdf_extract.go              PDF text extraction via poppler (pdfinfo, pdftotext)
 codeblock.go                Fenced code block parser
-templates.go                Workspace profile templates
+templates.go                Embedded help guides
 spinner.go                  Animated spinner: braille frames, Lear messages, live timer,
                               StatusCh for tool-call status updates
 ```
@@ -595,7 +594,6 @@ Tests live alongside source files. Current test files:
 | `memory_miner_test.go` | Miner extraction and scrub |
 | `memory_rolling_test.go` | Rolling summary trigger and compression |
 | `memory_unified_test.go` | UnifiedMemory.Recall() priority ordering |
-| `memory_onboarding_test.go` | Workspace-profile onboarding flow |
 | `memory_test.go` | Integration across memory subsystems |
 | `tools_test.go` | Tool schema definitions and registry construction |
 | `tool_executor_test.go` | RunToolLoop multi-turn execution, compaction |
@@ -616,13 +614,12 @@ Tests live alongside source files. Current test files:
 | `pdf_extract_test.go` | Poppler-based text extraction |
 | `ollama_probe_test.go` | Ollama server health probing |
 | `agent_integration_test.go` | Full agent lifecycle integration tests |
-| `profile_use_test.go` | Profile template loading and `/profile use` flow |
 | `phase_d_test.go` | Phase D feature integration tests |
 | `phase_e_test.go` | Phase E feature integration tests |
 | `ui_test.go` | Terminal line editor and completion |
 | `terminal_test.go` | REPL startup sequence and backend selection |
 | `model_cache_test.go` | ModelCache capability lookup and expiry |
-| `templates_test.go` | Workspace profile template rendering |
+| `templates_test.go` | Embedded help guides |
 
 The `mockLLMClient` in `tier3_test.go` is the canonical test double for
 `LLMClient` — reuse it rather than creating new ones.

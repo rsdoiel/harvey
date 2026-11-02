@@ -324,7 +324,6 @@ See [Model Commands](harvey-model.7.md) and [Routing](harvey-routing.7.md).
 |---|---|
 | `/memory <mine\|list\|show\|flag\|forget\|status\|recall\|profile>` | Mine sessions for memories and manage the memory store |
 | `/recall QUERY` | Alias for `/memory recall` |
-| `/profile <list\|show\|edit\|use\|rename\|on\|off>` | Alias for `/memory profile` |
 | `/kb ...` | The knowledge base; see [Knowledge base commands](#knowledge-base-commands) |
 | `/skill <list\|load\|show\|info\|status\|new\|run\|suggest>` | List, load, create, and run Agent Skills |
 | `/skill-set <list\|load\|show\|info\|new\|create\|status\|unload>` | Load named bundles of skills |

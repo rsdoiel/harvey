@@ -56,7 +56,7 @@ The `add` vs `new` distinction: `add` registers something you already have;
 
 Learning this vocabulary for one command teaches you all the others:
 `/model`, `/route`, `/session`, `/skill`, `/skill-set`, and
-`/memory profile` all follow the same pattern.
+and `/kb` all follow the same pattern.
 
 ---
 

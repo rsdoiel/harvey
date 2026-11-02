@@ -229,7 +229,7 @@ are also available from the shell: harvey --help TOPIC.
   models are listed live when the server is running; use the ollama CLI for pull/rm
 
 /workspace <status|init [PATH]>
-: show workspace root, alias count and profile; seed aliases from another workspace
+: show workspace root and alias count; seed aliases from another workspace
 
 /inspect [MODEL]
 : show detailed model information (Ollama only)
@@ -291,14 +291,11 @@ are also available from the shell: harvey --help TOPIC.
 /kb learn concepts [--limit N]
 : suggest new concepts from the ingested documents; you pick which become concepts, then see each affected document as a diff of changed lines and choose whether to write it. Writes obey the permissions table; Fountain documents (sessions, hand-offs) are never rewritten
 
-/memory <mine|list|show|forget|status|recall|profile> [args...]
+/memory <mine|list|show|forget|status|recall> [args...]
 : manage the session-experience memory store; mine and recall typed patterns
 
 /recall QUERY
 : search all knowledge silos (alias for /memory recall)
-
-/profile <list|show|edit|use|rename> [args...]
-: manage the workspace profile (alias for /memory profile)
 
 **Skills**
 
@@ -1181,9 +1178,7 @@ bulk import of an alias registry from an existing project.
 # SUBCOMMANDS
 
   /workspace status
-    Show the workspace root path, number of defined model aliases, the name
-    of the active workspace profile (if any), and whether
-    memory.inject_on_start is on or off.
+    Show the workspace root path and the number of defined model aliases.
 
   /workspace init [PATH]
     Copy model aliases from the workspace directory or YAML file at PATH into
@@ -1218,7 +1213,7 @@ bulk import of an alias registry from an existing project.
 
   /help model-alias   — define and tag model aliases
   /help model         — unified model management
-  /help memory        — workspace profile injection
+  /help memory        — the memory store (deprecated)
 
 `
 
@@ -2378,7 +2373,7 @@ MEMORY — mine session recordings for memories and manage the memory store
 
 # SYNOPSIS
 
-/memory <mine|list|show|flag|forget|status|recall|profile> [args...]
+/memory <mine|list|show|flag|forget|status|recall> [args...]
 
 # DESCRIPTION
 
@@ -2438,26 +2433,9 @@ Fountain files in agents/memories/ inside the workspace.
         Show memory store location, total count, and breakdown by type.
 
   recall QUERY
-        Query all memory silos (workspace profile, project facts, experiential
+        Query all memory silos (project facts, experiential
         memories, and KB observations) and print grouped results.
         Uses FTS5 full-text search. No token budget is applied — all matching results are shown.
-
-  profile show|update|use [name]
-        Manage the workspace profile.
-        "list"   — list active and archived profiles (IDs + descriptions).
-        "show"   — print the full content of the active profile document.
-        "edit"   — open the active profile in $EDITOR and re-save on close.
-        "use"    — switch to a new profile: writes a handoff document to
-                   agents/hand-off/, archives the current profile, selects a
-                   template (by name or interactive picker), saves it as the
-                   new profile, and resets history so the new context injects
-                   on the next turn. Alias: /profile use [name].
-        "rename" — rename the workspace in the active profile document.
-        "on"     — enable workspace profile injection at session start
-                   (sets memory.inject_on_start: true in harvey.yaml).
-        "off"    — disable workspace profile injection at session start
-                   (sets memory.inject_on_start: false in harvey.yaml).
-        "update" — deprecated alias for "edit".
 
 # MEMORY TYPES
 
@@ -2493,7 +2471,7 @@ Each memory carries three enrichment fields set at mining time:
 # MEMORY INJECTION
 
 When a session starts, Harvey injects a [memory context] block into the
-conversation. Factual types (workspace_profile, project_fact) always appear
+conversation. The factual type (project_fact) always appears
 first. Experiential memories (tool_use, workflow, user_preference) are ranked
 by FTS5 full-text search and optionally cosine similarity weighted by the
 memory's confidence score. KB observations follow if token
@@ -2543,7 +2521,6 @@ memory before the review card is displayed.
   /memory mine
   /memory mine agents/sessions/harvey-session-20260525-140251.spmd
   /memory list --type workflow
-  /memory list --type workspace_profile
   /memory list --kind pitfall
   /memory list --type tool_use --kind workaround
   /memory show pipeline_confidence_extraction
@@ -2551,15 +2528,9 @@ memory before the review card is displayed.
   /memory forget old_pattern_a1b2c3
   /memory status
   /memory recall git repository error
-  /memory profile list
-  /memory profile show
-  /memory profile edit
-  /memory profile use web-developer
-  /memory profile rename "Harvey Web Developer"
 
 # SEE ALSO
 
-  /profile               — alias for /memory profile
   /recall QUERY          — alias for /memory recall
   /help learn            — overview of the memory silos
   /help kb               — knowledge base management
@@ -2608,14 +2579,6 @@ Retrieval from both silos is unified:
   /memory recall <query>   — search both silos, print ranked results
   /recall <query>          — alias for /memory recall
 
-  /profile <list|show|edit|use|rename> [args...]
-                           — alias for /memory profile (manage workspace profile)
-  /profile list            — list active and archived profiles
-  /profile show            — print full content of the active profile
-  /profile edit            — open active profile in $EDITOR
-  /profile use [name]      — switch profile: saves handoff, archives old profile,
-                             selects new template, resets history
-  /profile rename NAME     — rename the workspace in the active profile
 
 
 # CHECKING WHAT YOU HAVE
@@ -2646,7 +2609,6 @@ Check what would improve the current session:
 
 # SEE ALSO
 
-  /profile        — alias for /memory profile (manage workspace profile)
   /recall QUERY   — alias for /memory recall (search all silos)
   /help memory    — full memory command reference
   /help kb        — full knowledge base reference

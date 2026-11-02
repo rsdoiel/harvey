@@ -287,9 +287,6 @@ are also available from the shell: harvey --help TOPIC.
 /recall QUERY
 : search all knowledge silos (alias for /memory recall)
 
-/profile <list|show|edit|use|rename> [args...]
-: manage the workspace profile (alias for /memory profile)
-
 **Skills**
 
 /skill <list|load NAME|info NAME|status|new>
