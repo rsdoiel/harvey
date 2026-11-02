@@ -146,6 +146,15 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
+- [ ] **Remove the workspace profiles (scheduled for the memory-store removal release, not before).** Added 2026-11-01 at the author's
+  request. The onboarding profile choice ("Select [1-7]", Data Scientist, Technical Writer and the rest), `templates/profiles/`,
+  `templates.go`, `/profile`, and the profile text injected at session start are guesses about what a user in each role needs; they
+  confuse more than they help, and harvey should stay simple. They go with slice 4 of DR-0037, whose item 2 already drops them with
+  onboarding and the factual memory types, so this is not a new decision, only the author's reason and a reminder that the profile
+  choice also swallows the first line of piped input in a fresh workspace. They could come back as a feature if real usage data said
+  what profiles users want. Waits on a release that carries the memory-store deprecation notice (hand-off 20261031, "Next steps").
+  Do not remove it during the `/kb draft` work.
+
 - [ ] **Two write-offer mechanisms fire for the same reply in an interactive session.** Found 2026-10-30 while testing the
   Fountain rendering of write offers. For every fenced block in a reply, `runChatTurn` first asks "[Write LANG block N/M to
   file? Path (or Enter to skip)]" (`terminal.go`, the "Code-block extraction" branch) and writes the block to whatever path is
