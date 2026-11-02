@@ -175,6 +175,42 @@ func (a *OllamaChatClient) Close() error { return nil }
  */
 func (a *OllamaChatClient) SetMaxTokens(n int) { a.maxTokens = n }
 
+type maxTokensKey struct{}
+
+/** withMaxTokens asks the one call that carries ctx to stop after n tokens.
+ * It is a ceiling for that call only: a lower cap already set on the client
+ * with SetMaxTokens wins, and n <= 0 changes nothing. Clients other than
+ * OllamaChatClient ignore it.
+ *
+ * Parameters:
+ *   ctx (context.Context) — the call's context.
+ *   n   (int)             — the most tokens the reply may carry.
+ *
+ * Returns:
+ *   context.Context — ctx carrying the ceiling.
+ *
+ * Example:
+ *   ctx = withMaxTokens(ctx, DraftMaxTokens)
+ */
+func withMaxTokens(ctx context.Context, n int) context.Context {
+	return context.WithValue(ctx, maxTokensKey{}, n)
+}
+
+// capFromContext lowers req's num_predict to the ceiling ctx carries, if any.
+func capFromContext(ctx context.Context, req *chatWireRequest) {
+	n, ok := ctx.Value(maxTokensKey{}).(int)
+	if !ok || n <= 0 {
+		return
+	}
+	if req.Options == nil {
+		req.Options = map[string]any{}
+	}
+	if cur, has := req.Options["num_predict"].(int); has && cur > 0 && cur <= n {
+		return
+	}
+	req.Options["num_predict"] = n
+}
+
 /** ProviderCapabilities returns the feature flags for an Ollama server. No
  * network call is made.
  *
@@ -366,6 +402,7 @@ func (a *OllamaChatClient) buildRequest(messages []Message, tools []Tool) chatWi
 // When tools is nil/empty, no tools are sent and tool calls are never returned.
 func (a *OllamaChatClient) chatInternal(ctx context.Context, messages []Message, tools []Tool, out io.Writer) (ChatStats, []ToolCall, error) {
 	req := a.buildRequest(messages, tools)
+	capFromContext(ctx, &req)
 
 	// Every model call through this client is one request and one response in
 	// the session log, whoever made it (DR-0036): the client is the one place

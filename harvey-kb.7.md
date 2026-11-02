@@ -149,6 +149,18 @@ steps work on the current project (/kb project use ID).
   written); Ctrl-C again cancels the request now, for a model that is stuck.
   Tab after /kb draft offers the recorded sessions.
 
+  Each request asks the model for at most 512 tokens, room for the handful of
+  lines a pass wants. Without a limit a small model on hailo-ollama ran on to
+  the server's own stopping point and repeated its five lines eight times.
+
+  Expect to discard most drafts from a small model. On one real session,
+  qwen2.5:3b, llama3.2:3b and granite4 proposed between 1 and 5 drafts each,
+  and about one in four or five was usable as written; none stated the lesson
+  of the session cleanly. A hailo-ollama model is slow (about 2.6 tokens a
+  second for llama3.2:3b), and its context window is not known to harvey, so a
+  pass is sized for 2,048 tokens. The review step is where a draft becomes
+  knowledge; do not skip it.
+
   Review the drafts in a normal shell, because promoting needs a terminal:
 
 ~~~

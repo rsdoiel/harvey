@@ -4,6 +4,25 @@
 > Entries below that mention llamafile or llama.cpp (their code, tests and `backend_*` files) are history: both backends were
 > removed (workspace DR-0033), and the files and tests they name no longer exist.
 
+- [ ] **Harvey says "Connected" for a model that is not installed.** Found 2026-11-01 (a mistyped `qwen2.5:rb`) and again in the
+  hand-off of that day: startup prints `Connected: qwen2.5:rb` and only the first prompt fails (HTTP 404). Check at startup, and at
+  `/model use`, that the chosen model exists on the server (`/api/tags`; hailo-ollama answers it too), and say so plainly if not.
+  Reproduce through the real startup with a name the server does not list; expect a message naming the model and the models that are
+  installed, not "Connected". Mind the exit code for a non-interactive session (DR-0003: no such model is 66 or 69, decide which).
+- [ ] **The startup banner and the drafting header call a hailo-ollama model "ollama".** Found 2026-11-02 in D7. With
+  `ollama.model: hailo/llama3.2:3b` in `harvey.yaml` the banner says `Connected: llama3.2:3b (hailo)` while the session log says
+  `backend: "ollama"` in `session_start`, and the request is built for the Ollama backend; only `/model use hailo/...` logs a
+  `model_switch` to `hailo`. Separately, `/kb draft` prints `with ollama (llama3.2:3b)` and the log labels the request `ollama` for
+  a hailo-ollama client, because the label comes from `Name()` ("Ollama (MODEL)") and backend names are derived from it
+  (`backendFromClientName`). Which server answered is therefore not readable from the log. Decide whether the label should carry the
+  engine; at the least the banner and `session_start` must agree.
+- [ ] **A hailo-ollama model has no known context window, so every pass is sized for 2,048 tokens.** Found 2026-11-02 in D7:
+  `window.source` is `unknown` and `/kb draft` says "window not known, 2048 assumed". hailo-ollama has no `/api/show` window and the
+  `llama3.2:3b` prompt limit is about 3,000 characters (`hailo-ollama-api.md`). The log's budget says `limit 700, limit_source
+  prompt_limit`, so the budget exists for chat but the drafter does not use it. Decide whether the drafter should take the engine's
+  prompt limit, or an explicit `hailo.context_length`, and test through a hailo-labelled client.
+
+
 - [x] **FIXED 2026-10-08** (`write_offer_input.go`, tests in
   `write_offer_input_test.go`): a line that is a command (`/exit`, `!ls`, any
   registered `/name`) given at a write offer is handed back to the REPL through

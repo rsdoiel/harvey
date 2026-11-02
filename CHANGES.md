@@ -13,7 +13,9 @@
   Each draft ends with a line naming its session and events until kb can link a draft to a session event. Needs kb 0.0.30.
   Ctrl-C once stops after the pass in flight and keeps what was written; Ctrl-C again cancels the request (a hailo-ollama server wedges
   when a request is abandoned, so the first never does). Tab after `/kb draft` offers the recorded sessions. The command is logged as one
-  `kb_call` and `kb_result`, whose items list the drafts it wrote.
+  `kb_call` and `kb_result`, whose items list the drafts it wrote. Each drafting request asks for at most 512 tokens: without a
+  limit, `llama3.2:3b` on hailo-ollama ran to the server's own stopping point and repeated its five proposals eight times (1,024
+  tokens, 391 s, 40 proposals).
 - **`kb:` in `agents/harvey.yaml`** with `project:`, the kb project `/kb draft` uses when `--project` is not given. See
   `CONFIGURATION.md`.
 

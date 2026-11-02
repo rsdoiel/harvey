@@ -20,6 +20,18 @@ const (
 	draftMinBudget = 256
 )
 
+/** DraftMaxTokens is the most a drafting request lets the model write, in
+ * tokens. A pass wants a handful of one-line proposals (at most five are kept);
+ * 512 is room for them and for a few more. Without a cap a small model runs to
+ * the server's own stopping point and repeats itself: hailo llama3.2:3b wrote
+ * the same five lines eight times, 1,024 tokens in 391 s (D7, 2026-11-02).
+ * A cap the client already carries that is lower than this one wins.
+ *
+ * Example:
+ *   ctx = withMaxTokens(ctx, DraftMaxTokens)
+ */
+const DraftMaxTokens = 512
+
 /** DraftPass is one model call's worth of transcript.
  *
  * Fields:

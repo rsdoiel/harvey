@@ -240,6 +240,7 @@ func FinishBody(p Proposal, pass DraftPass) string {
  */
 func RunDraftPass(ctx context.Context, d Drafter, pass DraftPass, project, session string, n, of int) ([]Proposal, int, error) {
 	ctx = withCallPurpose(ctx, "draft", map[string]any{"session": session, "pass": n, "of": of, "from": pass.First, "to": pass.Last})
+	ctx = withMaxTokens(ctx, DraftMaxTokens)
 	reply, err := d.Draft(ctx, BuildDraftMessages(pass, project))
 	if err != nil {
 		return nil, 0, fmt.Errorf("pass %d of %d: %w", n, of, err)
