@@ -4,6 +4,13 @@
 
 ### Added
 
+- **An upgrade notice.** The first time a workspace runs a release newer than the one it last ran, harvey writes what changed to
+  **standard error**, once. It records the version in `agents/last_version`; a brand-new workspace is told nothing, and a used
+  workspace with no record counts as coming from 0.0.20. The text is a short table in `upgrade_notice.go` that a release adds an
+  entry to when a person using the previous one would notice something; a release with no entry prints nothing, and a downgrade
+  prints nothing and leaves the record. It replaces the per-process deprecation notices (the memory-store notice that `/memory`
+  and startup printed to standard output). It is on standard error so it cannot reach the session's input or output, and so it
+  cannot bring back the swallowed first line of piped input.
 - **`/kb draft [--project NAME] [--limit N] [@route] [SESSION]`** drafts observations from a recorded session (DR-0037 item 3). It reads
   what was said and what the tools returned, in passes that fit the drafting model's window, asks the active model (or `@route`;
   `learn_model` is not used) what is worth remembering, and writes each answer with `kb observation add --draft --by "harvey MODEL"`.
@@ -104,9 +111,9 @@
 
 ### Deprecated
 
-- **The memory store (DR-0037).** `/memory`, `agents/memories/`, onboarding profiles, and session mining are deprecated
-  and will be removed in a following release. Harvey prints one notice per session when the store holds memories, when
-  `/memory` is used. Keep what is worth keeping as a kb observation (`/kb observation add --project NAME KIND BODY`); files
+- **The memory store (DR-0037).** `/memory`, `agents/memories/` and session mining are deprecated and will be removed in a
+  following release. Harvey says so once, on standard error, the first time a workspace runs the release that introduced the
+  notice (see "Upgrade notice", Added). Keep what is worth keeping as a kb observation (`/kb observation add --project NAME KIND BODY`); files
   already in `agents/memories/` stay on disk but will not be read after the removal. Recall for the prompt already comes
   from the installed `kb`.
 

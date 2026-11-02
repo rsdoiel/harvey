@@ -299,6 +299,15 @@ func (a *Agent) Run(out io.Writer) error {
 			return fmt.Errorf("harvey.yaml: %w", err)
 		}
 	}
+	// What changed since this workspace last ran: standard error only, so it
+	// cannot reach the session's input or output (upgrade_notice.go).
+	if a.Config.Session.ReplayPath == "" {
+		var errOut io.Writer = os.Stderr
+		if a.stderr != nil {
+			errOut = a.stderr
+		}
+		a.announceUpgrade(errOut, runningVersion, upgradeNoticeTable)
+	}
 	if a.Config.Security.SafeMode {
 		fmt.Fprintln(out, green("✓")+" Safe mode on")
 	} else {
@@ -315,7 +324,6 @@ func (a *Agent) Run(out io.Writer) error {
 
 	// Memory subsystems (session-scoped; opened once, closed on exit)
 	a.initMemory(out)
-	a.startupDeprecations(out)
 	defer a.Memory.Close()
 
 	// Sessions directory

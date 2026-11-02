@@ -42,6 +42,7 @@ The startup sequence wires state in this order, and order matters:
 1. Banner → workspace init → `LoadHarveyYAML` (path overrides) → KB → model cache
 2. Session picker → system prompt → skills catalog → backend selection → debug log
 3. Session resume / `--continue` / replay
+   (the upgrade notice is written to stderr right after `LoadHarveyYAML`, before the banner's later lines)
 4. Auto-record
 5. REPL loop
 

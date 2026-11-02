@@ -164,6 +164,7 @@ type Agent struct {
 	Recorder          *Recorder
 	In                io.Reader       // source for interactive prompts; defaults to os.Stdin
 	stdin             *os.File        // the file Run reads from; nil means os.Stdin (a test seam)
+	stderr            io.Writer       // where notices that must not reach the session's input go; nil means os.Stderr (a test seam)
 	ragWarned         map[string]bool // retrieval failures already reported this session, by message
 	pendingInput      []string        // lines handed back to the REPL by a prompt that was given a command instead of an answer
 	Out               io.Writer       // destination for interactive output; defaults to os.Stdout
