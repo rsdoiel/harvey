@@ -4,15 +4,15 @@
 > Entries below that mention llamafile or llama.cpp (their code, tests and `backend_*` files) are history: both backends were
 > removed (workspace DR-0033), and the files and tests they name no longer exist.
 
-- [ ] **A model name in `harvey.yaml` that is on both Ollama and hailo exits 2, and the message does not say where it came from.**
-  Found 2026-11-02 in D7 (`llama3.2:3b` is installed on both servers of this Pi). With `ollama.model: llama3.2:3b` startup prints
-  `"llama3.2:3b" matches several models; name one of: ollama/llama3.2:3b, hailo/llama3.2:3b` on standard error and exits **2**
-  (usage), after "Ollama is running" and before the REPL. Two faults: DR-0003 says a bad value read from a file is **78** (config),
-  not 2, which is for the command line; and the message names no source, so a person who set nothing on the command line has to
-  guess it is `ollama.model` in `agents/harvey.yaml`. `/model use llama3.2:3b` in a session is right: the same message, the active
-  model kept. Reproduce through the real startup with that yaml and `echo /exit | harvey`; expect exit 78 and a message naming the
-  key. Not decided: whether a bare name should ever resolve by itself (DR-0030 item 6 qualifies by engine, and the author has said
-  nothing for the ambiguous case); this entry is only the exit code and the message.
+- [ ] **An ambiguous model name at startup: the unattended exit code, the message, and the answer not being remembered.**
+  Found 2026-11-02 in D7 (`llama3.2:3b` is installed on both servers of this Pi); first written up wrongly as a defect, corrected
+  the same day after testing at a terminal. What DR-0030 item 6 says is what happens: at a terminal harvey asks ("`llama3.2:3b` is on
+  more than one engine: [1] ollama/llama3.2:3b [2] hailo/llama3.2:3b") and unattended it exits **2**, as does `/model use` with the
+  bare name in a piped session. What is left, small: (a) DR-0003 (workspace) would class a value read from `harvey.yaml` as 78
+  (config), DR-0030 (harvey, 2026-10-07) chose 2, so decide which governs; (b) the unattended message names no source, so a person
+  who set nothing on the command line has to guess it is `ollama.model` in `agents/harvey.yaml`; (c) the answer at the terminal is not
+  remembered, so someone who always wants the CPU model is asked at every start, and the prompt could say that writing
+  `ollama/llama3.2:3b` in `harvey.yaml` stops the question. Reproduce (a) and (b) with that yaml and `echo /exit | harvey`.
 - [ ] **Harvey says "Connected" for a model that is not installed.** Found 2026-11-01 (a mistyped `qwen2.5:rb`) and again in the
   hand-off of that day: startup prints `Connected: qwen2.5:rb` and only the first prompt fails (HTTP 404). Check at startup, and at
   `/model use`, that the chosen model exists on the server (`/api/tags`; hailo-ollama answers it too), and say so plainly if not.
