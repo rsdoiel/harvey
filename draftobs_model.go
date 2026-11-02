@@ -35,11 +35,14 @@ type Proposal struct {
 
 const draftInstructions = `You read part of a working session between an author and a coding assistant, and you note what is worth remembering in a later session.
 
-Keep only what a later session would want: how a tool or model behaved, a decision and the reason for it, a failure and its cause, a question left open. Leave out chit-chat, steps that went as expected, and anything already obvious from the files.
+Trust what the commands showed and what the author said over what the assistant claimed: the assistant is often wrong. Keep only what a later session would want: how a tool or model behaved, a decision and the reason for it, a failure and its cause, a question left open. Leave out chit-chat, steps that went as expected, and anything already obvious from the files.
 
-Reply with one observation per line, in the form
-KIND: text
-where KIND is one of note, finding, decision, question, hypothesis. Write each as one self-contained sentence under 300 characters that makes sense without the conversation. Never copy a password, key or token.
+Reply with one observation per line. Begin each line with one of the words note, finding, decision, question or hypothesis, then a colon. For example:
+finding: the build fails on Go 1.26 because go.mod now requires 1.27
+question: does the tool-result role work on the hailo models?
+decision: draft with the 3b model on the Pi because the 7b one is too slow
+
+Write each as one self-contained sentence under 300 characters that makes sense without the conversation. Never copy a password, key or token.
 
 If nothing is worth keeping, reply with the single word NONE.`
 
@@ -74,17 +77,53 @@ func BuildDraftMessages(pass DraftPass, project string) []Message {
 var (
 	proposalLine   = regexp.MustCompile(`^([A-Za-z]+)(?:\s*:|\s+[-–—])\s*(\S.*)$`)
 	proposalShaped = regexp.MustCompile(`^[A-Za-z]+\s*:\s*\S`)
+	kindOnly       = regexp.MustCompile(`^([A-Za-z]+)\s*:?\s*$`)
+	bodyLabel      = regexp.MustCompile(`(?i)^(?:text|body|observation)\s*[:\-–—]\s*`)
 	noneLine       = regexp.MustCompile(`(?i)^none\b`)
 	listMarker     = regexp.MustCompile(`^(?:[-*•]\s+|\d+[.)]\s+)`)
 )
 
+func isDraftKind(w string) bool {
+	for _, k := range draftKinds {
+		if k == w {
+			return true
+		}
+	}
+	return false
+}
+
+// classifyProposalLine says whether a cleaned line names a kind, and if so which
+// and what follows it on the line. "finding: text" is a kind with a body;
+// "finding", "finding:" and the literal "KIND: finding" a small model copies from
+// a placeholder are a kind alone, whose text is the next line.
+func classifyProposalLine(line string) (kind, body string, isKind bool) {
+	if m := proposalLine.FindStringSubmatch(line); m != nil {
+		w := strings.ToLower(m[1])
+		if isDraftKind(w) {
+			return w, strings.TrimSpace(m[2]), true
+		}
+		if w == "kind" {
+			if t := strings.ToLower(strings.Trim(strings.TrimSpace(m[2]), ".*")); isDraftKind(t) {
+				return t, "", true
+			}
+		}
+		return "", "", false
+	}
+	if m := kindOnly.FindStringSubmatch(line); m != nil && isDraftKind(strings.ToLower(m[1])) {
+		return strings.ToLower(m[1]), "", true
+	}
+	return "", "", false
+}
+
 /** ParseProposals reads a drafter's reply. It expects one "KIND: text" per
  * line and tolerates what small models write: list markers and numbering,
- * bold markers, code fences, a preamble line, a kind in any case, and "-" in
- * place of ":". A line shaped like "WORD: text" whose WORD is not a kind is
- * dropped and counted; a line with no such shape (a preamble) is ignored; an
- * empty body is dropped. NONE, or an empty reply, is no proposals. A body
- * over proposalBodyCap is cut at a word.
+ * bold markers, code fences, a preamble line, a kind in any case, "-" in place
+ * of ":", and a kind alone on a line (with or without a colon, or as the
+ * literal "KIND: finding" copied from a placeholder) with its text on the next
+ * line, which may carry a "Text:" label. A line shaped like "WORD: text" whose
+ * WORD is not a kind is dropped and counted; a line with no such shape (a
+ * preamble) is ignored; an empty body is dropped. NONE, or an empty reply, is
+ * no proposals. A body over proposalBodyCap is cut at a word.
  *
  * Parameters:
  *   reply (string) — the model's text.
@@ -99,6 +138,13 @@ var (
 func ParseProposals(reply string) ([]Proposal, int) {
 	var out []Proposal
 	dropped := 0
+	pending := ""
+	emit := func(kind, body string) {
+		body = strings.TrimSpace(body)
+		if body != "" {
+			out = append(out, Proposal{Kind: kind, Body: cutAtWord(body, proposalBodyCap)})
+		}
+	}
 	for _, raw := range strings.Split(reply, "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "```") {
@@ -108,30 +154,22 @@ func ParseProposals(reply string) ([]Proposal, int) {
 		line = strings.ReplaceAll(line, "**", "")
 		line = strings.TrimSpace(line)
 		if noneLine.MatchString(line) {
+			pending = ""
 			continue
 		}
-		m := proposalLine.FindStringSubmatch(line)
-		if m == nil {
-			continue
+		kind, body, isKind := classifyProposalLine(line)
+		switch {
+		case isKind && body != "":
+			emit(kind, body)
+			pending = ""
+		case isKind:
+			pending = kind
+		case pending != "":
+			emit(pending, bodyLabel.ReplaceAllString(line, ""))
+			pending = ""
+		case proposalShaped.MatchString(line):
+			dropped++
 		}
-		kind := strings.ToLower(m[1])
-		known := false
-		for _, k := range draftKinds {
-			if k == kind {
-				known = true
-			}
-		}
-		if !known {
-			if proposalShaped.MatchString(line) {
-				dropped++
-			}
-			continue
-		}
-		body := strings.TrimSpace(m[2])
-		if body == "" {
-			continue
-		}
-		out = append(out, Proposal{Kind: kind, Body: cutAtWord(body, proposalBodyCap)})
 	}
 	return out, dropped
 }

@@ -217,3 +217,92 @@ func TestParseProposals_NoneWithAnExplanationIsStillNothing(t *testing.T) {
 		}
 	}
 }
+
+// Real output from qwen2.5:3b (2026-11-01, tmp/d7): it copied the placeholder
+// "KIND: finding" literally and put the text on the next line.
+func TestParseProposals_AKindLineFollowedByTheText(t *testing.T) {
+	real := "KIND: finding\nThe `bat` command is not a standard command and needs to be installed separately for proper functionality."
+	got, dropped := ParseProposals(real)
+	if dropped != 0 || len(got) != 1 || got[0].Kind != "finding" || !strings.HasPrefix(got[0].Body, "The `bat` command is not a standard command") {
+		t.Fatalf("got %+v, dropped %d", got, dropped)
+	}
+}
+
+func TestParseProposals_AKindAloneOnALineTakesTheNextLine(t *testing.T) {
+	cases := map[string]Proposal{
+		"finding\nbat is installed as batcat":             {"finding", "bat is installed as batcat"},
+		"Kind: note\nText: kb must be 0.0.30":             {"note", "kb must be 0.0.30"},
+		"**question**\n\ndoes the role work on hailo?":    {"question", "does the role work on hailo?"},
+		"1. KIND: decision\n   use qwen2.5 for drafting":  {"decision", "use qwen2.5 for drafting"},
+		"hypothesis:\nthe stream closes on a long prompt": {"hypothesis", "the stream closes on a long prompt"},
+	}
+	for in, want := range cases {
+		got, dropped := ParseProposals(in)
+		if dropped != 0 || len(got) != 1 || got[0] != want {
+			t.Errorf("%q: got %+v, dropped %d; want %+v", in, got, dropped, want)
+		}
+	}
+}
+
+func TestParseProposals_TwoSplitObservationsAndANormalOne(t *testing.T) {
+	in := "KIND: finding\nfirst split one here\n\nKIND: note\nsecond split one here\nquestion: and a normal one"
+	got, dropped := ParseProposals(in)
+	if dropped != 0 || len(got) != 3 || got[0].Kind != "finding" || got[1].Kind != "note" || got[2].Kind != "question" {
+		t.Fatalf("got %+v, dropped %d", got, dropped)
+	}
+}
+
+func TestParseProposals_AKindWithNothingAfterItIsDropped(t *testing.T) {
+	got, dropped := ParseProposals("finding\n")
+	if len(got) != 0 || dropped != 0 {
+		t.Errorf("got %+v, dropped %d", got, dropped)
+	}
+	got, _ = ParseProposals("finding\nnote: a real one")
+	if len(got) != 1 || got[0].Kind != "note" {
+		t.Errorf("a kind line followed by another kind line is not a body: %+v", got)
+	}
+}
+
+// The instructions give an example a model can copy the shape of, not a
+// placeholder it copies literally, and rank the evidence.
+func TestBuildDraftMessages_AnExampleAndTheOrderOfTrust(t *testing.T) {
+	sys := BuildDraftMessages(onePass("User: hi"), "harvey")[0].Content
+	if strings.Contains(sys, "KIND:") {
+		t.Error("the instructions still show the KIND: placeholder a small model copies literally")
+	}
+	example := false
+	for _, line := range strings.Split(sys, "\n") {
+		for _, k := range draftKinds {
+			if strings.HasPrefix(line, k+": ") {
+				example = true
+			}
+		}
+	}
+	if !example {
+		t.Error("the instructions show no example line such as 'finding: ...'")
+	}
+	lower := strings.ToLower(sys)
+	if !strings.Contains(lower, "command") || !strings.Contains(lower, "assistant") || !strings.Contains(lower, "wrong") {
+		t.Error("the instructions do not say that what the commands showed outranks what the assistant claimed")
+	}
+}
+
+func TestParseProposals_APendingKindDoesNotLeakIntoLaterLines(t *testing.T) {
+	// A kind alone, then a full line, then an unlabelled line: the last belongs to nobody.
+	got, _ := ParseProposals("finding\nnote: the full line\nan unlabelled line after it")
+	if len(got) != 1 || got[0].Kind != "note" {
+		t.Errorf("got %+v", got)
+	}
+	// A kind alone, then NONE, then a line: nothing is kept.
+	got, _ = ParseProposals("finding\nNONE\na stray line")
+	if len(got) != 0 {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestParseProposals_APlaceholderKindMayEndInAPeriod(t *testing.T) {
+	got, dropped := ParseProposals("KIND: finding.\nthe text after it")
+	if dropped != 0 || len(got) != 1 || got[0].Kind != "finding" || got[0].Body != "the text after it" {
+		t.Errorf("got %+v, dropped %d", got, dropped)
+	}
+}
