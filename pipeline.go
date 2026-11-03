@@ -143,7 +143,9 @@ func resolvePipelineClient(a *Agent, mention string) (LLMClient, error) {
 	}
 	switch ac.ProviderName() {
 	case "ollama":
-		return newOllamaLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout), nil
+		c := newOllamaLLMClient(ac.BackendURL(), mention, a.Config.Ollama.Timeout)
+		c.SetEngine(ac.Engine())
+		return c, nil
 	default:
 		return nil, fmt.Errorf("pipeline: @mention %q did not resolve to a known model", mention)
 	}

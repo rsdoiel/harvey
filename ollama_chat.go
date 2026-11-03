@@ -158,8 +158,17 @@ func (a *OllamaChatClient) BackendURL() string { return a.baseURL }
  */
 func (a *OllamaChatClient) ProviderName() string { return a.provName }
 
-// Name satisfies LLMClient. Returns "provider (model)".
-func (a *OllamaChatClient) Name() string { return a.provName + " (" + a.modelName + ")" }
+// Name satisfies LLMClient. Returns "engine (model)": the engine set by
+// SetEngine ("hailo" for a hailo-ollama server), else the provider name. The
+// session log, the banner and the /kb draft header all take the engine from
+// here, so they cannot disagree.
+func (a *OllamaChatClient) Name() string {
+	label := a.provName
+	if a.engine != "" {
+		label = a.engine
+	}
+	return label + " (" + a.modelName + ")"
+}
 
 // Close satisfies LLMClient. The client holds no closeable resources.
 func (a *OllamaChatClient) Close() error { return nil }

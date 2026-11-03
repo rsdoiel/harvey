@@ -95,6 +95,13 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 
 	// Captured BEFORE switching — the switch overwrites it.
 	prevOllamaModel := a.Config.Ollama.Model
+	prevEngine, prevURL := "ollama", a.Config.Ollama.URL
+	if ac, ok := a.Client.(*OllamaChatClient); ok {
+		if e := ac.Engine(); e != "" {
+			prevEngine = e
+		}
+		prevURL = ac.BackendURL()
+	}
 
 	switched, err := switchFn(name, out)
 	if err != nil {
@@ -105,7 +112,7 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 	}
 
 	restore := func() {
-		a.useOllamaClient(prevOllamaModel)
+		a.useModelAt(prevEngine, prevURL, prevOllamaModel)
 	}
 
 	return DispatchTarget{Client: a.wireSessionLog(a.Client), Restore: restore}, true, nil

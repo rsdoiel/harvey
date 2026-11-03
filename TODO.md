@@ -18,7 +18,7 @@
   `/model use`, that the chosen model exists on the server (`/api/tags`; hailo-ollama answers it too), and say so plainly if not.
   Reproduce through the real startup with a name the server does not list; expect a message naming the model and the models that are
   installed, not "Connected". Mind the exit code for a non-interactive session (DR-0003: no such model is 66 or 69, decide which).
-- [ ] **The startup banner and the drafting header call a hailo-ollama model "ollama".** Found 2026-11-02 in D7. With
+- [x] **FIXED 2026-11-03 (uncommitted).** `OllamaChatClient.Name()` now follows the client's engine, so `session_start`, `model_request`, the `/kb draft` header and the banner agree for a hailo client; the `/kb draft @NAME` restore and pipeline `@mention` clients keep the engine (the restore used to rebuild an Ollama client at `ollama.url`). Tests: `engine_label_test.go`. Not done: `model_request.engine` as its own field (the label is still "engine (model)" parsed by `backendFromClientName`), and a `status`-line check. Original report: **The startup banner and the drafting header call a hailo-ollama model "ollama".** Found 2026-11-02 in D7. With
   `ollama.model: hailo/llama3.2:3b` in `harvey.yaml` the banner says `Connected: llama3.2:3b (hailo)` while the session log says
   `backend: "ollama"` in `session_start`, and the request is built for the Ollama backend; only `/model use hailo/...` logs a
   `model_switch` to `hailo`. Separately, `/kb draft` prints `with ollama (llama3.2:3b)` and the log labels the request `ollama` for
