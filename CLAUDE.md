@@ -70,18 +70,17 @@ Harvey has two separate execution paths depending on model capability:
 
 `autoExecuteReply` (the tagged-fence block writer) is **skipped** when `!noToolCalls` — this prevents display-only code blocks in tool-call responses from being offered as files to write.
 
-## Three-silo memory architecture
+## Recall: the knowledge base, and the retiring memory store
 
-Harvey has two independent knowledge stores, unified at retrieval time by `UnifiedMemory.Recall()`:
+The knowledge base is where recall is headed. Harvey runs the installed `kb` binary, which must be `kbMinVersion` (`kbversion.go`) or newer; an older or unreadable kb counts as unavailable. `kbrecall.go` runs `kb concept recall` and parses its JSON. Harvey also imports `github.com/rsdoiel/knowledge` (a normal versioned `require`, no `replace`) for document ingest and review.
 
-| Silo | Files | Content | Injection point |
-|---|---|---|---|
-| **Memory store** | `memory_store.go`, `memory_miner.go`, `memory_manifest.go`, `agents/memories/` | Typed experience records extracted from sessions | Session start via `UnifiedMemory.Recall()` |
-| **Knowledge base** | `github.com/rsdoiel/knowledge` (external module, a normal versioned `require` in `go.mod`; no `replace`), `agents/knowledge.db` | Hand-authored projects/observations/concepts (relational) | Optional, also via `UnifiedMemory` |
+**The memory store is deprecated (DR-0037) and is being removed.** That covers `memory_store.go`, `memory_miner.go`, `memory_manifest.go`, `memory_unified.go`, `commands_memory.go` and `agents/memories/`. Fix it, but don't extend it or build new features on it. The workspace profiles have already been removed. Until the store goes, `UnifiedMemory.Recall()` (`memory_unified.go`) still fills the token budget in this order:
 
-`UnifiedMemory.Recall()` queries both silos in priority order: `workspace_profile` + `project_fact` first (always injected, score 1.0), then experiential memories (FTS5), then KB observations. Token budget is enforced.
+1. `project_fact` memories, always first, at score 1.0
+2. Experiential memories (FTS5)
+3. `recallKB`: `kb concept recall`, falling back to a substring scan of the current project's observations
 
-**Memory mining flow:** `Manifest.UnminedSessions()` finds `.spmd` files not yet in the manifest → `Miner.Mine()` sends session text to LLM for JSON extraction → interactive review → `MemoryStore.Save()` writes typed Fountain files. Auto-mines on session exit when `sessionTurns >= 10`.
+When `memory.enabled` is set, a session of 10 or more user turns is still auto-mined on exit (`terminal.go`).
 
 ## Session recording — the session log
 
