@@ -78,6 +78,15 @@ type ModelSummary struct {
 	NotPulled bool
 }
 
+// notPulledNote is " (not pulled)" for a Hailo catalog entry that has not been
+// pulled, "" otherwise.
+func notPulledNote(m ModelSummary) string {
+	if m.NotPulled {
+		return " (not pulled)"
+	}
+	return ""
+}
+
 // EngineLabel is the engine as shown to the user: "hailo", or "hailo, not
 // pulled" for a catalog entry that has not been pulled.
 func (m ModelSummary) EngineLabel() string {

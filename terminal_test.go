@@ -162,10 +162,13 @@ func TestActiveModelLabel_noBackend(t *testing.T) {
 }
 
 func TestActiveModelLabel_ollama(t *testing.T) {
-	a := &Agent{Config: DefaultConfig()}
+	// One service (no Hailo card, nothing answering): the bare model, no
+	// service word (DR-0049 item 6).
+	a := &Agent{Config: DefaultConfig(), hailoDevicePath: filepath.Join(t.TempDir(), "no-hailo0")}
+	a.Config.Ollama.URL = "http://127.0.0.1:1"
 	a.Config.Ollama.Model = "llama3.2:3b"
-	if got := activeModelLabel(a); got != "llama3.2:3b (ollama)" {
-		t.Errorf("got %q want %q", got, "llama3.2:3b (ollama)")
+	if got := activeModelLabel(a); got != "llama3.2:3b" {
+		t.Errorf("got %q want %q", got, "llama3.2:3b")
 	}
 }
 

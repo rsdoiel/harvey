@@ -25,7 +25,8 @@
   a hailo-ollama client, because the label comes from `Name()` ("Ollama (MODEL)") and backend names are derived from it
   (`backendFromClientName`). Which server answered is therefore not readable from the log. Decide whether the label should carry the
   engine; at the least the banner and `session_start` must agree.
-- [ ] **Two model services on one machine: carry the engine through every model call, and show it only when there is a choice.**
+- [~] **PARTLY DONE 2026-11-03 (uncommitted): display built on DR-0049 item 6** (`service_display.go`, tests `service_display_test.go`): `Connected`, `/status`, `/model`, `/model list`, the picker and the `/kb draft` header show the bare model with one service and `service/model` with two (the form `/model use` and `-m` accept; the old `model (hailo)` could not be typed back). Still to do from DR-0049: the `service` and `engine` fields as separate log fields (the log still has `backend` from the client label), per-service cache keys and their migration (only needed once a non-default service exists), `services:` in `harvey.yaml`. Original entry: **Two model services on one machine: carry the engine through every model call, and show it only when there is a choice.**
+  **Waits for workspace-tier harvey DR-0049 (`proposed`, 2026-11-03):** a model lives on a named service (`service/model`), the display test becomes "more than one service", and the log carries `service` and `engine`. Build on that record, not on the engine-only wording below.
   Raised 2026-11-02 (author's question: Ollama on the CPU beside hailo-ollama for the AI HAT+ 2, common with an accelerator,
   absent on CPU-only machines). Today the engine is a label on the model (`engine/model`, DR-0030) and detection adds options without
   overriding a choice; the label is lost on the way to the log, the banner and the draft header (the entry above). (1) Record the

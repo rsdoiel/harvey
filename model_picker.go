@@ -69,7 +69,10 @@ func pickAndUseModel(a *Agent, out io.Writer) error {
 	}
 
 	for i, m := range models {
-		label := fmt.Sprintf("%-40s [%s]", m.Name, m.EngineLabel())
+		label := m.Name + notPulledNote(m)
+		if a.showService() {
+			label = a.displayModel(m.Engine, m.Name) + notPulledNote(m)
+		}
 		if m.Path != "" {
 			label = fmt.Sprintf("%-40s %-36s [%s]", m.Name, shortenPath(m.Path), m.Engine)
 		}

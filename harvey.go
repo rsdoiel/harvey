@@ -215,6 +215,7 @@ type Agent struct {
 	offerIndex, offerOf        int               // which of how many tagged blocks the running write offer is on; 0 outside one
 	Backend                    ManagedBackend    // active inference backend; nil when no backend is wired
 	hailoDevicePath            string            // Hailo card device node; "" = /dev/hailo0 (tests set it)
+	serviceCountCache          int               // serviceCount()+1 once worked out; 0 = not yet
 	hailoUnitPath              string            // hailo-ollama systemd user unit; "" = ~/.config/systemd/user/hailo-ollama.service
 	ActiveRoute                string            // session-sticky route name; when set, prompts are auto-dispatched via @NAME
 	// ActiveStatus is the current turn's StatusReporter, set by runChatTurn

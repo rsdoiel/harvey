@@ -167,7 +167,7 @@ func kbLearnDraft(a *Agent, args []string, out io.Writer) error {
 	if limit == 0 {
 		limitNote = "no limit"
 	}
-	fmt.Fprintf(out, "\nDrafting with %s (%s).\n", drafter.Name(), limitNote)
+	fmt.Fprintf(out, "\nDrafting with %s (%s).\n", a.drafterDisplay(drafter), limitNote)
 	s := &LearnSession{KB: a.KB, ProjectID: projectID, Drafter: drafter}
 	rep, err := s.DraftPending(context.Background(), limit, func(o DraftOutcome, done, total int) {
 		where := o.Document

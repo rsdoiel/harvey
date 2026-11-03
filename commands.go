@@ -619,7 +619,7 @@ func cmdStatus(a *Agent, _ []string, out io.Writer) error {
 				}
 			}
 		}
-		fmt.Fprintf(out, "Backend:   %s%s\n", a.Client.Name(), tag)
+		fmt.Fprintf(out, "Backend:   %s%s\n", a.clientDisplay(a.Client), tag)
 	}
 	if a.Config.Debug {
 		if a.SessionLog != nil {
@@ -879,7 +879,11 @@ func cmdModelList(a *Agent, out io.Writer) error {
 		if active {
 			marker = "→ "
 		}
-		fmt.Fprintf(out, "  %s%-30s (%s)\n", marker, m.Name, m.EngineLabel())
+		if a.showService() {
+			fmt.Fprintf(out, "  %s%-30s\n", marker, a.displayModel(m.Engine, m.Name)+notPulledNote(m))
+		} else {
+			fmt.Fprintf(out, "  %s%s\n", marker, m.Name+notPulledNote(m))
+		}
 	}
 	return nil
 }

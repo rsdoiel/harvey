@@ -13,8 +13,8 @@ import (
 // session_start, model_request and the /kb draft header said "ollama".
 
 func TestEngineLabel_AgreesEverywhereForAHailoClient(t *testing.T) {
-	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b")
-	a := familyAgent(t, "http://127.0.0.1:1", hl.URL, true, true)
+	// Two services, so the banner names the service (DR-0049 item 6).
+	a, _, _ := bothEnginesAgent(t)
 	if err := a.setHailoModel("llama3.2:3b"); err != nil {
 		t.Fatal(err)
 	}
@@ -37,24 +37,17 @@ func TestEngineLabel_AgreesEverywhereForAHailoClient(t *testing.T) {
 		return d.Backend
 	}
 	labels := map[string]string{
-		"banner":        engineOf(activeModelLabel(a)),
+		"banner":        activeModelLabel(a),
 		"session_start": backendOf(KindSessionStart),
 		"model_request": backendOf(KindModelRequest),
-		"draft header":  newLLMDrafter(a.Client, "").Name(),
+		"draft header":  a.drafterDisplay(newLLMDrafter(a.Client, "")),
+		"draft record":  newLLMDrafter(a.Client, "").Name(),
 	}
 	for where, got := range labels {
 		if !strings.Contains(strings.ToLower(got), "hailo") {
 			t.Errorf("%s says %q, want hailo (all: %v)", where, got, labels)
 		}
 	}
-}
-
-// engineOf pulls "hailo" out of "model (hailo)".
-func engineOf(label string) string {
-	if i := strings.LastIndex(label, "("); i >= 0 {
-		return strings.Trim(label[i:], "()")
-	}
-	return label
 }
 
 func TestEngineLabel_PlainOllamaIsStillOllama(t *testing.T) {
