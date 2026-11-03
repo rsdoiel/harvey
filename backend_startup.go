@@ -122,11 +122,17 @@ func (a *Agent) selectBackend(reader *bufio.Reader, out io.Writer, preferredMode
 func (a *Agent) pickOllamaModel(reader *bufio.Reader, out io.Writer, preferredModel string) error {
 	// Command-line --model flag always wins.
 	if flag := a.Config.Ollama.Model; flag != "" {
-		if err := a.useStartupModel(flag, out); err != nil {
+		err := a.useStartupModel(flag, out)
+		if err == nil {
+			fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.Ollama.Model))
+			return nil
+		}
+		// Named but not installed: at a terminal say so and offer the picker;
+		// with nobody to ask it is the caller's no_input error (DR-0003).
+		if ExitCodeFor(err) != ClassNoInput || !a.attended() {
 			return err
 		}
-		fmt.Fprintf(out, "  Using model: %s\n", cyan(a.Config.Ollama.Model))
-		return nil
+		fmt.Fprintf(out, yellow("  ✗")+" %v\n", err)
 	}
 
 	// With a Hailo server in play the models of both engines are offered together.

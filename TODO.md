@@ -13,7 +13,7 @@
   who set nothing on the command line has to guess it is `ollama.model` in `agents/harvey.yaml`; (c) the answer at the terminal is not
   remembered, so someone who always wants the CPU model is asked at every start, and the prompt could say that writing
   `ollama/llama3.2:3b` in `harvey.yaml` stops the question. Reproduce (a) and (b) with that yaml and `echo /exit | harvey`.
-- [ ] **Harvey says "Connected" for a model that is not installed.** Found 2026-11-01 (a mistyped `qwen2.5:rb`) and again in the
+- [x] **FIXED 2026-11-03 (uncommitted).** Startup now checks `-m` / `ollama.model` against `/api/tags` of the engine it names (`requireInstalled`, `model_name.go`): unattended it exits 66 (no_input) naming the model and what is installed; at a terminal it says so and offers the picker; a server that cannot be asked, or a named engine that is down (still 69), is unchanged. `/model use` already answered "not found". Tests: `startup_model_missing_test.go`. Checked on harvey.local against hailo-ollama 5.4.0 (`hailo/llama3.2:3b`, gone since the upgrade, exits 66). Original report: **Harvey says "Connected" for a model that is not installed.** Found 2026-11-01 (a mistyped `qwen2.5:rb`) and again in the
   hand-off of that day: startup prints `Connected: qwen2.5:rb` and only the first prompt fails (HTTP 404). Check at startup, and at
   `/model use`, that the chosen model exists on the server (`/api/tags`; hailo-ollama answers it too), and say so plainly if not.
   Reproduce through the real startup with a name the server does not list; expect a message naming the model and the models that are
