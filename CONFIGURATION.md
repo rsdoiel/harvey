@@ -594,6 +594,8 @@ draft:
   # on the command beats it for one run. If the service it names is not
   # running, /kb draft stops and says which (exit 69); it never drafts with
   # another model instead.
+  # At start-up harvey warns, once, if the service it names does not have the
+  # model; chat still starts.
   model: hailo/qwen2.5-coder:1.5b
 
 # ── Further model services (DR-0049; read and checked, not yet used) ──────────

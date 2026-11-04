@@ -382,6 +382,7 @@ func (a *Agent) Run(out io.Writer) error {
 		if a.Client == nil && !interactive {
 			return Unavailablef("no backend connected: start Ollama, then use /model use")
 		}
+		a.checkDraftModel(out)
 	}
 
 	// Preflight: verify the active model's context can hold the system

@@ -91,15 +91,21 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 	switchFn := func(n string, w io.Writer) (bool, error) { return attemptModelSwitch(a, n, w) }
 	if a.attemptModelSwitchOverride != nil {
 		switchFn = a.attemptModelSwitchOverride
+	} else if service, _ := a.parseModelRef(name); service != "" {
+		// "service/model" names a model on a service (DR-0049): installed there
+		// (no_input if not) and the service up (unavailable if not).
+		switchFn = func(n string, w io.Writer) (bool, error) { return true, a.useStartupModel(n, w) }
 	}
 
 	// Captured BEFORE switching — the switch overwrites it.
 	prevOllamaModel := a.Config.Ollama.Model
-	prevEngine, prevURL := "ollama", a.Config.Ollama.URL
+	prevService, prevEngine, prevURL := "ollama", "ollama", a.Config.Ollama.URL
+	prevBackend := a.Backend
 	if ac, ok := a.Client.(*OllamaChatClient); ok {
 		if e := ac.Engine(); e != "" {
 			prevEngine = e
 		}
+		prevService = ac.Service()
 		prevURL = ac.BackendURL()
 	}
 
@@ -112,7 +118,8 @@ func resolveDispatchTarget(a *Agent, name string, out io.Writer) (DispatchTarget
 	}
 
 	restore := func() {
-		a.useModelAt(prevEngine, prevURL, prevOllamaModel)
+		a.useServiceModelAt(prevService, prevEngine, prevURL, prevOllamaModel)
+		a.Backend = prevBackend
 	}
 
 	return DispatchTarget{Client: a.wireSessionLog(a.Client), Restore: restore}, true, nil

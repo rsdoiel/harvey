@@ -251,7 +251,11 @@ func runKBDraft(stop draftStop, a *Agent, args []string, out io.Writer) error {
 		if who == "" {
 			who = "the active model"
 		}
-		return ClassedAs(ClassUnavailable, fmt.Errorf("could not use %s for drafting: %w", who, err))
+		class := ClassUnavailable
+		if ExitCodeFor(err) == ClassNoInput {
+			class = ClassNoInput // the model is not installed on its service
+		}
+		return ClassedAs(class, fmt.Errorf("could not use %s for drafting: %w", who, err))
 	}
 	defer restore()
 
@@ -365,4 +369,26 @@ func runKBDraft(stop draftStop, a *Agent, args []string, out io.Writer) error {
 		return ClassedAs(ExitCodeFor(firstErr), fmt.Errorf("%d of %d pass(es) failed: %w", failed, len(passes), firstErr))
 	}
 	return nil
+}
+
+/** checkDraftModel warns, at start-up, when draft.model names a model that its
+ * service does not have. It is only a warning: chat does not depend on the
+ * drafter, and /kb draft keeps its own hard error. A service that is down or
+ * cannot be asked proves nothing, so it passes without a word. Nothing is
+ * printed when draft.model is unset or installed.
+ *
+ * Parameters:
+ *   out (io.Writer) — destination for the one-line warning.
+ *
+ * Example:
+ *   a.checkDraftModel(out)
+ */
+func (a *Agent) checkDraftModel(out io.Writer) {
+	name := strings.TrimSpace(a.Config.Draft.Model)
+	if name == "" {
+		return
+	}
+	if err := a.requireInstalled(name); err != nil && ExitCodeFor(err) == ClassNoInput {
+		fmt.Fprintf(out, yellow("  ⚠")+" draft.model: %v. Chat is unaffected; /kb draft will stop until this is fixed.\n", err)
+	}
 }
