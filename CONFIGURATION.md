@@ -596,6 +596,18 @@ draft:
   # another model instead.
   model: hailo/qwen2.5-coder:1.5b
 
+# ── Further model services (DR-0049; read and checked, not yet used) ──────────
+# The two default services, "ollama" (ollama.url) and "hailo" (hailo.url), need
+# no entry. A service beyond them has a name, a URL and an engine kind (ollama
+# or hailo); the kind is declared, never guessed from the port. A name cannot
+# be "ollama" or "hailo", contain a slash, or repeat another ignoring case.
+# A wrong entry stops harvey at start-up (exit 78). Harvey does not yet send
+# anything to these services; naming one in service/model comes next.
+services:
+  hat2:
+    url: http://pi2.lan:8000
+    engine: hailo
+
 # ── How harvey uses the installed kb ─────────────────────────────────────────
 kb:
   # The kb project /kb draft attaches drafts to when --project is not given.

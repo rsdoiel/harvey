@@ -85,6 +85,12 @@ type hailoYAML struct {
 	URL string `yaml:"url,omitempty"`
 }
 
+// serviceYAML is one entry of the services: map in harvey.yaml (DR-0049 item 10).
+type serviceYAML struct {
+	URL    string `yaml:"url"`
+	Engine string `yaml:"engine"`
+}
+
 // draftYAML is the on-disk representation of the draft: section in harvey.yaml.
 type draftYAML struct {
 	Model string `yaml:"model,omitempty"`
@@ -129,6 +135,7 @@ type harveyYAML struct {
 	Ollama          ollamaYAML                `yaml:"ollama,omitempty"`
 	Hailo           hailoYAML                 `yaml:"hailo,omitempty"`
 	Draft           draftYAML                 `yaml:"draft,omitempty"`
+	Services        map[string]serviceYAML    `yaml:"services,omitempty"`
 	Security        securityYAML              `yaml:"security,omitempty"`
 	Session         sessionYAML               `yaml:"session,omitempty"`
 	Memory          memoryYAML                `yaml:"memory,omitempty"`

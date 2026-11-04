@@ -259,9 +259,17 @@ func (a *Agent) useOllamaClient(model string) {
 // useModelAt is useOllamaClient for any Ollama-shaped server: url is the
 // server the client talks to, engine the label the switch is recorded under.
 func (a *Agent) useModelAt(engine, url, model string) {
+	a.useServiceModelAt(engine, engine, url, model)
+}
+
+// useServiceModelAt is useModelAt for a service with its own name (DR-0049):
+// service is recorded on the client and keys the capability row; engine is the
+// kind of server.
+func (a *Agent) useServiceModelAt(service, engine, url, model string) {
 	a.Config.Ollama.Model = model
 	client := newOllamaLLMClient(url, model, a.Config.Ollama.Timeout)
 	client.SetEngine(engine)
+	client.SetService(service)
 	client.SetWindow(a.effectiveContextLimit)
 	a.Client = a.wireSessionLog(client)
 	// Fix the window for this model now, from the cache and the memory there is
@@ -273,6 +281,48 @@ func (a *Agent) useModelAt(engine, url, model string) {
 	}
 	a.fixWindowLimit(model, cap)
 	a.logModelSwitch(model, engine)
+}
+
+/** setServiceModel makes model on a service from services: the active model:
+ * a client and backend for that service's URL and kind, and its capability row
+ * under service/model. Nothing changes when the service cannot be reached.
+ *
+ * Parameters:
+ *   service (string) — a name from services:.
+ *   model   (string) — model name on that service.
+ *
+ * Returns:
+ *   error — usage for a name not in services:; unavailable, naming the
+ *           service, when its server does not answer (no fallback).
+ *
+ * Example:
+ *   err := a.setServiceModel("hat2", "qwen2.5-coder:1.5b")
+ */
+func (a *Agent) setServiceModel(service, model string) error {
+	svc, ok := a.Config.Services[service]
+	if !ok {
+		return Usagef("%q is not a configured service", service)
+	}
+	if !ProbeOllama(svc.URL) {
+		return Unavailablef("service %q (%s) is not answering; nothing was changed", service, svc.URL)
+	}
+	a.useServiceModelAt(service, svc.Engine, svc.URL, model)
+	agentsDir := filepath.Join(a.Workspace.Root, "agents")
+	var b ManagedBackend
+	if svc.Engine == "hailo" {
+		hb := NewHailoBackend(svc.URL, a.Config.Ollama.Timeout, agentsDir)
+		hb.SetActiveModel(model)
+		hb.running = true
+		b = hb
+	} else {
+		ob := NewOllamaBackend(svc.URL, a.Config.Ollama.Timeout, agentsDir)
+		ob.SetActiveModel(model)
+		ob.running = true
+		b = ob
+	}
+	a.Backend = b
+	a.probeModelAndCache(svc.URL, model)
+	return nil
 }
 
 // setOllamaModel wires Config.Ollama.Model, Client, and Backend for the given Ollama model name.

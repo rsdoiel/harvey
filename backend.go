@@ -68,9 +68,13 @@ type ManagedBackend interface {
  *   }
  */
 type ModelSummary struct {
-	Name      string
-	Path      string
+	Name string
+	Path string
+	// Engine is the kind of server, "ollama" or "hailo". Service is the name of
+	// the server it is on (DR-0049): "ollama" or "hailo" for the two defaults,
+	// otherwise a name from services:. Empty means the default of its Engine.
 	Engine    string
+	Service   string
 	SizeBytes int64
 	Modified  time.Time
 	// NotPulled marks an entry from the Hailo catalog (what the card can run)
@@ -89,6 +93,15 @@ func notPulledNote(m ModelSummary) string {
 
 // EngineLabel is the engine as shown to the user: "hailo", or "hailo, not
 // pulled" for a catalog entry that has not been pulled.
+// ServiceName is the service the model is on: Service, or the Engine's default
+// service when none was recorded.
+func (m ModelSummary) ServiceName() string {
+	if m.Service != "" {
+		return m.Service
+	}
+	return m.Engine
+}
+
 func (m ModelSummary) EngineLabel() string {
 	if m.NotPulled {
 		return m.Engine + ", not pulled"

@@ -39,8 +39,40 @@ func parseQualifiedModel(name string) (string, string) {
 	return "", name
 }
 
+/** parseModelRef splits "service/model" into its service and model. The service
+ * is ollama, hailo or a name from services:, matched without regard to case; a
+ * slash after any other prefix is part of the model name. It is
+ * parseQualifiedModel made aware of the configured services (DR-0049 item 2).
+ *
+ * Parameters:
+ *   name (string) — what the user typed, e.g. "hat2/qwen2.5-coder:1.5b".
+ *
+ * Returns:
+ *   string — the service name as configured (lower case for the defaults); ""
+ *            when the name is not qualified.
+ *   string — the model name, without the service prefix when there was one.
+ *
+ * Example:
+ *   service, model := a.parseModelRef("hat2/qwen2.5-coder:1.5b") // "hat2", "qwen2.5-coder:1.5b"
+ */
+func (a *Agent) parseModelRef(name string) (string, string) {
+	if e, m := parseQualifiedModel(name); e != "" {
+		return e, m
+	}
+	i := strings.Index(name, "/")
+	if i <= 0 || i == len(name)-1 {
+		return "", name
+	}
+	for n := range a.Config.Services {
+		if strings.EqualFold(name[:i], n) {
+			return n, name[i+1:]
+		}
+	}
+	return "", name
+}
+
 // qualifiedName is m in the form accepted wherever a model is named.
-func qualifiedName(m ModelSummary) string { return m.Engine + "/" + m.Name }
+func qualifiedName(m ModelSummary) string { return m.ServiceName() + "/" + m.Name }
 
 // sameNameOnSeveralEngines reports whether every candidate has the same name
 // (ignoring case) and there is more than one: the same model name on two engines.
@@ -128,8 +160,8 @@ func qualifiedNames(cands []ModelSummary) []string {
  *   cap, _ := a.ModelCache.Get(a.cacheKeyFor("hailo/llama3.2:3b")) // key "hailo/llama3.2:3b"
  */
 func (a *Agent) cacheKeyFor(name string) string {
-	if engine, model := parseQualifiedModel(name); engine != "" {
-		return modelKey(engine, model)
+	if service, model := a.parseModelRef(name); service != "" {
+		return modelKey(service, model)
 	}
 	return a.modelKey(name)
 }
@@ -156,7 +188,10 @@ func (a *Agent) useStartupModel(name string, out io.Writer) error {
 	if err := a.requireInstalled(name); err != nil {
 		return err
 	}
-	engine, model := parseQualifiedModel(name)
+	engine, model := a.parseModelRef(name)
+	if _, configured := a.Config.Services[engine]; configured {
+		return a.setServiceModel(engine, model)
+	}
 	switch engine {
 	case "hailo":
 		return a.setHailoModel(model)
@@ -201,11 +236,11 @@ func (a *Agent) useStartupModel(name string, out io.Writer) error {
  *   if err := a.requireInstalled("hailo/llama3.2:3b"); err != nil { return err }
  */
 func (a *Agent) requireInstalled(name string) error {
-	engine, model := parseQualifiedModel(name)
+	engine, model := a.parseModelRef(name)
 	var have []ModelSummary
 	asked := false
 	for _, m := range a.listFamilyModels() {
-		if engine != "" && m.Engine != engine {
+		if engine != "" && m.ServiceName() != engine {
 			continue
 		}
 		asked = true

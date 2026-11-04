@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -101,7 +102,7 @@ func (a *Agent) chatURL() string {
 func (a *Agent) listFamilyModels() []ModelSummary {
 	f := a.ollamaFamily()
 	var out []ModelSummary
-	add := func(url, engine string) {
+	add := func(url, service, engine string) {
 		if url == "" || !ProbeOllama(url) {
 			return
 		}
@@ -110,24 +111,45 @@ func (a *Agent) listFamilyModels() []ModelSummary {
 			return
 		}
 		for _, s := range summaries {
-			out = append(out, ModelSummary{Name: s.Name, Engine: engine, SizeBytes: s.SizeBytes})
+			out = append(out, ModelSummary{Name: s.Name, Service: service, Engine: engine, SizeBytes: s.SizeBytes})
 		}
 	}
-	add(f.OllamaURL, "ollama")
-	add(f.HailoURL, "hailo")
-	// The Hailo catalog: what the card can run but has not been pulled.
-	have := map[string]bool{}
-	for _, m := range out {
-		if m.Engine == "hailo" {
-			have[strings.ToLower(m.Name)] = true
+	// catalog adds what a Hailo service can run but has not pulled.
+	catalog := func(service string, names []string) {
+		have := map[string]bool{}
+		for _, m := range out {
+			if m.ServiceName() == service {
+				have[strings.ToLower(m.Name)] = true
+			}
+		}
+		for _, name := range names {
+			if !have[strings.ToLower(name)] {
+				out = append(out, ModelSummary{Name: name, Service: service, Engine: "hailo", NotPulled: true})
+			}
 		}
 	}
-	for _, name := range f.HailoCatalog {
-		if !have[strings.ToLower(name)] {
-			out = append(out, ModelSummary{Name: name, Engine: "hailo", NotPulled: true})
+	add(f.OllamaURL, "ollama", "ollama")
+	add(f.HailoURL, "hailo", "hailo")
+	catalog("hailo", f.HailoCatalog)
+	// Services from services: (DR-0049), in name order so listings are stable.
+	for _, name := range a.configuredServiceNames() {
+		svc := a.Config.Services[name]
+		add(svc.URL, name, svc.Engine)
+		if svc.Engine == "hailo" {
+			catalog(name, fetchHailoCatalog(svc.URL))
 		}
 	}
 	return out
+}
+
+// configuredServiceNames is the names in services:, sorted.
+func (a *Agent) configuredServiceNames() []string {
+	names := make([]string, 0, len(a.Config.Services))
+	for n := range a.Config.Services {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 /** setHailoModel makes model on the hailo-ollama server the active model:

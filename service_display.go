@@ -4,11 +4,12 @@
 package harvey
 
 /** serviceCount returns how many model services this session can use: the
- * Ollama server when it answers, and the Hailo server when one is detected.
- * It is worked out once per session, since it probes the servers.
+ * Ollama server when it answers, the Hailo server when one is detected, and
+ * each service from services: that answers. It is worked out once per
+ * session, since it probes the servers.
  *
  * Returns:
- *   int — 0, 1 or 2 with the two default services (DR-0049 item 10).
+ *   int — how many services are in play (DR-0049 items 6 and 10).
  *
  * Example:
  *   if a.serviceCount() > 1 { fmt.Println("more than one service") }
@@ -25,6 +26,11 @@ func (a *Agent) serviceCount() int {
 	if f.HailoURL != "" {
 		n++
 	}
+	for _, name := range a.configuredServiceNames() {
+		if ProbeOllama(a.Config.Services[name].URL) {
+			n++
+		}
+	}
 	a.serviceCountCache = n + 1
 	return n
 }
@@ -40,6 +46,26 @@ func (a *Agent) serviceCount() int {
  *   if a.showService() { label = service + "/" + model }
  */
 func (a *Agent) showService() bool { return a.serviceCount() > 1 }
+
+/** activeServiceName is the name of the service the session's model runs on:
+ * the client's service when it is one from services:, otherwise the backend's
+ * engine, otherwise "ollama".
+ *
+ * Returns:
+ *   string — "ollama", "hailo" or a name from services:.
+ *
+ * Example:
+ *   fmt.Println(a.activeServiceName()) // "hat2"
+ */
+func (a *Agent) activeServiceName() string {
+	if ac, ok := a.Client.(*OllamaChatClient); ok && ac.Service() != ac.EngineKind() {
+		return ac.Service()
+	}
+	if a.Backend != nil {
+		return a.Backend.Name()
+	}
+	return "ollama"
+}
 
 /** displayModel is how a model is shown to a person: "service/model" when
  * there is a choice of services (the form /model use and -m accept), the bare
@@ -79,11 +105,7 @@ func (a *Agent) clientDisplay(c LLMClient) string {
 		return "none"
 	}
 	if ac, ok := c.(*OllamaChatClient); ok {
-		svc := ac.Engine()
-		if svc == "" {
-			svc = ac.ProviderName()
-		}
-		return a.displayModel(svc, ac.ModelName())
+		return a.displayModel(ac.Service(), ac.ModelName())
 	}
 	return c.Name()
 }

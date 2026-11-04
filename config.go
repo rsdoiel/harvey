@@ -83,6 +83,21 @@ type HailoConfig struct {
 	URLSet bool
 }
 
+/** ServiceConfig is one named model service beyond the two defaults (DR-0049
+ * item 1): where it is and what kind of server it is.
+ *
+ * Fields:
+ *   URL    (string) — base URL, "http://host:port".
+ *   Engine (string) — the kind, "ollama" or "hailo"; selects the capability table.
+ *
+ * Example:
+ *   cfg.Services["hat2"] = ServiceConfig{URL: "http://pi2.lan:8000", Engine: "hailo"}
+ */
+type ServiceConfig struct {
+	URL    string
+	Engine string
+}
+
 /** DraftConfig holds the drafting settings (DR-0030 item 8).
  *
  * Fields:
@@ -194,6 +209,9 @@ type Config struct {
 	Ollama    OllamaConfig
 	Hailo     HailoConfig
 	Draft     DraftConfig
+	// Services names the model servers beyond the two defaults (ollama.url and
+	// hailo.url), keyed by service name (DR-0049). Read and checked; not yet used.
+	Services  map[string]ServiceConfig
 	Security  SecurityConfig
 	Session   SessionConfig
 	// Model aliases: short name → ModelAlias (model ID + optional purpose tags)
@@ -820,6 +838,11 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 	if y.Draft.Model != "" {
 		cfg.Draft.Model = strings.TrimSpace(y.Draft.Model)
 	}
+	services, err := parseServices(y.Services)
+	if err != nil {
+		return err
+	}
+	cfg.Services = services
 	if y.Ollama.URL != "" && !cfg.Ollama.URLExplicit {
 		cfg.Ollama.URL = y.Ollama.URL
 	}

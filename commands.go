@@ -817,6 +817,9 @@ func cmdModelClean(a *Agent, out io.Writer) error {
 		migrateRelabelledAliases(a, out)
 	}
 	for _, m := range a.listFamilyModels() {
+		if m.ServiceName() != m.Engine {
+			continue // a configured service; its aliases are left alone
+		}
 		if m.Engine == "hailo" {
 			liveHailo = append(liveHailo, m.Name)
 		} else {
@@ -866,7 +869,7 @@ func cmdModelList(a *Agent, out io.Writer) error {
 	activeEngine := ""
 	activeModel := ""
 	if a.Backend != nil {
-		activeEngine = a.Backend.Name()
+		activeEngine = a.activeServiceName()
 		activeModel = a.Backend.ActiveModel()
 	} else if a.Config.Ollama.Model != "" {
 		activeEngine = "ollama"
@@ -874,13 +877,13 @@ func cmdModelList(a *Agent, out io.Writer) error {
 	}
 
 	for _, m := range models {
-		active := m.Engine == activeEngine && strings.EqualFold(m.Name, activeModel)
+		active := m.ServiceName() == activeEngine && strings.EqualFold(m.Name, activeModel)
 		marker := "  "
 		if active {
 			marker = "→ "
 		}
 		if a.showService() {
-			fmt.Fprintf(out, "  %s%-30s\n", marker, a.displayModel(m.Engine, m.Name)+notPulledNote(m))
+			fmt.Fprintf(out, "  %s%-30s\n", marker, a.displayModel(m.ServiceName(), m.Name)+notPulledNote(m))
 		} else {
 			fmt.Fprintf(out, "  %s%s\n", marker, m.Name+notPulledNote(m))
 		}

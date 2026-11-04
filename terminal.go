@@ -87,7 +87,11 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 	}
 	if ok {
 		full := entry.Model
-		if entry.Engine == "hailo" {
+		if _, configured := a.Config.Services[entry.Engine]; configured {
+			if err := a.setServiceModel(entry.Engine, full); err != nil {
+				return true, err
+			}
+		} else if entry.Engine == "hailo" {
 			if err := a.setHailoModel(full); err != nil {
 				return true, err
 			}
@@ -118,7 +122,7 @@ func attemptModelSwitch(a *Agent, name string, out io.Writer) (bool, error) {
 func activeModelLabel(a *Agent) string {
 	// Prefer the live backend — it knows the actual engine and model name.
 	if a.Backend != nil && a.Backend.ActiveModel() != "" {
-		return a.displayModel(a.Backend.Name(), a.Backend.ActiveModel())
+		return a.displayModel(a.activeServiceName(), a.Backend.ActiveModel())
 	}
 	// Fallback to config fields (Ollama has no ManagedBackend wrapper).
 	if a.Config.Ollama.Model != "" {

@@ -454,6 +454,10 @@ func modelKey(engine, model string) string {
  *   cap, _ := a.ModelCache.Get(a.modelKey(ac.ModelName()))
  */
 func (a *Agent) modelKey(model string) string {
+	// A client on a service of its own name (DR-0049) keys by that name.
+	if ac, ok := a.Client.(*OllamaChatClient); ok && ac.Service() != ac.EngineKind() {
+		return modelKey(ac.Service(), model)
+	}
 	if a.Backend == nil {
 		return modelKey("", model)
 	}

@@ -115,3 +115,62 @@ func TestServiceDisplay_StatusAndPickerFollowTheRule(t *testing.T) {
 		t.Errorf("clientDisplay on one service = %q", got)
 	}
 }
+
+// A configured service counts as a service (DR-0049 item 6): Ollama plus hat2
+// is a choice, so every place that names a model names its service, and the
+// service is hat2 (its name), not hailo (its kind).
+func TestServiceDisplay_ConfiguredServiceIsACountedService(t *testing.T) {
+	a, _, _ := serviceAgent(t) // ollama default (phi4) + hat2 (hailo kind, qwen2.5-coder:1.5b)
+	if n := a.serviceCount(); n != 2 {
+		t.Fatalf("serviceCount = %d, want 2", n)
+	}
+	if err := a.setServiceModel("hat2", "qwen2.5-coder:1.5b"); err != nil {
+		t.Fatal(err)
+	}
+	if got := activeModelLabel(a); got != "hat2/qwen2.5-coder:1.5b" {
+		t.Errorf("activeModelLabel = %q, want hat2/qwen2.5-coder:1.5b", got)
+	}
+	if got := a.clientDisplay(a.Client); got != "hat2/qwen2.5-coder:1.5b" {
+		t.Errorf("clientDisplay = %q", got)
+	}
+	var out bytes.Buffer
+	if err := cmdModel(a, []string{"list"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"hat2/qwen2.5-coder:1.5b", "ollama/phi4"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("/model list should name %q:\n%s", want, out.String())
+		}
+	}
+}
+
+// A configured service that is down is not a choice: one service answers, so
+// no service word.
+func TestServiceDisplay_ConfiguredServiceDownIsNotCounted(t *testing.T) {
+	ol, _ := ollamaFamilyServer(t, false, "phi4")
+	a := familyAgent(t, ol.URL, "", false, false)
+	a.Config.Services = map[string]ServiceConfig{"hat2": {URL: "http://127.0.0.1:1", Engine: "hailo"}}
+	if n := a.serviceCount(); n != 1 {
+		t.Errorf("serviceCount = %d, want 1", n)
+	}
+}
+
+// Two configured services of the same kind are two services.
+func TestServiceDisplay_TwoConfiguredServicesOfOneKind(t *testing.T) {
+	p2, _ := ollamaFamilyServer(t, true, "qwen2.5-coder:1.5b")
+	p3, _ := ollamaFamilyServer(t, true, "qwen2.5-coder:1.5b")
+	a := familyAgent(t, "http://127.0.0.1:1", "", false, false) // no default service answers
+	a.Config.Services = map[string]ServiceConfig{
+		"hat2": {URL: p2.URL, Engine: "hailo"},
+		"hat3": {URL: p3.URL, Engine: "hailo"},
+	}
+	if n := a.serviceCount(); n != 2 {
+		t.Fatalf("serviceCount = %d, want 2", n)
+	}
+	if err := a.setServiceModel("hat3", "qwen2.5-coder:1.5b"); err != nil {
+		t.Fatal(err)
+	}
+	if got := activeModelLabel(a); got != "hat3/qwen2.5-coder:1.5b" {
+		t.Errorf("activeModelLabel = %q, want the service name, not the kind", got)
+	}
+}
