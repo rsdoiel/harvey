@@ -4,6 +4,8 @@
 > Entries below that mention llamafile or llama.cpp (their code, tests and `backend_*` files) are history: both backends were
 > removed (workspace DR-0033), and the files and tests they name no longer exist.
 
+- [x] **DONE 2026-11-04: hailo structured tool calls, opt-in per model (workspace-tier harvey DR-0050).** `qwen3:1.7b` only, sent the read-only subset `read_file`, `list_files`, `search_files` (`EngineCaps.NativeToolModels`/`NativeToolNames`, `nativeToolModel`, `nativeToolSubset` in `engine_caps.go`; name and argument keys trimmed, an unoffered name is no call, in `ollama_chat.go`; `toolsReliable` in `file_inject.go`); tests `hailo_native_tools_test.go`; checked end to end on the card. Open: where the window gives out beyond the 3-tool subset (write_file, run_command are not sent); a repeat probe of qwen3's search_files choice; `-race`.
+
 - [ ] **An ambiguous model name at startup: the unattended exit code, the message, and the answer not being remembered.**
   Found 2026-11-02 in D7 (`llama3.2:3b` is installed on both servers of this Pi); first written up wrongly as a defect, corrected
   the same day after testing at a terminal. What DR-0030 item 6 says is what happens: at a terminal harvey asks ("`llama3.2:3b` is on

@@ -409,8 +409,13 @@ func (a *OllamaChatClient) buildRequest(messages []Message, tools []Tool) chatWi
 	}
 	// An engine that cannot take a tools key (hailo-ollama answers HTTP 500 to
 	// any, even an empty array) is never sent one, whoever asks.
+	// A model on the engine's opt-in list (DR-0050) is the exception.
 	if caps, ok := capsForEngine(a.engine); ok && caps.Tools == CapNo {
-		tools = nil
+		if nativeToolModel(a.engine, a.modelName) {
+			tools = nativeToolSubset(a.engine, tools)
+		} else {
+			tools = nil
+		}
 	}
 	if len(tools) > 0 {
 		req.Tools = tools
@@ -483,6 +488,15 @@ func (a *OllamaChatClient) chatInternal(ctx context.Context, messages []Message,
 				fmt.Fprint(out, chunk.Message.Content)
 			}
 			for _, wc := range chunk.Message.ToolCalls {
+				if nativeToolModel(a.engine, a.modelName) {
+					// hailo-ollama leaves white space in the name and argument keys
+					// (qwen3: " get_weather", " city"), and a small model can name a
+					// tool that was not offered: that is no call (DR-0050 item 3).
+					wc = cleanNativeToolCall(wc)
+					if !offeredTool(req.Tools, wc.Function.Name) {
+						continue
+					}
+				}
 				args, _ := json.Marshal(wc.Function.Arguments)
 				if len(wc.Function.Arguments) == 0 {
 					args = []byte("{}")
@@ -577,4 +591,28 @@ func (a *OllamaChatClient) beginCall(ctx context.Context, msgs []Message, toolCo
 	end := a.CallLog.BeginModelCall(ctx, msgs, toolCount)
 	var captured strings.Builder
 	return io.MultiWriter(out, &captured), captured.String, end
+}
+
+// cleanNativeToolCall trims white space from a call's tool name and every
+// argument key.
+func cleanNativeToolCall(wc chatWireToolCall) chatWireToolCall {
+	wc.Function.Name = strings.TrimSpace(wc.Function.Name)
+	if len(wc.Function.Arguments) > 0 {
+		clean := make(map[string]any, len(wc.Function.Arguments))
+		for k, v := range wc.Function.Arguments {
+			clean[strings.TrimSpace(k)] = v
+		}
+		wc.Function.Arguments = clean
+	}
+	return wc
+}
+
+// offeredTool reports whether name is one of the tools sent in the request.
+func offeredTool(tools []Tool, name string) bool {
+	for _, t := range tools {
+		if t.Function.Name == name {
+			return true
+		}
+	}
+	return false
 }

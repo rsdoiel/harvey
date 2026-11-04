@@ -377,6 +377,12 @@ func (a *Agent) toolsReliable() bool {
 	if !a.Config.ToolsEnabled || a.Tools == nil {
 		return false
 	}
+	// A model on its engine's opt-in list (DR-0050) is reliable unless the user
+	// set a mode other than structured.
+	if nativeToolModel(a.activeEngine(), a.activeModelName()) {
+		mode := a.modelToolMode()
+		return mode == ToolModeAuto || mode == ToolModeStructured
+	}
 	// An engine that cannot take tools is not told otherwise by a cache row or a mode.
 	if a.activeEngineLacksTools() {
 		return false
