@@ -172,6 +172,8 @@ type SessionStart struct {
 	User          string
 	Workspace     string
 	Backend       string
+	Service       string
+	Engine        string
 	Model         string
 	System        SystemPrompt
 	Window        Window
@@ -333,6 +335,8 @@ func OpenSessionLog(opts SessionLogOptions) (*SessionLog, error) {
 		"user":           sessionUser(opts.Start.User),
 		"workspace":      opts.Start.Workspace,
 		"backend":        opts.Start.Backend,
+		"service":        orDefault(opts.Start.Service, opts.Start.Backend),
+		"engine":         orDefault(opts.Start.Engine, opts.Start.Backend),
 		"model":          opts.Start.Model,
 		"system":         map[string]any{"id": opts.Start.System.ID, "sha256": hex.EncodeToString(sum[:]), "text": sys},
 		"window":         opts.Start.Window,
@@ -720,4 +724,12 @@ func sessionUser(name string) string {
 		return name
 	}
 	return "OPERATOR"
+}
+
+// orDefault returns s, or def when s is empty.
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
 }

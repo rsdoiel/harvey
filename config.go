@@ -83,6 +83,19 @@ type HailoConfig struct {
 	URLSet bool
 }
 
+/** DraftConfig holds the drafting settings (DR-0030 item 8).
+ *
+ * Fields:
+ *   Model (string) — the model `/kb draft` drafts with, "service/model" or a
+ *                    bare name; "" means the session's own model.
+ *
+ * Example:
+ *   cfg.Draft.Model = "hailo/qwen2.5-coder:1.5b"
+ */
+type DraftConfig struct {
+	Model string
+}
+
 /** SecurityConfig holds safe-mode and command permission settings.
  *
  * Fields:
@@ -180,6 +193,7 @@ type Config struct {
 	Skills    SkillsConfig
 	Ollama    OllamaConfig
 	Hailo     HailoConfig
+	Draft     DraftConfig
 	Security  SecurityConfig
 	Session   SessionConfig
 	// Model aliases: short name → ModelAlias (model ID + optional purpose tags)
@@ -803,6 +817,9 @@ func LoadHarveyYAML(ws *Workspace, cfg *Config) error {
 		cfg.Hailo.URL = y.Hailo.URL
 		cfg.Hailo.URLSet = true
 	}
+	if y.Draft.Model != "" {
+		cfg.Draft.Model = strings.TrimSpace(y.Draft.Model)
+	}
 	if y.Ollama.URL != "" && !cfg.Ollama.URLExplicit {
 		cfg.Ollama.URL = y.Ollama.URL
 	}
@@ -930,6 +947,9 @@ func SaveMemoryConfig(ws *Workspace, cfg *Config) error {
 	y.SensorInjectFormatFindings = &cfg.SensorInjectFormatFindings
 	if cfg.LearnModel != "" {
 		y.LearnModel = cfg.LearnModel
+	}
+	if cfg.Draft.Model != "" {
+		y.Draft.Model = cfg.Draft.Model
 	}
 	if !cfg.ToolResultCompaction {
 		f := false

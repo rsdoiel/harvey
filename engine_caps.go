@@ -9,6 +9,9 @@ package harvey
  *   Embed       (CapabilityStatus) — POST /api/embed.
  *   Tokenize    (CapabilityStatus) — POST /api/tokenize.
  *   ProcessList (CapabilityStatus) — GET /api/ps, the running models.
+ *   Window      (int)              — the context window every model of the engine has,
+ *                                    in tokens, when the server cannot report it; 0 is
+ *                                    unknown and the probe decides.
  *
  * Example:
  *   if c, ok := capsForEngine("hailo"); ok && c.Tokenize == CapNo { estimate() }
@@ -18,6 +21,7 @@ type EngineCaps struct {
 	Embed       CapabilityStatus
 	Tokenize    CapabilityStatus
 	ProcessList CapabilityStatus
+	Window      int
 }
 
 // engineCaps holds a row only for an engine whose limits are known. Ollama and
@@ -25,9 +29,14 @@ type EngineCaps struct {
 // hailo-ollama ever takes a tools key or grows an embed route, this row is
 // the one place that changes.
 var engineCaps = map[string]EngineCaps{
-	// hailo-ollama 0.5.1 (kb 365, 367, 375): any tools key answers HTTP 500;
-	// there is no /api/embed, /api/tokenize or /api/ps.
-	"hailo": {Tools: CapNo, Embed: CapNo, Tokenize: CapNo, ProcessList: CapNo},
+	// hailo-ollama (notes/hailo-ollama-api.md): 0.5.1 answered HTTP 500 to any
+	// tools key; 5.4.0 accepts one but writes the call as <tool_call> text and
+	// never sets tool_calls, so structured tools stay unavailable. There is no
+	// /api/embed or /api/tokenize; GET /api/ps exists but was empty with a model
+	// loaded. Every 5.4.0 model is compiled for 2,048 tokens (Hailo's
+	// docs/MODELS.rst, and measured 2026-11-03: a prompt past it is silently
+	// not read), and /api/show reports no window.
+	"hailo": {Tools: CapNo, Embed: CapNo, Tokenize: CapNo, ProcessList: CapNo, Window: 2048},
 }
 
 /** capsForEngine returns the capability row for an engine.

@@ -40,6 +40,7 @@ type OllamaChatClient struct {
 	baseURL   string
 	modelName string
 	provName  string
+	service   string // service name (DR-0049); "" means the engine's default service
 	httpc     *http.Client
 	CallLog   ModelCallLog // optional: told of every model call for the session log
 	maxTokens int          // 0 = no limit
@@ -114,6 +115,28 @@ func (a *OllamaChatClient) SetEngine(engine string) { a.engine = engine }
 
 // Engine returns the label set by SetEngine; "" when none was set.
 func (a *OllamaChatClient) Engine() string { return a.engine }
+
+// SetService records the name of the service this client talks to (DR-0049).
+// The engine says what kind of server it is; the service says which one.
+func (a *OllamaChatClient) SetService(service string) { a.service = service }
+
+// Service returns the service name: the one set by SetService, else the
+// engine, else the provider name. With only the two default services the name
+// and the engine are the same word.
+func (a *OllamaChatClient) Service() string {
+	if a.service != "" {
+		return a.service
+	}
+	return a.EngineKind()
+}
+
+// EngineKind returns the engine, "ollama" when none was set.
+func (a *OllamaChatClient) EngineKind() string {
+	if a.engine != "" {
+		return a.engine
+	}
+	return a.provName
+}
 
 /** SetWindow tells the client where to read the context window harvey believes
  * the model has. When fn returns a number above zero it is sent as

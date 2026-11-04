@@ -85,6 +85,11 @@ type hailoYAML struct {
 	URL string `yaml:"url,omitempty"`
 }
 
+// draftYAML is the on-disk representation of the draft: section in harvey.yaml.
+type draftYAML struct {
+	Model string `yaml:"model,omitempty"`
+}
+
 // skillsYAML is the on-disk representation of the skills: section in harvey.yaml.
 type skillsYAML struct {
 	Catalog string `yaml:"catalog,omitempty"` // "off" (default) or "full"
@@ -123,6 +128,7 @@ type harveyYAML struct {
 	Skills          skillsYAML                `yaml:"skills,omitempty"`
 	Ollama          ollamaYAML                `yaml:"ollama,omitempty"`
 	Hailo           hailoYAML                 `yaml:"hailo,omitempty"`
+	Draft           draftYAML                 `yaml:"draft,omitempty"`
 	Security        securityYAML              `yaml:"security,omitempty"`
 	Session         sessionYAML               `yaml:"session,omitempty"`
 	Memory          memoryYAML                `yaml:"memory,omitempty"`

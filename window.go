@@ -252,6 +252,16 @@ func (a *Agent) windowKey(model string) string { return a.modelKey(model) }
  *   a.fixWindowLimit("llama3.2:3b", cap)
  */
 func (a *Agent) fixWindowLimit(model string, cap *ModelCapability) WindowLimit {
+	// An engine whose server cannot report a window but whose models all have
+	// the same one (hailo: 2,048): that is the model's own window.
+	if c, ok := capsForEngine(a.activeEngine()); ok && c.Window > 0 && (cap == nil || cap.ContextLength == 0) {
+		synth := ModelCapability{}
+		if cap != nil {
+			synth = *cap
+		}
+		synth.ContextLength = c.Window
+		cap = &synth
+	}
 	if cap == nil {
 		// Nothing is known about the model yet: do not keep that answer, so the
 		// limit is worked out when the cache has the model.

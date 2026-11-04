@@ -32,10 +32,7 @@ import (
  */
 func (a *Agent) openSessionLog(recPath, replayOf string, out io.Writer) {
 	stem := strings.TrimSuffix(filepath.Base(recPath), filepath.Ext(recPath))
-	clientName := "none"
-	if a.Client != nil {
-		clientName = a.Client.Name()
-	}
+	ref := modelRefOf(a.Client)
 	sysID, system := a.systemPromptVersion()
 	root := ""
 	if a.Workspace != nil {
@@ -49,8 +46,10 @@ func (a *Agent) openSessionLog(recPath, replayOf string, out io.Writer) {
 			HarveyVersion: Version,
 			User:          os.Getenv("USER"),
 			Workspace:     root,
-			Backend:       backendFromClientName(clientName),
-			Model:         modelFromClientName(clientName),
+			Backend:       ref.Backend,
+			Service:       ref.Service,
+			Engine:        ref.Engine,
+			Model:         ref.Model,
 			System:        SystemPrompt{ID: sysID, Text: system},
 			Window:        a.logWindow(),
 		},
@@ -66,7 +65,7 @@ func (a *Agent) openSessionLog(recPath, replayOf string, out io.Writer) {
 	a.SessionLog = l
 	a.logTurn, a.logLastID, a.logFirstDialogID = 0, "", ""
 	a.logSystemID = sysID
-	a.logModel = ModelRef{Backend: backendFromClientName(clientName), Model: modelFromClientName(clientName)}
+	a.logModel = ref
 }
 
 /** closeSessionLog writes session_end and closes the agent's log; it does
@@ -434,17 +433,16 @@ func (a *Agent) logModelRequest(ctx context.Context, msgs []Message, toolCount i
 	if a.SessionLog == nil {
 		return ""
 	}
-	clientName := "none"
-	if a.Client != nil {
-		clientName = a.Client.Name()
-	}
+	ref := modelRefOf(a.Client)
 	purpose := callPurposeOf(ctx)
 	sysID, sysText := systemPromptOf(msgs)
 	data := map[string]any{
 		"turn":          a.logTurn,
 		"system":        sysID,
-		"backend":       backendFromClientName(clientName),
-		"model":         modelFromClientName(clientName),
+		"backend":       ref.Backend,
+		"service":       ref.Service,
+		"engine":        ref.Engine,
+		"model":         ref.Model,
 		"prompt_sha256": promptHash(msgs),
 	}
 	if purpose.name == purposeTurn || purpose.name == purposeRoute {
@@ -646,9 +644,40 @@ func modelFromClientName(name string) string {
 func isCancel(err error) bool { return errors.Is(err, context.Canceled) }
 
 // ModelRef names a backend and a model, as the log writes them in model_switch.
+//
+// Service is the configured service's name and Engine its kind (DR-0049);
+// Backend is the engine again, kept for readers written before they existed.
 type ModelRef struct {
 	Backend string `json:"backend"`
+	Service string `json:"service,omitempty"`
+	Engine  string `json:"engine,omitempty"`
 	Model   string `json:"model"`
+}
+
+/** modelRefOf is the one place a model call's service, engine and model are
+ * read from: the client. A client that is not an Ollama-shaped one has its
+ * backend taken from its Name(), as before, and service and engine the same.
+ *
+ * Parameters:
+ *   c (LLMClient) — the client making the call; nil is "none".
+ *
+ * Returns:
+ *   ModelRef — backend, service, engine and model, all filled.
+ *
+ * Example:
+ *   ref := modelRefOf(a.Client) // {Backend:"hailo", Service:"hailo", Engine:"hailo", Model:"llama3.2:3b"}
+ */
+func modelRefOf(c LLMClient) ModelRef {
+	if ac, ok := c.(*OllamaChatClient); ok {
+		kind := ac.EngineKind()
+		return ModelRef{Backend: kind, Service: ac.Service(), Engine: kind, Model: ac.ModelName()}
+	}
+	name := "none"
+	if c != nil {
+		name = c.Name()
+	}
+	b := backendFromClientName(name)
+	return ModelRef{Backend: b, Service: b, Engine: b, Model: modelFromClientName(name)}
 }
 
 // systemPromptVersion returns the id and text of the system prompt in the
@@ -704,7 +733,10 @@ func (a *Agent) logModelSwitch(model, backend string) {
 	if a.SessionLog == nil {
 		return
 	}
-	to := ModelRef{Backend: backend, Model: model}
+	to := ModelRef{Backend: backend, Service: backend, Engine: backend, Model: model}
+	if ac, ok := a.Client.(*OllamaChatClient); ok && ac.ModelName() == model {
+		to = modelRefOf(ac)
+	}
 	a.logEvent(KindModelSwitch, LevelInfo, map[string]any{
 		"from":   a.logModel,
 		"to":     to,

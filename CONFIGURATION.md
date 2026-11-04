@@ -586,6 +586,16 @@ permissions:
 # or edits every draft before it is trusted.
 learn_model: granite
 
+# ── Drafting observations from a session (/kb draft) ──────────────────────────
+draft:
+  # The model /kb draft drafts with: "service/model" (for example
+  # hailo/qwen2.5-coder:1.5b, or ollama/llama3.2:3b) or a bare model name that
+  # only one service has. Unset means the model the session is using. An @name
+  # on the command beats it for one run. If the service it names is not
+  # running, /kb draft stops and says which (exit 69); it never drafts with
+  # another model instead.
+  model: hailo/qwen2.5-coder:1.5b
+
 # ── How harvey uses the installed kb ─────────────────────────────────────────
 kb:
   # The kb project /kb draft attaches drafts to when --project is not given.

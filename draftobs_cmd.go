@@ -240,7 +240,11 @@ func runKBDraft(stop draftStop, a *Agent, args []string, out io.Writer) error {
 		return nil
 	}
 
+	// @NAME on the line beats draft.model; unset means the session's own model.
 	name := strings.TrimPrefix(strings.TrimSpace(p.mention), "@")
+	if name == "" {
+		name = strings.TrimSpace(a.Config.Draft.Model)
+	}
 	drafter, restore, err := resolveDrafter(a, name, out)
 	if err != nil {
 		who := name
@@ -263,7 +267,7 @@ func runKBDraft(stop draftStop, a *Agent, args []string, out io.Writer) error {
 		note = fmt.Sprintf(", window not known, %d assumed", draftFallbackWindow)
 	}
 	fmt.Fprintf(out, "Drafting from %s with %s: %d entries in %d pass(es) (%d tokens each%s).\n",
-		stem, drafter.Name(), len(entries), len(passes), budget, note)
+		stem, a.drafterDisplay(drafter), len(entries), len(passes), budget, note)
 
 	type pending struct {
 		Proposal

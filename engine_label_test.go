@@ -99,3 +99,55 @@ func TestPipelineMention_KeepsTheClientsEngine(t *testing.T) {
 		t.Errorf("mention client = %q, want hailo (qwen2.5-coder:1.5b)", got.Name())
 	}
 }
+
+// DR-0049 item 7: every model record carries the service (its name) and the
+// engine (its kind) from one source, the client. backend stays for old readers.
+func TestLogFields_ServiceAndEngineOnEveryModelRecord(t *testing.T) {
+	hl, _ := ollamaFamilyServer(t, true, "llama3.2:3b", "qwen2.5-coder:1.5b")
+	a := familyAgent(t, "http://127.0.0.1:1", hl.URL, true, true)
+	if err := a.setHailoModel("llama3.2:3b"); err != nil {
+		t.Fatal(err)
+	}
+	// A service named "hat" that is a hailo engine: name and kind differ.
+	a.Client.(*OllamaChatClient).SetService("hat")
+	a.openSessionLog(filepath.Join(t.TempDir(), "20261103-1300-harvey.spmd"), "", io.Discard)
+	t.Cleanup(func() { a.closeSessionLog("test") })
+	path := a.SessionLog.Path()
+	a.AddMessage("system", "You are Harvey.")
+	a.logUserInput("one")
+	a.logModelRequest(withCallPurpose(t.Context(), purposeTurn, nil), a.History, 0)
+	a.useModelAt("hailo", hl.URL, "qwen2.5-coder:1.5b")
+
+	field := func(kind EventKind, data []byte, keys ...string) map[string]string {
+		var m map[string]any
+		_ = json.Unmarshal(data, &m)
+		got := map[string]string{}
+		for _, k := range keys {
+			got[k], _ = m[k].(string)
+		}
+		return got
+	}
+	want := map[string]string{"service": "hat", "engine": "hailo", "backend": "hailo"}
+	check := func(where string, got map[string]string) {
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("%s: %s = %q, want %q (all %v)", where, k, got[k], v, got)
+			}
+		}
+	}
+	start := eventsOf(t, a, path, KindSessionStart)[0]
+	check("session_start", field(KindSessionStart, start.Data, "service", "engine", "backend"))
+	req := eventsOf(t, a, path, KindModelRequest)[0]
+	check("model_request", field(KindModelRequest, req.Data, "service", "engine", "backend"))
+
+	// model_switch: the destination carries both too.
+	sw := eventsOf(t, a, path, KindModelSwitch)
+	if len(sw) == 0 {
+		t.Fatal("no model_switch")
+	}
+	var d struct{ To ModelRef }
+	_ = json.Unmarshal(sw[len(sw)-1].Data, &d)
+	if d.To.Engine != "hailo" || d.To.Backend != "hailo" || d.To.Service == "" {
+		t.Errorf("model_switch.to = %+v, want engine/backend hailo and a service", d.To)
+	}
+}

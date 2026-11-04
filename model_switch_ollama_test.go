@@ -201,7 +201,7 @@ func TestDispatchRestore_OllamaKeepsSessionLogAndRecordsSwitchBack(t *testing.T)
 		if e.Kind == KindModelRequest && e.Level == LevelInfo {
 			lastReq = e
 		}
-		if e.Kind == KindModelSwitch && strings.Contains(string(e.Data), `"to":{"backend":"ollama","model":"llama3.2:3b"}`) {
+		if e.Kind == KindModelSwitch && strings.Contains(string(e.Data), `"to":{"backend":"ollama","service":"ollama","engine":"ollama","model":"llama3.2:3b"}`) {
 			switchBack = true
 		}
 	}
