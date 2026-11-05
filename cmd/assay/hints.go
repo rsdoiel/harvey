@@ -27,7 +27,7 @@ var ruleTable = []string{
 	"2. Neither: no target is reliable. The hint names the best target and its rate.",
 	"3. One engine only: reliable targets exist on one engine. The hint names it and the other engine's best.",
 	"4. Both engines reliable: either, unless one engine's best has a warm first token 1.5 times quicker or more and at least 1 second quicker, then that engine.",
-	"5. Window (long-prompt): a target reads up to the largest probe size it passed with every smaller size also passed; the hint names what happened at the next size. Longer prompts go to the other engine.",
+	"5. Window (long-prompt): a target reads up to the largest probe size at which any trial reflected the marker, with every smaller size also read; a size where only some trials did is noted as flaky, not as loss, because loss past the window fails every trial. The hint names what happened at the next size. Longer prompts go to the other engine.",
 	"6. Tool-ready: a target passes 0.8 or more of the tool_call probes and every no_tool control; the hint says which part failed. For tool-call, rules 2 to 4 use tool-ready as reliable.",
 	"7. Cold start: over 10 seconds, the hint says to keep the model loaded.",
 	"8. Thin evidence: fewer than 3 trials behind a hint ends it with (thin: n trials).",
@@ -289,6 +289,9 @@ func windowHints(results []PromptResult, m Matrix) []Hint {
 		runs, fails int
 		server      bool
 	}
+	// A size counts as read when any trial reflected the marker: silent loss
+	// past the window fails every trial, so a mixed size is sampling noise and
+	// is noted as flaky, not taken for loss.
 	var out []Hint
 	for _, t := range m.Targets {
 		bySize := map[int]*size{}
@@ -324,10 +327,14 @@ func windowHints(results []PromptResult, m Matrix) []Hint {
 		}
 		sort.Ints(sizes)
 		reach, failAt := 0, 0
+		var flaky []string
 		for _, sz := range sizes {
-			if bySize[sz].fails > 0 {
+			if bySize[sz].fails == bySize[sz].runs {
 				failAt = sz
 				break
+			}
+			if bySize[sz].fails > 0 {
+				flaky = append(flaky, fmt.Sprintf("~%d (%d/%d)", sz, bySize[sz].runs-bySize[sz].fails, bySize[sz].runs))
 			}
 			reach = sz
 		}
@@ -345,6 +352,9 @@ func windowHints(results []PromptResult, m Matrix) []Hint {
 			txt = fmt.Sprintf("reads none of the sizes tested: %s already at ~%d tokens", what(failAt), failAt)
 		default:
 			txt = fmt.Sprintf("reads up to ~%d tokens; at ~%d tokens: %s; send longer prompts to the other engine", reach, failAt, what(failAt))
+		}
+		if len(flaky) > 0 {
+			txt += "; flaky at " + strings.Join(flaky, ", ") + " (some trials failed, so sampling noise rather than loss)"
 		}
 		out = append(out, Hint{Capability: "long-prompt", Target: t, Rule: 5, Text: txt + thin(minRuns)})
 	}

@@ -246,3 +246,30 @@ func TestHints_SpeedNeedsASecondAsWellAsTheRatio(t *testing.T) {
 		t.Errorf("3s against 2s: %+v, want ollama (1.5x and 1 s)", h)
 	}
 }
+
+// Silent loss past the window is deterministic (every trial fails); a model
+// that reflects the marker even once read the tail, and a failing trial among
+// passing ones is sampling noise (ollama/qwen2.5-coder:3b once made up
+// RED-EAGLE-5 at 500 tokens).
+func TestHints_WindowOneFlakyTrialIsNotLoss(t *testing.T) {
+	var rs []PromptResult
+	rs = append(rs, sized("ollama", "b", 500, true, ""), sized("ollama", "b", 500, false, "the reply did not reflect"), sized("ollama", "b", 500, true, ""))
+	for i := 0; i < 3; i++ {
+		rs = append(rs, sized("ollama", "b", 1200, true, ""), sized("ollama", "b", 1700, false, "the reply did not reflect"))
+	}
+	h := hintFor(hints(rs), "long-prompt", "ollama/b")
+	if h == nil || !strings.Contains(h.Text, "up to ~1200") || !strings.Contains(h.Text, "1700") {
+		t.Fatalf("hint %+v, want reach 1200 and loss at 1700: one failed trial at 500 must not make it 'none'", h)
+	}
+	if !strings.Contains(h.Text, "flaky") || !strings.Contains(h.Text, "500") || !strings.Contains(h.Text, "2/3") {
+		t.Errorf("hint %+v should say the 500 probe was flaky, 2/3", h)
+	}
+	// Every trial failing at a size is loss.
+	allFail := []PromptResult{sized("hailo", "a", 500, true, ""), sized("hailo", "a", 500, true, ""), sized("hailo", "a", 500, true, "")}
+	for i := 0; i < 3; i++ {
+		allFail = append(allFail, sized("hailo", "a", 2400, false, "the reply did not reflect"))
+	}
+	if h := hintFor(hints(allFail), "long-prompt", "hailo/a"); h == nil || !strings.Contains(h.Text, "up to ~500") || strings.Contains(h.Text, "flaky") {
+		t.Errorf("hint %+v, want reach 500, no flaky note", h)
+	}
+}

@@ -205,9 +205,11 @@ below 0.5. If no target is reliable the hint is neither, naming the best. If
 reliable targets are on one engine only, the hint names that engine and the
 other's best. If both are reliable the hint is either, unless one engine's
 first token is 1.5 times and at least a second quicker, then that engine. For long-prompt a
-target "reads up to" the largest probe size it passed with every smaller size
-also passed, and the hint says what happened at the next size, a server error or
-a lost marker. For tool-call a target is tool-ready when it passes 0.8 of the
+target "reads up to" the largest probe size at which any trial reflected the
+marker, with every smaller size also read, and the hint says what happened at
+the next size, a server error or a lost marker. A size where only some trials
+passed is marked flaky: loss past the window fails every trial, so a mixed
+result is sampling noise. For tool-call a target is tool-ready when it passes 0.8 of the
 tool_call probes and every no_tool control, and the hint says which part
 failed. A cold start over 10 seconds says to keep the model loaded.
 
