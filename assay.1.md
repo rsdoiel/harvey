@@ -183,11 +183,31 @@ results.json
   token and the decode rate after it).
 
 summary.json
-: The profile for scripts and kb: for each model its cold start and warm
+: The profile and the hints for scripts and kb (with the rule table): for each model its cold start and warm
   median timings, and for each model and capability the trials passed, the
   trials run, the failed calls, and the median timings. report.md carries the
   same table under "Profile". A failed call is not a trial; it is counted
   apart so that a timeout does not read as a model that cannot do the task.
+
+# HINTS
+
+At the end of a run assay prints hints, advice on what to route to Ollama and
+what to hailo-ollama, and report.md lists them with the rules that made them.
+A hint is advice from one run, never a change to harvey.yaml. Each is built
+from the profile, so it is only as good as the corpus and the number of trials
+behind it; a hint with fewer than 3 trials ends with (thin: n trials), and
+-runs 3 or more removes that.
+
+A target is reliable on a capability at a pass rate of 0.8 or more and weak
+below 0.5. If no target is reliable the hint is neither, naming the best. If
+reliable targets are on one engine only, the hint names that engine and the
+other's best. If both are reliable the hint is either, unless one engine's
+first token is 1.5 times quicker or more, then that engine. For long-prompt a
+target "reads up to" the largest probe size it passed with every smaller size
+also passed, and the hint says what happened at the next size, a server error or
+a lost marker. For tool-call a target is tool-ready when it passes 0.8 of the
+tool_call probes and every no_tool control, and the hint says which part
+failed. A cold start over 10 seconds says to keep the model loaded.
 
 # EXAMPLES
 

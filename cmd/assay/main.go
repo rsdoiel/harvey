@@ -637,7 +637,7 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 	}
 	fmt.Fprintln(&sb)
 
-	sb.WriteString(profileSection(buildMatrix(ar.Results), ar.Warmups))
+	sb.WriteString(profileSection(ar))
 
 	// Summary table.
 	fmt.Fprintf(&sb, "## Summary\n\n")
@@ -1202,6 +1202,9 @@ func mainRun(args []string, out, errOut io.Writer) int {
 
 	matrix := buildMatrix(ar.Results)
 	fmt.Fprintf(out, "\nProfile (pass/trials per capability):\n\n%s", matrixText(matrix, ar.Warmups))
+	if hs := buildHints(ar, matrix); len(hs) > 0 {
+		fmt.Fprintf(out, "\nHints (advice from this run; nothing is changed):\n%s", hintsText(hs))
+	}
 	if err := writeSummary(outDir, buildSummary(ar, matrix, *f.runs, callTimeout)); err != nil {
 		e := writeFailure(fmt.Errorf("write summary: %w", err))
 		fmt.Fprintf(errOut, "assay: %v\n", e)

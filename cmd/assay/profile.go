@@ -83,7 +83,10 @@ func buildMatrix(results []PromptResult) Matrix {
 	overall := map[string]*acc{}
 	var m Matrix
 	seenT, seenC := map[string]bool{}, map[string]bool{}
-	add := func(a *acc, r PromptResult) {
+	// timed says whether the result's timings count. A target's overall figures
+	// leave out the sized probes: a 2,400-token prompt is slow to start on any
+	// engine and would hide the short-prompt time.
+	add := func(a *acc, r PromptResult, timed bool) {
 		if isCallError(r) {
 			a.errs++
 			return
@@ -91,6 +94,9 @@ func buildMatrix(results []PromptResult) Matrix {
 		a.n++
 		if r.AutoPass {
 			a.pass++
+		}
+		if !timed {
+			return
 		}
 		if r.FirstToken > 0 {
 			a.first = append(a.first, r.FirstToken)
@@ -117,8 +123,8 @@ func buildMatrix(results []PromptResult) Matrix {
 		if cells[t][r.Category] == nil {
 			cells[t][r.Category] = &acc{}
 		}
-		add(cells[t][r.Category], r)
-		add(overall[t], r)
+		add(cells[t][r.Category], r, true)
+		add(overall[t], r, r.PromptSizeEst == 0)
 	}
 	freeze := func(a *acc) Cell {
 		return Cell{Pass: a.pass, N: a.n, Errors: a.errs, MedianFirstToken: medianDuration(a.first), MedianDecodeTPS: medianFloat(a.decode)}
@@ -221,7 +227,7 @@ func matrixText(m Matrix, warm []Warmup) string {
 	tw.Flush()
 	sb.WriteString("\n")
 	tw = tabwriter.NewWriter(&sb, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "target\tcold start\twarm first token\tdecode tok/s")
+	fmt.Fprintln(tw, "target\tcold start\twarm first token (short prompts)\tdecode tok/s")
 	for _, t := range m.Targets {
 		cold := "-"
 		for _, w := range warm {
@@ -257,6 +263,8 @@ type Summary struct {
 	Targets        []SummaryTarget `json:"targets"`
 	Categories     []string        `json:"categories"`
 	Matrix         []SummaryCell   `json:"matrix"`
+	Hints          []Hint          `json:"hints"`
+	Rules          []string        `json:"rules"`
 }
 
 // SummaryTarget is one model on one server, with its cold start and warm medians.
@@ -296,7 +304,8 @@ type SummaryCell struct {
  */
 func buildSummary(ar AssayResults, m Matrix, runs int, timeout time.Duration) Summary {
 	s := Summary{Schema: 1, RunAt: ar.RunAt, OllamaURL: ar.OllamaURL, HailoURL: ar.HailoURL, Runs: runs,
-		TimeoutSeconds: timeout.Seconds(), Warmup: len(ar.Warmups) > 0, Categories: m.Categories}
+		TimeoutSeconds: timeout.Seconds(), Warmup: len(ar.Warmups) > 0, Categories: m.Categories,
+		Hints: buildHints(ar, m), Rules: ruleTable}
 	for _, t := range m.Targets {
 		st := SummaryTarget{MedianFirstTokenNs: int64(m.Overall[t].MedianFirstToken), MedianDecodeTPS: m.Overall[t].MedianDecodeTPS}
 		st.Service, st.Model, _ = strings.Cut(t, "/")
@@ -328,9 +337,18 @@ func writeSummary(outDir string, s Summary) error {
 }
 
 // profileSection is the "## Profile" part of report.md.
-func profileSection(m Matrix, warm []Warmup) string {
-	return "## Profile\n\nPass/trials per capability; a failed call is shown as +Nerr and is not a trial.\n\n```\n" +
-		matrixText(m, warm) + "```\n\n"
+func profileSection(ar AssayResults) string {
+	m := buildMatrix(ar.Results)
+	var sb strings.Builder
+	sb.WriteString("## Profile\n\nPass/trials per capability; a failed call is shown as +Nerr and is not a trial.\n\n```\n")
+	sb.WriteString(matrixText(m, ar.Warmups))
+	sb.WriteString("```\n\n### Hints\n\nAdvice for routing, from the evidence above. Assay reports; it changes no configuration.\n\n```\n")
+	sb.WriteString(hintsText(buildHints(ar, m)))
+	sb.WriteString("```\n\n### Rules\n\nThe rules that made the hints; disagree with a threshold here, not in the hint.\n\n")
+	for _, r := range ruleTable {
+		sb.WriteString(r + "\n\n")
+	}
+	return sb.String()
 }
 
 var _ io.Writer = (*firstWriteRecorder)(nil)
