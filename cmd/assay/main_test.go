@@ -136,6 +136,16 @@ func runAssay(t *testing.T, args ...string) (code int, out, errOut string) {
 	if !hasHailo {
 		args = append([]string{"--hailo", closedURL(t)}, args...)
 	}
+	// Most tests count requests, so the warm-up is off unless a test turns it on.
+	hasWarm := false
+	for _, a := range args {
+		if strings.HasPrefix(a, "--warmup") || strings.HasPrefix(a, "-warmup") {
+			hasWarm = true
+		}
+	}
+	if !hasWarm {
+		args = append([]string{"--warmup=false"}, args...)
+	}
 	code = mainRun(append([]string{"assay"}, args...), &o, &e)
 	return code, o.String(), e.String()
 }

@@ -64,7 +64,7 @@ func slowStreamServer(t *testing.T, tags []string, firstDelay, gap time.Duration
 func TestMainRun_ResultsRecordTimeToFirstToken(t *testing.T) {
 	dir := t.TempDir()
 	corpus := writeFile(t, dir, "corpus.yaml", oneCheckCorpus)
-	srv, _ := slowStreamServer(t, nil, 150*time.Millisecond, 100*time.Millisecond)
+	srv, _ := slowStreamServer(t, nil, 150*time.Millisecond, 160*time.Millisecond)
 	out := filepath.Join(dir, "out")
 
 	code, _, errOut := runAssay(t, "--corpus", corpus, "--output", out, "--ollama", srv.URL, "--models", "ollama/m")
@@ -139,6 +139,8 @@ func TestDecodeRate(t *testing.T) {
 		{"no tokens counted", 0, 250 * ms, 150 * ms, 0},
 		{"no first token", 20, 250 * ms, 0, 0},
 		{"nothing after the first token", 20, 150 * ms, 150 * ms, 0},
+		{"reply arrived as one burst at the end", 100, 2005 * ms, 2000 * ms, 0},
+		{"just long enough to mean something", 10, 200 * ms, 100 * ms, 100},
 	} {
 		if got := decodeRate(tc.tokens, tc.elapsed, tc.first); got != tc.want {
 			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)

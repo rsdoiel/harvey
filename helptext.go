@@ -3536,6 +3536,21 @@ failure mode.
 : Base URL of the hailo-ollama server.
   Default: http://localhost:8000
 
+-warmup
+: Send one short unrecorded request to each model before its prompts, so the
+  profile shows warm timings and the cold start (the first call after a model
+  is loaded can take 20 seconds or more) is reported once, per model.
+  On by default; -warmup=false skips it. A warm-up that fails is a note on
+  stderr, not a failure of the run.
+
+-runs N
+: Run each prompt N times (default 1). The profile reports pass/trials, so
+  more runs make a row less thin.
+
+-timeout SECONDS
+: How long to wait for one model call (default 120). A call that takes
+  longer fails as a service that could not do the work (exit 69).
+
 -output PATH
 : Directory to write the report (report.md) and results (results.json).
   Default: $WORKSPACE/assay-results/assay-TIMESTAMP/ if run inside a
@@ -3577,8 +3592,9 @@ thing that failed, using the workspace's exit codes:
 
 2
 : The command line is wrong: an unknown option, an option without its value, a
-  surplus argument, a model name that is on both servers, or options that
-  conflict (-guide-compare without -guide-file).
+  surplus argument, a model name that is on both servers, -runs below 1,
+  -timeout of 0 or less, or options that conflict (-guide-compare without
+  -guide-file).
 
 65
 : A file {app_name} read is wrong: a corpus that will not parse or has no
@@ -3600,7 +3616,7 @@ thing that failed, using the workspace's exit codes:
 : The output directory cannot be created.
 
 74
-: report.md or results.json could not be written. The other is still tried.
+: report.md, results.json or summary.json could not be written. The others are still tried.
 
 77
 : The operating system refused access to a file or directory.

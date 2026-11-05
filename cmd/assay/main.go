@@ -121,6 +121,7 @@ type AssayResults struct {
 	Backend       string         `json:"backend"`                  // always "Ollama"
 	OllamaURL     string         `json:"ollama_url,omitempty"`
 	HailoURL      string         `json:"hailo_url,omitempty"`
+	Warmups       []Warmup       `json:"warmups,omitempty"`
 	GuideFile     string         `json:"guide_file,omitempty"`
 	GuideCompare  bool           `json:"guide_compare,omitempty"`
 	Results       []PromptResult `json:"results"`
@@ -220,17 +221,18 @@ func (t target) Label() string { return t.Service + "/" + t.Model }
  * marked as such so the request is built for that engine.
  *
  * Parameters:
- *   t (target) — the server and model
+ *   t (target)              — the server and model
+ *   timeout (time.Duration) — how long to wait for one call
  *
  * Returns:
  *   *harvey.OllamaChatClient — ready-to-use client; caller should Close() when done
  *
  * Example:
- *   c := newTargetClient(target{"hailo", "qwen3:1.7b", "http://localhost:8000"})
+ *   c := newTargetClient(target{"hailo", "qwen3:1.7b", "http://localhost:8000"}, 120*time.Second)
  *   defer c.Close()
  */
-func newTargetClient(t target) *harvey.OllamaChatClient {
-	c := harvey.NewOllamaLLMClient(t.URL, t.Model, 120*time.Second)
+func newTargetClient(t target, timeout time.Duration) *harvey.OllamaChatClient {
+	c := harvey.NewOllamaLLMClient(t.URL, t.Model, timeout)
 	c.SetEngine(t.Service)
 	c.SetService(t.Service)
 	return c
@@ -341,6 +343,10 @@ func (r *firstWriteRecorder) Write(p []byte) (int, error) {
 	return r.buf.Write(p)
 }
 
+// minDecodeWindow is the least time after the first content for which a decode
+// rate is reported.
+const minDecodeWindow = 100 * time.Millisecond
+
 /** decodeRate is the reply tokens per second after the first token arrived.
  *
  * Parameters:
@@ -350,14 +356,17 @@ func (r *firstWriteRecorder) Write(p []byte) (int, error) {
  *
  * Returns:
  *   float64 — tokens per second, or 0 when it cannot be computed (no tokens,
- *   no first token, or no time after it).
+ *   no first token, or less than 100 ms after it).
  *
  * Example:
  *   decodeRate(20, 250*time.Millisecond, 150*time.Millisecond) // 200
  */
 func decodeRate(replyTokens int, elapsed, firstToken time.Duration) float64 {
 	d := elapsed - firstToken
-	if replyTokens <= 0 || firstToken <= 0 || d <= 0 {
+	// A reply the server held back and sent in one burst (a tool call, or a
+	// buffering engine) has almost no time after its first content, and a rate
+	// over a few milliseconds is meaningless: report it as unknown.
+	if replyTokens <= 0 || firstToken <= 0 || d < minDecodeWindow {
 		return 0
 	}
 	return float64(replyTokens) / d.Seconds()
@@ -628,6 +637,8 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 	}
 	fmt.Fprintln(&sb)
 
+	sb.WriteString(profileSection(buildMatrix(ar.Results), ar.Warmups))
+
 	// Summary table.
 	fmt.Fprintf(&sb, "## Summary\n\n")
 	if ar.GuideCompare {
@@ -892,6 +903,9 @@ type assayFlags struct {
 	category *string
 	ollamaURL *string
 	hailoURL *string
+	warmup *bool
+	runs *int
+	timeout *float64
 	outputDir *string
 	guideFile *string
 	guideCompare *bool
@@ -906,11 +920,14 @@ func defineAssayFlags(fs *flag.FlagSet) assayFlags {
 	category      := fs.String("category", "", "only run prompts from this category")
 	ollamaURL     := fs.String("ollama", "http://localhost:11434", "Ollama base URL")
 	hailoURL      := fs.String("hailo", "http://localhost:8000", "hailo-ollama base URL")
+	warmup        := fs.Bool("warmup", true, "send one unrecorded request to each model first, so timings are warm\n\t\t\t(--warmup=false to skip)")
+	runs          := fs.Int("runs", 1, "trials of each prompt (the matrix reports pass/trials)")
+	timeout       := fs.Float64("timeout", 120, "seconds to wait for one model call")
 	outputDir     := fs.String("output", defaultOutputDir(),
 		"write report and results to PATH\n\t\t\t(default: $WORKSPACE/assay-results/assay-TIMESTAMP/\n\t\t\t or assay-results/assay-TIMESTAMP/ if not in a workspace)")
 	guideFile     := fs.String("guide-file", "", "path to a text file whose content becomes the system message for the 'guide' variant")
 	guideCompare  := fs.Bool("guide-compare", false, "run each prompt twice (base + guide) and show delta; requires --guide-file")
-	return assayFlags{corpusPath: corpusPath, modelsFlag: modelsFlag, category: category, ollamaURL: ollamaURL, hailoURL: hailoURL, outputDir: outputDir, guideFile: guideFile, guideCompare: guideCompare}
+	return assayFlags{corpusPath: corpusPath, modelsFlag: modelsFlag, category: category, ollamaURL: ollamaURL, hailoURL: hailoURL, warmup: warmup, runs: runs, timeout: timeout, outputDir: outputDir, guideFile: guideFile, guideCompare: guideCompare}
 }
 
 // mainRun is the whole of assay's command line, with the process's arguments and
@@ -972,6 +989,13 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	if *guideCompare && *guideFile == "" {
 		return usageFail("--guide-compare requires --guide-file")
 	}
+	if *f.runs < 1 {
+		return usageFail("--runs must be at least 1")
+	}
+	if *f.timeout <= 0 {
+		return usageFail("--timeout must be greater than 0 seconds")
+	}
+	callTimeout := time.Duration(*f.timeout * float64(time.Second))
 
 	// A run does everything it can, then exits with the class of the first
 	// failed step (workspace DR-0003: no exit 0 with failures). note remembers
@@ -1047,13 +1071,20 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		guideText = strings.TrimSpace(string(data))
 	}
 
-	total := len(targets) * len(prompts) * len(variants)
+	total := len(targets) * len(prompts) * len(variants) * *f.runs
 	done := 0
 
 	for _, tg := range targets {
 		model := tg.Label()
 		// Create one LLMClient per target; the client is stateless so this is cheap.
-		client := newTargetClient(tg)
+		client := newTargetClient(tg, callTimeout)
+		if *f.warmup {
+			w := runWarmup(context.Background(), client, tg)
+			ar.Warmups = append(ar.Warmups, w)
+			if w.Error != "" {
+				fmt.Fprintf(errOut, "assay: warm-up of %s failed: %s\n", model, w.Error)
+			}
+		}
 
 		// Per-model extracted code directory.
 		extractedDir := filepath.Join(outDir, "extracted", sanitizeModelName(model))
@@ -1065,10 +1096,14 @@ func mainRun(args []string, out, errOut io.Writer) int {
 
 		for _, p := range prompts {
 			for _, v := range variants {
+			for run := 1; run <= *f.runs; run++ {
 				done++
 				variantLabel := ""
 				if v.name != "" {
 					variantLabel = "[" + v.name + "] "
+				}
+				if *f.runs > 1 {
+					variantLabel += fmt.Sprintf("(run %d/%d) ", run, *f.runs)
 				}
 				fmt.Fprintf(out, "[%d/%d] %s%s · %s ... ", done, total, variantLabel, model, p.ID)
 
@@ -1148,6 +1183,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				fmt.Fprintf(out, "%s · %s · %.1f tok/s\n",
 					passLabel, elapsed.Round(time.Millisecond), stats.TokensPerSec)
 			}
+			}
 		}
 
 		_ = client.Close()
@@ -1160,6 +1196,14 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	}
 	if err := writeJSON(outDir, ar); err != nil {
 		e := writeFailure(fmt.Errorf("write JSON: %w", err))
+		fmt.Fprintf(errOut, "assay: %v\n", e)
+		note(e)
+	}
+
+	matrix := buildMatrix(ar.Results)
+	fmt.Fprintf(out, "\nProfile (pass/trials per capability):\n\n%s", matrixText(matrix, ar.Warmups))
+	if err := writeSummary(outDir, buildSummary(ar, matrix, *f.runs, callTimeout)); err != nil {
+		e := writeFailure(fmt.Errorf("write summary: %w", err))
 		fmt.Fprintf(errOut, "assay: %v\n", e)
 		note(e)
 	}
