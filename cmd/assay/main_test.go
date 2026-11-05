@@ -125,6 +125,17 @@ func TestWriteReport_GuideCompare_RendersDeltaTable(t *testing.T) {
 func runAssay(t *testing.T, args ...string) (code int, out, errOut string) {
 	t.Helper()
 	var o, e bytes.Buffer
+	// Hermetic: a real hailo-ollama on :8000 (harvey.local has one) must not
+	// join a test run, so a test that names no --hailo gets a closed port.
+	hasHailo := false
+	for _, a := range args {
+		if a == "--hailo" || a == "-hailo" {
+			hasHailo = true
+		}
+	}
+	if !hasHailo {
+		args = append([]string{"--hailo", closedURL(t)}, args...)
+	}
 	code = mainRun(append([]string{"assay"}, args...), &o, &e)
 	return code, o.String(), e.String()
 }

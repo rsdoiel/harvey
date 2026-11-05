@@ -71,6 +71,7 @@ type PromptResult struct {
 	PromptID     string        `json:"prompt_id"`
 	Category     string        `json:"category"`
 	Model        string        `json:"model"`
+	Service      string        `json:"service,omitempty"`
 	Variant      string        `json:"variant,omitempty"`
 	Response     string        `json:"response"`
 	Elapsed      time.Duration `json:"elapsed_ns"`
@@ -81,10 +82,28 @@ type PromptResult struct {
 	AutoPass     bool          `json:"auto_pass"`
 }
 
+/** Label names the target a result came from, "service/model", so the same model
+ * name on two servers stays two rows. A result with no service (an older
+ * results.json) is labelled by its model alone.
+ *
+ * Returns:
+ *   string — the label.
+ *
+ * Example:
+ *   PromptResult{Service: "hailo", Model: "qwen3:1.7b"}.Label() // "hailo/qwen3:1.7b"
+ */
+func (r PromptResult) Label() string {
+	if r.Service == "" {
+		return r.Model
+	}
+	return r.Service + "/" + r.Model
+}
+
 type AssayResults struct {
 	RunAt         time.Time      `json:"run_at"`
 	Backend       string         `json:"backend"`                  // always "Ollama"
 	OllamaURL     string         `json:"ollama_url,omitempty"`
+	HailoURL      string         `json:"hailo_url,omitempty"`
 	GuideFile     string         `json:"guide_file,omitempty"`
 	GuideCompare  bool           `json:"guide_compare,omitempty"`
 	Results       []PromptResult `json:"results"`
@@ -147,6 +166,127 @@ func listOllamaModels(baseURL string) ([]string, error) {
 		names = append(names, m.Name)
 	}
 	return names, nil
+}
+
+// ─── Targets: service/model on Ollama and hailo-ollama ────────────────────────
+
+// target is one model on one server: the unit assay runs prompts against.
+type target struct {
+	Service string // "ollama" or "hailo"
+	Model   string // the name the server knows, with no service prefix
+	URL     string // the server's base URL
+}
+
+// Label returns "service/model", the name used in reports and progress lines.
+func (t target) Label() string { return t.Service + "/" + t.Model }
+
+/** newTargetClient creates an LLMClient for one target. A hailo target is
+ * marked as such so the request is built for that engine.
+ *
+ * Parameters:
+ *   t (target) — the server and model
+ *
+ * Returns:
+ *   harvey.LLMClient — ready-to-use client; caller should Close() when done
+ *
+ * Example:
+ *   c := newTargetClient(target{"hailo", "qwen3:1.7b", "http://localhost:8000"})
+ *   defer c.Close()
+ */
+func newTargetClient(t target) harvey.LLMClient {
+	c := harvey.NewOllamaLLMClient(t.URL, t.Model, 120*time.Second)
+	c.SetEngine(t.Service)
+	c.SetService(t.Service)
+	return c
+}
+
+/** resolveTargets turns the --models value into targets. "ollama/x" and
+ * "hailo/x" name their server. A bare name is looked up on both servers: on
+ * both is a usage error naming the two candidates, on one it goes there, on
+ * neither it stays on Ollama (as before; assay does not second-guess a model
+ * it cannot see). With no --models every model on each server that answers is
+ * a target; a server that does not answer is skipped with a note on errOut,
+ * and none answering is unavailable.
+ *
+ * Parameters:
+ *   models (string)    — the --models value, comma separated; "" for all
+ *   ollamaURL (string) — base URL of the Ollama server
+ *   hailoURL (string)  — base URL of the hailo-ollama server
+ *   errOut (io.Writer) — where notes about skipped servers go
+ *
+ * Returns:
+ *   []target — the targets in the order named (or Ollama's, then hailo's)
+ *   error    — a classed error: usage, unavailable, or negative (nothing to run)
+ *
+ * Example:
+ *   ts, err := resolveTargets("hailo/qwen3:1.7b", ollamaURL, hailoURL, os.Stderr)
+ */
+func resolveTargets(models, ollamaURL, hailoURL string, errOut io.Writer) ([]target, error) {
+	urls := map[string]string{"ollama": ollamaURL, "hailo": hailoURL}
+	order := []string{"ollama", "hailo"}
+	listed := map[string][]string{}
+	listErr := map[string]error{}
+	list := func(svc string) {
+		if _, done := listed[svc]; done || listErr[svc] != nil {
+			return
+		}
+		names, err := listOllamaModels(urls[svc])
+		if err != nil {
+			listErr[svc] = err
+			return
+		}
+		listed[svc] = names
+	}
+	has := func(svc, model string) bool {
+		for _, n := range listed[svc] {
+			if n == model {
+				return true
+			}
+		}
+		return false
+	}
+
+	if models != "" {
+		var out []target
+		for _, m := range strings.Split(models, ",") {
+			if m = strings.TrimSpace(m); m == "" {
+				continue
+			}
+			if svc, name := harvey.ParseQualifiedModel(m); svc != "" {
+				out = append(out, target{svc, name, urls[svc]})
+				continue
+			}
+			list("ollama")
+			list("hailo")
+			switch onO, onH := has("ollama", m), has("hailo", m); {
+			case onO && onH:
+				return nil, harvey.Usagef("%s is on more than one server: ollama/%s or hailo/%s", m, m, m)
+			case onH:
+				out = append(out, target{"hailo", m, urls["hailo"]})
+			default:
+				out = append(out, target{"ollama", m, urls["ollama"]})
+			}
+		}
+		return out, nil
+	}
+
+	for _, svc := range order {
+		list(svc)
+	}
+	var out []target
+	for _, svc := range order {
+		if err := listErr[svc]; err != nil {
+			fmt.Fprintf(errOut, "assay: skipping the %s server at %s: %v\n", svc, urls[svc], err)
+			continue
+		}
+		for _, n := range listed[svc] {
+			out = append(out, target{svc, n, urls[svc]})
+		}
+	}
+	if len(listed) == 0 {
+		return nil, fmt.Errorf("could not list models on either server: %w", listErr["ollama"])
+	}
+	return out, nil
 }
 
 // ─── Guide-compare helpers ────────────────────────────────────────────────────
@@ -364,11 +504,11 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 	var modelOrder []string
 	seenModel := make(map[string]bool)
 	for _, r := range ar.Results {
-		if !seenModel[r.Model] {
-			modelOrder = append(modelOrder, r.Model)
-			seenModel[r.Model] = true
+		if !seenModel[r.Label()] {
+			modelOrder = append(modelOrder, r.Label())
+			seenModel[r.Label()] = true
 		}
-		byVariant[variantKey{r.Model, r.PromptID, r.Variant}] = r
+		byVariant[variantKey{r.Label(), r.PromptID, r.Variant}] = r
 	}
 
 	// Collect ordered prompt IDs from results (preserving corpus order).
@@ -433,7 +573,7 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 			var totalTPS float64
 			count := 0
 			for _, r := range ar.Results {
-				if r.Model != model {
+				if r.Label() != model {
 					continue
 				}
 				if r.AutoPass {
@@ -536,7 +676,7 @@ func writeReport(outDir string, ar AssayResults, corpus *Corpus) error {
 				if !ok {
 					// Fall back to scanning by model+prompt.
 					for _, res := range ar.Results {
-						if res.Model == model && res.PromptID == pid {
+						if res.Label() == model && res.PromptID == pid {
 							r = res
 							ok = true
 							break
@@ -653,6 +793,7 @@ type assayFlags struct {
 	modelsFlag *string
 	category *string
 	ollamaURL *string
+	hailoURL *string
 	outputDir *string
 	guideFile *string
 	guideCompare *bool
@@ -663,14 +804,15 @@ type assayFlags struct {
 // the OPTIONS section of the manual.
 func defineAssayFlags(fs *flag.FlagSet) assayFlags {
 	corpusPath    := fs.String("corpus", "agents/assay/corpus.yaml", "path to corpus YAML")
-	modelsFlag    := fs.String("models", "", "comma-separated model list (default: all from Ollama)")
+	modelsFlag    := fs.String("models", "", "comma-separated model list, service/model (default: all on both servers)")
 	category      := fs.String("category", "", "only run prompts from this category")
 	ollamaURL     := fs.String("ollama", "http://localhost:11434", "Ollama base URL")
+	hailoURL      := fs.String("hailo", "http://localhost:8000", "hailo-ollama base URL")
 	outputDir     := fs.String("output", defaultOutputDir(),
 		"write report and results to PATH\n\t\t\t(default: $WORKSPACE/assay-results/assay-TIMESTAMP/\n\t\t\t or assay-results/assay-TIMESTAMP/ if not in a workspace)")
 	guideFile     := fs.String("guide-file", "", "path to a text file whose content becomes the system message for the 'guide' variant")
 	guideCompare  := fs.Bool("guide-compare", false, "run each prompt twice (base + guide) and show delta; requires --guide-file")
-	return assayFlags{corpusPath: corpusPath, modelsFlag: modelsFlag, category: category, ollamaURL: ollamaURL, outputDir: outputDir, guideFile: guideFile, guideCompare: guideCompare}
+	return assayFlags{corpusPath: corpusPath, modelsFlag: modelsFlag, category: category, ollamaURL: ollamaURL, hailoURL: hailoURL, outputDir: outputDir, guideFile: guideFile, guideCompare: guideCompare}
 }
 
 // mainRun is the whole of assay's command line, with the process's arguments and
@@ -715,6 +857,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	modelsFlag := f.modelsFlag
 	category := f.category
 	ollamaURL := f.ollamaURL
+	hailoURL := f.hailoURL
 	outputDir := f.outputDir
 	guideFile := f.guideFile
 	guideCompare := f.guideCompare
@@ -743,31 +886,17 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		}
 	}
 
-	llmURL := *ollamaURL
-
 	corpus, err := loadCorpus(*corpusPath)
 	if err != nil {
 		return fail(err)
 	}
 
-	// Resolve model list.
-	var models []string
-	switch {
-	case *modelsFlag != "":
-		for _, m := range strings.Split(*modelsFlag, ",") {
-			if m = strings.TrimSpace(m); m != "" {
-				models = append(models, m)
-			}
-		}
-
-	default:
-		models, err = listOllamaModels(llmURL)
-		if err != nil {
-			return fail(fmt.Errorf("could not list Ollama models: %w", err))
-		}
+	targets, err := resolveTargets(*modelsFlag, *ollamaURL, *hailoURL, errOut)
+	if err != nil {
+		return fail(err)
 	}
-	if len(models) == 0 {
-		return fail(harvey.Negativef("no models to run (use --models or start Ollama)"))
+	if len(targets) == 0 {
+		return fail(harvey.Negativef("no models to run (use --models or start Ollama or hailo-ollama)"))
 	}
 
 	// Filter prompts by category.
@@ -791,6 +920,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		RunAt:         time.Now(),
 		Backend:       "Ollama",
 		OllamaURL:     *ollamaURL,
+		HailoURL:      *hailoURL,
 		GuideFile:     *guideFile,
 		GuideCompare:  *guideCompare,
 	}
@@ -819,12 +949,13 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		guideText = strings.TrimSpace(string(data))
 	}
 
-	total := len(models) * len(prompts) * len(variants)
+	total := len(targets) * len(prompts) * len(variants)
 	done := 0
 
-	for _, model := range models {
-		// Create one LLMClient per model; the client is stateless so this is cheap.
-		client := newAssayClient(llmURL, model)
+	for _, tg := range targets {
+		model := tg.Label()
+		// Create one LLMClient per target; the client is stateless so this is cheap.
+		client := newTargetClient(tg)
 
 		// Per-model extracted code directory.
 		extractedDir := filepath.Join(outDir, "extracted", sanitizeModelName(model))
@@ -860,7 +991,8 @@ func mainRun(args []string, out, errOut io.Writer) int {
 					ar.Results = append(ar.Results, PromptResult{
 						PromptID: p.ID,
 						Category: p.Category,
-						Model:    model,
+						Model:    tg.Model,
+						Service:  tg.Service,
 						Variant:  v.name,
 						Response: "ERROR: " + callErr.Error(),
 						Elapsed:  elapsed,
@@ -874,7 +1006,8 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				pr := PromptResult{
 					PromptID:     p.ID,
 					Category:     p.Category,
-					Model:        model,
+					Model:        tg.Model,
+					Service:      tg.Service,
 					Variant:      v.name,
 					Response:     response,
 					Elapsed:      elapsed,

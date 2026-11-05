@@ -13,7 +13,7 @@ assay [OPTIONS]
 # DESCRIPTION
 
 assay is an LLM evaluation harness for Harvey. It runs a corpus of prompts
-against one or more Ollama models and produces a
+against one or more models on Ollama and hailo-ollama and produces a
 Markdown report plus a JSON results file for human review and automated
 checking.
 
@@ -38,8 +38,12 @@ failure mode.
   Default: agents/assay/corpus.yaml
 
 -models MODEL[,MODEL...]
-: Comma-separated list of Ollama model names to evaluate.
-  Default: all models currently available on the Ollama server.
+: Comma-separated list of models to evaluate, each as service/model:
+  ollama/qwen2.5-coder:1.5b or hailo/llama3.2:3b. A name with no service
+  is looked up on both servers: on one it runs there, on both it is a usage
+  error that names the two choices, on neither it is sent to Ollama.
+  Default: every model on each server that answers (a server that does not
+  answer is skipped with a note on stderr).
 
 -category NAME
 : Run only prompts in the named category. Omit to run all categories.
@@ -47,6 +51,10 @@ failure mode.
 -ollama URL
 : Base URL of the Ollama server.
   Default: http://localhost:11434
+
+-hailo URL
+: Base URL of the hailo-ollama server.
+  Default: http://localhost:8000
 
 -output PATH
 : Directory to write the report (report.md) and results (results.json).
@@ -85,11 +93,12 @@ thing that failed, using the workspace's exit codes:
   failures, and exit 0.
 
 1
-: Nothing to run: no prompts match -category, or the server has no models.
+: Nothing to run: no prompts match -category, or no server has models.
 
 2
 : The command line is wrong: an unknown option, an option without its value, a
-  surplus argument, or options that conflict (-guide-compare without -guide-file).
+  surplus argument, a model name that is on both servers, or options that
+  conflict (-guide-compare without -guide-file).
 
 65
 : A file assay read is wrong: a corpus that will not parse or has no
@@ -99,7 +108,8 @@ thing that failed, using the workspace's exit codes:
 : A named input is missing: the -corpus or -guide-file file.
 
 69
-: A service cannot be reached: Ollama while listing models, or a model call
+: A service cannot be reached: neither Ollama nor hailo-ollama answered while
+  listing models, a service named in -models is down, or a model call
   that failed. The run still
   finishes, writes its report, and says how many calls failed.
 
@@ -160,4 +170,4 @@ Write results to a custom directory:
 
 # SEE ALSO
 
-harvey(1)
+harvey(1), harvey-rag(7)

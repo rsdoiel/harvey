@@ -39,6 +39,22 @@ func parseQualifiedModel(name string) (string, string) {
 	return "", name
 }
 
+/** ParseQualifiedModel splits "engine/model" into its engine and model, for
+ * programs outside the package (assay). It is parseQualifiedModel: only the
+ * engines hailo and ollama count, and any other name is returned whole.
+ *
+ * Parameters:
+ *   name (string) — e.g. "hailo/llama3.2:3b" or "phi4".
+ *
+ * Returns:
+ *   string — the engine, lower case; "" when the name is not qualified.
+ *   string — the model name without the engine prefix.
+ *
+ * Example:
+ *   engine, model := harvey.ParseQualifiedModel("hailo/qwen3:1.7b") // "hailo", "qwen3:1.7b"
+ */
+func ParseQualifiedModel(name string) (string, string) { return parseQualifiedModel(name) }
+
 /** parseModelRef splits "service/model" into its service and model. The service
  * is ollama, hailo or a name from services:, matched without regard to case; a
  * slash after any other prefix is part of the model name. It is

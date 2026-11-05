@@ -1,6 +1,8 @@
 
 ## Bugs
 
+- [x] **DONE 2026-11-05: no code defect; the assay binary was stale.** `bin/assay` (built 2026-10-20, before workspace DR-0033) still printed `-llamafile`/`-llamacpp`; `cmd/assay` was already Ollama-only. Rebuilt with `make`; the llamafile/llamacpp design and plan docs moved to `agents/projects/harvey/archive/`. Hailo support is the Action Item below (DR-0051).
+
 > Entries below that mention llamafile or llama.cpp (their code, tests and `backend_*` files) are history: both backends were
 > removed (workspace DR-0033), and the files and tests they name no longer exist.
 
@@ -195,6 +197,8 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   **Survey done 2026-09-25:** `exit-codes-survey.md` (baseline of 41 table rows, 20 harvey and 21 assay, decisions Q1-Q5, plan H0-H6). Plan: `exit-codes-plan.md`. **H0-H5 done 2026-09-25**, committed. **H6 done 2026-09-27**: `scripts/compare-exit-codes.py` + `scripts/README.md` (old-vs-new harness, modelled on `knowledge`'s, closed-port backend, `pgrep ollama` guard); run against the v0.0.16 baseline (`df39cfe`, via a throwaway `git worktree`) — 32 commands changed exit code, every one matching the survey/DR-0005 table exactly, no exit 70, no hang, no stray Ollama process. `harvey/decisions/0005-*.md` written and **accepted** by RSDOIEL. `CHANGES.md` `## Unreleased` has the upgrade table.
 
 ## Action Items
+
+- [ ] **Update assay: profile models on Ollama and hailo-ollama and hint at a route** (harvey DR-0051, accepted 2026-11-05; plan `agents/projects/harvey/plans/assay-profile-plan.md`, slices A0-A7). A0 and A1 done 2026-11-05 (`service/model` targets, `--hailo`; a bare name on neither server stays on Ollama, not exit 66 as DR-0051 item 1 says). Next: A2.
 
 - [x] **DONE 2026-11-02: remove the workspace profiles (scheduled for the memory-store removal release, not before).** Added 2026-11-01 at the author's
   request. The onboarding profile choice ("Select [1-7]", Data Scientist, Technical Writer and the rest), `templates/profiles/`,
