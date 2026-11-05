@@ -78,6 +78,12 @@ type PromptResult struct {
 	PromptTokens int           `json:"prompt_tokens"`
 	ReplyTokens  int           `json:"reply_tokens"`
 	TokensPerSec float64       `json:"tokens_per_sec"`
+	// FirstToken is how long the reply took to start: from sending the request
+	// to the first content arriving. Zero (omitted) when no content arrived.
+	FirstToken time.Duration `json:"first_token_ns,omitempty"`
+	// DecodeTokensPerSec is the reply rate after the first token, so prefill is
+	// not counted; TokensPerSec divides by the whole call. Omitted when unknown.
+	DecodeTokensPerSec float64 `json:"decode_tokens_per_sec,omitempty"`
 	Checks       []CheckResult `json:"checks"`
 	AutoPass     bool          `json:"auto_pass"`
 }
@@ -287,6 +293,44 @@ func resolveTargets(models, ollamaURL, hailoURL string, errOut io.Writer) ([]tar
 		return nil, fmt.Errorf("could not list models on either server: %w", listErr["ollama"])
 	}
 	return out, nil
+}
+
+// firstWriteRecorder collects a streamed reply and notes when its first
+// content arrived. Both engines stream content as it is produced, and hailo
+// reports no eval durations, so this is how assay measures time to first token.
+type firstWriteRecorder struct {
+	buf   strings.Builder
+	first time.Time
+}
+
+// Write records the reply text and, on the first non-empty write, the time.
+func (r *firstWriteRecorder) Write(p []byte) (int, error) {
+	if len(p) > 0 && r.first.IsZero() {
+		r.first = time.Now()
+	}
+	return r.buf.Write(p)
+}
+
+/** decodeRate is the reply tokens per second after the first token arrived.
+ *
+ * Parameters:
+ *   replyTokens (int)        — tokens in the reply, as the server counted them
+ *   elapsed (time.Duration)  — the whole call
+ *   firstToken (time.Duration) — time to the first content
+ *
+ * Returns:
+ *   float64 — tokens per second, or 0 when it cannot be computed (no tokens,
+ *   no first token, or no time after it).
+ *
+ * Example:
+ *   decodeRate(20, 250*time.Millisecond, 150*time.Millisecond) // 200
+ */
+func decodeRate(replyTokens int, elapsed, firstToken time.Duration) float64 {
+	d := elapsed - firstToken
+	if replyTokens <= 0 || firstToken <= 0 || d <= 0 {
+		return 0
+	}
+	return float64(replyTokens) / d.Seconds()
 }
 
 // ─── Guide-compare helpers ────────────────────────────────────────────────────
@@ -979,10 +1023,14 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				messages := buildGuideMessages(guideText, promptText, v.useGuide)
 
 				start := time.Now()
-				var buf strings.Builder
-				stats, callErr := client.Chat(context.Background(), messages, &buf)
-				response := buf.String()
+				rec := &firstWriteRecorder{}
+				stats, callErr := client.Chat(context.Background(), messages, rec)
+				response := rec.buf.String()
 				elapsed := time.Since(start)
+				var firstToken time.Duration
+				if !rec.first.IsZero() {
+					firstToken = rec.first.Sub(start)
+				}
 
 				if callErr != nil {
 					fmt.Fprintf(out, "ERROR: %v\n", callErr)
@@ -1014,6 +1062,8 @@ func mainRun(args []string, out, errOut io.Writer) int {
 					PromptTokens: stats.PromptTokens,
 					ReplyTokens:  stats.ReplyTokens,
 					TokensPerSec: stats.TokensPerSec,
+					FirstToken:   firstToken,
+					DecodeTokensPerSec: decodeRate(stats.ReplyTokens, elapsed, firstToken),
 					Checks:       checks,
 					AutoPass:     allPassed(checks),
 				}
