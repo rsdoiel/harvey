@@ -23,6 +23,18 @@
   `kb_call` and `kb_result`, whose items list the drafts it wrote. Each drafting request asks for at most 512 tokens: without a
   limit, `llama3.2:3b` on hailo-ollama ran to the server's own stopping point and repeated its five proposals eight times (1,024
   tokens, 391 s, 40 proposals).
+- **`assay` profiles models on Ollama and hailo-ollama and hints at a route** (DR-0051). `--models` takes `ollama/NAME` and
+  `hailo/NAME`; `--hailo URL` (default `:8000`) is new, and with no `--models` every model on each server that answers is run
+  (a bare name on both servers is a usage error, exit 2). The corpus is organised by capability (`go`, `sql`, `tool-call`,
+  `long-prompt`, `instruction`, `file-read`, `edit`; 15 new probes in `agents/assay/corpus.yaml`), a prompt may carry a
+  `tokens:` size hint, and three new checks: `tool_call`/`no_tool` (Harvey's read-only tools, a call written as plain text
+  fails), `uses_tail` (a long prompt whose last line is the instruction: finds the silent loss past hailo's window), and
+  `exact`. A run prints a model x capability pass/trials matrix with cold start and warm timings, then hints from eight rules
+  (printed with the rules in `report.md`; assay changes no configuration), and writes `summary.json`. New options: `--warmup`
+  (one unrecorded request per model first, default on), `--runs N`, `--timeout SECONDS` (was fixed at 120), and `--category`
+  takes several names. Results gain `service`, `first_token_ns`, `decode_tokens_per_sec` and `prompt_size_est`. The corpus is
+  now read strictly: an unknown key, a duplicate id or a negative `tokens:` is exit 65 (a misspelt check used to be ignored).
+  A stale `bin/assay` built before the llamafile removal still printed `-llamafile`; rebuild.
 - **`kb:` in `agents/harvey.yaml`** with `project:`, the kb project `/kb draft` uses when `--project` is not given. See
   `CONFIGURATION.md`.
 
