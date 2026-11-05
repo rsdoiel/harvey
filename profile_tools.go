@@ -47,3 +47,25 @@ func ProseToolCallsIn(text string) []ToolCall {
  *   n := harvey.EstimateTokens(prompt)
  */
 func EstimateTokens(s string) int { return estimateTokens(s) }
+
+/** SendsToolsTo reports whether Harvey sends structured tool definitions to a
+ * model. Ollama takes them for every model; hailo-ollama only for the models
+ * on its opt-in list (DR-0050), because it answers HTTP 500 to a tools key for
+ * the rest.
+ *
+ * Parameters:
+ *   service (string) — "ollama" or "hailo"
+ *   model (string)   — bare model name, e.g. "qwen3:1.7b"
+ *
+ * Returns:
+ *   bool — true when a request to this model carries tools
+ *
+ * Example:
+ *   harvey.SendsToolsTo("hailo", "qwen2.5-coder:1.5b") // false
+ */
+func SendsToolsTo(service, model string) bool {
+	if c, ok := capsForEngine(service); ok && c.Tools == CapNo {
+		return nativeToolModel(service, model)
+	}
+	return true
+}

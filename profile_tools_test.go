@@ -45,3 +45,19 @@ func TestEstimateTokens_Exported(t *testing.T) {
 		t.Error("EstimateTokens is len/4 with a floor of 1")
 	}
 }
+
+func TestSendsToolsTo(t *testing.T) {
+	for _, tc := range []struct {
+		service, model string
+		want           bool
+	}{
+		{"ollama", "llama3.2:3b", true},
+		{"hailo", "qwen3:1.7b", true},
+		{"hailo", "qwen2.5-coder:1.5b", false},
+		{"hailo", "llama3.2:1b", false},
+	} {
+		if got := SendsToolsTo(tc.service, tc.model); got != tc.want {
+			t.Errorf("SendsToolsTo(%q, %q) = %v, want %v", tc.service, tc.model, got, tc.want)
+		}
+	}
+}

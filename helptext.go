@@ -3493,7 +3493,8 @@ no_tool passes when the model makes no call at all. A call written as bare JSON
 text in the reply is not run by Harvey, so it fails tool_call (the report says the
 model wrote it as plain text) and fails no_tool. A model that cannot take
 tools fails the check and the run goes on. uses_tail MARKER pads the prompt with
-neutral filler to its tokens: size and puts the instruction, which must contain
+neutral filler to its tokens: size (Qwen-family tokens, about 3.3 characters each
+for this filler; llama3.2 counts about 10% fewer) and puts the instruction, which must contain
 MARKER, last; it passes when the reply carries MARKER, so a model that drops what
 is past its window fails (the report says the reply "did not reflect" the marker,
 which is not proof the model never read it). exact REGEXP passes when the whole
@@ -3652,7 +3653,7 @@ A target is reliable on a capability at a pass rate of 0.8 or more and weak
 below 0.5. If no target is reliable the hint is neither, naming the best. If
 reliable targets are on one engine only, the hint names that engine and the
 other's best. If both are reliable the hint is either, unless one engine's
-first token is 1.5 times quicker or more, then that engine. For long-prompt a
+first token is 1.5 times and at least a second quicker, then that engine. For long-prompt a
 target "reads up to" the largest probe size it passed with every smaller size
 also passed, and the hint says what happened at the next size, a server error or
 a lost marker. For tool-call a target is tool-ready when it passes 0.8 of the

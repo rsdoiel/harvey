@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	harvey "github.com/rsdoiel/harvey"
 )
 
 // The routing hints of DR-0051 item 5. Assay reports and validates; it never
@@ -13,6 +15,7 @@ const (
 	reliableMin  = 0.8              // rule 1: a target is reliable at this pass rate
 	weakBelow    = 0.5              // rule 1: below this it is weak
 	speedMargin  = 1.5              // rule 4: first-token ratio that names a faster engine
+	speedFloor   = time.Second      // rule 4: ...and the difference it must also be
 	coldStartMax = 10 * time.Second // rule 7: a longer cold start says "keep warm"
 	thinBelow    = 3                // rule 8: fewer trials than this is thin evidence
 )
@@ -23,7 +26,7 @@ var ruleTable = []string{
 	"1. A target is reliable on a capability at a pass rate of 0.8 or more, and weak below 0.5.",
 	"2. Neither: no target is reliable. The hint names the best target and its rate.",
 	"3. One engine only: reliable targets exist on one engine. The hint names it and the other engine's best.",
-	"4. Both engines reliable: either, unless one engine's best has a warm first token 1.5 times quicker or more, then that engine.",
+	"4. Both engines reliable: either, unless one engine's best has a warm first token 1.5 times quicker or more and at least 1 second quicker, then that engine.",
 	"5. Window (long-prompt): a target reads up to the largest probe size it passed with every smaller size also passed; the hint names what happened at the next size. Longer prompts go to the other engine.",
 	"6. Tool-ready: a target passes 0.8 or more of the tool_call probes and every no_tool control; the hint says which part failed. For tool-call, rules 2 to 4 use tool-ready as reliable.",
 	"7. Cold start: over 10 seconds, the hint says to keep the model loaded.",
@@ -146,6 +149,16 @@ func buildHints(ar AssayResults, m Matrix) []Hint {
 }
 
 func toolHint(t string, s toolStatus) Hint {
+	svc, model, _ := strings.Cut(t, "/")
+	if !harvey.SendsToolsTo(svc, model) {
+		minN := s.callN
+		if s.noN < minN {
+			minN = s.noN
+		}
+		return Hint{Capability: "tool-call", Target: t, Rule: 6, Text: fmt.Sprintf(
+			"no tools are sent to this model (it is not on the hailo opt-in list, DR-0050), so it cannot call one in Harvey: tool_call %d/%d is not a failure to call, no_tool %d/%d%s",
+			s.callPass, s.callN, s.noPass, s.noN, thin(minN))}
+	}
 	minN := s.callN
 	if s.noN < minN {
 		minN = s.noN
@@ -253,15 +266,15 @@ func routeHint(results []PromptResult, m Matrix, c string) (Hint, bool) {
 		h.Rule = 4
 		fh, fo := ho.cell.MedianFirstToken, ol.cell.MedianFirstToken
 		switch {
-		case fh > 0 && fo > 0 && float64(fo)/float64(fh) >= speedMargin:
+		case fh > 0 && fo > 0 && float64(fo)/float64(fh) >= speedMargin && fo-fh >= speedFloor:
 			h.Route = "hailo"
 			h.Text = fmt.Sprintf("hailo: both reliable; %s %s to first token against %s %s (%.1fx faster)", ho.label, secs(fh), ol.label, secs(fo), float64(fo)/float64(fh))
-		case fh > 0 && fo > 0 && float64(fh)/float64(fo) >= speedMargin:
+		case fh > 0 && fo > 0 && float64(fh)/float64(fo) >= speedMargin && fh-fo >= speedFloor:
 			h.Route = "ollama"
 			h.Text = fmt.Sprintf("ollama: both reliable; %s %s to first token against %s %s (%.1fx faster)", ol.label, secs(fo), ho.label, secs(fh), float64(fh)/float64(fo))
 		case fh > 0 && fo > 0:
 			h.Route = "either"
-			h.Text = fmt.Sprintf("either: both reliable (%s %s, %s %s); first token within %.1fx", ho.label, frac(ho.cell), ol.label, frac(ol.cell), speedMargin)
+			h.Text = fmt.Sprintf("either: both reliable (%s %s, %s %s); first token within %.1fx or a second", ho.label, frac(ho.cell), ol.label, frac(ol.cell), speedMargin)
 		default:
 			h.Route = "either"
 			h.Text = fmt.Sprintf("either: both reliable (%s %s, %s %s); no first-token timing to compare", ho.label, frac(ho.cell), ol.label, frac(ol.cell))

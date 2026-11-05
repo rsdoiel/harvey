@@ -1175,7 +1175,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				}
 
 				checks, _ := runChecks(p, response, extractedDir)
-				checks = append(checks, runProbeChecks(p, response, calls, unsupported, windowErr, harvey.EstimateTokens(promptText))...)
+				checks = append(checks, runProbeChecks(p, response, calls, unsupported, windowErr, probeTokens(p, promptText))...)
 
 				pr := PromptResult{
 					PromptID:     p.ID,

@@ -65,9 +65,16 @@ func validateProbeChecks(p Prompt) error {
 	return nil
 }
 
+// fillerCharsPerToken is how many characters of the filler make one token for
+// the Qwen-family models on the card. The filler is full of digits, which
+// tokenize densely: at 4 characters a token (Harvey's estimate) a probe of
+// 1,200 was 1,468 real Qwen tokens and one of 1,700 was 2,089, past hailo's
+// 2,048-token window. Llama3.2 comes out about 10% lower.
+const fillerCharsPerToken = 3.3
+
 /** buildProbePrompt returns the text to send for a prompt. A uses_tail prompt
  * with a size hint is padded with neutral, deterministic filler to about
- * Tokens (by Harvey's estimate) so that its instruction is the very end of the
+ * Tokens (Qwen-family tokens, see fillerCharsPerToken) so that its instruction is the very end of the
  * prompt: a model that silently drops what is past its window never sees it.
  * Any other prompt is sent as written.
  *
@@ -84,7 +91,7 @@ func buildProbePrompt(p Prompt) string {
 	if p.Checks.UsesTail == "" || p.Tokens <= 0 {
 		return p.PromptText
 	}
-	target := p.Tokens*4 - len(p.PromptText) - 2
+	target := int(float64(p.Tokens)*fillerCharsPerToken) - len(p.PromptText) - 2
 	var sb strings.Builder
 	for i := 1; sb.Len() < target; i++ {
 		fmt.Fprintf(&sb, "Inventory note %d: aisle %d holds %d crates of standard bolts, last counted on day %d.\n",
@@ -285,4 +292,13 @@ func runProbeChecks(p Prompt, reply string, calls []harvey.ToolCall, unsupported
 		out = append(out, runExactCheck(p.Checks.Exact, reply))
 	}
 	return out
+}
+
+// probeTokens is the size to name in a report: the probe's own tokens: figure
+// when it has one (the filler is built to it), else Harvey's estimate.
+func probeTokens(p Prompt, sent string) int {
+	if p.Tokens > 0 {
+		return p.Tokens
+	}
+	return harvey.EstimateTokens(sent)
 }

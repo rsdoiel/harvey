@@ -122,22 +122,22 @@ func toolRes(svc, model, name string, pass bool, detail string) PromptResult {
 func TestHints_ToolReady(t *testing.T) {
 	var rs []PromptResult
 	for i := 0; i < 4; i++ {
-		rs = append(rs, toolRes("hailo", "ready", "tool_call", true, ""))
+		rs = append(rs, toolRes("hailo", "qwen3:1.7b", "tool_call", true, ""))
 	}
-	rs = append(rs, toolRes("hailo", "ready", "no_tool", true, ""), toolRes("hailo", "ready", "no_tool", true, ""))
+	rs = append(rs, toolRes("hailo", "qwen3:1.7b", "no_tool", true, ""), toolRes("hailo", "qwen3:1.7b", "no_tool", true, ""))
 	for i := 0; i < 4; i++ {
 		rs = append(rs, toolRes("ollama", "text", "tool_call", false, "wrote read_file as plain text, which Harvey does not run"))
 	}
 	rs = append(rs, toolRes("ollama", "text", "no_tool", true, ""), toolRes("ollama", "text", "no_tool", false, "called search_files although no tool was needed"))
 	hs := hints(rs)
-	if h := hintFor(hs, "tool-call", "hailo/ready"); h == nil || !strings.Contains(h.Text, "tool-ready") || strings.Contains(h.Text, "not tool-ready") {
-		t.Errorf("hailo/ready %+v, want tool-ready", h)
+	if h := hintFor(hs, "tool-call", "hailo/qwen3:1.7b"); h == nil || !strings.Contains(h.Text, "tool-ready") || strings.Contains(h.Text, "not tool-ready") {
+		t.Errorf("hailo/qwen3:1.7b %+v, want tool-ready", h)
 	}
 	h := hintFor(hs, "tool-call", "ollama/text")
 	if h == nil || !strings.Contains(h.Text, "not tool-ready") || !strings.Contains(h.Text, "plain text") || !strings.Contains(h.Text, "invented") {
 		t.Errorf("ollama/text %+v, want not tool-ready, plain text, invented a call", h)
 	}
-	// The capability route follows tool-readiness: only hailo/ready qualifies.
+	// The capability route follows tool-readiness: only hailo/qwen3:1.7b qualifies.
 	if r := hintFor(hs, "tool-call", ""); r == nil || r.Route != "hailo" {
 		t.Errorf("tool-call route %+v, want hailo", r)
 	}
@@ -210,5 +210,39 @@ func TestThin_Singular(t *testing.T) {
 	}
 	if got := thin(2); got != " (thin: 2 trials)" {
 		t.Errorf("thin(2) = %q", got)
+	}
+}
+
+func TestHints_AHailoModelThatIsSentNoToolsSaysSo(t *testing.T) {
+	var rs []PromptResult
+	for i := 0; i < 4; i++ {
+		rs = append(rs, toolRes("hailo", "qwen2.5-coder:1.5b", "tool_call", false, "no call; wanted read_file"))
+	}
+	rs = append(rs, toolRes("hailo", "qwen2.5-coder:1.5b", "no_tool", true, ""))
+	h := hintFor(hints(rs), "tool-call", "hailo/qwen2.5-coder:1.5b")
+	if h == nil || !strings.Contains(h.Text, "no tools are sent") || !strings.Contains(h.Text, "opt-in") || !strings.Contains(h.Text, "0/4") {
+		t.Errorf("hint %+v, want it to say no tools are sent to this model, with the 0/4", h)
+	}
+	// qwen3 is on the list, so its failures are real failures to call.
+	var q []PromptResult
+	for i := 0; i < 4; i++ {
+		q = append(q, toolRes("hailo", "qwen3:1.7b", "tool_call", false, "called list_files, wanted read_file"))
+	}
+	if h := hintFor(hints(q), "tool-call", "hailo/qwen3:1.7b"); h == nil || strings.Contains(h.Text, "no tools are sent") {
+		t.Errorf("qwen3 is sent tools; hint %+v should not say otherwise", h)
+	}
+}
+
+func TestHints_SpeedNeedsASecondAsWellAsTheRatio(t *testing.T) {
+	ms := time.Millisecond
+	// 1.5x, but a fifth of a second: noise, not a reason to route.
+	noise := append(trials("hailo", "a", "go", 5, 5, 600*ms), trials("ollama", "b", "go", 5, 5, 400*ms)...)
+	if h := hintFor(hints(noise), "go", ""); h == nil || h.Route != "either" {
+		t.Errorf("0.6s against 0.4s: %+v, want either", h)
+	}
+	// 1.5x and exactly a second: a reason.
+	real := append(trials("hailo", "a", "go", 5, 5, 3*time.Second), trials("ollama", "b", "go", 5, 5, 2*time.Second)...)
+	if h := hintFor(hints(real), "go", ""); h == nil || h.Route != "ollama" {
+		t.Errorf("3s against 2s: %+v, want ollama (1.5x and 1 s)", h)
 	}
 }

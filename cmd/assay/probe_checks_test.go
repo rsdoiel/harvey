@@ -88,8 +88,10 @@ func TestBuildProbePrompt(t *testing.T) {
 	if strings.Count(got, "BLUE-HERON-42") != 1 {
 		t.Error("the marker must appear once, in the instruction, never in the filler")
 	}
-	if n := harvey.EstimateTokens(got); n < 1080 || n > 1320 {
-		t.Errorf("prompt is about %d tokens, want within 10%% of 1200", n)
+	// tokens: counts Qwen-family tokens, about 3.3 characters each for this
+	// filler (measured: lp-1200 at 4 chars/token was 1,468 real tokens).
+	if n := len(got); n < 3560 || n > 4360 {
+		t.Errorf("prompt is %d characters, want about 3960 (1200 tokens at 3.3 characters each, within 10%%)", n)
 	}
 	if buildProbePrompt(p) != got {
 		t.Error("the filler must be deterministic so runs compare")
