@@ -1,0 +1,116 @@
+package main
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+
+	harvey "github.com/rsdoiel/harvey"
+)
+
+// A3 of assay-profile-plan.md (DR-0051 item 2): the corpus is organised by
+// capability (category) and a prompt may carry a size hint (tokens).
+
+func corpusWith(prompt string) string {
+	return "version: \"1\"\ndescription: t\nprompts:\n" + prompt
+}
+
+const sizedPrompt = `  - id: long-1700
+    category: long-prompt
+    description: d
+    language: text
+    tokens: 1700
+    prompt: hi
+    checks:
+      contains: ["hi"]
+    human: []
+    notes: ""
+`
+
+func TestLoadCorpus_TokensIsASizeHint(t *testing.T) {
+	dir := t.TempDir()
+	c, err := loadCorpus(writeFile(t, dir, "c.yaml", corpusWith(sizedPrompt)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Prompts[0].Tokens; got != 1700 {
+		t.Errorf("Tokens = %d, want 1700", got)
+	}
+}
+
+func TestLoadCorpus_TheShippedCorpusStillLoads(t *testing.T) {
+	c, err := loadCorpus(filepath.Join("..", "..", "..", "agents", "assay", "corpus.yaml"))
+	if err != nil {
+		t.Fatalf("agents/assay/corpus.yaml: %v", err)
+	}
+	for _, p := range c.Prompts {
+		if p.Tokens != 0 {
+			t.Errorf("%s: Tokens = %d, want 0 (the 15 original prompts have no size hint)", p.ID, p.Tokens)
+		}
+	}
+}
+
+func TestLoadCorpus_BadValuesAreDataErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, prompt, mention string
+	}{
+		{"negative tokens", strings.Replace(sizedPrompt, "tokens: 1700", "tokens: -5", 1), "long-1700"},
+		{"unknown check key", strings.Replace(sizedPrompt, "contains: [\"hi\"]", "contian: [\"hi\"]", 1), "contian"},
+		{"unknown prompt key", strings.Replace(sizedPrompt, "tokens: 1700", "tokns: 1700", 1), "tokns"},
+		{"empty id", strings.Replace(sizedPrompt, "id: long-1700", "id: \"\"", 1), "id"},
+	} {
+		_, err := loadCorpus(writeFile(t, t.TempDir(), "c.yaml", corpusWith(tc.prompt)))
+		if err == nil {
+			t.Errorf("%s: loaded, want an error", tc.name)
+			continue
+		}
+		if got := harvey.ExitCodeFor(err).Code; got != 65 {
+			t.Errorf("%s: exit class %d, want 65 (data): %v", tc.name, got, err)
+		}
+		if !strings.Contains(err.Error(), tc.mention) {
+			t.Errorf("%s: %q does not mention %q", tc.name, err, tc.mention)
+		}
+	}
+}
+
+func TestLoadCorpus_DuplicateIDsAreDataErrors(t *testing.T) {
+	_, err := loadCorpus(writeFile(t, t.TempDir(), "c.yaml", corpusWith(sizedPrompt+sizedPrompt)))
+	if err == nil || harvey.ExitCodeFor(err).Code != 65 || !strings.Contains(err.Error(), "long-1700") {
+		t.Errorf("duplicate id: %v, want a data error naming long-1700", err)
+	}
+}
+
+func TestLoadCorpus_MissingFileStaysNoInput(t *testing.T) {
+	_, err := loadCorpus(filepath.Join(t.TempDir(), "nope.yaml"))
+	if err == nil || harvey.ExitCodeFor(err).Code != 66 {
+		t.Errorf("missing corpus: %v, want 66", err)
+	}
+}
+
+func TestMainRun_UnmatchedCategoryListsTheCapabilitiesPresent(t *testing.T) {
+	dir := t.TempDir()
+	corpus := writeFile(t, dir, "c.yaml", corpusWith(sizedPrompt+strings.Replace(
+		strings.Replace(sizedPrompt, "long-1700", "tc-1", 1), "long-prompt", "tool-call", 1)))
+	srv := newRecordingServer(t, "m")
+	code, _, errOut := runAssay(t, "--corpus", corpus, "--ollama", srv.URL, "--models", "m", "--category", "nosuch")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1", code)
+	}
+	for _, want := range []string{"nosuch", "long-prompt", "tool-call"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("stderr %q should mention %q", errOut, want)
+		}
+	}
+}
+
+func TestMainRun_ResultsRecordThePromptSizeHint(t *testing.T) {
+	dir := t.TempDir()
+	corpus := writeFile(t, dir, "c.yaml", corpusWith(sizedPrompt))
+	srv := newRecordingServer(t, "m")
+	out := filepath.Join(dir, "out")
+	runAssay(t, "--corpus", corpus, "--output", out, "--ollama", srv.URL, "--models", "ollama/m")
+	rows := readResults(t, out)
+	if got, _ := rows[0]["prompt_size_est"].(float64); got != 1700 {
+		t.Errorf("prompt_size_est = %v, want 1700", rows[0]["prompt_size_est"])
+	}
+}

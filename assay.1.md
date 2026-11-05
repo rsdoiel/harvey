@@ -18,9 +18,12 @@ Markdown report plus a JSON results file for human review and automated
 checking.
 
 The prompt corpus is defined in a YAML file (default:
-agents/assay/corpus.yaml). Each entry specifies a category, a prompt,
+agents/assay/corpus.yaml). Each entry specifies a category (the capability
+it tests, such as go, sql or tool-call), a prompt, an optional tokens: size
+hint (the prompt's approximate size, for probes that test a model's window),
 automated checks (contains, not_contains, compiles, go_vet), and
-human-review questions. assay sends each prompt to each model, records
+human-review questions. An unknown key, a duplicate or empty id, or a
+negative tokens: is an error (a misspelt check would otherwise never run). assay sends each prompt to each model, records
 the response, runs all automated checks, and writes a summary table plus
 per-prompt results to the output directory.
 
@@ -46,7 +49,8 @@ failure mode.
   answer is skipped with a note on stderr).
 
 -category NAME
-: Run only prompts in the named category. Omit to run all categories.
+: Run only prompts in the named category (capability). Omit to run all
+  categories. A name that matches nothing lists the categories the corpus has.
 
 -ollama URL
 : Base URL of the Ollama server.

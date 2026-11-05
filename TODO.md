@@ -198,7 +198,7 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
-- [ ] **Update assay: profile models on Ollama and hailo-ollama and hint at a route** (harvey DR-0051, accepted 2026-11-05; plan `agents/projects/harvey/plans/assay-profile-plan.md`, slices A0-A7). A0 and A1 done 2026-11-05 (`service/model` targets, `--hailo`; a bare name on neither server stays on Ollama, not exit 66 as DR-0051 item 1 says). A2 done 2026-11-05 (`first_token_ns`, `decode_tokens_per_sec`, sequential guard). Next: A3. Open for A6: a warm-up request per target (cold start was 21.6 s on hailo, 7 s on Ollama).
+- [ ] **Update assay: profile models on Ollama and hailo-ollama and hint at a route** (harvey DR-0051, accepted 2026-11-05; plan `agents/projects/harvey/plans/assay-profile-plan.md`, slices A0-A7). A0 and A1 done 2026-11-05 (`service/model` targets, `--hailo`; a bare name on neither server stays on Ollama, not exit 66 as DR-0051 item 1 says). A2 done 2026-11-05 (`first_token_ns`, `decode_tokens_per_sec`, sequential guard). A3 done 2026-11-05 (`tokens:` size hint, strict corpus loading, category list). Next: A4. Open for A6: a warm-up request per target (cold start was 21.6 s on hailo, 7 s on Ollama).
 
 - [x] **DONE 2026-11-02: remove the workspace profiles (scheduled for the memory-store removal release, not before).** Added 2026-11-01 at the author's
   request. The onboarding profile choice ("Select [1-7]", Data Scientist, Technical Writer and the rest), `templates/profiles/`,

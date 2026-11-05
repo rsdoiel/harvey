@@ -4,8 +4,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -34,6 +36,9 @@ type Prompt struct {
 	Description string   `yaml:"description"`
 	Language    string   `yaml:"language"`
 	Dialect     string   `yaml:"dialect,omitempty"`
+	// Tokens is the prompt's approximate size, a hint for the profile: probes
+	// that test a model's window are written at a stated size. Zero = no hint.
+	Tokens      int      `yaml:"tokens,omitempty"`
 	PromptText  string   `yaml:"prompt"`
 	Checks      Checks   `yaml:"checks"`
 	Human       []string `yaml:"human"`
@@ -72,6 +77,7 @@ type PromptResult struct {
 	Category     string        `json:"category"`
 	Model        string        `json:"model"`
 	Service      string        `json:"service,omitempty"`
+	PromptSizeEst int          `json:"prompt_size_est,omitempty"`
 	Variant      string        `json:"variant,omitempty"`
 	Response     string        `json:"response"`
 	Elapsed      time.Duration `json:"elapsed_ns"`
@@ -122,12 +128,28 @@ func loadCorpus(path string) (*Corpus, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read corpus: %w", err)
 	}
+	// Strict: a misspelt key (contian: for contains:) would otherwise be
+	// ignored and the check silently never run.
 	var c Corpus
-	if err := yaml.Unmarshal(src, &c); err != nil {
-		return nil, harvey.Dataf("parse corpus: %w", err)
+	dec := yaml.NewDecoder(bytes.NewReader(src))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
+		return nil, harvey.Dataf("parse corpus %s: %w", path, err)
 	}
 	if len(c.Prompts) == 0 {
 		return nil, harvey.Dataf("corpus %s has no prompts", path)
+	}
+	seen := map[string]bool{}
+	for i, p := range c.Prompts {
+		switch {
+		case p.ID == "":
+			return nil, harvey.Dataf("corpus %s: prompt %d has no id", path, i+1)
+		case seen[p.ID]:
+			return nil, harvey.Dataf("corpus %s: prompt id %q appears twice", path, p.ID)
+		case p.Tokens < 0:
+			return nil, harvey.Dataf("corpus %s: prompt %q has tokens %d; a size hint cannot be negative", path, p.ID, p.Tokens)
+		}
+		seen[p.ID] = true
 	}
 	return &c, nil
 }
@@ -331,6 +353,30 @@ func decodeRate(replyTokens int, elapsed, firstToken time.Duration) float64 {
 		return 0
 	}
 	return float64(replyTokens) / d.Seconds()
+}
+
+/** corpusCategories lists the categories (capabilities) a corpus has, in the
+ * order they first appear.
+ *
+ * Parameters:
+ *   c (*Corpus) — the loaded corpus
+ *
+ * Returns:
+ *   []string — each category once
+ *
+ * Example:
+ *   corpusCategories(c) // ["go", "sql", "tool-call"]
+ */
+func corpusCategories(c *Corpus) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, p := range c.Prompts {
+		if !seen[p.Category] {
+			seen[p.Category] = true
+			out = append(out, p.Category)
+		}
+	}
+	return out
 }
 
 // ─── Guide-compare helpers ────────────────────────────────────────────────────
@@ -951,7 +997,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		}
 	}
 	if len(prompts) == 0 {
-		return fail(harvey.Negativef("no prompts match category %q", *category))
+		return fail(harvey.Negativef("no prompts match category %q (the corpus has: %s)", *category, strings.Join(corpusCategories(corpus), ", ")))
 	}
 
 	// Create output directory.
@@ -1041,6 +1087,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 						Category: p.Category,
 						Model:    tg.Model,
 						Service:  tg.Service,
+						PromptSizeEst: p.Tokens,
 						Variant:  v.name,
 						Response: "ERROR: " + callErr.Error(),
 						Elapsed:  elapsed,
@@ -1056,6 +1103,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 					Category:     p.Category,
 					Model:        tg.Model,
 					Service:      tg.Service,
+					PromptSizeEst: p.Tokens,
 					Variant:      v.name,
 					Response:     response,
 					Elapsed:      elapsed,
