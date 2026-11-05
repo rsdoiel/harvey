@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -1021,15 +1022,34 @@ func mainRun(args []string, out, errOut io.Writer) int {
 		return fail(harvey.Negativef("no models to run (use --models or start Ollama or hailo-ollama)"))
 	}
 
-	// Filter prompts by category.
+	// Filter prompts by category: one name or several separated by commas. A
+	// name the corpus does not have is reported even when others match, so a
+	// typo does not quietly run less than was asked.
 	var prompts []Prompt
-	for _, p := range corpus.Prompts {
-		if *category == "" || p.Category == *category {
-			prompts = append(prompts, p)
+	wanted := map[string]bool{}
+	for _, name := range strings.Split(*category, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			wanted[name] = true
 		}
 	}
-	if len(prompts) == 0 {
-		return fail(harvey.Negativef("no prompts match category %q (the corpus has: %s)", *category, strings.Join(corpusCategories(corpus), ", ")))
+	have := map[string]bool{}
+	for _, c := range corpusCategories(corpus) {
+		have[c] = true
+	}
+	var missing []string
+	for name := range wanted {
+		if !have[name] {
+			missing = append(missing, name)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		return fail(harvey.Negativef("no prompts match category %s (the corpus has: %s)", strings.Join(missing, ", "), strings.Join(corpusCategories(corpus), ", ")))
+	}
+	for _, p := range corpus.Prompts {
+		if len(wanted) == 0 || wanted[p.Category] {
+			prompts = append(prompts, p)
+		}
 	}
 
 	// Create output directory.

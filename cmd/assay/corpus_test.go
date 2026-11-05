@@ -135,3 +135,29 @@ func TestMainRun_ResultsRecordThePromptSizeHint(t *testing.T) {
 		t.Errorf("prompt_size_est = %v, want 1700", rows[0]["prompt_size_est"])
 	}
 }
+
+func TestMainRun_CategoryTakesSeveralNamesSeparatedByCommas(t *testing.T) {
+	dir := t.TempDir()
+	mk := func(id, cat string) string {
+		return strings.Replace(strings.Replace(sizedPrompt, "long-1700", id, 1), "long-prompt", cat, 1)
+	}
+	corpus := writeFile(t, dir, "c.yaml", corpusWith(mk("a", "alpha")+mk("b", "beta")+mk("c", "gamma")))
+	srv := newRecordingServer(t, "m")
+	out := filepath.Join(dir, "out")
+	code, _, errOut := runAssay(t, "--corpus", corpus, "--output", out, "--ollama", srv.URL, "--models", "ollama/m", "--category", "alpha, gamma")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, errOut)
+	}
+	var ids []string
+	for _, r := range readResults(t, out) {
+		ids = append(ids, r["prompt_id"].(string))
+	}
+	if strings.Join(ids, ",") != "a,c" {
+		t.Errorf("ran %v, want a and c (alpha and gamma; a space after the comma is allowed)", ids)
+	}
+	// One name that matches nothing is still reported, with the categories there are.
+	code, _, errOut = runAssay(t, "--corpus", corpus, "--ollama", srv.URL, "--models", "ollama/m", "--category", "alpha,nosuch")
+	if code != 1 || !strings.Contains(errOut, "nosuch") {
+		t.Errorf("exit %d, stderr %q; want 1 naming nosuch", code, errOut)
+	}
+}

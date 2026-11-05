@@ -66,9 +66,10 @@ failure mode.
   Default: every model on each server that answers (a server that does not
   answer is skipped with a note on stderr).
 
--category NAME
-: Run only prompts in the named category (capability). Omit to run all
-  categories. A name that matches nothing lists the categories the corpus has.
+-category NAME[,NAME...]
+: Run only prompts in the named categories (capabilities). Omit to run all
+  categories. A name the corpus does not have is an error (exit 1) that lists
+  the categories it does have, even when other names match.
 
 -ollama URL
 : Base URL of the Ollama server.
