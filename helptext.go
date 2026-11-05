@@ -3479,11 +3479,27 @@ The prompt corpus is defined in a YAML file (default:
 agents/assay/corpus.yaml). Each entry specifies a category (the capability
 it tests, such as go, sql or tool-call), a prompt, an optional tokens: size
 hint (the prompt's approximate size, for probes that test a model's window),
-automated checks (contains, not_contains, compiles, go_vet), and
-human-review questions. An unknown key, a duplicate or empty id, or a
+automated checks (contains, not_contains, compiles, go_vet, and the profile
+checks below), and human-review questions. An unknown key, a duplicate or empty id, or a
 negative tokens: is an error (a misspelt check would otherwise never run). {app_name} sends each prompt to each model, records
 the response, runs all automated checks, and writes a summary table plus
 per-prompt results to the output directory.
+
+The profile checks probe what separates models on this hardware. tool_call
+({name, arg, contains}) offers the model Harvey's read-only tools (read_file,
+list_files, search_files) and passes when it calls the right one with the right
+argument, as a structured call or as the JSON block Harvey reads from prose;
+no_tool passes when the model makes no call at all. A model that cannot take
+tools fails the check and the run goes on. uses_tail MARKER pads the prompt with
+neutral filler to its tokens: size and puts the instruction, which must contain
+MARKER, last; it passes when the reply carries MARKER, so a model that drops what
+is past its window fails (the report says the reply "did not reflect" the marker,
+which is not proof the model never read it). exact REGEXP passes when the whole
+trimmed reply matches. The tool probes send no Harvey system prompt, so they are stricter than a
+session. A uses_tail prompt the server cannot take at all (an HTTP error or a
+stream that stops early, as hailo does past its window) fails that check naming
+the prompt's size; it does not fail the run. A refused connection still does.
+A failing check is a result, never an error.
 
 With -guide-compare and -guide-file, every prompt is run twice (once with
 no system message, once with the guide file's content as a system message)

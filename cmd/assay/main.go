@@ -51,6 +51,11 @@ type Checks struct {
 	Contains    []string `yaml:"contains,omitempty"`
 	NotContains []string `yaml:"not_contains,omitempty"`
 	SQLParses   bool     `yaml:"sql_parses,omitempty"`
+	// Profile checks (DR-0051): see probe_checks.go.
+	ToolCall *ToolCallCheck `yaml:"tool_call,omitempty"`
+	NoTool   bool           `yaml:"no_tool,omitempty"`
+	UsesTail string         `yaml:"uses_tail,omitempty"`
+	Exact    string         `yaml:"exact,omitempty"`
 }
 
 // ─── Ollama model-list type ───────────────────────────────────────────────────
@@ -149,6 +154,9 @@ func loadCorpus(path string) (*Corpus, error) {
 		case p.Tokens < 0:
 			return nil, harvey.Dataf("corpus %s: prompt %q has tokens %d; a size hint cannot be negative", path, p.ID, p.Tokens)
 		}
+		if err := validateProbeChecks(p); err != nil {
+			return nil, harvey.Dataf("corpus %s: %w", path, err)
+		}
 		seen[p.ID] = true
 	}
 	return &c, nil
@@ -215,13 +223,13 @@ func (t target) Label() string { return t.Service + "/" + t.Model }
  *   t (target) — the server and model
  *
  * Returns:
- *   harvey.LLMClient — ready-to-use client; caller should Close() when done
+ *   *harvey.OllamaChatClient — ready-to-use client; caller should Close() when done
  *
  * Example:
  *   c := newTargetClient(target{"hailo", "qwen3:1.7b", "http://localhost:8000"})
  *   defer c.Close()
  */
-func newTargetClient(t target) harvey.LLMClient {
+func newTargetClient(t target) *harvey.OllamaChatClient {
 	c := harvey.NewOllamaLLMClient(t.URL, t.Model, 120*time.Second)
 	c.SetEngine(t.Service)
 	c.SetService(t.Service)
@@ -1064,13 +1072,28 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				}
 				fmt.Fprintf(out, "[%d/%d] %s%s · %s ... ", done, total, variantLabel, model, p.ID)
 
-				promptText := p.PromptText
+				promptText := buildProbePrompt(p)
 
 				messages := buildGuideMessages(guideText, promptText, v.useGuide)
 
 				start := time.Now()
 				rec := &firstWriteRecorder{}
-				stats, callErr := client.Chat(context.Background(), messages, rec)
+				var stats harvey.ChatStats
+				var calls []harvey.ToolCall
+				var callErr error
+				if p.Checks.wantsTools() {
+					stats, calls, callErr = client.ChatWithTools(context.Background(), messages, harvey.ProfileToolSet(), rec)
+				} else {
+					stats, callErr = client.Chat(context.Background(), messages, rec)
+				}
+				unsupported := p.Checks.wantsTools() && toolsUnsupported(callErr)
+				if unsupported {
+					callErr = nil // a model that takes no tools is a result, not a failed call
+				}
+				var windowErr error
+				if p.Checks.UsesTail != "" && callErr != nil && windowFailure(callErr) {
+					windowErr, callErr = callErr, nil // an oversized prompt the server cannot take is the probe's result
+				}
 				response := rec.buf.String()
 				elapsed := time.Since(start)
 				var firstToken time.Duration
@@ -1097,6 +1120,7 @@ func mainRun(args []string, out, errOut io.Writer) int {
 				}
 
 				checks, _ := runChecks(p, response, extractedDir)
+				checks = append(checks, runProbeChecks(p, response, calls, unsupported, windowErr, harvey.EstimateTokens(promptText))...)
 
 				pr := PromptResult{
 					PromptID:     p.ID,
