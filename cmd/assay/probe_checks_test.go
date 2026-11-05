@@ -262,3 +262,26 @@ func TestMainRun_ALongPromptToADeadServerIsStillUnavailable(t *testing.T) {
 		t.Errorf("exit %d, want 69: a refused connection is not a window result", code)
 	}
 }
+
+// Some models (qwen2.5-coder:3b and llama3.2:3b on Ollama) write the call as
+// bare JSON in the reply instead of a structured call. Harvey only runs
+// fenced blocks, so it is not a pass, but it is not the same as "no call".
+func TestToolCheck_ACallWrittenAsPlainText(t *testing.T) {
+	text := `{"name": "read_file", "arguments": {"path": "config.yaml"}}`
+	want := Checks{ToolCall: &ToolCallCheck{Name: "read_file", Arg: "path", Contains: "config.yaml"}}
+	got := runToolCheck(want, nil, text)
+	if got[0].Passed || !strings.Contains(got[0].Detail, "plain text") || !strings.Contains(got[0].Detail, "read_file") {
+		t.Errorf("tool_call on a plain-text call: %+v, want a failure that says plain text and names the tool", got[0])
+	}
+	if got := runToolCheck(Checks{NoTool: true}, nil, text); got[0].Passed {
+		t.Errorf("no_tool passed although the reply is a tool call written as text: %+v", got[0])
+	}
+	// llama3.2 names the arguments "parameters"; an unknown tool is still a call attempt.
+	if got := runToolCheck(Checks{NoTool: true}, nil, `{"name":"math","parameters":{"a":12}}`); got[0].Passed {
+		t.Errorf("no_tool passed for a made-up tool written as text: %+v", got[0])
+	}
+	// JSON that is not a call is just an answer.
+	if got := runToolCheck(Checks{NoTool: true}, nil, `{"ok": true}`); !got[0].Passed {
+		t.Errorf("no_tool failed for JSON that is not a call: %+v", got[0])
+	}
+}

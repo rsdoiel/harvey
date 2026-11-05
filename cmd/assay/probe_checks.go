@@ -93,6 +93,23 @@ func buildProbePrompt(p Prompt) string {
 	return sb.String() + "\n" + p.PromptText
 }
 
+// textualCall reports a reply that is nothing but a tool call written as JSON
+// text ({"name": ..., "arguments"|"parameters": ...}). Harvey runs only
+// structured calls and fenced blocks, so such a reply is not a call, but the
+// model did mean one.
+func textualCall(reply string) (name string, ok bool) {
+	var obj map[string]json.RawMessage
+	if json.Unmarshal([]byte(strings.TrimSpace(reply)), &obj) != nil {
+		return "", false
+	}
+	_, hasArgs := obj["arguments"]
+	_, hasParams := obj["parameters"]
+	if json.Unmarshal(obj["name"], &name) != nil || name == "" || !(hasArgs || hasParams) {
+		return "", false
+	}
+	return strings.TrimSpace(name), true
+}
+
 /** runToolCheck judges the tool calls a model made. Structured calls are read
  * first; if there are none, a JSON code block in the reply (the prose form
  * Harvey parses) is accepted. Stray white space in names and argument keys is
@@ -116,13 +133,23 @@ func runToolCheck(c Checks, calls []harvey.ToolCall, reply string) []CheckResult
 	if len(calls) == 0 {
 		calls = harvey.ProseToolCallsIn(reply)
 	}
+	plain, wrotePlain := "", false
+	if len(calls) == 0 {
+		plain, wrotePlain = textualCall(reply)
+	}
 	if c.NoTool {
+		if wrotePlain {
+			return []CheckResult{{Name: "no_tool", Detail: fmt.Sprintf("wrote a call to %s as plain text although no tool was needed", plain)}}
+		}
 		if len(calls) == 0 {
 			return []CheckResult{{Name: "no_tool", Passed: true}}
 		}
 		return []CheckResult{{Name: "no_tool", Detail: fmt.Sprintf("called %s although no tool was needed", strings.TrimSpace(calls[0].Function.Name))}}
 	}
 	want := c.ToolCall
+	if wrotePlain {
+		return []CheckResult{{Name: "tool_call", Detail: fmt.Sprintf("wrote %s as plain text, which Harvey does not run; wanted %s as a call", plain, want.Name)}}
+	}
 	if len(calls) == 0 {
 		return []CheckResult{{Name: "tool_call", Detail: "no call; wanted " + want.Name}}
 	}

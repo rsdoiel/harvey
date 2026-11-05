@@ -3489,7 +3489,9 @@ The profile checks probe what separates models on this hardware. tool_call
 ({name, arg, contains}) offers the model Harvey's read-only tools (read_file,
 list_files, search_files) and passes when it calls the right one with the right
 argument, as a structured call or as the JSON block Harvey reads from prose;
-no_tool passes when the model makes no call at all. A model that cannot take
+no_tool passes when the model makes no call at all. A call written as bare JSON
+text in the reply is not run by Harvey, so it fails tool_call (the report says the
+model wrote it as plain text) and fails no_tool. A model that cannot take
 tools fails the check and the run goes on. uses_tail MARKER pads the prompt with
 neutral filler to its tokens: size and puts the instruction, which must contain
 MARKER, last; it passes when the reply carries MARKER, so a model that drops what

@@ -38,14 +38,35 @@ func TestLoadCorpus_TokensIsASizeHint(t *testing.T) {
 	}
 }
 
-func TestLoadCorpus_TheShippedCorpusStillLoads(t *testing.T) {
+func TestLoadCorpus_TheShippedCorpusLoadsAndIsWellFormed(t *testing.T) {
 	c, err := loadCorpus(filepath.Join("..", "..", "..", "agents", "assay", "corpus.yaml"))
 	if err != nil {
 		t.Fatalf("agents/assay/corpus.yaml: %v", err)
 	}
+	counts := map[string]int{}
 	for _, p := range c.Prompts {
-		if p.Tokens != 0 {
-			t.Errorf("%s: Tokens = %d, want 0 (the 15 original prompts have no size hint)", p.ID, p.Tokens)
+		counts[p.Category]++
+		switch p.Category {
+		case "go", "sql":
+			if p.Tokens != 0 {
+				t.Errorf("%s: the original code prompts have no size hint, got %d", p.ID, p.Tokens)
+			}
+		case "long-prompt":
+			if p.Tokens <= 0 || p.Checks.UsesTail == "" {
+				t.Errorf("%s: a long-prompt probe needs tokens: and uses_tail", p.ID)
+			}
+		case "tool-call":
+			if !p.Checks.wantsTools() {
+				t.Errorf("%s: a tool-call probe needs tool_call or no_tool", p.ID)
+			}
+		}
+	}
+	if counts["go"] != 8 || counts["sql"] != 7 {
+		t.Errorf("the original 15 prompts changed: go %d, sql %d, want 8 and 7", counts["go"], counts["sql"])
+	}
+	for _, cat := range []string{"tool-call", "long-prompt", "instruction", "file-read", "edit"} {
+		if counts[cat] == 0 {
+			t.Errorf("no %s probes", cat)
 		}
 	}
 }
