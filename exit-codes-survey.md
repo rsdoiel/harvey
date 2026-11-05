@@ -203,3 +203,17 @@ Each item red first, one commit per item, made only on request:
 Risk worth naming: H3 changes exit statuses that today are 0 (five cases above) and 1
 (most of the rest). Anyone wrapping `harvey` in a script sees the change; the upgrade
 notes need the same table the `kb` release carried.
+
+## Addendum 2026-11-04: model and service cases (DR-0049)
+
+The survey above predates named services. These cases were added later and are
+documented in `EXIT STATUS` (`helptext.go`, `harvey.1.md`); checked against the
+built binary with stdin from `/dev/null`:
+
+| Command | Exit | Class | Notes |
+|---|---|---|---|
+| `-m hailo/nonesuch:1b` (also `ollama/…`, `ollama.model`, `draft.model`, `/kb draft @NAME`) | 66 | no_input | the model is not installed on its service; the message lists what is |
+| `-m pi2/qwen3:1.7b`, `pi2` a `services:` entry that does not answer | 69 | unavailable | names the service; no fallback to another; the session is untouched |
+| `services:` with a name of `ollama` or `hailo`, a slash, a case-only duplicate, an unknown `engine`, or a bad URL | 78 | config | `harvey.yaml: services: "hailo" is a default service; set its URL with hailo.url instead` |
+| `/kb draft` with a model its service lacks | 66 | no_input | any other trouble with the drafter stays 69 |
+| Pulling a Hailo model onto a configured service (`-m pi2/…` not pulled) | 2 | usage | says to pull it on that server; pulling over the network is not built |

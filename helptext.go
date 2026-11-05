@@ -143,11 +143,16 @@ went wrong from the number:
 66
 : A named input is missing or is the wrong kind of thing: the -w directory, the
   --continue or --replay file, or the init source. These
-  are checked before a model is started.
+  are checked before a model is started. Also a model that its service does
+  not have: one named with -m (or in ollama.model, or draft.model) that is not
+  installed on the Ollama, hailo-ollama or services: entry it names. The
+  message lists what is installed.
 
 69
 : A service cannot be reached: no model is connected and nobody is at a
-  terminal to choose one.
+  terminal to choose one, or a model is named on a service (hailo, or one in
+  the services: map) that is not answering. There is no fallback to another
+  service.
 
 70
 : An internal error, or one nothing classified. Please report it.
@@ -167,6 +172,9 @@ went wrong from the number:
 
 78
 : agents/harvey.yaml is present but malformed, and nobody is at a terminal.
+  A bad entry in its services: map counts: a name of ollama or hailo, a name
+  with a slash, two names that differ only in case, an engine other than
+  ollama or hailo, or a URL that is not http or https.
 
 A session is interactive when standard input is a terminal, except that --replay
 without --replay-continue never reaches the prompt and counts as not
