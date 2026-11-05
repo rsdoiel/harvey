@@ -259,6 +259,9 @@ func (a *Agent) assembleLimit() (int, string) {
 		return n, "prompt_limit"
 	}
 	if w := a.effectiveContextLimit(); w > 0 {
+		if ceil, ok := a.engineWindowCeiling(); ok && ceil < int(float64(w)*windowShare) {
+			return ceil, "window"
+		}
 		return int(float64(w) * windowShare), "window"
 	}
 	return 0, ""

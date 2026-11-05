@@ -2,6 +2,7 @@ package harvey
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -274,9 +275,45 @@ func (a *Agent) promptTokenLimit() int {
 		return 0
 	}
 	if cap, _ := a.ModelCache.Get(a.modelKey(ac.ModelName())); cap != nil {
-		return cap.MaxPromptTokens
+		n := cap.MaxPromptTokens
+		// A limit above the window is not one the model can read (hailo: a prompt
+		// between the 2,048-token window and the HTTP 500 point is silently cut).
+		if ceil, ok := a.engineWindowCeiling(); ok && n > ceil {
+			return ceil
+		}
+		return n
 	}
 	return 0
+}
+
+/** engineWindowCeiling returns the most the whole prompt may hold on an engine
+ * whose models all share one known window (hailo: 2,048): the window share
+ * that assembleLimit uses, less the tool definitions sent to a model on the
+ * engine's opt-in list (DR-0050), which the history estimate does not count.
+ *
+ * Returns:
+ *   int  — tokens, at least 1.
+ *   bool — false when the active engine has no known window.
+ *
+ * Example:
+ *   if ceil, ok := a.engineWindowCeiling(); ok && n > ceil { n = ceil }
+ */
+func (a *Agent) engineWindowCeiling() (int, bool) {
+	engine := a.activeEngine()
+	c, ok := capsForEngine(engine)
+	if !ok || c.Window <= 0 {
+		return 0, false
+	}
+	ceil := int(float64(c.Window) * windowShare)
+	if a.Tools != nil && a.Config.ToolsEnabled && nativeToolModel(engine, a.activeModelName()) {
+		if b, err := json.Marshal(nativeToolSubset(engine, a.Tools.GetToolSchemas())); err == nil {
+			ceil -= estimateTokens(string(b))
+		}
+	}
+	if ceil < 1 {
+		ceil = 1
+	}
+	return ceil, true
 }
 
 /** promptBudgetError reports whether the conversation as it stands is too

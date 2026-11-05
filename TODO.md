@@ -4,6 +4,8 @@
 > Entries below that mention llamafile or llama.cpp (their code, tests and `backend_*` files) are history: both backends were
 > removed (workspace DR-0033), and the files and tests they name no longer exist.
 
+- [x] **DONE 2026-11-04: hailo prompt budget never exceeds the window.** `promptTokenLimit` clamps a stored or learned limit to the engine's window share (`engineWindowCeiling`, 1,740 tokens on hailo, less the tool definitions sent to a qwen3 opt-in model); `assembleLimit`'s window branch does the same. A limit learned from a retry after an HTTP 500 (far past the window) used to win. The drafter already budgeted to the window (`DraftBudget`, 2,048 less 700). Tests `hailo_prompt_ceiling_test.go`. Silent loss was checked on the other models (`notes/hailo-ollama-api.md`, question 5): all three qwen2/qwen2.5/llama3.2 lose it, llama3.2:1b earliest (borderline at 85%); qwen3 gives HTTP 500. Open: a tighter share for `llama3.2:1b`; `deepseek_r1` not run.
+
 - [x] **DONE 2026-11-04: hailo structured tool calls, opt-in per model (workspace-tier harvey DR-0050).** `qwen3:1.7b` only, sent the read-only subset `read_file`, `list_files`, `search_files` (`EngineCaps.NativeToolModels`/`NativeToolNames`, `nativeToolModel`, `nativeToolSubset` in `engine_caps.go`; name and argument keys trimmed, an unoffered name is no call, in `ollama_chat.go`; `toolsReliable` in `file_inject.go`); tests `hailo_native_tools_test.go`; checked end to end on the card. Open: where the window gives out beyond the 3-tool subset (write_file, run_command are not sent); a repeat probe of qwen3's search_files choice; `-race`.
 
 - [ ] **An ambiguous model name at startup: the unattended exit code, the message, and the answer not being remembered.**
