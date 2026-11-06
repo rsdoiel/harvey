@@ -219,7 +219,11 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
   only then `isBinary(data)`, then `string(data)` copies it again, with no size limit; the workspace holds files over 200 MB (a gguf, a safetensors,
   llamafile, torch `.so`, two rag `.db`). Confirm test-first: a temp workspace with one large file, assert the search does not read it whole (check
   the extension or size first, read only a prefix for the binary test, and stream the lines); also skip `Reference/`, `.venv` and `models-cache`.
-  The user cgroup on wren delegates only `cpu` and `pids`, so `systemd-run -p MemoryMax=` is not enforced there; use a watchdog. Only harvey
+  The user cgroup on wren delegates only `cpu` and `pids`, so `systemd-run -p MemoryMax=` is not enforced there; use a watchdog.
+  **`search_files` fixed 2026-11-06 (uncommitted at the time of writing):** it now reads 512 bytes for the binary test, skips and names text files over
+  8 MiB (`maxSearchFileBytes`), and streams the rest; tests in `search_files_memory_test.go` (5, all green, whole suite green). On the real 22 GB
+  workspace the pattern from the crash took 12 s and peaked at 20 MB. **Still open:** the memory-aware window and per-turn accounting above, and the
+  other tools that read whole files (`read_file`, `file_tree`, anything using `os.ReadFile` on a model-supplied path): check them for the same pattern. Only harvey
   was killed; the machine and Ollama stayed up, so the kernel's choice was right. The memory-aware window (`window.go`, design
   `memory-aware-context-window-design.md`) sizes the model's context from the memory available when the model was selected (60%), but it sees only
   the runner's cache: it cannot see harvey's own growth, and it is read once, not again when the desktop, other programs or a second loaded model
