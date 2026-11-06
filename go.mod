@@ -6,7 +6,7 @@ require (
 	github.com/caltechlibrary/metadatatools v0.1.1
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/rsdoiel/fountain v1.0.3
-	github.com/rsdoiel/knowledge v0.0.29
+	github.com/rsdoiel/knowledge v0.0.30
 	github.com/rsdoiel/termlib v0.0.10
 	golang.org/x/crypto v0.51.0
 	golang.org/x/term v0.43.0
