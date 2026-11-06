@@ -40,6 +40,7 @@
 
 ### Fixed
 
+- **assay's `compiles` and `go_vet` checks judged the wrong code.** `go build` and `go vet` ran in assay's working directory instead of the temporary directory holding the model's answer, and the answer was saved as `assay_test.go`, which `go build` skips. Started outside a Go module every answer failed with "directory prefix . does not contain main module"; started inside one, the check built that module. Both now build `answer.go` in its own directory. Go results recorded by earlier runs are not valid.
 - **A model never read a tool's result.** The tool loop compacted each round of tool calls to `[called: NAME]` and `[done]` before
   the model's next request, which is the first request that should read it, so every result except `read_file`'s was replaced
   before any model saw it. Found 2026-11-02 in a real session: `recall_knowledge` returned three foulpapers records, the model

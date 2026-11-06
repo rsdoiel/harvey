@@ -503,7 +503,7 @@ func runCompileCheck(response string) (src string, compileResult, vetResult Chec
 	}
 	defer os.RemoveAll(dir)
 
-	goFile := filepath.Join(dir, "assay_test.go")
+	goFile := filepath.Join(dir, "answer.go")
 	if err := os.WriteFile(goFile, []byte(src), 0644); err != nil {
 		compileResult.Detail = "could not write temp file: " + err.Error()
 		vetResult.Detail = "skipped"
@@ -518,7 +518,11 @@ func runCompileCheck(response string) (src string, compileResult, vetResult Chec
 		return src, compileResult, vetResult
 	}
 
-	buildOut, err := exec.Command("go", "build", "./...").CombinedOutput()
+	// Build in the temp dir, not the working directory: the answer is the
+	// thing being judged, whatever module assay was started from.
+	build := exec.Command("go", "build", "./...")
+	build.Dir = dir
+	buildOut, err := build.CombinedOutput()
 	compileResult.Passed = err == nil
 	if err != nil {
 		compileResult.Detail = strings.TrimSpace(string(buildOut))
@@ -526,7 +530,9 @@ func runCompileCheck(response string) (src string, compileResult, vetResult Chec
 		return src, compileResult, vetResult
 	}
 
-	vetOut, err := exec.Command("go", "vet", "./...").CombinedOutput()
+	vet := exec.Command("go", "vet", "./...")
+	vet.Dir = dir
+	vetOut, err := vet.CombinedOutput()
 	vetResult.Passed = err == nil
 	if err != nil {
 		vetResult.Detail = strings.TrimSpace(string(vetOut))
