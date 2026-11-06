@@ -198,6 +198,68 @@ Extracting memories from /home/rsdoiel/Laboratory/agents/sessions/harvey-session
 
 ## Action Items
 
+- [ ] **A large tool result makes a CPU-only turn time out: `file_tree` returned 65 KB and the next request died at the 10-minute limit.** Found
+  2026-11-06 on wren (Pi 5, CPU only), `qwen3.5:4b`, harvey 0.0.20 `cd480d8`, non-interactive run. After two empty `recall_knowledge` results the model
+  called `file_tree` with no arguments (65,570 bytes, about 16-20 K tokens, kept as a blob); the next request was sent at 22:27:42 UTC and failed at
+  22:37:42 with `Post "http://localhost:11434/api/chat": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`, which is the
+  `ollama.timeout: 10m` in `harvey.yaml`, exactly. At the measured 19-20 prompt tokens a second a prompt that size needs about 14 minutes. The turn
+  ended with no answer and the process exited 69. Consider: a size cap on any one tool result (truncate with a "N more entries, narrow with
+  `path`" note, as `search_files` already stops at 100 matches), a default depth for `file_tree`, and a timeout that follows the measured prompt
+  speed or tells the operator what is slow instead of waiting for headers. Review the exit class against workspace DR-0003: a timeout where retrying
+  may succeed reads as `temp_fail` (75), not `unavailable` (69); decide and test through the dispatcher.
+
+- [ ] **The kernel OOM-killed harvey during a `qwen3.5:4b` tool loop on wren; harvey's own memory is not accounted for.** Found 2026-11-06 on wren
+  (Pi 5, 16 GB, 16 KiB pages, CPU only), harvey 0.0.20 `cd480d8`, `/model use qwen3.5:4b` mid-session, then "What did we decide about retiring
+  harvey's memory store?". Evidence: `dmesg`: `Out of memory: Killed process 19937 (harvey) total-vm:19673072kB, anon-rss:10619568kB`, about
+  22:00 UTC, 30 s after the last logged event; in the same table `llama-server` held 3.9 GiB, `claude` 0.07 GiB, `ollama` 0.02 GiB, so harvey
+  itself was about 10 GiB and the model runner about 4 GiB. The session log is 24 KB and its blobs 68 KB, and each request is about 5.5 KB, so the
+  growth is not the recording or the prompts; the cause is probably `search_files`. A clean rerun of the same question on
+  `qwen3.5:4b` (watchdog script, 15 minutes) kept harvey at 25-81 MB the whole time, so a long tool loop alone does not grow it. The last event before the
+  kill was `search_files` with no `path` (the whole 22 GB workspace), and its walk in `builtin_tools.go` does `os.ReadFile(path)` on every file and
+  only then `isBinary(data)`, then `string(data)` copies it again, with no size limit; the workspace holds files over 200 MB (a gguf, a safetensors,
+  llamafile, torch `.so`, two rag `.db`). Confirm test-first: a temp workspace with one large file, assert the search does not read it whole (check
+  the extension or size first, read only a prefix for the binary test, and stream the lines); also skip `Reference/`, `.venv` and `models-cache`.
+  The user cgroup on wren delegates only `cpu` and `pids`, so `systemd-run -p MemoryMax=` is not enforced there; use a watchdog. Only harvey
+  was killed; the machine and Ollama stayed up, so the kernel's choice was right. The memory-aware window (`window.go`, design
+  `memory-aware-context-window-design.md`) sizes the model's context from the memory available when the model was selected (60%), but it sees only
+  the runner's cache: it cannot see harvey's own growth, and it is read once, not again when the desktop, other programs or a second loaded model
+  take memory. Consider: re-reading `MemAvailable` before each request, a headroom for the OS and desktop, counting a second resident model
+  (`qwen2.5:3b` was still loaded), and a guard that stops a turn when harvey's own RSS passes a limit.
+
+- [ ] **The tool loop does not stop when it is getting nowhere.** Found 2026-11-06 on wren with `qwen3.5:4b`: 7 tool rounds in one turn
+  (5 `recall_knowledge` with a new query each time, then 2 `search_files`), every model response with empty text, 40-50 s a round, and no sign the
+  loop would end; the process was OOM-killed before any limit applied. `ErrToolLoopExceeded` exists in `tool_executor.go`; find its limit and why it
+  did not fire, and consider stopping on repeated empty or no-match results and telling the model to answer from what it has.
+
+- [ ] **`recall_knowledge` returns the wrong record or nothing for a long natural-language query.** Found 2026-11-06 on wren, kb 0.0.30 with a
+  populated knowledge.db: "retiring harvey's memory store" returned `kb:record:135` (an OBNC run-time model record), "memory store retired removed
+  deprecated" the same record, and three more queries matched nothing, while `/kb concept recall "memory store"` finds concept `memory` and the
+  DR-0037 hand-off sections. Recall matches concept names, so a model that phrases a sentence misses; the tool description and the empty-result text
+  could say to try one or two concept words (`kb concept list`), or the tool could fall back to full-text search when no concept matches.
+
+- [ ] **The startup banner still advertises `/memory mine`.** Found 2026-11-06 on wren: `39 session(s) unmined — /memory mine to extract learnings`
+  prints at every start (`commands.go:679-687`), and `/memory` and the miner are still registered. Drop the banner, and the `/memory` command, when the
+  DR-0037 removal lands.
+
+- [ ] **`/kb` with an unknown verb prints the whole `kb(1)` manual.** Found 2026-11-06: `/kb recall memory store` returns `kb: unknown verb "recall"`
+  followed by the full manual page in the `kb_result` output. It should be the one-line error plus a hint (the usual cause is
+  `/kb concept recall`). The command is logged with `status: usage`, which is right.
+
+- [ ] **Small models do not reach the knowledge base, and one told the operator to use a command that does not exist.** Found 2026-11-06 on wren,
+  `qwen2.5:3b`, kb 0.0.30, a populated knowledge.db. Asked "What did we decide about retiring harvey's memory store?", the model never called
+  `recall_knowledge` (15 tools offered, no tool-call event), `kb: []` was empty in the request, and twice it answered that the kb keeps nothing between
+  sessions and suggested `/kb recall`, which is not a kb verb. Decide: whether to inject recalled kb text at the start of a turn, and whether the
+  prompt or the `recall_knowledge` description should name `/kb concept recall`. Retest with `qwen3.5:4b` and `granite4.2:3b` first.
+
+- [ ] **Does the output of `/kb ...` reach the model's context?** Found 2026-11-06: the `kb_result` event has `items: []` even when
+  `/kb concept recall "memory store"` succeeded. Check whether a follow-up prompt includes the recalled text (the next `model_request`'s `kb` field or
+  its body blob). If not, the operator has no way to make a recall usable except by retyping it.
+
+- [ ] **`harvey.yaml` names a model that exists only on harvey.local.** Found 2026-11-06 on wren: with no `-m`, harvey fails with
+  `no hailo-ollama server found; start it with: systemctl --user start hailo-ollama`. Not a bug as such, but the file is tracked and is shared by
+  both machines; a per-machine override (or a documented `-m` habit) is needed. Check whether `harvey` has, or should have, a way to point at a
+  different config file.
+
 - [x] **DONE 2026-11-05: assay profiles models on Ollama and hailo-ollama and hints at a route** (harvey DR-0051, plan `agents/projects/harvey/plans/assay-profile-plan.md`, A0-A7). `service/model` targets and `--hailo`; corpus by capability with `tokens:`; checks `tool_call`/`no_tool`/`uses_tail`/`exact`; warm-up, `--runs`, `--timeout`, multi-name `--category`; the matrix, eight hint rules and `summary.json`. Profile run in `assay-results/assay-20261105-151700-profile/`, kb observation 623. Open: amend DR-0051 for four deviations (bare name stays on Ollama, progress on stdout, rules 4 and 5 refined); the Go/SQL rows (about 5 h at `--runs 3`); more than 3 runs for tool-call (the same code gave qwen3 8/12 then 4/12); an `assay report DIR` to re-derive hints from a saved `results.json`.
 
 - [x] **DONE 2026-11-02: remove the workspace profiles (scheduled for the memory-store removal release, not before).** Added 2026-11-01 at the author's
