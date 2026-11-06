@@ -230,7 +230,7 @@ are also available from the shell: harvey --help TOPIC.
   models are listed live when the server is running; use the ollama CLI for pull/rm
 
 /workspace <status|init [PATH]>
-: show workspace root, alias count and profile; seed aliases from another workspace
+: show workspace root and alias count; seed aliases from another workspace
 
 /inspect [MODEL]
 : show detailed model information (Ollama only)
@@ -253,7 +253,7 @@ are also available from the shell: harvey --help TOPIC.
 : stop keeping a pin in front of the model
 
 /clear
-: reset conversation history (system prompt and pins survive)
+: reset conversation history (system prompt and pinned context survive)
 
 /summarize
 : condense history to a summary, freeing context window space (/compact is an alias)
@@ -274,8 +274,11 @@ are also available from the shell: harvey --help TOPIC.
 
 **Knowledge base**
 
-/kb <status|search TEXT|inject [PROJECT]|project [ID]|observe KIND BODY|concept NAME|source|retract ID|cite ID...|show ID|check-retractions>
-: query and update the SQLite knowledge base
+/kb [OPTIONS] VERB [ARGS...]
+: run the installed kb on the workspace knowledge base (kb(1)); /kb inject [PROJECT] adds knowledge base content to the conversation, and /kb project use ID sets the current project for inject and learn
+
+/kb draft [--project NAME] [--limit N] [@route] [SESSION]
+: read a recorded session and write what a model finds worth keeping to the knowledge base as draft observations (at most 5; --limit 0 for all). A draft is not searchable until you promote it with kb observation review promote in a normal shell
 
 /kb learn ingest [--min-words N] [--all] [--dry-run]
 : offer recorded sessions (at least 200 words) and hand-off notes to the knowledge base as documents, and ingest the ones you choose
@@ -289,7 +292,7 @@ are also available from the shell: harvey --help TOPIC.
 /kb learn concepts [--limit N]
 : suggest new concepts from the ingested documents; you pick which become concepts, then see each affected document as a diff of changed lines and choose whether to write it. Writes obey the permissions table; Fountain documents (sessions, hand-offs) are never rewritten
 
-/memory <mine|list|show|forget|status|recall|profile> [args...]
+/memory <mine|list|show|forget|status|recall> [args...]
 : manage the session-experience memory store; mine and recall typed patterns
 
 /recall QUERY
